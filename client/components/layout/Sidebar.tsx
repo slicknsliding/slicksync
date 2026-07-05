@@ -16,6 +16,7 @@ import {
   QueueListIcon,
   DocumentTextIcon,
   XMarkIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 import { PanelSwitcher } from './PanelSwitcher';
 import { api } from '@/lib/api';
@@ -43,6 +44,7 @@ const navigationSections = [
       { name: 'Users', href: '/users', icon: UsersIcon },
       { name: 'Groups', href: '/groups', icon: UserGroupIcon },
       { name: 'Addons', href: '/addons', icon: PuzzlePieceIcon },
+      { name: 'Vault', href: '/vault', icon: ShieldCheckIcon },
       { name: 'Invitations', href: '/invitations', icon: EnvelopeIcon },
     ],
   },

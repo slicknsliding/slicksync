@@ -1174,6 +1174,60 @@ class ApiClient {
     return (result?.user || result) as User;
   }
 
+  // --- Vault ---
+
+  async getVaultEntries(category?: string) {
+    const qs = category ? `?category=${encodeURIComponent(category)}` : '';
+    return this.fetch<VaultListResponse>(`/vault${qs}`);
+  }
+
+  async getVaultEntry(id: string) {
+    return this.fetch<VaultEntry>(`/vault/${id}`);
+  }
+
+  async revealVaultSecret(id: string) {
+    return this.fetch<{ secret: string }>(`/vault/${id}/reveal`);
+  }
+
+  async createVaultEntry(data: VaultEntryInput) {
+    return this.fetch<{ id: string; name: string }>('/vault', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateVaultEntry(id: string, data: Partial<VaultEntryInput> & { isActive?: boolean }) {
+    return this.fetch<{ success: boolean }>(`/vault/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteVaultEntry(id: string) {
+    return this.fetch<{ success: boolean }>(`/vault/${id}`, { method: 'DELETE' });
+  }
+
+  async testVaultEntry(id: string) {
+    return this.fetch<{ ok: boolean | null; message: string; checkedAt: string }>(`/vault/${id}/test`, {
+      method: 'POST',
+    });
+  }
+
+  async getVaultNotificationSettings() {
+    return this.fetch<VaultNotificationSettings>('/vault/settings/notifications');
+  }
+
+  async updateVaultNotificationSettings(data: Partial<{ ntfyUrl: string; ntfyTopic: string; discordWebhookUrl: string; checkIntervalHours: number }>) {
+    return this.fetch<{ success: boolean }>('/vault/settings/notifications', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async testVaultNotification() {
+    return this.fetch<{ success: boolean }>('/vault/settings/notifications/test', { method: 'POST' });
+  }
+
   // Metrics
   async getMetrics(period: string = '30d') {
     return this.fetch<MetricsData>(`/users/metrics?period=${period}`);
@@ -1243,6 +1297,56 @@ export interface CreateGroupData {
   name: string;
   description?: string;
   color?: string;
+}
+
+export type VaultCategory =
+  | 'debrid' | 'usenet_provider' | 'usenet_indexer' | 'torrent_indexer'
+  | 'subtitles' | 'metadata' | 'ai' | 'vpn' | 'aiostreams' | 'custom';
+
+export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability';
+
+export interface VaultEntry {
+  id: string;
+  name: string;
+  category: VaultCategory;
+  provider?: string | null;
+  secretLabel: string;
+  dashboardUrl?: string | null;
+  expiresAt?: string | null;
+  notifyDaysBefore: number;
+  lastCheckedAt?: string | null;
+  lastCheckStatus?: 'ok' | 'error' | 'unknown' | null;
+  lastCheckMessage?: string | null;
+  isActive: boolean;
+  testType: VaultTestType;
+  testConfig?: Record<string, any> | null;
+  updatedAt: string;
+}
+
+export interface VaultListResponse {
+  total: number;
+  categories: Record<string, number>;
+  entries: VaultEntry[];
+}
+
+export interface VaultEntryInput {
+  name: string;
+  category: VaultCategory;
+  provider?: string;
+  secretLabel?: string;
+  secret: string;
+  testType?: VaultTestType;
+  testConfig?: Record<string, any>;
+  dashboardUrl?: string;
+  expiresAt?: string;
+  notifyDaysBefore?: number;
+}
+
+export interface VaultNotificationSettings {
+  ntfyUrl: string | null;
+  ntfyTopic: string | null;
+  discordWebhookUrl: string | null;
+  checkIntervalHours: number;
 }
 
 export interface Addon {
