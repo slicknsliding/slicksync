@@ -36,7 +36,8 @@ export function CreateUserModal({
   const logoSrc = isDark ? '/logo-white.png' : '/logo-black.png';
 
   const isReconnect = mode === 'reconnect';
-  const [step, setStep] = useState<'tabs' | 'oauth' | 'details' | 'success'>('tabs');
+  const [step, setStep] = useState<'tabs' | 'oauth' | 'details' | 'success' | 'nuvio-details' | 'nuvio-oauth'>('tabs');
+  const [provider, setProvider] = useState<'stremio' | 'nuvio'>('stremio');
   const [authMethod, setAuthMethod] = useState<'credentials' | 'authKey' | 'oauth'>('oauth');
 
   // Shared identity fields
@@ -64,11 +65,29 @@ export function CreateUserModal({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // --- Nuvio-specific state (kept separate from Stremio fields above) ---
+  const [nuvioAuthMethod, setNuvioAuthMethod] = useState<'credentials' | 'oauth'>('oauth');
+  const [nuvioEmail, setNuvioEmail] = useState('');
+  const [nuvioPassword, setNuvioPassword] = useState('');
+  const [nuvioOauthStatus, setNuvioOauthStatus] = useState<'idle' | 'connecting' | 'waiting' | 'completed' | 'error'>('idle');
+  const [nuvioOauthError, setNuvioOauthError] = useState<string | null>(null);
+  const [nuvioWebUrl, setNuvioWebUrl] = useState<string | null>(null);
+  const [nuvioCode, setNuvioCode] = useState<string | null>(null);
+  const [nuvioDeviceNonce, setNuvioDeviceNonce] = useState<string | null>(null);
+  const [nuvioAnonToken, setNuvioAnonToken] = useState<string | null>(null);
+  const [nuvioExpiresAt, setNuvioExpiresAt] = useState<string | null>(null);
+  const [nuvioCountdown, setNuvioCountdown] = useState<number>(0);
+  const [nuvioResolvedUser, setNuvioResolvedUser] = useState<{ id: string; email: string } | null>(null);
+  const [nuvioRefreshToken, setNuvioRefreshToken] = useState<string | null>(null);
+  const nuvioPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const nuvioCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Reset state when modal closes
   useEffect(() => {
     if (!isOpen) {
       setTimeout(() => {
         setStep('tabs');
+        setProvider('stremio');
         setAuthMethod('oauth');
         setUsername('');
         setEmail('');
@@ -84,6 +103,22 @@ export function CreateUserModal({
         setCountdown(0);
         stopPolling();
         if (countdownRef.current) clearInterval(countdownRef.current);
+        // Nuvio reset
+        setNuvioAuthMethod('oauth');
+        setNuvioEmail('');
+        setNuvioPassword('');
+        setNuvioOauthStatus('idle');
+        setNuvioOauthError(null);
+        setNuvioWebUrl(null);
+        setNuvioCode(null);
+        setNuvioDeviceNonce(null);
+        setNuvioAnonToken(null);
+        setNuvioExpiresAt(null);
+        setNuvioCountdown(0);
+        setNuvioResolvedUser(null);
+        setNuvioRefreshToken(null);
+        if (nuvioPollRef.current) clearInterval(nuvioPollRef.current);
+        if (nuvioCountdownRef.current) clearInterval(nuvioCountdownRef.current);
       }, 300);
     }
   }, [isOpen]);
@@ -93,6 +128,8 @@ export function CreateUserModal({
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
+      if (nuvioPollRef.current) clearInterval(nuvioPollRef.current);
+      if (nuvioCountdownRef.current) clearInterval(nuvioCountdownRef.current);
     };
   }, []);
 
@@ -291,6 +328,131 @@ export function CreateUserModal({
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  // --- Nuvio handlers ---
+
+  const stopNuvioPolling = () => {
+    if (nuvioPollRef.current) {
+      clearInterval(nuvioPollRef.current);
+      nuvioPollRef.current = null;
+    }
+  };
+
+  const startNuvioCountdown = (expiresAt: string) => {
+    if (nuvioCountdownRef.current) clearInterval(nuvioCountdownRef.current);
+    const update = () => {
+      const remaining = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+      setNuvioCountdown(remaining);
+      if (remaining <= 0 && nuvioCountdownRef.current) {
+        clearInterval(nuvioCountdownRef.current);
+        nuvioCountdownRef.current = null;
+      }
+    };
+    update();
+    nuvioCountdownRef.current = setInterval(update, 1000);
+  };
+
+  const handleStartNuvioOAuth = async () => {
+    setStep('nuvio-oauth');
+    setNuvioOauthStatus('connecting');
+    setNuvioOauthError(null);
+    try {
+      const result = await api.startNuvioOAuth();
+      setNuvioCode(result.code);
+      setNuvioWebUrl(result.webUrl);
+      setNuvioExpiresAt(result.expiresAt);
+      setNuvioDeviceNonce(result.deviceNonce);
+      setNuvioAnonToken(result.anonToken);
+      setNuvioOauthStatus('waiting');
+      startNuvioCountdown(result.expiresAt);
+
+      const intervalMs = Math.max(2, result.pollIntervalSeconds || 3) * 1000;
+      nuvioPollRef.current = setInterval(async () => {
+        try {
+          const poll = await api.pollNuvioOAuth({
+            code: result.code,
+            deviceNonce: result.deviceNonce,
+            anonToken: result.anonToken,
+          });
+          // Status is opaque (passed through from Nuvio's own session state) —
+          // 'pending' means keep waiting; anything else, attempt the exchange.
+          if (poll.status === 'pending') return;
+
+          stopNuvioPolling();
+          if (nuvioCountdownRef.current) clearInterval(nuvioCountdownRef.current);
+
+          const exchanged = await api.exchangeNuvioOAuth({
+            code: result.code,
+            deviceNonce: result.deviceNonce,
+            anonToken: result.anonToken,
+          });
+          setNuvioResolvedUser(exchanged.user);
+          setNuvioRefreshToken(exchanged.refreshToken);
+          if (!username.trim() && exchanged.user?.email) {
+            setUsername(exchanged.user.email.split('@')[0]);
+          }
+          setNuvioOauthStatus('completed');
+          setStep('nuvio-details');
+        } catch (err: any) {
+          stopNuvioPolling();
+          if (nuvioCountdownRef.current) clearInterval(nuvioCountdownRef.current);
+          setNuvioOauthStatus('error');
+          setNuvioOauthError(err.message || 'Nuvio approval failed or expired');
+        }
+      }, intervalMs);
+    } catch (err: any) {
+      setNuvioOauthStatus('error');
+      setNuvioOauthError(err.message || 'Failed to start Nuvio login');
+    }
+  };
+
+  const handleNuvioSubmit = async () => {
+    if (!username.trim()) {
+      toast.error('Username is required');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      let created: any;
+      if (nuvioAuthMethod === 'oauth') {
+        if (!nuvioResolvedUser || !nuvioRefreshToken) {
+          toast.error('Nuvio login not completed yet');
+          setIsSubmitting(false);
+          return;
+        }
+        created = await api.createUserWithNuvioOAuth({
+          providerUserId: nuvioResolvedUser.id,
+          refreshToken: nuvioRefreshToken,
+          username: username.trim(),
+          email: nuvioResolvedUser.email,
+        });
+      } else {
+        if (!nuvioEmail.trim() || !nuvioPassword) {
+          toast.error('Email and password are required');
+          setIsSubmitting(false);
+          return;
+        }
+        created = await api.createUserWithNuvioCredentials({
+          email: nuvioEmail.trim(),
+          password: nuvioPassword,
+          username: username.trim(),
+        });
+      }
+      setStep('success');
+      setTimeout(() => {
+        onClose();
+        if (created?.id) {
+          window.location.href = `/users/${created.id}`;
+        } else {
+          window.location.reload();
+        }
+      }, 800);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create Nuvio user');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -370,6 +532,35 @@ export function CreateUserModal({
                         </p>
                       </div>
 
+                      {!isReconnect && (
+                        <div className="flex gap-2 mb-5 p-1 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
+                          <button
+                            type="button"
+                            onClick={() => setProvider('stremio')}
+                            className="flex-1 py-2 text-sm font-semibold rounded-lg transition-all"
+                            style={{
+                              background: provider === 'stremio' ? 'var(--color-primary)' : 'transparent',
+                              color: provider === 'stremio' ? 'white' : 'var(--color-textMuted)'
+                            }}
+                          >
+                            Stremio
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setProvider('nuvio')}
+                            className="flex-1 py-2 text-sm font-semibold rounded-lg transition-all"
+                            style={{
+                              background: provider === 'nuvio' ? 'var(--color-primary)' : 'transparent',
+                              color: provider === 'nuvio' ? 'white' : 'var(--color-textMuted)'
+                            }}
+                          >
+                            Nuvio
+                          </button>
+                        </div>
+                      )}
+
+                      {provider === 'stremio' && (
+                      <>
                       {/* 3 Tab Options */}
                       <div className="space-y-3">
                         {/* Credentials Option (Email/Password) */}
@@ -624,6 +815,120 @@ export function CreateUserModal({
                           </div>
                         </div>
                       )}
+                      </>
+                      )}
+
+                      {provider === 'nuvio' && (
+                      <>
+                        <div className="space-y-3">
+                          {/* Nuvio Credentials Option */}
+                          <button
+                            type="button"
+                            onClick={() => setNuvioAuthMethod('credentials')}
+                            className="w-full p-4 rounded-2xl text-left transition-all"
+                            style={{
+                              background: nuvioAuthMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
+                              border: `1px solid ${nuvioAuthMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surfaceBorder)'}`,
+                            }}
+                          >
+                            <span className="font-semibold" style={{ color: nuvioAuthMethod === 'credentials' ? 'white' : 'var(--color-text)' }}>
+                              Credentials
+                            </span>
+                            <p className="text-sm mt-0.5" style={{ color: nuvioAuthMethod === 'credentials' ? 'rgba(255,255,255,0.8)' : 'var(--color-textMuted)' }}>
+                              Email and password
+                            </p>
+                          </button>
+
+                          {/* Nuvio OAuth Option */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNuvioAuthMethod('oauth');
+                              handleStartNuvioOAuth();
+                            }}
+                            className="w-full p-4 rounded-2xl text-left transition-all"
+                            style={{
+                              background: nuvioAuthMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
+                              border: `1px solid ${nuvioAuthMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surfaceBorder)'}`,
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold" style={{ color: nuvioAuthMethod === 'oauth' ? 'white' : 'var(--color-text)' }}>
+                                Nuvio OAuth
+                              </span>
+                              <span
+                                className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full"
+                                style={{ background: nuvioAuthMethod === 'oauth' ? 'rgba(255,255,255,0.3)' : 'var(--color-primary)', color: 'white' }}
+                              >
+                                Recommended
+                              </span>
+                            </div>
+                            <p className="text-sm mt-0.5" style={{ color: nuvioAuthMethod === 'oauth' ? 'rgba(255,255,255,0.8)' : 'var(--color-textMuted)' }}>
+                              Approve on your device — no password shared
+                            </p>
+                          </button>
+                        </div>
+
+                        {nuvioAuthMethod === 'credentials' && (
+                          <div className="mt-6 p-4 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
+                            <div className="space-y-4">
+                              <div>
+                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                                  Username <span style={{ color: 'var(--color-error)' }}>*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="Enter a unique username"
+                                  value={username}
+                                  onChange={(e) => setUsername(e.target.value)}
+                                  className="w-full px-4 py-3 rounded-xl focus:outline-none"
+                                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                                  Email <span style={{ color: 'var(--color-error)' }}>*</span>
+                                </label>
+                                <input
+                                  type="email"
+                                  placeholder="Enter Nuvio account email"
+                                  value={nuvioEmail}
+                                  onChange={(e) => setNuvioEmail(e.target.value)}
+                                  className="w-full px-4 py-3 rounded-xl focus:outline-none"
+                                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                                  Password <span style={{ color: 'var(--color-error)' }}>*</span>
+                                </label>
+                                <input
+                                  type="password"
+                                  placeholder="Enter password"
+                                  value={nuvioPassword}
+                                  onChange={(e) => setNuvioPassword(e.target.value)}
+                                  className="w-full px-4 py-3 rounded-xl focus:outline-none"
+                                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+                                />
+                              </div>
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                              <button
+                                type="button"
+                                onClick={onClose}
+                                className="flex-1 py-3 text-sm font-medium rounded-xl transition-colors"
+                                style={{ background: 'var(--color-surfaceHover)', color: 'var(--color-text)' }}
+                              >
+                                Cancel
+                              </button>
+                              <Button variant="primary" className="flex-1" onClick={handleNuvioSubmit} isLoading={isSubmitting}>
+                                Add User
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                      )}
                     </motion.div>
                   )}
 
@@ -771,6 +1076,123 @@ export function CreateUserModal({
                             Open Stremio Again
                           </Button>
                         )}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Step: Nuvio OAuth Flow */}
+                  {step === 'nuvio-oauth' && (
+                    <motion.div
+                      key="nuvio-oauth"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-center"
+                    >
+                      <div className="w-16 h-16 mx-auto mb-6 rounded-2xl flex items-center justify-center" style={{
+                        background: 'linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 70%, var(--color-secondary)) 100%)',
+                        boxShadow: '0 8px 32px -8px var(--color-primary)'
+                      }}>
+                        <img src={logoSrc} alt="SlickSync" className="w-10 h-10 object-contain" />
+                      </div>
+
+                      <div className="mb-6">
+                        <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
+                          {nuvioOauthStatus === 'connecting' && 'Connecting...'}
+                          {nuvioOauthStatus === 'waiting' && 'Waiting for Nuvio'}
+                          {nuvioOauthStatus === 'completed' && 'Connected!'}
+                          {nuvioOauthStatus === 'error' && 'Connection Failed'}
+                        </h3>
+                        <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                          {nuvioOauthStatus === 'connecting' && 'Starting Nuvio login...'}
+                          {nuvioOauthStatus === 'waiting' && 'Open the link below and approve this login on your device'}
+                          {nuvioOauthStatus === 'completed' && 'Nuvio account linked successfully'}
+                          {nuvioOauthStatus === 'error' && (nuvioOauthError || 'Please try again')}
+                        </p>
+                      </div>
+
+                      {nuvioOauthStatus === 'waiting' && nuvioCode && (
+                        <div className="mb-6 p-4 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
+                          <p className="text-xs mb-2" style={{ color: 'var(--color-textMuted)' }}>Approval code</p>
+                          <p className="text-2xl font-mono font-bold tracking-widest mb-4" style={{ color: 'var(--color-text)' }}>{nuvioCode}</p>
+                          {nuvioWebUrl && (
+                            <Button variant="secondary" className="w-full" onClick={() => window.open(nuvioWebUrl, '_blank')}>
+                              Open Nuvio Approval Page
+                            </Button>
+                          )}
+                        </div>
+                      )}
+
+                      {(nuvioOauthStatus === 'waiting' || nuvioOauthStatus === 'connecting') && nuvioCountdown > 0 && (
+                        <div className="mb-6">
+                          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm" style={{ background: 'var(--color-subtle)' }}>
+                            <ClockIcon className="w-4 h-4" style={{ color: 'var(--color-textMuted)' }} />
+                            <span style={{ color: 'var(--color-textMuted)' }}>
+                              Expires in <span className="font-mono font-medium" style={{ color: 'var(--color-text)' }}>{formatCountdown(nuvioCountdown)}</span>
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => { stopNuvioPolling(); setStep('tabs'); }}
+                          className="flex-1 py-3 text-sm font-medium rounded-xl transition-colors"
+                          style={{ background: 'var(--color-subtle)', color: 'var(--color-text)' }}
+                        >
+                          Back
+                        </button>
+                        {nuvioOauthStatus === 'error' && (
+                          <Button variant="primary" className="flex-1" onClick={handleStartNuvioOAuth}>
+                            Try Again
+                          </Button>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Step: Nuvio details (confirm username after OAuth resolves identity) */}
+                  {step === 'nuvio-details' && (
+                    <motion.div
+                      key="nuvio-details"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <div className="text-center mb-6">
+                        <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>Almost done</h2>
+                        <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                          {nuvioResolvedUser?.email ? `Connected as ${nuvioResolvedUser.email}` : 'Choose a username for this SlickSync user'}
+                        </p>
+                      </div>
+                      <div className="p-4 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
+                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                          Username <span style={{ color: 'var(--color-error)' }}>*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Enter a unique username"
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                          className="w-full px-4 py-3 rounded-xl focus:outline-none"
+                          style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+                        />
+                        <div className="flex gap-3 mt-6">
+                          <button
+                            type="button"
+                            onClick={() => setStep('tabs')}
+                            className="flex-1 py-3 text-sm font-medium rounded-xl transition-colors"
+                            style={{ background: 'var(--color-surfaceHover)', color: 'var(--color-text)' }}
+                          >
+                            Back
+                          </button>
+                          <Button variant="primary" className="flex-1" onClick={handleNuvioSubmit} isLoading={isSubmitting}>
+                            Add User
+                          </Button>
+                        </div>
                       </div>
                     </motion.div>
                   )}
