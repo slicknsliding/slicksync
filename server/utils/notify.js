@@ -584,11 +584,25 @@ async function sendSyncNotification(webhookUrl, options) {
   })
 }
 
-module.exports = { 
-  postDiscord, 
-  createSyncEmbed, 
-  sendSyncNotification, 
-  fetchMetadata, 
-  sendActivityNotification, 
-  sendShareNotification 
+async function postNtfy(ntfyUrl, topic, { title, message, priority = 'default', tags = [] } = {}) {
+  try {
+    if (!ntfyUrl || !topic) return
+    const base = String(ntfyUrl).replace(/\/+$/, '')
+    const url = `${base}/${encodeURIComponent(topic)}`
+    const headers = { 'Content-Type': 'text/plain; charset=utf-8' }
+    if (title) headers['Title'] = title
+    if (priority) headers['Priority'] = priority
+    if (Array.isArray(tags) && tags.length) headers['Tags'] = tags.join(',')
+    await fetch(url, { method: 'POST', headers, body: message || '' })
+  } catch {}
+}
+
+module.exports = {
+  postDiscord,
+  postNtfy,
+  createSyncEmbed,
+  sendSyncNotification,
+  fetchMetadata,
+  sendActivityNotification,
+  sendShareNotification
 }
