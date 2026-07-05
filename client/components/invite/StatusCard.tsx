@@ -231,7 +231,7 @@ export const StatusCards = {
   Completed: () => (
     <StatusCard 
       type="completed" 
-      title="Welcome to Syncio!"
+      title="Welcome to SlickSync!"
       footer={
         <div className="flex justify-center w-full">
           <Link href="/login" className="w-full sm:w-auto">
@@ -243,7 +243,7 @@ export const StatusCards = {
       }
     >
       <p>Your account has been created successfully.</p>
-      <p className="mt-2 opacity-75">You can now use Syncio to manage your Stremio addons.</p>
+      <p className="mt-2 opacity-75">You can now use SlickSync to manage your Stremio addons.</p>
     </StatusCard>
   ),
 

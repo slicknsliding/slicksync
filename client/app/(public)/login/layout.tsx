@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Syncio - Login',
+  title: 'SlickSync - Login',
 };
 
 export default function LoginLayout({

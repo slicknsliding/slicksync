@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Syncio - My Addons',
+  title: 'SlickSync - My Addons',
 };
 
 export default function UserAddonsLayout({

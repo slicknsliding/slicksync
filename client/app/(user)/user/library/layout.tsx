@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Syncio - My Library',
+  title: 'SlickSync - My Library',
 };
 
 export default function UserLibraryLayout({

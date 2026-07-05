@@ -247,7 +247,7 @@ export default function GroupsPage() {
   return (
     <>
       <Head>
-        <title>Syncio - Groups</title>
+        <title>SlickSync - Groups</title>
       </Head>
       <Header
         title="Groups"

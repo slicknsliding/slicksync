@@ -198,7 +198,7 @@ export default function DeleteAccountPage() {
           <StatusCard type="completed" title="Account Deleted">
             <p>Your account has been successfully deleted.</p>
             <p className="mt-2 opacity-75">
-              Thank you for using Syncio. You can request access again if you change your mind.
+              Thank you for using SlickSync. You can request access again if you change your mind.
             </p>
           </StatusCard>
         );

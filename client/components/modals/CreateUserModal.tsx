@@ -637,9 +637,9 @@ export function CreateUserModal({
                       transition={{ duration: 0.2 }}
                       className="text-center"
                     >
-                      {/* Animated connection visual with Syncio + Stremio logos */}
+                      {/* Animated connection visual with SlickSync + Stremio logos */}
                       <div className="relative h-40 flex items-center justify-center mb-6">
-                        {/* Left orb - Syncio */}
+                        {/* Left orb - SlickSync */}
                         <motion.div
                           animate={{
                             x: oauthStatus === 'completed' ? 20 : 0,
@@ -652,7 +652,7 @@ export function CreateUserModal({
                             boxShadow: '0 8px 32px -8px var(--color-primary)'
                           }}
                         >
-                          <img src={logoSrc} alt="Syncio" className="w-10 h-10 object-contain" />
+                          <img src={logoSrc} alt="SlickSync" className="w-10 h-10 object-contain" />
                         </motion.div>
 
                         {/* Connection line */}

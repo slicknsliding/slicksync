@@ -1,4 +1,4 @@
-// API client for connecting to Syncio backend
+// API client for connecting to SlickSync backend
 // Use relative path if NEXT_PUBLIC_API_URL is not set (Next.js will proxy via rewrites)
 // Otherwise use the explicit URL (useful for production or different ports)
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -1113,6 +1113,63 @@ class ApiClient {
     const result = await this.fetch<any>(endpoint, {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+    return (result?.user || result) as User;
+  }
+
+  // --- Nuvio provider ---
+  // Mirrors the Stremio pattern above: /nuvio/connect-authkey with create:true
+  // is the actual "create a new SlickSync user" endpoint. /nuvio/connect is for
+  // reconnecting an *existing* user (requires userId) — not used here.
+
+  async createUserWithNuvioCredentials(data: {
+    email: string;
+    password: string;
+    username: string;
+    groupName?: string;
+    colorIndex?: number;
+  }) {
+    const result = await this.fetch<any>('/nuvio/connect-authkey', {
+      method: 'POST',
+      body: JSON.stringify({ ...data, create: true }),
+    });
+    return (result?.user || result) as User;
+  }
+
+  async startNuvioOAuth() {
+    // Returns { code, webUrl, expiresAt, pollIntervalSeconds, anonToken, deviceNonce }
+    return this.fetch<{
+      code: string; webUrl: string; expiresAt: string;
+      pollIntervalSeconds: number; anonToken: string; deviceNonce: string;
+    }>('/nuvio/start-oauth', { method: 'POST', body: JSON.stringify({}) });
+  }
+
+  async pollNuvioOAuth(params: { code: string; deviceNonce: string; anonToken: string }) {
+    // Returns { status, expiresAt, pollIntervalSeconds } — status is opaque, passed
+    // through from Nuvio's own session state (e.g. pending until approved on the device)
+    return this.fetch<{ status: string; expiresAt: string; pollIntervalSeconds: number }>(
+      '/nuvio/poll-oauth', { method: 'POST', body: JSON.stringify(params) }
+    );
+  }
+
+  async exchangeNuvioOAuth(params: { code: string; deviceNonce: string; anonToken: string }) {
+    // Returns { success, user: { id, email }, refreshToken } once the session is approved
+    return this.fetch<{ success: boolean; user: { id: string; email: string }; refreshToken: string }>(
+      '/nuvio/exchange-oauth', { method: 'POST', body: JSON.stringify(params) }
+    );
+  }
+
+  async createUserWithNuvioOAuth(data: {
+    providerUserId: string;
+    refreshToken: string;
+    username: string;
+    email?: string;
+    groupName?: string;
+    colorIndex?: number;
+  }) {
+    const result = await this.fetch<any>('/nuvio/connect-authkey', {
+      method: 'POST',
+      body: JSON.stringify({ ...data, create: true }),
     });
     return (result?.user || result) as User;
   }

@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Syncio - My Shares',
+  title: 'SlickSync - My Shares',
 };
 
 export default function UserSharesLayout({

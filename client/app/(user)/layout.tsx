@@ -32,7 +32,7 @@ export default function UserLayout({
     else if (path.startsWith('/user/shares')) section = 'Shares';
     else if (path.startsWith('/user/settings')) section = 'Settings';
 
-    document.title = `Syncio - ${section}`;
+    document.title = `SlickSync - ${section}`;
   }, [pathname]);
 
   return (

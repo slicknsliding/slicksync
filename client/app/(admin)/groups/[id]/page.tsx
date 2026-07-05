@@ -528,7 +528,7 @@ export default function GroupDetailPage() {
 
   useEffect(() => {
     if (group) {
-      document.title = `Syncio - ${group.name || 'Group Detail'}`;
+      document.title = `SlickSync - ${group.name || 'Group Detail'}`;
     }
   }, [group]);
 

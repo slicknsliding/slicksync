@@ -655,7 +655,7 @@ export default function TasksPage() {
     <>
       <Header
         title="Tasks"
-        subtitle="Manage and export all your Syncio data"
+        subtitle="Manage and export all your SlickSync data"
       />
 
       <div className="p-6 lg:p-8 max-w-3xl">
@@ -1115,7 +1115,7 @@ export default function TasksPage() {
               </div>
               <div>
                 <h3 className="text-base font-semibold font-display text-default">Data Migration</h3>
-                <p className="text-xs text-muted">Import old metrics from previous Syncio version</p>
+                <p className="text-xs text-muted">Import old metrics from previous SlickSync version</p>
               </div>
             </div>
             

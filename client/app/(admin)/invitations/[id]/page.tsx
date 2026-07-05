@@ -94,7 +94,7 @@ export default function InvitationDetailPage() {
 
   useEffect(() => {
     if (invitation) {
-      document.title = `Syncio - Invitation ${invitation.code || invitation.inviteCode || ''}`;
+      document.title = `SlickSync - Invitation ${invitation.code || invitation.inviteCode || ''}`;
     }
   }, [invitation]);
 

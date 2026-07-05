@@ -95,12 +95,12 @@ export default function InviteRequestPage() {
       setState('not-found');
       return;
     }
-    document.title = 'Syncio - Invitation';
+    document.title = 'SlickSync - Invitation';
   }, [inviteCode]);
 
   useEffect(() => {
     if (groupName) {
-      document.title = `Syncio - Join ${groupName}`;
+      document.title = `SlickSync - Join ${groupName}`;
     }
   }, [groupName]);
 

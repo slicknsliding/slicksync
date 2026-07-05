@@ -10,7 +10,7 @@ interface InviteLayoutProps {
 }
 
 /**
- * Public invite page layout with Syncio branding
+ * Public invite page layout with SlickSync branding
  * 
  * Design direction: Clean, minimal, professional with subtle depth.
  * Focus on the content with a refined atmosphere.
@@ -64,13 +64,13 @@ export function InviteLayout({
               backgroundColor: 'var(--color-primary)',
             }}
           >
-            <img src="/logo-white.png" alt="Syncio" className="w-7 h-7 object-contain" />
+            <img src="/logo-white.png" alt="SlickSync" className="w-7 h-7 object-contain" />
           </div>
           <span 
             className="text-lg font-semibold tracking-tight"
             style={{ color: 'var(--color-text)' }}
           >
-            Syncio
+            SlickSync
           </span>
         </div>
 
@@ -121,7 +121,7 @@ export function InviteLayout({
           className="text-xs"
           style={{ color: 'var(--color-text-subtle)' }}
         >
-          Syncio manages your Stremio addons across devices
+          SlickSync manages your Stremio addons across devices
         </p>
       </motion.footer>
     </div>

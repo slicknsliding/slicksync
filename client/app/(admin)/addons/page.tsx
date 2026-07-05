@@ -274,7 +274,7 @@ export default function AddonsPage() {
   return (
     <>
       <Head>
-        <title>Syncio - Addons</title>
+        <title>SlickSync - Addons</title>
       </Head>
       <Header
         title="Addons"
