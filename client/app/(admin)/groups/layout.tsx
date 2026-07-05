@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Syncio - Groups',
+  title: 'SlickSync - Groups',
 };
 
 export default function GroupsLayout({

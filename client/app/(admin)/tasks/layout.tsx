@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Syncio - Tasks',
+  title: 'SlickSync - Tasks',
 };
 
 export default function TasksLayout({

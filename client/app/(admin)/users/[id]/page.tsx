@@ -445,7 +445,7 @@ export default function UserDetailPage() {
 
   useEffect(() => {
     if (user) {
-      document.title = `Syncio - ${user.username || user.name || 'User Detail'}`;
+      document.title = `SlickSync - ${user.username || user.name || 'User Detail'}`;
     }
   }, [user]);
 

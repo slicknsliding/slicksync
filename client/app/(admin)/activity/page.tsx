@@ -1100,7 +1100,7 @@ function ActivityPageContent() {
     <>
       <Header
         title="Activity"
-        subtitle="Track watch history and sync operations across your Syncio instance"
+        subtitle="Track watch history and sync operations across your SlickSync instance"
         actions={
           <div className="flex items-center gap-3">
             {/* Group Filter Dropdown */}

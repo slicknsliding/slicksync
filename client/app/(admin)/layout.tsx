@@ -2,7 +2,7 @@ import { Metadata } from 'next';
 import AdminClientLayout from './AdminClientLayout';
 
 export const metadata: Metadata = {
-  title: 'Syncio - Dashboard',
+  title: 'SlickSync - Dashboard',
 };
 
 export default function AdminLayout({

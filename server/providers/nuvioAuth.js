@@ -92,7 +92,7 @@ async function startNuvioTvLogin() {
   const signupRes = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
     method: 'POST',
     headers: { 'apikey': SUPABASE_ANON_KEY, 'content-type': 'application/json' },
-    body: JSON.stringify({ data: { tv_client: 'syncio' } })
+    body: JSON.stringify({ data: { tv_client: 'slicksync' } })
   })
   if (!signupRes.ok) {
     console.error('Nuvio anonymous signup failed')

@@ -332,7 +332,7 @@ export default function DashboardPage() {
     <>
       <Header
         title="Dashboard"
-        subtitle="Welcome back! Here's what's happening with Syncio."
+        subtitle="Welcome back! Here's what's happening with SlickSync."
         actions={
           <Button
             variant="primary"
@@ -610,7 +610,7 @@ export default function DashboardPage() {
                   Quick Actions
                 </h3>
                 <p className="text-sm text-muted">
-                  Common tasks to manage your Syncio instance
+                  Common tasks to manage your SlickSync instance
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

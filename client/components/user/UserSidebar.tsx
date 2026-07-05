@@ -118,11 +118,11 @@ export function UserSidebar() {
             className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden"
             style={{ background: 'var(--color-primary)' }}
           >
-            <img src="/logo-white.png" alt="Syncio" className="w-7 h-7 object-contain" />
+            <img src="/logo-white.png" alt="SlickSync" className="w-7 h-7 object-contain" />
           </motion.div>
           <div>
             <h1 className="text-lg font-bold font-display" style={{ color: 'var(--color-text)' }}>
-              Syncio
+              SlickSync
             </h1>
           </div>
         </Link>

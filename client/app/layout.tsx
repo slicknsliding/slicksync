@@ -5,9 +5,9 @@ import { ThemeProvider } from "@/lib/theme";
 import { UserCacheProvider } from "@/components/providers/UserCacheProvider";
 
 export const metadata: Metadata = {
-  title: "Syncio - Users, Groups & Addons",
-  description: "Syncio - Stremio Addon and User Management System",
-  applicationName: "Syncio",
+  title: "SlickSync - Users, Groups & Addons",
+  description: "SlickSync - Stremio & Nuvio Addon and User Management System",
+  applicationName: "SlickSync",
   icons: {
     icon: [
       { url: '/logo-black.png', media: '(prefers-color-scheme: light)' },

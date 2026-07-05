@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Syncio - Metrics',
+  title: 'SlickSync - Metrics',
 };
 
 export default function MetricsLayout({

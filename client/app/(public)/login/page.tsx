@@ -336,13 +336,13 @@ function LoginContent() {
             className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center"
             style={{ background: 'var(--color-primary)' }}
           >
-            <img src="/logo-white.png" alt="Syncio" className="w-10 h-10 object-contain" />
+            <img src="/logo-white.png" alt="SlickSync" className="w-10 h-10 object-contain" />
           </motion.div>
           <h1
             className="text-3xl font-bold font-display mb-2"
             style={{ color: 'var(--color-text)' }}
           >
-            Syncio
+            SlickSync
           </h1>
           <p style={{ color: 'var(--color-text-muted)' }}>
             Sign in to continue

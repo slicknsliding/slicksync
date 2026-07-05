@@ -533,7 +533,7 @@ export default function AddonDetailPage() {
 
   useEffect(() => {
     if (addon) {
-      document.title = `Syncio - ${addon.name || 'Addon Detail'}`;
+      document.title = `SlickSync - ${addon.name || 'Addon Detail'}`;
     }
   }, [addon]);
 

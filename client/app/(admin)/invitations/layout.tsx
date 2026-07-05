@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Syncio - Invitations',
+  title: 'SlickSync - Invitations',
 };
 
 export default function InvitationsLayout({

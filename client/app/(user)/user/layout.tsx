@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Syncio - User Home',
+  title: 'SlickSync - User Home',
 };
 
 export default function UserLayout({

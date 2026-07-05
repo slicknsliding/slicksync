@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Syncio - Settings',
+  title: 'SlickSync - Settings',
 };
 
 export default function SettingsLayout({

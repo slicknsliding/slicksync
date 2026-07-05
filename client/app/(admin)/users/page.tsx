@@ -284,7 +284,7 @@ export default function UsersPage() {
   return (
     <>
       <Head>
-        <title>Syncio - Users</title>
+        <title>SlickSync - Users</title>
       </Head>
       <Header
         title="Users"

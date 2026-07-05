@@ -356,7 +356,7 @@ export default function SettingsPage() {
     <>
       <Header
         title="Settings"
-        subtitle="Customize your Syncio experience"
+        subtitle="Customize your SlickSync experience"
       />
 
       <div className="p-6 lg:p-8 max-w-4xl">
@@ -590,7 +590,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <h3 className="text-base font-semibold font-display text-default">API Key</h3>
-                                    <p className="text-xs text-muted">Access the Syncio API programmatically</p>              </div>
+                                    <p className="text-xs text-muted">Access the SlickSync API programmatically</p>              </div>
             </div>
 
             <div className="space-y-4">

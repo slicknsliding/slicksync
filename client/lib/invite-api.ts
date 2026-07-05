@@ -2,7 +2,7 @@
  * Public Invite API
  * 
  * These endpoints don't require authentication and are used for the public
- * invite flow where users request access to Syncio.
+ * invite flow where users request access to SlickSync.
  */
 
 // Types for the invite flow
