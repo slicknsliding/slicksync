@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-echo "🚀 Starting Syncio..."
+echo "🚀 Starting SlickSync..."
 echo "INSTANCE=${INSTANCE:-unknown}"
 
 # Set configuration based on INSTANCE

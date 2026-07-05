@@ -366,7 +366,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         return res.status(400).json({ message: 'No webhook URL configured' })
       }
 
-      await postDiscord(targetUrl, '🔬 Syncio test webhook message')
+      await postDiscord(targetUrl, '🔬 SlickSync test webhook message')
       return res.json({ message: 'Test message sent' })
     } catch (e) {
       console.error('Failed to send webhook test:', e)

@@ -1397,7 +1397,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ message: 'No webhook URL configured' })
       }
 
-      await postDiscord(targetUrl, `🔬 Syncio test webhook message for ${user.username}`)
+      await postDiscord(targetUrl, `🔬 SlickSync test webhook message for ${user.username}`)
       return res.json({ message: 'Test message sent' })
     } catch (error) {
       console.error('Failed to send user webhook test:', error)
@@ -4962,13 +4962,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         }
       }
 
-      // Add footer with Syncio version (same as sync notifications)
+      // Add footer with SlickSync version (same as sync notifications)
       let appVersion = process.env.NEXT_PUBLIC_APP_VERSION || process.env.APP_VERSION || ''
       if (!appVersion) {
         try { appVersion = require('../../package.json')?.version || '' } catch { }
       }
       if (appVersion) {
-        embed.footer = { text: `Syncio v${appVersion}` }
+        embed.footer = { text: `SlickSync v${appVersion}` }
       }
 
       await postDiscord(webhookUrl, null, {

@@ -313,7 +313,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       if (error?.message === 'USER_NOT_FOUND') {
         return res.status(403).json({ 
           error: 'USER_NOT_FOUND',
-          message: 'Your account is not registered with Syncio. Please contact an administrator to be added to a Syncio group first.' 
+          message: 'Your account is not registered with SlickSync. Please contact an administrator to be added to a SlickSync group first.' 
         });
       }
       
@@ -329,7 +329,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       if (error?.message === 'USER_NOT_IN_GROUP') {
         return res.status(403).json({ 
           error: 'USER_NOT_IN_GROUP',
-          message: 'Your account is not part of any Syncio group. Please contact an administrator to be added to a group first.' 
+          message: 'Your account is not part of any SlickSync group. Please contact an administrator to be added to a group first.' 
         });
       }
       
@@ -361,7 +361,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         if (!user || !user.stremioAuthKey) {
           return res.status(403).json({ 
             error: 'USER_NOT_FOUND',
-            message: 'Your account is not registered with Syncio. Please contact an administrator to be added to a Syncio group first.' 
+            message: 'Your account is not registered with SlickSync. Please contact an administrator to be added to a SlickSync group first.' 
           });
         }
         
@@ -389,7 +389,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       if (error?.message === 'USER_NOT_FOUND') {
         return res.status(403).json({ 
           error: 'USER_NOT_FOUND',
-          message: 'Your account is not registered with Syncio. Please contact an administrator to be added to a Syncio group first.' 
+          message: 'Your account is not registered with SlickSync. Please contact an administrator to be added to a SlickSync group first.' 
         });
       }
       
@@ -403,7 +403,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       if (error?.message === 'USER_NOT_IN_GROUP') {
         return res.status(403).json({ 
           error: 'USER_NOT_IN_GROUP',
-          message: 'Your account is not part of any Syncio group. Please contact an administrator to be added to a group first.' 
+          message: 'Your account is not part of any SlickSync group. Please contact an administrator to be added to a group first.' 
         });
       }
       
@@ -536,7 +536,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       if (error?.message === 'USER_NOT_FOUND') {
         return res.status(403).json({ 
           error: 'USER_NOT_FOUND',
-          message: 'Your account is not registered with Syncio.' 
+          message: 'Your account is not registered with SlickSync.' 
         });
       }
       
@@ -550,7 +550,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       if (error?.message === 'USER_NOT_IN_GROUP') {
         return res.status(403).json({ 
           error: 'USER_NOT_IN_GROUP',
-          message: 'Your account is not part of any Syncio group.' 
+          message: 'Your account is not part of any SlickSync group.' 
         });
       }
       
@@ -860,7 +860,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           console.log(`[public-library] Fetching manifest from server: ${addonUrl}`);
           const manifestResponse = await fetch(addonUrl, {
             headers: {
-              'User-Agent': 'Syncio/1.0',
+              'User-Agent': 'SlickSync/1.0',
               'Accept': 'application/json'
             }
           });

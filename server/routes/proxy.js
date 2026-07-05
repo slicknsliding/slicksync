@@ -275,7 +275,7 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
         upstreamResponse = await fetch(upstreamUrl, {
           method: req.method,
           headers: {
-            'User-Agent': 'Syncio-Proxy/1.0',
+            'User-Agent': 'SlickSync-Proxy/1.0',
             'Accept': req.get('Accept') || '*/*'
           }
         });

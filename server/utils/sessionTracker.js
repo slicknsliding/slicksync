@@ -121,13 +121,13 @@ async function sendSessionStartNotification(webhookUrl, session, user) {
       }
     }
 
-    // Add footer with Syncio version
+    // Add footer with SlickSync version
     let appVersion = process.env.NEXT_PUBLIC_APP_VERSION || process.env.APP_VERSION || ''
     if (!appVersion) {
       try { appVersion = require('../../package.json')?.version || '' } catch { }
     }
     if (appVersion) {
-      embed.footer = { text: `Syncio v${appVersion}` }
+      embed.footer = { text: `SlickSync v${appVersion}` }
     }
 
     await postDiscord(webhookUrl, null, {

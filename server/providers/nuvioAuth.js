@@ -113,7 +113,7 @@ async function startNuvioTvLogin() {
     body: JSON.stringify({
       p_device_nonce: deviceNonce,
       p_redirect_base_url: 'https://nuvioapp.space/tv-login',
-      p_device_name: 'Syncio'
+      p_device_name: 'SlickSync'
     })
   })
   if (!startRes.ok) {

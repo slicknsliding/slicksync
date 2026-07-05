@@ -44,7 +44,7 @@ async function fetchKitsuMetadata(kitsuId) {
     
     const response = await fetch(`https://kitsu.app/api/edge/anime/${kitsuId}`, {
       headers: {
-        'User-Agent': 'Syncio/1.0'
+        'User-Agent': 'SlickSync/1.0'
       },
       signal: controller.signal
     })

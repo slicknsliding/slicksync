@@ -364,7 +364,7 @@ function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds,
     }
 
     // Unified comparison using manifest fingerprint (order-sensitive).
-    // Nuvio (and other non-Stremio providers) store only URLs — Syncio controls the
+    // Nuvio (and other non-Stremio providers) store only URLs — SlickSync controls the
     // URL set — so compare by URL only rather than full manifest content.
     const urlOnly = (user.providerType || 'stremio') !== 'stremio'
     const fingerprint = createManifestFingerprint(canonicalizeManifestUrl, { urlOnly })
@@ -449,7 +449,7 @@ function sortObjectKeys(obj) {
 
 // Build a stable fingerprint for an addon entry based on its manifest and canonical URL.
 // urlOnly mode: compare by canonical URL alone — used for non-Stremio providers (Nuvio)
-// where Syncio controls the URL set and manifest content isn't stored on the provider side.
+// where SlickSync controls the URL set and manifest content isn't stored on the provider side.
 function createManifestFingerprint(canonicalizeManifestUrl, { urlOnly = false } = {}) {
   const normalizeUrl = (u) => {
     try { return canonicalizeManifestUrl ? canonicalizeManifestUrl(u) : String(u || '').trim().toLowerCase() } catch { return String(u || '').trim().toLowerCase() }
