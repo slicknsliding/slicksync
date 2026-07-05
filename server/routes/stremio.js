@@ -106,7 +106,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
 
       const authKey = apiStore.authKey || tempStorage.auth || tempStorage.authKey || null
 
-      // If authenticated to Syncio (public-auth), persist user like connect does
+      // If authenticated to SlickSync (public-auth), persist user like connect does
       try {
         const accId = getAccountId(req)
         if (authKey && accId) {
@@ -142,7 +142,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
         }
       } catch {}
 
-      // Fallback: no Syncio session, return authKey only
+      // Fallback: no SlickSync session, return authKey only
       return res.json({ message: 'Stremio account registered successfully', authKey })
     } catch (e) {
       console.error('stremio/register failed:', e)
@@ -488,7 +488,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
     }
   });
 
-  // Connect using existing Stremio authKey (create new Syncio user)
+  // Connect using existing Stremio authKey (create new SlickSync user)
   router.post('/connect-authkey', async (req, res) => {
     try {
       const { username, email, authKey, groupName, colorIndex, create } = req.body

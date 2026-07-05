@@ -84,7 +84,7 @@ async function getRedirectedUrl(url) {
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; Syncio/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; SlickSync/1.0)",
       },
     });
     const finalUrl = response.url;
@@ -232,7 +232,7 @@ module.exports = ({ getServerKey }) => {
       console.log(`[StreamProxy] Proxying content from: ${targetUrl.substring(0, 100)}...`);
 
       const fetchHeaders = {
-        'User-Agent': req.get('User-Agent') || 'Syncio-Proxy/1.0',
+        'User-Agent': req.get('User-Agent') || 'SlickSync-Proxy/1.0',
         'Accept': req.get('Accept') || '*/*',
       };
 

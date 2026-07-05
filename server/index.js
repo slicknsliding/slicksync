@@ -373,7 +373,7 @@ async function bootstrap() {
   const storageLabel = process.env.PRISMA_PROVIDER === 'sqlite' ? 'SQLite with Prisma' : 'PostgreSQL with Prisma'
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log('🚀 Syncio (Database) running on port', PORT)
+    console.log('🚀 SlickSync (Database) running on port', PORT)
     console.log('📊 Health check: http://127.0.0.1:' + PORT + '/health')
     console.log('🔌 API endpoints: http://127.0.0.1:' + PORT + '/api/')
     console.log('🎬 Stremio integration: ENABLED')
@@ -382,7 +382,7 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  console.error('❌ Failed to start Syncio server:', err)
+  console.error('❌ Failed to start SlickSync server:', err)
   process.exit(1)
 })
 

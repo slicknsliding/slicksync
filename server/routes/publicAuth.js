@@ -340,7 +340,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           const existingAccountWithEmail = await prisma.appAccount.findUnique({ where: { email } })
           if (existingAccountWithEmail && existingAccountWithEmail.id !== originalAccountId) {
             return res.status(409).json({
-              message: 'This Stremio account is already linked to another Syncio account',
+              message: 'This Stremio account is already linked to another SlickSync account',
               error: 'EMAIL_ALREADY_LINKED'
             })
           }
@@ -350,7 +350,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           const legacyAccount = await prisma.appAccount.findUnique({ where: { uuid: legacyUuid } })
           if (legacyAccount && legacyAccount.id !== originalAccountId) {
             return res.status(409).json({
-              message: 'This Stremio account is already linked to another Syncio account',
+              message: 'This Stremio account is already linked to another SlickSync account',
               error: 'EMAIL_ALREADY_LINKED'
             })
           }

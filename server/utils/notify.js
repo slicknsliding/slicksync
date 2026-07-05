@@ -128,7 +128,7 @@ async function fetchMetadata(itemId, itemType, videoId) {
     try {
       const response = await fetch(endpoint, {
         headers: {
-          'User-Agent': 'Syncio/1.0'
+          'User-Agent': 'SlickSync/1.0'
         },
         signal: controller.signal
       })
@@ -357,13 +357,13 @@ async function sendActivityNotification(webhookUrl, activities, prisma, accountI
         }
       }
 
-      // Add footer with Syncio version
+      // Add footer with SlickSync version
       let appVersion = process.env.NEXT_PUBLIC_APP_VERSION || process.env.APP_VERSION || ''
       if (!appVersion) {
         try { appVersion = require('../../package.json')?.version || '' } catch { }
       }
       if (appVersion) {
-        embed.footer = { text: `Syncio v${appVersion}` }
+        embed.footer = { text: `SlickSync v${appVersion}` }
       }
 
       await postDiscord(webhookUrl, null, {
@@ -470,13 +470,13 @@ async function sendShareNotification(webhookUrl, sharerUsername, sharerEmail, sh
       }
     }
 
-    // Add footer with Syncio version
+    // Add footer with SlickSync version
     let appVersion = process.env.NEXT_PUBLIC_APP_VERSION || process.env.APP_VERSION || ''
     if (!appVersion) {
       try { appVersion = require('../../package.json')?.version || '' } catch { } 
     }
     if (appVersion) {
-      embed.footer = { text: `Syncio v${appVersion}` }
+      embed.footer = { text: `SlickSync v${appVersion}` }
     }
 
     await postDiscord(webhookUrl, null, {
@@ -557,13 +557,13 @@ function createSyncEmbed({ groupsCount, usersCount, syncMode, diffs = [], source
     fields.unshift({ name: 'Account', value: '```' + accountUuid + '```', inline: false })
   }
 
-  // Footer: Syncio version (use same source as UI; fall back to package.json)
+  // Footer: SlickSync version (use same source as UI; fall back to package.json)
   let appVersion = process.env.NEXT_PUBLIC_APP_VERSION || process.env.APP_VERSION || ''
   if (!appVersion) {
     try { appVersion = require('../../package.json')?.version || '' } catch {}
   }
   if (appVersion) {
-    embed.footer = { text: `Syncio v${appVersion}` }
+    embed.footer = { text: `SlickSync v${appVersion}` }
   }
 
   return embed

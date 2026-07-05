@@ -132,7 +132,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
 
           const appVersion = getAppVersion()
           if (appVersion) {
-            embed.footer = { text: `Syncio v${appVersion}` }
+            embed.footer = { text: `SlickSync v${appVersion}` }
           }
 
           // For invitation creation, we don't have a user yet, so use default avatar
@@ -347,7 +347,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
             where: { id: request.id },
             data: { status: 'rejected' }
           })
-          return res.status(409).json({ error: 'User is already registered to Syncio' })
+          return res.status(409).json({ error: 'User is already registered to SlickSync' })
         }
 
         // Compute expiration
@@ -495,7 +495,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
 
             const appVersion = getAppVersion()
             if (appVersion) {
-              embed.footer = { text: `Syncio v${appVersion}` }
+              embed.footer = { text: `SlickSync v${appVersion}` }
             }
 
             await postDiscord(webhookUrl, null, {
@@ -1324,7 +1324,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
 
             const appVersion = getAppVersion()
             if (appVersion) {
-              embed.footer = { text: `Syncio v${appVersion}` }
+              embed.footer = { text: `SlickSync v${appVersion}` }
             }
 
             // For email mismatch, we have the user data, try to get their avatar
@@ -1364,7 +1364,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
           where: { id: request.id },
           data: { status: 'rejected' }
         })
-        return res.status(409).json({ error: 'User is already registered to Syncio' })
+        return res.status(409).json({ error: 'User is already registered to SlickSync' })
       }
 
       // encrypt and create the user
@@ -1521,7 +1521,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
 
           const embed = {
             title: title,
-            description: `User has successfully joined Syncio using invite.`,
+            description: `User has successfully joined SlickSync using invite.`,
             color: 0x22c55e, // Green color for success
             fields: [
               { name: 'Username', value: formatCodeBlock(newUser.username), inline: true },
@@ -1535,7 +1535,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
 
           const appVersion = getAppVersion()
           if (appVersion) {
-            embed.footer = { text: `Syncio v${appVersion}` }
+            embed.footer = { text: `SlickSync v${appVersion}` }
           }
 
           await postDiscord(webhookUrl, null, {

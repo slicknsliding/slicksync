@@ -21,7 +21,7 @@ async function getHealthStatus(prisma) {
     
     return {
       status: 'OK',
-      message: 'Syncio with Database',
+      message: 'SlickSync with Database',
       timestamp: new Date().toISOString(),
       serverStartTime: serverStartTime,
       uptime: process.uptime(),

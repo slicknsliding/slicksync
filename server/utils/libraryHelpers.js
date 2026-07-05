@@ -81,7 +81,7 @@ async function enrichPostersFromCinemeta(items, options = {}) {
         const timeoutId = setTimeout(() => controller.abort(), requestTimeout)
         
         const response = await fetch(endpoint, {
-          headers: { 'User-Agent': 'Syncio/1.0' },
+          headers: { 'User-Agent': 'SlickSync/1.0' },
           signal: controller.signal
         })
         
