@@ -1,0 +1,21 @@
+services:
+  syncio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTANCE: private
+        NEXT_PUBLIC_API_URL: ''
+    environment:
+      JWT_SECRET: 'temp-jwt-secret-key'
+      ENCRYPTION_KEY: 'temp-encryption-key-32-chars-long'
+      
+      # To enable private instance authentication, uncomment the following variables
+      # SYNCIO_PRIVATE_USERNAME: ''
+      # SYNCIO_PRIVATE_PASSWORD: ''
+    user: "1001:1001"
+    # volumes:
+      # - ./data:/app/data
+    ports:
+      - "3000:3000"
+      - "4000:4000"

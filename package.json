@@ -1,0 +1,57 @@
+{
+  "name": "slicksync",
+  "version": "1.2.0",
+  "description": "Syncio - Stremio addon and user management system",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"bun run server:watch\" \"bun run client:dev\"",
+    "dev:private": "concurrently \"bun run server:private:watch\" \"bun run client:dev\"",
+    "dev:public": "concurrently \"bun run server:public:watch\" \"bun run client:dev\"",
+    "server:watch": "nodemon server/index.js",
+    "server:private:watch": "cp prisma/schema.sqlite.prisma prisma/schema.prisma && bunx prisma generate && QUIET=true NEXT_PUBLIC_DEBUG=true AUTH_ENABLED=false REDIS_URL=\"redis://localhost:6379\" JWT_SECRET=\"temp-jwt-secret-key\" ENCRYPTION_KEY=\"temp-encryption-key-32-chars-long\" SYNCIO_PRIVATE_USERNAME=\"${SYNCIO_PRIVATE_USERNAME}\" SYNCIO_PRIVATE_PASSWORD=\"${SYNCIO_PRIVATE_PASSWORD}\" nodemon --config nodemon.json server/index.js",
+    "server:public:watch": "cp prisma/schema.postgres.prisma prisma/schema.prisma && bunx prisma generate && QUIET=false NEXT_PUBLIC_DEBUG=true AUTH_ENABLED=true DATABASE_URL=\"postgresql://syncio:syncio@localhost:5432/syncio\" REDIS_URL=\"redis://localhost:6379\" JWT_SECRET=\"temp-jwt-secret-key\" ENCRYPTION_KEY=\"temp-encryption-key-32-chars-long\" nodemon server/index.js",
+    "client:dev": "cd client && npm run dev",
+    "client:dev:private": "cd client && npm run dev",
+    "client:dev:public": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "start": "node server/index.js",
+    "test": "node test-suite-enhanced.js",
+    "test:encryption": "node test-encryption-suite.js",
+    "test:full": "node test-full-suite.js",
+    "test:enhanced": "node test-suite-enhanced.js",
+    "lint": "eslint server/",
+    "lint:fix": "eslint server/ --fix",
+    "studio": "cp prisma/schema.sqlite.prisma prisma/schema.prisma && bunx prisma generate && DATABASE_URL=\"file:./prisma/sqlite.db\" bunx prisma studio",
+    "studio:public": "cp prisma/schema.postgres.prisma prisma/schema.prisma && bunx prisma generate && DATABASE_URL=\"postgresql://syncio:syncio@localhost:5432/syncio\" bunx prisma studio"
+  },
+  "keywords": [
+    "stremio",
+    "addons",
+    "management",
+    "encryption"
+  ],
+  "author": "Syncio Team",
+  "license": "MIT",
+  "dependencies": {
+    "@prisma/client": "^6.19.1",
+    "axios": "^1.12.2",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.0",
+    "redis": "^4.6.0",
+    "stremio-api-client": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "concurrently": "^8.2.0",
+    "eslint": "^8.57.0",
+    "nodemon": "^3.1.10",
+    "prisma": "^6.19.1"
+  }
+}

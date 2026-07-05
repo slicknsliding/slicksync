@@ -1,0 +1,28 @@
+services:
+
+  syncio:
+    image: ghcr.io/iamneur0/syncio:public
+    environment:
+      DATABASE_URL: 'postgresql://syncio:syncio@db:5432/syncio'
+      JWT_SECRET: 'dev-secret'
+      ENCRYPTION_KEY: 'dev-encryption-key-32-chars-long'
+    depends_on:
+      - db
+    ports:
+      - "3000:3000"
+      - "4000:4000"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: syncio
+      POSTGRES_PASSWORD: syncio
+      POSTGRES_DB: syncio
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  pgdata:
+  redis_data:
