@@ -191,6 +191,33 @@ model InviteRequest {
   @@map("invite_requests")
 }
 
+// Vault: encrypted credential/account tracking with expiry + active-check monitoring
+model VaultEntry {
+  id               String    @id @default(cuid())
+  accountId        String    @default("default")
+  name             String
+  category         String
+  provider         String?
+  secretLabel      String    @default("API Key")
+  encryptedSecret  String    @db.Text
+  testType         String    @default("manual")
+  testConfig       String?   @db.Text
+  dashboardUrl     String?
+  expiresAt        DateTime?
+  notifyDaysBefore Int       @default(3)
+  lastCheckedAt    DateTime?
+  lastCheckStatus  String?
+  lastCheckMessage String?
+  lastNotifiedAt   DateTime?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([accountId])
+  @@index([accountId, category])
+  @@map("vault_entries")
+}
+
 // Snapshots: saved addon-set "templates" that can be deployed to any user or group
 model AddonSnapshot {
   id          String   @id @default(cuid())

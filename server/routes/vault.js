@@ -1,0 +1,268 @@
+const express = require('express');
+const { runCheck } = require('../utils/vaultCheckers');
+const { postDiscord, postNtfy } = require('../utils/notify');
+
+const CATEGORIES = [
+  'debrid', 'usenet_provider', 'usenet_indexer', 'torrent_indexer',
+  'subtitles', 'metadata', 'ai', 'vpn', 'aiostreams', 'custom'
+];
+
+module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
+  const router = express.Router();
+
+  // GET /api/vault - list entries (secrets never included in list view)
+  router.get('/', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const { category } = req.query;
+      const entries = await prisma.vaultEntry.findMany({
+        where: { accountId, ...(category ? { category } : {}) },
+        orderBy: { updatedAt: 'desc' },
+      });
+
+      const counts = {};
+      const all = await prisma.vaultEntry.findMany({ where: { accountId }, select: { category: true } });
+      for (const c of CATEGORIES) counts[c] = 0;
+      for (const e of all) counts[e.category] = (counts[e.category] || 0) + 1;
+
+      res.json({
+        total: all.length,
+        categories: counts,
+        entries: entries.map(e => ({
+          id: e.id, name: e.name, category: e.category, provider: e.provider,
+          dashboardUrl: e.dashboardUrl, expiresAt: e.expiresAt, notifyDaysBefore: e.notifyDaysBefore,
+          lastCheckedAt: e.lastCheckedAt, lastCheckStatus: e.lastCheckStatus, lastCheckMessage: e.lastCheckMessage,
+          isActive: e.isActive, testType: e.testType, secretLabel: e.secretLabel, updatedAt: e.updatedAt,
+        })),
+      });
+    } catch (error) {
+      console.error('Error listing vault entries:', error);
+      res.status(500).json({ error: 'Failed to list vault entries' });
+    }
+  });
+
+  // GET /api/vault/:id - detail (secret masked; use /reveal for the real value)
+  router.get('/:id', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const entry = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });
+      if (!entry) return res.status(404).json({ error: 'Vault entry not found' });
+      const { encryptedSecret, testConfig, ...rest } = entry;
+      res.json({ ...rest, testConfig: testConfig ? JSON.parse(testConfig) : null, secretMasked: '••••••••••••••••' });
+    } catch (error) {
+      console.error('Error fetching vault entry:', error);
+      res.status(500).json({ error: 'Failed to fetch vault entry' });
+    }
+  });
+
+  // GET /api/vault/:id/reveal - decrypt and return the real secret value
+  router.get('/:id/reveal', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const entry = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });
+      if (!entry) return res.status(404).json({ error: 'Vault entry not found' });
+      let secret;
+      try { secret = decrypt(entry.encryptedSecret, req); } catch { return res.status(500).json({ error: 'Failed to decrypt secret' }); }
+      res.json({ secret });
+    } catch (error) {
+      console.error('Error revealing vault entry:', error);
+      res.status(500).json({ error: 'Failed to reveal vault entry' });
+    }
+  });
+
+  // POST /api/vault - create entry
+  router.post('/', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const {
+        name, category, provider, secretLabel, secret,
+        testType, testConfig, dashboardUrl, expiresAt, notifyDaysBefore,
+      } = req.body || {};
+
+      if (!name || !category || !secret) {
+        return res.status(400).json({ error: 'name, category, and secret are required' });
+      }
+      if (!CATEGORIES.includes(category)) {
+        return res.status(400).json({ error: `category must be one of: ${CATEGORIES.join(', ')}` });
+      }
+
+      const entry = await prisma.vaultEntry.create({
+        data: {
+          accountId,
+          name,
+          category,
+          provider: provider || null,
+          secretLabel: secretLabel || 'API Key',
+          encryptedSecret: encrypt(secret, req),
+          testType: testType || 'manual',
+          testConfig: testConfig ? JSON.stringify(testConfig) : null,
+          dashboardUrl: dashboardUrl || null,
+          expiresAt: expiresAt ? new Date(expiresAt) : null,
+          notifyDaysBefore: typeof notifyDaysBefore === 'number' ? notifyDaysBefore : 3,
+        },
+      });
+
+      res.status(201).json({ id: entry.id, name: entry.name });
+    } catch (error) {
+      console.error('Error creating vault entry:', error);
+      res.status(500).json({ error: 'Failed to create vault entry' });
+    }
+  });
+
+  // PUT /api/vault/:id - update (secret optional; omit to leave unchanged)
+  router.put('/:id', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const existing = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });
+      if (!existing) return res.status(404).json({ error: 'Vault entry not found' });
+
+      const {
+        name, category, provider, secretLabel, secret,
+        testType, testConfig, dashboardUrl, expiresAt, notifyDaysBefore, isActive,
+      } = req.body || {};
+
+      if (category && !CATEGORIES.includes(category)) {
+        return res.status(400).json({ error: `category must be one of: ${CATEGORIES.join(', ')}` });
+      }
+
+      const data = {};
+      if (name !== undefined) data.name = name;
+      if (category !== undefined) data.category = category;
+      if (provider !== undefined) data.provider = provider;
+      if (secretLabel !== undefined) data.secretLabel = secretLabel;
+      if (secret) data.encryptedSecret = encrypt(secret, req);
+      if (testType !== undefined) data.testType = testType;
+      if (testConfig !== undefined) data.testConfig = testConfig ? JSON.stringify(testConfig) : null;
+      if (dashboardUrl !== undefined) data.dashboardUrl = dashboardUrl;
+      if (expiresAt !== undefined) data.expiresAt = expiresAt ? new Date(expiresAt) : null;
+      if (notifyDaysBefore !== undefined) data.notifyDaysBefore = notifyDaysBefore;
+      if (isActive !== undefined) data.isActive = isActive;
+
+      await prisma.vaultEntry.update({ where: { id: existing.id }, data });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error updating vault entry:', error);
+      res.status(500).json({ error: 'Failed to update vault entry' });
+    }
+  });
+
+  // DELETE /api/vault/:id
+  router.delete('/:id', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const existing = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });
+      if (!existing) return res.status(404).json({ error: 'Vault entry not found' });
+      await prisma.vaultEntry.delete({ where: { id: existing.id } });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting vault entry:', error);
+      res.status(500).json({ error: 'Failed to delete vault entry' });
+    }
+  });
+
+  // POST /api/vault/:id/test - run the active-check now
+  router.post('/:id/test', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const entry = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });
+      if (!entry) return res.status(404).json({ error: 'Vault entry not found' });
+
+      let secret;
+      try { secret = decrypt(entry.encryptedSecret, req); } catch { return res.status(500).json({ error: 'Failed to decrypt secret' }); }
+      const config = entry.testConfig ? JSON.parse(entry.testConfig) : {};
+
+      const result = await runCheck(entry.testType, secret, config);
+
+      const updateData = {
+        lastCheckedAt: new Date(),
+        lastCheckStatus: result.ok === null ? 'unknown' : (result.ok ? 'ok' : 'error'),
+        lastCheckMessage: result.message || null,
+      };
+      // If the checker discovered a real expiration date (Real-Debrid, TorBox), sync it
+      if (result.expiresAt instanceof Date && !isNaN(result.expiresAt)) {
+        updateData.expiresAt = result.expiresAt;
+      }
+      await prisma.vaultEntry.update({ where: { id: entry.id }, data: updateData });
+
+      res.json({ ...result, checkedAt: updateData.lastCheckedAt });
+    } catch (error) {
+      console.error('Error testing vault entry:', error);
+      res.status(500).json({ error: 'Failed to test vault entry' });
+    }
+  });
+
+  // GET /api/vault-settings - notification channel config (stored on AppAccount.sync JSON)
+  router.get('/settings/notifications', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const acct = await prisma.appAccount.findFirst({ where: { id: accountId }, select: { sync: true } });
+      let cfg = acct?.sync;
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
+      cfg = cfg || {};
+      res.json({
+        ntfyUrl: cfg.vaultNtfyUrl || null,
+        ntfyTopic: cfg.vaultNtfyTopic || null,
+        discordWebhookUrl: cfg.vaultDiscordWebhookUrl ? '••••••••' : null,
+        checkIntervalHours: cfg.vaultCheckIntervalHours || 6,
+      });
+    } catch (error) {
+      console.error('Error fetching vault notification settings:', error);
+      res.status(500).json({ error: 'Failed to fetch settings' });
+    }
+  });
+
+  router.put('/settings/notifications', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const { ntfyUrl, ntfyTopic, discordWebhookUrl, checkIntervalHours } = req.body || {};
+
+      const acct = await prisma.appAccount.findFirst({ where: { id: accountId }, select: { sync: true } });
+      let cfg = acct?.sync;
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
+      cfg = cfg || {};
+
+      if (ntfyUrl !== undefined) cfg.vaultNtfyUrl = ntfyUrl;
+      if (ntfyTopic !== undefined) cfg.vaultNtfyTopic = ntfyTopic;
+      if (discordWebhookUrl !== undefined) cfg.vaultDiscordWebhookUrl = discordWebhookUrl;
+      if (checkIntervalHours !== undefined) cfg.vaultCheckIntervalHours = checkIntervalHours;
+
+      await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(cfg) } });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error updating vault notification settings:', error);
+      res.status(500).json({ error: 'Failed to update settings' });
+    }
+  });
+
+  // POST /api/vault/settings/notifications/test - send a test notification on demand
+  router.post('/settings/notifications/test', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const acct = await prisma.appAccount.findFirst({ where: { id: accountId }, select: { sync: true } });
+      let cfg = acct?.sync;
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
+      cfg = cfg || {};
+
+      let sent = false;
+      if (cfg.vaultNtfyUrl && cfg.vaultNtfyTopic) {
+        await postNtfy(cfg.vaultNtfyUrl, cfg.vaultNtfyTopic, {
+          title: 'SlickSync Vault', message: 'Test notification — vault alerts are wired up correctly.', tags: ['white_check_mark']
+        });
+        sent = true;
+      }
+      if (cfg.vaultDiscordWebhookUrl) {
+        await postDiscord(cfg.vaultDiscordWebhookUrl, 'SlickSync Vault: test notification — alerts are wired up correctly.');
+        sent = true;
+      }
+      if (!sent) return res.status(400).json({ error: 'No notification channel configured' });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error sending test notification:', error);
+      res.status(500).json({ error: 'Failed to send test notification' });
+    }
+  });
+
+  return router;
+};
+
+module.exports.CATEGORIES = CATEGORIES;

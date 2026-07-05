@@ -35,6 +35,7 @@ const proxyRouter = require('./routes/proxy');
 const streamProxyRouter = require('./routes/streamProxy');
 const nuvioRouter = require('./routes/nuvio');
 const snapshotsRouter = require('./routes/snapshots');
+const vaultRouter = require('./routes/vault');
 const { makeCreateProvider } = require('./providers');
 
 // Import configuration constants
@@ -196,9 +197,10 @@ app.use('/api/addons', accountScopingMiddleware);
 app.use('/api/stremio', accountScopingMiddleware);
 app.use('/api/nuvio', accountScopingMiddleware);
 app.use('/api/snapshots', accountScopingMiddleware);
+app.use('/api/vault', accountScopingMiddleware);
 
 // Cleanup middleware to restore prisma
-for (const base of ['/api/groups', '/api/users', '/api/addons', '/api/stremio', '/api/nuvio', '/api/snapshots']) {
+for (const base of ['/api/groups', '/api/users', '/api/addons', '/api/stremio', '/api/nuvio', '/api/snapshots', '/api/vault']) {
   app.use(base, (req, res, next) => {
     res.on('finish', () => {
       if (req._restorePrisma) req._restorePrisma()
@@ -217,6 +219,7 @@ app.use('/api/users', usersRouter({ prisma, getAccountId, scopedWhere, INSTANCE_
 app.use('/api/stremio', stremioRouter({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, INSTANCE_TYPE }));
 app.use('/api/nuvio', nuvioRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/snapshots', snapshotsRouter({ prisma, getAccountId, encrypt, decrypt, createProvider }));
+app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/settings', settingsRouter({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }));
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({
@@ -301,6 +304,14 @@ async function bootstrap() {
       scheduleActivityMonitor(prisma, decrypt, getAccountId, INSTANCE_TYPE)
     } catch (err) {
       console.error('⚠️ Failed to initialize activity monitor:', err)
+    }
+
+    // Schedule vault monitor (active-checks + expiry notifications, every 6h)
+    try {
+      const { scheduleVaultMonitor } = require('./utils/vaultMonitor')
+      scheduleVaultMonitor({ prisma, decrypt, getAccountId })
+    } catch (err) {
+      console.error('⚠️ Failed to initialize vault monitor:', err)
     }
 
     // Schedule addon health checker (checks if addon manifests are reachable)

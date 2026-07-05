@@ -191,6 +191,33 @@ model InviteRequest {
   @@map("invite_requests")
 }
 
+// Vault: encrypted credential/account tracking with expiry + active-check monitoring
+model VaultEntry {
+  id               String    @id @default(cuid())
+  accountId        String    @default("default")
+  name             String                          // display name, e.g. "Newshosting account"
+  category         String                          // debrid | usenet_provider | usenet_indexer | torrent_indexer | subtitles | metadata | ai | vpn | aiostreams | custom
+  provider         String?                         // e.g. "newshosting", "real-debrid", "nzbgeek"
+  secretLabel      String    @default("API Key")   // display label for the secret field
+  encryptedSecret  String                          // encrypted API key / password / token
+  testType         String    @default("manual")    // manual | generic_http | real_debrid | torbox | newznab_caps | tcp_reachability
+  testConfig       String?                         // JSON: { url, method, host, port, headerName, expectStatus, bodyContains }
+  dashboardUrl     String?                         // optional link to the provider's own dashboard
+  expiresAt        DateTime?
+  notifyDaysBefore Int       @default(3)
+  lastCheckedAt    DateTime?
+  lastCheckStatus  String?                         // ok | error | unknown
+  lastCheckMessage String?
+  lastNotifiedAt   DateTime?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([accountId])
+  @@index([accountId, category])
+  @@map("vault_entries")
+}
+
 // Snapshots: saved addon-set "templates" that can be deployed to any user or group
 model AddonSnapshot {
   id          String   @id @default(cuid())
