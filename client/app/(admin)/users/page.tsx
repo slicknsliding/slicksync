@@ -36,6 +36,7 @@ interface UserDisplay {
   name: string;
   email?: string;
   providerType?: 'stremio' | 'nuvio';
+  avatarUrl?: string | null;
   status: 'active' | 'expired' | 'pending';
   watchTime: number;
   groups: string[];
@@ -149,6 +150,7 @@ export default function UsersPage() {
         name: userName,
         email: user.email,
         providerType: user.providerType || 'stremio',
+        avatarUrl: (user as any).avatarUrl,
         status,
         watchTime: (user as any).watchTime || 0, // Use watchTime from API
         groups: userGroups,

@@ -186,6 +186,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         isActive: group.isActive,
         // Expose color index for UI
           colorIndex: group.colorIndex ?? 0,
+          avatarUrl: group.avatarUrl,
           // Include userIds for SQLite compatibility
           userIds: group.userIds,
           // Activity visibility - 'public' or 'private'
@@ -236,6 +237,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         restrictions: 'none',
         isActive: newGroup.isActive,
         colorIndex: newGroup.colorIndex ?? 0,
+        avatarUrl: newGroup.avatarUrl ?? null,
       });
     } catch (error) {
       console.error('Error creating group:', error);
@@ -273,6 +275,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
           name: `${originalGroup.name} (Copy)`,
           description: originalGroup.description,
           colorIndex: originalGroup.colorIndex ?? 0,
+          avatarUrl: originalGroup.avatarUrl ?? null,
           accountId: getAccountId(req),
         }
       });
@@ -302,6 +305,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
           restrictions: 'none',
           isActive: clonedGroup.isActive,
           colorIndex: clonedGroup.colorIndex ?? 0,
+          avatarUrl: clonedGroup.avatarUrl ?? null,
         }
       });
     } catch (error) {
@@ -383,6 +387,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         restrictions: 'none',
         isActive: group.isActive,
         colorIndex: group.colorIndex ?? 0,
+        avatarUrl: group.avatarUrl,
       });
     } catch (error) {
       console.error('Error finding or creating group:', error);
@@ -442,6 +447,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         restrictions: 'none',
         isActive: group.isActive,
         colorIndex: group.colorIndex ?? 0,
+        avatarUrl: group.avatarUrl,
         userIds: group.userIds,
         activityVisibility: group.activityVisibility || 'private'
       });
@@ -544,7 +550,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
   // Update group fields and usership/addons
   router.put('/:id', async (req, res) => {
     const { id } = req.params
-    const { name, description, userIds, addonIds, colorIndex, activityVisibility } = req.body
+    const { name, description, userIds, addonIds, colorIndex, avatarUrl, activityVisibility } = req.body
     try {
       const group = await prisma.group.findFirst({ 
         where: { 
@@ -571,6 +577,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
       
       if (colorIndex !== undefined) {
         updateData.colorIndex = colorIndex
+      }
+
+      if (avatarUrl !== undefined) {
+        updateData.avatarUrl = avatarUrl || null
       }
       
       // Update activity visibility if provided

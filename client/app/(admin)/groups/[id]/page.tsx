@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { api, User, Group, Addon } from '@/lib/api';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Button, Card, Avatar, AvatarGroup, Badge, Modal, ConfirmModal, Input, ColorPicker, InlineEdit, ToggleSwitch, SyncBadge, VersionBadge, ResourceBadge, UserAvatar, SelectionCheckbox } from '@/components/ui';
+import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import {
@@ -363,6 +364,7 @@ export default function GroupDetailPage() {
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
   const [isAddAddonModalOpen, setIsAddAddonModalOpen] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -728,6 +730,13 @@ export default function GroupDetailPage() {
     }
   }, [params.id, addons, refetchData]);
 
+  // Handle avatar change (color, URL, or uploaded image)
+  const handleAvatarSave = useCallback(async (data: { avatarUrl?: string | null; colorIndex?: number }) => {
+    setGroup(prev => prev ? { ...prev, ...data } : null);
+    await api.updateGroup(params.id as string, data);
+    await refetchData();
+  }, [params.id, refetchData]);
+
   // Handle color change
   const handleColorChange = useCallback(async (colorIndex: number) => {
     // Optimistic update
@@ -914,22 +923,24 @@ export default function GroupDetailPage() {
                   className="relative shrink-0"
                 >
                   <div
-                    onClick={() => setShowColorPicker(!showColorPicker)}
+                    onClick={() => setShowAvatarPicker(true)}
                     className="cursor-pointer hover:scale-105 transition-transform"
                   >
                     <Avatar 
                       name={group?.name || 'G'} 
                       size="2xl" 
+                      src={group?.avatarUrl || undefined}
                       colorIndex={group?.colorIndex ?? 0}
                       className="shadow-lg ring-4 ring-[var(--color-bg)]"
                     />
                   </div>
-                  <ColorPicker
-                    currentColorIndex={getColorIndex(group?.color)}
-                    onColorChange={handleColorChange}
-                    isOpen={showColorPicker}
-                    onClose={() => setShowColorPicker(false)}
-                    triggerRef={colorPickerRef}
+                  <AvatarPickerModal
+                    isOpen={showAvatarPicker}
+                    onClose={() => setShowAvatarPicker(false)}
+                    name={group?.name || 'Group'}
+                    currentAvatarUrl={group?.avatarUrl}
+                    currentColorIndex={group?.colorIndex ?? 0}
+                    onSave={handleAvatarSave}
                   />
                 </motion.div>
 

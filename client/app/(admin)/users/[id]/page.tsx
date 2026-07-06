@@ -8,6 +8,7 @@ import { useTheme } from '@/lib/theme';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Button, Card, StatCard, Avatar, Badge, StatusBadge, Modal, ConfirmModal, ColorPicker, DateTimePicker, InlineEdit, ToggleSwitch, Select, SyncBadge, Input, VersionBadge, ResourceBadge, UserAvatar } from '@/components/ui';
+import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
@@ -362,6 +363,7 @@ export default function UserDetailPage() {
 
   // UI state for user detail page
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [expiresAtValue, setExpiresAtValue] = useState('');
   const avatarRef = useRef<HTMLDivElement>(null);
 
@@ -475,6 +477,12 @@ export default function UserDetailPage() {
       setIsDeleting(false);
     }
   }, [params.id, router]);
+
+  // Handle avatar change (color, URL, or uploaded image)
+  const handleAvatarSave = useCallback(async (data: { avatarUrl?: string | null; colorIndex?: number }) => {
+    setUser((prev: any) => prev ? { ...prev, ...data } : null);
+    await api.updateUser(params.id as string, data);
+  }, [params.id]);
 
   // Handle color change
   const handleColorChange = useCallback(async (colorIndex: number) => {
@@ -819,13 +827,14 @@ export default function UserDetailPage() {
                       className="relative shrink-0"
                     >
                       <div
-                        onClick={() => setShowColorPicker(!showColorPicker)}
+                        onClick={() => setShowAvatarPicker(true)}
                         className="relative transition-transform cursor-pointer hover:scale-105 group"
                       >
                         <UserAvatar 
                           userId={user.id}
                           name={user.username || user.name || 'User'} 
                           email={user.email}
+                          src={user.avatarUrl}
                           size="2xl" 
                           showRing 
                           colorIndex={user.colorIndex || 0}
@@ -837,12 +846,13 @@ export default function UserDetailPage() {
                           <PencilIcon className="w-4 h-4 md:w-6 md:h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                         </div>
                       </div>
-                      <ColorPicker
+                      <AvatarPickerModal
+                        isOpen={showAvatarPicker}
+                        onClose={() => setShowAvatarPicker(false)}
+                        name={user.username || user.name || 'User'}
+                        currentAvatarUrl={user.avatarUrl}
                         currentColorIndex={user.colorIndex || 0}
-                        onColorChange={handleColorChange}
-                        isOpen={showColorPicker}
-                        onClose={() => setShowColorPicker(false)}
-                        triggerRef={avatarRef}
+                        onSave={handleAvatarSave}
                       />
                     </motion.div>
 

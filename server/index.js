@@ -35,6 +35,7 @@ const proxyRouter = require('./routes/proxy');
 const streamProxyRouter = require('./routes/streamProxy');
 const nuvioRouter = require('./routes/nuvio');
 const snapshotsRouter = require('./routes/snapshots');
+const avatarsRouter = require('./routes/avatars');
 const vaultRouter = require('./routes/vault');
 const { makeCreateProvider } = require('./providers');
 
@@ -172,8 +173,12 @@ app.use('/api/nuvio/poll-oauth', pollLimiter);
 app.use(express.json({ limit: '10mb' }));
 
 // Multer - use centralized configuration
-const { standardUpload } = require('./utils/helpers');
+const { standardUpload, imageUpload } = require('./utils/helpers');
 const upload = standardUpload;
+
+// Serve uploaded avatar images. data/avatars is the same bind-mounted volume
+// as the rest of persistent data, so uploads survive container recreation.
+app.use('/uploads/avatars', express.static(path.join(process.cwd(), 'data', 'avatars')));
 
 // Encryption helpers
 const { getServerKey, aesGcmEncrypt, aesGcmDecrypt, getAccountDek } = require('./utils/encryption')
@@ -223,6 +228,7 @@ app.use('/api/users', usersRouter({ prisma, getAccountId, scopedWhere, INSTANCE_
 app.use('/api/stremio', stremioRouter({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, INSTANCE_TYPE }));
 app.use('/api/nuvio', nuvioRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/snapshots', snapshotsRouter({ prisma, getAccountId, encrypt, decrypt, createProvider }));
+app.use('/api/avatars', avatarsRouter({ imageUpload }));
 app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/settings', settingsRouter({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }));
 // External API (API key protected, account-scoped)

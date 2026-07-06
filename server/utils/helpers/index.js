@@ -31,7 +31,7 @@ const {
 } = require('./validation');
 
 const { getHealthStatus, createHealthCheckHandler } = require('./health');
-const { createMulterInstance, standardUpload, largeFileUpload, anyFileUpload } = require('./multer');
+const { createMulterInstance, standardUpload, largeFileUpload, anyFileUpload, imageUpload } = require('./multer');
 const { resetAccountData, safeResetAccountData } = require('./accountReset');
 const { createStremioClient, createStremioStore, validateStremioAuthKey, createStremioAPI } = require('./stremio');
 
@@ -71,6 +71,7 @@ module.exports = {
   standardUpload,
   largeFileUpload,
   anyFileUpload,
+  imageUpload,
   
   // Account reset helpers
   resetAccountData,

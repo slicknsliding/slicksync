@@ -48,9 +48,27 @@ const anyFileUpload = createMulterInstance({
   }
 });
 
+/**
+ * Multer for image uploads only (avatars), 5MB limit
+ */
+const imageUpload = createMulterInstance({
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPEG, PNG, GIF, or WEBP images are allowed'), false);
+    }
+  }
+});
+
 module.exports = {
   createMulterInstance,
   standardUpload,
   largeFileUpload,
-  anyFileUpload
+  anyFileUpload,
+  imageUpload
 };
