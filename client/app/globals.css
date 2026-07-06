@@ -7,8 +7,53 @@
 
 /* ===== THEME DEFINITIONS ===== */
 
-/* Default + Midnight Theme (dark) */
+/* Slick Theme (default) - Bold violet + electric cyan */
 :root,
+html.slick {
+  /* Background spectrum */
+  --color-bg: #0a0118;
+  --color-bg-subtle: #120a24;
+  --color-bg-muted: #1c1030;
+  /* Surface colors */
+  --color-surface: #16092b;
+  --color-surface-hover: #221238;
+  --color-surface-border: rgba(216, 180, 254, 0.12);
+  /* Text */
+  --color-text: #f5f3ff;
+  --color-text-muted: #a78bda;
+  --color-text-subtle: #7c5fb0;
+  /* Primary accent - vivid violet */
+  --color-primary: #a855f7;
+  --color-primary-hover: #c084fc;
+  --color-primary-muted: rgba(168, 85, 247, 0.15);
+  --color-primaryMuted: var(--color-primary-muted);
+  /* Secondary accent - electric cyan */
+  --color-secondary: #22d3ee;
+  --color-secondary-muted: rgba(34, 211, 238, 0.15);
+  --color-secondaryMuted: var(--color-secondary-muted);
+  /* Status colors */
+  --color-success: #34d399;
+  --color-success-muted: rgba(52, 211, 153, 0.15);
+  --color-successMuted: var(--color-success-muted);
+  --color-error: #fb7185;
+  --color-error-muted: rgba(251, 113, 133, 0.15);
+  --color-errorMuted: var(--color-error-muted);
+  --color-warning: #fbbf24;
+  --color-warning-muted: rgba(251, 191, 36, 0.15);
+  --color-warningMuted: var(--color-warning-muted);
+  /* Chart colors */
+  --color-chart-1: #a855f7;
+  --color-chart-2: #22d3ee;
+  --color-chart-3: #818cf8;
+  --color-chart-4: #34d399;
+  /* Spacing */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+}
+
+/* Midnight Theme - Deep blue-black with warm amber accents */
 html.midnight {
   /* Background spectrum */
   --color-bg: #0d1117;
