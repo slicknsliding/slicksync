@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
 // Theme IDs
-export const themeIds = ['midnight', 'ember', 'nord', 'verdant', 'slate', 'rose', 'daylight'] as const;
+export const themeIds = ['slick', 'midnight', 'ember', 'nord', 'verdant', 'slate', 'rose', 'daylight'] as const;
 export type ThemeId = (typeof themeIds)[number];
 
 // Theme metadata for UI (settings page, etc.)
@@ -13,6 +13,12 @@ export const themeMeta: Record<ThemeId, {
   preview: string;
   colors: { bg: string; surface: string; primary: string; secondary: string };
 }> = {
+  slick: {
+    name: 'Slick',
+    description: 'Bold violet with electric cyan accents',
+    preview: '#a855f7',
+    colors: { bg: '#0a0118', surface: '#16092b', primary: '#a855f7', secondary: '#22d3ee' },
+  },
   midnight: {
     name: 'Midnight',
     description: 'Deep blue-black with warm amber accents',
@@ -65,7 +71,7 @@ interface ThemeContextValue {
 }
 
 const defaultContextValue: ThemeContextValue = {
-  themeId: 'midnight',
+  themeId: 'slick',
   setTheme: () => {},
   hideSensitive: false,
   toggleHideSensitive: () => {},
@@ -74,7 +80,7 @@ const defaultContextValue: ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue>(defaultContextValue);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [themeId, setThemeId] = useState<ThemeId>('midnight');
+  const [themeId, setThemeId] = useState<ThemeId>('slick');
   const [hideSensitive, setHideSensitive] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -82,7 +88,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const savedTheme = localStorage.getItem('syncio-theme') as ThemeId | null;
     const savedHideSensitive = localStorage.getItem('syncio-hide-sensitive') === 'true';
-    const initial = savedTheme && themeIds.includes(savedTheme) ? savedTheme : 'midnight';
+    const initial = savedTheme && themeIds.includes(savedTheme) ? savedTheme : 'slick';
     setThemeId(initial);
     setHideSensitive(savedHideSensitive);
     document.documentElement.className = initial;
