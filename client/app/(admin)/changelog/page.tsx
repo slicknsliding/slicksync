@@ -48,9 +48,7 @@ interface GithubReleaseResponse {
   html_url: string;
 }
 
-const GITHUB_RELEASES_URL = 'https://api.github.com/repos/iamneur0/syncio/releases?per_page=20';
-const GITHUB_ACCEPT_HEADER = 'application/vnd.github+json';
-const USER_AGENT = 'syncio-app';
+const CHANGELOG_URL = '/changelog.json';
 
 // Helper functions
 const bulletRegex = /^[*-]\s+/;
@@ -187,51 +185,39 @@ const parseReleaseBody = (body: string | null | undefined) => {
   return result;
 };
 
-const mapGithubRelease = (release: GithubReleaseResponse): Release => {
-  const tagName = release.tag_name || release.name || '';
-  const cleanVersion = tagName.replace(/^v/i, '') || tagName || 'unknown';
-  const parsedBody = parseReleaseBody(release.body);
+interface LocalChangelogEntry {
+  version: string;
+  date: string;
+  title?: string;
+  features: string[];
+  bugFixes: string[];
+  miscChores: string[];
+}
 
-  return {
-    version: cleanVersion,
-    tagName: tagName || cleanVersion,
-    date: release.published_at || release.created_at || new Date().toISOString(),
-    features: parsedBody.features,
-    bugFixes: parsedBody.bugFixes,
-    miscChores: parsedBody.miscChores,
-    otherSections: parsedBody.otherSections,
-    rawBody: parsedBody.rawBody,
-    htmlUrl: release.html_url,
-    isPreRelease: Boolean(release.prerelease),
-  };
-};
+const mapLocalEntry = (entry: LocalChangelogEntry): Release => ({
+  version: entry.version,
+  tagName: `v${entry.version}`,
+  date: entry.date,
+  features: entry.features || [],
+  bugFixes: entry.bugFixes || [],
+  miscChores: entry.miscChores || [],
+  otherSections: entry.title ? [{ title: entry.title, items: [] }] : [],
+  rawBody: '',
+  htmlUrl: 'https://github.com/slicknsliding/slicksync',
+  isPreRelease: false,
+});
 
-const fetchGithubReleases = async (): Promise<Release[]> => {
-  const headers: Record<string, string> = {
-    Accept: GITHUB_ACCEPT_HEADER,
-    'User-Agent': USER_AGENT,
-  };
-
-  if (process.env.NEXT_PUBLIC_GITHUB_TOKEN) {
-    headers.Authorization = `Bearer ${process.env.NEXT_PUBLIC_GITHUB_TOKEN}`;
-  }
-
-  const response = await fetch(GITHUB_RELEASES_URL, {
-    headers,
-    cache: 'no-store',
-    mode: 'cors',
-  });
+const fetchChangelog = async (): Promise<Release[]> => {
+  const response = await fetch(CHANGELOG_URL, { cache: 'no-store' });
 
   if (!response.ok) {
-    const message = await response.text().catch(() => '');
-    throw new Error(message || `GitHub releases request failed with status ${response.status}`);
+    throw new Error(`Changelog request failed with status ${response.status}`);
   }
 
-  const data: GithubReleaseResponse[] = await response.json();
+  const data: LocalChangelogEntry[] = await response.json();
 
   return data
-    .filter((release) => !release.draft)
-    .map(mapGithubRelease)
+    .map(mapLocalEntry)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
@@ -249,7 +235,7 @@ export default function ChangelogPage() {
     setIsError(false);
     setError(null);
     try {
-      const data = await fetchGithubReleases();
+      const data = await fetchChangelog();
       setReleases(data);
       // Auto-expand the first (latest) release
       if (data.length > 0) {
@@ -258,7 +244,7 @@ export default function ChangelogPage() {
     } catch (err) {
       setIsError(true);
       setError(err as Error);
-      toast.error('Failed to load releases from GitHub');
+      toast.error('Failed to load changelog');
     } finally {
       setIsLoading(false);
     }
@@ -274,7 +260,7 @@ export default function ChangelogPage() {
   };
 
   const copyUpdateCommand = () => {
-    const command = 'docker compose pull syncio && docker compose up -d syncio';
+    const command = 'cd /opt/docker/build/slicksync && git pull && cd /opt/docker && docker compose --profile slicksync up -d --build';
     navigator.clipboard.writeText(command).then(() => {
       setCopied(true);
       toast.success('Update command copied to clipboard!');
@@ -297,7 +283,7 @@ export default function ChangelogPage() {
   };
 
   const isInitialLoading = isLoading && releases.length === 0;
-  const errorMessage = error instanceof Error ? error.message : 'Failed to load releases from GitHub.';
+  const errorMessage = error instanceof Error ? error.message : 'Failed to load changelog.';
 
   return (
     <>
@@ -333,7 +319,7 @@ export default function ChangelogPage() {
           <PageSection>
             <Card padding="lg" className="text-center">
               <p className="text-muted mb-4">
-                Could not load release notes from GitHub. {errorMessage}
+                Could not load the changelog. {errorMessage}
               </p>
               <Button
                 variant="secondary"
@@ -352,7 +338,7 @@ export default function ChangelogPage() {
           <PageSection>
             <Card padding="lg" className="text-center">
               <p className="text-muted">
-                No releases found on GitHub. Once releases are published, they will appear here automatically.
+                No changelog entries yet.
               </p>
             </Card>
           </PageSection>
