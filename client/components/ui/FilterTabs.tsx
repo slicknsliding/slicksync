@@ -13,7 +13,7 @@ import {
 // conditionally inside the options.map() loop.
 function DroppableTabButton({ id, enabled, isOver: isOverOverride, children }: { id: string; enabled: boolean; isOver?: boolean; children: (isOver: boolean) => React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !enabled });
-  return <div ref={enabled ? setNodeRef : undefined}>{children(enabled ? isOver : false)}</div>;
+  return <div ref={enabled ? setNodeRef : undefined} className="flex-1 min-w-0">{children(enabled ? isOver : false)}</div>;
 }
 
 export interface FilterTabOption {
@@ -162,7 +162,7 @@ export function FilterTabs({
               aria-selected={isActive}
               aria-controls={`panel-${option.key}`}
               className={`
-                relative z-10 flex items-center justify-center gap-2 flex-1 min-w-0 ${styles.button} rounded-lg font-medium 
+                relative z-10 flex items-center justify-center gap-2 w-full min-w-0 ${styles.button} rounded-lg font-medium 
                 transition-colors duration-150 ease-out
                 ${isActive 
                   ? 'text-primary' 

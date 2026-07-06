@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.8.1",
+    "date": "2026-07-06",
+    "title": "Fix Vault category tab drag-drop highlighting the wrong tab",
+    "features": [],
+    "bugFixes": [
+      "Dragging a Vault entry over a category tab was highlighting a different tab than the one under the cursor, and could leave a tab stuck highlighted after ending the drag. Caused by an unstyled wrapper div added around each droppable tab that didn't match the button's own flex sizing, throwing off drag-and-drop hit detection. Fixed by giving the wrapper the same flex sizing the button used to have directly."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.8.0",
     "date": "2026-07-06",
     "title": "Vault: right-click menu, drag-to-recategorize, drag-to-Addons; bulk Move to Vault",
