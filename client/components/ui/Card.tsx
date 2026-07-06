@@ -29,19 +29,22 @@ export function Card({
 
   return (
     <motion.div
-      whileHover={isInteractive ? { scale: 1.01 } : undefined}
-      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+      whileHover={isInteractive ? { scale: 1.015, y: -2 } : undefined}
+      transition={{ type: 'spring', stiffness: 300, damping: 22 }}
       className={clsx(
-        'rounded-xl relative',
+        'rounded-2xl relative',
         paddingStyles[padding],
         variant === 'bordered' && 'accent-border',
         className
       )}
       style={{
-        background: isAurora 
+        background: isAurora
           ? 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)'
           : 'var(--color-surface)',
         border: isAurora ? 'none' : '1px solid var(--color-surface-border)',
+        boxShadow: isAurora
+          ? '0 12px 32px -12px var(--color-primary)'
+          : '0 1px 0 0 rgba(255,255,255,0.02) inset, 0 8px 24px -16px rgba(0,0,0,0.4)',
         ...style,
       }}
       {...props}
