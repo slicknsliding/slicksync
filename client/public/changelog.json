@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.5.0",
+    "date": "2026-07-06",
+    "title": "Custom profile pictures for users and groups",
+    "features": [
+      "Users and groups can now have a custom picture instead of the generated color/initial avatar",
+      "Set it via an image URL, or upload a file directly (JPEG/PNG/GIF/WEBP, 5MB limit)",
+      "Group cloning now carries over the avatar from the original group"
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.4.1",
     "date": "2026-07-06",
     "title": "README overhaul + proper credits",

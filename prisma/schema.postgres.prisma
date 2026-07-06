@@ -20,6 +20,7 @@ model User {
   excludedAddons     String? // JSON array of addon IDs that user has excluded
   protectedAddons    String? // JSON array of addon IDs that user has protected
   colorIndex         Int? // UI color theme index
+  avatarUrl          String? // Custom profile picture: full URL or /uploads/avatars/<file> for uploaded images
   useGravatar        Boolean   @default(false) // Use Gravatar for avatar instead of generated avatar
   accountId          String? // For multi-tenant support
   expiresAt          DateTime? // When user membership expires (null = never expires)
@@ -47,6 +48,7 @@ model Group {
   description        String?
   isActive           Boolean @default(true)
   colorIndex         Int?
+  avatarUrl          String?
   accountId          String?
   userIds            String?
   activityVisibility String  @default("private") // DEPRECATED: Use User.activityVisibility instead. Kept for backward compatibility.

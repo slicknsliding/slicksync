@@ -1174,6 +1174,36 @@ class ApiClient {
     return (result?.user || result) as User;
   }
 
+  // --- Avatars ---
+
+  async uploadAvatar(file: File): Promise<{ url: string }> {
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const csrfToken = getCsrfToken();
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+    // Deliberately NOT using this.fetch() here — it forces Content-Type: application/json,
+    // which breaks multipart uploads (the browser needs to set its own boundary header).
+    const response = await fetch(`${API_BASE}/avatars/upload`, {
+      method: 'POST',
+      credentials: 'include',
+      headers, // no Content-Type — fetch sets the multipart boundary automatically for FormData
+      body: formData,
+    });
+
+    if (!response.ok) {
+      let errorData: any;
+      try { errorData = await response.json(); } catch { errorData = { message: `HTTP ${response.status}` }; }
+      throw new Error(errorData.message || errorData.error || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  }
+
   // --- Vault ---
 
   async getVaultEntries(category?: string) {
@@ -1271,6 +1301,7 @@ export interface User {
   stremioAddonsCount?: number;
   hasStremioConnection?: boolean;
   colorIndex?: number;
+  avatarUrl?: string | null;
   inviteCode?: string;
 }
 
@@ -1291,6 +1322,7 @@ export interface Group {
   createdAt: string;
   updatedAt: string;
   colorIndex?: number;
+  avatarUrl?: string | null;
   isActive?: boolean;
 }
 

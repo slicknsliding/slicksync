@@ -188,6 +188,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           excludedAddons: excludedAddons,
           protectedAddons: protectedAddons,
           colorIndex: user.colorIndex,
+          avatarUrl: user.avatarUrl,
           inviteCode: user.inviteCode,
           watchTime: totalWatchTimeMinutes
         };
@@ -1190,6 +1191,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         excludedAddons: excludedAddons,
         protectedAddons: protectedAddons,
         colorIndex: user.colorIndex,
+        avatarUrl: user.avatarUrl,
         expiresAt: user.expiresAt,
         inviteCode: user.inviteCode,
         createdAt: user.createdAt,
@@ -1208,7 +1210,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   router.put('/:id', async (req, res) => {
     try {
       const { id } = req.params
-      const { username, email, password, groupId, colorIndex, expiresAt } = req.body
+      const { username, email, password, groupId, colorIndex, avatarUrl, expiresAt } = req.body
 
 
       // Check if user exists
@@ -1255,6 +1257,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       if (colorIndex !== undefined) {
         updateData.colorIndex = colorIndex
+      }
+
+      if (avatarUrl !== undefined) {
+        updateData.avatarUrl = avatarUrl || null // allow clearing back to the generated/color avatar
       }
 
       if (expiresAt !== undefined) {
