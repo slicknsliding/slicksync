@@ -307,10 +307,13 @@ html.daylight {
 
 html {
   scroll-behavior: smooth;
+  --font-space-grotesk: 'Space Grotesk', system-ui, sans-serif;
+  --font-outfit: 'Outfit', system-ui, sans-serif;
+  --font-jetbrains-mono: 'JetBrains Mono', monospace;
 }
 
 body {
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-family: var(--font-outfit);
   background-color: var(--color-bg);
   color: var(--color-text);
   min-height: 100vh;

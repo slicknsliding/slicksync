@@ -31,7 +31,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Outfit:wght@300..700&family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
       </head>
@@ -41,6 +41,16 @@ export default function RootLayout({
           color: 'var(--color-text)'
         }}
       >
+        <div
+          aria-hidden
+          className="fixed inset-0 pointer-events-none z-0"
+          style={{
+            background:
+              'radial-gradient(ellipse 800px 500px at 15% -10%, var(--color-primary-muted) 0%, transparent 60%),' +
+              'radial-gradient(ellipse 700px 500px at 100% 10%, var(--color-secondary-muted) 0%, transparent 55%)',
+          }}
+        />
+        <div className="relative z-10">
         <ThemeProvider>
           <UserCacheProvider>
             <ToastProvider>
@@ -48,6 +58,7 @@ export default function RootLayout({
             </ToastProvider>
           </UserCacheProvider>
         </ThemeProvider>
+        </div>
       </body>
     </html>
   );
