@@ -48,6 +48,11 @@ const nextConfig: NextConfig = {
         source: '/api/:path*',
         destination: 'http://localhost:4000/api/:path*',
       },
+      // Uploaded avatar images (served statically by the backend)
+      {
+        source: '/uploads/:path*',
+        destination: 'http://localhost:4000/uploads/:path*',
+      },
       // Public invite routes (no auth required)
       {
         source: '/invite/:inviteCode/check',

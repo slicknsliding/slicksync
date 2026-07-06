@@ -29,6 +29,18 @@ const sizes = {
   '2xl': 'w-24 h-24 text-4xl',
 };
 
+// Just the text-size portion of each size, for the initials fallback on the
+// inner element — dimensions themselves live only on the outer wrapper now
+// (see Avatar component) so there's a single source of truth for box size.
+const textSizes = {
+  xs: 'text-xs',
+  sm: 'text-sm',
+  md: 'text-base',
+  lg: 'text-lg',
+  xl: 'text-xl',
+  '2xl': 'text-4xl',
+};
+
 // Theme-based avatar styles using variations of primary and secondary colors
 const avatarStyles = [
   // Primary variations
@@ -120,12 +132,12 @@ export function Avatar({ name, src, email, size = 'md', showRing = false, status
   const finalSrc = src || gravatarSrc;
 
   return (
-    <div className={clsx("relative inline-flex rounded-full", className)}>
+    <div className={clsx("relative inline-flex rounded-full", className || sizes[size])}>
       <motion.div
         whileHover={{ scale: 1.05 }}
         className={clsx(
-          'relative rounded-full overflow-hidden flex items-center justify-center font-semibold',
-          sizes[size],
+          'relative rounded-full overflow-hidden flex items-center justify-center font-semibold w-full h-full',
+          textSizes[size],
           avatarClassName
         )}
         style={{

@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.5.1",
+    "date": "2026-07-06",
+    "title": "Fix avatar bugs: uploaded images 404ing, list page not showing custom avatars, distorted sizing",
+    "features": [],
+    "bugFixes": [
+      "Uploaded avatar images never actually displayed: they were served by the backend at /uploads/avatars/... but Next.js (the public-facing server) had no rule to proxy that path through to the backend, so every uploaded image silently 404d and fell back to the initial. Image URL mode worked around this by coincidence, since it points at an external absolute URL rather than this internal path.",
+      "The Users list page (both table and card views) fetched avatarUrl correctly but never passed it to the avatar component - custom avatars only appeared once you opened a user's detail page",
+      "Fixed a sizing conflict in the shared Avatar component: passing both a size preset and a custom className with different width/height created two independent, conflicting size sources (outer wrapper vs inner image container), which is what caused the distorted/stretched look on the user detail page header"
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.5.0",
     "date": "2026-07-06",
     "title": "Custom profile pictures for users and groups",
