@@ -101,6 +101,9 @@ export default function AddonsPage() {
   const [moveToVaultTarget, setMoveToVaultTarget] = useState<AddonDisplay | null>(null);
   const [moveToVaultCategory, setMoveToVaultCategory] = useState('custom');
   const [isMovingToVault, setIsMovingToVault] = useState(false);
+  const [isBulkMoveToVaultOpen, setIsBulkMoveToVaultOpen] = useState(false);
+  const [bulkMoveToVaultCategory, setBulkMoveToVaultCategory] = useState('custom');
+  const [isBulkMovingToVault, setIsBulkMovingToVault] = useState(false);
 
   // Fetch addons and groups
   useEffect(() => {
@@ -623,6 +626,14 @@ export default function AddonsPage() {
                   Reload
                 </Button>
                 <Button
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<ShieldCheckIcon className="w-4 h-4" />}
+                  onClick={() => setIsBulkMoveToVaultOpen(true)}
+                >
+                  Move to Vault
+                </Button>
+                <Button
                   variant="danger"
                   size="sm"
                   leftIcon={<TrashIcon className="w-4 h-4" />}
@@ -752,6 +763,65 @@ export default function AddonsPage() {
               disabled={isMovingToVault}
             >
               {isMovingToVault ? 'Moving...' : 'Move to Vault'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Move to Vault Modal */}
+      <Modal
+        isOpen={isBulkMoveToVaultOpen}
+        onClose={() => setIsBulkMoveToVaultOpen(false)}
+        title="Move to Vault"
+        description={`Move ${selectedIds.size} selected addon${selectedIds.size !== 1 ? 's' : ''} to Vault? Each becomes a tracked credential entry with its manifest URL, and is removed from Addons (and any groups it's assigned to).`}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>Vault category</label>
+            <select
+              value={bulkMoveToVaultCategory}
+              onChange={e => setBulkMoveToVaultCategory(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl focus:outline-none"
+              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+            >
+              {ADDON_VAULT_CATEGORIES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-3 justify-end">
+            <Button variant="secondary" onClick={() => setIsBulkMoveToVaultOpen(false)}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                const ids = Array.from(selectedIds);
+                setIsBulkMovingToVault(true);
+                let succeeded = 0;
+                let failed = 0;
+                for (const id of ids) {
+                  try {
+                    await api.moveAddonToVault(id, bulkMoveToVaultCategory);
+                    succeeded++;
+                  } catch {
+                    failed++;
+                  }
+                }
+                // Refetch rather than optimistically patch local state — with partial
+                // failures possible across the loop, a fresh list is simpler and correct
+                try {
+                  const usersData = await api.getAddons();
+                  setAddons(usersData);
+                } catch {}
+                deselectAll();
+                setIsBulkMovingToVault(false);
+                setIsBulkMoveToVaultOpen(false);
+                if (failed === 0) {
+                  toast.success(`Moved ${succeeded} addon${succeeded !== 1 ? 's' : ''} to Vault`);
+                } else {
+                  toast.error(`Moved ${succeeded}, failed to move ${failed}`);
+                }
+              }}
+              disabled={isBulkMovingToVault || selectedIds.size === 0}
+            >
+              {isBulkMovingToVault ? 'Moving...' : `Move ${selectedIds.size} to Vault`}
             </Button>
           </div>
         </div>

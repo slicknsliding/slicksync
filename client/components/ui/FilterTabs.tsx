@@ -2,10 +2,19 @@
 
 import { useState, useRef, useLayoutEffect, useEffect, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useDroppable } from '@dnd-kit/core';
 import { 
   ChevronDownIcon,
   CheckIcon 
 } from '@heroicons/react/24/outline';
+
+// Wraps a tab button to make it a dnd-kit drop target when enabled — kept as
+// its own component since useDroppable is a hook and can't be called
+// conditionally inside the options.map() loop.
+function DroppableTabButton({ id, enabled, isOver: isOverOverride, children }: { id: string; enabled: boolean; isOver?: boolean; children: (isOver: boolean) => React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id, disabled: !enabled });
+  return <div ref={enabled ? setNodeRef : undefined}>{children(enabled ? isOver : false)}</div>;
+}
 
 export interface FilterTabOption {
   key: string;
@@ -26,6 +35,8 @@ export interface FilterTabsProps {
   className?: string;
   /** Unique ID for the sliding indicator animation (use different IDs if multiple FilterTabs on same page) */
   layoutId?: string;
+  /** When true, each tab becomes a dnd-kit droppable zone with id `vault-category-${key}` — must be rendered inside a DndContext */
+  enableDropTargets?: boolean;
 }
 
 /**
@@ -44,6 +55,7 @@ export function FilterTabs({
   size = 'sm',
   className = '',
   layoutId,
+  enableDropTargets = false,
 }: FilterTabsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
@@ -141,8 +153,9 @@ export function FilterTabs({
         const isActive = activeKey === option.key;
         
         return (
+          <DroppableTabButton key={option.key} id={`vault-category-${option.key}`} enabled={enableDropTargets}>
+            {(isOver) => (
             <button
-              key={option.key}
               data-tab-key={option.key}
               onClick={() => onChange(option.key)}
               role="tab"
@@ -156,6 +169,7 @@ export function FilterTabs({
                   : 'text-muted hover:text-default'
                 }
               `}
+              style={isOver ? { boxShadow: '0 0 0 2px var(--color-primary)', background: 'var(--color-primary-muted)', borderRadius: '0.5rem' } : undefined}
             >
             {/* Icon */}
             {option.icon && (
@@ -194,7 +208,9 @@ export function FilterTabs({
                 {option.badge.value}
               </span>
             )}
-          </button>
+            </button>
+            )}
+          </DroppableTabButton>
         );
       })}
     </div>
@@ -271,6 +287,7 @@ export function FilterTabsResponsive({
   size = 'sm',
   className = '',
   layoutId,
+  enableDropTargets = false,
 }: FilterTabsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -420,6 +437,7 @@ export function FilterTabsResponsive({
           onChange={onChange}
           size={size}
           layoutId={layoutId}
+          enableDropTargets={enableDropTargets}
         />
       </div>
     </div>
