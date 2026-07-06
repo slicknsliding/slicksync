@@ -481,7 +481,7 @@ export default function UsersPage() {
                                   className="flex items-center gap-3 group"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <UserAvatar userId={user.id} name={user.name} email={user.email} colorIndex={user.colorIndex} size="sm" />
+                                  <UserAvatar userId={user.id} name={user.name} email={user.email} colorIndex={user.colorIndex} src={user.avatarUrl || undefined} size="sm" />
                                   <div>
                                     <div className="flex items-center gap-2">
                                       <p className="font-medium transition-colors group-hover:text-primary text-default truncate">
@@ -818,7 +818,7 @@ function UserCard({
 
         <div className="flex items-start gap-4">
           {/* Avatar */}
-          <UserAvatar userId={user.id} name={user.name} email={user.email} colorIndex={user.colorIndex} size="lg" />
+          <UserAvatar userId={user.id} name={user.name} email={user.email} colorIndex={user.colorIndex} src={user.avatarUrl || undefined} size="lg" />
 
           {/* Main content - stats moved here */}
           <div className="flex-1 min-w-0">
