@@ -4,9 +4,11 @@ import Head from 'next/head';
 import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/layout/Header';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { DraggableList } from '@/components/ui/DragSortable';
-import { arrayMove } from '@dnd-kit/sortable';
-import { Button, Card, Badge, Modal, Input, FilterTabsResponsive, ToggleSwitch } from '@/components/ui';
+import { useSortableDragState } from '@/components/ui/DragSortable';
+import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { useVaultDrag, SIDEBAR_ADDONS_DROPZONE_ID } from '@/components/providers/VaultDragContext';
+import type { DragEndEvent } from '@dnd-kit/core';
+import { Button, Card, Badge, Modal, Input, FilterTabsResponsive, ToggleSwitch, ContextMenu, useContextMenu } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api, VaultEntry, VaultCategory, VaultTestType, VaultNotificationSettings } from '@/lib/api';
 import {
@@ -113,6 +115,80 @@ function categoryDefaults(category: VaultCategory): Partial<EntryFormState> {
     default:
       return {};
   }
+}
+
+// Wraps a card with dnd-kit's sortable drag state AND a right-click context
+// menu — both live here (rather than in renderEntryCard) since hooks can't
+// be called conditionally or inside a .map() callback directly.
+function SortableEntryCard({
+  entry,
+  renderEntryCard,
+  onTest,
+  onEdit,
+  onMoveToAddons,
+  onDelete,
+}: {
+  entry: VaultEntry;
+  renderEntryCard: (entry: VaultEntry, dragHandleProps?: Record<string, unknown>, isDragging?: boolean) => React.ReactNode;
+  onTest: (entry: VaultEntry) => void;
+  onEdit: (entry: VaultEntry) => void;
+  onMoveToAddons: (entry: VaultEntry) => void;
+  onDelete: (entry: VaultEntry) => void;
+}) {
+  const { dragHandleProps, itemProps, isDragging } = useSortableDragState(entry.id);
+  const { isOpen, position, handleContextMenu, close } = useContextMenu();
+
+  return (
+    <div ref={itemProps.ref} style={itemProps.style} className={itemProps.className} onContextMenu={handleContextMenu}>
+      {renderEntryCard(entry, dragHandleProps, isDragging)}
+
+      <ContextMenu isOpen={isOpen} position={position} onClose={close}>
+        <button
+          onClick={() => { close(); onTest(entry); }}
+          disabled={entry.testType === 'manual'}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors disabled:opacity-40"
+        >
+          <ArrowPathIcon className="w-4 h-4" />
+          Run Check Now
+        </button>
+        <button
+          onClick={() => { close(); onEdit(entry); }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+        >
+          <PencilIcon className="w-4 h-4" />
+          Edit
+        </button>
+        {entry.dashboardUrl && (
+          <a
+            href={entry.dashboardUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={close}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+          >
+            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+            Open Dashboard
+          </a>
+        )}
+        <div className="my-1 border-t border-default" />
+        <button
+          onClick={() => { close(); onMoveToAddons(entry); }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+        >
+          <PuzzlePieceIcon className="w-4 h-4" />
+          Move to Addons
+        </button>
+        <div className="my-1 border-t border-default" />
+        <button
+          onClick={() => { close(); onDelete(entry); }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error-muted transition-colors"
+        >
+          <TrashIcon className="w-4 h-4" />
+          Delete
+        </button>
+      </ContextMenu>
+    </div>
+  );
 }
 
 export default function VaultPage() {
@@ -299,6 +375,64 @@ export default function VaultPage() {
     }
   };
 
+  const handleRecategorize = async (entry: VaultEntry, newCategory: string) => {
+    if (entry.category === newCategory) return;
+    // Optimistic update
+    setEntries(prev => prev.filter(e => e.id !== entry.id));
+    try {
+      await api.updateVaultEntry(entry.id, { category: newCategory as VaultCategory });
+      toast.success(`Moved "${entry.name}" to ${CATEGORY_LABELS[newCategory as VaultCategory] || newCategory}`);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to recategorize');
+      load();
+    }
+  };
+
+  // Register this page's drag-end logic with the layout-level DndContext —
+  // it's the one that actually owns the DndContext (see AdminClientLayout),
+  // since dragging onto the Sidebar's Addons link requires a context that
+  // spans both the page and the sidebar.
+  const { registerDragEndHandler } = useVaultDrag();
+  useEffect(() => {
+    const handleDragEnd = (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over) return;
+      const entry = entries.find(e => e.id === active.id);
+      if (!entry) return;
+
+      if (over.id === SIDEBAR_ADDONS_DROPZONE_ID) {
+        handleMoveToAddons(entry);
+        return;
+      }
+
+      if (typeof over.id === 'string' && over.id.startsWith('vault-category-')) {
+        const newCategory = over.id.replace('vault-category-', '');
+        if (newCategory !== 'all') handleRecategorize(entry, newCategory);
+        return;
+      }
+
+      // Otherwise: dropped on another entry card -> reorder within the same category
+      if (active.id !== over.id) {
+        const oldIndex = entries.findIndex(e => e.id === active.id);
+        const newIndex = entries.findIndex(e => e.id === over.id);
+        if (oldIndex === -1 || newIndex === -1) return;
+        const target = entries[newIndex];
+        if (target.category !== entry.category) return; // don't reorder across categories
+        const reordered = arrayMove(entries, oldIndex, newIndex);
+        setEntries(reordered);
+        api.reorderVaultEntries(entry.category, reordered.filter(e => e.category === entry.category).map(e => e.id))
+          .catch((err: any) => {
+            toast.error(err.message || 'Failed to save new order');
+            load();
+          });
+      }
+    };
+
+    registerDragEndHandler(handleDragEnd);
+    return () => registerDragEndHandler(null);
+  }, [entries, registerDragEndHandler]);
+
   const handleTest = async (entry: VaultEntry) => {
     setTestingId(entry.id);
     try {
@@ -467,7 +601,7 @@ export default function VaultPage() {
 
       <div className="px-4 md:px-6 pb-6">
         <div className="mb-5">
-          <FilterTabsResponsive options={filterOptions} activeKey={activeCategory} onChange={setActiveCategory} layoutId="vault-filter" />
+          <FilterTabsResponsive options={filterOptions} activeKey={activeCategory} onChange={setActiveCategory} layoutId="vault-filter" enableDropTargets />
         </div>
 
         {isLoading ? (
@@ -484,46 +618,27 @@ export default function VaultPage() {
             </Button>
           </Card>
         ) : (
-          activeCategory === 'all' ? (
-            <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {entries.map((entry) => (
-                <StaggerItem key={entry.id}>
-                  {renderEntryCard(entry)}
-                </StaggerItem>
-              ))}
-            </StaggerContainer>
-          ) : (
-            <>
-              <p className="text-xs mb-3" style={{ color: 'var(--color-textMuted)' }}>Drag the handle to reorder entries within this category.</p>
-              <DraggableList
-                items={entries.map(e => e.id)}
-                onDragEnd={async (event) => {
-                  const { active, over } = event;
-                  if (!over || active.id === over.id) return;
-                  const oldIndex = entries.findIndex(e => e.id === active.id);
-                  const newIndex = entries.findIndex(e => e.id === over.id);
-                  if (oldIndex === -1 || newIndex === -1) return;
-                  const reordered = arrayMove(entries, oldIndex, newIndex);
-                  setEntries(reordered);
-                  try {
-                    await api.reorderVaultEntries(activeCategory, reordered.map(e => e.id));
-                  } catch (err: any) {
-                    toast.error(err.message || 'Failed to save new order');
-                    load();
-                  }
-                }}
-                renderItem={({ id, dragHandleProps, itemProps, isDragging }) => {
-                  const entry = entries.find(e => e.id === id);
-                  if (!entry) return null;
-                  return (
-                    <div ref={itemProps.ref} style={itemProps.style} className={itemProps.className}>
-                      {renderEntryCard(entry, dragHandleProps, isDragging)}
-                    </div>
-                  );
-                }}
-              />
-            </>
-          )
+          <>
+            <p className="text-xs mb-3" style={{ color: 'var(--color-textMuted)' }}>
+              Drag the handle to reorder within a category, drop onto a category tab above to recategorize, or drop onto "Addons" in the sidebar to move it there.
+            </p>
+            <SortableContext items={entries.map(e => e.id)} strategy={rectSortingStrategy}>
+              <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {entries.map((entry) => (
+                  <StaggerItem key={entry.id}>
+                    <SortableEntryCard
+                      entry={entry}
+                      renderEntryCard={renderEntryCard}
+                      onTest={handleTest}
+                      onEdit={openEditModal}
+                      onMoveToAddons={handleMoveToAddons}
+                      onDelete={handleDelete}
+                    />
+                  </StaggerItem>
+                ))}
+              </StaggerContainer>
+            </SortableContext>
+          </>
         )}
       </div>
 

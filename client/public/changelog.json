@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.8.0",
+    "date": "2026-07-06",
+    "title": "Vault: right-click menu, drag-to-recategorize, drag-to-Addons; bulk Move to Vault",
+    "features": [
+      "Vault entries now also support right-click for a context menu (Run Check Now, Edit, Open Dashboard, Move to Addons, Delete) alongside the existing icon row",
+      "Drag any Vault entry onto a category tab to recategorize it on the spot",
+      "Drag any Vault entry onto \"Addons\" in the sidebar to move it there directly",
+      "Addons page: select one or more addons and use the new \"Move to Vault\" bulk action in the floating selection bar"
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Reworked the Vault page drag system onto a single shared DndContext spanning the whole admin layout (not just the page), which is what makes dropping onto the sidebar possible"
+    ]
+  },
+  {
     "version": "1.7.0",
     "date": "2026-07-06",
     "title": "Move addons to/from Vault, drag-and-drop reordering",

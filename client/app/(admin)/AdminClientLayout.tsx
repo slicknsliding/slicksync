@@ -4,6 +4,10 @@ import { useState, useEffect, createContext, useContext, ReactNode } from "react
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { DndContext, DragOverlay, closestCenter } from "@/components/ui/DragSortable";
+import { useSortableSensors } from "@/components/ui/DragSortable";
+import { VaultDragProvider, useVaultDrag } from "@/components/providers/VaultDragContext";
+import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
 
 interface MobileMenuContextType {
   isOpen: boolean;
@@ -19,6 +23,38 @@ const MobileMenuContext = createContext<MobileMenuContextType>({
 
 export function useMobileMenu() {
   return useContext(MobileMenuContext);
+}
+
+// Lives inside VaultDragProvider so it can read the currently-registered
+// drag-end handler (set by whichever page has draggable items — currently
+// only the Vault page) and hands the event off to it.
+function LayoutDndWrapper({ children }: { children: ReactNode }) {
+  const sensors = useSortableSensors();
+  const { dragEndHandlerRef } = useVaultDrag();
+  const [activeLabel, setActiveLabel] = useState<string | null>(null);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const label = (event.active.data.current as any)?.label;
+    setActiveLabel(typeof label === 'string' ? label : null);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveLabel(null);
+    dragEndHandlerRef.current?.(event);
+  };
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      {children}
+      <DragOverlay>
+        {activeLabel ? (
+          <div className="px-4 py-2 rounded-xl shadow-lg text-sm font-medium" style={{ background: 'var(--color-primary)', color: '#fff' }}>
+            {activeLabel}
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
 }
 
 /**
@@ -57,15 +93,19 @@ export default function AdminClientLayout({
 
   return (
     <MobileMenuContext.Provider value={{ isOpen: isMobileMenuOpen, onOpen: handleOpen, onClose: handleClose }}>
-      <div className="relative min-h-screen">
-        <Sidebar 
-          isOpen={isMobileMenuOpen} 
-          onClose={handleClose} 
-        />
-        <PageContainer>
-          {children}
-        </PageContainer>
-      </div>
+      <VaultDragProvider>
+        <LayoutDndWrapper>
+          <div className="relative min-h-screen">
+            <Sidebar 
+              isOpen={isMobileMenuOpen} 
+              onClose={handleClose} 
+            />
+            <PageContainer>
+              {children}
+            </PageContainer>
+          </div>
+        </LayoutDndWrapper>
+      </VaultDragProvider>
     </MobileMenuContext.Provider>
   );
 }

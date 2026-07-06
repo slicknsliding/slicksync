@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useDroppable } from '@dnd-kit/core';
+import { SIDEBAR_ADDONS_DROPZONE_ID } from '@/components/providers/VaultDragContext';
 import {
   HomeIcon,
   UsersIcon,
@@ -69,8 +71,12 @@ interface NavItemProps {
 }
 
 function NavItem({ name, href, icon: Icon, isActive, index, onNavigate }: NavItemProps) {
+  const isAddonsLink = href === '/addons';
+  const { setNodeRef, isOver } = useDroppable({ id: SIDEBAR_ADDONS_DROPZONE_ID, disabled: !isAddonsLink });
+
   return (
     <motion.div
+      ref={isAddonsLink ? setNodeRef : undefined}
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.03 }}
@@ -80,8 +86,10 @@ function NavItem({ name, href, icon: Icon, isActive, index, onNavigate }: NavIte
         onClick={onNavigate}
         className="nav-item-hover-pill relative flex items-center gap-3 px-3 py-2.5 rounded-xl group overflow-hidden"
         style={{
-          background: 'transparent',
+          background: isOver ? 'var(--color-primary-muted)' : 'transparent',
           color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)',
+          boxShadow: isOver ? '0 0 0 2px var(--color-primary)' : 'none',
+          transition: 'background 0.15s ease, box-shadow 0.15s ease',
         }}
       >
         {isActive && (
@@ -101,6 +109,11 @@ function NavItem({ name, href, icon: Icon, isActive, index, onNavigate }: NavIte
         >
           {name}
         </span>
+        {isOver && (
+          <span className="ml-auto text-xs font-medium relative z-10" style={{ color: 'var(--color-primary)' }}>
+            Drop to move
+          </span>
+        )}
       </Link>
     </motion.div>
   );
