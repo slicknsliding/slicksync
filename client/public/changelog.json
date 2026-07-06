@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.4.1",
+    "date": "2026-07-06",
+    "title": "README overhaul + proper credits",
+    "features": [],
+    "bugFixes": [],
+    "miscChores": [
+      "Rewrote README to reflect the actual current feature set (Vault, badges, redesign, backup export)",
+      "Added a dedicated Credits section: iamneur0 (original Syncio creator), Avangelista (Nuvio integration concepts), Sonicx161/AIOManager (Vault design inspiration)"
+    ]
+  },
+  {
     "version": "1.4.0",
     "date": "2026-07-06",
     "title": "Vault backup export (foundation for external backup + Bitwarden sync)",
