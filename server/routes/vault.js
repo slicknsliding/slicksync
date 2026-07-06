@@ -3,8 +3,8 @@ const { runCheck } = require('../utils/vaultCheckers');
 const { postDiscord, postNtfy } = require('../utils/notify');
 
 const CATEGORIES = [
-  'debrid', 'usenet_provider', 'usenet_indexer', 'torrent_indexer',
-  'subtitles', 'metadata', 'ai', 'vpn', 'aiostreams', 'custom'
+  'debrid', 'usenet_provider', 'usenet_indexer', 'stremio', 'nuvio',
+  'metadata', 'ai', 'vpn', 'aiostreams', 'custom'
 ];
 
 module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {

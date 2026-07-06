@@ -1254,6 +1254,7 @@ export interface User {
   username: string;
   name?: string; // Legacy field, prefer username
   email?: string;
+  providerType?: 'stremio' | 'nuvio';
   createdAt?: string;
   updatedAt?: string;
   expiresAt?: string | null;
@@ -1300,8 +1301,8 @@ export interface CreateGroupData {
 }
 
 export type VaultCategory =
-  | 'debrid' | 'usenet_provider' | 'usenet_indexer' | 'torrent_indexer'
-  | 'subtitles' | 'metadata' | 'ai' | 'vpn' | 'aiostreams' | 'custom';
+  | 'debrid' | 'usenet_provider' | 'usenet_indexer' | 'stremio' | 'nuvio'
+  | 'metadata' | 'ai' | 'vpn' | 'aiostreams' | 'custom';
 
 export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability';
 
