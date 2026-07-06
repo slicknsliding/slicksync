@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.7.0",
+    "date": "2026-07-06",
+    "title": "Move addons to/from Vault, drag-and-drop reordering",
+    "features": [
+      "Addons page: new \"Move to Vault\" action per addon - creates a tracked Vault entry from the addon's manifest URL (with a live reachability check) and removes the addon from active management. If the addon was assigned to any group, it is removed from those too",
+      "Vault: new \"Move to Addons\" action per entry - reveals the stored secret, and if it looks like a manifest URL, recreates it as a real addon and removes the Vault entry",
+      "Vault entries can now be reordered by drag-and-drop within a single category (select a specific category tab, not All, to enable dragging)"
+    ],
+    "bugFixes": [
+      "Caught and fixed a route-ordering bug in the same commit that introduced it: the new /vault/reorder endpoint was registered after the existing /vault/:id handler, so Express matched \"reorder\" as an :id parameter and the reorder request never reached its real handler"
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.6.0",
     "date": "2026-07-06",
     "title": "Category-specific Vault forms with real login validation",
