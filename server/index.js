@@ -318,6 +318,16 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize vault monitor:', err)
     }
 
+    // Schedule vault backup export (decrypted JSON snapshot to data/backup/vault/,
+    // nightly by default — set VAULT_BACKUP_INTERVAL_HOURS to change)
+    try {
+      const { scheduleVaultBackups } = require('./utils/vaultBackup')
+      const intervalHours = parseInt(process.env.VAULT_BACKUP_INTERVAL_HOURS || '24', 10)
+      scheduleVaultBackups({ prisma, decrypt, intervalHours })
+    } catch (err) {
+      console.error('⚠️ Failed to initialize vault backup scheduler:', err)
+    }
+
     // Schedule addon health checker (checks if addon manifests are reachable)
     try {
       const { startHealthCheckScheduler } = require('./utils/addonHealthCheck')

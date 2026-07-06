@@ -262,6 +262,18 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
     }
   });
 
+  // POST /api/vault/backup-now - trigger an immediate backup export (in addition to the nightly schedule)
+  router.post('/backup-now', async (req, res) => {
+    try {
+      const { performVaultBackupOnce } = require('../utils/vaultBackup');
+      await performVaultBackupOnce({ prisma, decrypt });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error running manual vault backup:', error);
+      res.status(500).json({ error: 'Failed to run backup' });
+    }
+  });
+
   return router;
 };
 
