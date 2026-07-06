@@ -32,7 +32,7 @@ export function Card({
       whileHover={isInteractive ? { scale: 1.015, y: -2 } : undefined}
       transition={{ type: 'spring', stiffness: 300, damping: 22 }}
       className={clsx(
-        'rounded-2xl relative',
+        'rounded-2xl relative overflow-hidden',
         paddingStyles[padding],
         variant === 'bordered' && 'accent-border',
         className
@@ -49,6 +49,13 @@ export function Card({
       }}
       {...props}
     >
+      {!isAurora && (
+        <div
+          aria-hidden
+          className="absolute top-0 left-0 right-0 h-[3px]"
+          style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))' }}
+        />
+      )}
       {children}
     </motion.div>
   );

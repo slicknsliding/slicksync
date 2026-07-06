@@ -325,6 +325,16 @@ body {
 /* ===== UTILITY CLASSES ===== */
 
 @layer components {
+  /* ----- Nav item hover (pure CSS — no JS state to get stuck) ----- */
+  .nav-item-inactive {
+    color: var(--color-text-muted);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .nav-item-inactive:hover {
+    background: var(--color-surface-hover);
+    color: var(--color-text);
+  }
+
   /* ----- Text Colors ----- */
   .text-default { color: var(--color-text); }
   .text-muted { color: var(--color-text-muted); }
