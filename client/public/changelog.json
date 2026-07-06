@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.8.3",
+    "date": "2026-07-06",
+    "title": "Fix group avatars not showing on the Groups list page",
+    "features": [],
+    "bugFixes": [
+      "The Groups list page (both table and card views) never passed the avatarUrl prop to the Avatar component at all, so custom group photos only ever showed on the group detail page, never in the list. Backend already returned the data correctly - this was purely a missing prop on the frontend."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.8.2",
     "date": "2026-07-06",
     "title": "Fix custom avatar images rendering huge, and fix drag-drop tab highlighting for real this time",
