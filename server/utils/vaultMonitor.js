@@ -56,6 +56,7 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
           try {
             const secret = decrypt(entry.encryptedSecret, mockReq)
             const config = entry.testConfig ? JSON.parse(entry.testConfig) : {}
+            config.identifier = entry.provider || config.identifier
             const result = await runCheck(entry.testType, secret, config)
 
             const wasOk = entry.lastCheckStatus === 'ok'

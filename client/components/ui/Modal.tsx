@@ -23,6 +23,14 @@ const sizeStyles = {
   full: 'max-w-4xl',
 };
 
+const sizeMaxWidthPx = {
+  sm: '384px',
+  md: '448px',
+  lg: '512px',
+  xl: '576px',
+  full: '896px',
+};
+
 export function Modal({ isOpen, onClose, title, description, size = 'md', children }: ModalProps) {
   return (
     <Transition show={isOpen} as={Fragment}>
@@ -63,7 +71,8 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
               style={{
                 background: 'var(--color-surface)',
                 border: '1px solid var(--color-surfaceBorder)',
-                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                maxWidth: sizeMaxWidthPx[size],
               }}
             >
               {/* Header */}

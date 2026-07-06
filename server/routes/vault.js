@@ -170,6 +170,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       let secret;
       try { secret = decrypt(entry.encryptedSecret, req); } catch { return res.status(500).json({ error: 'Failed to decrypt secret' }); }
       const config = entry.testConfig ? JSON.parse(entry.testConfig) : {};
+      config.identifier = entry.provider || config.identifier; // for stremio_auth/nuvio_auth checkers
 
       const result = await runCheck(entry.testType, secret, config);
 

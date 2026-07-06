@@ -131,6 +131,10 @@ export function Avatar({ name, src, email, size = 'md', showRing = false, status
 
   const finalSrc = src || gravatarSrc;
 
+  useEffect(() => {
+    setImageError(false);
+  }, [finalSrc]);
+
   return (
     <div className={clsx("relative inline-flex rounded-full", className || sizes[size])}>
       <motion.div
@@ -155,7 +159,10 @@ export function Avatar({ name, src, email, size = 'md', showRing = false, status
             alt={name} 
             className={clsx("w-full h-full object-cover", imgClassName)}
             role="img"
-            onError={() => setImageError(true)}
+            onError={() => {
+              console.warn(`[Avatar] Failed to load image, falling back to initials: ${finalSrc}`);
+              setImageError(true);
+            }}
           />
         ) : fallbackIcon ? (
           <div className="flex items-center justify-center w-full h-full">
