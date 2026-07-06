@@ -523,6 +523,13 @@ class ApiClient {
     return this.fetch(`/addons/${id}`, { method: 'DELETE' });
   }
 
+  async moveAddonToVault(id: string, category: string): Promise<{ success: boolean; vaultEntryId: string; removedFromGroups: number }> {
+    return this.fetch(`/addons/${id}/move-to-vault`, {
+      method: 'POST',
+      body: JSON.stringify({ category }),
+    });
+  }
+
   async reloadAddon(id: string) {
     return this.fetch(`/addons/${id}/reload`, { method: 'POST' });
   }
@@ -1237,6 +1244,13 @@ class ApiClient {
     return this.fetch<{ success: boolean }>(`/vault/${id}`, { method: 'DELETE' });
   }
 
+  async reorderVaultEntries(category: string, orderedIds: string[]) {
+    return this.fetch<{ success: boolean }>('/vault/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ category, orderedIds }),
+    });
+  }
+
   async testVaultEntry(id: string) {
     return this.fetch<{ ok: boolean | null; message: string; checkedAt: string }>(`/vault/${id}/test`, {
       method: 'POST',
@@ -1354,6 +1368,7 @@ export interface VaultEntry {
   testType: VaultTestType;
   testConfig?: Record<string, any> | null;
   updatedAt: string;
+  position?: number;
 }
 
 export interface VaultListResponse {

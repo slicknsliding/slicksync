@@ -17,7 +17,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       const { category } = req.query;
       const entries = await prisma.vaultEntry.findMany({
         where: { accountId, ...(category ? { category } : {}) },
-        orderBy: { updatedAt: 'desc' },
+        orderBy: [{ position: 'asc' }, { updatedAt: 'desc' }],
       });
 
       const counts = {};
@@ -33,6 +33,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
           dashboardUrl: e.dashboardUrl, expiresAt: e.expiresAt, notifyDaysBefore: e.notifyDaysBefore,
           lastCheckedAt: e.lastCheckedAt, lastCheckStatus: e.lastCheckStatus, lastCheckMessage: e.lastCheckMessage,
           isActive: e.isActive, testType: e.testType, secretLabel: e.secretLabel, updatedAt: e.updatedAt,
+          position: e.position,
         })),
       });
     } catch (error) {
@@ -86,6 +87,13 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         return res.status(400).json({ error: `category must be one of: ${CATEGORIES.join(', ')}` });
       }
 
+      const maxPositionEntry = await prisma.vaultEntry.findFirst({
+        where: { accountId, category },
+        orderBy: { position: 'desc' },
+        select: { position: true },
+      });
+      const nextPosition = (maxPositionEntry?.position ?? -1) + 1;
+
       const entry = await prisma.vaultEntry.create({
         data: {
           accountId,
@@ -99,6 +107,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
           dashboardUrl: dashboardUrl || null,
           expiresAt: expiresAt ? new Date(expiresAt) : null,
           notifyDaysBefore: typeof notifyDaysBefore === 'number' ? notifyDaysBefore : 3,
+          position: nextPosition,
         },
       });
 
@@ -106,6 +115,41 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
     } catch (error) {
       console.error('Error creating vault entry:', error);
       res.status(500).json({ error: 'Failed to create vault entry' });
+    }
+  });
+
+  // PUT /api/vault/reorder - persist drag-and-drop order within a single category
+  // body: { category, orderedIds: string[] }
+  // NOTE: must be registered before PUT /:id, otherwise Express matches "reorder"
+  // as the :id parameter and this handler never gets reached.
+  router.put('/reorder', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const { category, orderedIds } = req.body || {};
+
+      if (!category || !Array.isArray(orderedIds) || orderedIds.length === 0) {
+        return res.status(400).json({ error: 'category and orderedIds are required' });
+      }
+
+      // Confirm every id actually belongs to this account + category before touching anything
+      const existing = await prisma.vaultEntry.findMany({
+        where: { id: { in: orderedIds }, accountId, category },
+        select: { id: true },
+      });
+      if (existing.length !== orderedIds.length) {
+        return res.status(400).json({ error: 'One or more entries do not belong to this account/category' });
+      }
+
+      await Promise.all(
+        orderedIds.map((id, index) =>
+          prisma.vaultEntry.update({ where: { id }, data: { position: index } })
+        )
+      );
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error reordering vault entries:', error);
+      res.status(500).json({ error: 'Failed to reorder vault entries' });
     }
   });
 

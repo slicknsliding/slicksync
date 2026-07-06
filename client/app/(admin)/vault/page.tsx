@@ -4,6 +4,8 @@ import Head from 'next/head';
 import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/layout/Header';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
+import { DraggableList } from '@/components/ui/DragSortable';
+import { arrayMove } from '@dnd-kit/sortable';
 import { Button, Card, Badge, Modal, Input, FilterTabsResponsive, ToggleSwitch } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api, VaultEntry, VaultCategory, VaultTestType, VaultNotificationSettings } from '@/lib/api';
@@ -17,6 +19,8 @@ import {
   TrashIcon,
   PencilIcon,
   ArrowTopRightOnSquareIcon,
+  Bars3Icon,
+  PuzzlePieceIcon,
 } from '@heroicons/react/24/outline';
 
 const CATEGORY_LABELS: Record<VaultCategory, string> = {
@@ -119,6 +123,7 @@ export default function VaultPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [movingToAddonsId, setMovingToAddonsId] = useState<string | null>(null);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -274,6 +279,26 @@ export default function VaultPage() {
     }
   };
 
+  const handleMoveToAddons = async (entry: VaultEntry) => {
+    if (!confirm(`Move "${entry.name}" to Addons? This removes it from the Vault.`)) return;
+    setMovingToAddonsId(entry.id);
+    try {
+      const { secret } = await api.revealVaultSecret(entry.id);
+      if (!secret || !/^https?:\/\//i.test(secret.trim())) {
+        toast.error("This entry's secret doesn't look like an addon manifest URL (must start with http:// or https://)");
+        return;
+      }
+      await api.createAddon({ manifestUrl: secret.trim(), name: entry.name } as any);
+      await api.deleteVaultEntry(entry.id);
+      toast.success(`Moved "${entry.name}" to Addons`);
+      load();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to move to Addons');
+    } finally {
+      setMovingToAddonsId(null);
+    }
+  };
+
   const handleTest = async (entry: VaultEntry) => {
     setTestingId(entry.id);
     try {
@@ -353,6 +378,75 @@ export default function VaultPage() {
     })),
   ];
 
+  const renderEntryCard = (entry: VaultEntry, dragHandleProps?: Record<string, unknown>, isDragging?: boolean) => (
+    <Card variant="bordered" className={`h-full flex flex-col ${isDragging ? 'shadow-lg shadow-primary/25 scale-[1.01]' : ''}`}>
+      <div className="flex items-start justify-between mb-3">
+        <div className="min-w-0 flex items-center gap-2">
+          {dragHandleProps && (
+            <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 -ml-1 rounded hover:bg-surface-hover shrink-0">
+              <Bars3Icon className="w-4 h-4" style={{ color: 'var(--color-textMuted)' }} />
+            </div>
+          )}
+          <div className="min-w-0">
+            <h3 className="font-semibold truncate" style={{ color: 'var(--color-text)' }}>{entry.name}</h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--color-textMuted)' }}>
+              {CATEGORY_LABELS[entry.category]}{entry.provider ? ` • ${entry.provider}` : ''}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-1.5 shrink-0">
+          <StatusBadge entry={entry} />
+          <ExpiryBadge entry={entry} />
+        </div>
+      </div>
+
+      <div className="mb-3 p-3 rounded-lg flex items-center justify-between gap-2" style={{ background: 'var(--color-subtle)' }}>
+        <code className="text-xs truncate" style={{ color: 'var(--color-text)' }}>
+          {revealed[entry.id] || '••••••••••••••••'}
+        </code>
+        <button onClick={() => handleReveal(entry)} className="shrink-0" style={{ color: 'var(--color-textMuted)' }}>
+          {revealed[entry.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+        </button>
+      </div>
+
+      {entry.lastCheckMessage && (
+        <p className="text-xs mb-3" style={{ color: 'var(--color-textMuted)' }}>{entry.lastCheckMessage}</p>
+      )}
+
+      <div className="mt-auto flex items-center gap-2 pt-2 flex-wrap" style={{ borderTop: '1px solid var(--color-surfaceBorder)' }}>
+        <button
+          onClick={() => handleTest(entry)}
+          disabled={testingId === entry.id || entry.testType === 'manual'}
+          title={entry.testType === 'manual' ? 'No automated check configured' : 'Run check now'}
+          className="p-2 rounded-lg transition-colors disabled:opacity-40"
+          style={{ background: 'var(--color-surfaceHover)' }}
+        >
+          <ArrowPathIcon className={`w-4 h-4 ${testingId === entry.id ? 'animate-spin' : ''}`} style={{ color: 'var(--color-text)' }} />
+        </button>
+        <button onClick={() => openEditModal(entry)} className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surfaceHover)' }}>
+          <PencilIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
+        </button>
+        {entry.dashboardUrl && (
+          <a href={entry.dashboardUrl} target="_blank" rel="noreferrer" className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surfaceHover)' }}>
+            <ArrowTopRightOnSquareIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
+          </a>
+        )}
+        <button
+          onClick={() => handleMoveToAddons(entry)}
+          disabled={movingToAddonsId === entry.id}
+          title="Move to Addons"
+          className="p-2 rounded-lg transition-colors disabled:opacity-40"
+          style={{ background: 'var(--color-surfaceHover)' }}
+        >
+          <PuzzlePieceIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
+        </button>
+        <button onClick={() => handleDelete(entry)} className="p-2 rounded-lg transition-colors ml-auto" style={{ background: 'var(--color-surfaceHover)' }}>
+          <TrashIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
+        </button>
+      </div>
+    </Card>
+  );
+
   return (
     <>
       <Head><title>SlickSync - Vault</title></Head>
@@ -390,62 +484,46 @@ export default function VaultPage() {
             </Button>
           </Card>
         ) : (
-          <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {entries.map((entry) => (
-              <StaggerItem key={entry.id}>
-                <Card variant="bordered" className="h-full flex flex-col">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="min-w-0">
-                      <h3 className="font-semibold truncate" style={{ color: 'var(--color-text)' }}>{entry.name}</h3>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-textMuted)' }}>
-                        {CATEGORY_LABELS[entry.category]}{entry.provider ? ` • ${entry.provider}` : ''}
-                      </p>
+          activeCategory === 'all' ? (
+            <StaggerContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {entries.map((entry) => (
+                <StaggerItem key={entry.id}>
+                  {renderEntryCard(entry)}
+                </StaggerItem>
+              ))}
+            </StaggerContainer>
+          ) : (
+            <>
+              <p className="text-xs mb-3" style={{ color: 'var(--color-textMuted)' }}>Drag the handle to reorder entries within this category.</p>
+              <DraggableList
+                items={entries.map(e => e.id)}
+                onDragEnd={async (event) => {
+                  const { active, over } = event;
+                  if (!over || active.id === over.id) return;
+                  const oldIndex = entries.findIndex(e => e.id === active.id);
+                  const newIndex = entries.findIndex(e => e.id === over.id);
+                  if (oldIndex === -1 || newIndex === -1) return;
+                  const reordered = arrayMove(entries, oldIndex, newIndex);
+                  setEntries(reordered);
+                  try {
+                    await api.reorderVaultEntries(activeCategory, reordered.map(e => e.id));
+                  } catch (err: any) {
+                    toast.error(err.message || 'Failed to save new order');
+                    load();
+                  }
+                }}
+                renderItem={({ id, dragHandleProps, itemProps, isDragging }) => {
+                  const entry = entries.find(e => e.id === id);
+                  if (!entry) return null;
+                  return (
+                    <div ref={itemProps.ref} style={itemProps.style} className={itemProps.className}>
+                      {renderEntryCard(entry, dragHandleProps, isDragging)}
                     </div>
-                    <div className="flex gap-1.5 shrink-0">
-                      <StatusBadge entry={entry} />
-                      <ExpiryBadge entry={entry} />
-                    </div>
-                  </div>
-
-                  <div className="mb-3 p-3 rounded-lg flex items-center justify-between gap-2" style={{ background: 'var(--color-subtle)' }}>
-                    <code className="text-xs truncate" style={{ color: 'var(--color-text)' }}>
-                      {revealed[entry.id] || '••••••••••••••••'}
-                    </code>
-                    <button onClick={() => handleReveal(entry)} className="shrink-0" style={{ color: 'var(--color-textMuted)' }}>
-                      {revealed[entry.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  {entry.lastCheckMessage && (
-                    <p className="text-xs mb-3" style={{ color: 'var(--color-textMuted)' }}>{entry.lastCheckMessage}</p>
-                  )}
-
-                  <div className="mt-auto flex items-center gap-2 pt-2" style={{ borderTop: '1px solid var(--color-surfaceBorder)' }}>
-                    <button
-                      onClick={() => handleTest(entry)}
-                      disabled={testingId === entry.id || entry.testType === 'manual'}
-                      title={entry.testType === 'manual' ? 'No automated check configured' : 'Run check now'}
-                      className="p-2 rounded-lg transition-colors disabled:opacity-40"
-                      style={{ background: 'var(--color-surfaceHover)' }}
-                    >
-                      <ArrowPathIcon className={`w-4 h-4 ${testingId === entry.id ? 'animate-spin' : ''}`} style={{ color: 'var(--color-text)' }} />
-                    </button>
-                    <button onClick={() => openEditModal(entry)} className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surfaceHover)' }}>
-                      <PencilIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
-                    </button>
-                    {entry.dashboardUrl && (
-                      <a href={entry.dashboardUrl} target="_blank" rel="noreferrer" className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surfaceHover)' }}>
-                        <ArrowTopRightOnSquareIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
-                      </a>
-                    )}
-                    <button onClick={() => handleDelete(entry)} className="p-2 rounded-lg transition-colors ml-auto" style={{ background: 'var(--color-surfaceHover)' }}>
-                      <TrashIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
-                    </button>
-                  </div>
-                </Card>
-              </StaggerItem>
-            ))}
-          </StaggerContainer>
+                  );
+                }}
+              />
+            </>
+          )
         )}
       </div>
 

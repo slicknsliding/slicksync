@@ -902,6 +902,62 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
   });
 
   // Delete addon
+  // POST /api/addons/:id/move-to-vault - convert an addon into a tracked Vault credential,
+  // removing it from active addon management (same cascade behavior as a normal delete —
+  // group associations are removed, not blocked, matching the existing delete endpoint).
+  router.post('/:id/move-to-vault', async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const { id } = req.params;
+      const { category } = req.body || {};
+
+      const VAULT_CATEGORIES = [
+        'debrid', 'usenet_provider', 'usenet_indexer', 'stremio', 'nuvio',
+        'metadata', 'ai', 'vpn', 'aiostreams', 'custom'
+      ];
+      if (!category || !VAULT_CATEGORIES.includes(category)) {
+        return res.status(400).json({ error: `category must be one of: ${VAULT_CATEGORIES.join(', ')}` });
+      }
+
+      const addon = await findAddonById(prisma, id, accountId);
+      if (!addon) return res.status(404).json({ error: 'Addon not found' });
+
+      const decryptedUrl = getDecryptedManifestUrl(addon, req);
+      if (!decryptedUrl) return res.status(500).json({ error: 'Failed to decrypt this addon\'s manifest URL' });
+
+      const groupCount = await prisma.groupAddon.count({ where: { addonId: id } });
+
+      const maxPositionEntry = await prisma.vaultEntry.findFirst({
+        where: { accountId, category },
+        orderBy: { position: 'desc' },
+        select: { position: true },
+      });
+      const nextPosition = (maxPositionEntry?.position ?? -1) + 1;
+
+      const vaultEntry = await prisma.vaultEntry.create({
+        data: {
+          accountId,
+          name: addon.name,
+          category,
+          secretLabel: 'Manifest URL',
+          encryptedSecret: encrypt(decryptedUrl, req),
+          testType: 'generic_http',
+          testConfig: JSON.stringify({ url: decryptedUrl, method: 'GET', authMode: 'none', expectStatus: 200 }),
+          dashboardUrl: decryptedUrl,
+          position: nextPosition,
+        },
+      });
+
+      const dbTransactions = new DatabaseTransactions(prisma);
+      await dbTransactions.deleteAddonWithRelations(id, accountId);
+
+      res.json({ success: true, vaultEntryId: vaultEntry.id, removedFromGroups: groupCount });
+    } catch (error) {
+      console.error('Error moving addon to vault:', error);
+      res.status(500).json({ error: 'Failed to move addon to vault' });
+    }
+  });
+
   router.delete('/:id', createRouteHandler(async (req, res) => {
     const { id } = req.params;
     const accountId = getAccountId(req);

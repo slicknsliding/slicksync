@@ -28,6 +28,19 @@ import {
   Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
 
+const ADDON_VAULT_CATEGORIES = [
+  { value: 'aiostreams', label: 'AIOStreams' },
+  { value: 'stremio', label: 'Stremio' },
+  { value: 'nuvio', label: 'Nuvio' },
+  { value: 'debrid', label: 'Debrid Services' },
+  { value: 'usenet_provider', label: 'Usenet Providers' },
+  { value: 'usenet_indexer', label: 'Usenet Indexers' },
+  { value: 'metadata', label: 'Metadata & Trackers' },
+  { value: 'ai', label: 'AI Services' },
+  { value: 'vpn', label: 'VPN' },
+  { value: 'custom', label: 'Custom' },
+];
+
 // Helper to compute configure URL from addon object
 function getConfigureUrl(addon: any): string | null {
   const manifestUrl = addon?.manifestUrl || addon?.url;
@@ -85,6 +98,9 @@ export default function AddonsPage() {
 
   // Clone state
   const [cloneTarget, setCloneTarget] = useState<AddonDisplay | null>(null);
+  const [moveToVaultTarget, setMoveToVaultTarget] = useState<AddonDisplay | null>(null);
+  const [moveToVaultCategory, setMoveToVaultCategory] = useState('custom');
+  const [isMovingToVault, setIsMovingToVault] = useState(false);
 
   // Fetch addons and groups
   useEffect(() => {
@@ -391,6 +407,7 @@ export default function AddonsPage() {
                             onOpenDetail={() => setSelectedAddon(addon)}
                             onDelete={() => setDeleteTarget(addon)}
                             onClone={() => setCloneTarget(addon)}
+                            onMoveToVault={() => setMoveToVaultTarget(addon)}
                             onToggleStatus={(addonId, newStatus) => {
                               setAddons(prev => prev.map(a =>
                                 a.id === addonId
@@ -690,6 +707,55 @@ export default function AddonsPage() {
           />
         )}
       </Modal>
+
+      {/* Move to Vault Modal */}
+      <Modal
+        isOpen={!!moveToVaultTarget}
+        onClose={() => setMoveToVaultTarget(null)}
+        title="Move to Vault"
+        description={`This removes "${moveToVaultTarget?.name}" from Addons and creates a tracked Vault entry with its manifest URL instead. If it's currently assigned to any group, it will be removed from there too.`}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>Vault category</label>
+            <select
+              value={moveToVaultCategory}
+              onChange={e => setMoveToVaultCategory(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl focus:outline-none"
+              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+            >
+              {ADDON_VAULT_CATEGORIES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-3 justify-end">
+            <Button variant="secondary" onClick={() => setMoveToVaultTarget(null)}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                if (!moveToVaultTarget) return;
+                setIsMovingToVault(true);
+                try {
+                  const result = await api.moveAddonToVault(moveToVaultTarget.id, moveToVaultCategory);
+                  toast.success(
+                    result.removedFromGroups > 0
+                      ? `Moved to Vault (removed from ${result.removedFromGroups} group${result.removedFromGroups !== 1 ? 's' : ''})`
+                      : 'Moved to Vault'
+                  );
+                  setAddons(prev => prev.filter(a => a.id !== moveToVaultTarget.id));
+                  setMoveToVaultTarget(null);
+                } catch (err: any) {
+                  toast.error(err.message || 'Failed to move addon to Vault');
+                } finally {
+                  setIsMovingToVault(false);
+                }
+              }}
+              disabled={isMovingToVault}
+            >
+              {isMovingToVault ? 'Moving...' : 'Move to Vault'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }
@@ -702,6 +768,7 @@ function AddonCard({
   onOpenDetail,
   onDelete,
   onClone,
+  onMoveToVault,
   onToggleStatus,
 }: {
   addon: AddonDisplay;
@@ -710,6 +777,7 @@ function AddonCard({
   onOpenDetail: () => void;
   onDelete: () => void;
   onClone: () => void;
+  onMoveToVault: () => void;
   onToggleStatus?: (addonId: string, newStatus: boolean) => void;
 }) {
   const [isReloading, setIsReloading] = useState(false);
@@ -966,6 +1034,18 @@ function AddonCard({
               Enable
             </>
           )}
+        </button>
+        <div className="my-1 border-t border-default" />
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            close();
+            onMoveToVault();
+          }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+        >
+          <ShieldCheckIcon className="w-4 h-4" />
+          Move to Vault
         </button>
         <div className="my-1 border-t border-default" />
         <button
