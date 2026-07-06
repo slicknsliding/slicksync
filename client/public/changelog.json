@@ -1,0 +1,72 @@
+[
+  {
+    "version": "1.3.2",
+    "date": "2026-07-06",
+    "title": "Provider badges + Vault category update",
+    "features": [
+      "Stremio/Nuvio badge now shown next to every user — in the users list (table and card views) and on the user detail page",
+      "Vault categories: replaced Torrent Indexers and Subtitles with dedicated Stremio and Nuvio categories"
+    ],
+    "bugFixes": [
+      "providerType was already being fetched from the database in several places but was never actually included in the user list/detail API responses — fixed"
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.3.1",
+    "date": "2026-07-06",
+    "title": "Critical fixes: rate limiter crash, Nuvio auth root cause",
+    "features": [],
+    "bugFixes": [
+      "Fixed a crash on every rate-limited API request (including Nuvio connect) caused by 'trust proxy' being set to trust all hops instead of exactly one (Traefik) — express-rate-limit refuses to run with that permissive a setting",
+      "Found and fixed the real cause of Nuvio login failures: the default backend URL pointed at a decommissioned raw Supabase project URL; corrected to Nuvio's actual current endpoint (api.nuvio.tv)",
+      "Nuvio auth errors now surface the real reason from Nuvio's servers instead of a generic 'Authentication failed' message"
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.3.0",
+    "date": "2026-07-06",
+    "title": "Visual redesign: new default theme, bolder look, nav fixes",
+    "features": [
+      "New 'Slick' theme (bold violet + electric cyan) as the new default look, alongside all 7 original themes",
+      "Actually loaded the Space Grotesk / Outfit font pairing the design system was already configured for but never loading",
+      "Every card now has a gradient accent stripe; page titles render as gradient text; sidebar logo and panel redesigned with real depth/glow",
+      "Sidebar highlighting is now purely hover-driven — the bold colored pill only appears on real-time cursor hover, any item, with a subtle 'current page' marker instead of a permanent fill"
+    ],
+    "bugFixes": [
+      "Fixed a sidebar highlight that could get stuck lit after moving the mouse, caused by fragile JS-driven hover state — replaced with plain CSS :hover",
+      "Fixed a missing date-fns dependency that had been silently dropped somewhere along the way"
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.2.0",
+    "date": "2026-07-05",
+    "title": "Credential Vault + full SlickSync rebrand",
+    "features": [
+      "New Vault: encrypted credential storage with expiry tracking, active-checks (Real-Debrid, TorBox, Newznab indexers, generic HTTP, TCP reachability), and ntfy/Discord notifications on expiry or failure",
+      "Complete rebrand from Syncio to SlickSync across every backend and frontend string, log message, notification footer, and the Nuvio device name"
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Renamed the project standalone from its upstream fork lineage"
+    ]
+  },
+  {
+    "version": "1.1.0",
+    "date": "2026-07-05",
+    "title": "Nuvio provider support",
+    "features": [
+      "Nuvio added as a first-class provider alongside Stremio — OAuth device-code (QR) and email/password login, in the Add User flow",
+      "Sync engine, watch-history metrics, user expiration, and library read/backup all made provider-aware end to end",
+      "Addon snapshots: save any user's or group's addon set as a reusable template and deploy it to anyone",
+      "Provider parity view and per-group activity dashboard (member roster, addon counts, real watch-time)",
+      "Anti-lockout encryption key: auto-generates and persists if unset, keeps the old key as a fallback if rotated"
+    ],
+    "bugFixes": [
+      "The general API rate limiter was defined but never actually mounted upstream — enabled it, plus stricter limits on credential/OAuth endpoints"
+    ],
+    "miscChores": []
+  }
+]
