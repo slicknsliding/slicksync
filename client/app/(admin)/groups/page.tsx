@@ -31,6 +31,7 @@ interface GroupDisplay {
   description?: string;
   color?: string;
   colorIndex?: number;
+  avatarUrl?: string | null;
   users: Array<{ name: string; id: string }>;
   addonCount: number;
   userCount: number; // Total user count from API
@@ -129,6 +130,7 @@ export default function GroupsPage() {
         description: group.description,
         color: groupColor,
         colorIndex: group.colorIndex,
+        avatarUrl: group.avatarUrl,
         users: groupUsers,
         addonCount: group.addons || 0, // Use count from API
         userCount: group.users || groupUsers.length, // Use API count, fallback to parsed list length
@@ -426,6 +428,7 @@ export default function GroupsPage() {
                                   <Avatar
                                     name={group.name}
                                     size="md"
+                                    src={group.avatarUrl || undefined}
                                     colorIndex={group.colorIndex ?? 0}
                                   />
                                   <div>
@@ -701,6 +704,7 @@ function GroupCard({
           <Avatar
             name={group.name}
             size="lg"
+            src={group.avatarUrl || undefined}
             colorIndex={group.colorIndex ?? 0}
           />
 
