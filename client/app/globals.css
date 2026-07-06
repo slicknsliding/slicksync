@@ -326,13 +326,18 @@ body {
 
 @layer components {
   /* ----- Nav item hover (pure CSS — no JS state to get stuck) ----- */
-  .nav-item-inactive {
-    color: var(--color-text-muted);
-    transition: background 0.15s ease, color 0.15s ease;
+  /* Bold colored pill — only ever shows on real-time hover, for any nav item */
+  .nav-item-hover-pill {
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   }
-  .nav-item-inactive:hover {
-    background: var(--color-surface-hover);
-    color: var(--color-text);
+  .nav-item-hover-pill:hover {
+    background: linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 70%, var(--color-secondary))) !important;
+    color: #fff !important;
+    box-shadow: 0 6px 20px -8px var(--color-primary);
+  }
+  .nav-item-hover-pill:hover .nav-item-icon,
+  .nav-item-hover-pill:hover .nav-item-label {
+    color: #fff !important;
   }
 
   /* ----- Text Colors ----- */

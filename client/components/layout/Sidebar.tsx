@@ -78,26 +78,29 @@ function NavItem({ name, href, icon: Icon, isActive, index, onNavigate }: NavIte
       <Link
         href={href}
         onClick={onNavigate}
-        className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group overflow-hidden ${isActive ? '' : 'nav-item-inactive'}`}
+        className="nav-item-hover-pill relative flex items-center gap-3 px-3 py-2.5 rounded-xl group overflow-hidden"
         style={{
-          background: isActive ? 'var(--color-primary)' : 'transparent',
-          color: isActive ? '#fff' : undefined,
-          boxShadow: isActive ? '0 6px 20px -8px var(--color-primary)' : 'none',
+          background: 'transparent',
+          color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)',
         }}
       >
         {isActive && (
-          <motion.div
-            layoutId="activeNavIndicator"
-            className="absolute inset-0 rounded-xl"
-            style={{ background: 'linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 70%, var(--color-secondary)))' }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          <span
+            aria-hidden
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full"
+            style={{ background: 'var(--color-primary)' }}
           />
         )}
 
         <Icon
-          className="w-[18px] h-[18px] relative z-10 transition-colors"
+          className="nav-item-icon w-[18px] h-[18px] relative z-10 transition-colors"
         />
-        <span className="text-sm font-medium relative z-10 font-display">{name}</span>
+        <span
+          className="nav-item-label text-sm font-medium relative z-10 font-display transition-colors"
+          style={{ color: isActive ? 'var(--color-text)' : undefined, fontWeight: isActive ? 600 : 500 }}
+        >
+          {name}
+        </span>
       </Link>
     </motion.div>
   );
