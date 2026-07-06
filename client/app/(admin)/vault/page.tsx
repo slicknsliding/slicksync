@@ -4,7 +4,7 @@ import Head from 'next/head';
 import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/layout/Header';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { Button, Card, Badge, Modal, Input, FilterTabs } from '@/components/ui';
+import { Button, Card, Badge, Modal, Input, FilterTabsResponsive } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api, VaultEntry, VaultCategory, VaultTestType, VaultNotificationSettings } from '@/lib/api';
 import {
@@ -299,8 +299,8 @@ export default function VaultPage() {
       />
 
       <div className="px-4 md:px-6 pb-6">
-        <div className="mb-5 overflow-x-auto">
-          <FilterTabs options={filterOptions} activeKey={activeCategory} onChange={setActiveCategory} layoutId="vault-filter" />
+        <div className="mb-5">
+          <FilterTabsResponsive options={filterOptions} activeKey={activeCategory} onChange={setActiveCategory} layoutId="vault-filter" />
         </div>
 
         {isLoading ? (
