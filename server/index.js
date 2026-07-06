@@ -109,7 +109,11 @@ console.log('Prisma client initialized:', !!prisma);
 const createProvider = makeCreateProvider({ prisma, encrypt });
 
 // Trust proxy headers (for correct client IP behind reverse proxies)
-app.set('trust proxy', true);
+// Trust exactly one hop (the Traefik reverse proxy in front of this container).
+// NOTE: trust proxy = true (trust ALL hops) is intentionally avoided — it lets a
+// client spoof X-Forwarded-For and bypass IP-based rate limiting entirely, and
+// express-rate-limit refuses to start with that setting for exactly this reason.
+app.set('trust proxy', 1);
 
 // Use helper-provided getAccountId (account scoping rules centralized)
 const getAccountId = getAccountIdHelper
