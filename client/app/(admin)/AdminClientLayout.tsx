@@ -6,8 +6,9 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { DndContext, DragOverlay, closestCenter } from "@/components/ui/DragSortable";
 import { useSortableSensors } from "@/components/ui/DragSortable";
+import { pointerWithin } from "@dnd-kit/core";
 import { VaultDragProvider, useVaultDrag } from "@/components/providers/VaultDragContext";
-import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
+import type { DragStartEvent, DragEndEvent, CollisionDetection } from "@dnd-kit/core";
 
 interface MobileMenuContextType {
   isOpen: boolean;
@@ -24,6 +25,20 @@ const MobileMenuContext = createContext<MobileMenuContextType>({
 export function useMobileMenu() {
   return useContext(MobileMenuContext);
 }
+
+// closestCenter compares the DRAGGED ITEM's own rect-center to each droppable's
+// center — fine for reordering same-sized cards, but wrong for dropping a card
+// onto a small, distant target like a category tab or the sidebar link, since
+// the card's center can be far from where the cursor actually is. pointerWithin
+// checks the literal cursor position instead, which is what "whatever tab I'm
+// hovering over should light up" actually needs. Try pointer-precision first,
+// fall back to closestCenter only when the pointer isn't over anything (the
+// gap-between-cards case during reordering).
+const dragCollisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  if (pointerCollisions.length > 0) return pointerCollisions;
+  return closestCenter(args);
+};
 
 // Lives inside VaultDragProvider so it can read the currently-registered
 // drag-end handler (set by whichever page has draggable items — currently
@@ -44,7 +59,7 @@ function LayoutDndWrapper({ children }: { children: ReactNode }) {
   };
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={dragCollisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       {children}
       <DragOverlay>
         {activeLabel ? (

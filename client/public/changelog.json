@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.8.2",
+    "date": "2026-07-06",
+    "title": "Fix custom avatar images rendering huge, and fix drag-drop tab highlighting for real this time",
+    "features": [],
+    "bugFixes": [
+      "Avatar images with a custom className (e.g. group avatars, which add a shadow/ring) lost their size constraint entirely instead of keeping it alongside the custom styling. With nothing capping the dimensions, a real uploaded image rendered at its full natural size instead of the intended small circle.",
+      "The v1.8.1 tab-alignment fix addressed a real bug but was not the whole story: the drag system used closestCenter collision detection everywhere, which compares the dragged card's own center to each target's center rather than the actual cursor position - fine for reordering similarly-sized cards, wrong for a card with a far-off center being dropped onto a small, distant tab or the sidebar link. Switched to a hybrid strategy: precise pointer-position detection first, falling back to closestCenter only for the gap-between-cards reordering case."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.8.1",
     "date": "2026-07-06",
     "title": "Fix Vault category tab drag-drop highlighting the wrong tab",

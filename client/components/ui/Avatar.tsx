@@ -136,7 +136,7 @@ export function Avatar({ name, src, email, size = 'md', showRing = false, status
   }, [finalSrc]);
 
   return (
-    <div className={clsx("relative inline-flex rounded-full", className || sizes[size])}>
+    <div className={clsx("relative inline-flex rounded-full", sizes[size], className)}>
       <motion.div
         whileHover={{ scale: 1.05 }}
         className={clsx(
