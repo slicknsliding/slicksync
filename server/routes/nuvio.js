@@ -113,7 +113,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       });
     } catch (error) {
       console.error('Nuvio connect error:', error.message);
-      if (error.status === 400 || error.status === 403) {
+      if (error.status && error.status >= 400 && error.status < 500) {
         return res.status(error.status).json({ error: error.message });
       }
       res.status(500).json({ error: 'Failed to connect to Nuvio' });
@@ -225,7 +225,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       });
     } catch (error) {
       console.error('Nuvio connect-authkey error:', error.message);
-      if (error.status === 400 || error.status === 403) {
+      if (error.status && error.status >= 400 && error.status < 500) {
         return res.status(error.status).json({ error: error.message });
       }
       res.status(500).json({ error: 'Failed to validate Nuvio credentials' });
