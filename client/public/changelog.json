@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.4.0",
+    "date": "2026-07-06",
+    "title": "Vault backup export (foundation for external backup + Bitwarden sync)",
+    "features": [
+      "Vault entries now export to a decrypted JSON snapshot nightly, written to data/backup/vault/ on the server, ready to be pulled off-server for backup or synced into an external password manager",
+      "On-demand backup via POST /api/vault/backup-now instead of waiting for the nightly schedule"
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.3.3",
     "date": "2026-07-06",
     "title": "Fix Vault category tabs overlapping on mobile",
