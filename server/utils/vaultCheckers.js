@@ -141,12 +141,52 @@ async function checkTcpReachability(secret, config = {}) {
   })
 }
 
+// Stremio account credentials: config.identifier is the email/username (stored in
+// the entry's `provider` field), secret is the password. Confirms Stremio actually
+// accepts the login, not just that some server responded.
+async function checkStremioAuth(secret, config = {}) {
+  const identifier = config.identifier
+  if (!identifier) return { ok: false, message: 'No email/username on file for this entry' }
+  if (!secret) return { ok: false, message: 'No password on file for this entry' }
+
+  try {
+    const { StremioAPIUtils } = require('./handlers')
+    const { store, tempStorage, authResult } = await StremioAPIUtils.authenticateWithStremio(identifier, secret)
+    if (authResult && (store.authKey || tempStorage.auth)) {
+      return { ok: true, message: 'Stremio login succeeded' }
+    }
+    return { ok: false, message: 'Stremio rejected these credentials' }
+  } catch (err) {
+    const msg = String(err?.message || '').toLowerCase()
+    if (msg.includes('passphrase') || msg.includes('wrong password')) return { ok: false, message: 'Invalid password' }
+    if (msg.includes('no such user') || msg.includes('invalid email')) return { ok: false, message: 'Invalid email' }
+    return { ok: false, message: err?.message || 'Stremio login failed' }
+  }
+}
+
+// Nuvio account credentials: same shape as Stremio's checker above.
+async function checkNuvioAuth(secret, config = {}) {
+  const identifier = config.identifier
+  if (!identifier) return { ok: false, message: 'No email/username on file for this entry' }
+  if (!secret) return { ok: false, message: 'No password on file for this entry' }
+
+  try {
+    const { validateNuvioCredentials } = require('../providers/nuvioAuth')
+    await validateNuvioCredentials(identifier, secret)
+    return { ok: true, message: 'Nuvio login succeeded' }
+  } catch (err) {
+    return { ok: false, message: err?.message || 'Nuvio login failed' }
+  }
+}
+
 const CHECKERS = {
   generic_http: checkGenericHttp,
   real_debrid: checkRealDebrid,
   torbox: checkTorBox,
   newznab_caps: checkNewznabCaps,
-  tcp_reachability: checkTcpReachability
+  tcp_reachability: checkTcpReachability,
+  stremio_auth: checkStremioAuth,
+  nuvio_auth: checkNuvioAuth
 }
 
 async function runCheck(testType, secret, config) {

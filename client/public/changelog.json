@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.6.0",
+    "date": "2026-07-06",
+    "title": "Category-specific Vault forms with real login validation",
+    "features": [
+      "Vault Add Entry form is now category-aware: Stremio/Nuvio categories ask for email+password and validate by actually logging in; Usenet Indexers ask for a Newznab URL + API key; Usenet Providers ask for host/port/username/password/SSL/data cap",
+      "Two new active-checks: stremio_auth and nuvio_auth, which log in for real rather than just pinging a server"
+    ],
+    "bugFixes": [
+      "Fixed a real bug where a single failed avatar image load could permanently hide all future valid images for that component instance (imageError state never reset when the src changed)",
+      "Added defensive inline max-width to the Modal component and console diagnostics on image load failure"
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.5.1",
     "date": "2026-07-06",
     "title": "Fix avatar bugs: uploaded images 404ing, list page not showing custom avatars, distorted sizing",

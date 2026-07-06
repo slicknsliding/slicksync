@@ -4,7 +4,7 @@ import Head from 'next/head';
 import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/layout/Header';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { Button, Card, Badge, Modal, Input, FilterTabsResponsive } from '@/components/ui';
+import { Button, Card, Badge, Modal, Input, FilterTabsResponsive, ToggleSwitch } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api, VaultEntry, VaultCategory, VaultTestType, VaultNotificationSettings } from '@/lib/api';
 import {
@@ -39,6 +39,8 @@ const TEST_TYPE_LABELS: Record<VaultTestType, string> = {
   torbox: 'TorBox',
   newznab_caps: 'Newznab indexer',
   tcp_reachability: 'TCP reachability',
+  stremio_auth: 'Stremio login',
+  nuvio_auth: 'Nuvio login',
 };
 
 function daysUntil(dateStr?: string | null): number | null {
@@ -69,20 +71,45 @@ interface EntryFormState {
   provider: string;
   secretLabel: string;
   secret: string;
+  secretUsername: string; // only used for usenet_provider mode (combined into JSON on save)
   testType: VaultTestType;
   testUrl: string;
   testHost: string;
   testPort: string;
+  testSsl: boolean;
+  testDataCap: string;
   dashboardUrl: string;
   expiresAt: string;
   notifyDaysBefore: string;
 }
 
 const EMPTY_FORM: EntryFormState = {
-  name: '', category: 'custom', provider: '', secretLabel: 'API Key', secret: '',
-  testType: 'manual', testUrl: '', testHost: '', testPort: '',
+  name: '', category: 'custom', provider: '', secretLabel: 'API Key', secret: '', secretUsername: '',
+  testType: 'manual', testUrl: '', testHost: '', testPort: '', testSsl: true, testDataCap: '',
   dashboardUrl: '', expiresAt: '', notifyDaysBefore: '3',
 };
+
+// Which specialized form to show for a given category
+function categoryFieldMode(category: VaultCategory): 'credentials' | 'indexer' | 'provider' | 'generic' {
+  if (category === 'stremio' || category === 'nuvio') return 'credentials';
+  if (category === 'usenet_indexer') return 'indexer';
+  if (category === 'usenet_provider') return 'provider';
+  return 'generic';
+}
+
+// Sensible defaults applied automatically when switching to a specialized category
+function categoryDefaults(category: VaultCategory): Partial<EntryFormState> {
+  switch (categoryFieldMode(category)) {
+    case 'credentials':
+      return { testType: category === 'nuvio' ? 'nuvio_auth' : 'stremio_auth', secretLabel: 'Password' };
+    case 'indexer':
+      return { testType: 'newznab_caps', secretLabel: 'API Key' };
+    case 'provider':
+      return { testType: 'tcp_reachability', secretLabel: 'Password' };
+    default:
+      return {};
+  }
+}
 
 export default function VaultPage() {
   const [entries, setEntries] = useState<VaultEntry[]>([]);
@@ -133,10 +160,13 @@ export default function VaultPage() {
       provider: entry.provider || '',
       secretLabel: entry.secretLabel,
       secret: '', // left blank — only sent if user types a new value
+      secretUsername: '', // same — usenet_provider username isn't returned decrypted either
       testType: entry.testType,
       testUrl: cfg.url || '',
       testHost: cfg.host || '',
       testPort: cfg.port ? String(cfg.port) : '',
+      testSsl: cfg.ssl ?? true,
+      testDataCap: cfg.dataCapGB ? String(cfg.dataCapGB) : '',
       dashboardUrl: entry.dashboardUrl || '',
       expiresAt: entry.expiresAt ? entry.expiresAt.split('T')[0] : '',
       notifyDaysBefore: String(entry.notifyDaysBefore ?? 3),
@@ -144,7 +174,21 @@ export default function VaultPage() {
     setIsAddOpen(true);
   };
 
+  const handleCategoryChange = (category: VaultCategory) => {
+    setForm(f => ({ ...f, category, ...categoryDefaults(category) }));
+  };
+
   const buildTestConfig = (f: EntryFormState) => {
+    const mode = categoryFieldMode(f.category);
+    if (mode === 'indexer') {
+      return f.testUrl ? { url: f.testUrl } : undefined;
+    }
+    if (mode === 'provider') {
+      return (f.testHost && f.testPort)
+        ? { host: f.testHost, port: Number(f.testPort), ssl: f.testSsl, dataCapGB: f.testDataCap ? Number(f.testDataCap) : undefined }
+        : undefined;
+    }
+    // generic mode falls back to the manually-picked testType
     if (f.testType === 'generic_http' || f.testType === 'newznab_caps') {
       return f.testUrl ? { url: f.testUrl } : undefined;
     }
@@ -155,16 +199,35 @@ export default function VaultPage() {
   };
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.category || (!editingId && !form.secret.trim())) {
-      toast.error('Name, category, and secret are required');
+    const mode = categoryFieldMode(form.category);
+
+    if (!form.name.trim() || !form.category) {
+      toast.error('Name and category are required');
       return;
     }
+    // Mode-specific required-field validation
+    if (mode === 'credentials' && !editingId && (!form.provider.trim() || !form.secret.trim())) {
+      toast.error('Email/username and password are required');
+      return;
+    }
+    if (mode === 'provider' && !editingId && (!form.testHost.trim() || !form.testPort.trim() || !form.secretUsername.trim() || !form.secret.trim())) {
+      toast.error('Host, port, username, and password are required');
+      return;
+    }
+    if (mode === 'indexer' && !editingId && (!form.testUrl.trim() || !form.secret.trim())) {
+      toast.error('Newznab URL and API key are required');
+      return;
+    }
+    if (mode === 'generic' && !editingId && !form.secret.trim()) {
+      toast.error('Secret is required');
+      return;
+    }
+
     setIsSaving(true);
     try {
       const payload: any = {
         name: form.name.trim(),
         category: form.category,
-        provider: form.provider.trim() || undefined,
         secretLabel: form.secretLabel.trim() || 'API Key',
         testType: form.testType,
         testConfig: buildTestConfig(form),
@@ -172,7 +235,17 @@ export default function VaultPage() {
         expiresAt: form.expiresAt || undefined,
         notifyDaysBefore: form.notifyDaysBefore ? Number(form.notifyDaysBefore) : 3,
       };
-      if (form.secret.trim()) payload.secret = form.secret.trim();
+
+      if (mode === 'provider') {
+        // Host/port already live in testConfig; provider field stays free for a friendly label
+        payload.provider = form.provider.trim() || undefined;
+        if (form.secretUsername.trim() || form.secret.trim()) {
+          payload.secret = JSON.stringify({ username: form.secretUsername.trim(), password: form.secret });
+        }
+      } else {
+        payload.provider = form.provider.trim() || undefined;
+        if (form.secret.trim()) payload.secret = form.secret.trim();
+      }
 
       if (editingId) {
         await api.updateVaultEntry(editingId, payload);
@@ -385,7 +458,7 @@ export default function VaultPage() {
             <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>Category</label>
             <select
               value={form.category}
-              onChange={e => setForm(f => ({ ...f, category: e.target.value as VaultCategory }))}
+              onChange={e => handleCategoryChange(e.target.value as VaultCategory)}
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
               style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
             >
@@ -393,36 +466,93 @@ export default function VaultPage() {
             </select>
           </div>
 
-          <Input label="Provider (optional)" placeholder="e.g. Newshosting, Real-Debrid" value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} />
-          <Input label="Secret label" placeholder="API Key" value={form.secretLabel} onChange={e => setForm(f => ({ ...f, secretLabel: e.target.value }))} />
-          <Input
-            label={editingId ? 'Secret (leave blank to keep current)' : 'Secret'}
-            type="password"
-            placeholder={editingId ? '••••••••' : 'Paste API key / password / token'}
-            value={form.secret}
-            onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
-          />
-
-          <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>Active check</label>
-            <select
-              value={form.testType}
-              onChange={e => setForm(f => ({ ...f, testType: e.target.value as VaultTestType }))}
-              className="w-full px-4 py-3 rounded-xl focus:outline-none"
-              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
-            >
-              {Object.entries(TEST_TYPE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-            </select>
-          </div>
-
-          {(form.testType === 'generic_http' || form.testType === 'newznab_caps') && (
-            <Input label="Test URL" placeholder="https://..." value={form.testUrl} onChange={e => setForm(f => ({ ...f, testUrl: e.target.value }))} />
+          {categoryFieldMode(form.category) === 'credentials' && (
+            <>
+              <p className="text-xs -mt-2" style={{ color: 'var(--color-textMuted)' }}>
+                Stored credentials are validated by logging into {form.category === 'nuvio' ? 'Nuvio' : 'Stremio'} directly when you hit Test.
+              </p>
+              <Input label="Email or Username" placeholder="you@example.com" value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} />
+              <Input
+                label={editingId ? 'Password (leave blank to keep current)' : 'Password'}
+                type="password"
+                placeholder={editingId ? '••••••••' : 'Account password'}
+                value={form.secret}
+                onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+              />
+            </>
           )}
-          {form.testType === 'tcp_reachability' && (
-            <div className="grid grid-cols-2 gap-3">
-              <Input label="Host" placeholder="news.example.com" value={form.testHost} onChange={e => setForm(f => ({ ...f, testHost: e.target.value }))} />
-              <Input label="Port" placeholder="563" value={form.testPort} onChange={e => setForm(f => ({ ...f, testPort: e.target.value }))} />
-            </div>
+
+          {categoryFieldMode(form.category) === 'indexer' && (
+            <>
+              <Input label="Newznab URL" placeholder="https://indexer.example.com" value={form.testUrl} onChange={e => setForm(f => ({ ...f, testUrl: e.target.value }))} />
+              <Input
+                label={editingId ? 'API Key (leave blank to keep current)' : 'API Key'}
+                type="password"
+                placeholder={editingId ? '••••••••' : 'Indexer API key'}
+                value={form.secret}
+                onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+              />
+            </>
+          )}
+
+          {categoryFieldMode(form.category) === 'provider' && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Host" placeholder="news.example.com" value={form.testHost} onChange={e => setForm(f => ({ ...f, testHost: e.target.value }))} />
+                <Input label="Port" placeholder="563" value={form.testPort} onChange={e => setForm(f => ({ ...f, testPort: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Username" placeholder="Account username" value={form.secretUsername} onChange={e => setForm(f => ({ ...f, secretUsername: e.target.value }))} />
+                <Input
+                  label={editingId ? 'Password (leave blank to keep current)' : 'Password'}
+                  type="password"
+                  placeholder={editingId ? '••••••••' : 'Account password'}
+                  value={form.secret}
+                  onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+                />
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
+                <span className="text-sm" style={{ color: 'var(--color-text)' }}>Use SSL</span>
+                <ToggleSwitch checked={form.testSsl} onChange={() => setForm(f => ({ ...f, testSsl: !f.testSsl }))} />
+              </div>
+              <Input label="Data cap in GB (optional)" placeholder="Leave blank for no cap" value={form.testDataCap} onChange={e => setForm(f => ({ ...f, testDataCap: e.target.value }))} />
+            </>
+          )}
+
+          {categoryFieldMode(form.category) === 'generic' && (
+            <>
+              <Input label="Provider (optional)" placeholder="e.g. Newshosting, Real-Debrid" value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} />
+              <Input label="Secret label" placeholder="API Key" value={form.secretLabel} onChange={e => setForm(f => ({ ...f, secretLabel: e.target.value }))} />
+              <Input
+                label={editingId ? 'Secret (leave blank to keep current)' : 'Secret'}
+                type="password"
+                placeholder={editingId ? '••••••••' : 'Paste API key / password / token'}
+                value={form.secret}
+                onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+              />
+
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>Active check</label>
+                <select
+                  value={form.testType}
+                  onChange={e => setForm(f => ({ ...f, testType: e.target.value as VaultTestType }))}
+                  className="w-full px-4 py-3 rounded-xl focus:outline-none"
+                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+                >
+                  {Object.entries(TEST_TYPE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                </select>
+              </div>
+
+              {(form.testType === 'generic_http' || form.testType === 'newznab_caps') && (
+                <Input label="Test URL" placeholder="https://..." value={form.testUrl} onChange={e => setForm(f => ({ ...f, testUrl: e.target.value }))} />
+              )}
+              {form.testType === 'tcp_reachability' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Host" placeholder="news.example.com" value={form.testHost} onChange={e => setForm(f => ({ ...f, testHost: e.target.value }))} />
+                  <Input label="Port" placeholder="563" value={form.testPort} onChange={e => setForm(f => ({ ...f, testPort: e.target.value }))} />
+                </div>
+              )}
+            </>
           )}
 
           <Input label="Dashboard URL (optional)" placeholder="https://provider.com/dashboard" value={form.dashboardUrl} onChange={e => setForm(f => ({ ...f, dashboardUrl: e.target.value }))} />
