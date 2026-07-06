@@ -44,7 +44,8 @@ export function Header({
       style={{
         background: 'color-mix(in srgb, var(--color-bg) 80%, transparent)',
         backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid var(--color-surfaceBorder)',
+        borderBottom: '1px solid transparent',
+        borderImage: 'linear-gradient(90deg, var(--color-primary-muted), transparent 60%) 1',
       }}
     >
       <div className="px-4 md:px-6 lg:px-8 py-3 md:py-4 flex items-center justify-between gap-4">
@@ -64,8 +65,13 @@ export function Header({
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.1 }}
-              className="text-lg md:text-xl font-semibold font-display"
-              style={{ color: 'var(--color-text)' }}
+              className="text-xl md:text-2xl font-bold font-display tracking-tight"
+              style={{
+                background: 'linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 120%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}
             >
               {title}
             </motion.h1>

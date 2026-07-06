@@ -78,23 +78,11 @@ function NavItem({ name, href, icon: Icon, isActive, index, onNavigate }: NavIte
       <Link
         href={href}
         onClick={onNavigate}
-        className="relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group overflow-hidden"
+        className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group overflow-hidden ${isActive ? '' : 'nav-item-inactive'}`}
         style={{
           background: isActive ? 'var(--color-primary)' : 'transparent',
-          color: isActive ? '#fff' : 'var(--color-text-muted)',
+          color: isActive ? '#fff' : undefined,
           boxShadow: isActive ? '0 6px 20px -8px var(--color-primary)' : 'none',
-        }}
-        onMouseEnter={(e) => {
-          if (!isActive) {
-            e.currentTarget.style.background = 'var(--color-surface-hover)';
-            e.currentTarget.style.color = 'var(--color-text)';
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!isActive) {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--color-text-muted)';
-          }
         }}
       >
         {isActive && (
@@ -231,15 +219,26 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         >
           <Link href="/" className="flex items-center gap-3">
             <motion.div
-              whileHover={{ scale: 1.05 }}
+              whileHover={{ scale: 1.08, rotate: 3 }}
               transition={{ duration: 0.2 }}
-              className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden"
-              style={{ background: 'var(--color-primary)' }}
+              className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden"
+              style={{
+                background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)',
+                boxShadow: '0 8px 24px -6px var(--color-primary)',
+              }}
             >
               <img src="/logo-white.png" alt="SlickSync" className="w-7 h-7 object-contain" />
             </motion.div>
             <div>
-              <h1 className="text-lg font-bold font-display" style={{ color: 'var(--color-text)' }}>
+              <h1
+                className="text-lg font-bold font-display tracking-tight"
+                style={{
+                  background: 'linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                }}
+              >
                 SlickSync
               </h1>
             </div>
