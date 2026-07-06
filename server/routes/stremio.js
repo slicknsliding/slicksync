@@ -529,12 +529,17 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
       const accountId = getAccountId(req)
       const normalizedEmail = userInfo.email
 
-      // For invite-based creation, check if user with this email already exists first
+      // For invite-based creation, check if a STREMIO user with this email already
+      // exists first. Scoped by providerType so the same email can exist as both
+      // a Stremio user and a Nuvio user (this previously checked ANY provider,
+      // which incorrectly blocked creating a Stremio account whenever a Nuvio
+      // account already used that email, and vice versa).
       if (normalizedEmail) {
         const existingUserByEmail = await prisma.user.findFirst({
           where: {
             accountId,
-            email: normalizedEmail
+            email: normalizedEmail,
+            providerType: 'stremio'
           }
         })
         if (existingUserByEmail) {

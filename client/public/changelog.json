@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.8.4",
+    "date": "2026-07-06",
+    "title": "Fix: could not have a Stremio and Nuvio account with the same email",
+    "features": [],
+    "bugFixes": [
+      "Creating a Stremio user checked whether ANY user (regardless of provider) already used that email, instead of scoping the check to Stremio accounts specifically. This meant if a Nuvio account already existed with a given email, creating a Stremio account with that same email was silently blocked - the database itself has always correctly allowed the same email across both providers (a composite email+providerType constraint), this was purely an overly broad check in the Stremio creation endpoint. The equivalent Nuvio endpoint already scoped this correctly; the Stremio one now matches it."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.8.3",
     "date": "2026-07-06",
     "title": "Fix group avatars not showing on the Groups list page",
