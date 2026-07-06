@@ -196,7 +196,7 @@ model VaultEntry {
   id               String    @id @default(cuid())
   accountId        String    @default("default")
   name             String                          // display name, e.g. "Newshosting account"
-  category         String                          // debrid | usenet_provider | usenet_indexer | torrent_indexer | subtitles | metadata | ai | vpn | aiostreams | custom
+  category         String                          // debrid | usenet_provider | usenet_indexer | stremio | nuvio | metadata | ai | vpn | aiostreams | custom
   provider         String?                         // e.g. "newshosting", "real-debrid", "nzbgeek"
   secretLabel      String    @default("API Key")   // display label for the secret field
   encryptedSecret  String                          // encrypted API key / password / token

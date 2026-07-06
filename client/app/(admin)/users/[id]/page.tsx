@@ -857,6 +857,12 @@ export default function UserDetailPage() {
                           maxLength={50}
                           className="text-xl md:text-2xl font-bold font-display"
                         />
+                        <Badge
+                          variant={user.providerType === 'nuvio' ? 'secondary' : 'primary'}
+                          size="sm"
+                        >
+                          {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                        </Badge>
                         <SyncBadge
                           userId={user.id}
                           onSync={async (id) => {

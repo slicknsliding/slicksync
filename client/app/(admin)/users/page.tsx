@@ -35,6 +35,7 @@ interface UserDisplay {
   id: string;
   name: string;
   email?: string;
+  providerType?: 'stremio' | 'nuvio';
   status: 'active' | 'expired' | 'pending';
   watchTime: number;
   groups: string[];
@@ -147,6 +148,7 @@ export default function UsersPage() {
         id: user.id,
         name: userName,
         email: user.email,
+        providerType: user.providerType || 'stremio',
         status,
         watchTime: (user as any).watchTime || 0, // Use watchTime from API
         groups: userGroups,
@@ -479,9 +481,17 @@ export default function UsersPage() {
                                 >
                                   <UserAvatar userId={user.id} name={user.name} email={user.email} colorIndex={user.colorIndex} size="sm" />
                                   <div>
-                                    <p className="font-medium transition-colors group-hover:text-primary text-default truncate">
-                                      {user.name}
-                                    </p>
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium transition-colors group-hover:text-primary text-default truncate">
+                                        {user.name}
+                                      </p>
+                                      <Badge
+                                        variant={user.providerType === 'nuvio' ? 'secondary' : 'primary'}
+                                        size="sm"
+                                      >
+                                        {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                                      </Badge>
+                                    </div>
                                     <p className="text-sm text-subtle">
                                       {hideSensitive ? '••••••••' : user.email}
                                     </p>
@@ -819,6 +829,12 @@ function UserCard({
               >
                 {user.name}
               </Link>
+              <Badge
+                variant={user.providerType === 'nuvio' ? 'secondary' : 'primary'}
+                size="sm"
+              >
+                {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+              </Badge>
               <SyncBadge
                 key={`sync-badge-${user.id}`}
                 userId={user.id}
