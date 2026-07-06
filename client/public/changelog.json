@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.8.5",
+    "date": "2026-07-06",
+    "title": "Fix a server crash (undefined AUTH_ENABLED) and two more same-email-different-provider blocks",
+    "features": [],
+    "bugFixes": [
+      "Fixed a server crash: AUTH_ENABLED was referenced in two places (the Stremio /connect endpoint, and the general user-update endpoint) but never actually defined anywhere in the codebase - a leftover from an old refactor that renamed this to INSTANCE_TYPE everywhere else. Replaced both with the same INSTANCE_TYPE check used consistently elsewhere.",
+      "While fixing the crash, found the same email-scoping bug from v1.8.4 in two more places: the Stremio /connect endpoint (logging into an existing Stremio account) and the general user-update endpoint (changing a user's email) both checked for ANY existing user with that email instead of scoping to the same provider type. Both now correctly allow a Stremio account and a Nuvio account to share an email."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.8.4",
     "date": "2026-07-06",
     "title": "Fix: could not have a Stremio and Nuvio account with the same email",

@@ -214,18 +214,21 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
       const { ensureEmailUniqueness } = require('../utils/helpers/database')
       await ensureEmailUniqueness(prisma, email, accountId)
 
-      // Check if user with this email already exists in this account
+      // Check if user with this email already exists in this account.
+      // Email conflicts are scoped to the same provider type (a Stremio user and
+      // a Nuvio user are allowed to share an email — that's by design, see the
+      // composite email+providerType uniqueness constraint). Username conflicts
+      // are NOT provider-scoped, since usernames should stay unique across the
+      // whole account regardless of which provider a user connects through.
       let existingUser = null
       try {
-        existingUser = await prisma.user.findFirst({
-          where: {
-            accountId,
-            OR: [
-              { email: email },
-              { username: finalUsername }
-            ]
-          }
+        const emailConflict = await prisma.user.findFirst({
+          where: { accountId, email, providerType: 'stremio' }
         });
+        const usernameConflict = emailConflict ? null : await prisma.user.findFirst({
+          where: { accountId, username: finalUsername }
+        });
+        existingUser = emailConflict || usernameConflict
       } catch (e) {
         // Gracefully handle missing appAccountId
         return res.status(401).json({ message: 'Authentication required' })
@@ -247,7 +250,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
       if (existingUser) {
         // If user exists with valid Stremio connection, return conflict
         if (hasValidStremioConnection) {
-          if (AUTH_ENABLED && req.appAccountId && existingUser.accountId === req.appAccountId) {
+          if ((INSTANCE_TYPE === 'public') && req.appAccountId && existingUser.accountId === req.appAccountId) {
             return res.status(409).json({
               message: 'User with this email already exists',
               error: 'Email already exists in this account'

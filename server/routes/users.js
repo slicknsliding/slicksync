@@ -1233,13 +1233,15 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       if (email !== undefined) {
-        // Check if email is already taken by another user
+        // Check if email is already taken by another user of the SAME provider type
+        // (a Stremio user and a Nuvio user are allowed to share an email by design)
         const emailExists = await prisma.user.findFirst({
           where: {
             AND: [
               { email },
               { id: { not: id } },
-              ...(AUTH_ENABLED && req.appAccountId ? [{ accountId: req.appAccountId }] : [])
+              { providerType: existingUser.providerType || 'stremio' },
+              ...((INSTANCE_TYPE === 'public') && req.appAccountId ? [{ accountId: req.appAccountId }] : [])
             ]
           }
         })
