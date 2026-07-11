@@ -538,6 +538,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         watchActivityByUser[userId] = {
           id: userId,
           username: dbUser.username || dbUser.email || userId,
+          email: dbUser.email || null,
+          colorIndex: dbUser.colorIndex || 0,
+          dates: new Set(),
           movies: 0,
           shows: 0,
           total: 0,
@@ -564,6 +567,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       const shouldCount = !earliestWatchActivityDate || activityDateStr >= earliestWatchActivityDate.toISOString().split('T')[0]
 
       if (shouldCount) {
+        watchActivityByUser[userId].dates.add(date)
+
         // Track unique items (count once per user, not per day)
         // Use base item ID to count unique series/movies, not episodes
         const baseItemId = getBaseItemId(itemId, itemType)
@@ -977,65 +982,19 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   // Calculate summary stats (Movies, Shows, Total Time) from WatchActivity data (already period-filtered)
   const activeUserCount = Object.keys(watchActivityByUser).length;
 
-  // Build topUsers from session stats (real sessions only, no synthetic data)
-  const userStatsFromSessions = new Map()
-  const topUsersItemSet = new Set() 
-  
-  // RESET summary totals to use session-based data for consistency
-  totalMovies = 0
-  totalShows = 0
-  totalWatchTime = 0
-  const globalItemSet = new Set()
-
-  watchSessions.filter(s => s.endTime !== null && !s.isSynthetic).forEach(session => {
-    const userId = session.user.id
-    const username = session.user.username
-    const email = session.user.email
-    const itemId = session.item.id
-    const itemType = session.item.type
-    const baseItemId = getBaseItemId(itemId, itemType)
-    const userItemKey = `${userId}:${baseItemId}`
-    const duration = session.durationSeconds || 0
-    
-    // Accumulate global totals
-    totalWatchTime += duration
-    if (!globalItemSet.has(userItemKey)) {
-      globalItemSet.add(userItemKey)
-      if (itemType === 'movie') totalMovies++
-      else if (itemType === 'series') totalShows++
-    }
-
-    if (!userStatsFromSessions.has(userId)) {
-      userStatsFromSessions.set(userId, {
-        id: userId,
-        username: username,
-        email: email,
-        movies: 0,
-        shows: 0,
-        total: 0,
-        watchTime: 0,
-        watchTimeMovies: 0,
-        watchTimeShows: 0,
-        dates: new Set()
-      })
-    }
-    
-    const stats = userStatsFromSessions.get(userId)
-    stats.watchTime += duration
-    if (session.startTime) stats.dates.add(session.startTime.split('T')[0])
-    
-    if (itemType === 'movie') stats.watchTimeMovies += duration
-    else if (itemType === 'series') stats.watchTimeShows += duration
-    
-    if (!topUsersItemSet.has(userItemKey)) {
-      topUsersItemSet.add(userItemKey)
-      if (itemType === 'movie') stats.movies++
-      else if (itemType === 'series') stats.shows++
-      stats.total++
-    }
-  })
-  
-  const topUsers = Array.from(userStatsFromSessions.values())
+  // Build topUsers from the same WatchActivity-derived data that byUserByDay
+  // already uses (watchActivityByUser). This USED to be built from
+  // WatchSession data instead, but that table turned out to be far sparser
+  // and less reliable than WatchActivity for at least some users/setups —
+  // in one confirmed real case, a user with 326 real WatchActivity rows had
+  // ZERO qualifying WatchSession rows and was completely missing from the
+  // leaderboard, while a deleted/orphaned user's leftover session rows
+  // still showed up with their raw ID as a display name. Deliberately NOT
+  // resetting totalMovies/totalShows/totalWatchTime here anymore either —
+  // those were already correctly computed from WatchActivity data above;
+  // the old code was throwing that away and recomputing (wrongly) from the
+  // same unreliable session data.
+  const topUsers = Object.values(watchActivityByUser)
     .sort((a, b) => b.total - a.total)
     .map(user => {
       let currentStreak = 0

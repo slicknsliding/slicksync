@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.8.7",
+    "date": "2026-07-11",
+    "title": "Fix Metrics leaderboard and summary showing wrong/missing data",
+    "features": [],
+    "bugFixes": [
+      "The Metrics leaderboard and totals were built from WatchSession data (a hash-comparison heuristic that detects live watching by checking whether an item's progress changed between 5-minute polls) instead of the already-reliable WatchActivity table. In a confirmed real case, a user with 326 real WatchActivity rows had zero qualifying WatchSession rows and was completely missing from the leaderboard, while a deleted/orphaned user's leftover session rows still showed up with their raw database ID as a display name. The summary totals (movies/shows/watch time) were also being reset to 0 and recomputed from this same unreliable session data, discarding correct numbers that had already been computed from WatchActivity earlier in the same request.",
+      "Checked both the original upstream project and another Stremio manager for a working session-tracking reference for Nuvio specifically, and confirmed neither actually tracks it - this looks like a broader gap in how session-detection heuristics translate to Nuvio's data shape, not something specific to this fork. Rather than try to extend that heuristic, the leaderboard and summary now build from the same WatchActivity data that was already working correctly elsewhere on the Metrics and Activity pages."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.8.6",
     "date": "2026-07-10",
     "title": "Fix constant Nuvio token refresh spam and 429 rate limits",
