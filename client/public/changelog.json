@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.9.6",
+    "date": "2026-07-11",
+    "title": "Stop preview/hover autoplay from counting as a real watch; show real avatars on Activity cards",
+    "features": [
+      "Activity cards (both grid and list view) now show the actual user avatar (avatarUrl, respecting useGravatar) instead of always falling back to a generic letter badge. Previously the Activity feed's user objects never included avatarUrl, so UserAvatar had nothing to render but initials, even for accounts with a real avatar set (as seen on the Users page)."
+    ],
+    "bugFixes": [
+      "isActuallyWatched() still had a gap after v1.9.3: it checked state.overallTimeWatched > 0, but overallTimeWatched was being set to the same raw position value as timeOffset - so any nonzero position (including a few seconds of Nuvio's hover/preview-autoplay while just browsing the library) still counted as a full watch. The item's actual duration was never even captured from the API response to compare against. getLibrary() now records state.duration alongside timeOffset, and isActuallyWatched requires progress to be at least 5% of the runtime (same threshold used by AIOManager) instead of just nonzero - filters out preview noise while still catching real partial watches. Falls back to requiring a video_id when duration isn't available (e.g. live TV/IPTV items)."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.5",
     "date": "2026-07-11",
     "title": "Label Activity feed items with which Nuvio profile they were watched under",

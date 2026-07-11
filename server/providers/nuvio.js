@@ -249,6 +249,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
               season: p.season,
               episode: p.episode,
               timeOffset: p.position,
+              duration: p.duration,
               timeWatched: 0,
               overallTimeWatched: p.position || 0,
               lastWatched: new Date(p.last_watched).toISOString(),

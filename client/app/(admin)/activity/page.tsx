@@ -57,6 +57,7 @@ interface ActivityItem {
   isSynthetic?: boolean;
   poster?: string;
   profileLabel?: string; // Nuvio profile name this was watched under, if known
+  userAvatarUrl?: string | null;
 }
 
 // Invite history types
@@ -142,6 +143,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         isSynthetic: false,
         poster: entry.item.poster,
         profileLabel: entry.profileLabel ?? undefined,
+        userAvatarUrl: entry.user.useGravatar ? null : (entry.user.avatarUrl ?? null),
       });
     });
   }
@@ -374,7 +376,7 @@ const ActivityCard = memo(function ActivityCard({
 
       {/* User avatar */}
       <Link href={`/users/${activity.userId}`}>
-        <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} size="md" />
+        <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="md" />
       </Link>
 
       {/* Activity details */}
@@ -484,7 +486,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
         {/* User avatar - top right */}
         <div className="absolute top-2 right-2">
           <Link href={`/users/${activity.userId}`} onClick={(e) => e.stopPropagation()}>
-            <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} size="sm" />
+            <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
           </Link>
         </div>
 

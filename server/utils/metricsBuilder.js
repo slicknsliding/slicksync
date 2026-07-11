@@ -388,7 +388,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       isActive: true,
       stremioAuthKey: true,
       inviteCode: true,
-      colorIndex: true
+      colorIndex: true,
+      avatarUrl: true,
+      useGravatar: true
     },
     orderBy: { createdAt: 'asc' }
   })
@@ -722,17 +724,23 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   }
 
   function isActuallyWatched(item) {
-    // video_id presence alone is NOT reliable "watched" evidence - Nuvio creates
-    // a watch_progress row (video_id set, position 0) the moment an item is
-    // saved/bookmarked to the library. Real playback progress is required too.
+    // Nonzero position/overallTimeWatched alone is NOT reliable "watched"
+    // evidence - Nuvio records some position even for brief preview/hover
+    // autoplay while browsing the library. Require it to be a meaningful
+    // fraction of the item's actual runtime instead.
     const state = item.state || {}
-    if (state.timeWatched > 0 || state.overallTimeWatched > 0) {
-      return true
+    const timeWatched = Number(state.timeWatched || 0)
+    if (timeWatched > 0) return true
+
+    const progressMs = Math.max(Number(state.timeOffset || 0), Number(state.overallTimeWatched || 0))
+    if (progressMs <= 0) return false
+
+    const duration = Number(state.duration || 0)
+    if (duration > 0) {
+      return (progressMs / duration) > 0.05
     }
-    if (state.video_id && state.video_id.trim() !== '' && state.timeOffset > 0) {
-      return true
-    }
-    return false
+
+    return !!(state.video_id && state.video_id.trim() !== '')
   }
 
 
@@ -921,7 +929,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
             id: ep.userId,
             username: user.username || user.email || ep.userId,
             email: user.email,
-            colorIndex: user.colorIndex || 0
+            colorIndex: user.colorIndex || 0,
+            avatarUrl: user.avatarUrl || null,
+            useGravatar: user.useGravatar ?? false
           },
           item: {
             id: ep.showId,
@@ -947,7 +957,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
             id: m.userId,
             username: user.username || user.email || m.userId,
             email: user.email,
-            colorIndex: user.colorIndex || 0
+            colorIndex: user.colorIndex || 0,
+            avatarUrl: user.avatarUrl || null,
+            useGravatar: user.useGravatar ?? false
           },
           item: {
             id: m.itemId,
