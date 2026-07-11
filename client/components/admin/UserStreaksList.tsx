@@ -10,12 +10,16 @@ interface UserData {
   id: string;
   name: string;
   email?: string;
+  avatarUrl?: string | null;
+  useGravatar?: boolean;
 }
 
 interface UserStreaksData {
   userId: string;
   username: string;
   email?: string;
+  avatarUrl?: string | null;
+  useGravatar?: boolean;
   currentStreak: number;
   longestStreak: number;
 }
@@ -44,6 +48,8 @@ export function UserStreaksList({ users }: UserStreaksListProps) {
                 userId: user.id,
                 username: user.name,
                 email: user.email,
+                avatarUrl: user.avatarUrl,
+                useGravatar: user.useGravatar,
                 currentStreak: data.currentStreak || 0,
                 longestStreak: data.longestStreak || 0,
               };
@@ -97,7 +103,7 @@ export function UserStreaksList({ users }: UserStreaksListProps) {
           className="flex items-center gap-4 p-4 rounded-xl bg-surface-hover overflow-hidden"
         >
           <div className="flex-shrink-0">
-            <UserAvatar userId={user.userId} name={user.username} email={user.email} size="md" />
+            <UserAvatar userId={user.userId} name={user.username} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} size="md" />
           </div>
           
           <div className="flex-1 min-w-0">

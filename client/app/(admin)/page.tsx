@@ -259,6 +259,8 @@ export default function DashboardPage() {
         id: user.id,
         name: user.username,
         email: user.email,
+        avatarUrl: user.avatarUrl,
+        useGravatar: user.useGravatar,
         watchTime: Math.round(user.watchTimeHours * 60),
         streak: 0, // TODO: Fetch from user streaks
       }));
@@ -469,7 +471,7 @@ export default function DashboardPage() {
                       whileHover={{ x: 4 }}
                       className="flex items-center gap-3 p-2.5 rounded-lg transition-colors cursor-pointer bg-surface-hover hover:bg-surface"
                     >
-                      <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} size="sm" />
+                      <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm truncate text-muted">
                           <span className="font-medium text-default">
@@ -532,7 +534,7 @@ export default function DashboardPage() {
                         className="flex items-center gap-3 p-3 rounded-lg transition-colors bg-surface-hover hover:bg-surface cursor-pointer"
                       >
                         <div className="relative">
-                          <UserAvatar userId={user.id} name={user.name} email={user.email} size="md" />
+                          <UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} size="md" />
                           <div 
                             className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
                             style={{ 

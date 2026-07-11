@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.7",
+    "date": "2026-07-11",
+    "title": "Show real avatars on Dashboard and Metrics pages, not just the Activity page",
+    "features": [
+      "v1.9.6 added avatarUrl to the Activity page's user data, but three other surfaces build their user objects from separate code paths that were missed: the Metrics page's User Leaderboard and Watch Streaks panels (sourced from watchActivity.byUser), and the Dashboard's Recent Activity and Top Viewers widgets (the latter also sourced from watchActivity.byUser). All four now carry avatarUrl/useGravatar through from the database and pass it to UserAvatar, so a user's real avatar (e.g. a custom uploaded image) shows consistently across the whole app instead of only on the Activity page."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.6",
     "date": "2026-07-11",
     "title": "Stop preview/hover autoplay from counting as a real watch; show real avatars on Activity cards",
