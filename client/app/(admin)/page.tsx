@@ -298,6 +298,28 @@ export default function DashboardPage() {
           });
         });
     }
+
+    // Merge in the reliable WatchActivity-derived feed (movies + episodes)
+    // for anything not already covered by a live/session entry above — same
+    // reasoning as the Activity page: WatchSession requires an item's
+    // progress to visibly change between two 5-minute polls to register at
+    // all, which doesn't reliably happen for either provider, so this fills
+    // in real watch history the session data misses.
+    if (metricsData.recentActivity) {
+      const seenUserItemKeys = new Set(items.map(i => `${i.user.id}-${i.item.id}`));
+
+      metricsData.recentActivity
+        .filter(a => !seenUserItemKeys.has(`${a.user.id}-${a.item.id}`))
+        .forEach(a => {
+          items.push({
+            user: a.user,
+            item: a.item,
+            watchedAt: a.watchedAt,
+            timestamp: a.watchedAtTimestamp,
+            isLive: false
+          });
+        });
+    }
     
     return items.sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
   }, [metricsData]);

@@ -1600,6 +1600,13 @@ export interface MetricsData {
     item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number };
     startedAt: string;
   }>;
+  recentActivity?: Array<{
+    user: { id: string; username: string; email?: string; colorIndex: number };
+    item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };
+    videoId: string | null;
+    watchedAt: string;
+    watchedAtTimestamp: number;
+  }>;
   recentEpisodes?: Array<{
     user: { id: string; username: string; email?: string; colorIndex: number };
     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };

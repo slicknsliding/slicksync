@@ -70,13 +70,17 @@ interface InviteHistoryItem {
 }
 
 // Helper to transform metrics data to activity items
-// History = DB sessions with endTime set AND durationSeconds > 0
+// History = completed DB sessions (endTime set, durationSeconds > 0), merged
+// with recentActivity (movie/episode watch history from a separate, more
+// reliable pipeline) for anything sessions missed — deduplicated by
+// user+item so a watch caught by both isn't shown twice.
 // Now Playing = handled separately (DB sessions with no endTime)
-// Library JSON (startedPlaying/recentEpisodes) = never shown
+// startedPlaying = never shown
 function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[] {
   if (!metrics) return [];
 
   const activities: ActivityItem[] = [];
+  const seenUserItemKeys = new Set<string>();
 
   if (metrics.watchSessions && metrics.watchSessions.length > 0) {
     metrics.watchSessions.forEach((session) => {
@@ -85,6 +89,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
       // Must have actual watch data
       if ((session.durationSeconds || 0) <= 0) return;
 
+      seenUserItemKeys.add(`${session.user.id}:${session.item.id}`);
       activities.push({
         id: session.id,
         userId: session.user.id,
@@ -103,6 +108,38 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         isActive: false,
         isSynthetic: false,
         poster: session.item.poster,
+      });
+    });
+  }
+
+  // Merge in the reliable WatchActivity-derived feed (movies + episodes),
+  // skipping anything already represented by a session above for the same
+  // user+item so a watch that happened to be caught by both systems isn't
+  // shown twice. No durationSeconds here by design — this data doesn't
+  // track per-event duration, and the UI already hides that badge cleanly
+  // when it's undefined (see the render logic below).
+  if (metrics.recentActivity && metrics.recentActivity.length > 0) {
+    metrics.recentActivity.forEach((entry) => {
+      const key = `${entry.user.id}:${entry.item.id}`;
+      if (seenUserItemKeys.has(key)) return;
+
+      activities.push({
+        id: `activity-${entry.user.id}-${entry.item.id}-${entry.videoId || 'movie'}-${entry.watchedAtTimestamp}`,
+        userId: entry.user.id,
+        userName: entry.user.username,
+        userEmail: entry.user.email,
+        userColorIndex: entry.user.colorIndex,
+        type: 'complete' as ActivityType,
+        contentType: (entry.item.type === 'movie' ? 'movie' : 'series') as ContentType,
+        contentId: entry.item.id,
+        contentName: entry.item.name,
+        season: entry.item.season ?? undefined,
+        episode: entry.item.episode ?? undefined,
+        timestamp: new Date(entry.watchedAt),
+        endTime: new Date(entry.watchedAt),
+        isActive: false,
+        isSynthetic: false,
+        poster: entry.item.poster,
       });
     });
   }
