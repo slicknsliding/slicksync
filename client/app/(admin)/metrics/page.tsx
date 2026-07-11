@@ -249,6 +249,8 @@ export default function MetricsPage() {
         id: user.id,
         name: user.username,
         email: user.email,
+        avatarUrl: user.avatarUrl,
+        useGravatar: user.useGravatar,
         watchTime: Math.round(user.watchTimeHours * 60), // Convert to minutes
         movies: user.movies,
         series: user.shows,
@@ -380,7 +382,7 @@ export default function MetricsPage() {
                           </div>
 
                           {/* Avatar & Name */}
-                          <UserAvatar userId={user.id} name={user.name} email={user.email} size="md" className="shrink-0" />
+                          <UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} size="md" className="shrink-0" />
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-default truncate">{user.name}</p>
                             <div className="flex items-center gap-4 text-sm text-muted">
@@ -433,7 +435,7 @@ export default function MetricsPage() {
                   </div>
                   {topUsersData.length > 0 && (
                     <UserStreaksList 
-                      users={topUsersData.map(u => ({ id: u.id, name: u.name, email: u.email }))} 
+                      users={topUsersData.map(u => ({ id: u.id, name: u.name, email: u.email, avatarUrl: u.avatarUrl, useGravatar: u.useGravatar }))} 
                     />
                   )}
                 </Card>

@@ -1579,6 +1579,8 @@ export interface MetricsData {
       id: string;
       username: string;
       email?: string; // Added email
+      avatarUrl?: string | null;
+      useGravatar?: boolean;
       movies: number;
       shows: number;
       total: number;

@@ -542,6 +542,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
           username: dbUser.username || dbUser.email || userId,
           email: dbUser.email || null,
           colorIndex: dbUser.colorIndex || 0,
+          avatarUrl: dbUser.avatarUrl || null,
+          useGravatar: dbUser.useGravatar ?? false,
           dates: new Set(),
           movies: 0,
           shows: 0,
