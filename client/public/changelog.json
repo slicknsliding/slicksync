@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.8.6",
+    "date": "2026-07-10",
+    "title": "Fix constant Nuvio token refresh spam and 429 rate limits",
+    "features": [],
+    "bugFixes": [
+      "createProvider() is called fresh on every single operation (every activity check, every sync, every addon fetch) rather than being reused across a session. Without any caching, this forced a brand new Nuvio token refresh on every single one of those calls, even seconds apart, even though a Supabase access token is normally valid for about an hour. That is what caused the constant \"Nuvio token refresh failed\" log spam and 429 rate limit responses - added a module-level token cache (keyed by Nuvio user ID) so a still-valid token gets reused across separate provider instances instead of being refreshed every time.",
+      "Also fixed a related race condition: Supabase refresh tokens are single-use and rotate on every refresh, so two concurrent requests for the same user could have raced to refresh with the same (about to be invalidated) token, causing one of them to fail. Concurrent callers for the same user now share one in-flight refresh instead of firing duplicate requests."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.8.5",
     "date": "2026-07-06",
     "title": "Fix a server crash (undefined AUTH_ENABLED) and two more same-email-different-provider blocks",

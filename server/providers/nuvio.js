@@ -6,23 +6,52 @@
 const { supabaseGet, supabasePost, supabaseDelete, supabaseRpc } = require('./supabase')
 const { refreshNuvioToken, isTokenExpired } = require('./nuvioAuth')
 
-function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onTokenRefresh }) {
-  let accessToken = null
-  let refreshToken = initialRefreshToken
-  let refreshPromise = null
+// Module-level (not per-provider-instance) token cache and in-flight-refresh
+// tracking, keyed by Nuvio userId. createProvider() is called fresh on
+// every single operation (see providers/index.js) rather than being reused
+// across a session, so without this cache every getAddons/getLibrary/etc.
+// call — even seconds apart — was forcing a brand new token refresh against
+// Nuvio's API. That's what caused the constant "Nuvio token refresh failed"
+// log spam and 429s: a scheduled 5-minute activity check alone was one
+// refresh per user per cycle, forever, even though a Supabase access token
+// is typically valid for about an hour. Caching at module level means the
+// cache survives across separate createNuvioProvider() calls for the same
+// user, cutting refresh calls down to roughly once per real token lifetime
+// instead of once per operation.
+//
+// The in-flight-refresh map serves a second purpose: Supabase refresh
+// tokens are single-use (each refresh rotates it). If two concurrent
+// requests for the same user both see an expired/missing token and both
+// fire off their own refreshNuvioToken() call using the same refresh
+// token, the second one fails because the first already consumed and
+// rotated it. Tracking one shared in-flight promise per userId means
+// concurrent callers await the same refresh instead of racing each other.
+const tokenCache = new Map()      // userId -> { accessToken, refreshToken }
+const refreshPromises = new Map() // userId -> Promise<string> (in-flight refresh)
 
+function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onTokenRefresh }) {
   async function ensureAuth() {
-    if (accessToken && !isTokenExpired(accessToken)) return
-    if (refreshPromise) return refreshPromise
-    refreshPromise = (async () => {
+    const cached = tokenCache.get(userId)
+    if (cached?.accessToken && !isTokenExpired(cached.accessToken)) {
+      return cached.accessToken
+    }
+
+    const existing = refreshPromises.get(userId)
+    if (existing) return existing
+
+    const promise = (async () => {
       try {
-        const result = await refreshNuvioToken(refreshToken)
-        accessToken = result.access_token
-        // Persist rotated refresh token
-        if (result.refresh_token) {
-          if (onTokenRefresh) await onTokenRefresh(result.refresh_token)
-          refreshToken = result.refresh_token
+        const currentRefreshToken = tokenCache.get(userId)?.refreshToken || initialRefreshToken
+        const result = await refreshNuvioToken(currentRefreshToken)
+        const newAccessToken = result.access_token
+        const newRefreshToken = result.refresh_token || currentRefreshToken
+
+        tokenCache.set(userId, { accessToken: newAccessToken, refreshToken: newRefreshToken })
+
+        if (result.refresh_token && onTokenRefresh) {
+          await onTokenRefresh(newRefreshToken)
         }
+        return newAccessToken
       } catch (e) {
         console.warn(`[NuvioProvider] Auth expired for user ${userId}, token refresh failed:`, e?.message)
         const err = new Error('Provider authentication expired')
@@ -30,10 +59,12 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
         err.cause = e
         throw err
       } finally {
-        refreshPromise = null
+        refreshPromises.delete(userId)
       }
     })()
-    return refreshPromise
+
+    refreshPromises.set(userId, promise)
+    return promise
   }
 
   return {
@@ -42,7 +73,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
     // --- Addon Transport ---
 
     async getAddons() {
-      await ensureAuth()
+      const accessToken = await ensureAuth()
       const rows = await supabaseGet('addons', {
         user_id: `eq.${userId}`,
         profile_id: 'eq.1',
@@ -66,7 +97,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
     },
 
     async setAddons(addons) {
-      await ensureAuth()
+      const accessToken = await ensureAuth()
       // Snapshot current addons before delete for rollback on failure
       const snapshot = await supabaseGet('addons', {
         user_id: `eq.${userId}`,
@@ -108,7 +139,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
     },
 
     async addAddon(url, manifest) {
-      await ensureAuth()
+      const accessToken = await ensureAuth()
       // Get current max sort_order
       const current = await supabaseGet('addons', {
         user_id: `eq.${userId}`,
@@ -130,7 +161,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
     },
 
     async clearAddons() {
-      await ensureAuth()
+      const accessToken = await ensureAuth()
       await supabaseDelete('addons', {
         user_id: `eq.${userId}`,
         profile_id: 'eq.1'
@@ -140,7 +171,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
     // --- Content ---
 
     async getLibrary() {
-      await ensureAuth()
+      const accessToken = await ensureAuth()
       // Combine library + watch progress to build libraryItem shape
       const [libraryResult, progressResult, watchedResult] = await Promise.allSettled([
         supabaseRpc('sync_pull_library', { p_profile_id: 1 }, accessToken),
