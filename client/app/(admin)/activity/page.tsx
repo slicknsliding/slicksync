@@ -110,6 +110,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         isActive: false,
         isSynthetic: false,
         poster: session.item.poster,
+        userAvatarUrl: session.user.useGravatar ? null : (session.user.avatarUrl ?? null),
       });
     });
   }
@@ -1274,7 +1275,7 @@ function ActivityPageContent() {
                         )}
                         <div className="flex-1 min-w-0">
                           <Link href={`/users/${np.user.id}`} className="flex items-center gap-2 mb-1">
-                            <UserAvatar userId={np.user.id} name={np.user.username} size="sm" />
+                            <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
                             <span className="text-sm font-medium text-default truncate hover:text-primary transition-colors">
                               {np.user.username}
                             </span>
