@@ -58,8 +58,12 @@ RUN adduser --system --uid 1001 appuser
 # Create data and logs directories with proper ownership for appuser
 RUN mkdir -p /app/data /app/logs && chown -R appuser:nodejs /app/data /app/logs
 
-# Install runtime dependencies
-RUN apk add --no-cache curl openssl3 npm
+# Install runtime dependencies. coreutils provides stdbuf, needed to force
+# line-buffered stdout/stderr on the backend process below — bun appears to
+# fully-buffer (rather than line-buffer) output when backgrounded in a
+# non-TTY context, which was making the backend's own console output never
+# reach `docker logs` at all despite the process running correctly.
+RUN apk add --no-cache curl openssl3 npm coreutils
 
 # Set environment variables for Prisma
 ENV PRISMA_CLI_BINARY_TARGETS="linux-musl-openssl-3.0.x,linux-musl-arm64-openssl-3.0.x"

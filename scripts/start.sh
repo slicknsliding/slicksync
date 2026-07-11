@@ -89,7 +89,15 @@ FRONTEND_PID=$!
 sleep 2
 
 echo "🔧 Starting backend server on port ${BACKEND_PORT:-4000}..."
-cd /app && HOST=0.0.0.0 PORT=${BACKEND_PORT:-4000} INSTANCE_TYPE=${INSTANCE_TYPE} DATABASE_URL=${DATABASE_URL} bun server/index.js &
+# stdbuf -oL -eL forces line-buffered stdout/stderr. Without it, bun appears
+# to fully-buffer output once backgrounded in a non-TTY context (this
+# container), meaning console.log/console.warn/console.error from the app
+# itself accumulate in an internal buffer and may never flush — the process
+# runs and serves requests completely normally, but produces no visible
+# logs at all. stdbuf execs directly into the wrapped command (it does not
+# stay around as a separate parent process), so $! below still correctly
+# captures bun's own PID for the cleanup/kill logic further down.
+cd /app && HOST=0.0.0.0 PORT=${BACKEND_PORT:-4000} INSTANCE_TYPE=${INSTANCE_TYPE} DATABASE_URL=${DATABASE_URL} stdbuf -oL -eL bun server/index.js &
 BACKEND_PID=$!
 
 cleanup() {
