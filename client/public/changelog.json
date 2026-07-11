@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.9.0",
+    "date": "2026-07-11",
+    "title": "Fix Activity page and Watch Time Today showing no data",
+    "features": [
+      "Added movie watch history tracking (a movie equivalent of the existing episode watch history), populated by the same reliable pipeline that already tracks episodes for both Stremio and Nuvio."
+    ],
+    "bugFixes": [
+      "The Activity page's main feed, and the Dashboard's Recent Activity widget, were built entirely from WatchSession data - a heuristic that requires an item's progress to visibly change between two 5-minute polls to register at all, built specifically around Stremio's data shape and confirmed unreliable for both providers in this setup. Both now merge in a new reliable activity feed (built from watch history that a separate, already-proven pipeline populates correctly) for anything sessions missed, deduplicated against session entries so nothing shows twice.",
+      "\"Watch Time Today\" on the Activity page, and the Watch Time Trend graph on the Metrics page, were also reading from the same unreliable session data - already-correct totals computed from watch activity data earlier in the same request were being discarded in favor of the sparse session-based numbers. Both now use the reliable totals directly."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.8.8",
     "date": "2026-07-11",
     "title": "Fix ghost/deleted user still showing in Dashboard Recent Activity",

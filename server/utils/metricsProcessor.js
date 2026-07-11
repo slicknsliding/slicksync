@@ -110,6 +110,65 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
 }
 
 /**
+ * Record movie watch in history (for movie items) — the movie equivalent
+ * of recordEpisodeWatch above. WatchActivity records that a movie was
+ * watched for aggregate counts, but has no title/poster to display; this
+ * captures that metadata the same way EpisodeWatchHistory does for series.
+ */
+async function recordMovieWatch(prisma, accountId, userId, item) {
+  try {
+    // Only process movie items
+    if (item.type !== 'movie') return false
+
+    const itemId = item._id || item.id
+    if (!itemId) return false
+
+    const itemName = item.name || 'Unknown Movie'
+    const poster = item.poster || null
+
+    // Get watch date from item
+    // IMPORTANT: Only use state.lastWatched - this is the actual watch timestamp
+    let watchedAt = new Date()
+    if (item.state?.lastWatched) {
+      const d = new Date(item.state.lastWatched)
+      if (!isNaN(d.getTime())) watchedAt = d
+    }
+
+    // Upsert the movie watch (updates watchedAt if already exists)
+    await prisma.movieWatchHistory.upsert({
+      where: {
+        accountId_userId_itemId: {
+          accountId: accountId || 'default',
+          userId,
+          itemId
+        }
+      },
+      create: {
+        accountId: accountId || 'default',
+        userId,
+        itemId,
+        itemName,
+        poster,
+        watchedAt
+      },
+      update: {
+        watchedAt, // Update watch time if re-watching
+        itemName, // Update in case name changed
+        poster // Update in case poster changed
+      }
+    })
+
+    return true
+  } catch (error) {
+    // Silently fail - movie history is optional
+    if (error.code !== 'P2002') { // Ignore unique constraint errors
+      console.warn(`[MetricsProcessor] Error recording movie watch:`, error.message)
+    }
+    return false
+  }
+}
+
+/**
  * Get the most recent snapshot for an item on or before today.
  * This lets us compute deltas within the same day as well as across days.
  */
@@ -331,10 +390,13 @@ async function processLibraryItem(prisma, accountId, userId, item, today) {
       }
     }
 
-    // Record episode watch history for series items
-    // This runs regardless of whether snapshot changed, to capture all watched episodes
+    // Record episode watch history for series items, or movie watch history
+    // for movies. This runs regardless of whether snapshot changed, to
+    // capture all watched items.
     if (item.type === 'series' && item.state?.video_id) {
       await recordEpisodeWatch(prisma, accountIdValue, userId, item)
+    } else if (item.type === 'movie') {
+      await recordMovieWatch(prisma, accountIdValue, userId, item)
     }
 
     return { snapshotCreated, activityCreated }

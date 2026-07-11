@@ -882,51 +882,92 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   nowPlaying.sort((a, b) => b.watchedAtTimestamp - a.watchedAtTimestamp)
   startedPlaying.sort((a, b) => b.startedAtTimestamp - a.startedAtTimestamp)
 
-  // Fetch episode watch history from database
-  // This provides episode-level granularity that Stremio doesn't track
-  let recentEpisodes = []
+  // Fetch episode + movie watch history from database and merge into one
+  // reliable "recent activity" feed. This is the WatchActivity-adjacent data
+  // (populated by the same proven pipeline as the leaderboard fix in
+  // v1.8.7) rather than WatchSession, which requires an item's progress to
+  // visibly change between two 5-minute polls to register at all — that
+  // heuristic was built for Stremio's data shape and, per investigation,
+  // doesn't reliably work for either provider at this poll interval.
+  let recentActivity = []
   try {
-    const episodeHistory = await prisma.episodeWatchHistory.findMany({
-      where: {
-        accountId: accountIdValue,
-        watchedAt: {
-          gte: startDate
-        }
-      },
-      orderBy: {
-        watchedAt: 'desc'
-      },
-      take: 5000 // Activity page needs deep history (UI lazily renders)
-    })
+    const [episodeHistory, movieHistory] = await Promise.all([
+      prisma.episodeWatchHistory.findMany({
+        where: { accountId: accountIdValue, watchedAt: { gte: startDate } },
+        orderBy: { watchedAt: 'desc' },
+        take: 5000 // Activity page needs deep history (UI lazily renders)
+      }),
+      prisma.movieWatchHistory.findMany({
+        where: { accountId: accountIdValue, watchedAt: { gte: startDate } },
+        orderBy: { watchedAt: 'desc' },
+        take: 5000
+      })
+    ])
 
-    // Build user lookup for episode history
+    // Build user lookup and skip entries for users that no longer exist
+    // (deleted/recreated connection) instead of falling back to showing
+    // their raw database ID as a display name.
     const userMap = new Map(allUsers.map(u => [u.id, u]))
 
-    recentEpisodes = episodeHistory.map(ep => {
-      const user = userMap.get(ep.userId)
-      return {
-        user: {
-          id: ep.userId,
-          username: user?.username || user?.email || ep.userId,
-          email: user?.email,
-          colorIndex: user?.colorIndex || 0
-        },
-        item: {
-          id: ep.showId,
-          name: ep.showName,
-          type: 'series',
-          poster: ep.poster,
-          season: ep.season,
-          episode: ep.episode
-        },
-        videoId: ep.videoId,
-        watchedAt: ep.watchedAt.toISOString(),
-        watchedAtTimestamp: ep.watchedAt.getTime()
-      }
-    })
+    const episodeEntries = episodeHistory
+      .filter(ep => userMap.has(ep.userId))
+      .map(ep => {
+        const user = userMap.get(ep.userId)
+        return {
+          user: {
+            id: ep.userId,
+            username: user.username || user.email || ep.userId,
+            email: user.email,
+            colorIndex: user.colorIndex || 0
+          },
+          item: {
+            id: ep.showId,
+            name: ep.showName,
+            type: 'series',
+            poster: ep.poster,
+            season: ep.season,
+            episode: ep.episode
+          },
+          videoId: ep.videoId,
+          watchedAt: ep.watchedAt.toISOString(),
+          watchedAtTimestamp: ep.watchedAt.getTime()
+        }
+      })
+
+    const movieEntries = movieHistory
+      .filter(m => userMap.has(m.userId))
+      .map(m => {
+        const user = userMap.get(m.userId)
+        return {
+          user: {
+            id: m.userId,
+            username: user.username || user.email || m.userId,
+            email: user.email,
+            colorIndex: user.colorIndex || 0
+          },
+          item: {
+            id: m.itemId,
+            name: m.itemName,
+            type: 'movie',
+            poster: m.poster,
+            season: null,
+            episode: null
+          },
+          videoId: null,
+          watchedAt: m.watchedAt.toISOString(),
+          watchedAtTimestamp: m.watchedAt.getTime()
+        }
+      })
+
+    recentActivity = [...episodeEntries, ...movieEntries]
+      .sort((a, b) => b.watchedAtTimestamp - a.watchedAtTimestamp)
   } catch (error) {
-    console.warn(`[MetricsBuilder] Error fetching episode history:`, error.message)
+    console.warn(`[MetricsBuilder] Error fetching recent activity:`, error.message)
   }
+
+  // Kept for backwards compatibility with anything still reading the old
+  // episode-only field name; identical content, series entries only.
+  const recentEpisodes = recentActivity.filter(a => a.item.type === 'series')
 
   // Fetch watch sessions from database
   // This provides start time, end time, and duration for each viewing session
@@ -1029,15 +1070,14 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     })
     .map(({ dates, ...rest }) => rest)
 
-  // Watch Time Trend Chart data
-  const watchTimeByDayFromSessions = {}
-  watchSessions.filter(s => s.endTime !== null && !s.isSynthetic).forEach(session => {
-    const date = new Date(session.startTime).toISOString().split('T')[0]
-    const duration = session.durationSeconds || 0
-    watchTimeByDayFromSessions[date] = (watchTimeByDayFromSessions[date] || 0) + duration
-  })
-  
-  const watchTimeChart = Object.entries(watchTimeByDayFromSessions)
+  // Watch Time Trend Chart data — derived from watchTimeByDay, which was
+  // already correctly accumulated from WatchActivity earlier in this
+  // function. This USED to be built from WatchSession data instead
+  // (watchTimeByDayFromSessions), which meant "Watch Time Today" on the
+  // Activity page and the Watch Time Trend graph on the Metrics page were
+  // both reading the same unreliable, sparse session data that caused the
+  // leaderboard bug fixed in v1.8.7 — same root cause, different field.
+  const watchTimeChart = Object.entries(watchTimeByDay)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, seconds]) => ({
       date,
@@ -1106,6 +1146,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     },
     nowPlaying,
     startedPlaying,
+    recentActivity,
     recentEpisodes,
     watchSessions,
     period,

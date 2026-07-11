@@ -294,6 +294,27 @@ model EpisodeWatchHistory {
   @@map("episode_watch_history")
 }
 
+// Metrics: Movie watch history - the movie equivalent of EpisodeWatchHistory.
+// WatchActivity records that a movie was watched (for aggregate counts/streaks)
+// but has no title/poster; this table stores that display metadata reliably,
+// via the same already-working pipeline that populates EpisodeWatchHistory,
+// instead of relying on WatchSession (built for a different, live-detection
+// purpose and much less reliably populated for either provider).
+model MovieWatchHistory {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  userId    String
+  itemId    String // Movie ID (e.g., "tt1234567")
+  itemName  String // Movie name for display
+  poster    String? // Movie poster URL
+  watchedAt DateTime // When this movie was watched
+  createdAt DateTime @default(now())
+
+  @@index([accountId, userId, watchedAt])
+  @@unique([accountId, userId, itemId]) // One entry per movie per user
+  @@map("movie_watch_history")
+}
+
 // Metrics: Watch sessions - tracks individual viewing sessions with start/end times
 // Since Stremio only provides cumulative watch time, we track sessions during syncs
 model WatchSession {
