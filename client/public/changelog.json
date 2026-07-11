@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.9.4",
+    "date": "2026-07-11",
+    "title": "Sync watch activity across all Nuvio profiles, not just the primary one",
+    "features": [],
+    "bugFixes": [
+      "getLibrary() in the Nuvio provider hardcoded p_profile_id: 1 on every RPC call (sync_pull_library, sync_pull_watch_progress, sync_pull_watched_items), so any watch activity happening under a second, third, etc. Nuvio profile was invisible to SlickSync no matter how long you waited - not a polling delay, the wrong profile was being queried, permanently. Confirmed via direct sync_pull_profiles/sync_pull_watch_progress queries: live playback was landing on a non-primary profile that was never being fetched.",
+      "getLibrary() now calls sync_pull_profiles first and fetches library/progress/watched-items for every profile the account has, merging the results (most-recent watch wins if the same title shows progress on more than one profile). Falls back to profile 1 alone if the profile list can't be fetched, so single-profile accounts are unaffected. getAddons()/setAddons() are intentionally left on profile 1 only for now - out of scope for this fix."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.3",
     "date": "2026-07-11",
     "title": "Fix false 'watched' activity for library items that were only saved, not played",
