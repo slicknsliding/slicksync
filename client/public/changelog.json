@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.10",
+    "date": "2026-07-11",
+    "title": "Fix the last two avatar gaps: live sessions and the Now Playing banner",
+    "bugFixes": [
+      "v1.9.6/v1.9.7 threaded avatarUrl through recentActivity and watchActivity.byUser, but two more sources build their own user objects independently: nowPlaying (used by the Dashboard's Recent Activity panel and the Activity page's Now Playing banner) and watchSessions (completed DB sessions with real tracked duration - e.g. the Obsession card with its '34s' badge). Both were still falling back to generic initials even for accounts with a real avatar set, which is why the same account could show two different-looking avatars across cards on the same page. All four avatar sources (recentActivity, watchActivity.byUser, nowPlaying, watchSessions) now carry avatarUrl/useGravatar consistently."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.9",
     "date": "2026-07-11",
     "title": "Fix version badge stuck at v1.9.2",

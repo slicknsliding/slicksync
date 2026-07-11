@@ -1591,7 +1591,7 @@ export interface MetricsData {
     }>;
   };
   nowPlaying: Array<{
-    user: { id: string; username: string; email: string; colorIndex: number };
+    user: { id: string; username: string; email: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean };
     item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number };
     videoId?: string | null; // videoId for series items (used for session matching)
     watchedAt: string;
@@ -1618,7 +1618,7 @@ export interface MetricsData {
   }>;
   watchSessions?: Array<{
     id: string;
-    user: { id: string; username: string; email?: string; colorIndex: number };
+    user: { id: string; username: string; email?: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean };
     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };
     videoId?: string | null;
     startTime: string;

@@ -830,7 +830,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         id: user.id,
         username: user.username || user.email,
         email: user.email,
-        colorIndex: user.colorIndex || 0
+        colorIndex: user.colorIndex || 0,
+        avatarUrl: user.avatarUrl || null,
+        useGravatar: user.useGravatar ?? false
       },
       item: {
         id: session.itemId,
@@ -1022,7 +1024,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
           id: session.userId,
           username: user?.username || user?.email || session.userId,
           email: user?.email,
-          colorIndex: user?.colorIndex || 0
+          colorIndex: user?.colorIndex || 0,
+          avatarUrl: user?.avatarUrl || null,
+          useGravatar: user?.useGravatar ?? false
         },
         item: {
           id: session.itemId,
