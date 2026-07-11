@@ -286,7 +286,10 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
           accountNotifiedItems.add(notificationKey)
         }
       } catch (error) {
-        // Skip user if there's an error fetching their library
+        // Skip user if there's an error fetching their library, but log it —
+        // silently skipping made a real, persistent failure indistinguishable
+        // from "this user has nothing new to report" for weeks.
+        console.warn(`[ActivityMonitor] Skipping user ${user.id} due to error:`, error.message)
         continue
       }
     }
@@ -295,7 +298,13 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
     // which sends notifications when a session starts (now playing) using user-level webhooks.
     // The old account-level activity notification has been disabled to avoid duplicate notifications.
   } catch (error) {
-    // Silently fail - don't spam logs
+    // This used to be a bare silent catch ("don't spam logs"), which meant a
+    // genuine, persistent bug here (e.g. a broken Prisma model reference)
+    // was completely indistinguishable from "nothing new happened this
+    // cycle" — no way to tell the difference without instrumenting this by
+    // hand. A single warning per failed 5-minute cycle is not log spam.
+    console.warn(`[ActivityMonitor] checkActivityForAccount failed for account ${accountId}:`, error.message)
+    console.warn(error.stack)
   }
 }
 
@@ -315,7 +324,10 @@ async function checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
       await checkActivityForAccount(prisma, DEFAULT_ACCOUNT_ID, decrypt, getAccountId)
     }
   } catch (error) {
-    // Silently fail
+    // Same reasoning as above — checkActivityForAccount already logs its own
+    // errors, but this outer catch existing at all meant something could
+    // theoretically still fail invisibly above/around that call.
+    console.warn(`[ActivityMonitor] checkAllAccounts failed:`, error.message)
   }
 }
 

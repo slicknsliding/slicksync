@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.1",
+    "date": "2026-07-11",
+    "title": "Fix activity monitor silently swallowing errors",
+    "features": [],
+    "bugFixes": [
+      "The scheduled 5-minute activity/metrics check had two bare catch blocks that logged nothing at all (one explicitly commented \"Silently fail - dont spam logs\"). Any genuine, persistent error in that cycle - a bad database query, a broken model reference, anything - was completely indistinguishable from \"nothing new happened this cycle\", with zero trace in the logs. Both now log a warning (and the per-account failure logs the full stack trace) so a real failure is visible instead of silent."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.0",
     "date": "2026-07-11",
     "title": "Fix Activity page and Watch Time Today showing no data",
