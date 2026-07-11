@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.8.8",
+    "date": "2026-07-11",
+    "title": "Fix ghost/deleted user still showing in Dashboard Recent Activity",
+    "features": [],
+    "bugFixes": [
+      "The Dashboard's Recent Activity widget reads from the same WatchSession data as the old leaderboard did, and had the identical ghost-user bug: a deleted/recreated connection's leftover session rows still showed up with their raw database ID as a display name. Sessions belonging to users that no longer exist are now filtered out entirely instead of falling back to showing the raw ID, matching the same guard already used elsewhere in the metrics builder."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.8.7",
     "date": "2026-07-11",
     "title": "Fix Metrics leaderboard and summary showing wrong/missing data",

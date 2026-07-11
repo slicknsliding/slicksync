@@ -948,7 +948,13 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     // Build user lookup for sessions
     const userMap = new Map(allUsers.map(u => [u.id, u]))
 
-    watchSessions = sessions.map(session => {
+    // Skip sessions belonging to users that no longer exist (e.g. a
+    // deleted/recreated connection) instead of showing them with the raw
+    // userId as a fallback display name — same reasoning as the identical
+    // guard already used for watchActivityByUser above.
+    watchSessions = sessions
+      .filter(session => userMap.has(session.userId))
+      .map(session => {
       const user = userMap.get(session.userId)
       return {
         id: session.id,
