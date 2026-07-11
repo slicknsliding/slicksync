@@ -1601,7 +1601,7 @@ export interface MetricsData {
     startedAt: string;
   }>;
   recentActivity?: Array<{
-    user: { id: string; username: string; email?: string; colorIndex: number };
+    user: { id: string; username: string; email?: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean };
     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };
     videoId: string | null;
     profileLabel?: string | null;

@@ -31,22 +31,30 @@ function getWatchDate(item) {
 }
 
 function isActuallyWatched(item) {
-  // Check if the item was actually watched vs just saved/bookmarked to the library.
-  // Nuvio creates a watch_progress row (video_id set, position 0) the moment an
-  // item is added to the library - so video_id presence alone is NOT reliable
-  // "watched" evidence. Real playback progress is required too.
+  // Check if the item was actually watched vs just previewed/bookmarked.
+  // Nuvio records a nonzero position even for brief hover/preview autoplay
+  // while browsing the library - so overallTimeWatched/timeOffset > 0 alone
+  // is NOT reliable "watched" evidence on its own. Require it to be a
+  // meaningful fraction of the item's actual runtime instead.
   const state = item.state || {}
 
-  if (state.timeWatched > 0 || state.overallTimeWatched > 0) {
-    return true
+  const timeWatched = Number(state.timeWatched || 0)
+  if (timeWatched > 0) return true
+
+  const progressMs = Math.max(Number(state.timeOffset || 0), Number(state.overallTimeWatched || 0))
+  if (progressMs <= 0) return false
+
+  const duration = Number(state.duration || 0)
+  if (duration > 0) {
+    // Same 5% threshold used by AIOManager - filters out preview-autoplay
+    // noise while still catching real partial watches
+    return (progressMs / duration) > 0.05
   }
 
-  // video_id only counts if paired with actual playback progress
-  if (state.video_id && state.video_id.trim() !== '' && state.timeOffset > 0) {
-    return true
-  }
-
-  return false
+  // No duration to compute a ratio against - fall back to requiring a
+  // real video_id alongside the progress (e.g. live TV/IPTV items report
+  // duration: 0 but a genuine position)
+  return !!(state.video_id && state.video_id.trim() !== '')
 }
 
 async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId) {
