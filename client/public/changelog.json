@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.9",
+    "date": "2026-07-11",
+    "title": "Fix version badge stuck at v1.9.2",
+    "bugFixes": [
+      "The sidebar version badge and Changelog page's 'Current' marker read .release-please-manifest.json first, before falling back to package.json. None of the v1.9.3-v1.9.8 patches updated that file, so the app kept reporting v1.9.2 as current even though newer code was actually running. Updated the manifest to match."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.8",
     "date": "2026-07-11",
     "title": "Fix the real cause of bookmarked-but-unwatched titles reappearing every poll cycle",
