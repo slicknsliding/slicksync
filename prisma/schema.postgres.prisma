@@ -285,6 +285,7 @@ model EpisodeWatchHistory {
   season      Int? // Season number (null if unknown)
   episode     Int? // Episode number (null if unknown)
   poster      String? // Show poster URL
+  profileLabel String? // Which provider profile this was watched under (e.g. Nuvio profile name), if known
   watchedAt   DateTime // When this episode was watched
   createdAt   DateTime @default(now())
 
@@ -307,6 +308,7 @@ model MovieWatchHistory {
   itemId    String // Movie ID (e.g., "tt1234567")
   itemName  String // Movie name for display
   poster    String? // Movie poster URL
+  profileLabel String? // Which provider profile this was watched under (e.g. Nuvio profile name), if known
   watchedAt DateTime // When this movie was watched
   createdAt DateTime @default(now())
 

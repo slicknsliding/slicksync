@@ -932,6 +932,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
             episode: ep.episode
           },
           videoId: ep.videoId,
+          profileLabel: ep.profileLabel || null,
           watchedAt: ep.watchedAt.toISOString(),
           watchedAtTimestamp: ep.watchedAt.getTime()
         }
@@ -957,6 +958,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
             episode: null
           },
           videoId: null,
+          profileLabel: m.profileLabel || null,
           watchedAt: m.watchedAt.toISOString(),
           watchedAtTimestamp: m.watchedAt.getTime()
         }

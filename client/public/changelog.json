@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.5",
+    "date": "2026-07-11",
+    "title": "Label Activity feed items with which Nuvio profile they were watched under",
+    "features": [
+      "Since v1.9.4 now syncs all Nuvio profiles instead of just the primary one, movie/episode watch entries can come from different profiles on the same account (e.g. a household's Main, Secondary, and Test profiles). Each entry is now tagged with the Nuvio profile name it came from and stored in a new profileLabel column on EpisodeWatchHistory and MovieWatchHistory. The Activity page (both grid and list views) shows this as a small badge on each card when known, so activity from different profiles stays visually distinguishable instead of being merged anonymously."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.4",
     "date": "2026-07-11",
     "title": "Sync watch activity across all Nuvio profiles, not just the primary one",

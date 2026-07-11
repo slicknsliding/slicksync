@@ -56,6 +56,7 @@ interface ActivityItem {
   isActive?: boolean; // True if still watching
   isSynthetic?: boolean;
   poster?: string;
+  profileLabel?: string; // Nuvio profile name this was watched under, if known
 }
 
 // Invite history types
@@ -140,6 +141,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         isActive: false,
         isSynthetic: false,
         poster: entry.item.poster,
+        profileLabel: entry.profileLabel ?? undefined,
       });
     });
   }
@@ -405,6 +407,11 @@ const ActivityCard = memo(function ActivityCard({
               </span>
             )}
           </button>
+          {activity.profileLabel && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-300">
+              {activity.profileLabel}
+            </span>
+          )}
         </div>
 
         {/* Session meta: duration & start/end time */}
@@ -480,6 +487,15 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} size="sm" />
           </Link>
         </div>
+
+        {/* Nuvio profile badge - bottom left, only shown when known */}
+        {activity.profileLabel && (
+          <div className="absolute bottom-2 left-2">
+            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
+              {activity.profileLabel}
+            </div>
+          </div>
+        )}
 
         {/* Session duration badge - top left, styled like the activity type tick */}
         {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
