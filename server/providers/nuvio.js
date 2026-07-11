@@ -172,52 +172,93 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
 
     async getLibrary() {
       const accessToken = await ensureAuth()
-      // Combine library + watch progress to build libraryItem shape
-      const [libraryResult, progressResult, watchedResult] = await Promise.allSettled([
-        supabaseRpc('sync_pull_library', { p_profile_id: 1 }, accessToken),
-        supabaseRpc('sync_pull_watch_progress', { p_profile_id: 1 }, accessToken),
-        supabaseRpc('sync_pull_watched_items', { p_profile_id: 1 }, accessToken)
-      ])
-      const library = libraryResult.status === 'fulfilled' ? libraryResult.value : []
-      const progress = progressResult.status === 'fulfilled' ? progressResult.value : []
-      const watched = watchedResult.status === 'fulfilled' ? watchedResult.value : []
-      if (libraryResult.status === 'rejected' && progressResult.status === 'rejected') {
-        throw new Error('Failed to fetch library: both RPCs failed')
+
+      // Nuvio accounts can have multiple profiles (like Netflix profiles) -
+      // sync_pull_profiles lists them. Watch activity can land on any one of
+      // them, so a hardcoded profile 1 silently misses everything watched
+      // under profile 2, 3, etc. Pull every profile and merge. Falls back to
+      // profile 1 alone if the profile list itself can't be fetched, so a
+      // single-profile account (or a transient failure) still works.
+      let profileIds = [1]
+      try {
+        const profiles = await supabaseRpc('sync_pull_profiles', {}, accessToken)
+        if (Array.isArray(profiles) && profiles.length > 0) {
+          const ids = profiles
+            .map(p => p.profile_index ?? p.profileIndex)
+            .filter(idx => Number.isFinite(idx))
+          if (ids.length > 0) profileIds = ids
+        }
+      } catch (e) {
+        console.warn('[NuvioProvider] Failed to list profiles, falling back to profile 1 only:', e?.message)
       }
 
-      // Build title lookup from watched items (which have titles)
+      // Combine library + watch progress to build libraryItem shape, per profile
+      const perProfile = await Promise.all(profileIds.map(async (profileId) => {
+        const [libraryResult, progressResult, watchedResult] = await Promise.allSettled([
+          supabaseRpc('sync_pull_library', { p_profile_id: profileId }, accessToken),
+          supabaseRpc('sync_pull_watch_progress', { p_profile_id: profileId }, accessToken),
+          supabaseRpc('sync_pull_watched_items', { p_profile_id: profileId }, accessToken)
+        ])
+        return {
+          library: libraryResult.status === 'fulfilled' ? libraryResult.value : [],
+          progress: progressResult.status === 'fulfilled' ? progressResult.value : [],
+          watched: watchedResult.status === 'fulfilled' ? watchedResult.value : [],
+          libraryFailed: libraryResult.status === 'rejected',
+          progressFailed: progressResult.status === 'rejected'
+        }
+      }))
+
+      if (perProfile.every(r => r.libraryFailed && r.progressFailed)) {
+        throw new Error('Failed to fetch library: both RPCs failed for every profile')
+      }
+
+      // Build title lookup from watched items across all profiles (which have titles)
       const titleMap = new Map()
-      if (Array.isArray(watched)) {
-        for (const w of watched) {
-          if (w.content_id && w.title) titleMap.set(w.content_id, w.title)
+      for (const { watched } of perProfile) {
+        if (Array.isArray(watched)) {
+          for (const w of watched) {
+            if (w.content_id && w.title) titleMap.set(w.content_id, w.title)
+          }
         }
       }
 
-      // Transform watch progress to universal libraryItem shape
-      const items = progress.map(p => ({
-        _id: p.content_id,
-        name: p.title || p.name || titleMap.get(p.content_id) || '',
-        type: p.content_type,
-        poster: null,
-        state: {
-          video_id: p.video_id,
-          season: p.season,
-          episode: p.episode,
-          timeOffset: p.position,
-          timeWatched: 0,
-          overallTimeWatched: p.position || 0,
-          lastWatched: new Date(p.last_watched).toISOString()
-        },
-        _mtime: new Date(p.last_watched).getTime(),
-        _ctime: new Date(p.last_watched).getTime(),
-        removed: false
-      }))
+      // Transform watch progress to universal libraryItem shape, merged across
+      // profiles. If the same content was watched under more than one profile,
+      // keep whichever entry is most recent.
+      const itemsById = new Map()
+      for (const { progress } of perProfile) {
+        for (const p of (Array.isArray(progress) ? progress : [])) {
+          const mtime = new Date(p.last_watched).getTime()
+          const existing = itemsById.get(p.content_id)
+          if (existing && existing._mtime >= mtime) continue
+          itemsById.set(p.content_id, {
+            _id: p.content_id,
+            name: p.title || p.name || titleMap.get(p.content_id) || '',
+            type: p.content_type,
+            poster: null,
+            state: {
+              video_id: p.video_id,
+              season: p.season,
+              episode: p.episode,
+              timeOffset: p.position,
+              timeWatched: 0,
+              overallTimeWatched: p.position || 0,
+              lastWatched: new Date(p.last_watched).toISOString()
+            },
+            _mtime: mtime,
+            _ctime: mtime,
+            removed: false
+          })
+        }
+      }
+      const items = Array.from(itemsById.values())
 
-      // Merge in any library-only items (bookmarked but no progress)
-      if (Array.isArray(library)) {
+      // Merge in any library-only items (bookmarked but no progress), from any profile
+      for (const { library } of perProfile) {
+        if (!Array.isArray(library)) continue
         for (const item of library) {
-          if (!items.find(i => i._id === item.content_id)) {
-            items.push({
+          if (!itemsById.has(item.content_id)) {
+            const placeholder = {
               _id: item.content_id,
               name: item.title || titleMap.get(item.content_id) || '',
               type: item.content_type,
@@ -226,7 +267,9 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
               _mtime: Date.now(),
               _ctime: Date.now(),
               removed: false
-            })
+            }
+            itemsById.set(item.content_id, placeholder)
+            items.push(placeholder)
           }
         }
       }
