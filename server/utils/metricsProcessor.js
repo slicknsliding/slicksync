@@ -50,12 +50,36 @@ function extractSeasonEpisode(videoId) {
 }
 
 /**
+ * Check if an item was actually watched vs just bookmarked/previewed.
+ * Nonzero position alone isn't reliable - Nuvio records some position for
+ * brief preview/hover autoplay, and a pure library bookmark has no position
+ * at all but would otherwise sail through with no gate whatsoever. Require
+ * either real timeWatched, or progress that's a meaningful fraction (5%,
+ * same threshold used by AIOManager) of the item's actual runtime.
+ */
+function isActuallyWatched(item) {
+  const state = item.state || {}
+  const timeWatched = Number(state.timeWatched || 0)
+  if (timeWatched > 0) return true
+
+  const progressMs = Math.max(Number(state.timeOffset || 0), Number(state.overallTimeWatched || 0))
+  if (progressMs <= 0) return false
+
+  const duration = Number(state.duration || 0)
+  if (duration > 0) {
+    return (progressMs / duration) > 0.05
+  }
+
+  return !!(state.video_id && state.video_id.trim() !== '')
+}
+
+/**
  * Record episode watch in history (for series items)
  */
 async function recordEpisodeWatch(prisma, accountId, userId, item) {
   try {
-    // Only process series items with video_id
-    if (item.type !== 'series' || !item.state?.video_id) return
+    // Only process series items with video_id and real watch progress
+    if (item.type !== 'series' || !item.state?.video_id || !isActuallyWatched(item)) return
 
     const videoId = item.state.video_id
     const showId = item._id || item.id
@@ -120,8 +144,10 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
  */
 async function recordMovieWatch(prisma, accountId, userId, item) {
   try {
-    // Only process movie items
-    if (item.type !== 'movie') return false
+    // Only process movie items with real watch progress - a bare library
+    // bookmark (no video_id, no position) was previously sailing through
+    // here unconditionally, since the only check was item.type === 'movie'
+    if (item.type !== 'movie' || !isActuallyWatched(item)) return false
 
     const itemId = item._id || item.id
     if (!itemId) return false

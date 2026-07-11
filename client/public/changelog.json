@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.8",
+    "date": "2026-07-11",
+    "title": "Fix the real cause of bookmarked-but-unwatched titles reappearing every poll cycle",
+    "bugFixes": [
+      "The isActuallyWatched() fixes in v1.9.3 and v1.9.6 were never actually the gatekeeper for this - they only affected Discord notifications and a legacy library-scan heuristic. The code path that actually writes to MovieWatchHistory/EpisodeWatchHistory (processLibraryItem -> recordMovieWatch/recordEpisodeWatch in metricsProcessor.js) had no 'was this actually watched' check at all - recordMovieWatch's only gate was item.type === 'movie'. A pure library bookmark (no video_id, no position, no state.lastWatched) sailed straight through and defaulted watchedAt to 'now', on every single poll cycle, forever - which is exactly why cleanup never stuck and the same titles kept reappearing with a fresh timestamp each time no matter how many times the DB was cleaned. Added the same isActuallyWatched gate (requires timeWatched, or progress >= 5% of runtime, or a video_id when duration is unavailable) directly in metricsProcessor.js before recordMovieWatch/recordEpisodeWatch run."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.7",
     "date": "2026-07-11",
     "title": "Show real avatars on Dashboard and Metrics pages, not just the Activity page",
