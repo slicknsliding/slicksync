@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.3",
+    "date": "2026-07-11",
+    "title": "Fix false 'watched' activity for library items that were only saved, not played",
+    "features": [],
+    "bugFixes": [
+      "isActuallyWatched() in both activityMonitor.js and metricsBuilder.js was treating any item with a non-empty state.video_id as watched. Nuvio creates a watch_progress row (with video_id populated, but position 0) the instant an item is bookmarked/saved to the library, not just when it's actually played - so movies added to your Saved library but never opened were being logged as real watch activity in the Activity feed, timestamped to when they were saved. Now requires state.timeOffset > 0 (genuine playback progress) alongside video_id before counting an item as watched."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.2",
     "date": "2026-07-11",
     "title": "Attempt fix for backend logs never appearing in docker logs",
