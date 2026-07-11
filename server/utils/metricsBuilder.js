@@ -722,11 +722,14 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   }
 
   function isActuallyWatched(item) {
+    // video_id presence alone is NOT reliable "watched" evidence - Nuvio creates
+    // a watch_progress row (video_id set, position 0) the moment an item is
+    // saved/bookmarked to the library. Real playback progress is required too.
     const state = item.state || {}
     if (state.timeWatched > 0 || state.overallTimeWatched > 0) {
       return true
     }
-    if (state.video_id && state.video_id.trim() !== '') {
+    if (state.video_id && state.video_id.trim() !== '' && state.timeOffset > 0) {
       return true
     }
     return false

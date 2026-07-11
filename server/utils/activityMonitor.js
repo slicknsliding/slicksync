@@ -31,19 +31,18 @@ function getWatchDate(item) {
 }
 
 function isActuallyWatched(item) {
-  // Check if the item was actually watched vs just added to library
-  // An item is considered watched if:
-  // 1. It has timeWatched > 0 or overallTimeWatched > 0
-  // 2. OR it has a non-empty video_id (indicates specific content was played)
+  // Check if the item was actually watched vs just saved/bookmarked to the library.
+  // Nuvio creates a watch_progress row (video_id set, position 0) the moment an
+  // item is added to the library - so video_id presence alone is NOT reliable
+  // "watched" evidence. Real playback progress is required too.
   const state = item.state || {}
 
   if (state.timeWatched > 0 || state.overallTimeWatched > 0) {
     return true
   }
 
-  // For series, video_id indicates which episode was watched (e.g., "tt123:1:1")
-  // For movies, video_id might be the movie ID itself
-  if (state.video_id && state.video_id.trim() !== '') {
+  // video_id only counts if paired with actual playback progress
+  if (state.video_id && state.video_id.trim() !== '' && state.timeOffset > 0) {
     return true
   }
 
