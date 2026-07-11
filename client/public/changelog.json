@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.9.2",
+    "date": "2026-07-11",
+    "title": "Attempt fix for backend logs never appearing in docker logs",
+    "features": [],
+    "bugFixes": [
+      "Confirmed via testing: the backend process (run via bun, backgrounded in start.sh) was producing zero visible output after its startup lines - not even its own \"server running\" log, despite the process functioning completely normally (serving requests successfully, passing health checks). The frontend, also backgrounded but run via a different process, logged normally the whole time. That strongly points to bun fully-buffering stdout/stderr instead of line-buffering it once backgrounded in a non-TTY context, rather than anything wrong with the application code itself - console output was very likely accumulating in an internal buffer that was rarely or never flushed.",
+      "Added stdbuf -oL -eL to force line-buffered output on the backend process, and added coreutils to the production image to provide it. Verified stdbuf correctly execs into the wrapped process rather than staying around as a separate parent, so the existing PID-based shutdown/cleanup logic is unaffected. Could not fully verify this resolves bun's specific buffering behavior without bun available to test directly - this is a well-reasoned, standard fix for this exact class of problem, but needs real confirmation after deploying."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.1",
     "date": "2026-07-11",
     "title": "Fix activity monitor silently swallowing errors",
