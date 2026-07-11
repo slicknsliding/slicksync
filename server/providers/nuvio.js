@@ -180,12 +180,18 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
       // profile 1 alone if the profile list itself can't be fetched, so a
       // single-profile account (or a transient failure) still works.
       let profileIds = [1]
+      const profileNames = new Map() // profile_index -> display name
       try {
         const profiles = await supabaseRpc('sync_pull_profiles', {}, accessToken)
         if (Array.isArray(profiles) && profiles.length > 0) {
-          const ids = profiles
-            .map(p => p.profile_index ?? p.profileIndex)
-            .filter(idx => Number.isFinite(idx))
+          const ids = []
+          for (const p of profiles) {
+            const idx = p.profile_index ?? p.profileIndex
+            if (Number.isFinite(idx)) {
+              ids.push(idx)
+              if (p.name) profileNames.set(idx, p.name)
+            }
+          }
           if (ids.length > 0) profileIds = ids
         }
       } catch (e) {
@@ -200,6 +206,8 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
           supabaseRpc('sync_pull_watched_items', { p_profile_id: profileId }, accessToken)
         ])
         return {
+          profileId,
+          profileName: profileNames.get(profileId) || null,
           library: libraryResult.status === 'fulfilled' ? libraryResult.value : [],
           progress: progressResult.status === 'fulfilled' ? progressResult.value : [],
           watched: watchedResult.status === 'fulfilled' ? watchedResult.value : [],
@@ -226,7 +234,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
       // profiles. If the same content was watched under more than one profile,
       // keep whichever entry is most recent.
       const itemsById = new Map()
-      for (const { progress } of perProfile) {
+      for (const { progress, profileName } of perProfile) {
         for (const p of (Array.isArray(progress) ? progress : [])) {
           const mtime = new Date(p.last_watched).getTime()
           const existing = itemsById.get(p.content_id)
@@ -243,7 +251,8 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
               timeOffset: p.position,
               timeWatched: 0,
               overallTimeWatched: p.position || 0,
-              lastWatched: new Date(p.last_watched).toISOString()
+              lastWatched: new Date(p.last_watched).toISOString(),
+              nuvioProfile: profileName
             },
             _mtime: mtime,
             _ctime: mtime,
@@ -254,7 +263,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
       const items = Array.from(itemsById.values())
 
       // Merge in any library-only items (bookmarked but no progress), from any profile
-      for (const { library } of perProfile) {
+      for (const { library, profileName } of perProfile) {
         if (!Array.isArray(library)) continue
         for (const item of library) {
           if (!itemsById.has(item.content_id)) {
@@ -263,7 +272,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
               name: item.title || titleMap.get(item.content_id) || '',
               type: item.content_type,
               poster: null,
-              state: {},
+              state: { nuvioProfile: profileName },
               _mtime: Date.now(),
               _ctime: Date.now(),
               removed: false

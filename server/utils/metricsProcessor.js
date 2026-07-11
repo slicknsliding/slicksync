@@ -61,6 +61,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
     const showId = item._id || item.id
     const showName = item.name || 'Unknown Show'
     const poster = item.poster || null
+    const profileLabel = item.state?.nuvioProfile || null
     const { season, episode } = extractSeasonEpisode(videoId)
 
     // Get watch date from item
@@ -90,12 +91,14 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
         season,
         episode,
         poster,
+        profileLabel,
         watchedAt
       },
       update: {
         watchedAt, // Update watch time if re-watching
         showName, // Update in case show name changed
-        poster // Update in case poster changed
+        poster, // Update in case poster changed
+        profileLabel
       }
     })
 
@@ -125,6 +128,7 @@ async function recordMovieWatch(prisma, accountId, userId, item) {
 
     const itemName = item.name || 'Unknown Movie'
     const poster = item.poster || null
+    const profileLabel = item.state?.nuvioProfile || null
 
     // Get watch date from item
     // IMPORTANT: Only use state.lastWatched - this is the actual watch timestamp
@@ -149,12 +153,14 @@ async function recordMovieWatch(prisma, accountId, userId, item) {
         itemId,
         itemName,
         poster,
+        profileLabel,
         watchedAt
       },
       update: {
         watchedAt, // Update watch time if re-watching
         itemName, // Update in case name changed
-        poster // Update in case poster changed
+        poster, // Update in case poster changed
+        profileLabel
       }
     })
 

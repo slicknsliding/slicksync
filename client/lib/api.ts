@@ -1604,6 +1604,7 @@ export interface MetricsData {
     user: { id: string; username: string; email?: string; colorIndex: number };
     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };
     videoId: string | null;
+    profileLabel?: string | null;
     watchedAt: string;
     watchedAtTimestamp: number;
   }>;
