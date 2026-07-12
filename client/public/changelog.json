@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.9.22",
+    "date": "2026-07-11",
+    "title": "Fix version badge drift for good, deeper Stremio Vault diagnostics",
+    "bugFixes": [
+      "The version badge got stuck on v1.9.9 again - .release-please-manifest.json was fixed once several patches ago but not kept in sync afterward, since every patch since only bumped package.json. Flipped next.config.ts's priority order to check package.json first (the one file reliably updated every release) and only fall back to the manifest/server-version files if it's missing - this should prevent the badge from silently drifting stale again even if the manifest isn't touched.",
+      "The v1.9.21 Stremio Vault check improvement didn't surface new detail on the next test (authResult had neither a thrown exception nor an .error/.message field) - added raw server-side logging (docker logs) of the full auth result/store state so the actual response shape is visible on the next failed check, since the Vault card itself can only show a short string."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.21",
     "date": "2026-07-11",
     "title": "Lighter Nuvio badge orange, Lagoon replaced with Nebula theme, better Stremio Vault check diagnostics",
