@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.13",
+    "date": "2026-07-11",
+    "title": "New custom logo, distinct from the original Syncio branding",
+    "features": [
+      "Replaced the plain circular 'S' badge (inherited from upstream Syncio) with an original angular spark mark in a violet-to-cyan gradient, matching the app's existing Slick theme palette. Updated everywhere the old logo appeared: sidebar (admin and user), invite pages, the create-user modal, favicon, and apple-touch-icon."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.12",
     "date": "2026-07-11",
     "title": "Fix 'vunknown' badge on imported Nuvio addons",
