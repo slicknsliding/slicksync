@@ -169,7 +169,18 @@ async function checkStremioAuth(secret, config = {}) {
   try {
     const { StremioAPIUtils } = require('./handlers')
     const { store, tempStorage, authResult } = await StremioAPIUtils.authenticateWithStremio(identifier, secret)
-    if (authResult && (store.authKey || tempStorage.auth)) {
+    // stremio-api-client's store.login() always resolves to undefined on
+    // BOTH success and failure by design (its internal .then() callback has
+    // no return statement - success is signaled entirely through the
+    // side-effect of setting store.authKey/tempStorage.auth via
+    // userChange(), not through the resolved value). Requiring authResult
+    // to also be truthy made this check permanently unable to report
+    // success for any credentials, valid or not - confirmed via
+    // /app/data/vault-debug.log showing authResult undefined on every
+    // attempt regardless of outcome. Real API errors (wrong password, etc.)
+    // still throw and are handled by the catch block below - only the
+    // success path was broken.
+    if (store.authKey || tempStorage.auth) {
       return { ok: true, message: 'Stremio login succeeded' }
     }
     // Message-level detail wasn't enough to diagnose the last round of
