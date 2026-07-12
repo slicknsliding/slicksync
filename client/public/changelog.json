@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.12",
+    "date": "2026-07-11",
+    "title": "Fix 'vunknown' badge on imported Nuvio addons",
+    "bugFixes": [
+      "The v1.9.11 fix defaulted an addon's version to the string 'unknown' when Nuvio's addon data didn't include one (Nuvio's addon rows have no version field at all). The frontend's VersionBadge only skips rendering when version is falsy, so it rendered the literal string 'unknown' with a 'v' prefix - showing 'vunknown' on every imported Nuvio addon. Changed the fallback to null so the badge correctly doesn't render at all when no version is known, same as it already does for other addons missing version info."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.11",
     "date": "2026-07-11",
     "title": "Fix addon import for non-Stremio accounts (e.g. Nuvio)",
