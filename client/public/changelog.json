@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.35",
+    "date": "2026-07-12",
+    "title": "Now Playing: shorter lingering after a real stop",
+    "bugFixes": [
+      "Confirmed via heartbeat trace: 20 minutes (v1.9.32) was too long a grace period - a session sat showing 'Live' with ageMinutes climbing 1 through 8+ with zero new checkpoints, just coasting on the last real ping before the user stopped. Reduced the freshness window to 15 minutes (3x poll interval), just above the measured 13.4-minute worst-case checkpoint gap that justified widening it in the first place - and now consistent with the separate hasRecentActivity check elsewhere in the same file, which already used this same 3x window. There's inherent tension here (Nuvio's data has no 'just stopped' signal, only 'last saved position'), so this is a judgment call, not a guaranteed-correct number - may need revisiting if wider checkpoint gaps are ever measured again."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.34",
     "date": "2026-07-12",
     "title": "The actual root cause: any repeat watch of anything could never create a session, ever",
