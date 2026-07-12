@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.9.36",
+    "date": "2026-07-12",
+    "title": "Fix two real issues found tonight: activity threshold clarity, and inaccurate 'Watching for' duration",
+    "bugFixes": [
+      "'Watching for Xm' on Now Playing cards was computed purely client-side as (now - session start time), ticking up every second regardless of whether the provider's actual playback position had moved at all - confirmed with a real case where the position stayed frozen at the same value for 8+ minutes while the displayed counter kept climbing. Added a startPosition field to WatchSession, captured when a session starts; durationSeconds on the backend now reflects real watched-content progress (position delta since the session began), refreshed once per poll cycle, and the frontend now displays that value directly instead of an independent wall-clock tick that overstated progress whenever the provider went a while between checkpoints."
+    ],
+    "features": [],
+    "miscChores": [
+      "Confirmed (not a bug): a title appearing in the live 'Now Playing' banner but not yet in the 'Today' history grid is correct, intentional behavior - Now Playing only needs any nonzero progress, while the history grid requires 5% of runtime (the threshold added earlier tonight to filter out library-preview hovers). Two different, deliberately different bars for two different questions ('is something playing right now' vs 'did they actually watch this')."
+    ]
+  },
+  {
     "version": "1.9.35",
     "date": "2026-07-12",
     "title": "Now Playing: shorter lingering after a real stop",
