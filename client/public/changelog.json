@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.32",
+    "date": "2026-07-12",
+    "title": "Real fix for Now Playing: freshness window was proven too tight",
+    "bugFixes": [
+      "Root-caused via live heartbeat tracing during an active watch session: isActivelyWatching()'s 7.5-minute freshness window (v1.9.26) was too tight for Nuvio's actual checkpoint cadence - direct evidence showed a real 13.4-minute gap between two checkpoints during genuinely continuous playback, meaning even the widened v1.9.26 window still produced false negatives. A separate check in the same file (hasRecentActivity, using a 15-minute window) correctly evaluated the exact same data as 'recent', but wasn't the check actually gating session creation. Widened isActivelyWatching's window to 20 minutes (4x poll interval), matching and slightly exceeding the already-correct hasRecentActivity window. Removed the item-specific hardcoded tracing added for this investigation, kept the general heartbeat infrastructure (proven broadly useful) in place."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.31",
     "date": "2026-07-12",
     "title": "Trace the library fetch and gate evaluation for the specific stuck item",
