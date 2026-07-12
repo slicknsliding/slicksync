@@ -13,6 +13,7 @@ import {
   ArrowRightIcon,
 } from '@heroicons/react/24/outline';
 import { userOAuth, userAuth as userAuthApi } from '@/lib/user-api';
+import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { api } from '@/lib/api';
 import { useUserAuth, UserAuthProvider } from '@/lib/hooks/useUserAuth';
 
@@ -336,7 +337,7 @@ function LoginContent() {
             className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center"
             style={{ background: 'var(--color-primary)' }}
           >
-            <img src="/logo-white.png" alt="SlickSync" className="w-10 h-10 object-contain" />
+            <SlickSyncLogo className="w-10 h-10" />
           </motion.div>
           <h1
             className="text-3xl font-bold font-display mb-2"
