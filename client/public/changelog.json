@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.9.19",
+    "date": "2026-07-11",
+    "title": "Larger sidebar logo/text, darker Slick theme background",
+    "features": [
+      "Sidebar logo badge, mark, and 'SlickSync' wordmark are larger (badge 40px -> 56px, mark 28px -> 40px, text text-lg -> text-2xl), plus nav item labels and section headers (OVERVIEW/MANAGEMENT/SYSTEM) bumped up a size. Scoped to the sidebar only - main content areas unchanged.",
+      "Slick theme's background/surface colors darkened toward near-black (bg #0f0a1a -> #050308, surface #1a1128 -> #0c0812). Primary/secondary accent colors, text colors, and every other theme are unchanged."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.18",
     "date": "2026-07-11",
     "title": "Softer Slick theme, two new themes (Velvet, Lagoon), fixed provider badge colors",
