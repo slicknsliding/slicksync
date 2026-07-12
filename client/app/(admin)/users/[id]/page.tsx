@@ -868,7 +868,7 @@ export default function UserDetailPage() {
                           className="text-xl md:text-2xl font-bold font-display"
                         />
                         <Badge
-                          variant={user.providerType === 'nuvio' ? 'secondary' : 'primary'}
+                          variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'}
                           size="sm"
                         >
                           {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}

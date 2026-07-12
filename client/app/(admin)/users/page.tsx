@@ -488,7 +488,7 @@ export default function UsersPage() {
                                         {user.name}
                                       </p>
                                       <Badge
-                                        variant={user.providerType === 'nuvio' ? 'secondary' : 'primary'}
+                                        variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'}
                                         size="sm"
                                       >
                                         {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
@@ -832,7 +832,7 @@ function UserCard({
                 {user.name}
               </Link>
               <Badge
-                variant={user.providerType === 'nuvio' ? 'secondary' : 'primary'}
+                variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'}
                 size="sm"
               >
                 {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}

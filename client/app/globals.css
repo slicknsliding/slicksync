@@ -7,29 +7,29 @@
 
 /* ===== THEME DEFINITIONS ===== */
 
-/* Slick Theme (default) - Bold violet + electric cyan */
+/* Slick Theme (default) - Soft violet + muted teal */
 :root,
 html.slick {
   /* Background spectrum */
-  --color-bg: #0a0118;
-  --color-bg-subtle: #120a24;
-  --color-bg-muted: #1c1030;
+  --color-bg: #0f0a1a;
+  --color-bg-subtle: #170f26;
+  --color-bg-muted: #201631;
   /* Surface colors */
-  --color-surface: #16092b;
-  --color-surface-hover: #221238;
-  --color-surface-border: rgba(216, 180, 254, 0.12);
+  --color-surface: #1a1128;
+  --color-surface-hover: #241934;
+  --color-surface-border: rgba(196, 181, 216, 0.12);
   /* Text */
-  --color-text: #f5f3ff;
-  --color-text-muted: #a78bda;
-  --color-text-subtle: #7c5fb0;
-  /* Primary accent - vivid violet */
-  --color-primary: #a855f7;
-  --color-primary-hover: #c084fc;
-  --color-primary-muted: rgba(168, 85, 247, 0.15);
+  --color-text: #f0edf7;
+  --color-text-muted: #ab9dc4;
+  --color-text-subtle: #8375a0;
+  /* Primary accent - soft periwinkle-violet */
+  --color-primary: #8b7ec8;
+  --color-primary-hover: #a394d8;
+  --color-primary-muted: rgba(139, 126, 200, 0.15);
   --color-primaryMuted: var(--color-primary-muted);
-  /* Secondary accent - electric cyan */
-  --color-secondary: #22d3ee;
-  --color-secondary-muted: rgba(34, 211, 238, 0.15);
+  /* Secondary accent - muted teal */
+  --color-secondary: #5fd4c4;
+  --color-secondary-muted: rgba(95, 212, 196, 0.15);
   --color-secondaryMuted: var(--color-secondary-muted);
   /* Status colors */
   --color-success: #34d399;
@@ -42,10 +42,100 @@ html.slick {
   --color-warning-muted: rgba(251, 191, 36, 0.15);
   --color-warningMuted: var(--color-warning-muted);
   /* Chart colors */
-  --color-chart-1: #a855f7;
-  --color-chart-2: #22d3ee;
+  --color-chart-1: #8b7ec8;
+  --color-chart-2: #5fd4c4;
   --color-chart-3: #818cf8;
   --color-chart-4: #34d399;
+  /* Spacing */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+}
+
+/* Velvet Theme - Deep plum with dusty rose-gold accents */
+html.velvet {
+  /* Background spectrum */
+  --color-bg: #170f14;
+  --color-bg-subtle: #201620;
+  --color-bg-muted: #2a1e2a;
+  /* Surface colors */
+  --color-surface: #241820;
+  --color-surface-hover: #30202b;
+  --color-surface-border: rgba(212, 165, 116, 0.12);
+  /* Text */
+  --color-text: #f5eef0;
+  --color-text-muted: #c3a3ae;
+  --color-text-subtle: #96788a;
+  /* Primary accent - dusty rose-mauve */
+  --color-primary: #b8869e;
+  --color-primary-hover: #cc9db3;
+  --color-primary-muted: rgba(184, 134, 158, 0.15);
+  --color-primaryMuted: var(--color-primary-muted);
+  /* Secondary accent - warm gold-tan */
+  --color-secondary: #d4a574;
+  --color-secondary-muted: rgba(212, 165, 116, 0.15);
+  --color-secondaryMuted: var(--color-secondary-muted);
+  /* Status colors */
+  --color-success: #34d399;
+  --color-success-muted: rgba(52, 211, 153, 0.15);
+  --color-successMuted: var(--color-success-muted);
+  --color-error: #fb7185;
+  --color-error-muted: rgba(251, 113, 133, 0.15);
+  --color-errorMuted: var(--color-error-muted);
+  --color-warning: #fbbf24;
+  --color-warning-muted: rgba(251, 191, 36, 0.15);
+  --color-warningMuted: var(--color-warning-muted);
+  /* Chart colors */
+  --color-chart-1: #b8869e;
+  --color-chart-2: #d4a574;
+  --color-chart-3: #c9a0b3;
+  --color-chart-4: #e0bd8f;
+  /* Spacing */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+}
+
+/* Lagoon Theme - Deep teal with calm coastal blue accents */
+html.lagoon {
+  /* Background spectrum */
+  --color-bg: #0a1a1c;
+  --color-bg-subtle: #0f2427;
+  --color-bg-muted: #152e32;
+  /* Surface colors */
+  --color-surface: #122a2d;
+  --color-surface-hover: #18363a;
+  --color-surface-border: rgba(111, 168, 201, 0.12);
+  /* Text */
+  --color-text: #eaf5f5;
+  --color-text-muted: #93bcc4;
+  --color-text-subtle: #6b96a0;
+  /* Primary accent - calm teal */
+  --color-primary: #4fb3a5;
+  --color-primary-hover: #6bc7ba;
+  --color-primary-muted: rgba(79, 179, 165, 0.15);
+  --color-primaryMuted: var(--color-primary-muted);
+  /* Secondary accent - soft coastal sky blue */
+  --color-secondary: #6fa8c9;
+  --color-secondary-muted: rgba(111, 168, 201, 0.15);
+  --color-secondaryMuted: var(--color-secondary-muted);
+  /* Status colors */
+  --color-success: #34d399;
+  --color-success-muted: rgba(52, 211, 153, 0.15);
+  --color-successMuted: var(--color-success-muted);
+  --color-error: #fb7185;
+  --color-error-muted: rgba(251, 113, 133, 0.15);
+  --color-errorMuted: var(--color-error-muted);
+  --color-warning: #fbbf24;
+  --color-warning-muted: rgba(251, 191, 36, 0.15);
+  --color-warningMuted: var(--color-warning-muted);
+  /* Chart colors */
+  --color-chart-1: #4fb3a5;
+  --color-chart-2: #6fa8c9;
+  --color-chart-3: #7dd3c0;
+  --color-chart-4: #8bc4e0;
   /* Spacing */
   --radius-sm: 6px;
   --radius-md: 10px;

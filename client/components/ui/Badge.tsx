@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 
-export type BadgeVariant = 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'aurora' | 'cyan' | 'neutral' | 'outline' | 'muted';
+export type BadgeVariant = 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'aurora' | 'cyan' | 'neutral' | 'outline' | 'muted' | 'stremio' | 'nuvio';
 type BadgeSize = 'sm' | 'md';
 
 interface BadgeProps {
@@ -66,6 +66,24 @@ function getBadgeStyles(variant: BadgeVariant) {
         background: 'var(--color-bgMuted)',
         color: 'var(--color-textSubtle)',
         borderColor: 'transparent',
+      };
+    // Fixed colors, independent of the active theme - these are provider
+    // identity badges (purple = Stremio, blue = Nuvio everywhere else in
+    // the Stremio/Nuvio ecosystem), so they should stay recognizable
+    // rather than shifting with --color-primary/--color-secondary (which
+    // can end up nearly identical on themes like Ember, making the two
+    // provider badges indistinguishable from each other).
+    case 'stremio':
+      return {
+        background: 'rgba(167, 139, 250, 0.15)',
+        color: 'rgb(196, 181, 253)',
+        borderColor: 'rgba(167, 139, 250, 0.25)',
+      };
+    case 'nuvio':
+      return {
+        background: 'rgba(56, 89, 158, 0.18)',
+        color: 'rgb(147, 178, 235)',
+        borderColor: 'rgba(56, 89, 158, 0.3)',
       };
     case 'default':
     case 'neutral':
