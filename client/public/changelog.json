@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.31",
+    "date": "2026-07-12",
+    "title": "Trace the library fetch and gate evaluation for the specific stuck item",
+    "bugFixes": [
+      "v1.9.30 confirmed the scheduler runs healthily every minute, but a fresh Nuvio checkpoint (5 minutes old, well within the freshness window) still wasn't reaching WatchSession despite several complete cycles running after it appeared. Added heartbeat instrumentation at the one remaining gap: whether getLibraryForUser's live Nuvio fetch actually succeeds (vs a silently-caught failure falling back to stale cache), whether the specific item makes it into the merged library, and how it evaluates against sessionTracker's hasWatchProgress/isActivelyWatching gates - tracing the exact point where a genuinely fresh signal stops producing a session."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.30",
     "date": "2026-07-12",
     "title": "File-based heartbeat diagnostics for the activity monitor scheduler",

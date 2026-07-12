@@ -130,6 +130,7 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
           const provider = createProvider(user, { decrypt: (t) => decrypt(t, mockReq), req: mockReq })
           if (!provider) {
             // No usable credentials, use cached library (library-email.json)
+            heartbeat('getLibraryForUser:no_provider', { userId: user.id })
             return getCachedLibrary(accountId, user) || []
           }
 
@@ -141,8 +142,17 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
             setCachedLibrary(accountId, user, library)
           }
 
+          heartbeat('getLibraryForUser:live_fetch_ok', {
+            userId: user.id,
+            itemCount: Array.isArray(library) ? library.length : 0,
+            obsession: Array.isArray(library)
+              ? (library.find(i => i._id === 'tt37287335' || i.id === 'tt37287335') || null)
+              : null
+          })
+
           return library || []
         } catch (error) {
+          heartbeat('getLibraryForUser:live_fetch_failed', { userId: user.id, message: error.message })
           console.warn(`[ActivityMonitor] Failed to fetch library for user ${user.id}:`, error.message)
           // Fallback to cache if API call fails
           const cachedLibrary = getCachedLibrary(accountId, user)
