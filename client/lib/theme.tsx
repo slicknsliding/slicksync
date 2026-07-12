@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
 // Theme IDs
-export const themeIds = ['slick', 'midnight', 'ember', 'nord', 'verdant', 'slate', 'rose', 'daylight'] as const;
+export const themeIds = ['slick', 'velvet', 'lagoon', 'midnight', 'ember', 'nord', 'verdant', 'slate', 'rose', 'daylight'] as const;
 export type ThemeId = (typeof themeIds)[number];
 
 // Theme metadata for UI (settings page, etc.)
@@ -15,9 +15,21 @@ export const themeMeta: Record<ThemeId, {
 }> = {
   slick: {
     name: 'Slick',
-    description: 'Bold violet with electric cyan accents',
-    preview: '#a855f7',
-    colors: { bg: '#0a0118', surface: '#16092b', primary: '#a855f7', secondary: '#22d3ee' },
+    description: 'Soft violet with muted teal accents',
+    preview: '#8b7ec8',
+    colors: { bg: '#0f0a1a', surface: '#1a1128', primary: '#8b7ec8', secondary: '#5fd4c4' },
+  },
+  velvet: {
+    name: 'Velvet',
+    description: 'Deep plum with dusty rose-gold accents',
+    preview: '#b8869e',
+    colors: { bg: '#170f14', surface: '#241820', primary: '#b8869e', secondary: '#d4a574' },
+  },
+  lagoon: {
+    name: 'Lagoon',
+    description: 'Deep teal with calm coastal blue accents',
+    preview: '#4fb3a5',
+    colors: { bg: '#0a1a1c', surface: '#122a2d', primary: '#4fb3a5', secondary: '#6fa8c9' },
   },
   midnight: {
     name: 'Midnight',

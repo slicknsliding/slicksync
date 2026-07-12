@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.9.18",
+    "date": "2026-07-11",
+    "title": "Softer Slick theme, two new themes (Velvet, Lagoon), fixed provider badge colors",
+    "features": [
+      "Softened the Slick theme's palette - the original vivid violet (#a855f7) + electric cyan (#22d3ee) combination read as harsh/neon. Replaced with a lower-saturation periwinkle-violet (#8b7ec8) + muted teal (#5fd4c4).",
+      "Added two new themes: Velvet (deep plum with dusty rose-mauve + warm gold-tan accents) and Lagoon (deep teal with calm coastal blue accents), both following the same structure as the existing 8 themes and appearing automatically in the Settings theme picker.",
+      "Stremio and Nuvio provider badges (on the Users list and user detail page) now use fixed colors - light purple/transparent for Stremio, light dark-blue/transparent for Nuvio - independent of the active theme. Previously they used --color-primary/--color-secondary, which end up nearly identical on themes like Ember, making the two provider badges indistinguishable from each other."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.17",
     "date": "2026-07-11",
     "title": "Fix missing icons on imported Nuvio addons",
