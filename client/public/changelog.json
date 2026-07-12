@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.30",
+    "date": "2026-07-12",
+    "title": "File-based heartbeat diagnostics for the activity monitor scheduler",
+    "bugFixes": [
+      "console.log output from the backend process has not reliably reached docker logs during steady-state operation - confirmed via a completely empty unfiltered log dump over a 20-minute window despite active traffic and DB evidence of the scheduler not running (WatchSession table 13+ hours stale despite fresh upstream data). This is the same class of issue v1.9.2's stdbuf fix targeted but never confirmed working for bun specifically. Added direct file-based heartbeat logging (bypassing stdout/stderr entirely, same proven approach as the Stremio Vault diagnostics) at every checkpoint in the activity monitor scheduler: server/index.js's call site, scheduleActivityMonitor's init, checkAllAccounts, and every stage of checkActivityForAccount including account lookup, user lookup, metrics processing, and session processing. Retrieve with: docker exec slicksync cat /app/data/activity-monitor-debug.log"
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.29",
     "date": "2026-07-12",
     "title": "Much more detailed README",

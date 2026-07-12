@@ -11,6 +11,21 @@ let activityTimer = null
 // Track notified items: Map<accountId, Set<itemId>>
 const notifiedItems = new Map()
 
+// Direct file-based heartbeat, bypassing console.log/stdout entirely. Console
+// output from this backend process has not reliably reached `docker logs`
+// during steady-state operation (confirmed: zero output over a 20-minute
+// window despite active traffic) - the v1.9.2 stdbuf fix's own changelog
+// admitted it was never actually confirmed to work with bun specifically.
+// This gives a way to verify whether/how far the scheduler is actually
+// executing, independent of whether console output ever surfaces.
+function heartbeat(event, data = {}) {
+  try {
+    const fs = require('fs')
+    const line = `[${new Date().toISOString()}] ${event} ${JSON.stringify(data)}\n`
+    fs.appendFileSync('/app/data/activity-monitor-debug.log', line)
+  } catch {}
+}
+
 function clearActivityMonitor() {
   if (activityTimer) {
     clearInterval(activityTimer)
@@ -58,6 +73,7 @@ function isActuallyWatched(item) {
 }
 
 async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId) {
+  heartbeat('checkActivityForAccount:start', { accountId })
   try {
     // Get account sync config to check for webhook URL
     const account = await prisma.appAccount.findUnique({
@@ -65,6 +81,7 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       select: { sync: true }
     })
 
+    heartbeat('checkActivityForAccount:account_lookup_done', { found: !!account })
     if (!account) return
 
     let syncCfg = account.sync || null
@@ -93,6 +110,8 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
     })
 
     if (users.length === 0) return
+
+    heartbeat('checkActivityForAccount:users_found', { count: users.length })
 
     // Process metrics for all users (regardless of webhook configuration)
     // This runs every 5 minutes to compute accurate watch time deltas
@@ -133,13 +152,18 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
 
       // Process metrics for all users
       console.log(`[ActivityMonitor] Starting metrics processing for account ${accountId}, ${users.length} users`)
+      heartbeat('processAccountMetrics:before')
       await processAccountMetrics(prisma, accountId, users, getLibraryForUser, new Date())
+      heartbeat('processAccountMetrics:after')
       console.log(`[ActivityMonitor] Completed metrics processing for account ${accountId}`)
 
       // Process watch sessions (track start/end times)
       try {
+        heartbeat('processAccountSessions:before')
         await processAccountSessions(prisma, accountId, users, getLibraryForUser, new Date())
+        heartbeat('processAccountSessions:after')
       } catch (sessionError) {
+        heartbeat('processAccountSessions:error', { message: sessionError.message, stack: sessionError.stack })
         console.warn(`[ActivityMonitor] Error processing sessions:`, sessionError.message)
       }
 
@@ -310,12 +334,14 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
     // was completely indistinguishable from "nothing new happened this
     // cycle" — no way to tell the difference without instrumenting this by
     // hand. A single warning per failed 5-minute cycle is not log spam.
+    heartbeat('checkActivityForAccount:error', { message: error.message, stack: error.stack })
     console.warn(`[ActivityMonitor] checkActivityForAccount failed for account ${accountId}:`, error.message)
     console.warn(error.stack)
   }
 }
 
 async function checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
+  heartbeat('checkAllAccounts:start', { INSTANCE_TYPE })
   try {
     if (INSTANCE_TYPE === 'public') {
       // Check all accounts
@@ -334,11 +360,13 @@ async function checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
     // Same reasoning as above — checkActivityForAccount already logs its own
     // errors, but this outer catch existing at all meant something could
     // theoretically still fail invisibly above/around that call.
+    heartbeat('checkAllAccounts:error', { message: error.message, stack: error.stack })
     console.warn(`[ActivityMonitor] checkAllAccounts failed:`, error.message)
   }
 }
 
 function scheduleActivityMonitor(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
+  heartbeat('scheduleActivityMonitor:init', { INSTANCE_TYPE })
   clearActivityMonitor()
 
   // Run immediately on startup to update library database
