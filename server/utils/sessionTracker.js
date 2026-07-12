@@ -190,21 +190,22 @@ function getWatchDate(item) {
  * update cadence, at the cost of "Now Playing" potentially lingering up to
  * one window's worth of time after playback genuinely stops.
  *
- * Window widened from 1.5x to 4x (7.5min -> 20min) after direct heartbeat
- * evidence: a genuinely continuous, active playback session had a real
- * 13.4-minute gap between two Nuvio checkpoints - the 7.5min window was
- * proven too tight for this provider's actual checkpoint cadence, not just
- * theoretically risky. Matches (and now slightly exceeds) the separate
- * hasRecentActivity window elsewhere in this file, which used 3x and
- * correctly evaluated the same case as "recent" - the two checks were
- * inconsistent with each other, and the tighter one was the one actually
- * gating session creation.
+ * Window at 3x (15min) as of v1.9.35, down from 4x (20min) - direct user
+ * feedback that 20min of lingering "Now Playing" after a real stop was too
+ * long in practice. 15min stays just above the measured 13.4-minute
+ * worst-case checkpoint gap (see v1.9.32), so it shouldn't reintroduce the
+ * false-negative bug that window was sized to fix - but there's inherent
+ * tension here: Nuvio's data only tells us "last saved position," never
+ * "user just stopped," so any fixed window is a tradeoff between missing
+ * genuine slow-checkpoint sessions and lingering after a real stop. If
+ * checkpoint gaps ever measure wider than ~13min again, this may need
+ * raising back up.
  */
 function isActivelyWatching(item, userId, now) {
   const watchDate = getWatchDate(item)
   if (!watchDate) return false
 
-  return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 4)
+  return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 3)
 }
 
 /**
