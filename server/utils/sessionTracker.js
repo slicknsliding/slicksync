@@ -141,20 +141,6 @@ async function sendSessionStartNotification(webhookUrl, session, user) {
   }
 }
 
-// In-memory: track previous watch state per user:item to detect when watching stops.
-// If lastWatched/timeWatched/overallTimeWatched haven't changed since last sync,
-// the user stopped watching → close session in 1 cycle instead of 2.
-const previousWatchStates = new Map() // key: `${userId}:${itemId}` -> stateHash string
-
-/**
- * Build a hash of the watch-relevant fields.
- * If this hash is the same between two syncs, nothing changed → user stopped.
- */
-function getWatchStateHash(item) {
-  const state = item.state || {}
-  return `${state.lastWatched || ''}|${state.timeWatched || 0}|${state.overallTimeWatched || 0}|${state.timeOffset || 0}`
-}
-
 /**
  * Get watch date from library item
  * IMPORTANT: Only use state.lastWatched - this is the actual watch timestamp
@@ -170,33 +156,26 @@ function getWatchDate(item) {
 
 /**
  * Check if item is actively being watched.
- * Uses two signals:
- * 1. State comparison: if watch state changed since last sync → still watching
- * 2. Time-based fallback (for first sync after restart): lastWatched within 7.5 min
+ * Uses a time-based freshness check alone: lastWatched within the window.
+ *
+ * Previously also required the watch-state hash to change between two
+ * consecutive 5-minute polls before counting as "still watching" (falling
+ * back to a time-based check only on the very first observation after a
+ * server restart). That state-comparison assumed the provider updates
+ * lastWatched/position continuously during playback - but Nuvio only
+ * writes a checkpoint on pause/stop/background, not continuously (see the
+ * activity-tracking investigation elsewhere in this codebase). During
+ * genuine continuous viewing the hash often doesn't change between polls
+ * at all, so the comparison concluded "user stopped" while they were
+ * actively still watching - a false negative on every poll after the
+ * first. Time-based freshness alone is more reliable for this provider's
+ * update cadence, at the cost of "Now Playing" potentially lingering up to
+ * one window's worth of time after playback genuinely stops.
  */
 function isActivelyWatching(item, userId, now) {
   const watchDate = getWatchDate(item)
   if (!watchDate) return false
 
-  const itemId = item._id || item.id
-  const key = `${userId}:${itemId}`
-  const currentHash = getWatchStateHash(item)
-  const previousHash = previousWatchStates.get(key)
-
-  // Always store the latest state for next comparison
-  previousWatchStates.set(key, currentHash)
-
-  if (previousHash !== undefined) {
-    // We have a previous observation to compare against
-    if (currentHash === previousHash) {
-      // Watch state hasn't changed since last sync → user stopped
-      return false
-    }
-    // State changed → user is still watching (as long as lastWatched is reasonably recent)
-    return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 3)
-  }
-
-  // First observation (after server restart): fall back to time-based check
   return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 1.5)
 }
 
