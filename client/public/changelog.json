@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.27",
+    "date": "2026-07-12",
+    "title": "Poll cycle down to 1 minute (from 5)",
+    "features": [
+      "The main poll cycle (activityMonitor's scheduled check - library sync, watch history, session tracking, Discord notifications) now runs every 1 minute instead of every 5. sessionTracker's freshness window (how long a lastWatched timestamp counts as 'still watching') is a separate, independent constant and was deliberately NOT shortened to match - it stays at its current generous window so the v1.9.26 fix isn't undone. Worth knowing: this means 5x more requests to Nuvio/Stremio's backend per account/profile - should be fine at typical account counts, but is worth reconsidering first if login/sync errors start appearing that didn't before."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.26",
     "date": "2026-07-12",
     "title": "Fix Now Playing never detecting genuine active viewing",
