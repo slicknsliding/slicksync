@@ -291,6 +291,10 @@ async function bootstrap() {
       }
     }
 
+    try {
+      const fs = require('fs')
+      fs.appendFileSync('/app/data/activity-monitor-debug.log', `[${new Date().toISOString()}] index.js:before_scheduleSyncs {}\n`)
+    } catch {}
     scheduleSyncs(
       readSyncFrequencyMinutes(),
       prisma,
@@ -301,6 +305,10 @@ async function bootstrap() {
       schedulerReq,
       INSTANCE_TYPE
     )
+    try {
+      const fs = require('fs')
+      fs.appendFileSync('/app/data/activity-monitor-debug.log', `[${new Date().toISOString()}] index.js:after_scheduleSyncs {}\n`)
+    } catch {}
 
     // Schedule user expiration cleanup (runs at midnight)
     try {
@@ -311,8 +319,16 @@ async function bootstrap() {
 
     // Schedule activity monitor (checks for new watch activity every 5 minutes)
     try {
+      const fs = require('fs')
+      fs.appendFileSync('/app/data/activity-monitor-debug.log', `[${new Date().toISOString()}] index.js:about_to_call_scheduleActivityMonitor {}\n`)
+    } catch {}
+    try {
       scheduleActivityMonitor(prisma, decrypt, getAccountId, INSTANCE_TYPE)
     } catch (err) {
+      try {
+        const fs = require('fs')
+        fs.appendFileSync('/app/data/activity-monitor-debug.log', `[${new Date().toISOString()}] index.js:scheduleActivityMonitor_threw ${JSON.stringify({ message: err.message, stack: err.stack })}\n`)
+      } catch {}
       console.error('⚠️ Failed to initialize activity monitor:', err)
     }
 
