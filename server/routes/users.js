@@ -1747,7 +1747,36 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           }
           const result = await provider.getAddons()
           const rawAddons = Array.isArray(result?.addons) ? result.addons : []
-          const addons = rawAddons.map((a) => ({
+
+          // Nuvio only stores {url, name} per addon ("urlOnly" sync mode) -
+          // no logo/version/description, unlike Stremio's account API which
+          // returns full manifests directly. Fetch each addon's own
+          // manifest.json to get real icon/version data, same as what a
+          // user would see in Nuvio/Stremio itself. Best-effort per addon -
+          // a slow or dead addon server shouldn't fail the whole import.
+          async function fetchManifest(transportUrl) {
+            if (!transportUrl) return null
+            const manifestUrl = transportUrl.endsWith('.json')
+              ? transportUrl
+              : `${transportUrl.replace(/\/$/, '')}/manifest.json`
+            try {
+              const controller = new AbortController()
+              const timeout = setTimeout(() => controller.abort(), 5000)
+              const resp = await fetch(manifestUrl, { signal: controller.signal })
+              clearTimeout(timeout)
+              if (!resp.ok) return null
+              return await resp.json()
+            } catch (e) {
+              return null
+            }
+          }
+
+          const enriched = await Promise.all(rawAddons.map(async (a) => {
+            const fetched = await fetchManifest(a?.transportUrl)
+            return { ...a, manifest: { ...(a?.manifest || {}), ...(fetched || {}) } }
+          }))
+
+          const addons = enriched.map((a) => ({
             id: a?.manifest?.id || a?.transportUrl || 'unknown',
             name: a?.manifest?.name || a?.transportName || 'Unknown',
             manifestUrl: a?.transportUrl || null,

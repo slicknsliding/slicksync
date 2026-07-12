@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.17",
+    "date": "2026-07-11",
+    "title": "Fix missing icons on imported Nuvio addons",
+    "bugFixes": [
+      "Nuvio-imported addons showed a generic puzzle-piece icon instead of the addon's real logo, while Stremio-imported addons showed real icons correctly. Cause: Nuvio's own addon storage is minimal (\"urlOnly\" sync mode - just {url, name} per addon, no logo/version/description), unlike Stremio's account API which returns full manifests directly. The v1.9.11 fix used Nuvio's minimal data as-is. Now fetches each addon's own manifest.json (5s timeout, best-effort per addon so one dead addon server doesn't fail the whole import) to get the real logo, version, and description - same data a user would see in Nuvio/Stremio itself. Note: addons already imported before this fix won't retroactively gain an icon - re-import/reconnect them to pick up real icon data."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.16",
     "date": "2026-07-11",
     "title": "Final logo: chain-link mark (reverted from double-S)",
