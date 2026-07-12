@@ -360,11 +360,24 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
       if (existingSession) {
         // Same user+item+videoId - update existing session duration
         // Since we use composite key with videoId, different episodes create new sessions automatically
-        const latestPingMs = (watchDate ? watchDate.getTime() : nowMs)
-        const sessionDurationSeconds = Math.max(
-          0,
-          Math.floor((latestPingMs - existingSession.startTime.getTime()) / 1000)
-        )
+        //
+        // durationSeconds now reflects real watched-content progress (how
+        // far the playback position has actually advanced since this
+        // session started), not wall-clock time since the session record
+        // was created. The provider's position can go stale for several
+        // minutes between checkpoints (see the freshness-window
+        // investigation elsewhere in this file), so a session could sit
+        // "active" for a long time with elapsed wall-clock time climbing
+        // even though nothing new has actually been watched - a
+        // wall-clock-based duration overstated real progress in exactly
+        // that case. Falls back to the previous wall-clock calculation
+        // only when a startPosition isn't available (older sessions, or a
+        // provider/item that doesn't report a position at all).
+        const currentPosition = Number(state.timeOffset ?? state.overallTimeWatched ?? NaN)
+        const hasPositionData = existingSession.startPosition != null && !Number.isNaN(currentPosition)
+        const sessionDurationSeconds = hasPositionData
+          ? Math.max(0, Math.floor((currentPosition - existingSession.startPosition) / 1000))
+          : Math.max(0, Math.floor(((watchDate ? watchDate.getTime() : nowMs) - existingSession.startTime.getTime()) / 1000))
 
         // NEVER update startTime forward - only backward if we discover an earlier ping
         // This prevents resets when lastWatched gets updated to recent times
@@ -415,6 +428,10 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           // so by the time we get here, we genuinely need a new/reactivated session
           const sessionStartTime = watchDate && watchDate.getTime() <= nowMs ? watchDate : now
 
+          const startPositionValue = Number.isNaN(Number(state.timeOffset ?? state.overallTimeWatched ?? NaN))
+            ? null
+            : Number(state.timeOffset ?? state.overallTimeWatched)
+
           const newSession = await prisma.watchSession.upsert({
             where: {
               accountId_userId_itemId: {
@@ -435,6 +452,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
               poster: item.poster,
               // Use the first observed watch timestamp (first "ping"), not the sync time
               startTime: sessionStartTime,
+              startPosition: startPositionValue,
               isActive: true,
               durationSeconds: 0
             },
@@ -446,6 +464,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
               episode,
               poster: item.poster,
               startTime: sessionStartTime,
+              startPosition: startPositionValue,
               endTime: null,
               isActive: true,
               durationSeconds: 0
