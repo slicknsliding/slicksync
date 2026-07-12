@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.33",
+    "date": "2026-07-12",
+    "title": "Trace the full pipeline through actual session creation/update",
+    "bugFixes": [
+      "A checkpoint confirmed fresh (~5min old, well within the new 20min window) still didn't produce a visible session. Added heartbeats through the rest of the pipeline past the gate check: whenever an item is detected active, and at the actual prisma.watchSession.create/update calls (success and failure), to catch a possible silent DB-level failure (e.g. a unique constraint issue) that the gate-level tracing wouldn't reveal."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.32",
     "date": "2026-07-12",
     "title": "Real fix for Now Playing: freshness window was proven too tight",
