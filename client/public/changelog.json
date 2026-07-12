@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.23",
+    "date": "2026-07-11",
+    "title": "Stremio Vault diagnostics: write to a file instead of stdout/stderr",
+    "bugFixes": [
+      "v1.9.22's console.warn diagnostic logging for the Stremio Vault check never showed up in `docker logs` at all. The v1.9.2 stdbuf line-buffering fix for this backend process was applied but its own changelog admitted it was never actually confirmed to work with bun's I/O internals, which may not route through the glibc buffered-stdio calls stdbuf intercepts. Switched to writing diagnostics directly to /app/data/vault-debug.log via a synchronous file write instead, bypassing stdout/stderr entirely - retrieve with `docker exec slicksync cat /app/data/vault-debug.log`."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.22",
     "date": "2026-07-11",
     "title": "Fix version badge drift for good, deeper Stremio Vault diagnostics",

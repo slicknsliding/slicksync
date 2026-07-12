@@ -149,6 +149,23 @@ async function checkStremioAuth(secret, config = {}) {
   if (!identifier) return { ok: false, message: 'No email/username on file for this entry' }
   if (!secret) return { ok: false, message: 'No password on file for this entry' }
 
+  // Write diagnostics directly to a file on the persisted data volume,
+  // bypassing stdout/stderr entirely. console.warn output has not reliably
+  // shown up in `docker logs` for this backend process even with stdbuf
+  // line-buffering applied (see v1.9.2/v1.9.22) - bun's own I/O internals
+  // may not route through the glibc buffered-stdio calls stdbuf intercepts,
+  // so a direct synchronous file write is the more reliable diagnostic path
+  // until that's confirmed one way or the other.
+  function logDebug(entry) {
+    try {
+      const fs = require('fs')
+      const line = `[${new Date().toISOString()}] ${JSON.stringify(entry)}\n`
+      fs.appendFileSync('/app/data/vault-debug.log', line)
+    } catch (e) {
+      console.warn('[VaultCheck] Failed to write debug log:', e?.message)
+    }
+  }
+
   try {
     const { StremioAPIUtils } = require('./handlers')
     const { store, tempStorage, authResult } = await StremioAPIUtils.authenticateWithStremio(identifier, secret)
@@ -157,10 +174,11 @@ async function checkStremioAuth(secret, config = {}) {
     }
     // Message-level detail wasn't enough to diagnose the last round of
     // failures (authResult had no .error/.message and wasn't thrown as an
-    // exception either) - log the full raw shape server-side so it's
-    // visible in `docker logs` on the next test, since the Vault card
-    // itself can only show a short string.
-    console.warn('[VaultCheck] Stremio auth resolved without success for', identifier, {
+    // exception either) - log the full raw shape so it's visible on the
+    // next test, since the Vault card itself can only show a short string.
+    logDebug({
+      event: 'stremio_auth_resolved_without_success',
+      identifier,
       authResult,
       storeAuthKey: store?.authKey,
       tempStorageAuth: tempStorage?.auth,
@@ -169,12 +187,13 @@ async function checkStremioAuth(secret, config = {}) {
     const detail = authResult && typeof authResult === 'object'
       ? (authResult.error || authResult.message || JSON.stringify(authResult).slice(0, 200))
       : null
-    return { ok: false, message: detail ? `Stremio rejected these credentials: ${detail}` : 'Stremio rejected these credentials (no further detail returned - check server logs)' }
+    return { ok: false, message: detail ? `Stremio rejected these credentials: ${detail}` : 'Stremio rejected these credentials (no further detail returned - check /app/data/vault-debug.log)' }
   } catch (err) {
     const msg = String(err?.message || '').toLowerCase()
     if (msg.includes('passphrase') || msg.includes('wrong password')) return { ok: false, message: 'Invalid password' }
     if (msg.includes('no such user') || msg.includes('invalid email')) return { ok: false, message: 'Invalid email' }
     if (msg.includes('rate') || msg.includes('too many') || msg.includes('429')) return { ok: false, message: 'Stremio rate-limited this login attempt - try again later, not necessarily a bad password' }
+    logDebug({ event: 'stremio_auth_threw', identifier, message: err?.message, stack: err?.stack })
     console.warn('[VaultCheck] Stremio auth threw for', identifier, err)
     return { ok: false, message: err?.message || 'Stremio login failed' }
   }
