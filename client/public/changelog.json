@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.20",
+    "date": "2026-07-11",
+    "title": "Two-tone Nuvio badge (blue + orange)",
+    "features": [
+      "Nuvio provider badge is now a split two-tone pill - half the existing blue, half a light transparent orange - to stand apart from Stremio's solid purple badge at a glance. Stremio badge unchanged."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.19",
     "date": "2026-07-11",
     "title": "Larger sidebar logo/text, darker Slick theme background",
