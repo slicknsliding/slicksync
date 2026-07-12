@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.25",
+    "date": "2026-07-12",
+    "title": "Get real ground-truth on the Stremio Vault check by bypassing the wrapper entirely",
+    "bugFixes": [
+      "v1.9.24 fixed a real bug (the authResult truthiness requirement), but the follow-up debug log showed store.authKey was also never set on any attempt - meaning either the login was genuinely failing, or the store.login() wrapper's side-effect-based signaling has another layer of ambiguity. checkStremioAuth now bypasses store.login() entirely and calls store.request('login', {email, password}) directly, logging Stremio's exact raw API response to /app/data/vault-debug.log and checking result.authKey directly - ground truth, no wrapper or side-effect inference involved."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.24",
     "date": "2026-07-12",
     "title": "Fix Stremio Vault check: it could never report success, for any credentials",
