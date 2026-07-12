@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.28",
+    "date": "2026-07-12",
+    "title": "Remove unused release-please CI workflow",
+    "miscChores": [
+      "Deleted .github/workflows/release-please.yml - it required a RELEASE_PLEASE_TOKEN repo secret that was never configured, so it failed on every push. This project's release process has been manual (git tag + gh release create) throughout, which already works fine and doesn't need this automation."
+    ],
+    "features": [],
+    "bugFixes": []
+  },
+  {
     "version": "1.9.27",
     "date": "2026-07-12",
     "title": "Poll cycle down to 1 minute (from 5)",
