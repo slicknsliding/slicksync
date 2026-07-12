@@ -5,7 +5,7 @@ const { processAccountSessions } = require('./sessionTracker')
 const { fetchKitsuMetadata } = require('./kitsuUtils')
 const { sendShareNotification: notifySendShareNotification } = require('./notify')
 
-const CHECK_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
+const CHECK_INTERVAL_MS = 1 * 60 * 1000 // 1 minute
 
 let activityTimer = null
 // Track notified items: Map<accountId, Set<itemId>>
@@ -344,7 +344,7 @@ function scheduleActivityMonitor(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
   // Run immediately on startup to update library database
   checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE)
 
-  // Then run every 5 minutes
+  // Then run every 1 minute
   activityTimer = setInterval(() => {
     checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE)
   }, CHECK_INTERVAL_MS)
