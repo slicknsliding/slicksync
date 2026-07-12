@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.11",
+    "date": "2026-07-11",
+    "title": "Fix addon import for non-Stremio accounts (e.g. Nuvio)",
+    "bugFixes": [
+      "The Import button's underlying GET /:id/stremio-addons route was hardcoded to Stremio's API regardless of the user's actual providerType, so any Nuvio (or other non-Stremio) account always failed with 'User is not connected to Stremio' - even though Nuvio has its own working getAddons() provider method already used elsewhere (e.g. the live addon count on the Users list). The route now checks providerType and uses the generic provider.getAddons() for non-Stremio accounts, transforming Nuvio's minimal addon shape into the same response shape the frontend already expects."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.10",
     "date": "2026-07-11",
     "title": "Fix the last two avatar gaps: live sessions and the Now Playing banner",
