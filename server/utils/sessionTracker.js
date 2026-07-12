@@ -345,6 +345,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     if (isActive) {
       const ageMinutes = watchDate ? Math.round((nowMs - watchDate.getTime()) / 60000) : 'unknown'
       console.log(`[SessionTracker] Active item: ${item.name} (${itemId}), age: ${ageMinutes}min, videoId: ${videoId}`)
+      heartbeat('sessionTracker:item_active', { itemId, userId, itemName: item.name, ageMinutes, videoId })
     }
 
     if (isActive) {
@@ -392,6 +393,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           data: updateData
         })
         sessionsUpdated++
+        heartbeat('sessionTracker:session_updated', { itemId, userId, sessionId: existingSession.id })
       } else {
         // No active session, create new one
         console.log(`[SessionTracker] Creating NEW session for ${item.name} (${itemId}), videoId: ${videoId}`)
@@ -420,7 +422,8 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           })
           sessionsCreated++
           console.log(`[SessionTracker] Session created successfully`)
-          
+          heartbeat('sessionTracker:session_created', { itemId, userId, sessionId: newSession.id })
+
           // Send Discord webhook notification when session starts (now playing)
           if (accountWebhookUrl) {
             await sendSessionStartNotification(accountWebhookUrl, newSession, user)
@@ -430,6 +433,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           if (!error.message.includes('Unique constraint')) {
             console.warn(`[SessionTracker] Error creating session:`, error.message)
           }
+          heartbeat('sessionTracker:session_create_error', { itemId, userId, message: error.message })
         }
       }
     }
