@@ -168,35 +168,38 @@ async function checkStremioAuth(secret, config = {}) {
 
   try {
     const { StremioAPIUtils } = require('./handlers')
-    const { store, tempStorage, authResult } = await StremioAPIUtils.authenticateWithStremio(identifier, secret)
-    // stremio-api-client's store.login() always resolves to undefined on
-    // BOTH success and failure by design (its internal .then() callback has
-    // no return statement - success is signaled entirely through the
-    // side-effect of setting store.authKey/tempStorage.auth via
-    // userChange(), not through the resolved value). Requiring authResult
-    // to also be truthy made this check permanently unable to report
-    // success for any credentials, valid or not - confirmed via
-    // /app/data/vault-debug.log showing authResult undefined on every
-    // attempt regardless of outcome. Real API errors (wrong password, etc.)
-    // still throw and are handled by the catch block below - only the
-    // success path was broken.
-    if (store.authKey || tempStorage.auth) {
+    const { store } = StremioAPIUtils.createAPIStore()
+
+    // Bypass store.login()'s wrapper (which discards the raw API response -
+    // see v1.9.24) and call the underlying request directly, so we can see
+    // exactly what Stremio's API actually returned rather than inferring it
+    // from side-effects. This is ground truth: if result.authKey is present,
+    // the login genuinely succeeded at the API level, full stop.
+    let rawResult
+    let rawErr
+    try {
+      rawResult = await store.request('login', { email: identifier, password: secret })
+    } catch (e) {
+      rawErr = e
+    }
+
+    logDebug({
+      event: 'stremio_raw_login_response',
+      identifier,
+      rawResult,
+      rawErrMessage: rawErr?.message,
+      rawErrStatus: rawErr?.status || rawErr?.statusCode,
+      rawErrBody: rawErr?.body || rawErr?.response
+    })
+
+    if (rawErr) throw rawErr
+
+    if (rawResult && rawResult.authKey) {
       return { ok: true, message: 'Stremio login succeeded' }
     }
-    // Message-level detail wasn't enough to diagnose the last round of
-    // failures (authResult had no .error/.message and wasn't thrown as an
-    // exception either) - log the full raw shape so it's visible on the
-    // next test, since the Vault card itself can only show a short string.
-    logDebug({
-      event: 'stremio_auth_resolved_without_success',
-      identifier,
-      authResult,
-      storeAuthKey: store?.authKey,
-      tempStorageAuth: tempStorage?.auth,
-      tempStorageUser: tempStorage?.user
-    })
-    const detail = authResult && typeof authResult === 'object'
-      ? (authResult.error || authResult.message || JSON.stringify(authResult).slice(0, 200))
+
+    const detail = rawResult && typeof rawResult === 'object'
+      ? (rawResult.error || rawResult.message || JSON.stringify(rawResult).slice(0, 200))
       : null
     return { ok: false, message: detail ? `Stremio rejected these credentials: ${detail}` : 'Stremio rejected these credentials (no further detail returned - check /app/data/vault-debug.log)' }
   } catch (err) {
