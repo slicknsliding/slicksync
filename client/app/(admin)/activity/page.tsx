@@ -1372,13 +1372,23 @@ function ActivityPageContent() {
                               }
                             }
 
-                            // Only show duration if we have a valid startTime (from session or recent fallback)
-                            if (!startMs || Number.isNaN(startMs)) return null;
+                            // Prefer the backend's durationSeconds when a matched session exists -
+                            // that value now reflects real watched-content progress (position
+                            // delta since the session started), refreshed once per poll cycle.
+                            // A pure client-side "now - startTime" tick looked "live" but climbed
+                            // every second regardless of whether the provider's position had
+                            // actually advanced at all, which overstated progress whenever the
+                            // provider went a while between checkpoints (common - see the
+                            // freshness-window notes in sessionTracker.js). Still falls back to
+                            // the wall-clock estimate when no session row exists yet.
+                            const elapsedSeconds = (session && typeof session.durationSeconds === 'number')
+                              ? Math.max(0, session.durationSeconds)
+                              : (startMs && !Number.isNaN(startMs))
+                                ? Math.max(0, Math.floor((nowTick - startMs) / 1000))
+                                : null;
 
-                            const elapsedSeconds = Math.max(
-                              0,
-                              Math.floor((nowTick - startMs) / 1000)
-                            );
+                            // Only show duration if we have something to show (from session or recent fallback)
+                            if (elapsedSeconds === null) return null;
 
                             return (
                               <p className="text-xs text-subtle mt-0.5">

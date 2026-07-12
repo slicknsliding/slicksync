@@ -332,6 +332,11 @@ model WatchSession {
   poster          String? // Poster URL
   startTime       DateTime // When the viewing session started
   endTime         DateTime? // When it ended (null = still watching)
+  startPosition   Int? // Playback position (ms) when this session began - lets
+                        // durationSeconds reflect real watched-content progress
+                        // (position delta) instead of wall-clock time, since the
+                        // provider's position can go stale for a while between
+                        // checkpoints. Null for older sessions predating this field.
   durationSeconds Int       @default(0) // Watch duration in seconds
   isActive        Boolean   @default(true) // True if session is still active
   createdAt       DateTime  @default(now())
