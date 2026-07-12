@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.9.21",
+    "date": "2026-07-11",
+    "title": "Lighter Nuvio badge orange, Lagoon replaced with Nebula theme, better Stremio Vault check diagnostics",
+    "features": [
+      "Nuvio badge's orange half is now more transparent (opacity 0.22 -> 0.10), less visually heavy against the blue half.",
+      "Replaced the Lagoon theme with Nebula: same dark blue-black structure as Midnight, but with the violet-to-cyan accent gradient from Slick instead of amber."
+    ],
+    "bugFixes": [
+      "Vault's Stremio credential check (checkStremioAuth) returned a generic 'Stremio rejected these credentials' with no further detail on failure, making it impossible to tell a genuinely wrong password apart from rate-limiting or other transient API issues. Now surfaces whatever detail Stremio's API actually returned, and specifically flags rate-limit responses as 'try again later, not necessarily a bad password' rather than lumping every failure into one generic message."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.20",
     "date": "2026-07-11",
     "title": "Two-tone Nuvio badge (blue + orange)",
