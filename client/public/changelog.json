@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.15",
+    "date": "2026-07-11",
+    "title": "Final logo: tilted interlocked double-S mark",
+    "features": [
+      "Replaced the chain-link mark from v1.9.14 with a tilted, tightly interlocked double-S design - two copies of the real Orbitron Black 'S' glyph (extracted directly from the font file, not live text, so it renders identically regardless of what fonts are installed), overlapped so the strokes actually cross rather than just touching, tilted ~18 degrees for motion. Same theme-reactive approach as before: flat white fill inside the sidebar's theme-colored badge, so it adapts across all 8 themes automatically. Updated everywhere SlickSyncLogo renders, plus regenerated favicon/apple-touch-icon on the brand's Slick violet-cyan gradient."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.14",
     "date": "2026-07-11",
     "title": "New chain-link logo, now theme-reactive",
