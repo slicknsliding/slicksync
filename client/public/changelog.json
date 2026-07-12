@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.29",
+    "date": "2026-07-12",
+    "title": "Much more detailed README",
+    "miscChores": [
+      "Expanded README.md with a full feature-by-feature breakdown (Multi-Provider Sync, Activity Tracking & Now Playing, Vault, Addon Snapshots, Themes with all 10 listed, Metrics & Dashboard, Security Hardening) instead of terse bullet summaries - documents what SlickSync actually does in the kind of detail a new reader would need."
+    ],
+    "features": [],
+    "bugFixes": []
+  },
+  {
     "version": "1.9.28",
     "date": "2026-07-12",
     "title": "Remove unused release-please CI workflow",
