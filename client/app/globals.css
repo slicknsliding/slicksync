@@ -98,44 +98,44 @@ html.velvet {
   --radius-xl: 20px;
 }
 
-/* Lagoon Theme - Deep teal with calm coastal blue accents */
-html.lagoon {
+/* Nebula Theme - Deep blue-black (Midnight structure) with violet-to-cyan accents */
+html.nebula {
   /* Background spectrum */
-  --color-bg: #0a1a1c;
-  --color-bg-subtle: #0f2427;
-  --color-bg-muted: #152e32;
+  --color-bg: #0d1117;
+  --color-bg-subtle: #161b22;
+  --color-bg-muted: #21262d;
   /* Surface colors */
-  --color-surface: #122a2d;
-  --color-surface-hover: #18363a;
-  --color-surface-border: rgba(111, 168, 201, 0.12);
+  --color-surface: #1c2128;
+  --color-surface-hover: #262c36;
+  --color-surface-border: rgba(240, 246, 252, 0.1);
   /* Text */
-  --color-text: #eaf5f5;
-  --color-text-muted: #93bcc4;
-  --color-text-subtle: #6b96a0;
-  /* Primary accent - calm teal */
-  --color-primary: #4fb3a5;
-  --color-primary-hover: #6bc7ba;
-  --color-primary-muted: rgba(79, 179, 165, 0.15);
+  --color-text: #f0f6fc;
+  --color-text-muted: #8b949e;
+  --color-text-subtle: #6e7681;
+  /* Primary accent - soft periwinkle-violet (same as Slick) */
+  --color-primary: #8b7ec8;
+  --color-primary-hover: #a394d8;
+  --color-primary-muted: rgba(139, 126, 200, 0.15);
   --color-primaryMuted: var(--color-primary-muted);
-  /* Secondary accent - soft coastal sky blue */
-  --color-secondary: #6fa8c9;
-  --color-secondary-muted: rgba(111, 168, 201, 0.15);
+  /* Secondary accent - muted teal (same as Slick) */
+  --color-secondary: #5fd4c4;
+  --color-secondary-muted: rgba(95, 212, 196, 0.15);
   --color-secondaryMuted: var(--color-secondary-muted);
   /* Status colors */
-  --color-success: #34d399;
-  --color-success-muted: rgba(52, 211, 153, 0.15);
+  --color-success: #3fb950;
+  --color-success-muted: rgba(63, 185, 80, 0.15);
   --color-successMuted: var(--color-success-muted);
-  --color-error: #fb7185;
-  --color-error-muted: rgba(251, 113, 133, 0.15);
+  --color-error: #f85149;
+  --color-error-muted: rgba(248, 81, 73, 0.15);
   --color-errorMuted: var(--color-error-muted);
-  --color-warning: #fbbf24;
-  --color-warning-muted: rgba(251, 191, 36, 0.15);
+  --color-warning: #d29922;
+  --color-warning-muted: rgba(210, 153, 34, 0.15);
   --color-warningMuted: var(--color-warning-muted);
   /* Chart colors */
-  --color-chart-1: #4fb3a5;
-  --color-chart-2: #6fa8c9;
-  --color-chart-3: #7dd3c0;
-  --color-chart-4: #8bc4e0;
+  --color-chart-1: #8b7ec8;
+  --color-chart-2: #5fd4c4;
+  --color-chart-3: #58a6ff;
+  --color-chart-4: #3fb950;
   /* Spacing */
   --radius-sm: 6px;
   --radius-md: 10px;

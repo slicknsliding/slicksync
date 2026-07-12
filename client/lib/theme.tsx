@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
 // Theme IDs
-export const themeIds = ['slick', 'velvet', 'lagoon', 'midnight', 'ember', 'nord', 'verdant', 'slate', 'rose', 'daylight'] as const;
+export const themeIds = ['slick', 'velvet', 'nebula', 'midnight', 'ember', 'nord', 'verdant', 'slate', 'rose', 'daylight'] as const;
 export type ThemeId = (typeof themeIds)[number];
 
 // Theme metadata for UI (settings page, etc.)
@@ -25,11 +25,11 @@ export const themeMeta: Record<ThemeId, {
     preview: '#b8869e',
     colors: { bg: '#170f14', surface: '#241820', primary: '#b8869e', secondary: '#d4a574' },
   },
-  lagoon: {
-    name: 'Lagoon',
-    description: 'Deep teal with calm coastal blue accents',
-    preview: '#4fb3a5',
-    colors: { bg: '#0a1a1c', surface: '#122a2d', primary: '#4fb3a5', secondary: '#6fa8c9' },
+  nebula: {
+    name: 'Nebula',
+    description: 'Deep blue-black with violet-to-cyan accents',
+    preview: '#8b7ec8',
+    colors: { bg: '#0d1117', surface: '#1c2128', primary: '#8b7ec8', secondary: '#5fd4c4' },
   },
   midnight: {
     name: 'Midnight',
