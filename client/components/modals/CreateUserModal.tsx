@@ -3,10 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Dialog, DialogPanel } from '@headlessui/react';
-import { Button } from '@/components/ui';
+import { Button, SlickSyncLogo } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
-import { useTheme } from '@/lib/theme';
 import {
   UsersIcon,
   ArrowPathIcon,
@@ -31,10 +30,6 @@ export function CreateUserModal({
   userName?: string;
   onReconnectSuccess?: () => void;
 }) {
-  const { themeId } = useTheme();
-  const isDark = themeId !== 'daylight';
-  const logoSrc = isDark ? '/logo-white.png' : '/logo-black.png';
-
   const isReconnect = mode === 'reconnect';
   const [step, setStep] = useState<'tabs' | 'oauth' | 'details' | 'success' | 'nuvio-details' | 'nuvio-oauth'>('tabs');
   const [provider, setProvider] = useState<'stremio' | 'nuvio'>('stremio');
@@ -957,7 +952,7 @@ export function CreateUserModal({
                             boxShadow: '0 8px 32px -8px var(--color-primary)'
                           }}
                         >
-                          <img src={logoSrc} alt="SlickSync" className="w-10 h-10 object-contain" />
+                          <SlickSyncLogo className="w-10 h-10" />
                         </motion.div>
 
                         {/* Connection line */}
@@ -1094,7 +1089,7 @@ export function CreateUserModal({
                         background: 'linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 70%, var(--color-secondary)) 100%)',
                         boxShadow: '0 8px 32px -8px var(--color-primary)'
                       }}>
-                        <img src={logoSrc} alt="SlickSync" className="w-10 h-10 object-contain" />
+                        <SlickSyncLogo className="w-10 h-10" />
                       </div>
 
                       <div className="mb-6">

@@ -3,6 +3,7 @@ export * from './Card';
 export * from './Avatar';
 export * from './UserAvatar';
 export * from './Badge';
+export * from './SlickSyncLogo';
 export * from './SyncBadge';
 export * from './ToggleSwitch';
 export * from './ColorPicker';

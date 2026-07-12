@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDroppable } from '@dnd-kit/core';
 import { SIDEBAR_ADDONS_DROPZONE_ID } from '@/components/providers/VaultDragContext';
@@ -243,7 +244,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                 boxShadow: '0 8px 24px -6px var(--color-primary)',
               }}
             >
-              <img src="/logo-white.png" alt="SlickSync" className="w-7 h-7 object-contain" />
+              <SlickSyncLogo className="w-7 h-7" />
             </motion.div>
             <div>
               <h1

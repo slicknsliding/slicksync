@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.14",
+    "date": "2026-07-11",
+    "title": "New chain-link logo, now theme-reactive",
+    "features": [
+      "Replaced the gradient spark mark from v1.9.13 (which clashed with the sidebar's own theme-colored badge background) with a chain-link icon representing 'sync', built as an inline SVG component (SlickSyncLogo) instead of a static image. It now automatically adapts to whichever of the 8 themes is active, since the surrounding badge already uses --color-primary/--color-secondary and the mark itself is flat white - checked for contrast against every theme's palette. Applied everywhere the logo renders in-app: sidebar (admin and user), login page, invite pages, and the create/reconnect user modal. Favicon and apple-touch-icon remain static files (browser tab icons can't be theme-reactive) using the same chain-link mark on the brand's Slick violet-cyan gradient."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.13",
     "date": "2026-07-11",
     "title": "New custom logo, distinct from the original Syncio branding",

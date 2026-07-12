@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { ReactNode } from 'react';
+import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 
 interface InviteLayoutProps {
   children: ReactNode;
@@ -64,7 +65,7 @@ export function InviteLayout({
               backgroundColor: 'var(--color-primary)',
             }}
           >
-            <img src="/logo-white.png" alt="SlickSync" className="w-7 h-7 object-contain" />
+            <SlickSyncLogo className="w-7 h-7" />
           </div>
           <span 
             className="text-lg font-semibold tracking-tight"

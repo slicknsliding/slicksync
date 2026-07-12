@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import {
   HomeIcon,
   FilmIcon,
@@ -118,7 +119,7 @@ export function UserSidebar() {
             className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden"
             style={{ background: 'var(--color-primary)' }}
           >
-            <img src="/logo-white.png" alt="SlickSync" className="w-7 h-7 object-contain" />
+            <SlickSyncLogo className="w-7 h-7" />
           </motion.div>
           <div>
             <h1 className="text-lg font-bold font-display" style={{ color: 'var(--color-text)' }}>
