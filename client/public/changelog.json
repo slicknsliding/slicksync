@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.16",
+    "date": "2026-07-11",
+    "title": "Final logo: chain-link mark (reverted from double-S)",
+    "bugFixes": [
+      "The double-S mark from v1.9.15 read fine in a full-size mockup but collapsed into an unreadable blur at the actual ~28px sidebar icon size - the letterform's fine internal negative space doesn't survive that much downscaling. Reverted to the simpler chain-link mark (two solid rounded hooks, no fine internal detail), which stays legible at icon size. Same theme-reactive approach either way: flat white fill inside the sidebar's theme-colored badge."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.15",
     "date": "2026-07-11",
     "title": "Final logo: tilted interlocked double-S mark",
