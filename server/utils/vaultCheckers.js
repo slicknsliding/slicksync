@@ -155,20 +155,27 @@ async function checkStremioAuth(secret, config = {}) {
     if (authResult && (store.authKey || tempStorage.auth)) {
       return { ok: true, message: 'Stremio login succeeded' }
     }
-    // Surface whatever Stremio's API actually returned instead of a generic
-    // message - a resolved-but-falsy authResult can mean several different
-    // things (wrong password, rate limiting, a required verification step,
-    // etc.) and swallowing that detail makes it impossible to tell them
-    // apart from the Vault card alone.
+    // Message-level detail wasn't enough to diagnose the last round of
+    // failures (authResult had no .error/.message and wasn't thrown as an
+    // exception either) - log the full raw shape server-side so it's
+    // visible in `docker logs` on the next test, since the Vault card
+    // itself can only show a short string.
+    console.warn('[VaultCheck] Stremio auth resolved without success for', identifier, {
+      authResult,
+      storeAuthKey: store?.authKey,
+      tempStorageAuth: tempStorage?.auth,
+      tempStorageUser: tempStorage?.user
+    })
     const detail = authResult && typeof authResult === 'object'
       ? (authResult.error || authResult.message || JSON.stringify(authResult).slice(0, 200))
       : null
-    return { ok: false, message: detail ? `Stremio rejected these credentials: ${detail}` : 'Stremio rejected these credentials (no further detail returned)' }
+    return { ok: false, message: detail ? `Stremio rejected these credentials: ${detail}` : 'Stremio rejected these credentials (no further detail returned - check server logs)' }
   } catch (err) {
     const msg = String(err?.message || '').toLowerCase()
     if (msg.includes('passphrase') || msg.includes('wrong password')) return { ok: false, message: 'Invalid password' }
     if (msg.includes('no such user') || msg.includes('invalid email')) return { ok: false, message: 'Invalid email' }
     if (msg.includes('rate') || msg.includes('too many') || msg.includes('429')) return { ok: false, message: 'Stremio rate-limited this login attempt - try again later, not necessarily a bad password' }
+    console.warn('[VaultCheck] Stremio auth threw for', identifier, err)
     return { ok: false, message: err?.message || 'Stremio login failed' }
   }
 }

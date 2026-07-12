@@ -2,36 +2,43 @@ import type { NextConfig } from "next";
 import fs from 'fs';
 import path from 'path';
 
-// Resolve app version (prefer manifest, then server/version.js, then package.json)
+// Resolve app version (prefer package.json, then manifest, then server/version.js)
+// package.json is checked first because it's the one file every release
+// patch reliably bumps - .release-please-manifest.json and
+// server/version.js are managed by a separate tool (release-please) that
+// isn't part of this fork's manual patch workflow, so they drift stale
+// silently if a release skips running it. Falling back to them only when
+// package.json is missing avoids the version badge getting stuck on an
+// old number even though newer code is genuinely running.
 let APP_VERSION = 'dev';
 try {
-  // 1) Prefer .release-please-manifest.json (manifest mode)
+  // 1) Prefer root package.json
   try {
-    const manifestPath = path.join(__dirname, '..', '.release-please-manifest.json');
-    if (fs.existsSync(manifestPath)) {
-      const manifestRaw = fs.readFileSync(manifestPath, 'utf8');
-      const manifestJson = JSON.parse(manifestRaw);
-      if (manifestJson && typeof manifestJson['.'] === 'string' && manifestJson['.']) {
-        APP_VERSION = manifestJson['.'];
-      }
-    }
+    const pkgRaw = fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8');
+    const pkg = JSON.parse(pkgRaw);
+    if (pkg.version) APP_VERSION = pkg.version;
   } catch {}
 
-  // 2) Fallback to server/version.js (managed by release-please extra-files)
+  // 2) Fallback to .release-please-manifest.json (manifest mode)
+  if (APP_VERSION === 'dev') {
+    try {
+      const manifestPath = path.join(__dirname, '..', '.release-please-manifest.json');
+      if (fs.existsSync(manifestPath)) {
+        const manifestRaw = fs.readFileSync(manifestPath, 'utf8');
+        const manifestJson = JSON.parse(manifestRaw);
+        if (manifestJson && typeof manifestJson['.'] === 'string' && manifestJson['.']) {
+          APP_VERSION = manifestJson['.'];
+        }
+      }
+    } catch {}
+  }
+
+  // 3) Fallback to server/version.js (managed by release-please extra-files)
   if (APP_VERSION === 'dev') {
     try {
       const serverRaw = fs.readFileSync(path.join(__dirname, '..', 'server', 'version.js'), 'utf8');
       const m = serverRaw.match(/VERSION\s*=\s*'([^']+)'/);
       if (m && m[1]) APP_VERSION = m[1];
-    } catch {}
-  }
-
-  // 3) Fallback to root package.json
-  if (APP_VERSION === 'dev') {
-    try {
-      const pkgRaw = fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8');
-      const pkg = JSON.parse(pkgRaw);
-      APP_VERSION = pkg.version || 'dev';
     } catch {}
   }
 } catch {}
