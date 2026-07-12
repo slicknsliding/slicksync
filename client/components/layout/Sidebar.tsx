@@ -105,7 +105,7 @@ function NavItem({ name, href, icon: Icon, isActive, index, onNavigate }: NavIte
           className="nav-item-icon w-[18px] h-[18px] relative z-10 transition-colors"
         />
         <span
-          className="nav-item-label text-sm font-medium relative z-10 font-display transition-colors"
+          className="nav-item-label text-base font-medium relative z-10 font-display transition-colors"
           style={{ color: isActive ? 'var(--color-text)' : undefined, fontWeight: isActive ? 600 : 500 }}
         >
           {name}
@@ -135,7 +135,7 @@ function NavSection({ label, children, delay = 0 }: NavSectionProps) {
       className="space-y-0.5"
     >
       <h3
-        className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider"
+        className="px-3 py-2 text-xs font-semibold uppercase tracking-wider"
         style={{ color: 'var(--color-text-subtle)' }}
       >
         {label}
@@ -238,17 +238,17 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             <motion.div
               whileHover={{ scale: 1.08, rotate: 3 }}
               transition={{ duration: 0.2 }}
-              className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden"
+              className="w-14 h-14 rounded-xl flex items-center justify-center overflow-hidden"
               style={{
                 background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)',
                 boxShadow: '0 8px 24px -6px var(--color-primary)',
               }}
             >
-              <SlickSyncLogo className="w-7 h-7" />
+              <SlickSyncLogo className="w-10 h-10" />
             </motion.div>
             <div>
               <h1
-                className="text-lg font-bold font-display tracking-tight"
+                className="text-2xl font-bold font-display tracking-tight"
                 style={{
                   background: 'linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 100%)',
                   WebkitBackgroundClip: 'text',

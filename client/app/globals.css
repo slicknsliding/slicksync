@@ -11,12 +11,12 @@
 :root,
 html.slick {
   /* Background spectrum */
-  --color-bg: #0f0a1a;
-  --color-bg-subtle: #170f26;
-  --color-bg-muted: #201631;
+  --color-bg: #050308;
+  --color-bg-subtle: #0a0710;
+  --color-bg-muted: #100b1a;
   /* Surface colors */
-  --color-surface: #1a1128;
-  --color-surface-hover: #241934;
+  --color-surface: #0c0812;
+  --color-surface-hover: #16101f;
   --color-surface-border: rgba(196, 181, 216, 0.12);
   /* Text */
   --color-text: #f0edf7;

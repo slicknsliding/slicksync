@@ -17,7 +17,7 @@ export const themeMeta: Record<ThemeId, {
     name: 'Slick',
     description: 'Soft violet with muted teal accents',
     preview: '#8b7ec8',
-    colors: { bg: '#0f0a1a', surface: '#1a1128', primary: '#8b7ec8', secondary: '#5fd4c4' },
+    colors: { bg: '#050308', surface: '#0c0812', primary: '#8b7ec8', secondary: '#5fd4c4' },
   },
   velvet: {
     name: 'Velvet',
