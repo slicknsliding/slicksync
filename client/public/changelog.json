@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.34",
+    "date": "2026-07-12",
+    "title": "The actual root cause: any repeat watch of anything could never create a session, ever",
+    "bugFixes": [
+      "Found via the v1.9.33 pipeline tracing: WatchSession's schema has @@unique([accountId, userId, itemId]) - one row per item for the account's entire lifetime, meant to be reused/reactivated across repeat watches. sessionTracker.js was calling a plain create() every time no in-memory active session existed for an item, which threw 'Unique constraint failed' on every single replay of anything ever watched before - and that error was being silently swallowed as an assumed-harmless race-condition guard. In practice this meant only an item's very first-ever watch could produce a session; every watch after that, on any day, silently produced nothing. This is the actual explanation for 'Now Playing' and 'Top Watched' both being wrong all session - not the freshness window, not the scheduler, not Nuvio's checkpoint cadence, though those were real secondary issues fixed along the way. Replaced create() with upsert() keyed on the same unique constraint, so a repeat watch reactivates the existing row (fresh startTime, isActive, reset duration) instead of failing to insert a duplicate."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.33",
     "date": "2026-07-12",
     "title": "Trace the full pipeline through actual session creation/update",

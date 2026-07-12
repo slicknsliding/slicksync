@@ -395,16 +395,34 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
         sessionsUpdated++
         heartbeat('sessionTracker:session_updated', { itemId, userId, sessionId: existingSession.id })
       } else {
-        // No active session, create new one
-        console.log(`[SessionTracker] Creating NEW session for ${item.name} (${itemId}), videoId: ${videoId}`)
+        // No active session in memory for this item. A DB row may already
+        // exist though (from a previous, now-closed watch of this same
+        // item) - the schema's @@unique([accountId, userId, itemId])
+        // constraint means there can only ever be ONE row per item, for
+        // the account's whole lifetime, reused/reactivated across repeat
+        // watches rather than one row per watch occasion. A plain create()
+        // here threw "Unique constraint failed" on every single replay of
+        // anything ever watched before, and that error was being silently
+        // swallowed (assumed to be a harmless race-condition guard) -
+        // meaning any item's second-and-later watch never produced a
+        // session at all. Reactivating the existing row via upsert fixes
+        // this properly instead of ignoring the failure.
+        console.log(`[SessionTracker] Creating/reactivating session for ${item.name} (${itemId}), videoId: ${videoId}`)
         try {
           // Use watchDate if available and reasonable (not in the future), otherwise use now
           // Note: The early reactivation loop handles recently closed sessions,
-          // so by the time we get here, we genuinely need a new session
+          // so by the time we get here, we genuinely need a new/reactivated session
           const sessionStartTime = watchDate && watchDate.getTime() <= nowMs ? watchDate : now
 
-          const newSession = await prisma.watchSession.create({
-            data: {
+          const newSession = await prisma.watchSession.upsert({
+            where: {
+              accountId_userId_itemId: {
+                accountId: accountIdValue,
+                userId,
+                itemId
+              }
+            },
+            create: {
               accountId: accountIdValue,
               userId,
               itemId,
@@ -418,10 +436,22 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
               startTime: sessionStartTime,
               isActive: true,
               durationSeconds: 0
+            },
+            update: {
+              videoId,
+              itemName: item.name || 'Unknown',
+              itemType: item.type || 'movie',
+              season,
+              episode,
+              poster: item.poster,
+              startTime: sessionStartTime,
+              endTime: null,
+              isActive: true,
+              durationSeconds: 0
             }
           })
           sessionsCreated++
-          console.log(`[SessionTracker] Session created successfully`)
+          console.log(`[SessionTracker] Session created/reactivated successfully`)
           heartbeat('sessionTracker:session_created', { itemId, userId, sessionId: newSession.id })
 
           // Send Discord webhook notification when session starts (now playing)
