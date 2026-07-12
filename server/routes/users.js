@@ -1721,17 +1721,55 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   router.get('/:id/stremio-addons', async (req, res) => {
     try {
       const { id } = req.params
-      // Fetch the user's stored Stremio auth
+      // Fetch the full user record - need providerType to know which
+      // provider's addon fetch to use, not just Stremio's
       const user = await prisma.user.findFirst({
         where: {
           id,
           accountId: getAccountId(req)
-        },
-        select: { stremioAuthKey: true }
+        }
       })
 
       if (!user) {
         return responseUtils.notFound(res, 'User')
+      }
+
+      // Non-Stremio providers (e.g. Nuvio) don't have a stremioAuthKey at
+      // all - they were previously always rejected here with "not
+      // connected to Stremio" even though the account has its own addon
+      // list. Route those through the provider-agnostic getAddons()
+      // instead, same as the live addon count on the Users list.
+      if (user.providerType && user.providerType !== 'stremio') {
+        try {
+          const provider = createProvider(user, { decrypt, req })
+          if (!provider) {
+            return res.status(400).json({ message: `User is not connected to ${user.providerType}` })
+          }
+          const result = await provider.getAddons()
+          const rawAddons = Array.isArray(result?.addons) ? result.addons : []
+          const addons = rawAddons.map((a) => ({
+            id: a?.manifest?.id || a?.transportUrl || 'unknown',
+            name: a?.manifest?.name || a?.transportName || 'Unknown',
+            manifestUrl: a?.transportUrl || null,
+            version: a?.manifest?.version || 'unknown',
+            description: a?.manifest?.description || '',
+            iconUrl: a?.manifest?.logo || null,
+            manifest: {
+              id: a?.manifest?.id || 'unknown',
+              name: a?.manifest?.name || 'Unknown',
+              version: a?.manifest?.version || 'unknown',
+              description: a?.manifest?.description || '',
+              logo: a?.manifest?.logo || null,
+              types: a?.manifest?.types || ['other'],
+              resources: a?.manifest?.resources || [],
+              catalogs: a?.manifest?.catalogs || []
+            }
+          }))
+          return res.json({ userId: id, count: addons.length, addons })
+        } catch (error) {
+          console.error(`Error fetching ${user.providerType} addons:`, error)
+          return res.status(500).json({ message: `Failed to fetch addons from ${user.providerType}`, error: error.message })
+        }
       }
 
       if (!user.stremioAuthKey) {
