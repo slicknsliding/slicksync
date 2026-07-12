@@ -144,10 +144,7 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
 
           heartbeat('getLibraryForUser:live_fetch_ok', {
             userId: user.id,
-            itemCount: Array.isArray(library) ? library.length : 0,
-            obsession: Array.isArray(library)
-              ? (library.find(i => i._id === 'tt37287335' || i.id === 'tt37287335') || null)
-              : null
+            itemCount: Array.isArray(library) ? library.length : 0
           })
 
           return library || []

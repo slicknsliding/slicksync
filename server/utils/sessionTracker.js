@@ -189,12 +189,22 @@ function getWatchDate(item) {
  * first. Time-based freshness alone is more reliable for this provider's
  * update cadence, at the cost of "Now Playing" potentially lingering up to
  * one window's worth of time after playback genuinely stops.
+ *
+ * Window widened from 1.5x to 4x (7.5min -> 20min) after direct heartbeat
+ * evidence: a genuinely continuous, active playback session had a real
+ * 13.4-minute gap between two Nuvio checkpoints - the 7.5min window was
+ * proven too tight for this provider's actual checkpoint cadence, not just
+ * theoretically risky. Matches (and now slightly exceeds) the separate
+ * hasRecentActivity window elsewhere in this file, which used 3x and
+ * correctly evaluated the same case as "recent" - the two checks were
+ * inconsistent with each other, and the tighter one was the one actually
+ * gating session creation.
  */
 function isActivelyWatching(item, userId, now) {
   const watchDate = getWatchDate(item)
   if (!watchDate) return false
 
-  return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 1.5)
+  return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 4)
 }
 
 /**
@@ -320,20 +330,6 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
 
     const hasWatchProgress = hasTimeWatched || hasVideoId || hasRecentActivity
 
-    if (itemId === 'tt37287335') {
-      heartbeat('sessionTracker:item_gate_check', {
-        itemId,
-        userId,
-        hasTimeWatched,
-        hasVideoId,
-        hasRecentActivity,
-        hasWatchProgress,
-        watchDate: watchDate ? watchDate.toISOString() : null,
-        nowMs,
-        state
-      })
-    }
-
     if (!hasWatchProgress) continue
 
     // Update last activity tracking (watchDate is already defined above)
@@ -342,10 +338,6 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     }
 
     const isActive = isActivelyWatching(item, userId, nowMs)
-
-    if (itemId === 'tt37287335') {
-      heartbeat('sessionTracker:item_isActive_result', { itemId, userId, isActive })
-    }
     const videoId = item.type === 'series' ? state.video_id : null
     const { season, episode } = await extractSeasonEpisode(videoId)
 
