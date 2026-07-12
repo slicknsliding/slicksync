@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.26",
+    "date": "2026-07-12",
+    "title": "Fix Now Playing never detecting genuine active viewing",
+    "bugFixes": [
+      "isActivelyWatching() required the watch-state hash (lastWatched/position) to change between two consecutive 5-minute polls before counting an item as 'still being watched', falling back to a time-based check only on the very first observation after a server restart. That assumed the provider updates lastWatched continuously during playback - but Nuvio only writes a checkpoint on pause/stop/background (established earlier this session), so during genuine continuous viewing the hash frequently doesn't change between polls at all, and the comparison concluded 'user stopped' on every poll after the first - a false negative that could make 'Now Playing' never appear for an entire active session. Now relies on time-based freshness alone (lastWatched within 7.5 minutes), trading a small staleness tail after playback genuinely stops for reliably detecting that it's actually happening."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.25",
     "date": "2026-07-12",
     "title": "Get real ground-truth on the Stremio Vault check by bypassing the wrapper entirely",
