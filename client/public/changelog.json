@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.24",
+    "date": "2026-07-12",
+    "title": "Fix Stremio Vault check: it could never report success, for any credentials",
+    "bugFixes": [
+      "The Stremio credential check (checkStremioAuth) required both authResult to be truthy AND store.authKey/tempStorage.auth to be set before reporting success. Traced via the new vault-debug.log diagnostics: stremio-api-client's store.login() always resolves to undefined by design, on success and failure alike - its internal .then() callback has no return statement, and success is signaled entirely through the side-effect of setting store.authKey via userChange(), not through the resolved promise value. Requiring authResult to also be truthy made the success branch permanently unreachable, for any credentials, valid or not - this was never actually a wrong-password or rate-limiting issue. Real API errors (genuinely wrong passwords, etc.) already threw correctly and were unaffected. Now checks store.authKey/tempStorage.auth alone."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.23",
     "date": "2026-07-11",
     "title": "Stremio Vault diagnostics: write to a file instead of stdout/stderr",
