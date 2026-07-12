@@ -81,9 +81,9 @@ function getBadgeStyles(variant: BadgeVariant) {
       };
     case 'nuvio':
       return {
-        background: 'rgba(56, 89, 158, 0.18)',
-        color: 'rgb(147, 178, 235)',
-        borderColor: 'rgba(56, 89, 158, 0.3)',
+        background: 'linear-gradient(90deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.22) 50%, rgba(255, 152, 0, 0.22) 100%)',
+        color: 'rgb(186, 208, 240)',
+        borderColor: 'rgba(255, 152, 0, 0.25)',
       };
     case 'default':
     case 'neutral':
