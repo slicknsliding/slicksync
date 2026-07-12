@@ -122,6 +122,6 @@ the Vault export), and the auto-generated encryption key.
 ## License
 
 MIT — see `LICENSE`. Original work © iamneur0 (Syncio); Nuvio integration
-concepts © Avangelista; Vault design inspiration © Sonicx161 (AIOManager);
+concepts © Avangelista; Vault design inspiration along with Nuvio integration © Sonicx161 (AIOManager);
 modifications © Slick.
 
