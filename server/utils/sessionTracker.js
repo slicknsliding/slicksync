@@ -13,6 +13,16 @@ const { fetchKitsuMetadata, extractSeasonEpisode } = require('./kitsuUtils')
 const { postDiscord, fetchMetadata } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
 
+// Shares the same debug log file as activityMonitor.js's heartbeat() - one
+// combined trace of the whole pipeline from library fetch through gating.
+function heartbeat(event, data = {}) {
+  try {
+    const fs = require('fs')
+    const line = `[${new Date().toISOString()}] ${event} ${JSON.stringify(data)}\n`
+    fs.appendFileSync('/app/data/activity-monitor-debug.log', line)
+  } catch {}
+}
+
 // Intentionally NOT tied to activityMonitor's poll scheduling interval
 // (which runs every 1 minute as of v1.9.27) - this is a freshness *window*,
 // not a poll frequency, and needs to stay generous regardless of how often
@@ -310,6 +320,20 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
 
     const hasWatchProgress = hasTimeWatched || hasVideoId || hasRecentActivity
 
+    if (itemId === 'tt37287335') {
+      heartbeat('sessionTracker:item_gate_check', {
+        itemId,
+        userId,
+        hasTimeWatched,
+        hasVideoId,
+        hasRecentActivity,
+        hasWatchProgress,
+        watchDate: watchDate ? watchDate.toISOString() : null,
+        nowMs,
+        state
+      })
+    }
+
     if (!hasWatchProgress) continue
 
     // Update last activity tracking (watchDate is already defined above)
@@ -318,6 +342,10 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     }
 
     const isActive = isActivelyWatching(item, userId, nowMs)
+
+    if (itemId === 'tt37287335') {
+      heartbeat('sessionTracker:item_isActive_result', { itemId, userId, isActive })
+    }
     const videoId = item.type === 'series' ? state.video_id : null
     const { season, episode } = await extractSeasonEpisode(videoId)
 
