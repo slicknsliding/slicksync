@@ -13,7 +13,15 @@ const { fetchKitsuMetadata, extractSeasonEpisode } = require('./kitsuUtils')
 const { postDiscord, fetchMetadata } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
 
-const CHECK_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
+// Intentionally NOT tied to activityMonitor's poll scheduling interval
+// (which runs every 1 minute as of v1.9.27) - this is a freshness *window*,
+// not a poll frequency, and needs to stay generous regardless of how often
+// we check. Nuvio only writes a position/lastWatched checkpoint on
+// pause/stop/background, not continuously, so a short window here would
+// reintroduce the false-negative bug fixed in v1.9.26 (isActivelyWatching
+// concluding "stopped" just because the provider hasn't checkpointed
+// recently, even during genuine continuous playback).
+const CHECK_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes - freshness window base, not a poll interval
 
 /**
  * Format episode info to match UI display
