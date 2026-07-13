@@ -1,24 +1,26 @@
 // Proxy stream monitor - polls AIOStreams' built-in proxy stats endpoint and
 // mirrors active/ended connections into ProxyStreamSession rows, giving
-// SlickSync a "Now Playing" signal for Stremio users that AIOStreams itself
-// can see (this proxy sits in the middle of every stream request, regardless
-// of provider), independent of the Nuvio-sourced WatchSession pipeline.
+// SlickSync a "Now Playing" signal for Stremio/Nuvio users that AIOStreams
+// itself can see (this proxy sits in the middle of every stream request),
+// independent of the Nuvio-sourced WatchSession pipeline.
 //
 // AIOStreams' /api/v1/proxy/stats route is gated by requireAdmin (dashboard
 // session cookie auth) - there is no separate API key mechanism in this
 // version of AIOStreams. So this module logs in with AIOSTREAMS_AUTH
 // credentials the same way the browser dashboard does, caches the resulting
 // session cookie, and re-logs-in on a 401.
+//
+// Connection identity: AIOStreams' BuiltinProxyStats keys each connection by
+// (ip, url), not by a single requestId - concurrent requests (e.g. range
+// requests for the same file) merge into one entry with a `count` and a
+// growing/shrinking `requestIds[]` array. This module mirrors that: identity
+// here is (accountId, aiostreamsUser, clientIp, url).
 
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
 let pollTimer = null
 let cachedCookie = null
 
-// Direct file-based heartbeat, same pattern as activityMonitor.js - console
-// output from this backend has not reliably reached `docker logs` in steady
-// state, so this gives an independent way to check the scheduler is actually
-// running.
 function heartbeat(event, data = {}) {
   try {
     const fs = require('fs')
@@ -35,13 +37,6 @@ function clearProxyStreamMonitor() {
   cachedCookie = null
 }
 
-/**
- * Best-effort cleanup of a release-style filename into a display title.
- * "Powder.1995.1080p.AMZN.WEB-DL.DD5.1.H.264-SiGMA" -> "Powder (1995)"
- * Not a full parser - just strips the common tags/dots so the raw scene
- * filename isn't shown verbatim in the UI. Falls back to the raw filename
- * (dots->spaces) if no year is found.
- */
 function parseDisplayName(filename) {
   if (!filename) return null
 
@@ -111,30 +106,49 @@ async function pollOnce(prisma, accountId, config) {
   try {
     const stats = await fetchProxyStats(config.baseUrl, config.username, config.password)
     const now = new Date()
-    const seenRequestIds = new Set()
+    // Track which (aiostreamsUser, clientIp, url) combos are active this poll
+    const seenKeys = new Set()
 
     for (const user of stats.users ?? []) {
       for (const conn of user.active ?? []) {
-        seenRequestIds.add(conn.requestId)
+        // Real shape from BuiltinProxyStats: { ip, url, filename, timestamp,
+        // lastSeen, count, requestIds }. No clientIp/requestId fields exist.
+        const clientIp = conn.ip
+        const url = conn.url
+        if (!clientIp || !url) {
+          heartbeat('pollOnce:skipped_malformed_connection', { user: user.username, conn })
+          continue
+        }
+
+        const key = `${user.username}:::${clientIp}:::${url}`
+        seenKeys.add(key)
 
         const displayName = parseDisplayName(conn.filename)
 
         await prisma.proxyStreamSession.upsert({
           where: {
-            accountId_requestId: { accountId, requestId: conn.requestId },
+            accountId_aiostreamsUser_clientIp_url: {
+              accountId,
+              aiostreamsUser: user.username,
+              clientIp,
+              url,
+            },
           },
           create: {
             accountId,
             aiostreamsUser: user.username,
-            clientIp: conn.clientIp,
-            requestId: conn.requestId,
-            url: conn.url,
+            clientIp,
+            url,
             filename: conn.filename ?? null,
             displayName,
+            requestCount: conn.count ?? 1,
             startTime: new Date(conn.timestamp),
+            lastSeenAt: new Date(conn.lastSeen ?? conn.timestamp),
             isActive: true,
           },
           update: {
+            requestCount: conn.count ?? 1,
+            lastSeenAt: new Date(conn.lastSeen ?? Date.now()),
             isActive: true,
             endTime: null,
           },
@@ -142,12 +156,15 @@ async function pollOnce(prisma, accountId, config) {
       }
     }
 
+    // Anything previously active that AIOStreams no longer lists: mark ended.
     const staleActive = await prisma.proxyStreamSession.findMany({
       where: { accountId, isActive: true },
-      select: { id: true, requestId: true },
+      select: { id: true, aiostreamsUser: true, clientIp: true, url: true },
     })
 
-    const toClose = staleActive.filter((row) => !seenRequestIds.has(row.requestId))
+    const toClose = staleActive.filter(
+      (row) => !seenKeys.has(`${row.aiostreamsUser}:::${row.clientIp}:::${row.url}`)
+    )
     if (toClose.length > 0) {
       await prisma.proxyStreamSession.updateMany({
         where: { id: { in: toClose.map((r) => r.id) } },
@@ -156,7 +173,7 @@ async function pollOnce(prisma, accountId, config) {
     }
 
     heartbeat('pollOnce:done', {
-      activeSeen: seenRequestIds.size,
+      activeSeen: seenKeys.size,
       closed: toClose.length,
     })
   } catch (error) {
