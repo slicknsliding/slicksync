@@ -2071,6 +2071,21 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         videoId: s.videoId
       }));
 
+      // Merge in an AIOStreams proxy-detected active stream for this user
+      // (faster/more accurate start/stop detection than the WatchSession
+      // pipeline above). Wrapped/unwrapped around the shared helper since
+      // this route's nowPlaying entries have no `user` field (already
+      // scoped to one user) unlike metricsBuilder.js's account-wide list.
+      try {
+        const { mergeProxyNowPlaying } = require('../utils/proxyNowPlaying');
+        const wrapped = nowPlaying.map(np => ({ user: { id: userId }, item: np.item, startTime: np.startTime, videoId: np.videoId }));
+        const merged = await mergeProxyNowPlaying(prisma, user.accountId || DEFAULT_ACCOUNT_ID, [user], wrapped);
+        nowPlaying.length = 0;
+        nowPlaying.push(...merged.map(m => ({ item: m.item, startTime: m.startTime, videoId: m.videoId })));
+      } catch (error) {
+        console.warn('[PublicLibrary] Failed to merge proxy now playing:', error.message);
+      }
+
       res.json({
         sessions: activityItems,
         episodeHistory: episodeItems,

@@ -849,6 +849,20 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     })
   }
 
+  // Merge in AIOStreams proxy-detected active streams (faster/more accurate
+  // start/stop detection than the WatchSession poll-based pipeline above).
+  // Proxy-detected entries take priority per user; WatchSession entries
+  // above remain as a fallback for any user not currently covered by the
+  // proxy (e.g. a stream that didn't route through AIOStreams).
+  try {
+    const { mergeProxyNowPlaying } = require('./proxyNowPlaying')
+    const merged = await mergeProxyNowPlaying(prisma, accountIdValue || 'default', activeUsers, nowPlaying)
+    nowPlaying.length = 0
+    nowPlaying.push(...merged)
+  } catch (error) {
+    console.warn('[MetricsBuilder] Failed to merge proxy now playing:', error.message)
+  }
+
   // Build startedPlaying from library cache (for period-based metrics, not UI display)
   const periodStartTime = startDate.getTime()
   for (const user of activeUsers) {
