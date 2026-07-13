@@ -36,6 +36,16 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   const userByUsername = new Map(
     users.filter((u) => u.username).map((u) => [u.username.toLowerCase(), u])
   )
+  // Secondary match: local-part of email (e.g. "slicknslidin" from
+  // "slicknslidin@protonmail.com"). Handles the common case where one
+  // AIOStreams login covers multiple per-provider SlickSync profiles that
+  // share the same email but have provider-specific usernames (e.g. "SLICK
+  // STREMIO", "NuvioSLICK") that don't match the AIOStreams username at all.
+  const userByEmailLocalPart = new Map(
+    users
+      .filter((u) => u.email && u.email.includes('@'))
+      .map((u) => [u.email.split('@')[0].toLowerCase(), u])
+  )
   const watchSessionByUserId = new Map(
     watchSessionNowPlaying.filter((np) => np.user && np.user.id).map((np) => [np.user.id, np])
   )
@@ -43,39 +53,72 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   const result = []
   const coveredUserIds = new Set()
 
+  // Fallback: AIOStreams only has one login username, but a single person
+  // can have multiple per-provider SlickSync profiles (e.g. one Stremio
+  // profile, one Nuvio profile) that don't match that username at all.
+  // AIOSTREAMS_FALLBACK_USER_IDS lists which SlickSync user IDs should
+  // receive proxy-detected activity when the username lookup above finds
+  // no match, rather than silently dropping it. Comma-separated, set in
+  // this app's own .env.
+  const fallbackUserIds = (process.env.AIOSTREAMS_FALLBACK_USER_IDS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const usersById = new Map(users.map((u) => [u.id, u]))
+
   for (const proxy of proxySessions) {
-    const user = userByUsername.get((proxy.aiostreamsUser || '').toLowerCase())
-    if (!user) continue // AIOStreams username doesn't map to a known SlickSync user - skip rather than guess
+    let matchedUsers = []
+    const aiostreamsUserLower = (proxy.aiostreamsUser || '').toLowerCase()
+    const directMatch = userByUsername.get(aiostreamsUserLower)
+    const emailMatch = userByEmailLocalPart.get(aiostreamsUserLower)
 
-    coveredUserIds.add(user.id)
-    const existing = watchSessionByUserId.get(user.id)
+    if (directMatch) {
+      matchedUsers = [directMatch]
+    } else if (emailMatch) {
+      // One AIOStreams login, multiple per-provider profiles sharing an
+      // email - matched by email local-part rather than username.
+      matchedUsers = users.filter(
+        (u) => u.email && u.email.split('@')[0].toLowerCase() === aiostreamsUserLower
+      )
+    } else if (fallbackUserIds.length > 0) {
+      matchedUsers = fallbackUserIds
+        .map((id) => usersById.get(id))
+        .filter(Boolean)
+    }
 
-    result.push({
-      user: existing?.user ?? {
-        id: user.id,
-        username: user.username || user.email,
-        email: user.email,
-        colorIndex: user.colorIndex || 0,
-        avatarUrl: user.avatarUrl || null,
-        useGravatar: user.useGravatar ?? false,
-      },
-      item: existing?.item ?? {
-        id: null,
-        name: proxy.displayName || proxy.filename || 'Unknown',
-        type: null,
-        year: null,
-        poster: null,
-        season: null,
-        episode: null,
-      },
-      videoId: existing?.videoId ?? null,
-      // Proxy startTime/liveness is the authoritative signal here, not
-      // whatever the WatchSession entry (if any) happened to record.
-      watchedAt: proxy.startTime.toISOString(),
-      watchedAtTimestamp: proxy.startTime.getTime(),
-      startTime: proxy.startTime,
-      source: 'aiostreams-proxy',
-    })
+    if (matchedUsers.length === 0) continue // no direct match and no usable fallback - skip rather than guess
+
+    for (const user of matchedUsers) {
+      coveredUserIds.add(user.id)
+      const existing = watchSessionByUserId.get(user.id)
+
+      result.push({
+        user: existing?.user ?? {
+          id: user.id,
+          username: user.username || user.email,
+          email: user.email,
+          colorIndex: user.colorIndex || 0,
+          avatarUrl: user.avatarUrl || null,
+          useGravatar: user.useGravatar ?? false,
+        },
+        item: existing?.item ?? {
+          id: null,
+          name: proxy.displayName || proxy.filename || 'Unknown',
+          type: null,
+          year: null,
+          poster: null,
+          season: null,
+          episode: null,
+        },
+        videoId: existing?.videoId ?? null,
+        // Proxy startTime/liveness is the authoritative signal here, not
+        // whatever the WatchSession entry (if any) happened to record.
+        watchedAt: proxy.startTime.toISOString(),
+        watchedAtTimestamp: proxy.startTime.getTime(),
+        startTime: proxy.startTime,
+        source: 'aiostreams-proxy',
+      })
+    }
   }
 
   for (const np of watchSessionNowPlaying) {
