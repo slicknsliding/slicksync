@@ -83,7 +83,7 @@ interface ThemeContextValue {
 }
 
 const defaultContextValue: ThemeContextValue = {
-  themeId: 'slick',
+  themeId: 'nebula',
   setTheme: () => {},
   hideSensitive: false,
   toggleHideSensitive: () => {},
@@ -92,7 +92,7 @@ const defaultContextValue: ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue>(defaultContextValue);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [themeId, setThemeId] = useState<ThemeId>('slick');
+  const [themeId, setThemeId] = useState<ThemeId>('nebula');
   const [hideSensitive, setHideSensitive] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -100,7 +100,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const savedTheme = localStorage.getItem('syncio-theme') as ThemeId | null;
     const savedHideSensitive = localStorage.getItem('syncio-hide-sensitive') === 'true';
-    const initial = savedTheme && themeIds.includes(savedTheme) ? savedTheme : 'slick';
+    const initial = savedTheme && themeIds.includes(savedTheme) ? savedTheme : 'nebula';
     setThemeId(initial);
     setHideSensitive(savedHideSensitive);
     document.documentElement.className = initial;

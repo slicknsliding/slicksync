@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.9.37",
+    "date": "2026-07-12",
+    "title": "Nebula default theme (redone - earlier attempt never actually landed) + accurate watch duration everywhere",
+    "features": [
+      "Nebula is now the default theme - the previous v1.9.37 tag was found to point at the wrong commit (identical to v1.9.36), meaning this change never actually shipped despite appearing to. Redone properly this time: ThemeContext default, useState initial value, localStorage fallback, and the CSS :root selector all changed from slick to nebula."
+    ],
+    "bugFixes": [
+      "Live 'Watching for Xm' display and permanently-stored durationSeconds (written when a session closes) both now compute from real watched-content position delta instead of wall-clock/checkpoint-timestamp math, which could understate or fully zero out real watch time whenever the provider's checkpoint went a while without updating.",
+      "Added lastPosition and totalDuration fields to WatchSession (nullable, captured at every create/update/close) - a direct position/runtime snapshot rather than a derived elapsed-time calculation, inspired by reviewing Sonicx161/AIOManager's approach. Structurally more robust against sparse provider checkpoints since it's always accurate the instant new data arrives."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.36",
     "date": "2026-07-12",
     "title": "Fix two real issues found tonight: activity threshold clarity, and inaccurate 'Watching for' duration",

@@ -7,8 +7,7 @@
 
 /* ===== THEME DEFINITIONS ===== */
 
-/* Slick Theme (default) - Soft violet + muted teal */
-:root,
+/* Slick Theme - Soft violet + muted teal */
 html.slick {
   /* Background spectrum */
   --color-bg: #050308;
@@ -98,7 +97,8 @@ html.velvet {
   --radius-xl: 20px;
 }
 
-/* Nebula Theme - Deep blue-black (Midnight structure) with violet-to-cyan accents */
+/* Nebula Theme (default) - Deep blue-black (Midnight structure) with violet-to-cyan accents */
+:root,
 html.nebula {
   /* Background spectrum */
   --color-bg: #0d1117;
