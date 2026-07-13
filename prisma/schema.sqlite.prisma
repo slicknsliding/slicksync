@@ -354,3 +354,32 @@ model WatchSession {
   @@index([accountId, isActive])
   @@map("watch_sessions")
 }
+
+// Metrics: Proxy stream sessions - "Now Playing" data sourced from AIOStreams'
+// built-in proxy (which sees every stream request passing through it in real
+// time, regardless of provider - Stremio, Nuvio, anything using the proxy).
+// Deliberately NOT merged into WatchSession: WatchSession was built for a
+// different, live-detection purpose and is currently unreliably populated for
+// both providers (see MovieWatchHistory comment above). This table is fully
+// independent so the AIOStreams integration doesn't inherit that bug, and so
+// it keeps working regardless of whether/how the WatchSession issue is fixed.
+model ProxyStreamSession {
+  id              String    @id @default(cuid())
+  accountId       String    @default("default")
+  aiostreamsUser  String    // Username as reported by AIOStreams proxy stats (may not map 1:1 to a SlickSync User)
+  clientIp        String    // Client IP AIOStreams saw making the request
+  requestId       String    // AIOStreams' per-connection request ID - stable identity for one stream, used to match start/end
+  url             String    // Full upstream URL being proxied (may contain the raw source link)
+  filename        String?   // Raw filename AIOStreams reported, e.g. "Powder.1995.1080p.AMZN.WEB-DL.DD5.1.H.264-SiGMA"
+  displayName     String?   // Best-effort cleaned-up title parsed from filename, e.g. "Powder (1995)"
+  startTime       DateTime  // When AIOStreams first reported this connection active
+  endTime         DateTime? // When AIOStreams stopped reporting it as active (null = still active)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([accountId, requestId])
+  @@index([accountId, isActive])
+  @@index([accountId, aiostreamsUser, isActive])
+  @@map("proxy_stream_sessions")
+}

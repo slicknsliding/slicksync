@@ -332,6 +332,18 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize activity monitor:', err)
     }
 
+    // Schedule proxy stream monitor ("Now Playing" via AIOStreams proxy stats)
+    try {
+      const { scheduleProxyStreamMonitor } = require('./utils/proxyStreamMonitor')
+      scheduleProxyStreamMonitor(prisma, DEFAULT_ACCOUNT_ID, {
+        baseUrl: process.env.AIOSTREAMS_URL,
+        username: process.env.AIOSTREAMS_AUTH_USERNAME,
+        password: process.env.AIOSTREAMS_AUTH_PASSWORD,
+      })
+    } catch (err) {
+      console.error('⚠️ Failed to initialize proxy stream monitor:', err)
+    }
+
     // Schedule vault monitor (active-checks + expiry notifications, every 6h)
     try {
       const { scheduleVaultMonitor } = require('./utils/vaultMonitor')

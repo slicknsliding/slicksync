@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.39",
+    "date": "2026-07-13",
+    "title": "Now Playing: AIOStreams proxy integration",
+    "features": [
+      "Added a new Now Playing data source backed by AIOStreams' built-in stream proxy, which sees every active stream in real time regardless of provider (Stremio or Nuvio). Stored in a new, independent ProxyStreamSession table - deliberately not merged into the existing WatchSession table, which is a separate, currently-unreliable pipeline."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.37",
     "date": "2026-07-12",
     "title": "Nebula default theme (redone - earlier attempt never actually landed) + accurate watch duration everywhere",
