@@ -310,6 +310,11 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
   // Track last activity time per item from the library (lastWatched only)
   // NOTE: Do NOT use _mtime - that's modification time, not watch time
   const lastActivityByItemId = new Map()
+  // Track last known playback position per item, so a closing session's
+  // final duration can be computed the same real-progress way as an
+  // updating one instead of falling back to a checkpoint timestamp that
+  // may never have moved during the whole session.
+  const lastPositionByItemId = new Map()
 
   // Process each library item
   for (const item of library) {
@@ -336,6 +341,10 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     // Update last activity tracking (watchDate is already defined above)
     if (watchDate) {
       lastActivityByItemId.set(itemId, watchDate)
+    }
+    const currentPositionForItem = Number(state.timeOffset ?? state.overallTimeWatched ?? NaN)
+    if (!Number.isNaN(currentPositionForItem)) {
+      lastPositionByItemId.set(itemId, currentPositionForItem)
     }
 
     const isActive = isActivelyWatching(item, userId, nowMs)
@@ -381,8 +390,11 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
 
         // NEVER update startTime forward - only backward if we discover an earlier ping
         // This prevents resets when lastWatched gets updated to recent times
+        const totalDurationValue = Number.isNaN(Number(state.duration ?? NaN)) ? null : Number(state.duration)
         const updateData = {
-          durationSeconds: sessionDurationSeconds
+          durationSeconds: sessionDurationSeconds,
+          lastPosition: Number.isNaN(currentPosition) ? null : currentPosition,
+          totalDuration: totalDurationValue
         }
 
         // Update season/episode if they've changed (e.g., Kitsu API now returns correct season)
@@ -431,6 +443,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           const startPositionValue = Number.isNaN(Number(state.timeOffset ?? state.overallTimeWatched ?? NaN))
             ? null
             : Number(state.timeOffset ?? state.overallTimeWatched)
+          const totalDurationValue = Number.isNaN(Number(state.duration ?? NaN)) ? null : Number(state.duration)
 
           const newSession = await prisma.watchSession.upsert({
             where: {
@@ -453,6 +466,8 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
               // Use the first observed watch timestamp (first "ping"), not the sync time
               startTime: sessionStartTime,
               startPosition: startPositionValue,
+              lastPosition: startPositionValue,
+              totalDuration: totalDurationValue,
               isActive: true,
               durationSeconds: 0
             },
@@ -465,6 +480,8 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
               poster: item.poster,
               startTime: sessionStartTime,
               startPosition: startPositionValue,
+              lastPosition: startPositionValue,
+              totalDuration: totalDurationValue,
               endTime: null,
               isActive: true,
               durationSeconds: 0
@@ -496,15 +513,27 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     if (!currentlyActiveItems.has(sessionKey)) {
       const lastActivity = lastActivityByItemId.get(session.itemId)
       const endTime = lastActivity || now
-      // Calculate final duration based on last observed ping for that item
-      const sessionDurationSeconds = Math.max(0, Math.floor((endTime.getTime() - session.startTime.getTime()) / 1000))
+
+      // Prefer real watched-content progress (position delta since the
+      // session started) over a checkpoint-timestamp-based duration -
+      // without this, a session whose provider checkpoint never advanced
+      // during the whole time it was open (state.lastWatched frozen at the
+      // same value as the session's own startTime) closes with
+      // endTime === startTime and a permanently stored durationSeconds of
+      // exactly 0, regardless of how long it was actually active.
+      const lastPositionValue = lastPositionByItemId.get(session.itemId)
+      const hasPositionData = session.startPosition != null && lastPositionValue != null
+      const sessionDurationSeconds = hasPositionData
+        ? Math.max(0, Math.floor((lastPositionValue - session.startPosition) / 1000))
+        : Math.max(0, Math.floor((endTime.getTime() - session.startTime.getTime()) / 1000))
 
       await prisma.watchSession.update({
         where: { id: session.id },
         data: {
           isActive: false,
           endTime,
-          durationSeconds: sessionDurationSeconds
+          durationSeconds: sessionDurationSeconds,
+          lastPosition: lastPositionValue ?? session.lastPosition
         }
       })
       sessionsClosed++

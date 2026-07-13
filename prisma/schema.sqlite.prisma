@@ -338,6 +338,12 @@ model WatchSession {
                         // provider's position can go stale for a while between
                         // checkpoints. Null for older sessions predating this field.
   durationSeconds Int       @default(0) // Watch duration in seconds
+  lastPosition    Int? // Latest known playback position (ms) - a direct
+                        // snapshot value, always accurate the instant new
+                        // data arrives, unlike a computed session-elapsed
+                        // duration which can go stale between checkpoints
+  totalDuration   Int? // Content's total runtime (ms), captured alongside
+                        // lastPosition
   isActive        Boolean   @default(true) // True if session is still active
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
