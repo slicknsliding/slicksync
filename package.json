@@ -1,15 +1,15 @@
 {
   "name": "slicksync",
   "version": "1.9.39",
-  "description": "Syncio - Stremio addon and user management system",
+  "description": "SlickSync - Stremio addon and user management system",
   "main": "server/index.js",
   "scripts": {
     "dev": "concurrently \"bun run server:watch\" \"bun run client:dev\"",
     "dev:private": "concurrently \"bun run server:private:watch\" \"bun run client:dev\"",
     "dev:public": "concurrently \"bun run server:public:watch\" \"bun run client:dev\"",
     "server:watch": "nodemon server/index.js",
-    "server:private:watch": "cp prisma/schema.sqlite.prisma prisma/schema.prisma && bunx prisma generate && QUIET=true NEXT_PUBLIC_DEBUG=true AUTH_ENABLED=false REDIS_URL=\"redis://localhost:6379\" JWT_SECRET=\"temp-jwt-secret-key\" ENCRYPTION_KEY=\"temp-encryption-key-32-chars-long\" SYNCIO_PRIVATE_USERNAME=\"${SYNCIO_PRIVATE_USERNAME}\" SYNCIO_PRIVATE_PASSWORD=\"${SYNCIO_PRIVATE_PASSWORD}\" nodemon --config nodemon.json server/index.js",
-    "server:public:watch": "cp prisma/schema.postgres.prisma prisma/schema.prisma && bunx prisma generate && QUIET=false NEXT_PUBLIC_DEBUG=true AUTH_ENABLED=true DATABASE_URL=\"postgresql://syncio:syncio@localhost:5432/syncio\" REDIS_URL=\"redis://localhost:6379\" JWT_SECRET=\"temp-jwt-secret-key\" ENCRYPTION_KEY=\"temp-encryption-key-32-chars-long\" nodemon server/index.js",
+    "server:private:watch": "cp prisma/schema.sqlite.prisma prisma/schema.prisma && bunx prisma generate && QUIET=true NEXT_PUBLIC_DEBUG=true AUTH_ENABLED=false REDIS_URL=\"redis://localhost:6379\" JWT_SECRET=\"temp-jwt-secret-key\" ENCRYPTION_KEY=\"temp-encryption-key-32-chars-long\" SLICKSYNC_PRIVATE_USERNAME=\"${SLICKSYNC_PRIVATE_USERNAME}\" SLICKSYNC_PRIVATE_PASSWORD=\"${SLICKSYNC_PRIVATE_PASSWORD}\" nodemon --config nodemon.json server/index.js",
+    "server:public:watch": "cp prisma/schema.postgres.prisma prisma/schema.prisma && bunx prisma generate && QUIET=false NEXT_PUBLIC_DEBUG=true AUTH_ENABLED=true DATABASE_URL=\"postgresql://slicksync:slicksync@localhost:5432/slicksync\" REDIS_URL=\"redis://localhost:6379\" JWT_SECRET=\"temp-jwt-secret-key\" ENCRYPTION_KEY=\"temp-encryption-key-32-chars-long\" nodemon server/index.js",
     "client:dev": "cd client && npm run dev",
     "client:dev:private": "cd client && npm run dev",
     "client:dev:public": "cd client && npm run dev",
@@ -22,7 +22,7 @@
     "lint": "eslint server/",
     "lint:fix": "eslint server/ --fix",
     "studio": "cp prisma/schema.sqlite.prisma prisma/schema.prisma && bunx prisma generate && DATABASE_URL=\"file:./prisma/sqlite.db\" bunx prisma studio",
-    "studio:public": "cp prisma/schema.postgres.prisma prisma/schema.prisma && bunx prisma generate && DATABASE_URL=\"postgresql://syncio:syncio@localhost:5432/syncio\" bunx prisma studio"
+    "studio:public": "cp prisma/schema.postgres.prisma prisma/schema.prisma && bunx prisma generate && DATABASE_URL=\"postgresql://slicksync:slicksync@localhost:5432/slicksync\" bunx prisma studio"
   },
   "keywords": [
     "stremio",
@@ -30,7 +30,7 @@
     "management",
     "encryption"
   ],
-  "author": "Syncio Team",
+  "author": "SlickSync Team",
   "license": "MIT",
   "dependencies": {
     "@prisma/client": "^6.19.1",

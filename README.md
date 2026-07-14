@@ -15,11 +15,11 @@ SlickSync stands on the work of several people. This project would not exist
 without them:
 
 - **[iamneur0](https://github.com/iamneur0)** — creator of the original
-  [Syncio](https://github.com/iamneur0/syncio) (MIT), the addon/user
+  [SlickSync](https://github.com/iamneur0/slicksync) (MIT), the addon/user
   management engine SlickSync is built on top of. The sync engine, group
   management, watch-history metrics, and the whole underlying architecture
   are their work.
-- **[Avangelista](https://github.com/Avangelista/syncio)** — the Nuvio
+- **[Avangelista](https://github.com/Avangelista/slicksync)** — the Nuvio
   provider integration concepts (OAuth device-code flow, credential auth)
   that SlickSync's Nuvio support is adapted from.
 - **[Sonicx161](https://github.com/Sonicx161/AIOManager)** — creator of
@@ -28,7 +28,7 @@ without them:
   feature. Also incidentally the source that confirmed Nuvio's actual current
   backend endpoint when SlickSync's own reference had gone stale.
 
-See `README.upstream.md` for the original Syncio documentation — most setup,
+See `README.upstream.md` for the original SlickSync documentation — most setup,
 env var, and Docker instructions there still apply unchanged.
 
 > **Note — Private, single-instance fork.** SlickSync is built and run for
@@ -201,7 +201,7 @@ the Vault export), and the auto-generated encryption key.
 
 ## License
 
-MIT — see `LICENSE`. Original work © iamneur0 (Syncio); Nuvio integration
+MIT — see `LICENSE`. Original work © iamneur0 (SlickSync); Nuvio integration
 concepts © Avangelista; Vault design inspiration along with Nuvio integration
 © Sonicx161 (AIOManager); modifications © Slick.
 

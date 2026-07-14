@@ -2,7 +2,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'syncio-dev-secret-change-me';
+const JWT_SECRET = process.env.JWT_SECRET || 'slicksync-dev-secret-change-me';
 
 /**
  * Check if path is allowlisted for public access

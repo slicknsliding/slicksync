@@ -264,9 +264,9 @@
   {
     "version": "1.9.13",
     "date": "2026-07-11",
-    "title": "New custom logo, distinct from the original Syncio branding",
+    "title": "New custom logo, distinct from the original SlickSync branding",
     "features": [
-      "Replaced the plain circular 'S' badge (inherited from upstream Syncio) with an original angular spark mark in a violet-to-cyan gradient, matching the app's existing Slick theme palette. Updated everywhere the old logo appeared: sidebar (admin and user), invite pages, the create-user modal, favicon, and apple-touch-icon."
+      "Replaced the plain circular 'S' badge (inherited from upstream SlickSync) with an original angular spark mark in a violet-to-cyan gradient, matching the app's existing Slick theme palette. Updated everywhere the old logo appeared: sidebar (admin and user), invite pages, the create-user modal, favicon, and apple-touch-icon."
     ],
     "bugFixes": [],
     "miscChores": []
@@ -567,7 +567,7 @@
     "bugFixes": [],
     "miscChores": [
       "Rewrote README to reflect the actual current feature set (Vault, badges, redesign, backup export)",
-      "Added a dedicated Credits section: iamneur0 (original Syncio creator), Avangelista (Nuvio integration concepts), Sonicx161/AIOManager (Vault design inspiration)"
+      "Added a dedicated Credits section: iamneur0 (original SlickSync creator), Avangelista (Nuvio integration concepts), Sonicx161/AIOManager (Vault design inspiration)"
     ]
   },
   {
@@ -638,7 +638,7 @@
     "title": "Credential Vault + full SlickSync rebrand",
     "features": [
       "New Vault: encrypted credential storage with expiry tracking, active-checks (Real-Debrid, TorBox, Newznab indexers, generic HTTP, TCP reachability), and ntfy/Discord notifications on expiry or failure",
-      "Complete rebrand from Syncio to SlickSync across every backend and frontend string, log message, notification footer, and the Nuvio device name"
+      "Complete rebrand from SlickSync to SlickSync across every backend and frontend string, log message, notification footer, and the Nuvio device name"
     ],
     "bugFixes": [],
     "miscChores": [

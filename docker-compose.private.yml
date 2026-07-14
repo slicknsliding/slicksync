@@ -1,5 +1,5 @@
 services:
-  syncio:
+  slicksync:
     build:
       context: .
       dockerfile: Dockerfile
@@ -11,8 +11,8 @@ services:
       ENCRYPTION_KEY: 'temp-encryption-key-32-chars-long'
       
       # To enable private instance authentication, uncomment the following variables
-      # SYNCIO_PRIVATE_USERNAME: ''
-      # SYNCIO_PRIVATE_PASSWORD: ''
+      # SLICKSYNC_PRIVATE_USERNAME: ''
+      # SLICKSYNC_PRIVATE_PASSWORD: ''
     user: "1001:1001"
     # volumes:
       # - ./data:/app/data

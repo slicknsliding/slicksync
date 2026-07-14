@@ -19,7 +19,7 @@ function hmacHex(keyBuf, input) {
  * Manifest URL hash (backward-compatible global peppered hash)
  */
 function manifestUrlHash(url) {
-  const PEPPER = process.env.HASH_PEPPER || process.env.ENCRYPTION_KEY || 'syncio-pepper'
+  const PEPPER = process.env.HASH_PEPPER || process.env.ENCRYPTION_KEY || 'slicksync-pepper'
   return sha256Hex(normalizeUrl(url) + '|' + PEPPER)
 }
 
@@ -49,14 +49,14 @@ function getAccountHmacKey(req) {
   // Derive per-account HMAC key from DEK if available, fallback to PEPPER
   try {
     const dek = selectKeyForRequest(req) // Uint8Array/Buffer used for AES-GCM
-    const salt = Buffer.from('syncio-hmac-salt')
+    const salt = Buffer.from('slicksync-hmac-salt')
     // Simple HKDF-like derivation using SHA-256 (not full HKDF API to avoid deps)
     const ikm = Buffer.isBuffer(dek) ? dek : Buffer.from(String(dek || ''))
     const prk = crypto.createHmac('sha256', salt).update(ikm).digest()
-    const okm = crypto.createHmac('sha256', prk).update('syncio-manifest-hmac').digest()
+    const okm = crypto.createHmac('sha256', prk).update('slicksync-manifest-hmac').digest()
     return okm
   } catch {
-    const PEPPER = process.env.HASH_PEPPER || process.env.ENCRYPTION_KEY || 'syncio-pepper'
+    const PEPPER = process.env.HASH_PEPPER || process.env.ENCRYPTION_KEY || 'slicksync-pepper'
     return Buffer.from(String(PEPPER))
   }
 }

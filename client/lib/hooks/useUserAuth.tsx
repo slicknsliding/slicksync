@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { userAuth, UserInfo, UserApiError } from '@/lib/user-api';
 
-const STORAGE_KEY = 'syncio-user-auth';
+const STORAGE_KEY = 'slicksync-user-auth';
 
 interface StoredAuth {
   userId: string;

@@ -1,9 +1,9 @@
 services:
 
-  syncio:
+  slicksync:
     image: ghcr.io/iamneur0/syncio:public
     environment:
-      DATABASE_URL: 'postgresql://syncio:syncio@db:5432/syncio'
+      DATABASE_URL: 'postgresql://slicksync:slicksync@db:5432/slicksync'
       JWT_SECRET: 'dev-secret'
       ENCRYPTION_KEY: 'dev-encryption-key-32-chars-long'
     depends_on:
@@ -15,9 +15,9 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: syncio
-      POSTGRES_PASSWORD: syncio
-      POSTGRES_DB: syncio
+      POSTGRES_USER: slicksync
+      POSTGRES_PASSWORD: slicksync
+      POSTGRES_DB: slicksync
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:

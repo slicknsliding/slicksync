@@ -514,7 +514,7 @@ export default function ChangelogPage() {
             <p className="text-sm text-muted">
               View all releases on{' '}
               <a
-                href="https://github.com/iamneur0/syncio/releases"
+                href="https://github.com/iamneur0/slicksync/releases"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary hover:text-primary-hover underline font-medium"
