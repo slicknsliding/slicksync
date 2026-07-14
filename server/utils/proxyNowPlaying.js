@@ -107,6 +107,21 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       if (titleMatch) return titleMatch
     }
 
+    // No title-match signal available (common when multiple profiles share
+    // one email, since the email-match tier always returns all of them as
+    // candidates - AIOSTREAMS_FALLBACK_USER_IDS never even gets consulted
+    // in that case otherwise). Use the fallback list's order as the
+    // tiebreaker here too: whichever candidate appears earliest in
+    // AIOSTREAMS_FALLBACK_USER_IDS wins, rather than picking candidates[0]
+    // in arbitrary database row order.
+    if (fallbackUserIds.length > 0) {
+      const byFallbackOrder = candidates
+        .map((u) => ({ u, rank: fallbackUserIds.indexOf(u.id) }))
+        .filter((c) => c.rank !== -1)
+        .sort((a, b) => a.rank - b.rank)
+      if (byFallbackOrder.length > 0) return byFallbackOrder[0].u
+    }
+
     return candidates[0]
   }
 
@@ -170,6 +185,14 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
 
     coveredUserIds.add(user.id)
     const existing = watchSessionByUserId.get(user.id)
+    // Only borrow the existing WatchSession's item/videoId if it's actually
+    // about the same title the proxy detected - an existing session for
+    // this user that's about something else entirely (a real, unrelated,
+    // still-active session) must not be shown as if it were the proxied
+    // content. User identity (avatar/username/email) is unaffected by this
+    // check - that's about the person, not the content.
+    const existingTitleMatches = existing &&
+      titlesMatch(normalizeTitle(existing.item?.name), normalizeTitle(representative.displayName))
 
     result.push({
       user: existing?.user ?? {
@@ -180,7 +203,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
         avatarUrl: user.avatarUrl || null,
         useGravatar: user.useGravatar ?? false,
       },
-      item: existing?.item ?? {
+      item: existingTitleMatches ? existing.item : {
         id: null,
         name: representative.displayName || representative.filename || 'Unknown',
         type: null,
@@ -189,7 +212,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
         season: null,
         episode: null,
       },
-      videoId: existing?.videoId ?? null,
+      videoId: existingTitleMatches ? existing.videoId : null,
       // Proxy startTime/liveness is the authoritative signal here, not
       // whatever the WatchSession entry (if any) happened to record.
       watchedAt: earliestStartTime.toISOString(),
