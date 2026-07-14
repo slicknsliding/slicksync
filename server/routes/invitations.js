@@ -138,7 +138,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
           // For invitation creation, we don't have a user yet, so use default avatar
           await postDiscord(webhookUrl, null, {
             embeds: [embed],
-            avatar_url: 'https://raw.githubusercontent.com/iamneur0/syncio/refs/heads/main/client/public/logo-black.png'
+            avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
           })
         }
       } catch (webhookError) {
@@ -500,7 +500,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
 
             await postDiscord(webhookUrl, null, {
               embeds: [embed],
-              avatar_url: 'https://raw.githubusercontent.com/iamneur0/syncio/refs/heads/main/client/public/logo-black.png'
+              avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
             })
           }
         } catch (webhookError) {
@@ -729,7 +729,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
       let oauthExpiresAt = null
 
       try {
-        const host = req.headers.host || req.headers.origin || 'syncio.local'
+        const host = req.headers.host || req.headers.origin || 'slicksync.local'
 
         const stremioResponse = await fetch('https://link.stremio.com/api/v2/create?type=Create', {
           headers: {
@@ -1133,7 +1133,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
       let oauthExpiresAt = null
 
       try {
-        const host = req.headers.host || req.headers.origin || 'syncio.local'
+        const host = req.headers.host || req.headers.origin || 'slicksync.local'
 
         const stremioResponse = await fetch('https://link.stremio.com/api/v2/create?type=Create', {
           headers: {
@@ -1332,7 +1332,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
 
             await postDiscord(webhookUrl, null, {
               embeds: [embed],
-              avatar_url: avatarUrl || 'https://raw.githubusercontent.com/iamneur0/syncio/refs/heads/main/client/public/logo-black.png'
+              avatar_url: avatarUrl || 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
             })
           }
         } catch (webhookError) {
@@ -1540,7 +1540,7 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
 
           await postDiscord(webhookUrl, null, {
             embeds: [embed],
-            avatar_url: 'https://raw.githubusercontent.com/iamneur0/syncio/refs/heads/main/client/public/logo-black.png'
+            avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
           })
         }
       } catch (webhookError) {

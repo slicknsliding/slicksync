@@ -1,4 +1,4 @@
-# Docker Guide - Unified Syncio
+# Docker Guide - Unified SlickSync
 
 ## 🐳 Single Dockerfile Approach
 
@@ -182,7 +182,7 @@ volumes:
 ```bash
 # Clone and deploy
 git clone <repo-url>
-cd syncio
+cd slicksync
 cp env.example .env
 # Edit .env for your environment
 make prod
@@ -191,7 +191,7 @@ make prod
 ### Manual Steps
 ```bash
 # 1. Build the image
-docker build -t syncio .
+docker build -t slicksync .
 
 # 2. Run with docker-compose
 docker-compose up -d

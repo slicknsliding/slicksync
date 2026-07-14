@@ -1,10 +1,10 @@
-# Syncio - Docker Commands
+# SlickSync - Docker Commands
 
 .PHONY: help dev prod nginx build up down logs clean restart migrate
 
 # Default target
 help:
-	@echo "Syncio - Available Commands:"
+	@echo "SlickSync - Available Commands:"
 	@echo ""
 	@echo "Development:"
 	@echo "  make dev          - Start development environment (hot reload)"
@@ -83,7 +83,7 @@ db-reset:
 # Build commands
 build:
 	@echo "Building Docker image..."
-	docker build -t syncio .
+	docker build -t slicksync .
 
 # Maintenance commands
 clean:

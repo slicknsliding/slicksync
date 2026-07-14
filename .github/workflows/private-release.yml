@@ -40,7 +40,7 @@ jobs:
             type=raw,value=private
             type=semver,pattern=private-v{{version}}
           labels: |
-            org.opencontainers.image.title=syncio-private
+            org.opencontainers.image.title=slicksync-private
 
       - name: Build and push Docker image (private)
         uses: docker/build-push-action@v6

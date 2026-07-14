@@ -98,8 +98,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Load saved theme and settings on mount
   useEffect(() => {
-    const savedTheme = localStorage.getItem('syncio-theme') as ThemeId | null;
-    const savedHideSensitive = localStorage.getItem('syncio-hide-sensitive') === 'true';
+    const savedTheme = localStorage.getItem('slicksync-theme') as ThemeId | null;
+    const savedHideSensitive = localStorage.getItem('slicksync-hide-sensitive') === 'true';
     const initial = savedTheme && themeIds.includes(savedTheme) ? savedTheme : 'nebula';
     setThemeId(initial);
     setHideSensitive(savedHideSensitive);
@@ -111,13 +111,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!mounted) return;
     document.documentElement.className = themeId;
-    localStorage.setItem('syncio-theme', themeId);
+    localStorage.setItem('slicksync-theme', themeId);
   }, [themeId, mounted]);
 
   // Save hideSensitive preference
   useEffect(() => {
     if (!mounted) return;
-    localStorage.setItem('syncio-hide-sensitive', String(hideSensitive));
+    localStorage.setItem('slicksync-hide-sensitive', String(hideSensitive));
   }, [hideSensitive, mounted]);
 
   const setTheme = (id: ThemeId) => {

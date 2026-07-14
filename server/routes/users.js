@@ -154,7 +154,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         const excludedAddons = parseAddonIds(user.excludedAddons)
         const protectedAddons = parseProtectedAddons(user.protectedAddons, req)
 
-        // Calculate total watch time from watch activity (like old syncio)
+        // Calculate total watch time from watch activity (like old slicksync)
         let totalWatchTimeMinutes = 0
         try {
           const activities = await prisma.watchActivity.findMany({
@@ -5050,7 +5050,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       await postDiscord(webhookUrl, null, {
         embeds: [embed],
-        avatar_url: 'https://raw.githubusercontent.com/iamneur0/syncio/refs/heads/main/client/public/logo-black.png'
+        avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
       })
 
       return res.json({ message: 'Webhook sent successfully', sent: true })
