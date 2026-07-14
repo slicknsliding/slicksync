@@ -83,6 +83,18 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   // under all of them. Prefers whichever candidate has an existing active
   // WatchSession entry whose title matches the proxy's parsed name; falls
   // back to the first candidate if no title match narrows it down.
+  // Substring containment, not exact equality - the proxy's parsed
+  // displayName includes episode info from the filename (e.g. "Man on
+  // Fire S01E01"), while WatchSession's itemName is just the show title
+  // ("Man on Fire"). These are the same show but never match via strict
+  // equality, which silently broke disambiguation (confirmed with real
+  // data: a correct WatchSession match existed but wasn't recognized,
+  // causing a fallback to the wrong candidate).
+  function titlesMatch(a, b) {
+    if (!a || !b) return false
+    return a.includes(b) || b.includes(a)
+  }
+
   function disambiguateMatch(candidates, proxyDisplayName) {
     if (candidates.length <= 1) return candidates[0] || null
 
@@ -90,7 +102,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     if (proxyTitle) {
       const titleMatch = candidates.find((u) => {
         const existing = watchSessionByUserId.get(u.id)
-        return existing && normalizeTitle(existing.item?.name) === proxyTitle
+        return existing && titlesMatch(normalizeTitle(existing.item?.name), proxyTitle)
       })
       if (titleMatch) return titleMatch
     }
