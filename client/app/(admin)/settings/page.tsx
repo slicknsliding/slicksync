@@ -27,6 +27,7 @@ import {
   CogIcon,
   BoltIcon,
   DocumentTextIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline';
 
 // Memoized theme card component
@@ -232,6 +233,10 @@ export default function SettingsPage() {
   
   // Webhook testing
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+
+  // AIOMetadata manifest URL (used for poster lookups on AIOStreams-proxy-
+  // detected Now Playing entries that have no library metadata match)
+  const [aiometadataManifestUrl, setAiometadataManifestUrl] = useState('');
   
   // Load settings on mount
   useEffect(() => {
@@ -251,6 +256,13 @@ export default function SettingsPage() {
         // Settings may not exist yet, use defaults
       }
       
+      try {
+        const aiometadataSettings = await api.getAiometadataManifestUrl();
+        setAiometadataManifestUrl(aiometadataSettings.manifestUrl || '');
+      } catch (e) {
+        // Endpoint may not be available
+      }
+
       try {
         const keyStatus = await api.getApiKeyStatus();
         if (keyStatus.apiKey) {
@@ -295,6 +307,15 @@ export default function SettingsPage() {
       toast.error(e.message || 'Failed to send test message');
     } finally {
       setIsTestingWebhook(false);
+    }
+  };
+
+  const handleSaveAiometadataManifestUrl = async () => {
+    try {
+      await api.updateAiometadataManifestUrl(aiometadataManifestUrl.trim() || null);
+      toast.success('AIOMetadata manifest URL saved');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to save AIOMetadata manifest URL');
     }
   };
 
@@ -577,6 +598,36 @@ export default function SettingsPage() {
                   />
                 </SettingRow>
               </div>
+            </div>
+          </Card>
+        </PageSection>
+
+        {/* Now Playing Posters */}
+        <PageSection delay={0.18} className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-secondary-muted">
+                <PhotoIcon className="w-5 h-5 text-secondary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold font-display text-default">Now Playing Posters</h3>
+                <p className="text-xs text-muted">Poster lookups for streams detected via the AIOStreams proxy with no library match</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-default mb-2">AIOMetadata Manifest URL</label>
+              <input
+                type="url"
+                value={aiometadataManifestUrl}
+                onChange={(e) => setAiometadataManifestUrl(e.target.value)}
+                onBlur={handleSaveAiometadataManifestUrl}
+                placeholder="https://your-aiometadata-host/stremio/<uuid>/manifest.json"
+                className="input-base w-full px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-muted mt-2">
+                Used to fetch posters for Now Playing entries that came from the AIOStreams proxy but have no matching watch session. Leave blank to disable poster lookups.
+              </p>
             </div>
           </Card>
         </PageSection>
