@@ -115,11 +115,22 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
 
   for (const group of groupedByTitle.values()) {
     // Use the most recently active row in the group as the representative
-    // for display fields (startTime, poster, etc.) - the freshest one is
-    // most likely the real current connection, not a stale leftover.
+    // for display fields (poster, displayName, liveness) - the freshest one
+    // is most likely the real current connection, not a stale leftover.
     const representative = group.reduce((latest, p) =>
       p.lastSeenAt > latest.lastSeenAt ? p : latest
     )
+    // Earliest startTime across the whole group is used for the reported
+    // watch duration - a seek creates a new connection with a new (later)
+    // startTime, and using the representative's own startTime alone would
+    // make "Watching for Xm" reset toward 0 after every seek instead of
+    // counting continuously from when viewing actually began. The
+    // representative's own startTime is kept too (lastConnectionStartTime,
+    // below) rather than discarded, in case a future UI wants to show
+    // something like "resumed 2m ago" alongside the total duration.
+    const earliestStartTime = group.reduce((earliest, p) =>
+      p.startTime < earliest ? p.startTime : earliest
+    , representative.startTime)
 
     let candidates = []
     const aiostreamsUserLower = (representative.aiostreamsUser || '').toLowerCase()
@@ -169,9 +180,12 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       videoId: existing?.videoId ?? null,
       // Proxy startTime/liveness is the authoritative signal here, not
       // whatever the WatchSession entry (if any) happened to record.
-      watchedAt: representative.startTime.toISOString(),
-      watchedAtTimestamp: representative.startTime.getTime(),
-      startTime: representative.startTime,
+      watchedAt: earliestStartTime.toISOString(),
+      watchedAtTimestamp: earliestStartTime.getTime(),
+      startTime: earliestStartTime,
+      // Most recent connection's own start time (e.g. when the last seek
+      // happened) - kept separately, not used for duration display.
+      lastConnectionStartTime: representative.startTime.toISOString(),
       source: 'aiostreams-proxy',
     })
   }
