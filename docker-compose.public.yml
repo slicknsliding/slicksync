@@ -1,7 +1,7 @@
 services:
 
   slicksync:
-    image: ghcr.io/iamneur0/syncio:public
+    image: ghcr.io/slicknsliding/slicksync:public
     environment:
       DATABASE_URL: 'postgresql://slicksync:slicksync@db:5432/slicksync'
       JWT_SECRET: 'dev-secret'
