@@ -16,6 +16,8 @@
 // growing/shrinking `requestIds[]` array. This module mirrors that: identity
 // here is (accountId, aiostreamsUser, clientIp, url).
 
+const { lookupAiometadataPoster } = require('./aiometadataLookup')
+
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
 let pollTimer = null
@@ -125,7 +127,7 @@ async function pollOnce(prisma, accountId, config) {
 
         const displayName = parseDisplayName(conn.filename)
 
-        await prisma.proxyStreamSession.upsert({
+        const row = await prisma.proxyStreamSession.upsert({
           where: {
             accountId_aiostreamsUser_clientIp_url: {
               accountId,
@@ -153,6 +155,33 @@ async function pollOnce(prisma, accountId, config) {
             endTime: null,
           },
         })
+
+        // Poster lookup runs once per stream (cached via metadataMatchedAt),
+        // not on every 30s poll while the same stream is still active.
+        if (!row.metadataMatchedAt) {
+          try {
+            const account = await prisma.appAccount.findUnique({
+              where: { id: accountId },
+              select: { aiometadataManifestUrl: true },
+            })
+            const manifestUrl = account?.aiometadataManifestUrl
+            if (manifestUrl && displayName) {
+              const yearMatch = displayName.match(/\((\d{4})\)$/)
+              const year = yearMatch ? yearMatch[1] : null
+              const title = year ? displayName.replace(/\s*\(\d{4}\)$/, '') : displayName
+              const result = await lookupAiometadataPoster(manifestUrl, title, year)
+              await prisma.proxyStreamSession.update({
+                where: { id: row.id },
+                data: {
+                  posterUrl: result?.posterUrl ?? null,
+                  metadataMatchedAt: new Date(),
+                },
+              })
+            }
+          } catch (error) {
+            heartbeat('pollOnce:poster_lookup_error', { message: error.message })
+          }
+        }
       }
     }
 
