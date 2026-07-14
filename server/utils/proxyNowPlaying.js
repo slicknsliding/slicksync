@@ -66,59 +66,92 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     .filter(Boolean)
   const usersById = new Map(users.map((u) => [u.id, u]))
 
+  // Normalizes a title for loose comparison: lowercase, strip year/parens,
+  // collapse whitespace. Good enough to tell "Obsession" vs "Obsession
+  // (2025)" apart from something unrelated, not meant to be exact.
+  function normalizeTitle(name) {
+    return (name || '')
+      .toLowerCase()
+      .replace(/\(\d{4}\)/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+  }
+
+  // When multiple SlickSync profiles match one AIOStreams login (this
+  // login has no way to say which actual client/profile made the
+  // request), pick a single one instead of showing the stream duplicated
+  // under all of them. Prefers whichever candidate has an existing active
+  // WatchSession entry whose title matches the proxy's parsed name; falls
+  // back to the first candidate if no title match narrows it down.
+  function disambiguateMatch(candidates, proxyDisplayName) {
+    if (candidates.length <= 1) return candidates[0] || null
+
+    const proxyTitle = normalizeTitle(proxyDisplayName)
+    if (proxyTitle) {
+      const titleMatch = candidates.find((u) => {
+        const existing = watchSessionByUserId.get(u.id)
+        return existing && normalizeTitle(existing.item?.name) === proxyTitle
+      })
+      if (titleMatch) return titleMatch
+    }
+
+    return candidates[0]
+  }
+
   for (const proxy of proxySessions) {
-    let matchedUsers = []
+    let candidates = []
     const aiostreamsUserLower = (proxy.aiostreamsUser || '').toLowerCase()
     const directMatch = userByUsername.get(aiostreamsUserLower)
     const emailMatch = userByEmailLocalPart.get(aiostreamsUserLower)
 
     if (directMatch) {
-      matchedUsers = [directMatch]
+      candidates = [directMatch]
     } else if (emailMatch) {
       // One AIOStreams login, multiple per-provider profiles sharing an
       // email - matched by email local-part rather than username.
-      matchedUsers = users.filter(
+      candidates = users.filter(
         (u) => u.email && u.email.split('@')[0].toLowerCase() === aiostreamsUserLower
       )
     } else if (fallbackUserIds.length > 0) {
-      matchedUsers = fallbackUserIds
+      candidates = fallbackUserIds
         .map((id) => usersById.get(id))
         .filter(Boolean)
     }
 
-    if (matchedUsers.length === 0) continue // no direct match and no usable fallback - skip rather than guess
+    if (candidates.length === 0) continue // no direct match and no usable fallback - skip rather than guess
 
-    for (const user of matchedUsers) {
-      coveredUserIds.add(user.id)
-      const existing = watchSessionByUserId.get(user.id)
+    const user = disambiguateMatch(candidates, proxy.displayName)
+    if (!user) continue
 
-      result.push({
-        user: existing?.user ?? {
-          id: user.id,
-          username: user.username || user.email,
-          email: user.email,
-          colorIndex: user.colorIndex || 0,
-          avatarUrl: user.avatarUrl || null,
-          useGravatar: user.useGravatar ?? false,
-        },
-        item: existing?.item ?? {
-          id: null,
-          name: proxy.displayName || proxy.filename || 'Unknown',
-          type: null,
-          year: null,
-          poster: proxy.posterUrl || null,
-          season: null,
-          episode: null,
-        },
-        videoId: existing?.videoId ?? null,
-        // Proxy startTime/liveness is the authoritative signal here, not
-        // whatever the WatchSession entry (if any) happened to record.
-        watchedAt: proxy.startTime.toISOString(),
-        watchedAtTimestamp: proxy.startTime.getTime(),
-        startTime: proxy.startTime,
-        source: 'aiostreams-proxy',
-      })
-    }
+    coveredUserIds.add(user.id)
+    const existing = watchSessionByUserId.get(user.id)
+
+    result.push({
+      user: existing?.user ?? {
+        id: user.id,
+        username: user.username || user.email,
+        email: user.email,
+        colorIndex: user.colorIndex || 0,
+        avatarUrl: user.avatarUrl || null,
+        useGravatar: user.useGravatar ?? false,
+      },
+      item: existing?.item ?? {
+        id: null,
+        name: proxy.displayName || proxy.filename || 'Unknown',
+        type: null,
+        year: null,
+        poster: proxy.posterUrl || null,
+        season: null,
+        episode: null,
+      },
+      videoId: existing?.videoId ?? null,
+      // Proxy startTime/liveness is the authoritative signal here, not
+      // whatever the WatchSession entry (if any) happened to record.
+      watchedAt: proxy.startTime.toISOString(),
+      watchedAtTimestamp: proxy.startTime.getTime(),
+      startTime: proxy.startTime,
+      source: 'aiostreams-proxy',
+    })
   }
 
   for (const np of watchSessionNowPlaying) {
