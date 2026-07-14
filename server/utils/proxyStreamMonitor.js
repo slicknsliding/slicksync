@@ -103,6 +103,149 @@ async function fetchProxyStats(baseUrl, username, password) {
   return res.json()
 }
 
+
+// Same loose title comparison used for Now Playing disambiguation - good
+// enough to tell "Powder" apart from something unrelated, not exact.
+function normalizeTitleForHistory(name) {
+  return (name || '')
+    .toLowerCase()
+    .replace(/\(\d{4}\)/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+/**
+ * Resolves which SlickSync user a closed AIOStreams connection belongs to.
+ * Same tiers as the Now Playing merge (proxyNowPlaying.js): username ->
+ * email local-part -> fallback ID list - but since there's no live
+ * WatchSession entry to disambiguate against at this point (the whole
+ * point of this function is to WRITE that history, not read it), ties
+ * within the fallback list are broken by whichever candidate already has
+ * an existing history row (WatchSession, EpisodeWatchHistory, or
+ * MovieWatchHistory) for this exact title, falling back to the first
+ * configured ID if none do.
+ */
+async function resolveUserForClosedConnection(prisma, accountId, aiostreamsUser, title) {
+  const users = await prisma.user.findMany({
+    where: { accountId },
+    select: { id: true, username: true, email: true },
+  })
+
+  const lower = (aiostreamsUser || '').toLowerCase()
+  const directMatch = users.find((u) => u.username && u.username.toLowerCase() === lower)
+  if (directMatch) return directMatch
+
+  const emailMatches = users.filter(
+    (u) => u.email && u.email.split('@')[0].toLowerCase() === lower
+  )
+  if (emailMatches.length === 1) return emailMatches[0]
+
+  const fallbackUserIds = (process.env.AIOSTREAMS_FALLBACK_USER_IDS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const candidates = emailMatches.length > 0
+    ? emailMatches
+    : fallbackUserIds.map((id) => users.find((u) => u.id === id)).filter(Boolean)
+
+  if (candidates.length === 0) return null
+  if (candidates.length === 1) return candidates[0]
+
+  const normalizedTitle = normalizeTitleForHistory(title)
+  if (normalizedTitle) {
+    for (const candidate of candidates) {
+      const [existingSession, existingEpisode, existingMovie] = await Promise.all([
+        prisma.watchSession.findFirst({
+          where: { accountId, userId: candidate.id },
+          orderBy: { updatedAt: 'desc' },
+          select: { itemName: true },
+        }),
+        prisma.episodeWatchHistory.findFirst({
+          where: { accountId, userId: candidate.id },
+          orderBy: { watchedAt: 'desc' },
+          select: { showName: true },
+        }),
+        prisma.movieWatchHistory.findFirst({
+          where: { accountId, userId: candidate.id },
+          orderBy: { watchedAt: 'desc' },
+          select: { itemName: true },
+        }),
+      ])
+      const names = [existingSession?.itemName, existingEpisode?.showName, existingMovie?.itemName]
+      if (names.some((n) => n && normalizeTitleForHistory(n) === normalizedTitle)) {
+        return candidate
+      }
+    }
+  }
+
+  return candidates[0]
+}
+
+/**
+ * Groups just-closed proxy connections by title (same reasoning as the Now
+ * Playing merge: a seek can leave two connection rows for one real viewing
+ * session) and writes one completed WatchSession row per group, so it shows
+ * up in the Today/Yesterday history timeline the same way any other
+ * completed session does.
+ */
+async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTime) {
+  const groups = new Map()
+  for (const row of closedRows) {
+    const key = normalizeTitleForHistory(row.displayName) || row.url
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(row)
+  }
+
+  for (const group of groups.values()) {
+    const representative = group.reduce((latest, r) =>
+      (!latest || r.startTime > latest.startTime) ? r : latest
+    , null)
+    const earliestStartTime = group.reduce((earliest, r) =>
+      r.startTime < earliest ? r.startTime : earliest
+    , representative.startTime)
+
+    const title = representative.displayName || representative.filename || 'Unknown'
+    const user = await resolveUserForClosedConnection(prisma, accountId, representative.aiostreamsUser, title)
+    if (!user) {
+      heartbeat('writeCompletedWatchSessions:no_user_match', { aiostreamsUser: representative.aiostreamsUser, title })
+      continue
+    }
+
+    const durationSeconds = Math.max(0, Math.round((endTime.getTime() - earliestStartTime.getTime()) / 1000))
+    // Skip near-instant blips (e.g. a preview/probe request) rather than
+    // logging a 0-second "watch" in history.
+    if (durationSeconds < 10) continue
+
+    const itemId = representative.metadataItemId || `proxy:${normalizeTitleForHistory(title).replace(/\s+/g, '-')}`
+    const itemType = representative.metadataItemType === 'series' ? 'series' : 'movie'
+
+    await prisma.watchSession.upsert({
+      where: {
+        accountId_userId_itemId: { accountId, userId: user.id, itemId },
+      },
+      create: {
+        accountId,
+        userId: user.id,
+        itemId,
+        itemName: title,
+        itemType,
+        poster: representative.posterUrl || null,
+        startTime: earliestStartTime,
+        endTime,
+        durationSeconds,
+        isActive: false,
+      },
+      update: {
+        endTime,
+        durationSeconds,
+        isActive: false,
+        poster: representative.posterUrl || undefined,
+      },
+    })
+  }
+}
+
 async function pollOnce(prisma, accountId, config) {
   heartbeat('pollOnce:start', { accountId })
   try {
@@ -174,6 +317,8 @@ async function pollOnce(prisma, accountId, config) {
                 where: { id: row.id },
                 data: {
                   posterUrl: result?.posterUrl ?? null,
+                  metadataItemId: result?.id ?? null,
+                  metadataItemType: result?.type ?? null,
                   metadataMatchedAt: new Date(),
                 },
               })
@@ -188,7 +333,18 @@ async function pollOnce(prisma, accountId, config) {
     // Anything previously active that AIOStreams no longer lists: mark ended.
     const staleActive = await prisma.proxyStreamSession.findMany({
       where: { accountId, isActive: true },
-      select: { id: true, aiostreamsUser: true, clientIp: true, url: true },
+      select: {
+        id: true,
+        aiostreamsUser: true,
+        clientIp: true,
+        url: true,
+        displayName: true,
+        filename: true,
+        posterUrl: true,
+        metadataItemId: true,
+        metadataItemType: true,
+        startTime: true,
+      },
     })
 
     const toClose = staleActive.filter(
@@ -199,6 +355,12 @@ async function pollOnce(prisma, accountId, config) {
         where: { id: { in: toClose.map((r) => r.id) } },
         data: { isActive: false, endTime: now },
       })
+
+      try {
+        await writeCompletedWatchSessions(prisma, accountId, toClose, now)
+      } catch (error) {
+        heartbeat('pollOnce:history_write_error', { message: error.message, stack: error.stack })
+      }
     }
 
     heartbeat('pollOnce:done', {
