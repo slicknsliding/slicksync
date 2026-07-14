@@ -14,7 +14,7 @@ and live playback — all kept in sync whether a member uses Stremio or Nuvio.
 SlickSync stands on the work of several people. This project would not exist
 without them:
 
-- **[neur0](https://github.com/iamneur0)** — creator of the original
+- **[iamneur0](https://github.com/iamneur0)** — creator of the original
   [Syncio](https://github.com/iamneur0/syncio) (MIT), the addon/user
   management engine SlickSync is built on top of. The sync engine, group
   management, watch-history metrics, and the whole underlying architecture
