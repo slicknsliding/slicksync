@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ============================================
-   Syncio Theme System
+   SlickSync Theme System
    CSS-first theming with class-based switching
    ============================================ */
 
@@ -736,8 +736,8 @@ body {
 /* ===== SELECTION & FOCUS ===== */
 
 /* Remove focus ring/outline/box-shadow; use primary-muted (activity tab selected) for focus border */
-.syncio-input:focus,
-.syncio-input:focus-visible {
+.slicksync-input:focus,
+.slicksync-input:focus-visible {
   outline: none !important;
   box-shadow: none !important;
   border-color: var(--color-primary-muted) !important;

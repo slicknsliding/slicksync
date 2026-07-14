@@ -275,7 +275,7 @@ function scheduleSyncs(frequency, prisma, getAccountId, scopedWhere, decrypt, re
               syncMode: mode,
               diffs: allReloadDiffs,
               sourceLabel: 'Auto-Sync',
-              sourceLogo: 'https://raw.githubusercontent.com/iamneur0/syncio/refs/heads/main/client/public/logo-black.png',
+              sourceLogo: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png',
               accountUuid: accountUuid || undefined
             })
           } catch {}

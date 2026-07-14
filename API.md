@@ -1,4 +1,4 @@
-# Syncio API Documentation
+# SlickSync API Documentation
 
 ## Base URL
 All API endpoints are prefixed with `/api/ext` (e.g., `/api/ext/account`, `/api/ext/addons/reload`).
@@ -33,7 +33,7 @@ Get account statistics.
 ```
 
 #### `POST /api/ext/addons/reload`
-Reload addons by Stremio addon ID. This can be used by other addon developers so whenever the addon is updated, a call to Syncio is made to immediately reload it.
+Reload addons by Stremio addon ID. This can be used by other addon developers so whenever the addon is updated, a call to SlickSync is made to immediately reload it.
 
 **Authentication:** Required (API key)
 

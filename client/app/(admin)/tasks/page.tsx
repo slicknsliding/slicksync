@@ -328,7 +328,7 @@ export default function TasksPage() {
       const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${date}-syncio-addons.json`;
+      a.download = `${date}-slicksync-addons.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Addons exported');
@@ -405,7 +405,7 @@ export default function TasksPage() {
       const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${date}-syncio-config.json`;
+      a.download = `${date}-slicksync-config.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Configuration exported');

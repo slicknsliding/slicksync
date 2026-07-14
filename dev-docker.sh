@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Starting Syncio in Docker Development Mode"
+echo "🚀 Starting SlickSync in Docker Development Mode"
 echo "This mimics your working 'bun run dev' setup"
 echo ""
 

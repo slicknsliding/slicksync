@@ -150,7 +150,7 @@ async function sendSessionStartNotification(webhookUrl, session, user) {
 
     await postDiscord(webhookUrl, null, {
       embeds: [embed],
-      avatar_url: 'https://raw.githubusercontent.com/iamneur0/syncio/refs/heads/main/client/public/logo-black.png'
+      avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
     })
 
     console.log(`[SessionTracker] Sent now playing notification for user ${user.username}, item: ${session.itemName}`)

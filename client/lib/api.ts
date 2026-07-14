@@ -25,14 +25,14 @@ class ApiClient {
   setToken(token: string) {
     this.token = token;
     if (typeof window !== 'undefined') {
-      localStorage.setItem('syncio_token', token);
+      localStorage.setItem('slicksync_token', token);
     }
   }
 
   getToken(): string | null {
     if (this.token) return this.token;
     if (typeof window !== 'undefined') {
-      this.token = localStorage.getItem('syncio_token');
+      this.token = localStorage.getItem('slicksync_token');
     }
     return this.token;
   }
@@ -40,7 +40,7 @@ class ApiClient {
   clearToken() {
     this.token = null;
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('syncio_token');
+      localStorage.removeItem('slicksync_token');
     }
   }
 

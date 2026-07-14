@@ -155,7 +155,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       let oauthExpiresAt = null;
 
       try {
-        const host = req.headers.host || req.headers.origin || 'syncio.local';
+        const host = req.headers.host || req.headers.origin || 'slicksync.local';
         const origin = req.headers.origin || (host.startsWith('http') ? host : `http://${host}`);
 
         const stremioResponse = await fetch('https://link.stremio.com/api/v2/create?type=Create', {
@@ -218,7 +218,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
 
       try {
-        const host = req.headers.host || req.headers.origin || 'syncio.local';
+        const host = req.headers.host || req.headers.origin || 'slicksync.local';
         const origin = req.headers.origin || (host.startsWith('http') ? host : `http://${host}`);
 
         const stremioResponse = await fetch(
@@ -1737,7 +1737,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(401).json({ error: 'Invalid auth key' });
       }
 
-      // Fetch watch activity for this user (using WatchActivity table like old syncio)
+      // Fetch watch activity for this user (using WatchActivity table like old slicksync)
       console.log('Fetching watch activity for user:', userId, 'account:', user.accountId);
       const watchActivities = await prisma.watchActivity.findMany({
         where: {
@@ -1805,7 +1805,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         take: parseInt(limit) || 100
       });
 
-      // Transform watch activity into activity items (like old syncio)
+      // Transform watch activity into activity items (like old slicksync)
       const activityItems = watchActivities.map(activity => {
         // Get item details from library cache
         const libraryItem = libraryItemMap.get(activity.itemId);

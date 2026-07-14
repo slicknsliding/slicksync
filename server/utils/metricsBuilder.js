@@ -38,7 +38,7 @@ async function calculateUserLifecycle(prisma, accountId, allUsers, watchActivity
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
   const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
 
-  // Get last activity date for each user from watch activity (like old syncio)
+  // Get last activity date for each user from watch activity (like old slicksync)
   const lastActivityDates = await prisma.watchActivity.groupBy({
     by: ['userId'],
     where: {

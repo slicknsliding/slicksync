@@ -368,7 +368,7 @@ async function sendActivityNotification(webhookUrl, activities, prisma, accountI
 
       await postDiscord(webhookUrl, null, {
         embeds: [embed],
-        avatar_url: 'https://raw.githubusercontent.com/iamneur0/syncio/refs/heads/main/client/public/logo-black.png'
+        avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
       })
     }
   } catch (error) {
@@ -481,7 +481,7 @@ async function sendShareNotification(webhookUrl, sharerUsername, sharerEmail, sh
 
     await postDiscord(webhookUrl, null, {
       embeds: [embed],
-      avatar_url: 'https://raw.githubusercontent.com/iamneur0/syncio/refs/heads/main/client/public/logo-black.png'
+      avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
     })
 
     return true
@@ -580,7 +580,7 @@ async function sendSyncNotification(webhookUrl, options) {
   const embed = createSyncEmbed(options)
   await postDiscord(webhookUrl, null, { 
     embeds: [embed], 
-    avatar_url: 'https://raw.githubusercontent.com/iamneur0/syncio/refs/heads/main/client/public/logo-black.png' 
+    avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png' 
   })
 }
 

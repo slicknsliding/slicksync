@@ -48,7 +48,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <input
             ref={ref}
             className={clsx(
-              'syncio-input w-full rounded-xl transition-all duration-300',
+              'slicksync-input w-full rounded-xl transition-all duration-300',
               sizeStyles[size],
               'focus:outline-none focus:ring-0 focus:shadow-none focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-none',
               'border',

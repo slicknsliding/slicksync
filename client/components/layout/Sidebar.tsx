@@ -174,7 +174,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('syncio-admin-token');
+    localStorage.removeItem('slicksync-admin-token');
     window.location.href = '/login?mode=admin';
   };
 

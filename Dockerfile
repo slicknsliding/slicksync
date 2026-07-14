@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for Syncio
+# Multi-stage Dockerfile for SlickSync
 FROM oven/bun:1-alpine AS base
 
 # Install npm for building

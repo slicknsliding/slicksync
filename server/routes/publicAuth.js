@@ -935,7 +935,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       }
 
       const payload = { users: decryptedUsers, groups: cleanedGroups, addons: exportedAddons, sync: accountSync }
-      res.setHeader('Content-Disposition', 'attachment; filename="syncio-export.json"')
+      res.setHeader('Content-Disposition', 'attachment; filename="slicksync-export.json"')
       return res.json(payload)
     } catch (e) {
       console.error('Export failed:', e)
@@ -1026,7 +1026,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         })
       )
 
-      res.setHeader('Content-Disposition', 'attachment; filename="syncio-addon-export.json"')
+      res.setHeader('Content-Disposition', 'attachment; filename="slicksync-addon-export.json"')
       return res.json(exported)
     } catch (e) {
       console.error('Export addons failed:', e)

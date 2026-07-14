@@ -416,7 +416,7 @@ export default function InviteRequestPage() {
                     placeholder="Username"
                     required
                     disabled={isSubmitting}
-                    className="syncio-input w-full pl-12 pr-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none"
+                    className="slicksync-input w-full pl-12 pr-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none"
                     style={{
                       backgroundColor: 'var(--color-bg-subtle)',
                       color: 'var(--color-text)',

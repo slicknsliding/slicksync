@@ -210,7 +210,7 @@ export const stremioOAuth = {
   async create(): Promise<{ code: string; link: string; expiresAt: number }> {
     const host = typeof window !== 'undefined'
       ? window.location.host
-      : 'syncio.app';
+      : 'slicksync.app';
     const origin = typeof window !== 'undefined'
       ? window.location.origin
       : `https://${host}`;
@@ -255,7 +255,7 @@ export const stremioOAuth = {
   }> {
     const host = typeof window !== 'undefined'
       ? window.location.host
-      : 'syncio.app';
+      : 'slicksync.app';
     const origin = typeof window !== 'undefined'
       ? window.location.origin
       : `https://${host}`;

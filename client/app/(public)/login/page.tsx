@@ -142,7 +142,7 @@ function LoginContent() {
               const result = await api.stremioLogin(pollResult.authKey);
               if (result.token || result.account) {
                 if (result.token) {
-                  localStorage.setItem('syncio-admin-token', result.token);
+                  localStorage.setItem('slicksync-admin-token', result.token);
                 }
                 router.push('/');
               } else {
@@ -216,7 +216,7 @@ function LoginContent() {
   // Handle auto-linking stremio
   useEffect(() => {
     if (searchParams.get('linkStremio') === '1' && oauthLink && !isAuthenticating) {
-      window.open(oauthLink, '_blank', 'noopener,noreferrer'); // Redirect in a new tab so they don't lose the polling syncio page
+      window.open(oauthLink, '_blank', 'noopener,noreferrer'); // Redirect in a new tab so they don't lose the polling slicksync page
     }
   }, [searchParams, oauthLink, isAuthenticating]);
 
@@ -262,7 +262,7 @@ function LoginContent() {
         // Backend returns token in different fields depending on route
         const token = data.token || response.headers.get('set-cookie');
         if (data.token) {
-          localStorage.setItem('syncio-admin-token', data.token);
+          localStorage.setItem('slicksync-admin-token', data.token);
         }
         router.push('/');
       } else {

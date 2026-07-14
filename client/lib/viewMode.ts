@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 type ViewMode = 'grid' | 'list';
 
-const STORAGE_KEY = 'syncio-default-view-mode';
+const STORAGE_KEY = 'slicksync-default-view-mode';
 
 function isMobile(): boolean {
   if (typeof window === 'undefined') return false;

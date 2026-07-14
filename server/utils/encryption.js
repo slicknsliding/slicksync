@@ -49,7 +49,7 @@ function scryptKey(password, salt, keyLen = 32) {
   })
 }
 
-function hkdfSha256(ikm, salt, info = 'syncio-hkdf', length = 32) {
+function hkdfSha256(ikm, salt, info = 'slicksync-hkdf', length = 32) {
   const prk = crypto.createHmac('sha256', Buffer.from(salt)).update(Buffer.from(ikm)).digest()
   let t = Buffer.alloc(0)
   let okm = Buffer.alloc(0)
@@ -64,7 +64,7 @@ function hkdfSha256(ikm, salt, info = 'syncio-hkdf', length = 32) {
 
 function deriveDek(serverKeyBuf, userKeyBuf) {
   // Combine server and user keys via HKDF to a 32-byte DEK
-  return hkdfSha256(userKeyBuf, serverKeyBuf, 'syncio-dek', 32)
+  return hkdfSha256(userKeyBuf, serverKeyBuf, 'slicksync-dek', 32)
 }
 
 function setAccountDek(accountId, dek, ttlMs = DEFAULT_TTL_MS) {
@@ -107,7 +107,7 @@ function getServerKey() {
       if (b.length >= 32) return b.subarray(0, 32)
     }
   } catch {}
-  return Buffer.from((raw || 'syncio-default-key-32chars-please-change!!').padEnd(32, '0').slice(0, 32), 'utf8')
+  return Buffer.from((raw || 'slicksync-default-key-32chars-please-change!!').padEnd(32, '0').slice(0, 32), 'utf8')
 }
 
 function aesGcmEncrypt(key, plaintext, aad) {

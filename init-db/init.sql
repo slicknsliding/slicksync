@@ -1,4 +1,4 @@
--- Initialize database for Syncio
+-- Initialize database for SlickSync
 -- This script runs when the PostgreSQL container starts for the first time
 
 -- Create database if it doesn't exist

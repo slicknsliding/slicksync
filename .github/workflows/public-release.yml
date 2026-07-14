@@ -40,7 +40,7 @@ jobs:
             type=raw,value=public
             type=semver,pattern=public-v{{version}}
           labels: |
-            org.opencontainers.image.title=syncio-public
+            org.opencontainers.image.title=slicksync-public
 
       - name: Build and push Docker image (public)
         uses: docker/build-push-action@v6

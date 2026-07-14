@@ -7,13 +7,13 @@ if (INSTANCE_TYPE !== 'public' && INSTANCE_TYPE !== 'private') {
   throw new Error(`Invalid INSTANCE_TYPE: ${INSTANCE_TYPE}. Must be 'public' or 'private'`);
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'syncio-dev-secret-change-me';
+const JWT_SECRET = process.env.JWT_SECRET || 'slicksync-dev-secret-change-me';
 const DEFAULT_ACCOUNT_ID = 'default';
 const DEFAULT_ACCOUNT_UUID = '00000000-0000-4000-8000-000000000000';
 
 // Private instance auth (username/password from env vars)
-const PRIVATE_AUTH_USERNAME = process.env.SYNCIO_PRIVATE_USERNAME || null;
-const PRIVATE_AUTH_PASSWORD = process.env.SYNCIO_PRIVATE_PASSWORD || null;
+const PRIVATE_AUTH_USERNAME = process.env.SLICKSYNC_PRIVATE_USERNAME || null;
+const PRIVATE_AUTH_PASSWORD = process.env.SLICKSYNC_PRIVATE_PASSWORD || null;
 const PRIVATE_AUTH_ENABLED = INSTANCE_TYPE !== 'public' && PRIVATE_AUTH_USERNAME && PRIVATE_AUTH_PASSWORD;
 
 // Default Stremio addons that should be ignored in sync checks
@@ -51,7 +51,7 @@ const BACKUP_DIR = path.join(process.cwd(), 'data', 'backup');
 const BACKUP_CFG = path.join(BACKUP_DIR, 'schedule.json');
 
 // Encryption/hashing pepper
-const PEPPER = process.env.HASH_PEPPER || process.env.ENCRYPTION_KEY || 'syncio-pepper';
+const PEPPER = process.env.HASH_PEPPER || process.env.ENCRYPTION_KEY || 'slicksync-pepper';
 
 // Encryption key — auto-generated and persisted if unset, with decrypt fallback
 // support if the env key changes later. See utils/keyManager.js.

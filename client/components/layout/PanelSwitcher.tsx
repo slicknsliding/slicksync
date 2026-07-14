@@ -82,7 +82,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false }: P
       setIsOpen(false);
       // Switching from Admin to User
       // Check if user is logged in (has auth in localStorage)
-      const userAuth = localStorage.getItem('syncio-user-auth');
+      const userAuth = localStorage.getItem('slicksync-user-auth');
       if (userAuth) {
         try {
           const data = JSON.parse(userAuth);
@@ -97,7 +97,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false }: P
     } else {
       // Switching from User to Admin
       // Check if admin is logged in (localStorage)
-      const adminToken = localStorage.getItem('syncio-admin-token');
+      const adminToken = localStorage.getItem('slicksync-admin-token');
       if (adminToken) {
         setIsOpen(false);
         window.location.href = '/';
