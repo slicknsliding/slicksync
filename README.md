@@ -69,10 +69,6 @@ side-by-side with Stremio, rather than bolting it on:
 
 ### 🎬 Activity Tracking & Now Playing
 
-- **Accurate "was this actually watched" detection.** A title only counts as
-  watched once real playback progress reaches at least 5% of its runtime —
-  filters out library bookmarks and brief hover/preview autoplay while
-  browsing, which would otherwise show up as false "watched" entries.
 - **Live "Now Playing" panel** on the Activity page, with a pulsing indicator,
   shows what's actively being streamed right now and disappears automatically
   once playback stops. Detection is time-based (recent watch-progress
@@ -127,9 +123,9 @@ instantly:
 
 | Theme | Description |
 |---|---|
-| **Slick** *(default)* | Soft violet with muted teal accents, near-black background |
+| **Nebula** *(default)* | Deep blue-black with violet-to-cyan accents |
+| **Slick** | Soft violet with muted teal accents, near-black background |
 | **Velvet** | Deep plum with dusty rose-gold accents |
-| **Nebula** | Deep blue-black with violet-to-cyan accents |
 | **Midnight** | Deep blue-black with warm amber accents |
 | **Ember** | Charcoal warmth with fiery accents |
 | **Nord** | Arctic cool with icy blue tones |
