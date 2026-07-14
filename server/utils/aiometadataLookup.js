@@ -64,8 +64,12 @@ async function lookupAiometadataPoster(manifestUrl, title, year) {
     match = pickBestMatch(metas, year)
   }
 
-  if (!match || !match.poster) return null
-  return { posterUrl: match.poster }
+  if (!match) return null
+  return {
+    posterUrl: match.poster || null,
+    id: match.id || null,
+    type: match.type || null,
+  }
 }
 
 module.exports = { lookupAiometadataPoster }
