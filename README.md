@@ -241,6 +241,51 @@ If you're running a reverse proxy in front, point it at port `3000` for the
 UI (the frontend proxies its own API calls internally — you don't need to
 separately expose port `4000` through your reverse proxy for normal use).
 
+### Public (multi-tenant / hosted)
+
+Private and public are genuinely different modes, not just a config toggle:
+
+| | Private (default, recommended for most people) | Public |
+|---|---|---|
+| **Who it's for** | One household/group running their own copy | Someone hosting SlickSync for multiple separate groups |
+| **Database** | SQLite, embedded, single file | PostgreSQL (required) |
+| **Accounts** | One shared instance, no self-signup | Each admin self-registers their own isolated account via `/register` |
+| **Login** | Optional shared username/password gate (or none at all if unset) | Per-account login, separate credentials per account |
+| **Image** | Builds locally from the `Dockerfile` in this repo | Pulls the pre-built `ghcr.io/slicknsliding/slicksync:public` image |
+
+If you're not intentionally hosting this for more than one separate
+group, use **private mode** (the default throughout this README) - public
+mode's multi-tenant signup and Postgres requirement add real operational
+overhead (a second service to run, back up, and keep healthy) that private
+mode doesn't need at all.
+
+To run public mode instead:
+
+```bash
+git clone <your-repo-url> slicksync
+cd slicksync
+cp env.example .env
+```
+
+Set at minimum:
+```
+JWT_SECRET=<any long random string>
+ENCRYPTION_KEY=<any 32+ character string>
+DATABASE_URL=postgresql://slicksync:slicksync@db:5432/slicksync
+```
+
+(`docker-compose.public.yml` already defines a `db` Postgres service with
+matching credentials, so the values above work as-is if you don't change
+that file.)
+
+```bash
+docker compose -f docker-compose.public.yml up -d --build
+```
+
+First visit to the frontend will show a registration screen rather than
+going straight to a dashboard - that's expected; it's where each separate
+account/group signs up.
+
 ### Persisting data
 
 Make sure `/app/data` is mounted to a volume or bind mount — it holds:
