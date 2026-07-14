@@ -1211,6 +1211,19 @@ class ApiClient {
     return response.json();
   }
 
+  // --- AIOMetadata ---
+
+  async getAiometadataManifestUrl() {
+    return this.fetch<{ manifestUrl: string | null }>('/aiometadata/manifest-url');
+  }
+
+  async updateAiometadataManifestUrl(manifestUrl: string | null) {
+    return this.fetch<{ success: boolean; manifestUrl: string | null }>('/aiometadata/manifest-url', {
+      method: 'POST',
+      body: JSON.stringify({ manifestUrl }),
+    });
+  }
+
   // --- Vault ---
 
   async getVaultEntries(category?: string) {
