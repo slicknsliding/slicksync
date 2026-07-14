@@ -98,9 +98,31 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     return candidates[0]
   }
 
+  // Group active proxy rows by normalized title before attributing them.
+  // Seeking/rewinding creates a new connection (different byte-range
+  // request) while the old one sometimes lingers as "active" - AIOStreams
+  // keeps stale connections active up to 6h unless explicitly told the
+  // request ended. Without grouping, the old and new rows for the SAME
+  // real viewing session could get disambiguated to two DIFFERENT
+  // profiles independently, showing as a split/duplicate entry. Grouping
+  // ensures every row for one title gets the same single attribution.
+  const groupedByTitle = new Map()
   for (const proxy of proxySessions) {
+    const key = normalizeTitle(proxy.displayName) || proxy.url
+    if (!groupedByTitle.has(key)) groupedByTitle.set(key, [])
+    groupedByTitle.get(key).push(proxy)
+  }
+
+  for (const group of groupedByTitle.values()) {
+    // Use the most recently active row in the group as the representative
+    // for display fields (startTime, poster, etc.) - the freshest one is
+    // most likely the real current connection, not a stale leftover.
+    const representative = group.reduce((latest, p) =>
+      p.lastSeenAt > latest.lastSeenAt ? p : latest
+    )
+
     let candidates = []
-    const aiostreamsUserLower = (proxy.aiostreamsUser || '').toLowerCase()
+    const aiostreamsUserLower = (representative.aiostreamsUser || '').toLowerCase()
     const directMatch = userByUsername.get(aiostreamsUserLower)
     const emailMatch = userByEmailLocalPart.get(aiostreamsUserLower)
 
@@ -120,7 +142,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
 
     if (candidates.length === 0) continue // no direct match and no usable fallback - skip rather than guess
 
-    const user = disambiguateMatch(candidates, proxy.displayName)
+    const user = disambiguateMatch(candidates, representative.displayName)
     if (!user) continue
 
     coveredUserIds.add(user.id)
@@ -137,19 +159,19 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       },
       item: existing?.item ?? {
         id: null,
-        name: proxy.displayName || proxy.filename || 'Unknown',
+        name: representative.displayName || representative.filename || 'Unknown',
         type: null,
         year: null,
-        poster: proxy.posterUrl || null,
+        poster: representative.posterUrl || null,
         season: null,
         episode: null,
       },
       videoId: existing?.videoId ?? null,
       // Proxy startTime/liveness is the authoritative signal here, not
       // whatever the WatchSession entry (if any) happened to record.
-      watchedAt: proxy.startTime.toISOString(),
-      watchedAtTimestamp: proxy.startTime.getTime(),
-      startTime: proxy.startTime,
+      watchedAt: representative.startTime.toISOString(),
+      watchedAtTimestamp: representative.startTime.getTime(),
+      startTime: representative.startTime,
       source: 'aiostreams-proxy',
     })
   }
