@@ -311,9 +311,16 @@ async function processLibraryItem(prisma, accountId, userId, item, today) {
           totalDeltaSeconds = Number(totalDeltaMs / 1000n)
         }
       } else {
-        // First-time watch: use current watch time as delta
-        const currOverall = BigInt(current.overallTimeWatched)
-        totalDeltaSeconds = Number(currOverall / 1000n)
+        // First-time ever seeing this item (no prior snapshot exists): we
+        // have no real baseline to compute an incremental delta against.
+        // overallTimeWatched can represent CUMULATIVE watch time across
+        // many past sessions/episodes, not "new today" - treating the
+        // whole absolute value as today's delta produced wildly inflated
+        // one-time entries (confirmed: a 16.5-hour single entry for one
+        // series, created in a single instant). Just establish the
+        // baseline with zero delta here; real incremental watching gets
+        // captured correctly starting from the next observation onward.
+        totalDeltaSeconds = 0
       }
       
       // Get the most recent activity for this item to see when we last recorded
