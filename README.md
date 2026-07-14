@@ -14,22 +14,22 @@ and live playback — all kept in sync whether a member uses Stremio or Nuvio.
 SlickSync stands on the work of several people. This project would not exist
 without them:
 
-- **[iamneur0](https://github.com/iamneur0)** — creator of the original
-  [SlickSync](https://github.com/iamneur0/slicksync) (MIT), the addon/user
+- **[neur0](https://github.com/iamneur0)** — creator of the original
+  [Syncio](https://github.com/iamneur0/syncio) (MIT), the addon/user
   management engine SlickSync is built on top of. The sync engine, group
   management, watch-history metrics, and the whole underlying architecture
   are their work.
-- **[Avangelista](https://github.com/Avangelista/slicksync)** — the Nuvio
-  provider integration concepts (OAuth device-code flow, credential auth)
-  that SlickSync's Nuvio support is adapted from.
+- **[Avangelista](https://github.com/Avangelista)** — the Nuvio provider
+  integration concepts (OAuth device-code flow, credential auth) that
+  SlickSync's Nuvio support is adapted from.
 - **[Sonicx161](https://github.com/Sonicx161/AIOManager)** — creator of
   AIOManager, whose credential vault design (categorized secrets, expiry
   tracking, active-checks) is the direct inspiration for SlickSync's Vault
-  feature. Also incidentally the source that confirmed Nuvio's actual current
-  backend endpoint when SlickSync's own reference had gone stale.
+  feature.
 
-See `README.upstream.md` for the original SlickSync documentation — most setup,
-env var, and Docker instructions there still apply unchanged.
+See [`README.upstream.md`](./README.upstream.md) for a shorter credits/license
+summary. The original Syncio project, unmodified, is here:
+**https://github.com/iamneur0/syncio**
 
 > **Note — Private, single-instance fork.** SlickSync is built and run for
 > one household's private streaming group, not as a general-purpose
@@ -53,7 +53,10 @@ side-by-side with Stremio, rather than bolting it on:
   watch progress, and addon data from all of them and merges the results,
   labeling which profile each activity came from.
 - **Same email can exist as both a Stremio and a Nuvio user** — useful when
-  someone uses both apps on different devices.
+  someone uses both apps on different devices. When both profiles share one
+  underlying account (e.g. one AIOStreams login used by both), disambiguation
+  falls back through username match → email match → recent watch history
+  match → a configured fallback list, in that order.
 - **Nuvio refresh tokens are encrypted at rest**; access tokens auto-refresh
   without user interaction.
 - **Nuvio's library is read-only by nature.** Attempted edits return a clear
@@ -71,10 +74,19 @@ side-by-side with Stremio, rather than bolting it on:
 
 - **Live "Now Playing" panel** on the Activity page, with a pulsing indicator,
   shows what's actively being streamed right now and disappears automatically
-  once playback stops. Detection is time-based (recent watch-progress
-  timestamp within a rolling window) to account for how Nuvio's backend
-  actually reports progress — via periodic checkpoints on pause/stop, not a
-  continuous live feed.
+  once playback stops.
+- **AIOStreams proxy integration** *(experimental / still in testing)* —
+  supplements the library-poll detection above with a second signal: real
+  connections observed through AIOStreams' built-in stream proxy, giving
+  near-real-time detection independent of how often the source app
+  checkpoints its own watch progress. Reconnections from seeking are grouped
+  so reported duration stays continuous instead of resetting, and completed
+  proxy-detected streams are written into watch history once playback ends
+  — the same as any other completed session.
+- **AIOMetadata poster enrichment** *(experimental / still in testing)* —
+  fetches posters for proxy-detected streams that have no library metadata
+  match yet, matched by parsed title and release year. Configurable from
+  Settings (manifest URL), no redeploy required to change it.
 - **1-minute poll cycle** for fast detection of new activity, library changes,
   and session state, across every connected account and profile.
 - **Per-day, per-user Activity feed** grouped by date, with poster art,
@@ -105,6 +117,11 @@ secrets) in one place:
   nightly (`VAULT_BACKUP_INTERVAL_HOURS` to change the interval), so Vault
   data can be pulled off-server for backup or synced into an external
   password manager. On-demand backup via `POST /api/vault/backup-now`.
+- **Drag-and-drop reordering** within the Vault.
+- **Move addons directly from the Addons page into the Vault** to store ones
+  you're not actively using without deleting them — keeps the Addons page
+  focused on what's actually deployed, and they can be moved back out just
+  as easily.
 
 ### 📦 Addon Snapshots (template library)
 
@@ -114,6 +131,11 @@ deploys re-fetch fresh manifests rather than reusing a stale copy.
 
 - `GET/POST /api/snapshots`, `GET/DELETE /api/snapshots/:id`,
   `POST /api/snapshots/:id/deploy`
+
+### 👤 Profiles
+
+- **Custom avatar/profile picture upload** per user, alongside the existing
+  generated/Gravatar avatar options.
 
 ### 🎨 Themes
 
@@ -171,33 +193,120 @@ invite pages, and the user-connect modal.
 
 ## 🚀 Installation
 
+### Prerequisites
+
+- Docker and Docker Compose installed on the host.
+- A reverse proxy in front of it if you want HTTPS/a real domain (SlickSync
+  itself doesn't handle TLS termination) — Traefik, Caddy, or nginx all work.
+  This README covers running the container itself; proxy setup is separate.
+
 ### Docker (recommended)
 
 ```bash
 git clone <your-repo-url> slicksync
 cd slicksync
-cp env.example .env   # fill in JWT_SECRET; ENCRYPTION_KEY optional
+cp env.example .env
+```
+
+Open `.env` and fill in at minimum:
+
+```
+JWT_SECRET=<any long random string>
+```
+
+`ENCRYPTION_KEY` can be left unset — see **Anti-lockout encryption key**
+above; a key will be generated automatically on first boot and persisted to
+`data/server_secret.key`.
+
+Then build and start:
+
+```bash
 docker compose -f docker-compose.private.yml up -d --build
 ```
 
-Persist `/app/data` in a volume — it holds the SQLite DB, backups (including
-the Vault export), and the auto-generated encryption key.
+First boot takes a minute or two (Prisma client generation, Next.js build).
+Watch it come up with:
 
-### New environment variables (all optional)
+```bash
+docker compose -f docker-compose.private.yml logs -f
+```
 
-| Variable | Purpose |
-|---|---|
-| `NUVIO_SUPABASE_URL` | Override Nuvio's backend endpoint (default: `https://api.nuvio.tv`) |
-| `NUVIO_SUPABASE_ANON_KEY` | Override Nuvio's anon key |
-| `AUTH_RATE_LIMIT_WINDOW_MS` / `AUTH_RATE_LIMIT_MAX_REQUESTS` | Credential-endpoint rate limit (default 20 / 15 min) |
-| `POLL_RATE_LIMIT_MAX_REQUESTS` | OAuth device-flow poll limit (default 60/min) |
-| `VAULT_BACKUP_INTERVAL_HOURS` | How often the Vault export runs (default 24) |
+Once you see `🚀 SlickSync (Database) running on port 4000` and
+`✓ Ready` from the frontend, the app is up. By default:
+
+- Frontend: `http://<host>:3000`
+- Backend API: `http://<host>:4000`
+
+If you're running a reverse proxy in front, point it at port `3000` for the
+UI (the frontend proxies its own API calls internally — you don't need to
+separately expose port `4000` through your reverse proxy for normal use).
+
+### Persisting data
+
+Make sure `/app/data` is mounted to a volume or bind mount — it holds:
+
+- The SQLite database
+- `server_secret.key` (your anti-lockout encryption key)
+- Vault backup exports (`data/backup/vault/`)
+- Uploaded avatars
+
+Losing this directory without a backup means losing all users, groups,
+addons, and Vault entries — there's no separate remote database to fall back
+on unless you've configured `DB_TYPE=postgres` with an external
+`DATABASE_URL`.
+
+### Updating
+
+```bash
+git pull
+docker compose -f docker-compose.private.yml up -d --build
+```
+
+Docker Compose will rebuild only what changed. Your `/app/data` volume is
+untouched by a rebuild — user data, Vault entries, and the encryption key all
+persist across updates.
+
+### Environment variables
+
+Beyond `JWT_SECRET` and the optional `ENCRYPTION_KEY`, everything else has a
+sensible default. The ones you're most likely to actually want to change:
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `NUVIO_SUPABASE_URL` | Override Nuvio's backend endpoint | `https://api.nuvio.tv` |
+| `NUVIO_SUPABASE_ANON_KEY` | Override Nuvio's anon key | — |
+| `AUTH_RATE_LIMIT_WINDOW_MS` / `AUTH_RATE_LIMIT_MAX_REQUESTS` | Credential-endpoint rate limit | 20 / 15 min |
+| `POLL_RATE_LIMIT_MAX_REQUESTS` | OAuth device-flow poll limit | 60/min |
+| `VAULT_BACKUP_INTERVAL_HOURS` | How often the Vault export runs | 24 |
+| `AIOSTREAMS_URL` | Base URL of your AIOStreams instance, for the proxy-based Now Playing integration | — |
+| `AIOSTREAMS_AUTH_USERNAME` / `AIOSTREAMS_AUTH_PASSWORD` | Credentials matching AIOStreams' own `AIOSTREAMS_AUTH` | — |
+| `AIOSTREAMS_FALLBACK_USER_IDS` | Comma-separated SlickSync user IDs to attribute proxy-detected activity to when username/email matching can't resolve one | — |
+
+See `env.example` for the complete list, including things you're unlikely to
+need to touch (CORS origins, log level, DB connection pooling).
+
+### Troubleshooting
+
+- **Decryption errors after an update** (`Unsupported state or unable to
+  authenticate data` in the logs, addons/Vault entries showing "Error"):
+  this means the running code is deriving a different encryption key than
+  whatever encrypted your existing data — almost always caused by something
+  changing `server/utils/encryption.js`'s internal key-derivation constants,
+  or `data/server_secret.key` being lost/replaced. These constants are
+  **not** meant to ever change on an existing install; if you're building
+  from a modified fork, don't touch that file.
+- **"Detected additional lockfiles" warning during build**: means both
+  `bun.lock` and a stray `package-lock.json` exist. Delete the
+  `package-lock.json` file(s) — this project runs on `bun`, not `npm`.
+- **First-boot database errors**: confirm `/app/data` is actually writable by
+  the container's user (`user: "1001:1001"` in the compose file) — a bind
+  mount owned by a different UID on the host can cause silent permission
+  failures.
 
 ---
 
 ## License
 
-MIT — see `LICENSE`. Original work © iamneur0 (SlickSync); Nuvio integration
-concepts © Avangelista; Vault design inspiration along with Nuvio integration
-© Sonicx161 (AIOManager); modifications © Slick.
-
+MIT — see [`LICENSE`](./LICENSE). Original work © neur0 (Syncio); Nuvio
+integration concepts © Avangelista; Vault design inspiration © Sonicx161
+(AIOManager); modifications © slicknsliding (SlickSync).
