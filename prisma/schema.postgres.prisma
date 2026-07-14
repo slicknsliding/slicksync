@@ -137,6 +137,7 @@ model AppAccount {
   passwordHash String?
   sync         Json?
   apiKeyHash   String? // Encrypted API key
+  aiometadataManifestUrl String? // User-editable AIOMetadata addon manifest URL, used to look up posters for AIOStreams-proxy-detected Now Playing entries that have no WatchSession match
 
   // Relationships
   invitations Invitation[]
@@ -376,6 +377,8 @@ model ProxyStreamSession {
   url             String    // Full upstream URL being proxied (may contain the raw source link) - part of AIOStreams' own identity key alongside ip
   filename        String?   // Raw filename AIOStreams reported, e.g. "Powder.1995.1080p.AMZN.WEB-DL.DD5.1.H.264-SiGMA"
   displayName     String?   // Best-effort cleaned-up title parsed from filename, e.g. "Powder (1995)"
+  posterUrl       String?   // Poster URL from an AIOMetadata search lookup, cached so we don't re-query on every poll while a stream is still active
+  metadataMatchedAt DateTime? // When the AIOMetadata lookup was attempted (whether or not it found a match) - null means not yet attempted
   requestCount    Int       @default(1) // AIOStreams' `count` - number of individual requests merged into this entry
   startTime       DateTime  // AIOStreams' `timestamp` - when this connection was first opened
   lastSeenAt      DateTime  // AIOStreams' `lastSeen` - most recent activity on this connection, updates as long as it's active

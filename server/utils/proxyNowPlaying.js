@@ -106,7 +106,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
           name: proxy.displayName || proxy.filename || 'Unknown',
           type: null,
           year: null,
-          poster: null,
+          poster: proxy.posterUrl || null,
           season: null,
           episode: null,
         },
