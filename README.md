@@ -123,9 +123,9 @@ instantly:
 
 | Theme | Description |
 |---|---|
+| **Nebula** *(default)* | Deep blue-black with violet-to-cyan accents |
 | **Slick** | Soft violet with muted teal accents, near-black background |
 | **Velvet** | Deep plum with dusty rose-gold accents |
-| **Nebula** *(default)* | Deep blue-black with violet-to-cyan accents |
 | **Midnight** | Deep blue-black with warm amber accents |
 | **Ember** | Charcoal warmth with fiery accents |
 | **Nord** | Arctic cool with icy blue tones |
