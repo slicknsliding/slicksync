@@ -307,6 +307,6 @@ need to touch (CORS origins, log level, DB connection pooling).
 
 ## License
 
-MIT — see [`LICENSE`](./LICENSE). Original work © neur0 (Syncio); Nuvio
+MIT — see [`LICENSE`](./LICENSE). Original work © iamneur0 (syncio); Nuvio
 integration concepts © Avangelista; Vault design inspiration © Sonicx161
 (AIOManager); modifications © slicknsliding (SlickSync).
