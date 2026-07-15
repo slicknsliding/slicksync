@@ -1054,6 +1054,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         startTime: session.startTime.toISOString(),
         endTime: session.endTime ? session.endTime.toISOString() : null,
         durationSeconds: session.durationSeconds,
+        requestCount: session.requestCount ?? null,
         isActive: session.isActive,
         startTimeTimestamp: session.startTime.getTime(),
         updatedAtTimestamp: session.updatedAt ? session.updatedAt.getTime() : session.startTime.getTime()

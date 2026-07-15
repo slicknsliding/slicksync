@@ -341,6 +341,7 @@ model WatchSession {
                         // provider's position can go stale for a while between
                         // checkpoints. Null for older sessions predating this field.
   durationSeconds Int       @default(0) // Watch duration in seconds
+  requestCount    Int?     // Total request count from the underlying AIOStreams proxy connection(s), summed across stop/resume segments the same way durationSeconds is
   lastPosition    Int? // Latest known playback position (ms) - a direct
                         // snapshot value, always accurate the instant new
                         // data arrives, unlike a computed session-elapsed

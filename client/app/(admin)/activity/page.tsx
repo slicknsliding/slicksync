@@ -51,6 +51,7 @@ interface ActivityItem {
   episodeName?: string;
   progress?: number;
   durationSeconds?: number; // Watch duration in seconds
+  requestCount?: number; // Number of individual requests merged into this session (from AIOStreams proxy stats)
   timestamp: Date; // Start time of the session
   endTime?: Date; // End time (if session is complete)
   isActive?: boolean; // True if still watching
@@ -105,6 +106,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         season: session.item.season ?? undefined,
         episode: session.item.episode ?? undefined,
         durationSeconds: session.durationSeconds,
+        requestCount: session.requestCount ?? undefined,
         timestamp: new Date(session.startTime),
         endTime: new Date(session.endTime),
         isActive: false,
@@ -431,6 +433,12 @@ const ActivityCard = memo(function ActivityCard({
             <>
               <span className="mx-1">→</span>
               <span>{formatTime(activity.endTime)}</span>
+            </>
+          )}
+          {activity.requestCount !== undefined && activity.requestCount > 0 && (
+            <>
+              <span className="mx-1">•</span>
+              <span>{activity.requestCount} {activity.requestCount === 1 ? 'request' : 'requests'}</span>
             </>
           )}
         </div>
