@@ -249,6 +249,8 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
     const overallStartTime = existingForItem?.startTime && existingForItem.startTime < earliestStartTime
       ? existingForItem.startTime
       : earliestStartTime
+    const groupRequestCount = group.reduce((sum, r) => sum + (r.requestCount || 0), 0)
+    const accumulatedRequestCount = (existingForItem?.requestCount || 0) + groupRequestCount
 
     const watchSessionRow = await prisma.watchSession.upsert({
       where: {
@@ -264,12 +266,14 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
         startTime: overallStartTime,
         endTime,
         durationSeconds: accumulatedDuration,
+        requestCount: accumulatedRequestCount,
         isActive: false,
       },
       update: {
         startTime: overallStartTime,
         endTime,
         durationSeconds: accumulatedDuration,
+        requestCount: accumulatedRequestCount,
         isActive: false,
         poster: representative.posterUrl || undefined,
       },
@@ -455,6 +459,7 @@ async function pollOnce(prisma, accountId, config) {
         metadataItemId: true,
         metadataItemType: true,
         startTime: true,
+        requestCount: true,
       },
     })
 
