@@ -1091,14 +1091,21 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
 
   function extractSeasonEpisodeFromTitle(name) {
     const m = (name || '').match(/S(\d{1,2})E(\d{1,3})/i)
-    if (!m) return null
-    return { season: parseInt(m[1], 10), episode: parseInt(m[2], 10) }
+    if (m) return { season: parseInt(m[1], 10), episode: parseInt(m[2], 10) }
+    // Bare episode marker without an attached season marker (e.g.
+    // "Chernobyl E01" rather than "Chernobyl S01E01") - same edge
+    // case already handled for search-query cleanup in
+    // proxyStreamMonitor.js (v1.9.63), applied here too for matching.
+    const bareMatch = (name || '').match(/\bE(\d{1,3})\b/i)
+    if (bareMatch) return { season: null, episode: parseInt(bareMatch[1], 10) }
+    return null
   }
 
   function isSameEvent(activity, session) {
     if (activity.item?.type === 'series' && activity.item?.season != null && activity.item?.episode != null) {
       const sessionSE = extractSeasonEpisodeFromTitle(session.item?.name)
       if (sessionSE) {
+        if (sessionSE.season === null) return sessionSE.episode === activity.item.episode
         return sessionSE.season === activity.item.season && sessionSE.episode === activity.item.episode
       }
     }
