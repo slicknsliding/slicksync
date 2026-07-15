@@ -286,7 +286,21 @@ async function attemptPosterLookup(prisma, accountId, rowId, displayName) {
 
     const yearMatch = displayName.match(/\((\d{4})\)$/)
     const year = yearMatch ? yearMatch[1] : null
-    const title = year ? displayName.replace(/\s*\(\d{4}\)$/, '') : displayName
+    let title = year ? displayName.replace(/\s*\(\d{4}\)$/, '') : displayName
+
+    // For series episodes without a year in the display name, the episode
+    // title/quality tags before a SxxExx marker were surviving the earlier
+    // cleanup and getting sent as part of the search query (e.g. "Spider-
+    // Noir S01E01 Step Into My Office True-Hue Full Color" instead of just
+    // "Spider-Noir") - not a searchable title, causing genuine no-match
+    // results for shows that should have been findable. Strip from the
+    // SxxExx marker onward for the search query specifically; the full
+    // descriptive name is still what gets displayed/stored elsewhere.
+    const seasonEpisodeMatch = title.match(/^(.*?)\s+S\d{1,2}E\d{1,3}\b/i)
+    if (seasonEpisodeMatch) {
+      title = seasonEpisodeMatch[1].trim()
+    }
+
     const result = await lookupAiometadataPoster(manifestUrl, title, year)
     const updatedRow = await prisma.proxyStreamSession.update({
       where: { id: rowId },
