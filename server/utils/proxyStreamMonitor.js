@@ -46,7 +46,12 @@ function parseDisplayName(filename) {
   const yearMatch = withoutExt.match(/^(.*?)[.\s](\d{4})[.\s]/)
 
   if (yearMatch) {
-    const title = yearMatch[1].replace(/\./g, ' ').trim()
+    let title = yearMatch[1].replace(/\./g, ' ').trim()
+    // Strip numeric-junk parenthetical groups (e.g. a literal "(1.23.45)"
+    // timestamp/version marker from the release name) that survive the
+    // dot-to-space cleanup untouched, since only dots get replaced there -
+    // not the parentheses. This kind of content is never real title text.
+    title = title.replace(/\(\s*[\d\s:.-]+\s*\)/g, '').replace(/\s+/g, ' ').trim()
     const year = yearMatch[2]
     return `${title} (${year})`
   }
@@ -233,6 +238,18 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
     const itemId = representative.metadataItemId || `proxy:${normalizeTitleForHistory(title).replace(/\s+/g, '-')}`
     const itemType = representative.metadataItemType === 'series' ? 'series' : 'movie'
 
+    // Look up any existing entry for this exact item first, so a
+    // stop-then-resume of the same content accumulates duration across
+    // segments instead of the later segment silently overwriting (and
+    // discarding credit for) the earlier one.
+    const existingForItem = await prisma.watchSession.findUnique({
+      where: { accountId_userId_itemId: { accountId, userId: user.id, itemId } },
+    })
+    const accumulatedDuration = (existingForItem?.durationSeconds || 0) + durationSeconds
+    const overallStartTime = existingForItem?.startTime && existingForItem.startTime < earliestStartTime
+      ? existingForItem.startTime
+      : earliestStartTime
+
     const watchSessionRow = await prisma.watchSession.upsert({
       where: {
         accountId_userId_itemId: { accountId, userId: user.id, itemId },
@@ -244,14 +261,15 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
         itemName: title,
         itemType,
         poster: representative.posterUrl || null,
-        startTime: earliestStartTime,
+        startTime: overallStartTime,
         endTime,
-        durationSeconds,
+        durationSeconds: accumulatedDuration,
         isActive: false,
       },
       update: {
+        startTime: overallStartTime,
         endTime,
-        durationSeconds,
+        durationSeconds: accumulatedDuration,
         isActive: false,
         poster: representative.posterUrl || undefined,
       },
@@ -299,6 +317,13 @@ async function attemptPosterLookup(prisma, accountId, rowId, displayName) {
     const seasonEpisodeMatch = title.match(/^(.*?)\s+S\d{1,2}E\d{1,3}\b/i)
     if (seasonEpisodeMatch) {
       title = seasonEpisodeMatch[1].trim()
+    } else {
+      // Bare episode marker without an attached season marker (e.g.
+      // "Chernobyl E01" rather than "Chernobyl S01E01")
+      const bareEpisodeMatch = title.match(/^(.*?)\s+E\d{1,3}\b/i)
+      if (bareEpisodeMatch) {
+        title = bareEpisodeMatch[1].trim()
+      }
     }
 
     const result = await lookupAiometadataPoster(manifestUrl, title, year)
