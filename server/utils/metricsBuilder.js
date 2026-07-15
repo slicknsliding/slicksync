@@ -1135,6 +1135,64 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     watchSessions = merged.dedupedSessions
   }
 
+  // Second pass: dedup WITHIN watchSessions itself. Confirmed via real
+  // data that an older, separate native session tracker also writes
+  // directly into WatchSession (not just EpisodeWatchHistory/
+  // MovieWatchHistory) - using real item IDs and its own fields
+  // (startPosition/lastPosition/totalDuration), distinct from our
+  // AIOStreams-proxy writes (metadataItemId or a "proxy:" fallback
+  // slug). Two different ID schemes for the same real content land in
+  // the same table and were never being cross-checked against each
+  // other before this pass.
+  function mergeWithinWatchSessions(sessionsList) {
+    const MERGE_WINDOW_MS = 3 * 60 * 60 * 1000 // 3 hours
+    const removedIds = new Set()
+    const sorted = [...sessionsList].sort((a, b) => a.startTimeTimestamp - b.startTimeTimestamp)
+
+    for (let i = 0; i < sorted.length; i++) {
+      const a = sorted[i]
+      if (removedIds.has(a.id)) continue
+
+      for (let j = i + 1; j < sorted.length; j++) {
+        const b = sorted[j]
+        if (removedIds.has(b.id)) continue
+        if (a.user.id !== b.user.id) continue
+        if (Math.abs(a.startTimeTimestamp - b.startTimeTimestamp) > MERGE_WINDOW_MS) continue
+
+        // Check both directions - either entry could be the one carrying
+        // real season/episode data (the native tracker doesn't always
+        // start before the proxy one, or vice versa).
+        const aAsActivity = { item: { type: a.item?.type, season: a.item?.season, episode: a.item?.episode, name: a.item?.name } }
+        const bAsSession = { item: { name: b.item?.name } }
+        const bAsActivity = { item: { type: b.item?.type, season: b.item?.season, episode: b.item?.episode, name: b.item?.name } }
+        const aAsSession = { item: { name: a.item?.name } }
+
+        if (!isSameEvent(aAsActivity, bAsSession) && !isSameEvent(bAsActivity, aAsSession)) continue
+
+        // Keep whichever has a real (non-proxy-fallback, non-tmdb) ID
+        // scheme when possible - that's the more authoritative/complete
+        // record (has real season/episode, videoId, position data).
+        // Otherwise keep whichever started first.
+        const aLooksReal = a.item?.id && !String(a.item.id).startsWith('tmdb:') && !String(a.item.id).startsWith('proxy:')
+        const bLooksReal = b.item?.id && !String(b.item.id).startsWith('tmdb:') && !String(b.item.id).startsWith('proxy:')
+
+        let keep = a
+        let drop = b
+        if (bLooksReal && !aLooksReal) {
+          keep = b
+          drop = a
+        }
+
+        keep.durationSeconds = (keep.durationSeconds || 0) + (drop.durationSeconds || 0)
+        removedIds.add(drop.id)
+      }
+    }
+
+    return sessionsList.filter((s) => !removedIds.has(s.id))
+  }
+
+  watchSessions = mergeWithinWatchSessions(watchSessions)
+
   // Calculate summary stats (Movies, Shows, Total Time) from WatchActivity data (already period-filtered)
   const activeUserCount = Object.keys(watchActivityByUser).length;
 
