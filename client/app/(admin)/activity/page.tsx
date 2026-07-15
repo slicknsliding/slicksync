@@ -516,6 +516,15 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             </div>
           </div>
         )}
+
+        {/* Request count badge - bottom right, mirrors the profile badge on the opposite corner */}
+        {!activity.isSynthetic && activity.requestCount !== undefined && activity.requestCount > 0 && (
+          <div className="absolute bottom-2 right-2">
+            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
+              {activity.requestCount} {activity.requestCount === 1 ? 'req' : 'reqs'}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Content Info - Below the poster */}
