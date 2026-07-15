@@ -1063,6 +1063,77 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     console.warn(`[MetricsBuilder] Error fetching watch sessions:`, error.message)
   }
 
+  // Cross-pipeline dedup: the same real viewing event can be tracked by
+  // both native Nuvio tracking (recentActivity, real IMDb-style IDs) and
+  // AIOStreams-proxy tracking (watchSessions, AIOMetadata-resolved IDs
+  // like "tmdb:...") - two different ID namespaces that can never match
+  // by ID alone, even for the exact same content. Confirmed real case:
+  // "On Call" showed as two separate History cards from one viewing.
+  //
+  // Matching strategy deliberately does NOT use plain substring/prefix
+  // title comparison - "Chernobyl" is a prefix of "Chernobyl Diaries" the
+  // same way "On Call" is a prefix of "On Call S01E01 Pilot", but the
+  // first pair is two different real shows while the second is the same
+  // show with episode info attached. For series, season+episode number
+  // (which recentActivity's episode entries carry directly, and which
+  // can be extracted from the proxy's raw SxxExx-tagged title) is a far
+  // safer signal than the title text alone. Movies fall back to exact
+  // normalized-title equality, which is conservative but avoids the same
+  // false-positive risk without season/episode numbers to check against.
+  function normalizeForMerge(name) {
+    return (name || '')
+      .toLowerCase()
+      .replace(/\(\d{4}\)/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+  }
+
+  function extractSeasonEpisodeFromTitle(name) {
+    const m = (name || '').match(/S(\d{1,2})E(\d{1,3})/i)
+    if (!m) return null
+    return { season: parseInt(m[1], 10), episode: parseInt(m[2], 10) }
+  }
+
+  function isSameEvent(activity, session) {
+    if (activity.item?.type === 'series' && activity.item?.season != null && activity.item?.episode != null) {
+      const sessionSE = extractSeasonEpisodeFromTitle(session.item?.name)
+      if (sessionSE) {
+        return sessionSE.season === activity.item.season && sessionSE.episode === activity.item.episode
+      }
+    }
+    const activityTitle = normalizeForMerge(activity.item?.name)
+    const sessionTitle = normalizeForMerge(session.item?.name)
+    return !!activityTitle && activityTitle === sessionTitle
+  }
+
+  function mergeCrossPipelineDuplicates(recentActivityList, watchSessionsList) {
+    const MERGE_WINDOW_MS = 3 * 60 * 60 * 1000 // 3 hours
+    const consumedSessionIds = new Set()
+
+    for (const activity of recentActivityList) {
+      const match = watchSessionsList.find((session) => {
+        if (consumedSessionIds.has(session.id)) return false
+        if (session.user.id !== activity.user.id) return false
+        const diff = Math.abs(session.startTimeTimestamp - activity.watchedAtTimestamp)
+        if (diff > MERGE_WINDOW_MS) return false
+        return isSameEvent(activity, session)
+      })
+
+      if (match) {
+        activity.durationSeconds = (activity.durationSeconds || 0) + (match.durationSeconds || 0)
+        consumedSessionIds.add(match.id)
+      }
+    }
+
+    const dedupedSessions = watchSessionsList.filter((s) => !consumedSessionIds.has(s.id))
+    return { recentActivityList, dedupedSessions }
+  }
+
+  {
+    const merged = mergeCrossPipelineDuplicates(recentActivity, watchSessions)
+    watchSessions = merged.dedupedSessions
+  }
+
   // Calculate summary stats (Movies, Shows, Total Time) from WatchActivity data (already period-filtered)
   const activeUserCount = Object.keys(watchActivityByUser).length;
 
