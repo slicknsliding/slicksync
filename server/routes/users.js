@@ -129,24 +129,22 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
         // Calculate Stremio addons count by fetching live data
         let stremioAddonsCount = 0
-        if (user.stremioAuthKey) {
+        if (user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)) {
+          // Calculate live addon count - reused getUserAddons for provider-agnostic count
+          // (was Stremio-only before, silently leaving Nuvio users to fall back to a
+          // completely different number - the DB-assigned group addon count - instead
+          // of a genuine live count, which is why counts and sync status could differ
+          // between provider types even when both were actually in sync)
           try {
-            // Decrypt stored auth key
-            const authKeyPlain = decrypt(user.stremioAuthKey, req)
-
-            // Use stateless client with authKey to fetch addon collection directly
-            const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKeyPlain })
-            const collection = await apiClient.request('addonCollectionGet', {})
-
-            const rawAddons = collection?.addons || collection || {}
-            const addonsNormalized = Array.isArray(rawAddons)
-              ? rawAddons
-              : (typeof rawAddons === 'object' ? Object.values(rawAddons) : [])
-
-            stremioAddonsCount = addonsNormalized.length
+            const { getUserAddons } = require('../utils/sync')
+            const result = await getUserAddons(user, req, { decrypt, StremioAPIClient, createProvider })
+            if (result.success && Array.isArray(result.addons)) {
+              stremioAddonsCount = result.addons.length
+            } else if (!result.success) {
+              console.error(`Error fetching live addons for user ${user.id}:`, result.error)
+            }
           } catch (error) {
-            console.error(`Error fetching Stremio addons for user ${user.id}:`, error.message)
-            // Note: stremioAddons field was removed from User schema
+            console.error(`Error fetching live addons for user ${user.id}:`, error.message)
             // No fallback to database value available
           }
         }
