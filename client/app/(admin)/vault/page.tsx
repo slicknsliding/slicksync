@@ -747,7 +747,7 @@ export default function VaultPage() {
             </>
           )}
 
-          <Input label="Dashboard URL (optional)" placeholder="https://provider.com/dashboard" value={form.dashboardUrl} onChange={e => setForm(f => ({ ...f, dashboardUrl: e.target.value }))} />
+          <Input label={form.category === 'aiostreams' ? 'UUID (optional)' : 'Dashboard URL (optional)'} placeholder={form.category === 'aiostreams' ? 'e.g. e2849659-fdcb-4ed8-9eb0-6cfd76324e15' : 'https://provider.com/dashboard'} value={form.dashboardUrl} onChange={e => setForm(f => ({ ...f, dashboardUrl: e.target.value }))} />
 
           <div className="grid grid-cols-2 gap-3">
             <Input label="Expires on (optional)" type="date" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} />
