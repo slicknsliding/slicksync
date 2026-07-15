@@ -382,6 +382,7 @@ model ProxyStreamSession {
   metadataMatchedAt DateTime? // When the AIOMetadata lookup was attempted (whether or not it found a match) - null means not yet attempted
   metadataItemId   String?   // Real IMDb-style ID from the AIOMetadata match, e.g. "tt1032819" - used to key the completed-history WatchSession row when this stream ends
   metadataItemType String?   // "movie" or "series" from the AIOMetadata match
+  linkedWatchSessionId String? // ID of the WatchSession row this stream's completed history was written to, if any - lets a poster found later (e.g. by the retry pass) backfill into the history entry too, not just this row
   requestCount    Int       @default(1) // AIOStreams' `count` - number of individual requests merged into this entry
   startTime       DateTime  // AIOStreams' `timestamp` - when this connection was first opened
   lastSeenAt      DateTime  // AIOStreams' `lastSeen` - most recent activity on this connection, updates as long as it's active
