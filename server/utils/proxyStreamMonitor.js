@@ -179,6 +179,19 @@ async function resolveUserForClosedConnection(prisma, accountId, aiostreamsUser,
     }
   }
 
+  // No title-match signal available. Use the fallback list's order as the
+  // tiebreaker (same fix already applied to the live Now Playing merge in
+  // proxyNowPlaying.js) rather than candidates[0] in arbitrary database
+  // row order - confirmed via a real duplicate/misattributed history entry
+  // that this path was still hitting the same bug independently.
+  if (fallbackUserIds.length > 0) {
+    const byFallbackOrder = candidates
+      .map((u) => ({ u, rank: fallbackUserIds.indexOf(u.id) }))
+      .filter((c) => c.rank !== -1)
+      .sort((a, b) => a.rank - b.rank)
+    if (byFallbackOrder.length > 0) return byFallbackOrder[0].u
+  }
+
   return candidates[0]
 }
 
