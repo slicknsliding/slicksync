@@ -611,7 +611,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <h3 className="text-base font-semibold font-display text-default">Now Playing Posters</h3>
-                <p className="text-xs text-muted">Poster lookups for streams detected via the AIOStreams proxy with no library match</p>
+                <p className="text-xs text-muted">Poster lookups for AIOStreams-proxy-detected streams with no library match - applies to both Now Playing and completed watch history</p>
               </div>
             </div>
 
@@ -626,7 +626,7 @@ export default function SettingsPage() {
                 className="input-base w-full px-3 py-2 text-sm"
               />
               <p className="text-xs text-muted mt-2">
-                Used to fetch posters for Now Playing entries that came from the AIOStreams proxy but have no matching watch session. Leave blank to disable poster lookups.
+                Used to fetch posters for AIOStreams-proxy-detected entries (both while actively playing and after they move into watch history) that have no matching library metadata. Leave blank to disable poster lookups.
               </p>
             </div>
           </Card>
