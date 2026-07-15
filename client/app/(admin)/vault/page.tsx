@@ -195,7 +195,7 @@ export default function VaultPage() {
   const [entries, setEntries] = useState<VaultEntry[]>([]);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
-  const [activeCategory, setActiveCategory] = useState('all');
+  const [activeCategory, setActiveCategory] = useState('debrid'); // 'all' tab removed - defaults to first real category
   const [isLoading, setIsLoading] = useState(true);
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -213,7 +213,7 @@ export default function VaultPage() {
 
   const load = useCallback(async () => {
     try {
-      const data = await api.getVaultEntries(activeCategory === 'all' ? undefined : activeCategory);
+      const data = await api.getVaultEntries(activeCategory);
       setEntries(data.entries);
       setCategoryCounts(data.categories);
       setTotal(data.total);
@@ -506,7 +506,6 @@ export default function VaultPage() {
   };
 
   const filterOptions = [
-    { key: 'all', label: 'All', count: total },
     ...Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
       key, label, count: categoryCounts[key] || 0,
     })),
