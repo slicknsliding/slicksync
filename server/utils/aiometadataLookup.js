@@ -34,16 +34,53 @@ async function searchCatalog(baseUrl, type, query) {
   }
 }
 
-function pickBestMatch(metas, year) {
-  if (metas.length === 0) return null
+function normalizeForCompare(s) {
+  return (s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+// Exact match after normalization - the strong, preferred signal.
+function isExactTitleMatch(candidateName, searchTitle) {
+  const a = normalizeForCompare(candidateName)
+  const b = normalizeForCompare(searchTitle)
+  return !!a && !!b && a === b
+}
+
+// Fallback for minor real differences (e.g. a colon/subtitle variant),
+// but guarded by a length-ratio check - "Chernobyl" is a literal
+// substring of "Chernobyl Diaries", yet they're different titles. Only
+// accept a substring match when the two strings are close enough in
+// length to plausibly be the same title with minor punctuation/subtitle
+// differences, not a completely different, longer title that happens to
+// share a word.
+function isPlausibleSubstringMatch(candidateName, searchTitle) {
+  const a = normalizeForCompare(candidateName)
+  const b = normalizeForCompare(searchTitle)
+  if (!a || !b) return false
+  if (!a.includes(b) && !b.includes(a)) return false
+  const longer = Math.max(a.length, b.length)
+  const shorter = Math.min(a.length, b.length)
+  return longer / shorter <= 1.3
+}
+
+function pickBestMatch(metas, year, searchTitle) {
+  const exact = metas.filter((m) => isExactTitleMatch(m.name, searchTitle))
+  const plausible = exact.length > 0
+    ? exact
+    : metas.filter((m) => isPlausibleSubstringMatch(m.name, searchTitle))
+
+  if (plausible.length === 0) return null
+
   if (year) {
-    const yearMatch = metas.find((m) => {
+    const yearMatch = plausible.find((m) => {
       const metaYear = (m.year || m.releaseInfo || '').toString().slice(0, 4)
       return metaYear === String(year)
     })
     if (yearMatch) return yearMatch
   }
-  return metas[0]
+  return plausible[0]
 }
 
 /**
@@ -57,11 +94,11 @@ async function lookupAiometadataPoster(manifestUrl, title, year) {
   const baseUrl = stripManifestSuffix(manifestUrl)
 
   let metas = await searchCatalog(baseUrl, 'movie', title)
-  let match = pickBestMatch(metas, year)
+  let match = pickBestMatch(metas, year, title)
 
   if (!match) {
     metas = await searchCatalog(baseUrl, 'series', title)
-    match = pickBestMatch(metas, year)
+    match = pickBestMatch(metas, year, title)
   }
 
   if (!match) return null
