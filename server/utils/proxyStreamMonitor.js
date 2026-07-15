@@ -246,9 +246,67 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
   }
 }
 
+/**
+ * Attempts an AIOMetadata poster lookup for one row and records the
+ * result (or the fact that none was found) via metadataMatchedAt, so it's
+ * never retried indefinitely. Used both at connection-creation time and by
+ * the retry pass below for rows that missed that first attempt.
+ */
+async function attemptPosterLookup(prisma, accountId, rowId, displayName) {
+  try {
+    const account = await prisma.appAccount.findUnique({
+      where: { id: accountId },
+      select: { aiometadataManifestUrl: true },
+    })
+    const manifestUrl = account?.aiometadataManifestUrl
+    if (!manifestUrl || !displayName) return
+
+    const yearMatch = displayName.match(/\((\d{4})\)$/)
+    const year = yearMatch ? yearMatch[1] : null
+    const title = year ? displayName.replace(/\s*\(\d{4}\)$/, '') : displayName
+    const result = await lookupAiometadataPoster(manifestUrl, title, year)
+    await prisma.proxyStreamSession.update({
+      where: { id: rowId },
+      data: {
+        posterUrl: result?.posterUrl ?? null,
+        metadataItemId: result?.id ?? null,
+        metadataItemType: result?.type ?? null,
+        metadataMatchedAt: new Date(),
+      },
+    })
+  } catch (error) {
+    heartbeat('pollOnce:poster_lookup_error', { message: error.message, rowId })
+  }
+}
+
+/**
+ * Safety net: finds rows (active or not) that never got a poster lookup
+ * attempt at all - confirmed with real data that this can happen (e.g. a
+ * connection ending mid-lookup before the one-shot attempt in the main
+ * loop finished). Capped to a handful per cycle so a large backlog doesn't
+ * hammer AIOMetadata all at once.
+ */
+async function retryMissingPosters(prisma, accountId) {
+  const stuck = await prisma.proxyStreamSession.findMany({
+    where: { accountId, metadataMatchedAt: null },
+    select: { id: true, displayName: true },
+    take: 5,
+    orderBy: { createdAt: 'asc' },
+  })
+
+  for (const row of stuck) {
+    await attemptPosterLookup(prisma, accountId, row.id, row.displayName)
+  }
+
+  if (stuck.length > 0) {
+    heartbeat('retryMissingPosters:done', { attempted: stuck.length })
+  }
+}
+
 async function pollOnce(prisma, accountId, config) {
   heartbeat('pollOnce:start', { accountId })
   try {
+    await retryMissingPosters(prisma, accountId)
     const stats = await fetchProxyStats(config.baseUrl, config.username, config.password)
     const now = new Date()
     // Track which (aiostreamsUser, clientIp, url) combos are active this poll
@@ -300,32 +358,11 @@ async function pollOnce(prisma, accountId, config) {
         })
 
         // Poster lookup runs once per stream (cached via metadataMatchedAt),
-        // not on every 30s poll while the same stream is still active.
+        // not on every 30s poll while the same stream is still active. A
+        // retry pass elsewhere in this file catches any row that missed
+        // this attempt entirely (e.g. the connection ended mid-lookup).
         if (!row.metadataMatchedAt) {
-          try {
-            const account = await prisma.appAccount.findUnique({
-              where: { id: accountId },
-              select: { aiometadataManifestUrl: true },
-            })
-            const manifestUrl = account?.aiometadataManifestUrl
-            if (manifestUrl && displayName) {
-              const yearMatch = displayName.match(/\((\d{4})\)$/)
-              const year = yearMatch ? yearMatch[1] : null
-              const title = year ? displayName.replace(/\s*\(\d{4}\)$/, '') : displayName
-              const result = await lookupAiometadataPoster(manifestUrl, title, year)
-              await prisma.proxyStreamSession.update({
-                where: { id: row.id },
-                data: {
-                  posterUrl: result?.posterUrl ?? null,
-                  metadataItemId: result?.id ?? null,
-                  metadataItemType: result?.type ?? null,
-                  metadataMatchedAt: new Date(),
-                },
-              })
-            }
-          } catch (error) {
-            heartbeat('pollOnce:poster_lookup_error', { message: error.message })
-          }
+          await attemptPosterLookup(prisma, accountId, row.id, displayName)
         }
       }
     }
