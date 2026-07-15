@@ -1637,6 +1637,7 @@ export interface MetricsData {
     startTime: string;
     endTime?: string | null;
     durationSeconds: number;
+    requestCount?: number | null;
     isActive: boolean;
     isSynthetic?: boolean;
   }>;
