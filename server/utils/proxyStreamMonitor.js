@@ -233,7 +233,7 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
     const itemId = representative.metadataItemId || `proxy:${normalizeTitleForHistory(title).replace(/\s+/g, '-')}`
     const itemType = representative.metadataItemType === 'series' ? 'series' : 'movie'
 
-    await prisma.watchSession.upsert({
+    const watchSessionRow = await prisma.watchSession.upsert({
       where: {
         accountId_userId_itemId: { accountId, userId: user.id, itemId },
       },
@@ -255,6 +255,16 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
         isActive: false,
         poster: representative.posterUrl || undefined,
       },
+    })
+
+    // Link every ProxyStreamSession row in this group to the WatchSession
+    // row just written, so a poster found later (e.g. by the retry pass,
+    // if the lookup was still in flight when this stream closed) can be
+    // backfilled into the history entry too - not just left stuck on this
+    // now-inactive tracking row.
+    await prisma.proxyStreamSession.updateMany({
+      where: { id: { in: group.map((r) => r.id) } },
+      data: { linkedWatchSessionId: watchSessionRow.id },
     })
   }
 }
@@ -278,7 +288,7 @@ async function attemptPosterLookup(prisma, accountId, rowId, displayName) {
     const year = yearMatch ? yearMatch[1] : null
     const title = year ? displayName.replace(/\s*\(\d{4}\)$/, '') : displayName
     const result = await lookupAiometadataPoster(manifestUrl, title, year)
-    await prisma.proxyStreamSession.update({
+    const updatedRow = await prisma.proxyStreamSession.update({
       where: { id: rowId },
       data: {
         posterUrl: result?.posterUrl ?? null,
@@ -287,6 +297,18 @@ async function attemptPosterLookup(prisma, accountId, rowId, displayName) {
         metadataMatchedAt: new Date(),
       },
     })
+
+    // Backfill into the linked history entry too, if this stream had
+    // already ended and its completed WatchSession row was written before
+    // this lookup finished (a real race - closing can happen faster than
+    // the AIOMetadata request completes). Only fills in a still-missing
+    // poster - never overwrites one that's already set.
+    if (result?.posterUrl && updatedRow.linkedWatchSessionId) {
+      await prisma.watchSession.updateMany({
+        where: { id: updatedRow.linkedWatchSessionId, poster: null },
+        data: { poster: result.posterUrl },
+      })
+    }
   } catch (error) {
     heartbeat('pollOnce:poster_lookup_error', { message: error.message, rowId })
   }
