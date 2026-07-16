@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { parseDisplayName, resolveUserForActiveConnection } = require('../server/utils/proxyStreamMonitor')
+const { parseDisplayName, resolveUserForActiveConnection, isUsenetUrl } = require('../server/utils/proxyStreamMonitor')
 
 test('parseDisplayName: null/empty input returns null', () => {
   assert.equal(parseDisplayName(null), null)
@@ -82,4 +82,21 @@ test('resolveUserForActiveConnection: ambiguous email uses AIOSTREAMS_FALLBACK_U
 
 test('resolveUserForActiveConnection: no match returns null', () => {
   assert.equal(resolveUserForActiveConnection(USERS, 'nobody'), null)
+})
+
+// --- isUsenetUrl: classify which closed connections the proxy writes history for ---
+
+test('isUsenetUrl: matches the nzbdav usenet backend URL', () => {
+  assert.equal(isUsenetUrl('http://user:pass@nzbdav:3000/content/Stremio_MOVIE/The.Housemaid.2025.mkv'), true)
+})
+
+test('isUsenetUrl: does NOT match debrid/torrent resolver URLs (native owns those)', () => {
+  assert.equal(isUsenetUrl('https://torrentio.stremio.ru/resolve/torbox/abc/def/Simpsley%20(2026).mkv'), false)
+  assert.equal(isUsenetUrl('https://stremthru.example.com/stremio/torz/x/_/strem/tt8036976/tb/y/0/Send.Help.mkv'), false)
+  assert.equal(isUsenetUrl('https://aiostreams.example.com/api/v1/debrid/playback/blob/The.Rock.mkv?from_proxy=1'), false)
+})
+
+test('isUsenetUrl: null/empty is not usenet', () => {
+  assert.equal(isUsenetUrl(null), false)
+  assert.equal(isUsenetUrl(''), false)
 })
