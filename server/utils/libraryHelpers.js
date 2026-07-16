@@ -106,8 +106,28 @@ async function enrichPostersFromCinemeta(items, options = {}) {
   ])
 }
 
+/**
+ * Best-effort single-item poster backfill via Cinemeta, for callers writing
+ * one history/session row at a time (sessionTracker.js, metricsProcessor.js)
+ * rather than batch-enriching an array. Returns existingPoster unchanged if
+ * already set or if itemId isn't an IMDb-style id Cinemeta can look up.
+ * Bounded by enrichPostersFromCinemeta's own internal timeout.
+ * @param {string} itemId
+ * @param {string} itemType
+ * @param {string|null} existingPoster
+ * @returns {Promise<string|null>}
+ */
+async function resolveSinglePoster(itemId, itemType, existingPoster) {
+  if (existingPoster) return existingPoster
+  if (!itemId || !itemId.startsWith('tt')) return existingPoster || null
+  const target = [{ _id: itemId, type: itemType || 'movie', poster: null }]
+  await enrichPostersFromCinemeta(target, { timeout: 2000, requestTimeout: 1500 })
+  return target[0].poster || null
+}
+
 module.exports = {
   findLatestEpisode,
-  enrichPostersFromCinemeta
+  enrichPostersFromCinemeta,
+  resolveSinglePoster
 }
 

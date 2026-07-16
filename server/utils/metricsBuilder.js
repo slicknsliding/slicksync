@@ -1128,7 +1128,13 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       })
 
       if (match) {
-        activity.durationSeconds = (activity.durationSeconds || 0) + (match.durationSeconds || 0)
+        // max, not sum: both pipelines are almost always observing the
+        // SAME concurrent viewing minutes (native tracking and the
+        // AIOStreams proxy both see the same real-time stream), not two
+        // sequential, non-overlapping segments - summing double-counted
+        // the overlap. The longer of the two independent measurements is
+        // the better estimate of actual watch time.
+        activity.durationSeconds = Math.max(activity.durationSeconds || 0, match.durationSeconds || 0)
         consumedSessionIds.add(match.id)
       }
     }
@@ -1190,7 +1196,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
           drop = a
         }
 
-        keep.durationSeconds = (keep.durationSeconds || 0) + (drop.durationSeconds || 0)
+        // max, not sum - same overlapping-observation reasoning as the
+        // cross-pipeline merge above.
+        keep.durationSeconds = Math.max(keep.durationSeconds || 0, drop.durationSeconds || 0)
         removedIds.add(drop.id)
       }
     }

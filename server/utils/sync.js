@@ -434,63 +434,26 @@ async function computeUserSyncPlan(user, req, { prisma, getAccountId, decrypt, p
   const fingerprint = createManifestFingerprint(canonicalizeManifestUrl, { urlOnly })
   const aKeys = current.map(fingerprint)
   const bKeys = desired.map(fingerprint)
-  const alreadySynced = aKeys.length === bKeys.length && aKeys.every((k, i) => k === bKeys[i])
+  // Order-insensitive, matching getUserSyncStatus's comparison above - a
+  // pure reorder (e.g. user reordered addons in the Stremio app) must not
+  // count as "not synced" here either, otherwise this function's
+  // alreadySynced verdict can disagree with the badge's.
+  const sortedA = [...aKeys].sort()
+  const sortedB = [...bKeys].sort()
+  const alreadySynced = sortedA.length === sortedB.length && sortedA.every((k, i) => k === sortedB[i])
   return { success: true, alreadySynced, current, desired }
 }
 
-// Helper to recursively sort object keys for stable JSON serialization
-// This ensures JSON.stringify always produces the same output for equivalent objects
-function sortObjectKeys(obj) {
-  if (obj === null || obj === undefined) return obj
-  if (Array.isArray(obj)) return obj.map(sortObjectKeys)
-  if (typeof obj !== 'object') return obj
-  
-  const sorted = {}
-  Object.keys(obj).sort().forEach(key => {
-    sorted[key] = sortObjectKeys(obj[key])
-  })
-  return sorted
-}
-
-// Build a stable fingerprint for an addon entry based on its manifest and canonical URL.
-// urlOnly mode: compare by canonical URL alone — used for non-Stremio providers (Nuvio)
-// where SlickSync controls the URL set and manifest content isn't stored on the provider side.
+// Build a stable fingerprint (identity) for an addon entry, used to compare
+// a user's current addons against their desired set. Both branches compare
+// by ID/URL only, not manifest content - see the comment at the bottom of
+// this function for why the Stremio branch also dropped deep manifest
+// comparison.
 function createManifestFingerprint(canonicalizeManifestUrl, { urlOnly = false } = {}) {
   const normalizeUrl = (u) => {
     try { return canonicalizeManifestUrl ? canonicalizeManifestUrl(u) : String(u || '').trim().toLowerCase() } catch { return String(u || '').trim().toLowerCase() }
   }
-  
-  // Normalize manifest for comparison - sort arrays to ensure consistent comparison
-  const normalizeManifest = (m) => {
-    try {
-      if (!m || typeof m !== 'object') return {}
-      
-      // Deep clone to avoid mutating original
-      const normalized = JSON.parse(JSON.stringify(m))
-      
-      // Sort arrays that should be order-independent for comparison
-      if (Array.isArray(normalized.catalogs)) {
-        // Sort catalogs by type+id for consistent comparison
-        normalized.catalogs = normalized.catalogs
-          .map(c => ({ type: c?.type, id: c?.id, name: c?.name, extra: c?.extra, extraSupported: c?.extraSupported }))
-          .sort((a, b) => String(a.type + a.id).localeCompare(String(b.type + b.id)))
-      }
-      if (Array.isArray(normalized.types)) {
-        normalized.types = normalized.types.slice().sort()
-      }
-      if (Array.isArray(normalized.resources)) {
-        // Sort resources by name for consistency
-        normalized.resources = normalized.resources
-          .map(r => ({ name: r?.name, types: Array.isArray(r?.types) ? r.types.slice().sort() : r?.types, idPrefixes: Array.isArray(r?.idPrefixes) ? r.idPrefixes.slice().sort() : r?.idPrefixes }))
-          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
-      }
-      
-      return normalized
-    } catch {
-      return m || {}
-    }
-  }
-  
+
   return (addon) => {
     // URL-only mode: canonical URL is the identity (non-Stremio providers)
     if (urlOnly) {
@@ -516,11 +479,18 @@ function createManifestFingerprint(canonicalizeManifestUrl, { urlOnly = false } 
       url = normalizeUrl(url)
     }
     
-    const manifestNorm = normalizeManifest(addon?.manifest || addon)
-    // Sort object keys recursively for stable JSON serialization
-    const stableManifest = sortObjectKeys(manifestNorm)
-    // Compare entire manifest - this catches all changes including name, description, and any other fields
-    return url + '|' + JSON.stringify(stableManifest)
+    // ID-only identity, same as urlOnly mode above (not a deep manifest diff).
+    // A prior version compared the full manifest JSON here, which meant
+    // "Synced" for a Stremio user depended on the DB's *cached* manifest
+    // copy being byte-identical to what's actually installed - but that
+    // cache gets silently refreshed by the background addon health checker
+    // (reloadAddon) independent of anything the admin did, flipping the
+    // status to "Unsynced" for changes the user never needs to act on.
+    // Sync status should answer "does this user have the right set of
+    // addons", not "is our manifest cache stale" - the full manifest
+    // content is still what actually gets pushed during a real sync, this
+    // only affects what counts as already-synced for status/skip purposes.
+    return url
   }
 }
 
