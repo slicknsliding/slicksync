@@ -11,6 +11,10 @@ import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer
 import { toast } from '@/components/ui/Toast';
 import { api, Addon } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
+import { useSortableDragState } from '@/components/ui/DragSortable';
+import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
+import type { DragEndEvent } from '@dnd-kit/core';
+import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -74,6 +78,20 @@ interface AddonDisplay {
   healthCheckError?: string;
 }
 
+// Wraps an addon card with dnd-kit's sortable drag state, matching Vault's
+// existing pattern. Unlike Vault, AddonCard's own right-click menu lives
+// inside AddonCard itself, so this wraps from the outside (whole-card
+// draggable) rather than passing a separate drag-handle prop through -
+// AddonCard's internals, including its existing right-click menu, are
+// completely untouched.
+function SortableAddonWrapper({ id, children }: { id: string; children: React.ReactNode }) {
+  const { dragHandleProps, itemProps } = useSortableDragState(id);
+  return (
+    <div ref={itemProps.ref} style={itemProps.style} className={itemProps.className} {...dragHandleProps}>
+      {children}
+    </div>
+  );
+}
 export default function AddonsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const { viewMode, setViewMode } = useDefaultViewMode();
@@ -289,6 +307,33 @@ export default function AddonsPage() {
   }, [deleteTarget]);
 
   const hasSelection = selectedIds.size > 0;
+  // Register this page's drag-end logic with the layout-level DndContext,
+  // same shared mechanism Vault already uses - simple same-list reorder
+  // only (no cross-category/sidebar-drop logic needed for addons).
+  const { registerDragEndHandler } = useVaultDrag();
+  useEffect(() => {
+    const handleDragEnd = (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const oldIndex = filteredAddons.findIndex(a => a.id === active.id);
+      const newIndex = filteredAddons.findIndex(a => a.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const reordered = [...filteredAddons];
+      const [moved] = reordered.splice(oldIndex, 1);
+      reordered.splice(newIndex, 0, moved);
+      setAddons(prev => {
+        const reorderedIds = reordered.map(a => a.id);
+        const rest = prev.filter(a => !reorderedIds.includes(a.id));
+        return [...reordered, ...rest];
+      });
+      api.reorderAddons(reordered.map(a => a.id)).catch((err: any) => {
+        toast.error(err.message || 'Failed to save new order');
+      });
+    };
+    registerDragEndHandler(handleDragEnd);
+    return () => registerDragEndHandler(null);
+  }, [filteredAddons, registerDragEndHandler]);
+
 
   return (
     <>
@@ -401,26 +446,30 @@ export default function AddonsPage() {
                 {viewMode === 'grid' ? (
                   <StaggerContainer key="grid" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
-                      {filteredAddons.map((addon) => (
-                        <StaggerItem key={addon.id}>
-                          <AddonCard
-                            addon={addon}
-                            isSelected={selectedIds.has(addon.id)}
-                            onToggleSelect={() => toggleSelect(addon.id)}
-                            onOpenDetail={() => setSelectedAddon(addon)}
-                            onDelete={() => setDeleteTarget(addon)}
-                            onClone={() => setCloneTarget(addon)}
-                            onMoveToVault={() => setMoveToVaultTarget(addon)}
-                            onToggleStatus={(addonId, newStatus) => {
-                              setAddons(prev => prev.map(a =>
-                                a.id === addonId
-                                  ? { ...a, isActive: newStatus }
-                                  : a
-                              ));
-                            }}
-                          />
-                        </StaggerItem>
-                      ))}
+                      <SortableContext items={filteredAddons.map(a => a.id)} strategy={rectSortingStrategy}>
+                        {filteredAddons.map((addon) => (
+                          <SortableAddonWrapper key={addon.id} id={addon.id}>
+                            <StaggerItem>
+                              <AddonCard
+                                addon={addon}
+                                isSelected={selectedIds.has(addon.id)}
+                                onToggleSelect={() => toggleSelect(addon.id)}
+                                onOpenDetail={() => setSelectedAddon(addon)}
+                                onDelete={() => setDeleteTarget(addon)}
+                                onClone={() => setCloneTarget(addon)}
+                                onMoveToVault={() => setMoveToVaultTarget(addon)}
+                                onToggleStatus={(addonId, newStatus) => {
+                                  setAddons(prev => prev.map(a =>
+                                    a.id === addonId
+                                      ? { ...a, isActive: newStatus }
+                                      : a
+                                  ));
+                                }}
+                              />
+                            </StaggerItem>
+                          </SortableAddonWrapper>
+                        ))}
+                      </SortableContext>
                     </AnimatePresence>
                   </StaggerContainer>
                 ) : (
