@@ -1280,7 +1280,7 @@ class ApiClient {
     return this.fetch<VaultNotificationSettings>('/vault/settings/notifications');
   }
 
-  async updateVaultNotificationSettings(data: Partial<{ ntfyUrl: string; ntfyTopic: string; discordWebhookUrl: string; checkIntervalHours: number }>) {
+  async updateVaultNotificationSettings(data: Partial<{ ntfyUrl: string; ntfyTopic: string; discordWebhookUrl: string; checkIntervalHours: number; enabled: boolean }>) {
     return this.fetch<{ success: boolean }>('/vault/settings/notifications', {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -1414,6 +1414,7 @@ export interface VaultNotificationSettings {
   ntfyTopic: string | null;
   discordWebhookUrl: string | null;
   checkIntervalHours: number;
+  enabled: boolean;
 }
 
 export interface Addon {

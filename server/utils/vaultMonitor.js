@@ -11,6 +11,7 @@ const isDebugMode = process.env.DEBUG === 'true' || process.env.DEBUG === '1'
 
 function getNotifyConfig(cfg) {
   return {
+    enabled: cfg?.vaultNotifyEnabled !== false,
     ntfyUrl: cfg?.vaultNtfyUrl || null,
     ntfyTopic: cfg?.vaultNtfyTopic || null,
     discordWebhookUrl: cfg?.vaultDiscordWebhookUrl || null,
@@ -42,7 +43,7 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
       if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
       cfg = cfg || {}
       const notifyCfg = getNotifyConfig(cfg)
-      const hasNotifyChannel = (notifyCfg.ntfyUrl && notifyCfg.ntfyTopic) || notifyCfg.discordWebhookUrl
+      const hasNotifyChannel = notifyCfg.enabled && ((notifyCfg.ntfyUrl && notifyCfg.ntfyTopic) || notifyCfg.discordWebhookUrl)
 
       const entries = await prisma.vaultEntry.findMany({
         where: { accountId: account.id, isActive: true },

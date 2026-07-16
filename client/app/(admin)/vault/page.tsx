@@ -10,11 +10,10 @@ import { useVaultDrag, SIDEBAR_ADDONS_DROPZONE_ID } from '@/components/providers
 import type { DragEndEvent } from '@dnd-kit/core';
 import { Button, Card, Badge, Modal, Input, FilterTabsResponsive, ToggleSwitch, ContextMenu, useContextMenu } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
-import { api, VaultEntry, VaultCategory, VaultTestType, VaultNotificationSettings } from '@/lib/api';
+import { api, VaultEntry, VaultCategory, VaultTestType } from '@/lib/api';
 import {
   PlusIcon,
   ShieldCheckIcon,
-  BellIcon,
   EyeIcon,
   EyeSlashIcon,
   ArrowPathIcon,
@@ -205,11 +204,6 @@ export default function VaultPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<EntryFormState>(EMPTY_FORM);
   const [isSaving, setIsSaving] = useState(false);
-
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settings, setSettings] = useState<VaultNotificationSettings | null>(null);
-  const [settingsForm, setSettingsForm] = useState({ ntfyUrl: '', ntfyTopic: '', discordWebhookUrl: '', checkIntervalHours: '6' });
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -461,50 +455,6 @@ export default function VaultPage() {
     }
   };
 
-  const openSettingsModal = async () => {
-    try {
-      const data = await api.getVaultNotificationSettings();
-      setSettings(data);
-      setSettingsForm({
-        ntfyUrl: data.ntfyUrl || '',
-        ntfyTopic: data.ntfyTopic || '',
-        discordWebhookUrl: '', // never prefilled — write-only field
-        checkIntervalHours: String(data.checkIntervalHours || 6),
-      });
-      setIsSettingsOpen(true);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to load notification settings');
-    }
-  };
-
-  const handleSaveSettings = async () => {
-    setIsSavingSettings(true);
-    try {
-      const payload: any = {
-        ntfyUrl: settingsForm.ntfyUrl.trim() || undefined,
-        ntfyTopic: settingsForm.ntfyTopic.trim() || undefined,
-        checkIntervalHours: Number(settingsForm.checkIntervalHours) || 6,
-      };
-      if (settingsForm.discordWebhookUrl.trim()) payload.discordWebhookUrl = settingsForm.discordWebhookUrl.trim();
-      await api.updateVaultNotificationSettings(payload);
-      toast.success('Notification settings saved');
-      setIsSettingsOpen(false);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to save settings');
-    } finally {
-      setIsSavingSettings(false);
-    }
-  };
-
-  const handleTestNotification = async () => {
-    try {
-      await api.testVaultNotification();
-      toast.success('Test notification sent');
-    } catch (err: any) {
-      toast.error(err.message || 'No notification channel configured yet — save settings first');
-    }
-  };
-
   const filterOptions = [
     ...Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
       key, label, count: categoryCounts[key] || 0,
@@ -588,9 +538,6 @@ export default function VaultPage() {
         subtitle={isLoading ? 'Loading...' : `${total} ${total === 1 ? 'entry' : 'entries'}`}
         actions={
           <>
-            <Button variant="secondary" leftIcon={<BellIcon className="w-5 h-5" />} onClick={openSettingsModal}>
-              Notifications
-            </Button>
             <Button variant="primary" leftIcon={<PlusIcon className="w-5 h-5" />} onClick={openAddModal}>
               Add Entry
             </Button>
@@ -765,34 +712,6 @@ export default function VaultPage() {
             </button>
             <Button variant="primary" className="flex-1" onClick={handleSave} isLoading={isSaving}>
               {editingId ? 'Save Changes' : 'Add Entry'}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Notification Settings Modal */}
-      <Modal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} title="Vault Notifications" size="md">
-        <div className="space-y-4">
-          <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
-            Alerts fire when an entry enters its expiry window, or when an automated check starts failing. Configure ntfy and/or Discord — either or both.
-          </p>
-          <Input label="ntfy server URL" placeholder="https://ntfy.sh" value={settingsForm.ntfyUrl} onChange={e => setSettingsForm(f => ({ ...f, ntfyUrl: e.target.value }))} />
-          <Input label="ntfy topic" placeholder="my-vault-alerts" value={settingsForm.ntfyTopic} onChange={e => setSettingsForm(f => ({ ...f, ntfyTopic: e.target.value }))} />
-          <Input
-            label={settings?.discordWebhookUrl ? 'Discord webhook URL (configured — leave blank to keep)' : 'Discord webhook URL'}
-            type="password"
-            placeholder="https://discord.com/api/webhooks/..."
-            value={settingsForm.discordWebhookUrl}
-            onChange={e => setSettingsForm(f => ({ ...f, discordWebhookUrl: e.target.value }))}
-          />
-          <Input label="Check interval (hours)" type="number" value={settingsForm.checkIntervalHours} onChange={e => setSettingsForm(f => ({ ...f, checkIntervalHours: e.target.value }))} />
-
-          <div className="flex gap-3 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={handleTestNotification}>
-              Send Test
-            </Button>
-            <Button variant="primary" className="flex-1" onClick={handleSaveSettings} isLoading={isSavingSettings}>
-              Save
             </Button>
           </div>
         </div>

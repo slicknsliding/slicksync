@@ -249,6 +249,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         ntfyTopic: cfg.vaultNtfyTopic || null,
         discordWebhookUrl: cfg.vaultDiscordWebhookUrl ? '••••••••' : null,
         checkIntervalHours: cfg.vaultCheckIntervalHours || 6,
+        enabled: cfg.vaultNotifyEnabled !== false,
       });
     } catch (error) {
       console.error('Error fetching vault notification settings:', error);
@@ -259,7 +260,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
   router.put('/settings/notifications', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';
-      const { ntfyUrl, ntfyTopic, discordWebhookUrl, checkIntervalHours } = req.body || {};
+      const { ntfyUrl, ntfyTopic, discordWebhookUrl, checkIntervalHours, enabled } = req.body || {};
 
       const acct = await prisma.appAccount.findFirst({ where: { id: accountId }, select: { sync: true } });
       let cfg = acct?.sync;
@@ -270,6 +271,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (ntfyTopic !== undefined) cfg.vaultNtfyTopic = ntfyTopic;
       if (discordWebhookUrl !== undefined) cfg.vaultDiscordWebhookUrl = discordWebhookUrl;
       if (checkIntervalHours !== undefined) cfg.vaultCheckIntervalHours = checkIntervalHours;
+      if (enabled !== undefined) cfg.vaultNotifyEnabled = enabled;
 
       await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(cfg) } });
       res.json({ success: true });
@@ -287,6 +289,10 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       let cfg = acct?.sync;
       if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
       cfg = cfg || {};
+
+      if (cfg.vaultNotifyEnabled === false) {
+        return res.status(400).json({ error: 'Vault notifications are disabled — enable them first' });
+      }
 
       let sent = false;
       if (cfg.vaultNtfyUrl && cfg.vaultNtfyTopic) {
