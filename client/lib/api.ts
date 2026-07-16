@@ -1582,6 +1582,7 @@ export interface MetricsData {
     videoId?: string | null; // videoId for series items (used for session matching)
     watchedAt: string;
     watchedAtTimestamp?: number; // Stable session startTime in ms (used for duration calculation)
+    source?: string; // 'aiostreams-proxy' for proxy-detected live entries; absent for native
   }>;
   startedPlaying: Array<{
     user: { id: string; username: string; email: string; colorIndex: number };
