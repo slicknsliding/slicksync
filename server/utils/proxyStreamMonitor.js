@@ -43,7 +43,12 @@ function parseDisplayName(filename) {
   if (!filename) return null
 
   const withoutExt = filename.replace(/\.[a-zA-Z0-9]{2,4}$/, '')
-  const yearMatch = withoutExt.match(/^(.*?)[.\s](\d{4})[.\s]/)
+  // Year may or may not be parenthesized in the release name (e.g. both
+  // "Send.Help.2026.WEB-DL" and "Send.Help.(2026).VU.Blu-ray" occur) -
+  // accept an optional paren on either side so both forms match, and so
+  // everything after the year (quality/release tags) gets dropped below
+  // regardless of what they contain.
+  const yearMatch = withoutExt.match(/^(.*?)[.\s]\(?(\d{4})\)?(?:[.\s]|$)/)
 
   if (yearMatch) {
     let title = yearMatch[1].replace(/\./g, ' ').trim()
@@ -237,6 +242,33 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
 
     const itemId = representative.metadataItemId || `proxy:${normalizeTitleForHistory(title).replace(/\s+/g, '-')}`
     const itemType = representative.metadataItemType === 'series' ? 'series' : 'movie'
+
+    // Feed WatchActivity too - not just WatchSession. "Watch Time Today"
+    // (metricsProcessor.js/metricsBuilder.js) is aggregated purely from
+    // WatchActivity, which only the native library-poll pipeline
+    // (metricsProcessor.js) used to write to. Proxy-only viewing (e.g. it
+    // closed before the native poller ever saw it as active) was
+    // completing successfully in the History list but permanently
+    // disappearing from the daily total the moment it stopped being "now
+    // playing". Records this segment's own duration (not the cumulative
+    // accumulatedDuration below) since WatchActivity rows are deltas.
+    try {
+      const activityDate = new Date(endTime.toISOString().split('T')[0])
+      await prisma.watchActivity.create({
+        data: {
+          accountId,
+          userId: user.id,
+          itemId,
+          date: activityDate,
+          watchTimeSeconds: durationSeconds,
+          itemType,
+        },
+      })
+    } catch (error) {
+      // Best-effort - a failed WatchActivity write shouldn't block the
+      // WatchSession/history write below.
+      heartbeat('writeCompletedWatchSessions:watch_activity_error', { message: error.message, itemId })
+    }
 
     // Look up any existing entry for this exact item first, so a
     // stop-then-resume of the same content accumulates duration across

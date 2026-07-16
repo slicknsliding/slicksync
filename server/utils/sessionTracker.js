@@ -12,6 +12,7 @@
 const { fetchKitsuMetadata, extractSeasonEpisode } = require('./kitsuUtils')
 const { postDiscord, fetchMetadata } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
+const { resolveSinglePoster } = require('./libraryHelpers')
 
 // Shares the same debug log file as activityMonitor.js's heartbeat() - one
 // combined trace of the whole pipeline from library fetch through gating.
@@ -444,6 +445,28 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
             ? null
             : Number(state.timeOffset ?? state.overallTimeWatched)
           const totalDurationValue = Number.isNaN(Number(state.duration ?? NaN)) ? null : Number(state.duration)
+          const resolvedPoster = await resolveSinglePoster(itemId, item.type, item.poster)
+
+          // If this row was closed moments ago (e.g. by proxyStreamMonitor.js
+          // finalizing an AIOStreams-proxy-detected connection for this same
+          // item), this isn't a new watch occasion - it's this poller
+          // catching up on a viewing session that's still actually
+          // continuing. Resetting durationSeconds to 0 in that case wiped
+          // out whatever the other pipeline had just accumulated, producing
+          // suspiciously short duration badges (e.g. 30s) right after a
+          // proxy-tracked session closed. Preserve the prior duration as a
+          // floor when the gap is small; a real re-watch after a longer gap
+          // still starts fresh as before.
+          let priorDurationSeconds = 0
+          try {
+            const priorRow = await prisma.watchSession.findUnique({
+              where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
+              select: { durationSeconds: true, endTime: true }
+            })
+            if (priorRow?.endTime && (nowMs - priorRow.endTime.getTime()) <= CHECK_INTERVAL_MS) {
+              priorDurationSeconds = priorRow.durationSeconds || 0
+            }
+          } catch {}
 
           const newSession = await prisma.watchSession.upsert({
             where: {
@@ -462,14 +485,14 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
               itemType: item.type || 'movie',
               season,
               episode,
-              poster: item.poster,
+              poster: resolvedPoster,
               // Use the first observed watch timestamp (first "ping"), not the sync time
               startTime: sessionStartTime,
               startPosition: startPositionValue,
               lastPosition: startPositionValue,
               totalDuration: totalDurationValue,
               isActive: true,
-              durationSeconds: 0
+              durationSeconds: priorDurationSeconds
             },
             update: {
               videoId,
@@ -477,14 +500,14 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
               itemType: item.type || 'movie',
               season,
               episode,
-              poster: item.poster,
+              poster: resolvedPoster,
               startTime: sessionStartTime,
               startPosition: startPositionValue,
               lastPosition: startPositionValue,
               totalDuration: totalDurationValue,
               endTime: null,
               isActive: true,
-              durationSeconds: 0
+              durationSeconds: priorDurationSeconds
             }
           })
           sessionsCreated++

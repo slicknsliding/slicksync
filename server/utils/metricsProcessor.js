@@ -8,6 +8,8 @@
  * 4. Track episode-level watch history for series
  */
 
+const { resolveSinglePoster } = require('./libraryHelpers')
+
 /**
  * Extract season/episode from video_id
  * Handles various formats:
@@ -84,7 +86,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
     const videoId = item.state.video_id
     const showId = item._id || item.id
     const showName = item.name || 'Unknown Show'
-    const poster = item.poster || null
+    const poster = await resolveSinglePoster(showId, 'series', item.poster || null)
     const profileLabel = item.state?.nuvioProfile || null
     const { season, episode } = extractSeasonEpisode(videoId)
 
@@ -153,7 +155,7 @@ async function recordMovieWatch(prisma, accountId, userId, item) {
     if (!itemId) return false
 
     const itemName = item.name || 'Unknown Movie'
-    const poster = item.poster || null
+    const poster = await resolveSinglePoster(itemId, 'movie', item.poster || null)
     const profileLabel = item.state?.nuvioProfile || null
 
     // Get watch date from item

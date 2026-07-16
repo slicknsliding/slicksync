@@ -6,13 +6,16 @@
 // not always reliable at (see MovieWatchHistory / ProxyStreamSession schema
 // comments for background on that).
 //
-// When a user has both an active proxy stream and a WatchSession-derived
-// entry, the proxy entry wins for liveness/timing but borrows the richer
-// item metadata (poster, season, episode, real title) from the WatchSession
-// entry when available, since ProxyStreamSession only has a filename-derived
-// display name. Users covered by WatchSession but not currently seen by the
-// proxy (e.g. a stream that didn't route through AIOStreams) are kept as-is,
-// so nothing already working is lost.
+// When a user has both an active proxy stream and a matching (same-title)
+// WatchSession-derived entry, the proxy entry wins for liveness/timing but
+// borrows the richer item metadata (poster, season, episode, real title)
+// from the WatchSession entry when available, since ProxyStreamSession only
+// has a filename-derived display name. Coverage is per-title, not per-user:
+// a WatchSession entry for a DIFFERENT title than any of that user's active
+// proxy rows (e.g. a usenet stream, which never routes through AIOStreams'
+// proxy at all, watched while a stale/unrelated debrid proxy row is still
+// active for the same user) is kept as-is, so nothing already working is
+// lost.
 //
 // `users` must be objects with at least { id, username }. `watchSessionNowPlaying`
 // entries must have a `user.id` field - callers with a differently-shaped
@@ -51,7 +54,15 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   )
 
   const result = []
-  const coveredUserIds = new Set()
+  // Tracks, per user, the normalized titles of proxy-covered streams - NOT
+  // just which users have any active proxy row. A stale/unrelated active
+  // proxy connection (AIOStreams keeps rows active up to 6h - see the
+  // grouping comment below) or a debrid stream watched earlier must not
+  // blank out a genuinely different, still-active WatchSession entry for
+  // the same user (e.g. a usenet stream that never routes through the
+  // proxy at all) - only the specific title the proxy is covering should
+  // be suppressed from the WatchSession pass below.
+  const coveredTitlesByUser = new Map()
 
   // Fallback: AIOStreams only has one login username, but a single person
   // can have multiple per-provider SlickSync profiles (e.g. one Stremio
@@ -183,7 +194,8 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     const user = disambiguateMatch(candidates, representative.displayName)
     if (!user) continue
 
-    coveredUserIds.add(user.id)
+    if (!coveredTitlesByUser.has(user.id)) coveredTitlesByUser.set(user.id, new Set())
+    coveredTitlesByUser.get(user.id).add(normalizeTitle(representative.displayName))
     const existing = watchSessionByUserId.get(user.id)
     // Only borrow the existing WatchSession's item/videoId if it's actually
     // about the same title the proxy detected - an existing session for
@@ -227,7 +239,11 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
 
   for (const np of watchSessionNowPlaying) {
     const uid = np.user && np.user.id
-    if (!uid || !coveredUserIds.has(uid)) result.push(np)
+    const coveredTitles = uid ? coveredTitlesByUser.get(uid) : null
+    const npTitle = normalizeTitle(np.item?.name)
+    const isSuperseded = coveredTitles && npTitle &&
+      Array.from(coveredTitles).some((t) => titlesMatch(t, npTitle))
+    if (!isSuperseded) result.push(np)
   }
 
   return result
