@@ -299,17 +299,19 @@ async function processLibraryItem(prisma, accountId, userId, item, today) {
       !latestSnapshot.overallTimeWatched || 
       BigInt(latestSnapshot.overallTimeWatched) !== BigInt(current.overallTimeWatched || '0')
 
-    // CRITICAL: Calculate delta and create activity BEFORE updating snapshot
-    // This ensures the snapshot always represents the baseline we've already accounted for
+    // Decide whether to record an activity delta - this part is pure
+    // decision-making (reads only), the actual writes happen atomically
+    // below.
+    let activityDeltaSeconds = null
     if (current.overallTimeWatched && snapshotChanged) {
       let totalDeltaSeconds = 0
-      
+
       if (oldSnapshotValue) {
         // Existing item: calculate delta from previous snapshot
         const snapshotOverall = BigInt(oldSnapshotValue)
         const currOverall = BigInt(current.overallTimeWatched)
         const totalDeltaMs = currOverall - snapshotOverall
-        
+
         // Only create activity if delta is significant (> 60 seconds) and positive
         if (totalDeltaMs > 0) {
           totalDeltaSeconds = Number(totalDeltaMs / 1000n)
@@ -326,7 +328,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today) {
         // captured correctly starting from the next observation onward.
         totalDeltaSeconds = 0
       }
-      
+
       // Get the most recent activity for this item to see when we last recorded
       // We only want to subtract activities that were recorded AFTER the snapshot baseline was set
       const mostRecentActivity = await prisma.watchActivity.findFirst({
@@ -340,12 +342,12 @@ async function processLibraryItem(prisma, accountId, userId, item, today) {
           createdAt: 'desc'
         }
       })
-      
+
       // If we have a recent activity, check if it was created very recently (within last 30 seconds)
       // This prevents double-counting if we just created an activity in a previous processing cycle
       let shouldSubtractRecent = false
       let recentRecordedSeconds = 0
-      
+
       if (mostRecentActivity) {
         const secondsSinceLastActivity = (new Date() - mostRecentActivity.createdAt) / 1000
         // Only subtract if activity was created in the last 30 seconds (very recent, might be duplicate)
@@ -354,45 +356,53 @@ async function processLibraryItem(prisma, accountId, userId, item, today) {
           recentRecordedSeconds = mostRecentActivity.watchTimeSeconds
         }
       }
-      
+
       // Calculate remaining delta: total delta minus what we've very recently recorded (if any)
       const remainingDeltaSeconds = totalDeltaSeconds - recentRecordedSeconds
-      
-      // Create activity for the remaining delta (if >= 60 seconds)
-      // Note: We create activity for the FULL delta, not just remaining, because:
+
+      // Record the remaining delta (if >= 60 seconds)
+      // Note: We record the FULL delta, not just remaining, because:
       // 1. The snapshot represents the baseline we've accounted for
       // 2. When snapshot updates, it means library increased, so we should record that increase
       // 3. The only exception is if we JUST created an activity (within 30 seconds), then we skip to avoid duplicates
       if (remainingDeltaSeconds >= 60 && !shouldSubtractRecent) {
-        try {
-          await prisma.watchActivity.create({
-            data: {
-              accountId: accountIdValue,
-              userId,
-              itemId,
-              date: new Date(todayDate),
-              watchTimeSeconds: totalDeltaSeconds, // Record the full delta
-              itemType: item.type
-            }
-          })
-          activityCreated = true
-        } catch (error) {
-          // Ignore duplicate key errors (idempotent)
-          if (!error.message.includes('Unique constraint')) {
-            console.warn(`[MetricsProcessor] Error storing watch activity for ${userId}/${itemId}:`, error.message)
-          }
-        }
+        activityDeltaSeconds = totalDeltaSeconds
       } else if (shouldSubtractRecent) {
         // Log when we skip creating activity due to very recent activity
         console.log(`[MetricsProcessor] Skipping activity creation for ${userId}/${itemId}: recent activity created ${Math.floor((new Date() - mostRecentActivity.createdAt) / 1000)}s ago`)
       }
     }
 
-    // NOW update snapshot to match current library value
-    // This ensures snapshot always represents the baseline we've accounted for
-    if (snapshotChanged && current.overallTimeWatched) {
-      try {
-        await prisma.watchSnapshot.upsert({
+    // Record the activity delta (if any) and advance the snapshot baseline
+    // together in one transaction. These used to be two separate writes -
+    // if the process was interrupted between them (e.g. a container
+    // restart landing mid-cycle, which the activity monitor's immediate
+    // on-boot poll makes a real possibility whenever a deploy happens
+    // while a previous cycle's snapshot write hadn't committed yet), the
+    // activity got recorded but the baseline never advanced - so the next
+    // poll recomputed and recorded the EXACT SAME delta again. Confirmed
+    // with real data: the same item's delta appearing 2-3 times
+    // identically within one day, wildly inflating Watch Time Today.
+    // Wrapping both writes atomically means either both land or neither
+    // does, so a mid-cycle interruption can no longer leave the delta
+    // recorded without the baseline that's supposed to prevent recording
+    // it again.
+    if (activityDeltaSeconds !== null || (snapshotChanged && current.overallTimeWatched)) {
+      const ops = []
+      if (activityDeltaSeconds !== null) {
+        ops.push(prisma.watchActivity.create({
+          data: {
+            accountId: accountIdValue,
+            userId,
+            itemId,
+            date: new Date(todayDate),
+            watchTimeSeconds: activityDeltaSeconds,
+            itemType: item.type
+          }
+        }))
+      }
+      if (snapshotChanged && current.overallTimeWatched) {
+        ops.push(prisma.watchSnapshot.upsert({
           where: {
             accountId_userId_itemId_date: {
               accountId: accountIdValue,
@@ -417,19 +427,29 @@ async function processLibraryItem(prisma, accountId, userId, item, today) {
             lastWatched: current.lastWatched,
             mtime: current.mtime
           }
-        })
-        snapshotCreated = true
-        // Debug: Log snapshot updates for items with significant changes
-        if (latestSnapshot && latestSnapshot.overallTimeWatched) {
-          const deltaMs = BigInt(current.overallTimeWatched) - BigInt(latestSnapshot.overallTimeWatched)
-          const deltaSeconds = Number(deltaMs / 1000n)
-          if (deltaSeconds >= 60) {
-            console.log(`[MetricsProcessor] Updated snapshot for ${userId}/${itemId}: ${latestSnapshot.overallTimeWatched} -> ${current.overallTimeWatched} (delta: ${deltaSeconds}s, activity created: ${activityCreated})`)
+        }))
+      }
+
+      try {
+        await prisma.$transaction(ops)
+        if (activityDeltaSeconds !== null) activityCreated = true
+        if (snapshotChanged && current.overallTimeWatched) {
+          snapshotCreated = true
+          // Debug: Log snapshot updates for items with significant changes
+          if (latestSnapshot && latestSnapshot.overallTimeWatched) {
+            const deltaMs = BigInt(current.overallTimeWatched) - BigInt(latestSnapshot.overallTimeWatched)
+            const deltaSeconds = Number(deltaMs / 1000n)
+            if (deltaSeconds >= 60) {
+              console.log(`[MetricsProcessor] Updated snapshot for ${userId}/${itemId}: ${latestSnapshot.overallTimeWatched} -> ${current.overallTimeWatched} (delta: ${deltaSeconds}s, activity created: ${activityCreated})`)
+            }
           }
         }
       } catch (error) {
-        console.warn(`[MetricsProcessor] Error storing snapshot for ${userId}/${itemId}:`, error.message)
-        console.warn(`[MetricsProcessor] Error stack:`, error.stack)
+        // Ignore duplicate key errors (idempotent)
+        if (!error.message.includes('Unique constraint')) {
+          console.warn(`[MetricsProcessor] Error recording activity/snapshot for ${userId}/${itemId}:`, error.message)
+          console.warn(`[MetricsProcessor] Error stack:`, error.stack)
+        }
       }
     }
 
