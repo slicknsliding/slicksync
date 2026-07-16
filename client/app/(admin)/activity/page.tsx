@@ -89,14 +89,15 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
     metrics.watchSessions.forEach((session) => {
       // Only completed sessions: must have endTime set
       if (!session.endTime) return;
-      // Must have a real tracked duration. Proxy-only entries (which have a
-      // requestCount but no real duration) are intentionally NOT shown here:
-      // the proxy is a live Now Playing signal only and no longer writes
-      // history - the native pipeline owns history and records the same
-      // watch with the real title, poster, and duration. Surfacing blank
-      // proxy sessions produced a duplicate card (a blank one, then the
-      // richer native one moments later).
-      if ((session.durationSeconds || 0) <= 0) return;
+      const hasDuration = (session.durationSeconds || 0) > 0;
+      // Usenet entries are written by the proxy pipeline as presence markers
+      // with a requestCount but no duration (native tracking never records
+      // usenet, so this is its only path into History). Show them; skip only
+      // entries that have neither a real duration nor a proxy signal. Debrid
+      // is owned by native (with real duration), so its cards come through
+      // the hasDuration path - the proxy does not write debrid history.
+      const isProxyEntry = (session.requestCount || 0) > 0;
+      if (!hasDuration && !isProxyEntry) return;
 
       seenUserItemKeys.add(`${session.user.id}:${session.item.id}`);
       activities.push({
@@ -111,7 +112,9 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         contentName: session.item.name,
         season: session.item.season ?? undefined,
         episode: session.item.episode ?? undefined,
-        durationSeconds: session.durationSeconds,
+        // Undefined (not 0) when there's no real duration, so the UI hides the
+        // duration badge rather than showing a misleading "<1m".
+        durationSeconds: hasDuration ? session.durationSeconds : undefined,
         requestCount: session.requestCount ?? undefined,
         timestamp: new Date(session.startTime),
         endTime: new Date(session.endTime),
