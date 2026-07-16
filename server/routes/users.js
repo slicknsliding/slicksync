@@ -3568,10 +3568,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         }
       }
 
-      // Generate filename: Stremio-Library-{email/username}-{timestamp}.json
+      // Generate filename: {Provider}-Library-{email/username}-{timestamp}.json
       const userIdentifier = user.email || user.username || 'user'
       const timestamp = lastModified || Date.now()
-      const filename = `Stremio-Library-${userIdentifier}-${timestamp}.json`
+      const providerLabel = (user.providerType || 'stremio') !== 'stremio' ? 'Nuvio' : 'Stremio'
+      const filename = `${providerLabel}-Library-${userIdentifier}-${timestamp}.json`
 
       // Set headers for file download
       res.setHeader('Content-Type', 'application/json')

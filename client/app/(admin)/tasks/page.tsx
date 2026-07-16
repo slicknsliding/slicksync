@@ -129,6 +129,15 @@ export default function TasksPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedHistoryUserId, setSelectedHistoryUserId] = useState('all');
+
+  // Fetch users for the library/history export selectors (was never being loaded)
+  useEffect(() => {
+    api.getUsers()
+      .then(setUsers)
+      .catch((e: any) => {
+        console.error('Failed to load users for Tasks selectors:', e);
+      });
+  }, []);
   
   // Scheduling settings
   const [syncFrequency, setSyncFrequency] = useState('0');

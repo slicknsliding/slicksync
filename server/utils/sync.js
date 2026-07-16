@@ -370,7 +370,12 @@ function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds,
     const fingerprint = createManifestFingerprint(canonicalizeManifestUrl, { urlOnly })
     const currentKeys = userAddons.map(fingerprint)
     const desiredKeys = desiredAddons.map(fingerprint)
-    const isSynced = currentKeys.length === desiredKeys.length && currentKeys.every((k, i) => k === desiredKeys[i])
+    // Order-insensitive comparison: sort both key lists first so pure reordering
+    // (e.g. user reordered addons in the Stremio app) doesn't falsely report
+    // "unsynced" - only an actual difference in the addon set should.
+    const sortedCurrent = [...currentKeys].sort()
+    const sortedDesired = [...desiredKeys].sort()
+    const isSynced = sortedCurrent.length === sortedDesired.length && sortedCurrent.every((k, i) => k === sortedDesired[i])
 
     return {
       isSynced,
