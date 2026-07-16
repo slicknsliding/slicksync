@@ -1379,18 +1379,22 @@ function ActivityPageContent() {
                               }
                             }
 
-                            // Fallback: If no matching session found, use watchedAtTimestamp from nowPlaying item
-                            // BUT only if it's very recent (within last 5 minutes) to prevent showing stale/resetting durations
-                            // This handles the case where a session hasn't been created yet (sync hasn't run)
+                            // Fallback: If no matching session found, use watchedAtTimestamp from nowPlaying item.
                             if (!startMs && np.watchedAtTimestamp) {
                               const watchedAtMs = typeof np.watchedAtTimestamp === 'number'
                                 ? np.watchedAtTimestamp
                                 : new Date(np.watchedAt).getTime();
-                              
-                              // Only use fallback if watched within last 5 minutes (one sync cycle)
-                              // This prevents showing incorrect durations for old items
+
+                              // Proxy-sourced entries carry the real connection start time and
+                              // never have a WatchSession to match, so trust it directly - a
+                              // watch longer than 5 minutes must still show "Watching for X".
+                              // For other (native) entries, keep the 5-minute guard: those
+                              // watchedAt values can be stale (last checkpoint, not "now"), and
+                              // the cap prevents showing an inflated/resetting duration before a
+                              // real session row exists.
+                              const isProxyEntry = np.source === 'aiostreams-proxy';
                               const ageMs = nowTick - watchedAtMs;
-                              if (ageMs >= 0 && ageMs <= 300000) { // 5 minutes = 300000ms
+                              if (isProxyEntry ? ageMs >= 0 : (ageMs >= 0 && ageMs <= 300000)) {
                                 startMs = watchedAtMs;
                               }
                             }
