@@ -1,0 +1,96 @@
+From 1ecedd752c52c185ebd0971f375ade1e30be45ee Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sun, 12 Jul 2026 20:06:56 +0000
+Subject: [PATCH] fix: shorter Now Playing lingering after a real stop
+
+Confirmed via heartbeat trace: 20min (v1.9.32) was too long a grace
+period - ageMinutes climbed 1 through 8+ with zero new checkpoints,
+just coasting on the last real ping before the user stopped playing.
+
+Reduced to 15min (3x poll interval), just above the measured
+13.4-minute worst-case checkpoint gap that justified widening it in
+the first place, and now consistent with hasRecentActivity elsewhere
+in the same file (already using 3x). Documented the inherent tension
+in the comment: Nuvio's data has no 'just stopped' signal, only 'last
+saved position', so any fixed window trades off false-negatives
+against lingering - this is a judgment call sized against real
+measurements, not a guaranteed-correct number.
+
+Bump to 1.9.35, changelog entry added.
+---
+ client/public/changelog.json   | 10 ++++++++++
+ package.json                   |  2 +-
+ server/utils/sessionTracker.js | 21 +++++++++++----------
+ 3 files changed, 22 insertions(+), 11 deletions(-)
+
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index e8f367f..f6c4d85 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,14 @@
+ [
++  {
++    "version": "1.9.35",
++    "date": "2026-07-12",
++    "title": "Now Playing: shorter lingering after a real stop",
++    "bugFixes": [
++      "Confirmed via heartbeat trace: 20 minutes (v1.9.32) was too long a grace period - a session sat showing 'Live' with ageMinutes climbing 1 through 8+ with zero new checkpoints, just coasting on the last real ping before the user stopped. Reduced the freshness window to 15 minutes (3x poll interval), just above the measured 13.4-minute worst-case checkpoint gap that justified widening it in the first place - and now consistent with the separate hasRecentActivity check elsewhere in the same file, which already used this same 3x window. There's inherent tension here (Nuvio's data has no 'just stopped' signal, only 'last saved position'), so this is a judgment call, not a guaranteed-correct number - may need revisiting if wider checkpoint gaps are ever measured again."
++    ],
++    "features": [],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.34",
+     "date": "2026-07-12",
+diff --git a/package.json b/package.json
+index 320644f..6bf2797 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.34",
++  "version": "1.9.35",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+diff --git a/server/utils/sessionTracker.js b/server/utils/sessionTracker.js
+index 73312a4..5750fad 100644
+--- a/server/utils/sessionTracker.js
++++ b/server/utils/sessionTracker.js
+@@ -190,21 +190,22 @@ function getWatchDate(item) {
+  * update cadence, at the cost of "Now Playing" potentially lingering up to
+  * one window's worth of time after playback genuinely stops.
+  *
+- * Window widened from 1.5x to 4x (7.5min -> 20min) after direct heartbeat
+- * evidence: a genuinely continuous, active playback session had a real
+- * 13.4-minute gap between two Nuvio checkpoints - the 7.5min window was
+- * proven too tight for this provider's actual checkpoint cadence, not just
+- * theoretically risky. Matches (and now slightly exceeds) the separate
+- * hasRecentActivity window elsewhere in this file, which used 3x and
+- * correctly evaluated the same case as "recent" - the two checks were
+- * inconsistent with each other, and the tighter one was the one actually
+- * gating session creation.
++ * Window at 3x (15min) as of v1.9.35, down from 4x (20min) - direct user
++ * feedback that 20min of lingering "Now Playing" after a real stop was too
++ * long in practice. 15min stays just above the measured 13.4-minute
++ * worst-case checkpoint gap (see v1.9.32), so it shouldn't reintroduce the
++ * false-negative bug that window was sized to fix - but there's inherent
++ * tension here: Nuvio's data only tells us "last saved position," never
++ * "user just stopped," so any fixed window is a tradeoff between missing
++ * genuine slow-checkpoint sessions and lingering after a real stop. If
++ * checkpoint gaps ever measure wider than ~13min again, this may need
++ * raising back up.
+  */
+ function isActivelyWatching(item, userId, now) {
+   const watchDate = getWatchDate(item)
+   if (!watchDate) return false
+ 
+-  return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 4)
++  return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 3)
+ }
+ 
+ /**
+-- 
+2.43.0
+

@@ -1,0 +1,93 @@
+From 8e7a8ff6e4c7d6a5933ff62e98f42b34bbe453a5 Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sun, 12 Jul 2026 19:44:01 +0000
+Subject: [PATCH] fix: trace full session pipeline through create/update, not
+ just the gate
+
+A checkpoint confirmed fresh (~5min old, within the widened 20min
+window) still didn't produce a visible session. Added heartbeats past
+the gate check: item_active whenever isActivelyWatching returns true,
+and session_created/session_updated/session_create_error around the
+actual prisma.watchSession writes - to catch a possible silent DB
+write failure (e.g. unique constraint) invisible to gate-level tracing
+alone.
+
+Bump to 1.9.33, changelog entry added.
+---
+ client/public/changelog.json   | 10 ++++++++++
+ package.json                   |  2 +-
+ server/utils/sessionTracker.js |  6 +++++-
+ 3 files changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index fad3319..efc3916 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,14 @@
+ [
++  {
++    "version": "1.9.33",
++    "date": "2026-07-12",
++    "title": "Trace the full pipeline through actual session creation/update",
++    "bugFixes": [
++      "A checkpoint confirmed fresh (~5min old, well within the new 20min window) still didn't produce a visible session. Added heartbeats through the rest of the pipeline past the gate check: whenever an item is detected active, and at the actual prisma.watchSession.create/update calls (success and failure), to catch a possible silent DB-level failure (e.g. a unique constraint issue) that the gate-level tracing wouldn't reveal."
++    ],
++    "features": [],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.32",
+     "date": "2026-07-12",
+diff --git a/package.json b/package.json
+index a41cafb..89d221d 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.32",
++  "version": "1.9.33",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+diff --git a/server/utils/sessionTracker.js b/server/utils/sessionTracker.js
+index ba26451..3e03d8c 100644
+--- a/server/utils/sessionTracker.js
++++ b/server/utils/sessionTracker.js
+@@ -345,6 +345,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
+     if (isActive) {
+       const ageMinutes = watchDate ? Math.round((nowMs - watchDate.getTime()) / 60000) : 'unknown'
+       console.log(`[SessionTracker] Active item: ${item.name} (${itemId}), age: ${ageMinutes}min, videoId: ${videoId}`)
++      heartbeat('sessionTracker:item_active', { itemId, userId, itemName: item.name, ageMinutes, videoId })
+     }
+ 
+     if (isActive) {
+@@ -392,6 +393,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
+           data: updateData
+         })
+         sessionsUpdated++
++        heartbeat('sessionTracker:session_updated', { itemId, userId, sessionId: existingSession.id })
+       } else {
+         // No active session, create new one
+         console.log(`[SessionTracker] Creating NEW session for ${item.name} (${itemId}), videoId: ${videoId}`)
+@@ -420,7 +422,8 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
+           })
+           sessionsCreated++
+           console.log(`[SessionTracker] Session created successfully`)
+-          
++          heartbeat('sessionTracker:session_created', { itemId, userId, sessionId: newSession.id })
++
+           // Send Discord webhook notification when session starts (now playing)
+           if (accountWebhookUrl) {
+             await sendSessionStartNotification(accountWebhookUrl, newSession, user)
+@@ -430,6 +433,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
+           if (!error.message.includes('Unique constraint')) {
+             console.warn(`[SessionTracker] Error creating session:`, error.message)
+           }
++          heartbeat('sessionTracker:session_create_error', { itemId, userId, message: error.message })
+         }
+       }
+     }
+-- 
+2.43.0
+

@@ -1,0 +1,340 @@
+From 3e6d60dc7ad759fe6a9c64bfad4fa1866597a1cb Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sun, 12 Jul 2026 06:53:41 +0000
+Subject: [PATCH] feat: softer Slick theme, add Velvet + Lagoon themes, fix
+ provider badge colors
+
+Slick's original violet/cyan combo (#a855f7 / #22d3ee) was too high-
+saturation/neon. Replaced with softer periwinkle-violet (#8b7ec8) and
+muted teal (#5fd4c4).
+
+Added two new themes with full parallel structure to the existing 8:
+- Velvet: deep plum, dusty rose-mauve primary, warm gold-tan secondary
+- Lagoon: deep teal, calm coastal blue secondary
+Both register in themeIds/themeMeta and appear automatically in the
+Settings picker (it maps over themeIds generically, no per-theme UI
+code needed).
+
+Stremio/Nuvio provider badges now use fixed colors (Badge variants
+'stremio'/'nuvio') instead of --color-primary/--color-secondary,
+which could end up nearly identical on themes like Ember - making the
+two provider types indistinguishable at a glance. Purple = Stremio,
+blue = Nuvio, consistent across every theme now.
+
+Bump to 1.9.18, changelog entry added.
+---
+ client/app/(admin)/users/[id]/page.tsx |   2 +-
+ client/app/(admin)/users/page.tsx      |   4 +-
+ client/app/globals.css                 | 128 +++++++++++++++++++++----
+ client/components/ui/Badge.tsx         |  20 +++-
+ client/lib/theme.tsx                   |  20 +++-
+ client/public/changelog.json           |  12 +++
+ package.json                           |   2 +-
+ 7 files changed, 160 insertions(+), 28 deletions(-)
+
+diff --git a/client/app/(admin)/users/[id]/page.tsx b/client/app/(admin)/users/[id]/page.tsx
+index 0487087..b865867 100644
+--- a/client/app/(admin)/users/[id]/page.tsx
++++ b/client/app/(admin)/users/[id]/page.tsx
+@@ -868,7 +868,7 @@ export default function UserDetailPage() {
+                           className="text-xl md:text-2xl font-bold font-display"
+                         />
+                         <Badge
+-                          variant={user.providerType === 'nuvio' ? 'secondary' : 'primary'}
++                          variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'}
+                           size="sm"
+                         >
+                           {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+diff --git a/client/app/(admin)/users/page.tsx b/client/app/(admin)/users/page.tsx
+index c764088..1deb1ab 100644
+--- a/client/app/(admin)/users/page.tsx
++++ b/client/app/(admin)/users/page.tsx
+@@ -488,7 +488,7 @@ export default function UsersPage() {
+                                         {user.name}
+                                       </p>
+                                       <Badge
+-                                        variant={user.providerType === 'nuvio' ? 'secondary' : 'primary'}
++                                        variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'}
+                                         size="sm"
+                                       >
+                                         {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+@@ -832,7 +832,7 @@ function UserCard({
+                 {user.name}
+               </Link>
+               <Badge
+-                variant={user.providerType === 'nuvio' ? 'secondary' : 'primary'}
++                variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'}
+                 size="sm"
+               >
+                 {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+diff --git a/client/app/globals.css b/client/app/globals.css
+index 828bf0a..0e49644 100644
+--- a/client/app/globals.css
++++ b/client/app/globals.css
+@@ -7,29 +7,29 @@
+ 
+ /* ===== THEME DEFINITIONS ===== */
+ 
+-/* Slick Theme (default) - Bold violet + electric cyan */
++/* Slick Theme (default) - Soft violet + muted teal */
+ :root,
+ html.slick {
+   /* Background spectrum */
+-  --color-bg: #0a0118;
+-  --color-bg-subtle: #120a24;
+-  --color-bg-muted: #1c1030;
++  --color-bg: #0f0a1a;
++  --color-bg-subtle: #170f26;
++  --color-bg-muted: #201631;
+   /* Surface colors */
+-  --color-surface: #16092b;
+-  --color-surface-hover: #221238;
+-  --color-surface-border: rgba(216, 180, 254, 0.12);
++  --color-surface: #1a1128;
++  --color-surface-hover: #241934;
++  --color-surface-border: rgba(196, 181, 216, 0.12);
+   /* Text */
+-  --color-text: #f5f3ff;
+-  --color-text-muted: #a78bda;
+-  --color-text-subtle: #7c5fb0;
+-  /* Primary accent - vivid violet */
+-  --color-primary: #a855f7;
+-  --color-primary-hover: #c084fc;
+-  --color-primary-muted: rgba(168, 85, 247, 0.15);
++  --color-text: #f0edf7;
++  --color-text-muted: #ab9dc4;
++  --color-text-subtle: #8375a0;
++  /* Primary accent - soft periwinkle-violet */
++  --color-primary: #8b7ec8;
++  --color-primary-hover: #a394d8;
++  --color-primary-muted: rgba(139, 126, 200, 0.15);
+   --color-primaryMuted: var(--color-primary-muted);
+-  /* Secondary accent - electric cyan */
+-  --color-secondary: #22d3ee;
+-  --color-secondary-muted: rgba(34, 211, 238, 0.15);
++  /* Secondary accent - muted teal */
++  --color-secondary: #5fd4c4;
++  --color-secondary-muted: rgba(95, 212, 196, 0.15);
+   --color-secondaryMuted: var(--color-secondary-muted);
+   /* Status colors */
+   --color-success: #34d399;
+@@ -42,8 +42,8 @@ html.slick {
+   --color-warning-muted: rgba(251, 191, 36, 0.15);
+   --color-warningMuted: var(--color-warning-muted);
+   /* Chart colors */
+-  --color-chart-1: #a855f7;
+-  --color-chart-2: #22d3ee;
++  --color-chart-1: #8b7ec8;
++  --color-chart-2: #5fd4c4;
+   --color-chart-3: #818cf8;
+   --color-chart-4: #34d399;
+   /* Spacing */
+@@ -53,6 +53,96 @@ html.slick {
+   --radius-xl: 20px;
+ }
+ 
++/* Velvet Theme - Deep plum with dusty rose-gold accents */
++html.velvet {
++  /* Background spectrum */
++  --color-bg: #170f14;
++  --color-bg-subtle: #201620;
++  --color-bg-muted: #2a1e2a;
++  /* Surface colors */
++  --color-surface: #241820;
++  --color-surface-hover: #30202b;
++  --color-surface-border: rgba(212, 165, 116, 0.12);
++  /* Text */
++  --color-text: #f5eef0;
++  --color-text-muted: #c3a3ae;
++  --color-text-subtle: #96788a;
++  /* Primary accent - dusty rose-mauve */
++  --color-primary: #b8869e;
++  --color-primary-hover: #cc9db3;
++  --color-primary-muted: rgba(184, 134, 158, 0.15);
++  --color-primaryMuted: var(--color-primary-muted);
++  /* Secondary accent - warm gold-tan */
++  --color-secondary: #d4a574;
++  --color-secondary-muted: rgba(212, 165, 116, 0.15);
++  --color-secondaryMuted: var(--color-secondary-muted);
++  /* Status colors */
++  --color-success: #34d399;
++  --color-success-muted: rgba(52, 211, 153, 0.15);
++  --color-successMuted: var(--color-success-muted);
++  --color-error: #fb7185;
++  --color-error-muted: rgba(251, 113, 133, 0.15);
++  --color-errorMuted: var(--color-error-muted);
++  --color-warning: #fbbf24;
++  --color-warning-muted: rgba(251, 191, 36, 0.15);
++  --color-warningMuted: var(--color-warning-muted);
++  /* Chart colors */
++  --color-chart-1: #b8869e;
++  --color-chart-2: #d4a574;
++  --color-chart-3: #c9a0b3;
++  --color-chart-4: #e0bd8f;
++  /* Spacing */
++  --radius-sm: 6px;
++  --radius-md: 10px;
++  --radius-lg: 14px;
++  --radius-xl: 20px;
++}
++
++/* Lagoon Theme - Deep teal with calm coastal blue accents */
++html.lagoon {
++  /* Background spectrum */
++  --color-bg: #0a1a1c;
++  --color-bg-subtle: #0f2427;
++  --color-bg-muted: #152e32;
++  /* Surface colors */
++  --color-surface: #122a2d;
++  --color-surface-hover: #18363a;
++  --color-surface-border: rgba(111, 168, 201, 0.12);
++  /* Text */
++  --color-text: #eaf5f5;
++  --color-text-muted: #93bcc4;
++  --color-text-subtle: #6b96a0;
++  /* Primary accent - calm teal */
++  --color-primary: #4fb3a5;
++  --color-primary-hover: #6bc7ba;
++  --color-primary-muted: rgba(79, 179, 165, 0.15);
++  --color-primaryMuted: var(--color-primary-muted);
++  /* Secondary accent - soft coastal sky blue */
++  --color-secondary: #6fa8c9;
++  --color-secondary-muted: rgba(111, 168, 201, 0.15);
++  --color-secondaryMuted: var(--color-secondary-muted);
++  /* Status colors */
++  --color-success: #34d399;
++  --color-success-muted: rgba(52, 211, 153, 0.15);
++  --color-successMuted: var(--color-success-muted);
++  --color-error: #fb7185;
++  --color-error-muted: rgba(251, 113, 133, 0.15);
++  --color-errorMuted: var(--color-error-muted);
++  --color-warning: #fbbf24;
++  --color-warning-muted: rgba(251, 191, 36, 0.15);
++  --color-warningMuted: var(--color-warning-muted);
++  /* Chart colors */
++  --color-chart-1: #4fb3a5;
++  --color-chart-2: #6fa8c9;
++  --color-chart-3: #7dd3c0;
++  --color-chart-4: #8bc4e0;
++  /* Spacing */
++  --radius-sm: 6px;
++  --radius-md: 10px;
++  --radius-lg: 14px;
++  --radius-xl: 20px;
++}
++
+ /* Midnight Theme - Deep blue-black with warm amber accents */
+ html.midnight {
+   /* Background spectrum */
+diff --git a/client/components/ui/Badge.tsx b/client/components/ui/Badge.tsx
+index cac57b6..c3a3d18 100644
+--- a/client/components/ui/Badge.tsx
++++ b/client/components/ui/Badge.tsx
+@@ -2,7 +2,7 @@
+ 
+ import clsx from 'clsx';
+ 
+-export type BadgeVariant = 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'aurora' | 'cyan' | 'neutral' | 'outline' | 'muted';
++export type BadgeVariant = 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'aurora' | 'cyan' | 'neutral' | 'outline' | 'muted' | 'stremio' | 'nuvio';
+ type BadgeSize = 'sm' | 'md';
+ 
+ interface BadgeProps {
+@@ -67,6 +67,24 @@ function getBadgeStyles(variant: BadgeVariant) {
+         color: 'var(--color-textSubtle)',
+         borderColor: 'transparent',
+       };
++    // Fixed colors, independent of the active theme - these are provider
++    // identity badges (purple = Stremio, blue = Nuvio everywhere else in
++    // the Stremio/Nuvio ecosystem), so they should stay recognizable
++    // rather than shifting with --color-primary/--color-secondary (which
++    // can end up nearly identical on themes like Ember, making the two
++    // provider badges indistinguishable from each other).
++    case 'stremio':
++      return {
++        background: 'rgba(167, 139, 250, 0.15)',
++        color: 'rgb(196, 181, 253)',
++        borderColor: 'rgba(167, 139, 250, 0.25)',
++      };
++    case 'nuvio':
++      return {
++        background: 'rgba(56, 89, 158, 0.18)',
++        color: 'rgb(147, 178, 235)',
++        borderColor: 'rgba(56, 89, 158, 0.3)',
++      };
+     case 'default':
+     case 'neutral':
+     default:
+diff --git a/client/lib/theme.tsx b/client/lib/theme.tsx
+index 82daa7b..f13557e 100644
+--- a/client/lib/theme.tsx
++++ b/client/lib/theme.tsx
+@@ -3,7 +3,7 @@
+ import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+ 
+ // Theme IDs
+-export const themeIds = ['slick', 'midnight', 'ember', 'nord', 'verdant', 'slate', 'rose', 'daylight'] as const;
++export const themeIds = ['slick', 'velvet', 'lagoon', 'midnight', 'ember', 'nord', 'verdant', 'slate', 'rose', 'daylight'] as const;
+ export type ThemeId = (typeof themeIds)[number];
+ 
+ // Theme metadata for UI (settings page, etc.)
+@@ -15,9 +15,21 @@ export const themeMeta: Record<ThemeId, {
+ }> = {
+   slick: {
+     name: 'Slick',
+-    description: 'Bold violet with electric cyan accents',
+-    preview: '#a855f7',
+-    colors: { bg: '#0a0118', surface: '#16092b', primary: '#a855f7', secondary: '#22d3ee' },
++    description: 'Soft violet with muted teal accents',
++    preview: '#8b7ec8',
++    colors: { bg: '#0f0a1a', surface: '#1a1128', primary: '#8b7ec8', secondary: '#5fd4c4' },
++  },
++  velvet: {
++    name: 'Velvet',
++    description: 'Deep plum with dusty rose-gold accents',
++    preview: '#b8869e',
++    colors: { bg: '#170f14', surface: '#241820', primary: '#b8869e', secondary: '#d4a574' },
++  },
++  lagoon: {
++    name: 'Lagoon',
++    description: 'Deep teal with calm coastal blue accents',
++    preview: '#4fb3a5',
++    colors: { bg: '#0a1a1c', surface: '#122a2d', primary: '#4fb3a5', secondary: '#6fa8c9' },
+   },
+   midnight: {
+     name: 'Midnight',
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index 33328ea..468df9e 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,16 @@
+ [
++  {
++    "version": "1.9.18",
++    "date": "2026-07-11",
++    "title": "Softer Slick theme, two new themes (Velvet, Lagoon), fixed provider badge colors",
++    "features": [
++      "Softened the Slick theme's palette - the original vivid violet (#a855f7) + electric cyan (#22d3ee) combination read as harsh/neon. Replaced with a lower-saturation periwinkle-violet (#8b7ec8) + muted teal (#5fd4c4).",
++      "Added two new themes: Velvet (deep plum with dusty rose-mauve + warm gold-tan accents) and Lagoon (deep teal with calm coastal blue accents), both following the same structure as the existing 8 themes and appearing automatically in the Settings theme picker.",
++      "Stremio and Nuvio provider badges (on the Users list and user detail page) now use fixed colors - light purple/transparent for Stremio, light dark-blue/transparent for Nuvio - independent of the active theme. Previously they used --color-primary/--color-secondary, which end up nearly identical on themes like Ember, making the two provider badges indistinguishable from each other."
++    ],
++    "bugFixes": [],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.17",
+     "date": "2026-07-11",
+diff --git a/package.json b/package.json
+index 9bf8049..a1bb317 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.17",
++  "version": "1.9.18",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+-- 
+2.43.0
+

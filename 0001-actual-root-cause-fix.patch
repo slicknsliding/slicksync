@@ -1,0 +1,136 @@
+From 11448f439d5738595203cfbd4219dbb9677179a0 Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sun, 12 Jul 2026 19:51:52 +0000
+Subject: [PATCH] fix: the actual root cause - repeat watches could never
+ create a session
+
+Found via v1.9.33's pipeline tracing: WatchSession has
+@@unique([accountId, userId, itemId]) - one row per item for the
+account's whole lifetime, meant to be reused/reactivated across
+repeat watches. sessionTracker.js called a plain create() whenever no
+in-memory active session existed, which threw 'Unique constraint
+failed' on every replay of anything watched before, silently
+swallowed as an assumed-harmless race-condition guard.
+
+In practice: only an item's very first-ever watch could ever produce
+a session. Every watch after that, on any day, silently produced
+nothing - the actual explanation for both 'Now Playing' and 'Top
+Watched' being wrong throughout tonight, not the freshness window,
+scheduler health, or Nuvio's checkpoint cadence (all real secondary
+issues, fixed along the way, but not this one).
+
+Replaced create() with upsert() keyed on accountId_userId_itemId
+(matching the existing convention used elsewhere for the same
+pattern), so a repeat watch reactivates the existing row - fresh
+startTime, isActive:true, endTime cleared, duration reset - instead
+of failing to insert a duplicate.
+
+Bump to 1.9.34, changelog entry added.
+---
+ client/public/changelog.json   | 10 ++++++++
+ package.json                   |  2 +-
+ server/utils/sessionTracker.js | 42 +++++++++++++++++++++++++++++-----
+ 3 files changed, 47 insertions(+), 7 deletions(-)
+
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index efc3916..e8f367f 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,14 @@
+ [
++  {
++    "version": "1.9.34",
++    "date": "2026-07-12",
++    "title": "The actual root cause: any repeat watch of anything could never create a session, ever",
++    "bugFixes": [
++      "Found via the v1.9.33 pipeline tracing: WatchSession's schema has @@unique([accountId, userId, itemId]) - one row per item for the account's entire lifetime, meant to be reused/reactivated across repeat watches. sessionTracker.js was calling a plain create() every time no in-memory active session existed for an item, which threw 'Unique constraint failed' on every single replay of anything ever watched before - and that error was being silently swallowed as an assumed-harmless race-condition guard. In practice this meant only an item's very first-ever watch could produce a session; every watch after that, on any day, silently produced nothing. This is the actual explanation for 'Now Playing' and 'Top Watched' both being wrong all session - not the freshness window, not the scheduler, not Nuvio's checkpoint cadence, though those were real secondary issues fixed along the way. Replaced create() with upsert() keyed on the same unique constraint, so a repeat watch reactivates the existing row (fresh startTime, isActive, reset duration) instead of failing to insert a duplicate."
++    ],
++    "features": [],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.33",
+     "date": "2026-07-12",
+diff --git a/package.json b/package.json
+index 89d221d..320644f 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.33",
++  "version": "1.9.34",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+diff --git a/server/utils/sessionTracker.js b/server/utils/sessionTracker.js
+index 3e03d8c..73312a4 100644
+--- a/server/utils/sessionTracker.js
++++ b/server/utils/sessionTracker.js
+@@ -395,16 +395,34 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
+         sessionsUpdated++
+         heartbeat('sessionTracker:session_updated', { itemId, userId, sessionId: existingSession.id })
+       } else {
+-        // No active session, create new one
+-        console.log(`[SessionTracker] Creating NEW session for ${item.name} (${itemId}), videoId: ${videoId}`)
++        // No active session in memory for this item. A DB row may already
++        // exist though (from a previous, now-closed watch of this same
++        // item) - the schema's @@unique([accountId, userId, itemId])
++        // constraint means there can only ever be ONE row per item, for
++        // the account's whole lifetime, reused/reactivated across repeat
++        // watches rather than one row per watch occasion. A plain create()
++        // here threw "Unique constraint failed" on every single replay of
++        // anything ever watched before, and that error was being silently
++        // swallowed (assumed to be a harmless race-condition guard) -
++        // meaning any item's second-and-later watch never produced a
++        // session at all. Reactivating the existing row via upsert fixes
++        // this properly instead of ignoring the failure.
++        console.log(`[SessionTracker] Creating/reactivating session for ${item.name} (${itemId}), videoId: ${videoId}`)
+         try {
+           // Use watchDate if available and reasonable (not in the future), otherwise use now
+           // Note: The early reactivation loop handles recently closed sessions,
+-          // so by the time we get here, we genuinely need a new session
++          // so by the time we get here, we genuinely need a new/reactivated session
+           const sessionStartTime = watchDate && watchDate.getTime() <= nowMs ? watchDate : now
+ 
+-          const newSession = await prisma.watchSession.create({
+-            data: {
++          const newSession = await prisma.watchSession.upsert({
++            where: {
++              accountId_userId_itemId: {
++                accountId: accountIdValue,
++                userId,
++                itemId
++              }
++            },
++            create: {
+               accountId: accountIdValue,
+               userId,
+               itemId,
+@@ -418,10 +436,22 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
+               startTime: sessionStartTime,
+               isActive: true,
+               durationSeconds: 0
++            },
++            update: {
++              videoId,
++              itemName: item.name || 'Unknown',
++              itemType: item.type || 'movie',
++              season,
++              episode,
++              poster: item.poster,
++              startTime: sessionStartTime,
++              endTime: null,
++              isActive: true,
++              durationSeconds: 0
+             }
+           })
+           sessionsCreated++
+-          console.log(`[SessionTracker] Session created successfully`)
++          console.log(`[SessionTracker] Session created/reactivated successfully`)
+           heartbeat('sessionTracker:session_created', { itemId, userId, sessionId: newSession.id })
+ 
+           // Send Discord webhook notification when session starts (now playing)
+-- 
+2.43.0
+

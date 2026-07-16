@@ -1,0 +1,85 @@
+From fb2441df0db8bec63bb2860f218c6bd840e485d7 Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sun, 12 Jul 2026 17:23:30 +0000
+Subject: [PATCH] chore: remove unused release-please CI workflow
+
+It required a RELEASE_PLEASE_TOKEN repo secret that was never
+configured, failing on every push to main with 'Input required and
+not supplied: token'. The release process has been manual (git tag +
+gh release create) all along, which works fine and doesn't need this
+automation.
+
+Bump to 1.9.28, changelog entry added.
+---
+ .github/workflows/release-please.yml | 26 --------------------------
+ client/public/changelog.json         | 10 ++++++++++
+ package.json                         |  2 +-
+ 3 files changed, 11 insertions(+), 27 deletions(-)
+ delete mode 100644 .github/workflows/release-please.yml
+
+diff --git a/.github/workflows/release-please.yml b/.github/workflows/release-please.yml
+deleted file mode 100644
+index b26efd2..0000000
+--- a/.github/workflows/release-please.yml
++++ /dev/null
+@@ -1,26 +0,0 @@
+-name: release-please
+-
+-on:
+-  push:
+-    branches:
+-      - main
+-  workflow_dispatch:
+-
+-permissions:
+-  contents: write
+-  pull-requests: write
+-
+-jobs:
+-  release:
+-    runs-on: ubuntu-latest
+-    steps:
+-      - name: Checkout
+-        uses: actions/checkout@v4
+-        with:
+-          fetch-depth: 0
+-      - name: Release Please
+-        uses: googleapis/release-please-action@v4
+-        with:
+-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+-          manifest-file: .release-please-manifest.json
+-          config-file: release-please-config.json
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index be9f1ad..1447762 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,14 @@
+ [
++  {
++    "version": "1.9.28",
++    "date": "2026-07-12",
++    "title": "Remove unused release-please CI workflow",
++    "miscChores": [
++      "Deleted .github/workflows/release-please.yml - it required a RELEASE_PLEASE_TOKEN repo secret that was never configured, so it failed on every push. This project's release process has been manual (git tag + gh release create) throughout, which already works fine and doesn't need this automation."
++    ],
++    "features": [],
++    "bugFixes": []
++  },
+   {
+     "version": "1.9.27",
+     "date": "2026-07-12",
+diff --git a/package.json b/package.json
+index 35dedbf..15b6d29 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.27",
++  "version": "1.9.28",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+-- 
+2.43.0
+

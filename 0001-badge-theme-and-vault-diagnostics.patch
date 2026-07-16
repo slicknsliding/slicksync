@@ -1,0 +1,211 @@
+From 510b97ce6af3f5c1be6c53668b1be0d0ffcfea9e Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sun, 12 Jul 2026 07:32:35 +0000
+Subject: [PATCH] feat: lighter Nuvio badge, Nebula theme (replaces Lagoon),
+ better Stremio check diagnostics
+
+- Nuvio badge orange half opacity 0.22 -> 0.10, less heavy
+- Lagoon theme replaced with Nebula: Midnight's dark blue-black
+  structure, Slick's violet-to-cyan accent gradient instead of amber
+- checkStremioAuth now surfaces Stremio's actual response detail on
+  failure instead of a generic 'rejected' message, and specifically
+  flags rate-limit responses separately from real credential
+  failures - the generic message made it impossible to tell a
+  genuinely wrong password apart from a transient API issue
+
+Bump to 1.9.21, changelog entry added.
+---
+ client/app/globals.css         | 56 +++++++++++++++++-----------------
+ client/components/ui/Badge.tsx |  4 +--
+ client/lib/theme.tsx           | 12 ++++----
+ client/public/changelog.json   | 13 ++++++++
+ package.json                   |  2 +-
+ server/utils/vaultCheckers.js  | 11 ++++++-
+ 6 files changed, 60 insertions(+), 38 deletions(-)
+
+diff --git a/client/app/globals.css b/client/app/globals.css
+index c33026e..0a574ee 100644
+--- a/client/app/globals.css
++++ b/client/app/globals.css
+@@ -98,44 +98,44 @@ html.velvet {
+   --radius-xl: 20px;
+ }
+ 
+-/* Lagoon Theme - Deep teal with calm coastal blue accents */
+-html.lagoon {
++/* Nebula Theme - Deep blue-black (Midnight structure) with violet-to-cyan accents */
++html.nebula {
+   /* Background spectrum */
+-  --color-bg: #0a1a1c;
+-  --color-bg-subtle: #0f2427;
+-  --color-bg-muted: #152e32;
++  --color-bg: #0d1117;
++  --color-bg-subtle: #161b22;
++  --color-bg-muted: #21262d;
+   /* Surface colors */
+-  --color-surface: #122a2d;
+-  --color-surface-hover: #18363a;
+-  --color-surface-border: rgba(111, 168, 201, 0.12);
++  --color-surface: #1c2128;
++  --color-surface-hover: #262c36;
++  --color-surface-border: rgba(240, 246, 252, 0.1);
+   /* Text */
+-  --color-text: #eaf5f5;
+-  --color-text-muted: #93bcc4;
+-  --color-text-subtle: #6b96a0;
+-  /* Primary accent - calm teal */
+-  --color-primary: #4fb3a5;
+-  --color-primary-hover: #6bc7ba;
+-  --color-primary-muted: rgba(79, 179, 165, 0.15);
++  --color-text: #f0f6fc;
++  --color-text-muted: #8b949e;
++  --color-text-subtle: #6e7681;
++  /* Primary accent - soft periwinkle-violet (same as Slick) */
++  --color-primary: #8b7ec8;
++  --color-primary-hover: #a394d8;
++  --color-primary-muted: rgba(139, 126, 200, 0.15);
+   --color-primaryMuted: var(--color-primary-muted);
+-  /* Secondary accent - soft coastal sky blue */
+-  --color-secondary: #6fa8c9;
+-  --color-secondary-muted: rgba(111, 168, 201, 0.15);
++  /* Secondary accent - muted teal (same as Slick) */
++  --color-secondary: #5fd4c4;
++  --color-secondary-muted: rgba(95, 212, 196, 0.15);
+   --color-secondaryMuted: var(--color-secondary-muted);
+   /* Status colors */
+-  --color-success: #34d399;
+-  --color-success-muted: rgba(52, 211, 153, 0.15);
++  --color-success: #3fb950;
++  --color-success-muted: rgba(63, 185, 80, 0.15);
+   --color-successMuted: var(--color-success-muted);
+-  --color-error: #fb7185;
+-  --color-error-muted: rgba(251, 113, 133, 0.15);
++  --color-error: #f85149;
++  --color-error-muted: rgba(248, 81, 73, 0.15);
+   --color-errorMuted: var(--color-error-muted);
+-  --color-warning: #fbbf24;
+-  --color-warning-muted: rgba(251, 191, 36, 0.15);
++  --color-warning: #d29922;
++  --color-warning-muted: rgba(210, 153, 34, 0.15);
+   --color-warningMuted: var(--color-warning-muted);
+   /* Chart colors */
+-  --color-chart-1: #4fb3a5;
+-  --color-chart-2: #6fa8c9;
+-  --color-chart-3: #7dd3c0;
+-  --color-chart-4: #8bc4e0;
++  --color-chart-1: #8b7ec8;
++  --color-chart-2: #5fd4c4;
++  --color-chart-3: #58a6ff;
++  --color-chart-4: #3fb950;
+   /* Spacing */
+   --radius-sm: 6px;
+   --radius-md: 10px;
+diff --git a/client/components/ui/Badge.tsx b/client/components/ui/Badge.tsx
+index c461383..f1b7691 100644
+--- a/client/components/ui/Badge.tsx
++++ b/client/components/ui/Badge.tsx
+@@ -81,9 +81,9 @@ function getBadgeStyles(variant: BadgeVariant) {
+       };
+     case 'nuvio':
+       return {
+-        background: 'linear-gradient(90deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.22) 50%, rgba(255, 152, 0, 0.22) 100%)',
++        background: 'linear-gradient(90deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
+         color: 'rgb(186, 208, 240)',
+-        borderColor: 'rgba(255, 152, 0, 0.25)',
++        borderColor: 'rgba(255, 152, 0, 0.18)',
+       };
+     case 'default':
+     case 'neutral':
+diff --git a/client/lib/theme.tsx b/client/lib/theme.tsx
+index 54870e1..478d5ad 100644
+--- a/client/lib/theme.tsx
++++ b/client/lib/theme.tsx
+@@ -3,7 +3,7 @@
+ import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+ 
+ // Theme IDs
+-export const themeIds = ['slick', 'velvet', 'lagoon', 'midnight', 'ember', 'nord', 'verdant', 'slate', 'rose', 'daylight'] as const;
++export const themeIds = ['slick', 'velvet', 'nebula', 'midnight', 'ember', 'nord', 'verdant', 'slate', 'rose', 'daylight'] as const;
+ export type ThemeId = (typeof themeIds)[number];
+ 
+ // Theme metadata for UI (settings page, etc.)
+@@ -25,11 +25,11 @@ export const themeMeta: Record<ThemeId, {
+     preview: '#b8869e',
+     colors: { bg: '#170f14', surface: '#241820', primary: '#b8869e', secondary: '#d4a574' },
+   },
+-  lagoon: {
+-    name: 'Lagoon',
+-    description: 'Deep teal with calm coastal blue accents',
+-    preview: '#4fb3a5',
+-    colors: { bg: '#0a1a1c', surface: '#122a2d', primary: '#4fb3a5', secondary: '#6fa8c9' },
++  nebula: {
++    name: 'Nebula',
++    description: 'Deep blue-black with violet-to-cyan accents',
++    preview: '#8b7ec8',
++    colors: { bg: '#0d1117', surface: '#1c2128', primary: '#8b7ec8', secondary: '#5fd4c4' },
+   },
+   midnight: {
+     name: 'Midnight',
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index 0c7217f..842551c 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,17 @@
+ [
++  {
++    "version": "1.9.21",
++    "date": "2026-07-11",
++    "title": "Lighter Nuvio badge orange, Lagoon replaced with Nebula theme, better Stremio Vault check diagnostics",
++    "features": [
++      "Nuvio badge's orange half is now more transparent (opacity 0.22 -> 0.10), less visually heavy against the blue half.",
++      "Replaced the Lagoon theme with Nebula: same dark blue-black structure as Midnight, but with the violet-to-cyan accent gradient from Slick instead of amber."
++    ],
++    "bugFixes": [
++      "Vault's Stremio credential check (checkStremioAuth) returned a generic 'Stremio rejected these credentials' with no further detail on failure, making it impossible to tell a genuinely wrong password apart from rate-limiting or other transient API issues. Now surfaces whatever detail Stremio's API actually returned, and specifically flags rate-limit responses as 'try again later, not necessarily a bad password' rather than lumping every failure into one generic message."
++    ],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.20",
+     "date": "2026-07-11",
+diff --git a/package.json b/package.json
+index 3a07082..4fa3e93 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.20",
++  "version": "1.9.21",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+diff --git a/server/utils/vaultCheckers.js b/server/utils/vaultCheckers.js
+index 2cc1fb2..8437a8c 100644
+--- a/server/utils/vaultCheckers.js
++++ b/server/utils/vaultCheckers.js
+@@ -155,11 +155,20 @@ async function checkStremioAuth(secret, config = {}) {
+     if (authResult && (store.authKey || tempStorage.auth)) {
+       return { ok: true, message: 'Stremio login succeeded' }
+     }
+-    return { ok: false, message: 'Stremio rejected these credentials' }
++    // Surface whatever Stremio's API actually returned instead of a generic
++    // message - a resolved-but-falsy authResult can mean several different
++    // things (wrong password, rate limiting, a required verification step,
++    // etc.) and swallowing that detail makes it impossible to tell them
++    // apart from the Vault card alone.
++    const detail = authResult && typeof authResult === 'object'
++      ? (authResult.error || authResult.message || JSON.stringify(authResult).slice(0, 200))
++      : null
++    return { ok: false, message: detail ? `Stremio rejected these credentials: ${detail}` : 'Stremio rejected these credentials (no further detail returned)' }
+   } catch (err) {
+     const msg = String(err?.message || '').toLowerCase()
+     if (msg.includes('passphrase') || msg.includes('wrong password')) return { ok: false, message: 'Invalid password' }
+     if (msg.includes('no such user') || msg.includes('invalid email')) return { ok: false, message: 'Invalid email' }
++    if (msg.includes('rate') || msg.includes('too many') || msg.includes('429')) return { ok: false, message: 'Stremio rate-limited this login attempt - try again later, not necessarily a bad password' }
+     return { ok: false, message: err?.message || 'Stremio login failed' }
+   }
+ }
+-- 
+2.43.0
+

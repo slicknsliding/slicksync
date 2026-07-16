@@ -1,0 +1,128 @@
+From 1bd9967e383ddf0fd21e9e3350f055b3742c4713 Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sun, 12 Jul 2026 08:08:21 +0000
+Subject: [PATCH] fix: bypass store.login() wrapper for ground-truth Stremio
+ API response
+
+v1.9.24 fixed the authResult truthiness bug, but the follow-up debug
+log showed store.authKey was never set on any attempt either -
+meaning either the login is genuinely failing, or there's another
+layer of ambiguity in how the wrapper's side-effect-based success
+signaling works in this specific store setup.
+
+checkStremioAuth now calls store.request('login', {email, password})
+directly instead of going through store.login(), logging Stremio's
+exact raw API response (or raw error) to /app/data/vault-debug.log
+and checking result.authKey directly. This is ground truth - no
+wrapper, no side-effect inference, just what the API actually
+returned.
+
+Bump to 1.9.25, changelog entry added.
+---
+ client/public/changelog.json  | 10 +++++++
+ package.json                  |  2 +-
+ server/utils/vaultCheckers.js | 53 ++++++++++++++++++-----------------
+ 3 files changed, 39 insertions(+), 26 deletions(-)
+
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index b21bb52..c2bb913 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,14 @@
+ [
++  {
++    "version": "1.9.25",
++    "date": "2026-07-12",
++    "title": "Get real ground-truth on the Stremio Vault check by bypassing the wrapper entirely",
++    "bugFixes": [
++      "v1.9.24 fixed a real bug (the authResult truthiness requirement), but the follow-up debug log showed store.authKey was also never set on any attempt - meaning either the login was genuinely failing, or the store.login() wrapper's side-effect-based signaling has another layer of ambiguity. checkStremioAuth now bypasses store.login() entirely and calls store.request('login', {email, password}) directly, logging Stremio's exact raw API response to /app/data/vault-debug.log and checking result.authKey directly - ground truth, no wrapper or side-effect inference involved."
++    ],
++    "features": [],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.24",
+     "date": "2026-07-12",
+diff --git a/package.json b/package.json
+index 32b9fc7..3d6f43e 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.24",
++  "version": "1.9.25",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+diff --git a/server/utils/vaultCheckers.js b/server/utils/vaultCheckers.js
+index 6911e7d..93c6c54 100644
+--- a/server/utils/vaultCheckers.js
++++ b/server/utils/vaultCheckers.js
+@@ -168,35 +168,38 @@ async function checkStremioAuth(secret, config = {}) {
+ 
+   try {
+     const { StremioAPIUtils } = require('./handlers')
+-    const { store, tempStorage, authResult } = await StremioAPIUtils.authenticateWithStremio(identifier, secret)
+-    // stremio-api-client's store.login() always resolves to undefined on
+-    // BOTH success and failure by design (its internal .then() callback has
+-    // no return statement - success is signaled entirely through the
+-    // side-effect of setting store.authKey/tempStorage.auth via
+-    // userChange(), not through the resolved value). Requiring authResult
+-    // to also be truthy made this check permanently unable to report
+-    // success for any credentials, valid or not - confirmed via
+-    // /app/data/vault-debug.log showing authResult undefined on every
+-    // attempt regardless of outcome. Real API errors (wrong password, etc.)
+-    // still throw and are handled by the catch block below - only the
+-    // success path was broken.
+-    if (store.authKey || tempStorage.auth) {
+-      return { ok: true, message: 'Stremio login succeeded' }
++    const { store } = StremioAPIUtils.createAPIStore()
++
++    // Bypass store.login()'s wrapper (which discards the raw API response -
++    // see v1.9.24) and call the underlying request directly, so we can see
++    // exactly what Stremio's API actually returned rather than inferring it
++    // from side-effects. This is ground truth: if result.authKey is present,
++    // the login genuinely succeeded at the API level, full stop.
++    let rawResult
++    let rawErr
++    try {
++      rawResult = await store.request('login', { email: identifier, password: secret })
++    } catch (e) {
++      rawErr = e
+     }
+-    // Message-level detail wasn't enough to diagnose the last round of
+-    // failures (authResult had no .error/.message and wasn't thrown as an
+-    // exception either) - log the full raw shape so it's visible on the
+-    // next test, since the Vault card itself can only show a short string.
++
+     logDebug({
+-      event: 'stremio_auth_resolved_without_success',
++      event: 'stremio_raw_login_response',
+       identifier,
+-      authResult,
+-      storeAuthKey: store?.authKey,
+-      tempStorageAuth: tempStorage?.auth,
+-      tempStorageUser: tempStorage?.user
++      rawResult,
++      rawErrMessage: rawErr?.message,
++      rawErrStatus: rawErr?.status || rawErr?.statusCode,
++      rawErrBody: rawErr?.body || rawErr?.response
+     })
+-    const detail = authResult && typeof authResult === 'object'
+-      ? (authResult.error || authResult.message || JSON.stringify(authResult).slice(0, 200))
++
++    if (rawErr) throw rawErr
++
++    if (rawResult && rawResult.authKey) {
++      return { ok: true, message: 'Stremio login succeeded' }
++    }
++
++    const detail = rawResult && typeof rawResult === 'object'
++      ? (rawResult.error || rawResult.message || JSON.stringify(rawResult).slice(0, 200))
+       : null
+     return { ok: false, message: detail ? `Stremio rejected these credentials: ${detail}` : 'Stremio rejected these credentials (no further detail returned - check /app/data/vault-debug.log)' }
+   } catch (err) {
+-- 
+2.43.0
+
