@@ -1,6 +1,5 @@
 const express = require('express');
 const { runCheck } = require('../utils/vaultCheckers');
-const { postDiscord, postNtfy } = require('../utils/notify');
 
 const CATEGORIES = [
   'debrid', 'usenet_provider', 'usenet_indexer', 'stremio', 'nuvio',
@@ -236,82 +235,12 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
     }
   });
 
-  // GET /api/vault-settings - notification channel config (stored on AppAccount.sync JSON)
-  router.get('/settings/notifications', async (req, res) => {
-    try {
-      const accountId = getAccountId(req) || 'default';
-      const acct = await prisma.appAccount.findFirst({ where: { id: accountId }, select: { sync: true } });
-      let cfg = acct?.sync;
-      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
-      cfg = cfg || {};
-      res.json({
-        ntfyUrl: cfg.vaultNtfyUrl || null,
-        ntfyTopic: cfg.vaultNtfyTopic || null,
-        discordWebhookUrl: cfg.vaultDiscordWebhookUrl ? '••••••••' : null,
-        checkIntervalHours: cfg.vaultCheckIntervalHours || 6,
-        enabled: cfg.vaultNotifyEnabled !== false,
-      });
-    } catch (error) {
-      console.error('Error fetching vault notification settings:', error);
-      res.status(500).json({ error: 'Failed to fetch settings' });
-    }
-  });
-
-  router.put('/settings/notifications', async (req, res) => {
-    try {
-      const accountId = getAccountId(req) || 'default';
-      const { ntfyUrl, ntfyTopic, discordWebhookUrl, checkIntervalHours, enabled } = req.body || {};
-
-      const acct = await prisma.appAccount.findFirst({ where: { id: accountId }, select: { sync: true } });
-      let cfg = acct?.sync;
-      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
-      cfg = cfg || {};
-
-      if (ntfyUrl !== undefined) cfg.vaultNtfyUrl = ntfyUrl;
-      if (ntfyTopic !== undefined) cfg.vaultNtfyTopic = ntfyTopic;
-      if (discordWebhookUrl !== undefined) cfg.vaultDiscordWebhookUrl = discordWebhookUrl;
-      if (checkIntervalHours !== undefined) cfg.vaultCheckIntervalHours = checkIntervalHours;
-      if (enabled !== undefined) cfg.vaultNotifyEnabled = enabled;
-
-      await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(cfg) } });
-      res.json({ success: true });
-    } catch (error) {
-      console.error('Error updating vault notification settings:', error);
-      res.status(500).json({ error: 'Failed to update settings' });
-    }
-  });
-
-  // POST /api/vault/settings/notifications/test - send a test notification on demand
-  router.post('/settings/notifications/test', async (req, res) => {
-    try {
-      const accountId = getAccountId(req) || 'default';
-      const acct = await prisma.appAccount.findFirst({ where: { id: accountId }, select: { sync: true } });
-      let cfg = acct?.sync;
-      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
-      cfg = cfg || {};
-
-      if (cfg.vaultNotifyEnabled === false) {
-        return res.status(400).json({ error: 'Vault notifications are disabled — enable them first' });
-      }
-
-      let sent = false;
-      if (cfg.vaultNtfyUrl && cfg.vaultNtfyTopic) {
-        await postNtfy(cfg.vaultNtfyUrl, cfg.vaultNtfyTopic, {
-          title: 'SlickSync Vault', message: 'Test notification — vault alerts are wired up correctly.', tags: ['white_check_mark']
-        });
-        sent = true;
-      }
-      if (cfg.vaultDiscordWebhookUrl) {
-        await postDiscord(cfg.vaultDiscordWebhookUrl, 'SlickSync Vault: test notification — alerts are wired up correctly.');
-        sent = true;
-      }
-      if (!sent) return res.status(400).json({ error: 'No notification channel configured' });
-      res.json({ success: true });
-    } catch (error) {
-      console.error('Error sending test notification:', error);
-      res.status(500).json({ error: 'Failed to send test notification' });
-    }
-  });
+  // Vault notification config now lives in the account-wide notification
+  // settings (Settings > Notifications, a "Vault notifications" toggle on
+  // the same Discord webhook as Activity/Sync/Invite) - see
+  // server/routes/settings.js and server/utils/vaultMonitor.js. The former
+  // /settings/notifications GET/PUT/test endpoints here were removed with
+  // the separate Vault-only notification config they managed.
 
   // POST /api/vault/backup-now - trigger an immediate backup export (in addition to the nightly schedule)
   router.post('/backup-now', async (req, res) => {

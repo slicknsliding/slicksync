@@ -197,6 +197,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnActivity: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnActivity === true : false,
           notifyOnSync: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnSync === true : false,
           notifyOnInvite: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnInvite === true : false,
+          notifyOnVault: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnVault === true : false,
           accountTimezone: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE
         }
 
@@ -213,10 +214,10 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         const frequency = (typeof syncCfg.frequency === 'string' && syncCfg.frequency.trim())
           ? syncCfg.frequency.trim()
           : '0'
-        const resp = { enabled: syncCfg.enabled !== false, safe, mode, frequency, lastRunAt: syncCfg.lastRunAt, webhookUrl: syncCfg.webhookUrl || '', useCustomFields: (typeof syncCfg.useCustomFields === 'boolean') ? syncCfg.useCustomFields : ((typeof syncCfg.useCustomNames === 'boolean') ? syncCfg.useCustomNames : false), notifyOnActivity: syncCfg.notifyOnActivity === true, notifyOnSync: syncCfg.notifyOnSync === true, notifyOnInvite: syncCfg.notifyOnInvite === true, accountTimezone: (typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE }
+        const resp = { enabled: syncCfg.enabled !== false, safe, mode, frequency, lastRunAt: syncCfg.lastRunAt, webhookUrl: syncCfg.webhookUrl || '', useCustomFields: (typeof syncCfg.useCustomFields === 'boolean') ? syncCfg.useCustomFields : ((typeof syncCfg.useCustomNames === 'boolean') ? syncCfg.useCustomNames : false), notifyOnActivity: syncCfg.notifyOnActivity === true, notifyOnSync: syncCfg.notifyOnSync === true, notifyOnInvite: syncCfg.notifyOnInvite === true, notifyOnVault: syncCfg.notifyOnVault === true, accountTimezone: (typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, accountTimezone: DEFAULT_TIMEZONE })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, accountTimezone: DEFAULT_TIMEZONE })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -224,7 +225,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, accountTimezone } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, accountTimezone } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -280,6 +281,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnActivity: notifyOnActivity !== undefined ? !!notifyOnActivity : ((baseCfg.notifyOnActivity !== undefined) ? baseCfg.notifyOnActivity : false),
           notifyOnSync: notifyOnSync !== undefined ? !!notifyOnSync : ((baseCfg.notifyOnSync !== undefined) ? baseCfg.notifyOnSync : false),
           notifyOnInvite: notifyOnInvite !== undefined ? !!notifyOnInvite : ((baseCfg.notifyOnInvite !== undefined) ? baseCfg.notifyOnInvite : false),
+          notifyOnVault: notifyOnVault !== undefined ? !!notifyOnVault : ((baseCfg.notifyOnVault !== undefined) ? baseCfg.notifyOnVault : false),
           accountTimezone: typeof accountTimezone === 'string' && accountTimezone.trim() ? accountTimezone.trim() : (baseCfg.accountTimezone || DEFAULT_TIMEZONE)
         }
 
@@ -314,6 +316,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (notifyOnActivity !== undefined) partial.notifyOnActivity = !!notifyOnActivity
       if (notifyOnSync !== undefined) partial.notifyOnSync = !!notifyOnSync
       if (notifyOnInvite !== undefined) partial.notifyOnInvite = !!notifyOnInvite
+      if (notifyOnVault !== undefined) partial.notifyOnVault = !!notifyOnVault
       if (typeof accountTimezone === 'string' && accountTimezone.trim()) partial.accountTimezone = accountTimezone.trim()
 
       const nextCfg = { ...base, ...partial }

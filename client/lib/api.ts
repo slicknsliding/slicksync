@@ -1263,21 +1263,6 @@ class ApiClient {
     });
   }
 
-  async getVaultNotificationSettings() {
-    return this.fetch<VaultNotificationSettings>('/vault/settings/notifications');
-  }
-
-  async updateVaultNotificationSettings(data: Partial<{ ntfyUrl: string; ntfyTopic: string; discordWebhookUrl: string; checkIntervalHours: number; enabled: boolean }>) {
-    return this.fetch<{ success: boolean }>('/vault/settings/notifications', {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async testVaultNotification() {
-    return this.fetch<{ success: boolean }>('/vault/settings/notifications/test', { method: 'POST' });
-  }
-
   // Metrics
   async getMetrics(period: string = '30d') {
     return this.fetch<MetricsData>(`/users/metrics?period=${period}`);
@@ -1394,14 +1379,6 @@ export interface VaultEntryInput {
   dashboardUrl?: string;
   expiresAt?: string;
   notifyDaysBefore?: number;
-}
-
-export interface VaultNotificationSettings {
-  ntfyUrl: string | null;
-  ntfyTopic: string | null;
-  discordWebhookUrl: string | null;
-  checkIntervalHours: number;
-  enabled: boolean;
 }
 
 export interface Addon {
@@ -1549,6 +1526,7 @@ export interface SyncSettings {
   notifyOnActivity?: boolean;
   notifyOnSync?: boolean;
   notifyOnInvite?: boolean;
+  notifyOnVault?: boolean;
   accountTimezone?: string;
 }
 
