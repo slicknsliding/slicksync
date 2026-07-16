@@ -12,7 +12,6 @@ import { useDefaultViewMode } from '@/lib/viewMode';
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import {
   PaintBrushIcon,
-  BellIcon,
   CloudArrowUpIcon,
   TrashIcon,
   ArrowPathIcon,
@@ -247,27 +246,17 @@ export default function SettingsPage() {
     notifyOnActivity: false,
     notifyOnSync: false,
     notifyOnInvite: false,
+    notifyOnVault: false,
     accountTimezone: '',
   });
-  
+
   // API Key state
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [isGeneratingKey, setIsGeneratingKey] = useState(false);
-  
+
   // Webhook testing
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
-
-  // Vault notification settings
-  const [vaultNotifySettings, setVaultNotifySettings] = useState({
-    ntfyUrl: '',
-    ntfyTopic: '',
-    discordWebhookUrl: '',
-    checkIntervalHours: '6',
-    enabled: true,
-  });
-  const [vaultDiscordConfigured, setVaultDiscordConfigured] = useState(false);
-  const [isTestingVaultNotification, setIsTestingVaultNotification] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
@@ -282,24 +271,11 @@ export default function SettingsPage() {
           notifyOnActivity: settings.notifyOnActivity || false,
           notifyOnSync: settings.notifyOnSync || false,
           notifyOnInvite: settings.notifyOnInvite || false,
+          notifyOnVault: settings.notifyOnVault || false,
           accountTimezone: settings.accountTimezone || '',
         });
       } catch (e) {
         // Settings may not exist yet, use defaults
-      }
-
-      try {
-        const vaultNotify = await api.getVaultNotificationSettings();
-        setVaultNotifySettings({
-          ntfyUrl: vaultNotify.ntfyUrl || '',
-          ntfyTopic: vaultNotify.ntfyTopic || '',
-          discordWebhookUrl: '', // write-only, never prefilled
-          checkIntervalHours: String(vaultNotify.checkIntervalHours || 6),
-          enabled: vaultNotify.enabled !== false,
-        });
-        setVaultDiscordConfigured(!!vaultNotify.discordWebhookUrl);
-      } catch (e) {
-        // Endpoint may not be available
       }
 
       try {
@@ -349,38 +325,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSaveVaultNotifySetting = async (
-    key: 'ntfyUrl' | 'ntfyTopic' | 'discordWebhookUrl' | 'checkIntervalHours' | 'enabled',
-    value: any
-  ) => {
-    if (key === 'discordWebhookUrl' && !value) return; // blank never overwrites a saved webhook
-
-    setVaultNotifySettings(prev => ({ ...prev, [key]: value }));
-    try {
-      const payload = { [key]: key === 'checkIntervalHours' ? (Number(value) || 6) : value };
-      await api.updateVaultNotificationSettings(payload);
-      if (key === 'discordWebhookUrl') {
-        setVaultDiscordConfigured(true);
-        setVaultNotifySettings(prev => ({ ...prev, discordWebhookUrl: '' }));
-      }
-      toast.success('Setting saved');
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to save setting');
-    }
-  };
-
-  const handleTestVaultNotification = async () => {
-    setIsTestingVaultNotification(true);
-    try {
-      await api.testVaultNotification();
-      toast.success('Test notification sent');
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to send test notification');
-    } finally {
-      setIsTestingVaultNotification(false);
-    }
-  };
-
   const handleGenerateApiKey = async () => {
     setIsGeneratingKey(true);
     try {
@@ -413,6 +357,7 @@ export default function SettingsPage() {
       notifyOnActivity: false,
       notifyOnSync: false,
       notifyOnInvite: false,
+      notifyOnVault: false,
     });
     try {
       await api.updateSyncSettings({
@@ -423,6 +368,7 @@ export default function SettingsPage() {
         notifyOnActivity: false,
         notifyOnSync: false,
         notifyOnInvite: false,
+        notifyOnVault: false,
       });
       toast.success('Settings reset to defaults');
     } catch (e: any) {
@@ -680,102 +626,18 @@ export default function SettingsPage() {
                     label="Toggle invite notifications"
                   />
                 </SettingRow>
-              </div>
-            </div>
-          </Card>
-        </PageSection>
 
-        {/* Vault Notifications */}
-        <PageSection delay={0.17} className="mb-6">
-          <Card padding="lg">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
-                <BellIcon className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold font-display text-default">Vault Notifications</h3>
-                <p className="text-xs text-muted">Alerts when a Vault entry is about to expire or an automated check starts failing</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <SettingRow
-                label="Enable Vault notifications"
-                description="Turn off to silence all Vault ntfy/Discord alerts without clearing your configuration"
-              >
-                <ToggleSwitch
-                  enabled={vaultNotifySettings.enabled}
-                  onChange={(v) => handleSaveVaultNotifySetting('enabled', v)}
-                  label="Toggle Vault notifications"
-                />
-              </SettingRow>
-
-              <div className={vaultNotifySettings.enabled ? '' : 'opacity-50 pointer-events-none'}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-default mb-2">ntfy server URL</label>
-                    <input
-                      type="url"
-                      value={vaultNotifySettings.ntfyUrl}
-                      onChange={(e) => setVaultNotifySettings(prev => ({ ...prev, ntfyUrl: e.target.value }))}
-                      onBlur={() => handleSaveVaultNotifySetting('ntfyUrl', vaultNotifySettings.ntfyUrl)}
-                      placeholder="https://ntfy.sh"
-                      className="input-base w-full px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-default mb-2">ntfy topic</label>
-                    <input
-                      type="text"
-                      value={vaultNotifySettings.ntfyTopic}
-                      onChange={(e) => setVaultNotifySettings(prev => ({ ...prev, ntfyTopic: e.target.value }))}
-                      onBlur={() => handleSaveVaultNotifySetting('ntfyTopic', vaultNotifySettings.ntfyTopic)}
-                      placeholder="my-vault-alerts"
-                      className="input-base w-full px-3 py-2 text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-default mb-2">
-                    {vaultDiscordConfigured ? 'Discord webhook URL (configured — leave blank to keep)' : 'Discord webhook URL'}
-                  </label>
-                  <input
-                    type="password"
-                    value={vaultNotifySettings.discordWebhookUrl}
-                    onChange={(e) => setVaultNotifySettings(prev => ({ ...prev, discordWebhookUrl: e.target.value }))}
-                    onBlur={() => handleSaveVaultNotifySetting('discordWebhookUrl', vaultNotifySettings.discordWebhookUrl)}
-                    placeholder="https://discord.com/api/webhooks/..."
-                    className="input-base w-full px-3 py-2 text-sm"
+                <SettingRow
+                  label="Vault notifications"
+                  description="Notify when a Vault entry is about to expire or an automated check starts failing"
+                  disabled={!syncSettings.webhookUrl?.trim()}
+                >
+                  <ToggleSwitch
+                    enabled={syncSettings.notifyOnVault || false}
+                    onChange={(v) => handleSaveSetting('notifyOnVault', v)}
+                    label="Toggle vault notifications"
                   />
-                </div>
-
-                <div className="mt-4 flex items-end gap-3">
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium text-default mb-2">Check interval (hours)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={vaultNotifySettings.checkIntervalHours}
-                      onChange={(e) => setVaultNotifySettings(prev => ({ ...prev, checkIntervalHours: e.target.value }))}
-                      onBlur={() => handleSaveVaultNotifySetting('checkIntervalHours', vaultNotifySettings.checkIntervalHours)}
-                      className="input-base w-full px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleTestVaultNotification}
-                    isLoading={isTestingVaultNotification}
-                    disabled={!vaultNotifySettings.ntfyUrl?.trim() && !vaultDiscordConfigured}
-                  >
-                    Test
-                  </Button>
-                </div>
-                <p className="text-xs text-muted mt-2">
-                  Configure ntfy and/or Discord — either or both. This mirrors the notification settings available
-                  from the Vault page.
-                </p>
+                </SettingRow>
               </div>
             </div>
           </Card>
