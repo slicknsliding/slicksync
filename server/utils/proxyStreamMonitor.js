@@ -264,6 +264,84 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
   }
 }
 
+// A connection is treated as "usenet" - the one source that Nuvio's native
+// tracking does NOT record (confirmed with real data: usenet watches never
+// reach History via the native pipeline) - when its URL matches this
+// pattern. Debrid/torrent streams ARE recorded natively, so the proxy must
+// not also write history for those (that produced duplicate cards, which is
+// why proxy history was removed). Configurable via env in case the usenet
+// backend host differs from the default.
+const USENET_URL_PATTERN = process.env.PROXY_USENET_URL_PATTERN || 'nzbdav'
+function isUsenetUrl(url) {
+  return !!url && url.toLowerCase().includes(USENET_URL_PATTERN.toLowerCase())
+}
+
+// Writes a completed-history WatchSession for closed USENET connections
+// only. Usenet is the one source native tracking misses, so without this it
+// would never appear in History at all. This is a presence marker, NOT a
+// duration record: durationSeconds stays 0 (a proxy connection's wall-clock
+// lifetime is not watch time), and the entry is identified downstream by its
+// requestCount. Grouped by title so a seek's extra connection doesn't make a
+// second card.
+async function writeCompletedUsenetSessions(prisma, accountId, closedRows, endTime) {
+  const usenetRows = closedRows.filter((r) => isUsenetUrl(r.url))
+  if (usenetRows.length === 0) return
+
+  const users = await prisma.user.findMany({
+    where: { accountId },
+    select: { id: true, username: true, email: true },
+  })
+
+  const groups = new Map()
+  for (const row of usenetRows) {
+    const key = normalizeForNotify(row.displayName) || row.url
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(row)
+  }
+
+  for (const group of groups.values()) {
+    const representative = group.reduce((latest, r) => (!latest || r.startTime > latest.startTime) ? r : latest, null)
+    const earliestStartTime = group.reduce((earliest, r) => (r.startTime < earliest ? r.startTime : earliest), representative.startTime)
+    const title = representative.displayName || representative.filename || 'Unknown'
+    const user = resolveUserForActiveConnection(users, representative.aiostreamsUser)
+    if (!user) continue
+
+    const itemId = representative.metadataItemId || `proxy:${normalizeForNotify(title).replace(/\s+/g, '-')}`
+    const itemType = representative.metadataItemType === 'series' ? 'series' : 'movie'
+    const groupRequestCount = group.reduce((sum, r) => sum + (r.requestCount || 0), 0)
+
+    const existing = await prisma.watchSession.findUnique({
+      where: { accountId_userId_itemId: { accountId, userId: user.id, itemId } },
+    })
+    const overallStartTime = existing?.startTime && existing.startTime < earliestStartTime
+      ? existing.startTime
+      : earliestStartTime
+
+    await prisma.watchSession.upsert({
+      where: { accountId_userId_itemId: { accountId, userId: user.id, itemId } },
+      create: {
+        accountId,
+        userId: user.id,
+        itemId,
+        itemName: title,
+        itemType,
+        poster: representative.posterUrl || null,
+        startTime: overallStartTime,
+        endTime,
+        durationSeconds: 0,
+        requestCount: groupRequestCount,
+        isActive: false,
+      },
+      update: {
+        endTime,
+        requestCount: groupRequestCount,
+        isActive: false,
+        poster: representative.posterUrl || undefined,
+      },
+    })
+  }
+}
+
 async function pollOnce(prisma, accountId, config) {
   heartbeat('pollOnce:start', { accountId })
   try {
@@ -369,7 +447,11 @@ async function pollOnce(prisma, accountId, config) {
     const GRACE_MS = CHECK_INTERVAL_MS * 2
     const staleActive = await prisma.proxyStreamSession.findMany({
       where: { accountId, isActive: true },
-      select: { id: true, aiostreamsUser: true, clientIp: true, url: true, lastSeenAt: true },
+      select: {
+        id: true, aiostreamsUser: true, clientIp: true, url: true, lastSeenAt: true,
+        displayName: true, filename: true, posterUrl: true, metadataItemId: true,
+        metadataItemType: true, startTime: true, requestCount: true,
+      },
     })
 
     const toClose = staleActive.filter(
@@ -378,19 +460,20 @@ async function pollOnce(prisma, accountId, config) {
         (now.getTime() - row.lastSeenAt.getTime()) > GRACE_MS
     )
     if (toClose.length > 0) {
-      // Just mark the connection ended. The proxy is a LIVE Now Playing
-      // signal only - it deliberately does NOT write completed watch
-      // history. History is owned entirely by the native provider pipeline
-      // (metricsProcessor.js / sessionTracker.js), which catches the same
-      // watch a short time later with the real library title, poster, and
-      // provider-measured duration. Writing a proxy history card here too
-      // produced a duplicate: a blank/iconless proxy card appearing first,
-      // then the richer native card a minute later. Native alone is the
-      // better record, so we keep only it.
       await prisma.proxyStreamSession.updateMany({
         where: { id: { in: toClose.map((r) => r.id) } },
         data: { isActive: false, endTime: now },
       })
+
+      // Write History for closed USENET streams only. Debrid/torrent history
+      // is owned by the native pipeline (which records the real title,
+      // poster, and duration); usenet is the one source native tracking
+      // misses, so the proxy is its only path into History.
+      try {
+        await writeCompletedUsenetSessions(prisma, accountId, toClose, now)
+      } catch (error) {
+        heartbeat('pollOnce:usenet_history_error', { message: error.message, stack: error.stack })
+      }
     }
 
     heartbeat('pollOnce:done', {
@@ -423,5 +506,6 @@ module.exports = {
   clearProxyStreamMonitor,
   parseDisplayName,
   resolveUserForActiveConnection,
+  isUsenetUrl,
   CHECK_INTERVAL_MS,
 }
