@@ -30,6 +30,30 @@ import {
   PhotoIcon,
 } from '@heroicons/react/24/outline';
 
+// Small curated fallback for environments without Intl.supportedValuesOf
+// ('timeZone') - a fairly recent addition (Baseline 2023), not guaranteed
+// everywhere this might render (including Next.js server-side rendering on
+// an older Node build).
+const FALLBACK_TIMEZONES = [
+  'UTC', 'America/Los_Angeles', 'America/Denver', 'America/Chicago', 'America/New_York',
+  'America/Anchorage', 'Pacific/Honolulu', 'America/Sao_Paulo', 'Europe/London', 'Europe/Paris',
+  'Europe/Berlin', 'Europe/Moscow', 'Africa/Cairo', 'Asia/Dubai', 'Asia/Kolkata',
+  'Asia/Shanghai', 'Asia/Tokyo', 'Asia/Seoul', 'Australia/Sydney', 'Pacific/Auckland',
+];
+
+function getSupportedTimezones(): string[] {
+  try {
+    if (typeof Intl.supportedValuesOf === 'function') {
+      return Intl.supportedValuesOf('timeZone');
+    }
+  } catch {
+    // fall through to the curated list below
+  }
+  return FALLBACK_TIMEZONES;
+}
+
+const TIMEZONES = getSupportedTimezones();
+
 // Memoized theme card component
 const ThemeCard = memo(function ThemeCard({
   themeId,
@@ -505,18 +529,22 @@ export default function SettingsPage() {
 
               <div className="p-4 rounded-lg bg-subtle">
                 <label className="block text-sm font-medium text-default mb-2">Timezone</label>
-                <input
-                  type="text"
+                <select
                   value={syncSettings.accountTimezone || ''}
-                  onChange={(e) => setSyncSettings(prev => ({ ...prev, accountTimezone: e.target.value }))}
-                  onBlur={() => handleSaveSetting('accountTimezone', syncSettings.accountTimezone)}
-                  placeholder="America/Los_Angeles"
+                  onChange={(e) => handleSaveSetting('accountTimezone', e.target.value)}
                   className="input-base w-full px-3 py-2 text-sm"
-                />
+                >
+                  {syncSettings.accountTimezone && !TIMEZONES.includes(syncSettings.accountTimezone) && (
+                    <option value={syncSettings.accountTimezone}>{syncSettings.accountTimezone}</option>
+                  )}
+                  {TIMEZONES.map((tz) => (
+                    <option key={tz} value={tz}>{tz}</option>
+                  ))}
+                </select>
                 <p className="text-xs text-muted mt-2">
-                  IANA timezone name (e.g. America/New_York, Europe/London). Used server-side to decide what counts
-                  as &quot;today&quot; for Watch Time Today and streaks - background jobs have no browser to read a
-                  timezone from, so this has to be set explicitly rather than auto-detected.
+                  Used server-side to decide what counts as &quot;today&quot; for Watch Time Today and streaks -
+                  background jobs have no browser to read a timezone from, so this has to be set explicitly rather
+                  than auto-detected.
                 </p>
               </div>
             </div>
