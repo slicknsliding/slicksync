@@ -323,15 +323,22 @@ export default function AddonsPage() {
       const oldIndex = filteredAddons.findIndex(a => a.id === active.id);
       const newIndex = filteredAddons.findIndex(a => a.id === over.id);
       if (oldIndex === -1 || newIndex === -1) return;
-      const reordered = [...filteredAddons];
-      const [moved] = reordered.splice(oldIndex, 1);
-      reordered.splice(newIndex, 0, moved);
+      // Only extract the ID order from filteredAddons (an AddonDisplay[]
+      // transform, not the same type as the raw Addon[] state) - the
+      // actual Addon objects get looked up from prev inside setAddons,
+      // where the real type is properly preserved.
+      const reorderedIds = filteredAddons.map(a => a.id);
+      const [movedId] = reorderedIds.splice(oldIndex, 1);
+      reorderedIds.splice(newIndex, 0, movedId);
       setAddons(prev => {
-        const reorderedIds = reordered.map(a => a.id);
+        const byId = new Map(prev.map(a => [a.id, a]));
+        const reorderedAddons = reorderedIds
+          .map(id => byId.get(id))
+          .filter((a): a is Addon => !!a);
         const rest = prev.filter(a => !reorderedIds.includes(a.id));
-        return [...reordered, ...rest];
+        return [...reorderedAddons, ...rest];
       });
-      api.reorderAddons(reordered.map(a => a.id)).catch((err: any) => {
+      api.reorderAddons(reorderedIds).catch((err: any) => {
         toast.error(err.message || 'Failed to save new order');
       });
     };
