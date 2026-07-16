@@ -806,57 +806,65 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
 
   const now = Date.now()
 
-  // "Now Playing" is driven exclusively by active DB sessions (isActive=true).
-  // The session tracker manages session lifecycle: creates on activity, closes when stopped.
-  // No library cache fallback - library JSON should not drive UI state.
-  let activeSessionsFromDb = []
-  try {
-    activeSessionsFromDb = await prisma.watchSession.findMany({
-      where: {
-        accountId: accountIdValue || 'default',
-        isActive: true
-      },
-      orderBy: { startTime: 'desc' }
-    })
-  } catch (error) {
-    console.warn('[MetricsBuilder] Failed to fetch active sessions from database:', error.message)
-  }
-
-  // Build nowPlaying from active DB sessions
+  // "Now Playing" is a LIVE signal. When the AIOStreams proxy is configured
+  // it's the authoritative source (it sees a stream open/close in real time),
+  // so we do NOT also seed Now Playing from native WatchSessions: native only
+  // learns of a session when the provider writes a watch checkpoint (on
+  // pause/stop for Nuvio), and its "actively watching" freshness window then
+  // keeps that session marked active for ~15 min - which made a stream the
+  // user had already EXITED linger in Now Playing for up to 15 minutes after
+  // they stopped. Native remains the source of truth for history/duration,
+  // just not for live Now Playing. When no proxy is configured, native
+  // sessions are the only live signal available, so they're used as before.
+  const proxyConfigured = !!process.env.AIOSTREAMS_URL
   const userMap = new Map(activeUsers.map(u => [u.id, u]))
-  for (const session of activeSessionsFromDb) {
-    const user = userMap.get(session.userId)
-    if (!user) continue
 
-    nowPlaying.push({
-      user: {
-        id: user.id,
-        username: user.username || user.email,
-        email: user.email,
-        colorIndex: user.colorIndex || 0,
-        avatarUrl: user.avatarUrl || null,
-        useGravatar: user.useGravatar ?? false
-      },
-      item: {
-        id: session.itemId,
-        name: session.itemName,
-        type: session.itemType,
-        year: null,
-        poster: session.poster,
-        season: session.season,
-        episode: session.episode
-      },
-      videoId: session.videoId ?? null,
-      watchedAt: session.startTime.toISOString(),
-      watchedAtTimestamp: session.startTime.getTime()
-    })
+  if (!proxyConfigured) {
+    let activeSessionsFromDb = []
+    try {
+      activeSessionsFromDb = await prisma.watchSession.findMany({
+        where: {
+          accountId: accountIdValue || 'default',
+          isActive: true
+        },
+        orderBy: { startTime: 'desc' }
+      })
+    } catch (error) {
+      console.warn('[MetricsBuilder] Failed to fetch active sessions from database:', error.message)
+    }
+
+    for (const session of activeSessionsFromDb) {
+      const user = userMap.get(session.userId)
+      if (!user) continue
+
+      nowPlaying.push({
+        user: {
+          id: user.id,
+          username: user.username || user.email,
+          email: user.email,
+          colorIndex: user.colorIndex || 0,
+          avatarUrl: user.avatarUrl || null,
+          useGravatar: user.useGravatar ?? false
+        },
+        item: {
+          id: session.itemId,
+          name: session.itemName,
+          type: session.itemType,
+          year: null,
+          poster: session.poster,
+          season: session.season,
+          episode: session.episode
+        },
+        videoId: session.videoId ?? null,
+        watchedAt: session.startTime.toISOString(),
+        watchedAtTimestamp: session.startTime.getTime()
+      })
+    }
   }
 
-  // Merge in AIOStreams proxy-detected active streams (faster/more accurate
-  // start/stop detection than the WatchSession poll-based pipeline above).
-  // Proxy-detected entries take priority per user; WatchSession entries
-  // above remain as a fallback for any user not currently covered by the
-  // proxy (e.g. a stream that didn't route through AIOStreams).
+  // Merge in AIOStreams proxy-detected active streams. When the proxy is
+  // configured this IS the Now Playing list (the native block above was
+  // skipped); otherwise it's a no-op that returns the native list unchanged.
   try {
     const { mergeProxyNowPlaying } = require('./proxyNowPlaying')
     const merged = await mergeProxyNowPlaying(prisma, accountIdValue || 'default', activeUsers, nowPlaying)
