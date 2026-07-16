@@ -808,7 +808,7 @@ export default function TasksPage() {
                   <option value="">Select a user...</option>
                   {users.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.name || user.email || user.id}
+                      {user.name || user.email || user.id} ({user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'})
                     </option>
                   ))}
                 </select>
@@ -842,12 +842,17 @@ export default function TasksPage() {
               if (!user) return null;
               return (
                 <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border border-default bg-subtle">
-                  <UserAvatar userId={user.id} name={user.name || user.email || 'U'} email={user.email} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-default truncate">{user.name || user.email || user.id}</p>
-                    {user.email && user.name && (
-                      <p className="text-xs text-muted truncate">{user.email}</p>
-                    )}
+                  <UserAvatar userId={user.id} name={user.name || user.email || 'U'} email={user.email} colorIndex={user.colorIndex} src={user.avatarUrl || undefined} size="sm" />
+                  <div className="flex-1 min-w-0 flex items-center gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-default truncate">{user.name || user.email || user.id}</p>
+                      {user.email && user.name && (
+                        <p className="text-xs text-muted truncate">{user.email}</p>
+                      )}
+                    </div>
+                    <Badge variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
+                      {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                    </Badge>
                   </div>
                 </div>
               );
@@ -877,7 +882,7 @@ export default function TasksPage() {
                   <option value="all">All Users</option>
                   {users.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.name || user.email || user.id}
+                      {user.name || user.email || user.id} ({user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'})
                     </option>
                   ))}
                 </select>
@@ -919,12 +924,17 @@ export default function TasksPage() {
               if (!user) return null;
               return (
                 <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border border-default bg-subtle">
-                  <UserAvatar userId={user.id} name={user.name || user.email || 'U'} email={user.email} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-default truncate">{user.name || user.email || user.id}</p>
-                    {user.email && user.name && (
-                      <p className="text-xs text-muted truncate">{user.email}</p>
-                    )}
+                  <UserAvatar userId={user.id} name={user.name || user.email || 'U'} email={user.email} colorIndex={user.colorIndex} src={user.avatarUrl || undefined} size="sm" />
+                  <div className="flex-1 min-w-0 flex items-center gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-default truncate">{user.name || user.email || user.id}</p>
+                      {user.email && user.name && (
+                        <p className="text-xs text-muted truncate">{user.email}</p>
+                      )}
+                    </div>
+                    <Badge variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
+                      {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                    </Badge>
                   </div>
                 </div>
               );
