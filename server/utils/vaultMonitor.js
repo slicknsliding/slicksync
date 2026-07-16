@@ -3,25 +3,26 @@
 //   - an automated check flips from ok -> error (throttled to once/day per entry)
 
 const { runCheck } = require('./vaultCheckers')
-const { postDiscord, postNtfy } = require('./notify')
+const { postDiscord } = require('./notify')
 
 let vaultTimer = null
 const DEFAULT_INTERVAL_HOURS = 6
 const isDebugMode = process.env.DEBUG === 'true' || process.env.DEBUG === '1'
 
+// Vault alerts now ride on the account's single Discord webhook (the one in
+// the Settings > Notifications card), gated by its own `notifyOnVault`
+// toggle - the same shape as notifyOnActivity/notifyOnSync/notifyOnInvite.
+// This replaced a separate Vault-only notification config (vaultNtfyUrl /
+// vaultDiscordWebhookUrl / vaultCheckIntervalHours / vaultNotifyEnabled) so
+// there's one place to set up notifications, not two.
 function getNotifyConfig(cfg) {
   return {
-    enabled: cfg?.vaultNotifyEnabled !== false,
-    ntfyUrl: cfg?.vaultNtfyUrl || null,
-    ntfyTopic: cfg?.vaultNtfyTopic || null,
-    discordWebhookUrl: cfg?.vaultDiscordWebhookUrl || null,
+    enabled: cfg?.notifyOnVault === true,
+    discordWebhookUrl: cfg?.webhookUrl || null,
   }
 }
 
-async function notify({ ntfyUrl, ntfyTopic, discordWebhookUrl }, { title, message, tags }) {
-  if (ntfyUrl && ntfyTopic) {
-    await postNtfy(ntfyUrl, ntfyTopic, { title, message, tags, priority: 'high' })
-  }
+async function notify({ discordWebhookUrl }, { title, message }) {
   if (discordWebhookUrl) {
     await postDiscord(discordWebhookUrl, `**${title}**\n${message}`)
   }
@@ -43,7 +44,7 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
       if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
       cfg = cfg || {}
       const notifyCfg = getNotifyConfig(cfg)
-      const hasNotifyChannel = notifyCfg.enabled && ((notifyCfg.ntfyUrl && notifyCfg.ntfyTopic) || notifyCfg.discordWebhookUrl)
+      const hasNotifyChannel = notifyCfg.enabled && !!notifyCfg.discordWebhookUrl
 
       const entries = await prisma.vaultEntry.findMany({
         where: { accountId: account.id, isActive: true },
