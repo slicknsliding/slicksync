@@ -334,6 +334,34 @@ async function reloadAddon(prisma, getAccountId, addonId, req, { filterManifestB
 // Export a function that returns the router, allowing dependency injection
 module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifestUrl, scopedWhere, INSTANCE_TYPE, manifestHash, filterManifestByResources, filterManifestByCatalogs, manifestUrlHmac }) => {
   const router = express.Router();
+  // PUT /api/addons/reorder - bulk update addon display order (drag-and-drop)
+  router.put('/reorder', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const { orderedIds } = req.body || {};
+      if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+        return res.status(400).json({ error: 'orderedIds is required' });
+      }
+      // Confirm every id actually belongs to this account before touching anything
+      const existing = await prisma.addon.findMany({
+        where: { id: { in: orderedIds }, accountId },
+        select: { id: true },
+      });
+      if (existing.length !== orderedIds.length) {
+        return res.status(400).json({ error: 'One or more addons do not belong to this account' });
+      }
+      await Promise.all(
+        orderedIds.map((id, index) =>
+          prisma.addon.update({ where: { id }, data: { position: index } })
+        )
+      );
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error reordering addons:', error);
+      res.status(500).json({ error: 'Failed to reorder addons' });
+    }
+  });
+
 
 
   // Get all addons
