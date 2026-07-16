@@ -125,9 +125,72 @@ async function resolveSinglePoster(itemId, itemType, existingPoster) {
   return target[0].poster || null
 }
 
+// Normalize a title for strict equality matching: lowercase, drop a
+// parenthesized year, collapse non-alphanumerics to single spaces.
+function normalizeTitleForMatch(s) {
+  return (s || '')
+    .toLowerCase()
+    .replace(/\(\d{4}\)/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+/**
+ * Strict poster lookup by title via Cinemeta's search catalog. Unlike a
+ * fuzzy catalog match (the removed AIOMetadata lookup, which could pick an
+ * unrelated same-titled entry), this is "correct-or-nothing": it returns a
+ * result ONLY when a candidate's normalized title matches exactly AND, when
+ * a year is supplied, its year matches too. Anything less confident returns
+ * null (caller shows no poster rather than a possibly-wrong one). Used for
+ * proxy/usenet entries, which only have a filename-parsed title to go on.
+ *
+ * Year handling: when `year` is given it must match (a candidate with no
+ * year is rejected as not-confident). When `year` is null - common for
+ * series episodes, whose filenames rarely carry a year - it falls back to
+ * exact-normalized-title matching alone, which is low-risk for distinctive
+ * show titles and the only option available.
+ *
+ * @param {string} title  e.g. "Simpsley"
+ * @param {string|null} year  e.g. "2026" or null
+ * @param {'movie'|'series'} type
+ * @param {{requestTimeout?: number}} [options]
+ * @returns {Promise<{poster: string|null, id: string|null, type: string}|null>}
+ */
+async function searchCinemetaPosterByTitle(title, year, type, options = {}) {
+  const { requestTimeout = 2500 } = options
+  if (!title) return null
+  const searchType = type === 'series' ? 'series' : 'movie'
+  const url = `https://v3-cinemeta.strem.io/catalog/${searchType}/top/search=${encodeURIComponent(title)}.json`
+  const want = normalizeTitleForMatch(title)
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), requestTimeout)
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': 'SlickSync/1.0' }, signal: controller.signal })
+    if (!res.ok) return null
+    const data = await res.json()
+    const metas = Array.isArray(data?.metas) ? data.metas : []
+    for (const m of metas) {
+      if (normalizeTitleForMatch(m.name) !== want) continue
+      if (year) {
+        const metaYear = String(m.releaseInfo || m.year || '').slice(0, 4)
+        if (metaYear !== String(year)) continue // includes the no-year-on-candidate case
+      }
+      return { poster: m.poster || null, id: m.id || null, type: searchType }
+    }
+    return null
+  } catch {
+    return null // network/timeout/parse failure - no poster is the safe outcome
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 module.exports = {
   findLatestEpisode,
   enrichPostersFromCinemeta,
-  resolveSinglePoster
+  resolveSinglePoster,
+  searchCinemetaPosterByTitle,
+  normalizeTitleForMatch
 }
 

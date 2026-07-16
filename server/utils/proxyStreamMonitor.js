@@ -16,6 +16,7 @@
 // growing/shrinking `requestIds[]` array. This module mirrors that: identity
 // here is (accountId, aiostreamsUser, clientIp, url).
 
+const { searchCinemetaPosterByTitle } = require('./libraryHelpers')
 
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
@@ -316,9 +317,86 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
   }
 }
 
+// Parse a proxy displayName into the pieces a strict Cinemeta poster
+// lookup needs: a clean search title, a year (if present), and a best
+// guess at movie vs series from the presence of an episode marker.
+function parseForPosterLookup(displayName) {
+  if (!displayName) return null
+  const yearMatch = displayName.match(/\((\d{4})\)\s*$/)
+  const year = yearMatch ? yearMatch[1] : null
+  let title = year ? displayName.replace(/\s*\(\d{4}\)\s*$/, '') : displayName
+  let type = 'movie'
+  // Series episode markers: strip from the SxxExx / Exx marker onward so
+  // the search query is just the show title, and classify as series.
+  const seasonEpisode = title.match(/^(.*?)\s+S\d{1,2}E\d{1,3}\b/i)
+  if (seasonEpisode) {
+    title = seasonEpisode[1].trim()
+    type = 'series'
+  } else {
+    const bareEpisode = title.match(/^(.*?)\s+E\d{1,3}\b/i)
+    if (bareEpisode) {
+      title = bareEpisode[1].trim()
+      type = 'series'
+    }
+  }
+  return { searchTitle: title, year, type }
+}
+
+// Strict poster lookup for one ProxyStreamSession row. Records the result
+// (or the fact that none matched) via metadataMatchedAt so it's attempted
+// once per stream, not on every 30s poll. Uses Cinemeta's search catalog
+// with exact title+year matching (see searchCinemetaPosterByTitle) - a
+// confident match also yields a real IMDb id (metadataItemId), which
+// improves cross-pipeline history dedup with native tracking. No match =
+// no poster, never a wrong one.
+async function attemptPosterLookup(prisma, rowId, displayName) {
+  try {
+    const parsed = parseForPosterLookup(displayName)
+    if (!parsed || !parsed.searchTitle) {
+      await prisma.proxyStreamSession.update({ where: { id: rowId }, data: { metadataMatchedAt: new Date() } })
+      return
+    }
+    const result = await searchCinemetaPosterByTitle(parsed.searchTitle, parsed.year, parsed.type)
+    const updatedRow = await prisma.proxyStreamSession.update({
+      where: { id: rowId },
+      data: {
+        posterUrl: result?.poster ?? null,
+        metadataItemId: result?.id ?? null,
+        metadataItemType: result?.type ?? null,
+        metadataMatchedAt: new Date(),
+      },
+    })
+    // Backfill into an already-written history entry if the stream closed
+    // before this lookup finished. Only fills a still-missing poster.
+    if (result?.poster && updatedRow.linkedWatchSessionId) {
+      await prisma.watchSession.updateMany({
+        where: { id: updatedRow.linkedWatchSessionId, poster: null },
+        data: { poster: result.poster },
+      })
+    }
+  } catch (error) {
+    heartbeat('pollOnce:poster_lookup_error', { message: error.message, rowId })
+  }
+}
+
+// Safety net for rows that never got a lookup attempt (e.g. the connection
+// ended mid-lookup). Capped per cycle so a backlog doesn't hammer Cinemeta.
+async function retryMissingPosters(prisma, accountId) {
+  const stuck = await prisma.proxyStreamSession.findMany({
+    where: { accountId, metadataMatchedAt: null },
+    select: { id: true, displayName: true },
+    take: 5,
+    orderBy: { createdAt: 'asc' },
+  })
+  for (const row of stuck) {
+    await attemptPosterLookup(prisma, row.id, row.displayName)
+  }
+}
+
 async function pollOnce(prisma, accountId, config) {
   heartbeat('pollOnce:start', { accountId })
   try {
+    await retryMissingPosters(prisma, accountId)
     const stats = await fetchProxyStats(config.baseUrl, config.username, config.password)
     const now = new Date()
     // Track which (aiostreamsUser, clientIp, url) combos are active this poll
@@ -340,7 +418,7 @@ async function pollOnce(prisma, accountId, config) {
 
         const displayName = parseDisplayName(conn.filename)
 
-        await prisma.proxyStreamSession.upsert({
+        const row = await prisma.proxyStreamSession.upsert({
           where: {
             accountId_aiostreamsUser_clientIp_url: {
               accountId,
@@ -368,6 +446,12 @@ async function pollOnce(prisma, accountId, config) {
             endTime: null,
           },
         })
+
+        // Strict poster lookup once per stream (cached via
+        // metadataMatchedAt), not on every 30s poll while it stays active.
+        if (!row.metadataMatchedAt) {
+          await attemptPosterLookup(prisma, row.id, displayName)
+        }
       }
     }
 
