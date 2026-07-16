@@ -17,6 +17,7 @@
 // here is (accountId, aiostreamsUser, clientIp, url).
 
 const { searchCinemetaPosterByTitle } = require('./libraryHelpers')
+const { sendSessionStartNotification } = require('./sessionTracker')
 
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
@@ -195,6 +196,74 @@ async function retryMissingPosters(prisma, accountId) {
   }
 }
 
+function normalizeForNotify(name) {
+  return (name || '').toLowerCase().replace(/\(\d{4}\)/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+// Maps an AIOStreams username to a SlickSync user - same tiers as the live
+// Now Playing merge (proxyNowPlaying.js): exact username, then email
+// local-part, then the AIOSTREAMS_FALLBACK_USER_IDS list (in its configured
+// order). Returns null if nothing matches.
+function resolveUserForActiveConnection(users, aiostreamsUser) {
+  const lower = (aiostreamsUser || '').toLowerCase()
+  const direct = users.find((u) => u.username && u.username.toLowerCase() === lower)
+  if (direct) return direct
+  const emailMatches = users.filter((u) => u.email && u.email.split('@')[0].toLowerCase() === lower)
+  if (emailMatches.length === 1) return emailMatches[0]
+  const fallbackUserIds = (process.env.AIOSTREAMS_FALLBACK_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean)
+  const candidates = emailMatches.length > 0
+    ? emailMatches
+    : fallbackUserIds.map((id) => users.find((u) => u.id === id)).filter(Boolean)
+  if (candidates.length === 0) return null
+  if (candidates.length > 1 && fallbackUserIds.length > 0) {
+    const byRank = candidates
+      .map((u) => ({ u, rank: fallbackUserIds.indexOf(u.id) }))
+      .filter((c) => c.rank !== -1)
+      .sort((a, b) => a.rank - b.rank)
+    if (byRank.length) return byRank[0].u
+  }
+  return candidates[0]
+}
+
+// Sends the instant "started watching" Discord notification for a brand-new
+// proxy connection. This is why it lives in the proxy pipeline and not the
+// native one: the proxy sees playback begin in real time, whereas native
+// tracking only notices once the provider writes a watch checkpoint (late).
+// Deduped so a seek (which opens a fresh connection for content already
+// playing) doesn't re-notify.
+async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreamsUser, rowId, displayName) {
+  try {
+    // Seek/continuation guard: if this user already has another active
+    // connection for the same title, they're already watching it - skip.
+    const norm = normalizeForNotify(displayName)
+    const otherActive = await prisma.proxyStreamSession.findMany({
+      where: { accountId, aiostreamsUser, isActive: true, NOT: { id: rowId } },
+      select: { displayName: true },
+    })
+    if (otherActive.some((o) => normalizeForNotify(o.displayName) === norm)) return
+
+    const user = resolveUserForActiveConnection(users, aiostreamsUser)
+    if (!user) return
+
+    const fresh = await prisma.proxyStreamSession.findUnique({
+      where: { id: rowId },
+      select: { posterUrl: true, metadataItemId: true, metadataItemType: true, startTime: true },
+    })
+    await sendSessionStartNotification(webhookUrl, {
+      itemName: displayName,
+      itemType: fresh?.metadataItemType === 'series' ? 'series' : 'movie',
+      itemId: fresh?.metadataItemId || null,
+      videoId: null,
+      season: null,
+      episode: null,
+      startTime: fresh?.startTime || new Date(),
+      poster: fresh?.posterUrl || null,
+    }, user)
+  } catch (error) {
+    heartbeat('pollOnce:start_notify_error', { message: error.message, rowId })
+  }
+}
+
 async function pollOnce(prisma, accountId, config) {
   heartbeat('pollOnce:start', { accountId })
   try {
@@ -203,6 +272,24 @@ async function pollOnce(prisma, accountId, config) {
     const now = new Date()
     // Track which (aiostreamsUser, clientIp, url) combos are active this poll
     const seenKeys = new Set()
+
+    // Load "start watching" notification config once per poll. Only fetch
+    // the user list (needed to attribute the notification) when it's on.
+    let notifyWebhook = null
+    let notifyUsers = []
+    try {
+      const account = await prisma.appAccount.findFirst({ where: { id: accountId }, select: { sync: true } })
+      let cfg = account?.sync
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
+      cfg = cfg || {}
+      if (cfg.notifyOnActivity === true && cfg.webhookUrl) {
+        notifyWebhook = cfg.webhookUrl
+        notifyUsers = await prisma.user.findMany({
+          where: { accountId },
+          select: { id: true, username: true, email: true, colorIndex: true },
+        })
+      }
+    } catch {}
 
     for (const user of stats.users ?? []) {
       for (const conn of user.active ?? []) {
@@ -219,6 +306,14 @@ async function pollOnce(prisma, accountId, config) {
         seenKeys.add(key)
 
         const displayName = parseDisplayName(conn.filename)
+
+        // Was this connection already known before this poll? A brand-new
+        // row means playback just started - the trigger for an instant
+        // "started watching" notification below.
+        const existingRow = await prisma.proxyStreamSession.findUnique({
+          where: { accountId_aiostreamsUser_clientIp_url: { accountId, aiostreamsUser: user.username, clientIp, url } },
+          select: { id: true },
+        })
 
         const row = await prisma.proxyStreamSession.upsert({
           where: {
@@ -253,6 +348,12 @@ async function pollOnce(prisma, accountId, config) {
         // metadataMatchedAt), not on every 30s poll while it stays active.
         if (!row.metadataMatchedAt) {
           await attemptPosterLookup(prisma, row.id, displayName)
+        }
+
+        // Instant "started watching" notification for a genuinely new watch
+        // (runs after the poster lookup so the embed can include it).
+        if (notifyWebhook && !existingRow) {
+          await maybeNotifyStart(prisma, accountId, notifyWebhook, notifyUsers, user.username, row.id, displayName)
         }
       }
     }
@@ -321,5 +422,6 @@ module.exports = {
   scheduleProxyStreamMonitor,
   clearProxyStreamMonitor,
   parseDisplayName,
+  resolveUserForActiveConnection,
   CHECK_INTERVAL_MS,
 }
