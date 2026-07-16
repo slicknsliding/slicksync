@@ -1069,10 +1069,10 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
 
   // Cross-pipeline dedup: the same real viewing event can be tracked by
   // both native Nuvio tracking (recentActivity, real IMDb-style IDs) and
-  // AIOStreams-proxy tracking (watchSessions, AIOMetadata-resolved IDs
-  // like "tmdb:...") - two different ID namespaces that can never match
-  // by ID alone, even for the exact same content. Confirmed real case:
-  // "On Call" showed as two separate History cards from one viewing.
+  // AIOStreams-proxy tracking (watchSessions, synthetic "proxy:<title>"
+  // IDs) - two different ID namespaces that can never match by ID alone,
+  // even for the exact same content. Confirmed real case: "On Call"
+  // showed as two separate History cards from one viewing.
   //
   // Matching strategy deliberately does NOT use plain substring/prefix
   // title comparison - "Chernobyl" is a prefix of "Chernobyl Diaries" the
