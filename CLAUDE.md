@@ -1,7 +1,8 @@
 # SlickSync
 
-SlickSync is a private fork of [Syncio](https://github.com/slicknsliding/slicksync) — a Stremio addon and user
-management system. This fork adds:
+SlickSync is a private fork of [Syncio](https://github.com/iamneur0/syncio) by **neur0** — a Stremio addon and user
+management system. (Additional feature ideas credited to [AIOManager](https://github.com/Sonicx161/AIOManager) by
+**Sonicx161**.) This fork adds:
 
 - A **Nuvio** provider alongside the original Stremio provider (auth, connect, OAuth flows).
 - A credential **Vault** for storing/managing account secrets.
@@ -22,6 +23,13 @@ Upstream docs preserved for reference: [README.upstream.md](README.upstream.md),
    ```
 
 There is no separate migration step to run by hand — see below.
+
+Note: `docker-compose.private.yml` / `docker-compose.public.yml` in this repo (see Directory structure below) are
+repo-local files for building/running standalone (`docker compose -f docker-compose.private.yml up -d --build`,
+per [README.md](README.md)) — neither defines a `slicksync` profile. The actual VPS deploy command above targets a
+host-level compose file that lives outside this repo (elsewhere under `/opt/docker/`, likely orchestrating several
+apps), which gates this service behind a `slicksync` profile. If the VPS deploy command ever needs to change,
+check that host-level file, not the compose files checked into this repo.
 
 ## Database: SQLite in "private" instance mode
 
@@ -55,7 +63,7 @@ prisma/
   migrations/            Postgres migration history (not used for the private/SQLite path)
 scripts/start.sh         Container entrypoint: picks schema by INSTANCE, runs db push, starts backend + frontend
 Dockerfile               Multi-stage build; ARG INSTANCE=private|public selects the Prisma schema at build time
-docker-compose.private.yml / docker-compose.public.yml   Local/dev compose files for each mode
+docker-compose.private.yml / docker-compose.public.yml   Standalone compose files for each mode (not what the VPS uses — see Deploy flow note above)
 src/index.ts             Unused stub (empty export)
 *.patch, fix_*.py, patch_*.py at repo root   Ad-hoc historical patches/scripts from past fixes, not part of the build
 ```
