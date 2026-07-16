@@ -17,7 +17,6 @@
 // here is (accountId, aiostreamsUser, clientIp, url).
 
 const { lookupAiometadataPoster } = require('./aiometadataLookup')
-const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
 
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
@@ -214,7 +213,6 @@ async function resolveUserForClosedConnection(prisma, accountId, aiostreamsUser,
  * completed session does.
  */
 async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTime) {
-  const timeZone = await resolveAccountTimezone(prisma, accountId)
   const groups = new Map()
   for (const row of closedRows) {
     const key = normalizeTitleForHistory(row.displayName) || row.url
@@ -237,54 +235,47 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
       continue
     }
 
-    const durationSeconds = Math.max(0, Math.round((endTime.getTime() - earliestStartTime.getTime()) / 1000))
-    // Skip near-instant blips (e.g. a preview/probe request) rather than
-    // logging a 0-second "watch" in history.
-    if (durationSeconds < 10) continue
+    // The wall-clock lifetime of the AIOStreams proxy connection is NOT a
+    // valid measure of watch time and must never be stored as one. A proxy
+    // connection can linger "active" for hours after playback actually
+    // stopped (AIOStreams keeps stale connections up to 6h - see the poll
+    // loop's stale-close logic), and HTTP range/keep-alive behaviour means
+    // connection lifetime never tracked real playback anyway. Storing it
+    // produced absurd durations (a 5-minute view showing as 22h) that then
+    // accumulated across replays and inflated "Watch Time Today" into the
+    // tens of hours. Real watch duration comes exclusively from the native
+    // provider pipeline (metricsProcessor.js, via overallTimeWatched
+    // deltas) - the proxy is a PRESENCE signal only (Now Playing liveness
+    // + a history marker that something was streamed), never a duration
+    // source.
+    //
+    // We still compute the lifetime purely to skip near-instant probe
+    // blips, but it is never stored.
+    const connectionLifetimeSeconds = Math.max(0, Math.round((endTime.getTime() - earliestStartTime.getTime()) / 1000))
+    if (connectionLifetimeSeconds < 10) continue
 
     const itemId = representative.metadataItemId || `proxy:${normalizeTitleForHistory(title).replace(/\s+/g, '-')}`
     const itemType = representative.metadataItemType === 'series' ? 'series' : 'movie'
 
-    // Feed WatchActivity too - not just WatchSession. "Watch Time Today"
-    // (metricsProcessor.js/metricsBuilder.js) is aggregated purely from
-    // WatchActivity, which only the native library-poll pipeline
-    // (metricsProcessor.js) used to write to. Proxy-only viewing (e.g. it
-    // closed before the native poller ever saw it as active) was
-    // completing successfully in the History list but permanently
-    // disappearing from the daily total the moment it stopped being "now
-    // playing". Records this segment's own duration (not the cumulative
-    // accumulatedDuration below) since WatchActivity rows are deltas.
-    try {
-      const activityDate = new Date(getAccountDateString(endTime, timeZone))
-      await prisma.watchActivity.create({
-        data: {
-          accountId,
-          userId: user.id,
-          itemId,
-          date: activityDate,
-          watchTimeSeconds: durationSeconds,
-          itemType,
-        },
-      })
-    } catch (error) {
-      // Best-effort - a failed WatchActivity write shouldn't block the
-      // WatchSession/history write below.
-      heartbeat('writeCompletedWatchSessions:watch_activity_error', { message: error.message, itemId })
-    }
+    // Deliberately does NOT write WatchActivity. WatchActivity feeds
+    // "Watch Time Today" and must only contain real, provider-measured
+    // watch time from the native pipeline - never proxy connection
+    // lifetime.
 
-    // Look up any existing entry for this exact item first, so a
-    // stop-then-resume of the same content accumulates duration across
-    // segments instead of the later segment silently overwriting (and
-    // discarding credit for) the earlier one.
+    // Write a history marker WatchSession with NO duration (durationSeconds
+    // stays 0 - the client hides the duration badge for proxy entries,
+    // which are identified by requestCount). Never accumulate: this is a
+    // presence record, not a running total. If the native pipeline also
+    // tracked this same item it will carry the real duration separately;
+    // the read-time cross-pipeline merge (metricsBuilder.js) uses max(),
+    // so a native duration always wins over this 0.
     const existingForItem = await prisma.watchSession.findUnique({
       where: { accountId_userId_itemId: { accountId, userId: user.id, itemId } },
     })
-    const accumulatedDuration = (existingForItem?.durationSeconds || 0) + durationSeconds
     const overallStartTime = existingForItem?.startTime && existingForItem.startTime < earliestStartTime
       ? existingForItem.startTime
       : earliestStartTime
     const groupRequestCount = group.reduce((sum, r) => sum + (r.requestCount || 0), 0)
-    const accumulatedRequestCount = (existingForItem?.requestCount || 0) + groupRequestCount
 
     const watchSessionRow = await prisma.watchSession.upsert({
       where: {
@@ -299,15 +290,16 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
         poster: representative.posterUrl || null,
         startTime: overallStartTime,
         endTime,
-        durationSeconds: accumulatedDuration,
-        requestCount: accumulatedRequestCount,
+        durationSeconds: 0,
+        requestCount: groupRequestCount,
         isActive: false,
       },
       update: {
-        startTime: overallStartTime,
+        // Only fill fields that make sense for a presence marker. Crucially
+        // do NOT touch durationSeconds here - if the native pipeline wrote a
+        // real duration onto this same row, the proxy must not clobber it.
         endTime,
-        durationSeconds: accumulatedDuration,
-        requestCount: accumulatedRequestCount,
+        requestCount: groupRequestCount,
         isActive: false,
         poster: representative.posterUrl || undefined,
       },
@@ -556,5 +548,6 @@ module.exports = {
   scheduleProxyStreamMonitor,
   clearProxyStreamMonitor,
   parseDisplayName,
+  writeCompletedWatchSessions,
   CHECK_INTERVAL_MS,
 }
