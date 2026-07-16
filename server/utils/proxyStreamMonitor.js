@@ -479,7 +479,18 @@ async function pollOnce(prisma, accountId, config) {
       }
     }
 
-    // Anything previously active that AIOStreams no longer lists: mark ended.
+    // Anything previously active that AIOStreams no longer lists: mark ended
+    // - but only after a short grace period, not on the very first miss.
+    // A seek/rebuffer renegotiates the connection (new byte-range request,
+    // sometimes a new url) and can legitimately drop out of one 30s poll's
+    // response before reappearing in the next - closing (and writing
+    // completed history for) a connection that's actually still ongoing
+    // produced exactly that: a still-actively-playing stream already
+    // showing up in History with a "final" duration while a fresh
+    // connection for the same content kept it live in Now Playing at the
+    // same time. GRACE_MS gives one full extra poll cycle before treating
+    // a miss as a real stop.
+    const GRACE_MS = CHECK_INTERVAL_MS * 2
     const staleActive = await prisma.proxyStreamSession.findMany({
       where: { accountId, isActive: true },
       select: {
@@ -493,12 +504,15 @@ async function pollOnce(prisma, accountId, config) {
         metadataItemId: true,
         metadataItemType: true,
         startTime: true,
+        lastSeenAt: true,
         requestCount: true,
       },
     })
 
     const toClose = staleActive.filter(
-      (row) => !seenKeys.has(`${row.aiostreamsUser}:::${row.clientIp}:::${row.url}`)
+      (row) =>
+        !seenKeys.has(`${row.aiostreamsUser}:::${row.clientIp}:::${row.url}`) &&
+        (now.getTime() - row.lastSeenAt.getTime()) > GRACE_MS
     )
     if (toClose.length > 0) {
       await prisma.proxyStreamSession.updateMany({
