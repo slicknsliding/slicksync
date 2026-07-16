@@ -65,7 +65,8 @@ scripts/start.sh         Container entrypoint: picks schema by INSTANCE, runs db
 Dockerfile               Multi-stage build; ARG INSTANCE=private|public selects the Prisma schema at build time
 docker-compose.private.yml / docker-compose.public.yml   Standalone compose files for each mode (not what the VPS uses — see Deploy flow note above)
 src/index.ts             Unused stub (empty export)
-*.patch, fix_*.py, patch_*.py at repo root   Ad-hoc historical patches/scripts from past fixes, not part of the build
+archive/                 Ad-hoc historical *.patch/fix_*.py/patch_*.py scripts from past fixes, not part of the build
+test/                    node:test regression tests (node --test test/) - not exhaustive, covers the most-patched-over-time logic
 ```
 
 ## Server routes (`server/routes/`, mounted in `server/index.js`)
