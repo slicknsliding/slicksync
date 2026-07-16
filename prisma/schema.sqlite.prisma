@@ -61,6 +61,7 @@ model Group {
 // GroupMember model removed - using JSON arrays in Group model instead
 
 model Addon {
+  position Int @default(0)
   id               String  @id @default(cuid())
   name             String
   description      String?

@@ -1,0 +1,114 @@
+From dc05de643e313c013a05fa9f6bb470be113f37cc Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sat, 11 Jul 2026 19:43:41 +0000
+Subject: [PATCH] fix: don't count saved-but-unplayed library items as watched
+ activity
+
+isActuallyWatched() treated any item with a non-empty state.video_id as
+watched. Nuvio creates a watch_progress row (video_id set, position 0)
+the moment an item is bookmarked to the library, not just when played,
+so saved-but-never-opened movies were showing up in the Activity feed
+as real watches, timestamped to when they were saved.
+
+Now requires state.timeOffset > 0 alongside video_id before counting
+an item as watched, in both activityMonitor.js and metricsBuilder.js.
+
+Bump to 1.9.3, changelog entry added.
+---
+ client/public/changelog.json    | 12 +++++++++++-
+ package.json                    |  2 +-
+ server/utils/activityMonitor.js | 13 ++++++-------
+ server/utils/metricsBuilder.js  |  5 ++++-
+ 4 files changed, 22 insertions(+), 10 deletions(-)
+
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index c511f71..b10dc65 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,14 @@
+ [
++  {
++    "version": "1.9.3",
++    "date": "2026-07-11",
++    "title": "Fix false 'watched' activity for library items that were only saved, not played",
++    "features": [],
++    "bugFixes": [
++      "isActuallyWatched() in both activityMonitor.js and metricsBuilder.js was treating any item with a non-empty state.video_id as watched. Nuvio creates a watch_progress row (with video_id populated, but position 0) the instant an item is bookmarked/saved to the library, not just when it's actually played - so movies added to your Saved library but never opened were being logged as real watch activity in the Activity feed, timestamped to when they were saved. Now requires state.timeOffset > 0 (genuine playback progress) alongside video_id before counting an item as watched."
++    ],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.2",
+     "date": "2026-07-11",
+@@ -286,4 +296,4 @@
+     ],
+     "miscChores": []
+   }
+-]
+\ No newline at end of file
++]
+diff --git a/package.json b/package.json
+index b5170f0..8742f06 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.2",
++  "version": "1.9.3",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+diff --git a/server/utils/activityMonitor.js b/server/utils/activityMonitor.js
+index e45a1f2..a0482f8 100644
+--- a/server/utils/activityMonitor.js
++++ b/server/utils/activityMonitor.js
+@@ -31,19 +31,18 @@ function getWatchDate(item) {
+ }
+ 
+ function isActuallyWatched(item) {
+-  // Check if the item was actually watched vs just added to library
+-  // An item is considered watched if:
+-  // 1. It has timeWatched > 0 or overallTimeWatched > 0
+-  // 2. OR it has a non-empty video_id (indicates specific content was played)
++  // Check if the item was actually watched vs just saved/bookmarked to the library.
++  // Nuvio creates a watch_progress row (video_id set, position 0) the moment an
++  // item is added to the library - so video_id presence alone is NOT reliable
++  // "watched" evidence. Real playback progress is required too.
+   const state = item.state || {}
+ 
+   if (state.timeWatched > 0 || state.overallTimeWatched > 0) {
+     return true
+   }
+ 
+-  // For series, video_id indicates which episode was watched (e.g., "tt123:1:1")
+-  // For movies, video_id might be the movie ID itself
+-  if (state.video_id && state.video_id.trim() !== '') {
++  // video_id only counts if paired with actual playback progress
++  if (state.video_id && state.video_id.trim() !== '' && state.timeOffset > 0) {
+     return true
+   }
+ 
+diff --git a/server/utils/metricsBuilder.js b/server/utils/metricsBuilder.js
+index 1825a28..a815aff 100644
+--- a/server/utils/metricsBuilder.js
++++ b/server/utils/metricsBuilder.js
+@@ -722,11 +722,14 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
+   }
+ 
+   function isActuallyWatched(item) {
++    // video_id presence alone is NOT reliable "watched" evidence - Nuvio creates
++    // a watch_progress row (video_id set, position 0) the moment an item is
++    // saved/bookmarked to the library. Real playback progress is required too.
+     const state = item.state || {}
+     if (state.timeWatched > 0 || state.overallTimeWatched > 0) {
+       return true
+     }
+-    if (state.video_id && state.video_id.trim() !== '') {
++    if (state.video_id && state.video_id.trim() !== '' && state.timeOffset > 0) {
+       return true
+     }
+     return false
+-- 
+2.43.0
+

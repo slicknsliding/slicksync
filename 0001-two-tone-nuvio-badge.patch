@@ -1,0 +1,68 @@
+From 119e0fdb3b4874a21c42e9bb7504145b92e3040c Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sun, 12 Jul 2026 07:08:56 +0000
+Subject: [PATCH] feat: two-tone blue/orange Nuvio badge
+
+Nuvio badge background is now a 50/50 linear-gradient split between
+the existing blue and a light transparent orange, so it's visually
+distinct from Stremio's solid purple badge at a glance. Stremio
+badge unchanged.
+
+Bump to 1.9.20, changelog entry added.
+---
+ client/components/ui/Badge.tsx |  6 +++---
+ client/public/changelog.json   | 10 ++++++++++
+ package.json                   |  2 +-
+ 3 files changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/client/components/ui/Badge.tsx b/client/components/ui/Badge.tsx
+index c3a3d18..c461383 100644
+--- a/client/components/ui/Badge.tsx
++++ b/client/components/ui/Badge.tsx
+@@ -81,9 +81,9 @@ function getBadgeStyles(variant: BadgeVariant) {
+       };
+     case 'nuvio':
+       return {
+-        background: 'rgba(56, 89, 158, 0.18)',
+-        color: 'rgb(147, 178, 235)',
+-        borderColor: 'rgba(56, 89, 158, 0.3)',
++        background: 'linear-gradient(90deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.22) 50%, rgba(255, 152, 0, 0.22) 100%)',
++        color: 'rgb(186, 208, 240)',
++        borderColor: 'rgba(255, 152, 0, 0.25)',
+       };
+     case 'default':
+     case 'neutral':
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index ac8b6d9..0c7217f 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,14 @@
+ [
++  {
++    "version": "1.9.20",
++    "date": "2026-07-11",
++    "title": "Two-tone Nuvio badge (blue + orange)",
++    "features": [
++      "Nuvio provider badge is now a split two-tone pill - half the existing blue, half a light transparent orange - to stand apart from Stremio's solid purple badge at a glance. Stremio badge unchanged."
++    ],
++    "bugFixes": [],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.19",
+     "date": "2026-07-11",
+diff --git a/package.json b/package.json
+index ef7cf24..3a07082 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.19",
++  "version": "1.9.20",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+-- 
+2.43.0
+

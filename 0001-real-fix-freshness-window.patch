@@ -1,0 +1,141 @@
+From d2add990c98a01c8e679a77f816d346d6c5064d5 Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sun, 12 Jul 2026 19:30:17 +0000
+Subject: [PATCH] fix: widen Now Playing freshness window based on real
+ evidence
+
+Root-caused via live heartbeat tracing during an active watch
+session: isActivelyWatching()'s 7.5min window (v1.9.26) was still
+too tight for Nuvio's actual checkpoint cadence. Direct evidence: a
+genuinely continuous playback session had a real 13.4-minute gap
+between two Nuvio checkpoints, so even the widened v1.9.26 window
+produced a false negative. hasRecentActivity (a separate check in
+the same file, using a 15min/3x window) correctly evaluated the
+exact same data as recent - but wasn't the check actually gating
+session creation, so the discrepancy between the two never surfaced
+until traced directly.
+
+Widened isActivelyWatching to 20min/4x, matching and slightly
+exceeding hasRecentActivity's window. Removed the item-specific
+hardcoded tracing (tt37287335) added for this investigation; kept
+the general heartbeat() infrastructure, which proved broadly useful
+for this and future debugging.
+
+Bump to 1.9.32, changelog entry added.
+---
+ client/public/changelog.json    | 10 ++++++++++
+ package.json                    |  2 +-
+ server/utils/activityMonitor.js |  5 +----
+ server/utils/sessionTracker.js  | 30 +++++++++++-------------------
+ 4 files changed, 23 insertions(+), 24 deletions(-)
+
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index 748c33a..fad3319 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,14 @@
+ [
++  {
++    "version": "1.9.32",
++    "date": "2026-07-12",
++    "title": "Real fix for Now Playing: freshness window was proven too tight",
++    "bugFixes": [
++      "Root-caused via live heartbeat tracing during an active watch session: isActivelyWatching()'s 7.5-minute freshness window (v1.9.26) was too tight for Nuvio's actual checkpoint cadence - direct evidence showed a real 13.4-minute gap between two checkpoints during genuinely continuous playback, meaning even the widened v1.9.26 window still produced false negatives. A separate check in the same file (hasRecentActivity, using a 15-minute window) correctly evaluated the exact same data as 'recent', but wasn't the check actually gating session creation. Widened isActivelyWatching's window to 20 minutes (4x poll interval), matching and slightly exceeding the already-correct hasRecentActivity window. Removed the item-specific hardcoded tracing added for this investigation, kept the general heartbeat infrastructure (proven broadly useful) in place."
++    ],
++    "features": [],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.31",
+     "date": "2026-07-12",
+diff --git a/package.json b/package.json
+index 7a9e720..a41cafb 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.31",
++  "version": "1.9.32",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+diff --git a/server/utils/activityMonitor.js b/server/utils/activityMonitor.js
+index 091092c..699406b 100644
+--- a/server/utils/activityMonitor.js
++++ b/server/utils/activityMonitor.js
+@@ -144,10 +144,7 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
+ 
+           heartbeat('getLibraryForUser:live_fetch_ok', {
+             userId: user.id,
+-            itemCount: Array.isArray(library) ? library.length : 0,
+-            obsession: Array.isArray(library)
+-              ? (library.find(i => i._id === 'tt37287335' || i.id === 'tt37287335') || null)
+-              : null
++            itemCount: Array.isArray(library) ? library.length : 0
+           })
+ 
+           return library || []
+diff --git a/server/utils/sessionTracker.js b/server/utils/sessionTracker.js
+index b0da37c..ba26451 100644
+--- a/server/utils/sessionTracker.js
++++ b/server/utils/sessionTracker.js
+@@ -189,12 +189,22 @@ function getWatchDate(item) {
+  * first. Time-based freshness alone is more reliable for this provider's
+  * update cadence, at the cost of "Now Playing" potentially lingering up to
+  * one window's worth of time after playback genuinely stops.
++ *
++ * Window widened from 1.5x to 4x (7.5min -> 20min) after direct heartbeat
++ * evidence: a genuinely continuous, active playback session had a real
++ * 13.4-minute gap between two Nuvio checkpoints - the 7.5min window was
++ * proven too tight for this provider's actual checkpoint cadence, not just
++ * theoretically risky. Matches (and now slightly exceeds) the separate
++ * hasRecentActivity window elsewhere in this file, which used 3x and
++ * correctly evaluated the same case as "recent" - the two checks were
++ * inconsistent with each other, and the tighter one was the one actually
++ * gating session creation.
+  */
+ function isActivelyWatching(item, userId, now) {
+   const watchDate = getWatchDate(item)
+   if (!watchDate) return false
+ 
+-  return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 1.5)
++  return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 4)
+ }
+ 
+ /**
+@@ -320,20 +330,6 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
+ 
+     const hasWatchProgress = hasTimeWatched || hasVideoId || hasRecentActivity
+ 
+-    if (itemId === 'tt37287335') {
+-      heartbeat('sessionTracker:item_gate_check', {
+-        itemId,
+-        userId,
+-        hasTimeWatched,
+-        hasVideoId,
+-        hasRecentActivity,
+-        hasWatchProgress,
+-        watchDate: watchDate ? watchDate.toISOString() : null,
+-        nowMs,
+-        state
+-      })
+-    }
+-
+     if (!hasWatchProgress) continue
+ 
+     // Update last activity tracking (watchDate is already defined above)
+@@ -342,10 +338,6 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
+     }
+ 
+     const isActive = isActivelyWatching(item, userId, nowMs)
+-
+-    if (itemId === 'tt37287335') {
+-      heartbeat('sessionTracker:item_isActive_result', { itemId, userId, isActive })
+-    }
+     const videoId = item.type === 'series' ? state.video_id : null
+     const { season, episode } = await extractSeasonEpisode(videoId)
+ 
+-- 
+2.43.0
+
