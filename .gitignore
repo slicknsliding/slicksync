@@ -131,7 +131,6 @@ data/
 nodemon.json
 slicksync/
 docker-compose.yml
-test/
 client/debug*
 server/test*
 client/test*
