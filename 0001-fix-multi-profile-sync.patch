@@ -1,0 +1,207 @@
+From 718070748f61fb1b0b286b7065cda52b6ce1f25b Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sat, 11 Jul 2026 19:55:53 +0000
+Subject: [PATCH] fix: sync watch activity across all Nuvio profiles, not just
+ profile 1
+
+getLibrary() hardcoded p_profile_id: 1 on every RPC call, so watch
+activity on any secondary Nuvio profile was invisible to SlickSync
+permanently - not a polling delay, the wrong profile was being
+queried. Confirmed via direct RPC queries: live playback was landing
+on a non-primary profile that was never fetched.
+
+Now calls sync_pull_profiles first, fetches library/progress/watched
+items for every profile, and merges the results (most recent watch
+wins on overlap). Falls back to profile 1 alone if the profile list
+can't be fetched. getAddons()/setAddons() intentionally left on
+profile 1 only - out of scope here.
+
+Bump to 1.9.4, changelog entry added.
+---
+ client/public/changelog.json |  11 ++++
+ package.json                 |   2 +-
+ server/providers/nuvio.js    | 121 ++++++++++++++++++++++++-----------
+ 3 files changed, 94 insertions(+), 40 deletions(-)
+
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index b10dc65..e7a0d08 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,15 @@
+ [
++  {
++    "version": "1.9.4",
++    "date": "2026-07-11",
++    "title": "Sync watch activity across all Nuvio profiles, not just the primary one",
++    "features": [],
++    "bugFixes": [
++      "getLibrary() in the Nuvio provider hardcoded p_profile_id: 1 on every RPC call (sync_pull_library, sync_pull_watch_progress, sync_pull_watched_items), so any watch activity happening under a second, third, etc. Nuvio profile was invisible to SlickSync no matter how long you waited - not a polling delay, the wrong profile was being queried, permanently. Confirmed via direct sync_pull_profiles/sync_pull_watch_progress queries: live playback was landing on a non-primary profile that was never being fetched.",
++      "getLibrary() now calls sync_pull_profiles first and fetches library/progress/watched-items for every profile the account has, merging the results (most-recent watch wins if the same title shows progress on more than one profile). Falls back to profile 1 alone if the profile list can't be fetched, so single-profile accounts are unaffected. getAddons()/setAddons() are intentionally left on profile 1 only for now - out of scope for this fix."
++    ],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.3",
+     "date": "2026-07-11",
+diff --git a/package.json b/package.json
+index 8742f06..2c3a75f 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.3",
++  "version": "1.9.4",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+diff --git a/server/providers/nuvio.js b/server/providers/nuvio.js
+index e860e0c..8905599 100644
+--- a/server/providers/nuvio.js
++++ b/server/providers/nuvio.js
+@@ -172,52 +172,93 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
+ 
+     async getLibrary() {
+       const accessToken = await ensureAuth()
+-      // Combine library + watch progress to build libraryItem shape
+-      const [libraryResult, progressResult, watchedResult] = await Promise.allSettled([
+-        supabaseRpc('sync_pull_library', { p_profile_id: 1 }, accessToken),
+-        supabaseRpc('sync_pull_watch_progress', { p_profile_id: 1 }, accessToken),
+-        supabaseRpc('sync_pull_watched_items', { p_profile_id: 1 }, accessToken)
+-      ])
+-      const library = libraryResult.status === 'fulfilled' ? libraryResult.value : []
+-      const progress = progressResult.status === 'fulfilled' ? progressResult.value : []
+-      const watched = watchedResult.status === 'fulfilled' ? watchedResult.value : []
+-      if (libraryResult.status === 'rejected' && progressResult.status === 'rejected') {
+-        throw new Error('Failed to fetch library: both RPCs failed')
++
++      // Nuvio accounts can have multiple profiles (like Netflix profiles) -
++      // sync_pull_profiles lists them. Watch activity can land on any one of
++      // them, so a hardcoded profile 1 silently misses everything watched
++      // under profile 2, 3, etc. Pull every profile and merge. Falls back to
++      // profile 1 alone if the profile list itself can't be fetched, so a
++      // single-profile account (or a transient failure) still works.
++      let profileIds = [1]
++      try {
++        const profiles = await supabaseRpc('sync_pull_profiles', {}, accessToken)
++        if (Array.isArray(profiles) && profiles.length > 0) {
++          const ids = profiles
++            .map(p => p.profile_index ?? p.profileIndex)
++            .filter(idx => Number.isFinite(idx))
++          if (ids.length > 0) profileIds = ids
++        }
++      } catch (e) {
++        console.warn('[NuvioProvider] Failed to list profiles, falling back to profile 1 only:', e?.message)
++      }
++
++      // Combine library + watch progress to build libraryItem shape, per profile
++      const perProfile = await Promise.all(profileIds.map(async (profileId) => {
++        const [libraryResult, progressResult, watchedResult] = await Promise.allSettled([
++          supabaseRpc('sync_pull_library', { p_profile_id: profileId }, accessToken),
++          supabaseRpc('sync_pull_watch_progress', { p_profile_id: profileId }, accessToken),
++          supabaseRpc('sync_pull_watched_items', { p_profile_id: profileId }, accessToken)
++        ])
++        return {
++          library: libraryResult.status === 'fulfilled' ? libraryResult.value : [],
++          progress: progressResult.status === 'fulfilled' ? progressResult.value : [],
++          watched: watchedResult.status === 'fulfilled' ? watchedResult.value : [],
++          libraryFailed: libraryResult.status === 'rejected',
++          progressFailed: progressResult.status === 'rejected'
++        }
++      }))
++
++      if (perProfile.every(r => r.libraryFailed && r.progressFailed)) {
++        throw new Error('Failed to fetch library: both RPCs failed for every profile')
+       }
+ 
+-      // Build title lookup from watched items (which have titles)
++      // Build title lookup from watched items across all profiles (which have titles)
+       const titleMap = new Map()
+-      if (Array.isArray(watched)) {
+-        for (const w of watched) {
+-          if (w.content_id && w.title) titleMap.set(w.content_id, w.title)
++      for (const { watched } of perProfile) {
++        if (Array.isArray(watched)) {
++          for (const w of watched) {
++            if (w.content_id && w.title) titleMap.set(w.content_id, w.title)
++          }
+         }
+       }
+ 
+-      // Transform watch progress to universal libraryItem shape
+-      const items = progress.map(p => ({
+-        _id: p.content_id,
+-        name: p.title || p.name || titleMap.get(p.content_id) || '',
+-        type: p.content_type,
+-        poster: null,
+-        state: {
+-          video_id: p.video_id,
+-          season: p.season,
+-          episode: p.episode,
+-          timeOffset: p.position,
+-          timeWatched: 0,
+-          overallTimeWatched: p.position || 0,
+-          lastWatched: new Date(p.last_watched).toISOString()
+-        },
+-        _mtime: new Date(p.last_watched).getTime(),
+-        _ctime: new Date(p.last_watched).getTime(),
+-        removed: false
+-      }))
++      // Transform watch progress to universal libraryItem shape, merged across
++      // profiles. If the same content was watched under more than one profile,
++      // keep whichever entry is most recent.
++      const itemsById = new Map()
++      for (const { progress } of perProfile) {
++        for (const p of (Array.isArray(progress) ? progress : [])) {
++          const mtime = new Date(p.last_watched).getTime()
++          const existing = itemsById.get(p.content_id)
++          if (existing && existing._mtime >= mtime) continue
++          itemsById.set(p.content_id, {
++            _id: p.content_id,
++            name: p.title || p.name || titleMap.get(p.content_id) || '',
++            type: p.content_type,
++            poster: null,
++            state: {
++              video_id: p.video_id,
++              season: p.season,
++              episode: p.episode,
++              timeOffset: p.position,
++              timeWatched: 0,
++              overallTimeWatched: p.position || 0,
++              lastWatched: new Date(p.last_watched).toISOString()
++            },
++            _mtime: mtime,
++            _ctime: mtime,
++            removed: false
++          })
++        }
++      }
++      const items = Array.from(itemsById.values())
+ 
+-      // Merge in any library-only items (bookmarked but no progress)
+-      if (Array.isArray(library)) {
++      // Merge in any library-only items (bookmarked but no progress), from any profile
++      for (const { library } of perProfile) {
++        if (!Array.isArray(library)) continue
+         for (const item of library) {
+-          if (!items.find(i => i._id === item.content_id)) {
+-            items.push({
++          if (!itemsById.has(item.content_id)) {
++            const placeholder = {
+               _id: item.content_id,
+               name: item.title || titleMap.get(item.content_id) || '',
+               type: item.content_type,
+@@ -226,7 +267,9 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
+               _mtime: Date.now(),
+               _ctime: Date.now(),
+               removed: false
+-            })
++            }
++            itemsById.set(item.content_id, placeholder)
++            items.push(placeholder)
+           }
+         }
+       }
+-- 
+2.43.0
+

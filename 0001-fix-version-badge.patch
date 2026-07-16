@@ -1,0 +1,60 @@
+From d89759b03e1a7836fde91f5983dea76aa62c7fa5 Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sat, 11 Jul 2026 21:28:28 +0000
+Subject: [PATCH] fix: version badge stuck at v1.9.2
+
+.release-please-manifest.json was never updated by any patch since
+v1.9.2, even though next.config.ts prefers it over package.json when
+resolving NEXT_PUBLIC_APP_VERSION - so the sidebar badge and the
+Changelog page's 'Current' tag kept showing v1.9.2 regardless of what
+was actually deployed. Bump to 1.9.9, changelog entry added.
+---
+ .release-please-manifest.json |  2 +-
+ client/public/changelog.json  | 10 ++++++++++
+ package.json                  |  2 +-
+ 3 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/.release-please-manifest.json b/.release-please-manifest.json
+index 93cff0a..f6d2cc8 100644
+--- a/.release-please-manifest.json
++++ b/.release-please-manifest.json
+@@ -1,3 +1,3 @@
+ {
+-    ".": "1.9.2"
++    ".": "1.9.9"
+ }
+\ No newline at end of file
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index 3e5b97c..a6f4d85 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,14 @@
+ [
++  {
++    "version": "1.9.9",
++    "date": "2026-07-11",
++    "title": "Fix version badge stuck at v1.9.2",
++    "bugFixes": [
++      "The sidebar version badge and Changelog page's 'Current' marker read .release-please-manifest.json first, before falling back to package.json. None of the v1.9.3-v1.9.8 patches updated that file, so the app kept reporting v1.9.2 as current even though newer code was actually running. Updated the manifest to match."
++    ],
++    "features": [],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.8",
+     "date": "2026-07-11",
+diff --git a/package.json b/package.json
+index ae06f36..6839391 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.8",
++  "version": "1.9.9",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+-- 
+2.43.0
+

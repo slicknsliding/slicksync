@@ -1,0 +1,210 @@
+From 9b7c5c05c580644effeecc7218f75e401f8d0c77 Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sun, 12 Jul 2026 19:05:24 +0000
+Subject: [PATCH] fix: file-based heartbeat diagnostics for activity monitor
+ scheduler
+
+Confirmed via a completely empty unfiltered docker logs dump over a
+20-minute window (despite active traffic) that backend console
+output isn't reliably reaching docker logs during steady-state
+operation - same class of issue as v1.9.2's unconfirmed stdbuf fix.
+Combined with hard DB evidence (WatchSession table 13+ hours stale
+despite fresh upstream Nuvio checkpoint data confirmed present), this
+means the scheduler's own logging can't be trusted to tell us whether
+it's running at all.
+
+Added file-based heartbeat logging (fs.appendFileSync, bypassing
+stdout/stderr entirely - the same approach that successfully
+diagnosed the Stremio Vault bug earlier) at every checkpoint: the
+call site in index.js, scheduleActivityMonitor's init, checkAllAccounts
+entry/error, and every stage of checkActivityForAccount (account
+lookup, user lookup, before/after metrics processing, before/after
+session processing, outer catch). Also brackets scheduleSyncs (the
+one scheduler call not wrapped in try/catch) to test whether it's
+silently blocking everything registered after it.
+
+Bump to 1.9.30, changelog entry added.
+---
+ client/public/changelog.json    | 10 ++++++++++
+ package.json                    |  2 +-
+ server/index.js                 | 16 ++++++++++++++++
+ server/utils/activityMonitor.js | 28 ++++++++++++++++++++++++++++
+ 4 files changed, 55 insertions(+), 1 deletion(-)
+
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index 722ac93..c7ab631 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,14 @@
+ [
++  {
++    "version": "1.9.30",
++    "date": "2026-07-12",
++    "title": "File-based heartbeat diagnostics for the activity monitor scheduler",
++    "bugFixes": [
++      "console.log output from the backend process has not reliably reached docker logs during steady-state operation - confirmed via a completely empty unfiltered log dump over a 20-minute window despite active traffic and DB evidence of the scheduler not running (WatchSession table 13+ hours stale despite fresh upstream data). This is the same class of issue v1.9.2's stdbuf fix targeted but never confirmed working for bun specifically. Added direct file-based heartbeat logging (bypassing stdout/stderr entirely, same proven approach as the Stremio Vault diagnostics) at every checkpoint in the activity monitor scheduler: server/index.js's call site, scheduleActivityMonitor's init, checkAllAccounts, and every stage of checkActivityForAccount including account lookup, user lookup, metrics processing, and session processing. Retrieve with: docker exec slicksync cat /app/data/activity-monitor-debug.log"
++    ],
++    "features": [],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.29",
+     "date": "2026-07-12",
+diff --git a/package.json b/package.json
+index c7f488d..35225d0 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.29",
++  "version": "1.9.30",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+diff --git a/server/index.js b/server/index.js
+index 0bb78f2..2a805c7 100644
+--- a/server/index.js
++++ b/server/index.js
+@@ -291,6 +291,10 @@ async function bootstrap() {
+       }
+     }
+ 
++    try {
++      const fs = require('fs')
++      fs.appendFileSync('/app/data/activity-monitor-debug.log', `[${new Date().toISOString()}] index.js:before_scheduleSyncs {}\n`)
++    } catch {}
+     scheduleSyncs(
+       readSyncFrequencyMinutes(),
+       prisma,
+@@ -301,6 +305,10 @@ async function bootstrap() {
+       schedulerReq,
+       INSTANCE_TYPE
+     )
++    try {
++      const fs = require('fs')
++      fs.appendFileSync('/app/data/activity-monitor-debug.log', `[${new Date().toISOString()}] index.js:after_scheduleSyncs {}\n`)
++    } catch {}
+ 
+     // Schedule user expiration cleanup (runs at midnight)
+     try {
+@@ -310,9 +318,17 @@ async function bootstrap() {
+     }
+ 
+     // Schedule activity monitor (checks for new watch activity every 5 minutes)
++    try {
++      const fs = require('fs')
++      fs.appendFileSync('/app/data/activity-monitor-debug.log', `[${new Date().toISOString()}] index.js:about_to_call_scheduleActivityMonitor {}\n`)
++    } catch {}
+     try {
+       scheduleActivityMonitor(prisma, decrypt, getAccountId, INSTANCE_TYPE)
+     } catch (err) {
++      try {
++        const fs = require('fs')
++        fs.appendFileSync('/app/data/activity-monitor-debug.log', `[${new Date().toISOString()}] index.js:scheduleActivityMonitor_threw ${JSON.stringify({ message: err.message, stack: err.stack })}\n`)
++      } catch {}
+       console.error('⚠️ Failed to initialize activity monitor:', err)
+     }
+ 
+diff --git a/server/utils/activityMonitor.js b/server/utils/activityMonitor.js
+index fe90b1c..58491c5 100644
+--- a/server/utils/activityMonitor.js
++++ b/server/utils/activityMonitor.js
+@@ -11,6 +11,21 @@ let activityTimer = null
+ // Track notified items: Map<accountId, Set<itemId>>
+ const notifiedItems = new Map()
+ 
++// Direct file-based heartbeat, bypassing console.log/stdout entirely. Console
++// output from this backend process has not reliably reached `docker logs`
++// during steady-state operation (confirmed: zero output over a 20-minute
++// window despite active traffic) - the v1.9.2 stdbuf fix's own changelog
++// admitted it was never actually confirmed to work with bun specifically.
++// This gives a way to verify whether/how far the scheduler is actually
++// executing, independent of whether console output ever surfaces.
++function heartbeat(event, data = {}) {
++  try {
++    const fs = require('fs')
++    const line = `[${new Date().toISOString()}] ${event} ${JSON.stringify(data)}\n`
++    fs.appendFileSync('/app/data/activity-monitor-debug.log', line)
++  } catch {}
++}
++
+ function clearActivityMonitor() {
+   if (activityTimer) {
+     clearInterval(activityTimer)
+@@ -58,6 +73,7 @@ function isActuallyWatched(item) {
+ }
+ 
+ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId) {
++  heartbeat('checkActivityForAccount:start', { accountId })
+   try {
+     // Get account sync config to check for webhook URL
+     const account = await prisma.appAccount.findUnique({
+@@ -65,6 +81,7 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
+       select: { sync: true }
+     })
+ 
++    heartbeat('checkActivityForAccount:account_lookup_done', { found: !!account })
+     if (!account) return
+ 
+     let syncCfg = account.sync || null
+@@ -94,6 +111,8 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
+ 
+     if (users.length === 0) return
+ 
++    heartbeat('checkActivityForAccount:users_found', { count: users.length })
++
+     // Process metrics for all users (regardless of webhook configuration)
+     // This runs every 5 minutes to compute accurate watch time deltas
+     try {
+@@ -133,13 +152,18 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
+ 
+       // Process metrics for all users
+       console.log(`[ActivityMonitor] Starting metrics processing for account ${accountId}, ${users.length} users`)
++      heartbeat('processAccountMetrics:before')
+       await processAccountMetrics(prisma, accountId, users, getLibraryForUser, new Date())
++      heartbeat('processAccountMetrics:after')
+       console.log(`[ActivityMonitor] Completed metrics processing for account ${accountId}`)
+ 
+       // Process watch sessions (track start/end times)
+       try {
++        heartbeat('processAccountSessions:before')
+         await processAccountSessions(prisma, accountId, users, getLibraryForUser, new Date())
++        heartbeat('processAccountSessions:after')
+       } catch (sessionError) {
++        heartbeat('processAccountSessions:error', { message: sessionError.message, stack: sessionError.stack })
+         console.warn(`[ActivityMonitor] Error processing sessions:`, sessionError.message)
+       }
+ 
+@@ -310,12 +334,14 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
+     // was completely indistinguishable from "nothing new happened this
+     // cycle" — no way to tell the difference without instrumenting this by
+     // hand. A single warning per failed 5-minute cycle is not log spam.
++    heartbeat('checkActivityForAccount:error', { message: error.message, stack: error.stack })
+     console.warn(`[ActivityMonitor] checkActivityForAccount failed for account ${accountId}:`, error.message)
+     console.warn(error.stack)
+   }
+ }
+ 
+ async function checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
++  heartbeat('checkAllAccounts:start', { INSTANCE_TYPE })
+   try {
+     if (INSTANCE_TYPE === 'public') {
+       // Check all accounts
+@@ -334,11 +360,13 @@ async function checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
+     // Same reasoning as above — checkActivityForAccount already logs its own
+     // errors, but this outer catch existing at all meant something could
+     // theoretically still fail invisibly above/around that call.
++    heartbeat('checkAllAccounts:error', { message: error.message, stack: error.stack })
+     console.warn(`[ActivityMonitor] checkAllAccounts failed:`, error.message)
+   }
+ }
+ 
+ function scheduleActivityMonitor(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
++  heartbeat('scheduleActivityMonitor:init', { INSTANCE_TYPE })
+   clearActivityMonitor()
+ 
+   // Run immediately on startup to update library database
+-- 
+2.43.0
+

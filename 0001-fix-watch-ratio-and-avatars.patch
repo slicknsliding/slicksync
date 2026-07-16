@@ -1,0 +1,247 @@
+From f87d3daddc9cfa183f3513fdbeeac822a49fa8dc Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sat, 11 Jul 2026 20:17:12 +0000
+Subject: [PATCH] fix: require meaningful progress ratio for isActuallyWatched,
+ show real avatars on Activity cards
+
+isActuallyWatched()'s overallTimeWatched > 0 check was trivially true
+for any nonzero Nuvio position, including a few seconds of hover/
+preview autoplay while browsing the library (duration was never even
+captured to compare against) - so saved-but-unwatched titles kept
+reappearing as 'watched' activity despite the v1.9.3 fix.
+
+getLibrary() now captures state.duration from the progress RPC.
+isActuallyWatched requires progress >= 5% of runtime (AIOManager's
+threshold) instead of any nonzero value, falling back to requiring a
+video_id when duration is unavailable (live TV/IPTV).
+
+Also threads avatarUrl/useGravatar through the recentActivity feed so
+Activity cards show real user avatars instead of always falling back
+to initials.
+
+Bump to 1.9.6, changelog entry added.
+---
+ client/app/(admin)/activity/page.tsx |  6 +++--
+ client/lib/api.ts                    |  2 +-
+ client/public/changelog.json         | 12 ++++++++++
+ package.json                         |  2 +-
+ server/providers/nuvio.js            |  1 +
+ server/utils/activityMonitor.js      | 30 ++++++++++++++---------
+ server/utils/metricsBuilder.js       | 36 ++++++++++++++++++----------
+ 7 files changed, 62 insertions(+), 27 deletions(-)
+
+diff --git a/client/app/(admin)/activity/page.tsx b/client/app/(admin)/activity/page.tsx
+index da87961..a5c4d31 100644
+--- a/client/app/(admin)/activity/page.tsx
++++ b/client/app/(admin)/activity/page.tsx
+@@ -57,6 +57,7 @@ interface ActivityItem {
+   isSynthetic?: boolean;
+   poster?: string;
+   profileLabel?: string; // Nuvio profile name this was watched under, if known
++  userAvatarUrl?: string | null;
+ }
+ 
+ // Invite history types
+@@ -142,6 +143,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
+         isSynthetic: false,
+         poster: entry.item.poster,
+         profileLabel: entry.profileLabel ?? undefined,
++        userAvatarUrl: entry.user.useGravatar ? null : (entry.user.avatarUrl ?? null),
+       });
+     });
+   }
+@@ -374,7 +376,7 @@ const ActivityCard = memo(function ActivityCard({
+ 
+       {/* User avatar */}
+       <Link href={`/users/${activity.userId}`}>
+-        <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} size="md" />
++        <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="md" />
+       </Link>
+ 
+       {/* Activity details */}
+@@ -484,7 +486,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
+         {/* User avatar - top right */}
+         <div className="absolute top-2 right-2">
+           <Link href={`/users/${activity.userId}`} onClick={(e) => e.stopPropagation()}>
+-            <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} size="sm" />
++            <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
+           </Link>
+         </div>
+ 
+diff --git a/client/lib/api.ts b/client/lib/api.ts
+index 9f0a95a..af0cded 100644
+--- a/client/lib/api.ts
++++ b/client/lib/api.ts
+@@ -1601,7 +1601,7 @@ export interface MetricsData {
+     startedAt: string;
+   }>;
+   recentActivity?: Array<{
+-    user: { id: string; username: string; email?: string; colorIndex: number };
++    user: { id: string; username: string; email?: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean };
+     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };
+     videoId: string | null;
+     profileLabel?: string | null;
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index 6bb1c01..eb686b9 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,16 @@
+ [
++  {
++    "version": "1.9.6",
++    "date": "2026-07-11",
++    "title": "Stop preview/hover autoplay from counting as a real watch; show real avatars on Activity cards",
++    "features": [
++      "Activity cards (both grid and list view) now show the actual user avatar (avatarUrl, respecting useGravatar) instead of always falling back to a generic letter badge. Previously the Activity feed's user objects never included avatarUrl, so UserAvatar had nothing to render but initials, even for accounts with a real avatar set (as seen on the Users page)."
++    ],
++    "bugFixes": [
++      "isActuallyWatched() still had a gap after v1.9.3: it checked state.overallTimeWatched > 0, but overallTimeWatched was being set to the same raw position value as timeOffset - so any nonzero position (including a few seconds of Nuvio's hover/preview-autoplay while just browsing the library) still counted as a full watch. The item's actual duration was never even captured from the API response to compare against. getLibrary() now records state.duration alongside timeOffset, and isActuallyWatched requires progress to be at least 5% of the runtime (same threshold used by AIOManager) instead of just nonzero - filters out preview noise while still catching real partial watches. Falls back to requiring a video_id when duration isn't available (e.g. live TV/IPTV items)."
++    ],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.5",
+     "date": "2026-07-11",
+diff --git a/package.json b/package.json
+index ffa2e97..a218898 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.5",
++  "version": "1.9.6",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+diff --git a/server/providers/nuvio.js b/server/providers/nuvio.js
+index c6793e0..bd1a82f 100644
+--- a/server/providers/nuvio.js
++++ b/server/providers/nuvio.js
+@@ -249,6 +249,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
+               season: p.season,
+               episode: p.episode,
+               timeOffset: p.position,
++              duration: p.duration,
+               timeWatched: 0,
+               overallTimeWatched: p.position || 0,
+               lastWatched: new Date(p.last_watched).toISOString(),
+diff --git a/server/utils/activityMonitor.js b/server/utils/activityMonitor.js
+index a0482f8..7fac136 100644
+--- a/server/utils/activityMonitor.js
++++ b/server/utils/activityMonitor.js
+@@ -31,22 +31,30 @@ function getWatchDate(item) {
+ }
+ 
+ function isActuallyWatched(item) {
+-  // Check if the item was actually watched vs just saved/bookmarked to the library.
+-  // Nuvio creates a watch_progress row (video_id set, position 0) the moment an
+-  // item is added to the library - so video_id presence alone is NOT reliable
+-  // "watched" evidence. Real playback progress is required too.
++  // Check if the item was actually watched vs just previewed/bookmarked.
++  // Nuvio records a nonzero position even for brief hover/preview autoplay
++  // while browsing the library - so overallTimeWatched/timeOffset > 0 alone
++  // is NOT reliable "watched" evidence on its own. Require it to be a
++  // meaningful fraction of the item's actual runtime instead.
+   const state = item.state || {}
+ 
+-  if (state.timeWatched > 0 || state.overallTimeWatched > 0) {
+-    return true
+-  }
++  const timeWatched = Number(state.timeWatched || 0)
++  if (timeWatched > 0) return true
++
++  const progressMs = Math.max(Number(state.timeOffset || 0), Number(state.overallTimeWatched || 0))
++  if (progressMs <= 0) return false
+ 
+-  // video_id only counts if paired with actual playback progress
+-  if (state.video_id && state.video_id.trim() !== '' && state.timeOffset > 0) {
+-    return true
++  const duration = Number(state.duration || 0)
++  if (duration > 0) {
++    // Same 5% threshold used by AIOManager - filters out preview-autoplay
++    // noise while still catching real partial watches
++    return (progressMs / duration) > 0.05
+   }
+ 
+-  return false
++  // No duration to compute a ratio against - fall back to requiring a
++  // real video_id alongside the progress (e.g. live TV/IPTV items report
++  // duration: 0 but a genuine position)
++  return !!(state.video_id && state.video_id.trim() !== '')
+ }
+ 
+ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId) {
+diff --git a/server/utils/metricsBuilder.js b/server/utils/metricsBuilder.js
+index 66a2315..61ad0dc 100644
+--- a/server/utils/metricsBuilder.js
++++ b/server/utils/metricsBuilder.js
+@@ -388,7 +388,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
+       isActive: true,
+       stremioAuthKey: true,
+       inviteCode: true,
+-      colorIndex: true
++      colorIndex: true,
++      avatarUrl: true,
++      useGravatar: true
+     },
+     orderBy: { createdAt: 'asc' }
+   })
+@@ -722,17 +724,23 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
+   }
+ 
+   function isActuallyWatched(item) {
+-    // video_id presence alone is NOT reliable "watched" evidence - Nuvio creates
+-    // a watch_progress row (video_id set, position 0) the moment an item is
+-    // saved/bookmarked to the library. Real playback progress is required too.
++    // Nonzero position/overallTimeWatched alone is NOT reliable "watched"
++    // evidence - Nuvio records some position even for brief preview/hover
++    // autoplay while browsing the library. Require it to be a meaningful
++    // fraction of the item's actual runtime instead.
+     const state = item.state || {}
+-    if (state.timeWatched > 0 || state.overallTimeWatched > 0) {
+-      return true
+-    }
+-    if (state.video_id && state.video_id.trim() !== '' && state.timeOffset > 0) {
+-      return true
++    const timeWatched = Number(state.timeWatched || 0)
++    if (timeWatched > 0) return true
++
++    const progressMs = Math.max(Number(state.timeOffset || 0), Number(state.overallTimeWatched || 0))
++    if (progressMs <= 0) return false
++
++    const duration = Number(state.duration || 0)
++    if (duration > 0) {
++      return (progressMs / duration) > 0.05
+     }
+-    return false
++
++    return !!(state.video_id && state.video_id.trim() !== '')
+   }
+ 
+ 
+@@ -921,7 +929,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
+             id: ep.userId,
+             username: user.username || user.email || ep.userId,
+             email: user.email,
+-            colorIndex: user.colorIndex || 0
++            colorIndex: user.colorIndex || 0,
++            avatarUrl: user.avatarUrl || null,
++            useGravatar: user.useGravatar ?? false
+           },
+           item: {
+             id: ep.showId,
+@@ -947,7 +957,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
+             id: m.userId,
+             username: user.username || user.email || m.userId,
+             email: user.email,
+-            colorIndex: user.colorIndex || 0
++            colorIndex: user.colorIndex || 0,
++            avatarUrl: user.avatarUrl || null,
++            useGravatar: user.useGravatar ?? false
+           },
+           item: {
+             id: m.itemId,
+-- 
+2.43.0
+

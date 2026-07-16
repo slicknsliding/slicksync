@@ -1,0 +1,308 @@
+From 7054327e3b3848ad436cd7a57e6e8fbed4893283 Mon Sep 17 00:00:00 2001
+From: Slick <slick@slicksync.local>
+Date: Sat, 11 Jul 2026 20:00:35 +0000
+Subject: [PATCH] feat: label Activity feed entries with their Nuvio profile
+
+v1.9.4 fixed getLibrary() to sync all Nuvio profiles, not just the
+primary one. This tags every item with the profile it came from
+(state.nuvioProfile in nuvio.js), threads that through
+metricsProcessor.js into a new profileLabel column on
+EpisodeWatchHistory/MovieWatchHistory, exposes it in the
+recentActivity feed built by metricsBuilder.js, and renders it as a
+small badge on Activity cards in both the grid and list views.
+
+Nullable column addition, applied automatically via the existing
+'prisma db push' step on container start - no manual migration
+needed for the private SQLite deployment.
+
+Bump to 1.9.5, changelog entry added.
+---
+ client/app/(admin)/activity/page.tsx | 16 ++++++++++++++++
+ client/lib/api.ts                    |  1 +
+ client/public/changelog.json         | 10 ++++++++++
+ package.json                         |  2 +-
+ prisma/schema.postgres.prisma        |  2 ++
+ prisma/schema.sqlite.prisma          |  2 ++
+ server/providers/nuvio.js            | 23 ++++++++++++++++-------
+ server/utils/metricsBuilder.js       |  2 ++
+ server/utils/metricsProcessor.js     | 10 ++++++++--
+ 9 files changed, 58 insertions(+), 10 deletions(-)
+
+diff --git a/client/app/(admin)/activity/page.tsx b/client/app/(admin)/activity/page.tsx
+index 8b723f6..da87961 100644
+--- a/client/app/(admin)/activity/page.tsx
++++ b/client/app/(admin)/activity/page.tsx
+@@ -56,6 +56,7 @@ interface ActivityItem {
+   isActive?: boolean; // True if still watching
+   isSynthetic?: boolean;
+   poster?: string;
++  profileLabel?: string; // Nuvio profile name this was watched under, if known
+ }
+ 
+ // Invite history types
+@@ -140,6 +141,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
+         isActive: false,
+         isSynthetic: false,
+         poster: entry.item.poster,
++        profileLabel: entry.profileLabel ?? undefined,
+       });
+     });
+   }
+@@ -405,6 +407,11 @@ const ActivityCard = memo(function ActivityCard({
+               </span>
+             )}
+           </button>
++          {activity.profileLabel && (
++            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-300">
++              {activity.profileLabel}
++            </span>
++          )}
+         </div>
+ 
+         {/* Session meta: duration & start/end time */}
+@@ -481,6 +488,15 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
+           </Link>
+         </div>
+ 
++        {/* Nuvio profile badge - bottom left, only shown when known */}
++        {activity.profileLabel && (
++          <div className="absolute bottom-2 left-2">
++            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
++              {activity.profileLabel}
++            </div>
++          </div>
++        )}
++
+         {/* Session duration badge - top left, styled like the activity type tick */}
+         {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
+           <div className="absolute top-2 left-2">
+diff --git a/client/lib/api.ts b/client/lib/api.ts
+index 563d63b..9f0a95a 100644
+--- a/client/lib/api.ts
++++ b/client/lib/api.ts
+@@ -1604,6 +1604,7 @@ export interface MetricsData {
+     user: { id: string; username: string; email?: string; colorIndex: number };
+     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };
+     videoId: string | null;
++    profileLabel?: string | null;
+     watchedAt: string;
+     watchedAtTimestamp: number;
+   }>;
+diff --git a/client/public/changelog.json b/client/public/changelog.json
+index e7a0d08..6bb1c01 100644
+--- a/client/public/changelog.json
++++ b/client/public/changelog.json
+@@ -1,4 +1,14 @@
+ [
++  {
++    "version": "1.9.5",
++    "date": "2026-07-11",
++    "title": "Label Activity feed items with which Nuvio profile they were watched under",
++    "features": [
++      "Since v1.9.4 now syncs all Nuvio profiles instead of just the primary one, movie/episode watch entries can come from different profiles on the same account (e.g. a household's Main, Secondary, and Test profiles). Each entry is now tagged with the Nuvio profile name it came from and stored in a new profileLabel column on EpisodeWatchHistory and MovieWatchHistory. The Activity page (both grid and list views) shows this as a small badge on each card when known, so activity from different profiles stays visually distinguishable instead of being merged anonymously."
++    ],
++    "bugFixes": [],
++    "miscChores": []
++  },
+   {
+     "version": "1.9.4",
+     "date": "2026-07-11",
+diff --git a/package.json b/package.json
+index 2c3a75f..ffa2e97 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "slicksync",
+-  "version": "1.9.4",
++  "version": "1.9.5",
+   "description": "SlickSync - Stremio addon and user management system",
+   "main": "server/index.js",
+   "scripts": {
+diff --git a/prisma/schema.postgres.prisma b/prisma/schema.postgres.prisma
+index 8766e24..7ff84fd 100644
+--- a/prisma/schema.postgres.prisma
++++ b/prisma/schema.postgres.prisma
+@@ -285,6 +285,7 @@ model EpisodeWatchHistory {
+   season      Int? // Season number (null if unknown)
+   episode     Int? // Episode number (null if unknown)
+   poster      String? // Show poster URL
++  profileLabel String? // Which provider profile this was watched under (e.g. Nuvio profile name), if known
+   watchedAt   DateTime // When this episode was watched
+   createdAt   DateTime @default(now())
+ 
+@@ -307,6 +308,7 @@ model MovieWatchHistory {
+   itemId    String // Movie ID (e.g., "tt1234567")
+   itemName  String // Movie name for display
+   poster    String? // Movie poster URL
++  profileLabel String? // Which provider profile this was watched under (e.g. Nuvio profile name), if known
+   watchedAt DateTime // When this movie was watched
+   createdAt DateTime @default(now())
+ 
+diff --git a/prisma/schema.sqlite.prisma b/prisma/schema.sqlite.prisma
+index a17a405..6ebba49 100644
+--- a/prisma/schema.sqlite.prisma
++++ b/prisma/schema.sqlite.prisma
+@@ -285,6 +285,7 @@ model EpisodeWatchHistory {
+   season      Int? // Season number (null if unknown)
+   episode     Int? // Episode number (null if unknown)
+   poster      String? // Show poster URL
++  profileLabel String? // Which provider profile this was watched under (e.g. Nuvio profile name), if known
+   watchedAt   DateTime // When this episode was watched
+   createdAt   DateTime @default(now())
+ 
+@@ -307,6 +308,7 @@ model MovieWatchHistory {
+   itemId    String // Movie ID (e.g., "tt1234567")
+   itemName  String // Movie name for display
+   poster    String? // Movie poster URL
++  profileLabel String? // Which provider profile this was watched under (e.g. Nuvio profile name), if known
+   watchedAt DateTime // When this movie was watched
+   createdAt DateTime @default(now())
+ 
+diff --git a/server/providers/nuvio.js b/server/providers/nuvio.js
+index 8905599..c6793e0 100644
+--- a/server/providers/nuvio.js
++++ b/server/providers/nuvio.js
+@@ -180,12 +180,18 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
+       // profile 1 alone if the profile list itself can't be fetched, so a
+       // single-profile account (or a transient failure) still works.
+       let profileIds = [1]
++      const profileNames = new Map() // profile_index -> display name
+       try {
+         const profiles = await supabaseRpc('sync_pull_profiles', {}, accessToken)
+         if (Array.isArray(profiles) && profiles.length > 0) {
+-          const ids = profiles
+-            .map(p => p.profile_index ?? p.profileIndex)
+-            .filter(idx => Number.isFinite(idx))
++          const ids = []
++          for (const p of profiles) {
++            const idx = p.profile_index ?? p.profileIndex
++            if (Number.isFinite(idx)) {
++              ids.push(idx)
++              if (p.name) profileNames.set(idx, p.name)
++            }
++          }
+           if (ids.length > 0) profileIds = ids
+         }
+       } catch (e) {
+@@ -200,6 +206,8 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
+           supabaseRpc('sync_pull_watched_items', { p_profile_id: profileId }, accessToken)
+         ])
+         return {
++          profileId,
++          profileName: profileNames.get(profileId) || null,
+           library: libraryResult.status === 'fulfilled' ? libraryResult.value : [],
+           progress: progressResult.status === 'fulfilled' ? progressResult.value : [],
+           watched: watchedResult.status === 'fulfilled' ? watchedResult.value : [],
+@@ -226,7 +234,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
+       // profiles. If the same content was watched under more than one profile,
+       // keep whichever entry is most recent.
+       const itemsById = new Map()
+-      for (const { progress } of perProfile) {
++      for (const { progress, profileName } of perProfile) {
+         for (const p of (Array.isArray(progress) ? progress : [])) {
+           const mtime = new Date(p.last_watched).getTime()
+           const existing = itemsById.get(p.content_id)
+@@ -243,7 +251,8 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
+               timeOffset: p.position,
+               timeWatched: 0,
+               overallTimeWatched: p.position || 0,
+-              lastWatched: new Date(p.last_watched).toISOString()
++              lastWatched: new Date(p.last_watched).toISOString(),
++              nuvioProfile: profileName
+             },
+             _mtime: mtime,
+             _ctime: mtime,
+@@ -254,7 +263,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
+       const items = Array.from(itemsById.values())
+ 
+       // Merge in any library-only items (bookmarked but no progress), from any profile
+-      for (const { library } of perProfile) {
++      for (const { library, profileName } of perProfile) {
+         if (!Array.isArray(library)) continue
+         for (const item of library) {
+           if (!itemsById.has(item.content_id)) {
+@@ -263,7 +272,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
+               name: item.title || titleMap.get(item.content_id) || '',
+               type: item.content_type,
+               poster: null,
+-              state: {},
++              state: { nuvioProfile: profileName },
+               _mtime: Date.now(),
+               _ctime: Date.now(),
+               removed: false
+diff --git a/server/utils/metricsBuilder.js b/server/utils/metricsBuilder.js
+index a815aff..66a2315 100644
+--- a/server/utils/metricsBuilder.js
++++ b/server/utils/metricsBuilder.js
+@@ -932,6 +932,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
+             episode: ep.episode
+           },
+           videoId: ep.videoId,
++          profileLabel: ep.profileLabel || null,
+           watchedAt: ep.watchedAt.toISOString(),
+           watchedAtTimestamp: ep.watchedAt.getTime()
+         }
+@@ -957,6 +958,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
+             episode: null
+           },
+           videoId: null,
++          profileLabel: m.profileLabel || null,
+           watchedAt: m.watchedAt.toISOString(),
+           watchedAtTimestamp: m.watchedAt.getTime()
+         }
+diff --git a/server/utils/metricsProcessor.js b/server/utils/metricsProcessor.js
+index 13aa313..e699a10 100644
+--- a/server/utils/metricsProcessor.js
++++ b/server/utils/metricsProcessor.js
+@@ -61,6 +61,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
+     const showId = item._id || item.id
+     const showName = item.name || 'Unknown Show'
+     const poster = item.poster || null
++    const profileLabel = item.state?.nuvioProfile || null
+     const { season, episode } = extractSeasonEpisode(videoId)
+ 
+     // Get watch date from item
+@@ -90,12 +91,14 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
+         season,
+         episode,
+         poster,
++        profileLabel,
+         watchedAt
+       },
+       update: {
+         watchedAt, // Update watch time if re-watching
+         showName, // Update in case show name changed
+-        poster // Update in case poster changed
++        poster, // Update in case poster changed
++        profileLabel
+       }
+     })
+ 
+@@ -125,6 +128,7 @@ async function recordMovieWatch(prisma, accountId, userId, item) {
+ 
+     const itemName = item.name || 'Unknown Movie'
+     const poster = item.poster || null
++    const profileLabel = item.state?.nuvioProfile || null
+ 
+     // Get watch date from item
+     // IMPORTANT: Only use state.lastWatched - this is the actual watch timestamp
+@@ -149,12 +153,14 @@ async function recordMovieWatch(prisma, accountId, userId, item) {
+         itemId,
+         itemName,
+         poster,
++        profileLabel,
+         watchedAt
+       },
+       update: {
+         watchedAt, // Update watch time if re-watching
+         itemName, // Update in case name changed
+-        poster // Update in case poster changed
++        poster, // Update in case poster changed
++        profileLabel
+       }
+     })
+ 
+-- 
+2.43.0
+
