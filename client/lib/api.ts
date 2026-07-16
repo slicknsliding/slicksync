@@ -1263,6 +1263,12 @@ class ApiClient {
       body: JSON.stringify({ category, orderedIds }),
     });
   }
+  async reorderAddons(orderedIds: string[]) {
+    return this.fetch<{ success: boolean }>('/addons/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ orderedIds }),
+    });
+  }
 
   async testVaultEntry(id: string) {
     return this.fetch<{ ok: boolean | null; message: string; checkedAt: string }>(`/vault/${id}/test`, {
