@@ -89,14 +89,14 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
     metrics.watchSessions.forEach((session) => {
       // Only completed sessions: must have endTime set
       if (!session.endTime) return;
-      const hasDuration = (session.durationSeconds || 0) > 0;
-      // Proxy/usenet-detected entries carry a requestCount but no reliable
-      // duration (proxy connection lifetime is not watch time - see
-      // proxyStreamMonitor.js). Show them in History as presence markers
-      // with no duration badge; skip only entries that have neither a real
-      // duration nor a proxy signal.
-      const isProxyEntry = (session.requestCount || 0) > 0;
-      if (!hasDuration && !isProxyEntry) return;
+      // Must have a real tracked duration. Proxy-only entries (which have a
+      // requestCount but no real duration) are intentionally NOT shown here:
+      // the proxy is a live Now Playing signal only and no longer writes
+      // history - the native pipeline owns history and records the same
+      // watch with the real title, poster, and duration. Surfacing blank
+      // proxy sessions produced a duplicate card (a blank one, then the
+      // richer native one moments later).
+      if ((session.durationSeconds || 0) <= 0) return;
 
       seenUserItemKeys.add(`${session.user.id}:${session.item.id}`);
       activities.push({
@@ -111,9 +111,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         contentName: session.item.name,
         season: session.item.season ?? undefined,
         episode: session.item.episode ?? undefined,
-        // Undefined (not 0) when there's no real duration, so the UI hides
-        // the duration badge entirely rather than showing a misleading "<1m".
-        durationSeconds: hasDuration ? session.durationSeconds : undefined,
+        durationSeconds: session.durationSeconds,
         requestCount: session.requestCount ?? undefined,
         timestamp: new Date(session.startTime),
         endTime: new Date(session.endTime),
