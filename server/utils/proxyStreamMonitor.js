@@ -16,7 +16,6 @@
 // growing/shrinking `requestIds[]` array. This module mirrors that: identity
 // here is (accountId, aiostreamsUser, clientIp, url).
 
-const { lookupAiometadataPoster } = require('./aiometadataLookup')
 
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
@@ -317,100 +316,9 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
   }
 }
 
-/**
- * Attempts an AIOMetadata poster lookup for one row and records the
- * result (or the fact that none was found) via metadataMatchedAt, so it's
- * never retried indefinitely. Used both at connection-creation time and by
- * the retry pass below for rows that missed that first attempt.
- */
-async function attemptPosterLookup(prisma, accountId, rowId, displayName) {
-  try {
-    const account = await prisma.appAccount.findUnique({
-      where: { id: accountId },
-      select: { aiometadataManifestUrl: true },
-    })
-    const manifestUrl = account?.aiometadataManifestUrl
-    if (!manifestUrl || !displayName) return
-
-    const yearMatch = displayName.match(/\((\d{4})\)$/)
-    const year = yearMatch ? yearMatch[1] : null
-    let title = year ? displayName.replace(/\s*\(\d{4}\)$/, '') : displayName
-
-    // For series episodes without a year in the display name, the episode
-    // title/quality tags before a SxxExx marker were surviving the earlier
-    // cleanup and getting sent as part of the search query (e.g. "Spider-
-    // Noir S01E01 Step Into My Office True-Hue Full Color" instead of just
-    // "Spider-Noir") - not a searchable title, causing genuine no-match
-    // results for shows that should have been findable. Strip from the
-    // SxxExx marker onward for the search query specifically; the full
-    // descriptive name is still what gets displayed/stored elsewhere.
-    const seasonEpisodeMatch = title.match(/^(.*?)\s+S\d{1,2}E\d{1,3}\b/i)
-    if (seasonEpisodeMatch) {
-      title = seasonEpisodeMatch[1].trim()
-    } else {
-      // Bare episode marker without an attached season marker (e.g.
-      // "Chernobyl E01" rather than "Chernobyl S01E01")
-      const bareEpisodeMatch = title.match(/^(.*?)\s+E\d{1,3}\b/i)
-      if (bareEpisodeMatch) {
-        title = bareEpisodeMatch[1].trim()
-      }
-    }
-
-    const result = await lookupAiometadataPoster(manifestUrl, title, year)
-    const updatedRow = await prisma.proxyStreamSession.update({
-      where: { id: rowId },
-      data: {
-        posterUrl: result?.posterUrl ?? null,
-        metadataItemId: result?.id ?? null,
-        metadataItemType: result?.type ?? null,
-        metadataMatchedAt: new Date(),
-      },
-    })
-
-    // Backfill into the linked history entry too, if this stream had
-    // already ended and its completed WatchSession row was written before
-    // this lookup finished (a real race - closing can happen faster than
-    // the AIOMetadata request completes). Only fills in a still-missing
-    // poster - never overwrites one that's already set.
-    if (result?.posterUrl && updatedRow.linkedWatchSessionId) {
-      await prisma.watchSession.updateMany({
-        where: { id: updatedRow.linkedWatchSessionId, poster: null },
-        data: { poster: result.posterUrl },
-      })
-    }
-  } catch (error) {
-    heartbeat('pollOnce:poster_lookup_error', { message: error.message, rowId })
-  }
-}
-
-/**
- * Safety net: finds rows (active or not) that never got a poster lookup
- * attempt at all - confirmed with real data that this can happen (e.g. a
- * connection ending mid-lookup before the one-shot attempt in the main
- * loop finished). Capped to a handful per cycle so a large backlog doesn't
- * hammer AIOMetadata all at once.
- */
-async function retryMissingPosters(prisma, accountId) {
-  const stuck = await prisma.proxyStreamSession.findMany({
-    where: { accountId, metadataMatchedAt: null },
-    select: { id: true, displayName: true },
-    take: 5,
-    orderBy: { createdAt: 'asc' },
-  })
-
-  for (const row of stuck) {
-    await attemptPosterLookup(prisma, accountId, row.id, row.displayName)
-  }
-
-  if (stuck.length > 0) {
-    heartbeat('retryMissingPosters:done', { attempted: stuck.length })
-  }
-}
-
 async function pollOnce(prisma, accountId, config) {
   heartbeat('pollOnce:start', { accountId })
   try {
-    await retryMissingPosters(prisma, accountId)
     const stats = await fetchProxyStats(config.baseUrl, config.username, config.password)
     const now = new Date()
     // Track which (aiostreamsUser, clientIp, url) combos are active this poll
@@ -432,7 +340,7 @@ async function pollOnce(prisma, accountId, config) {
 
         const displayName = parseDisplayName(conn.filename)
 
-        const row = await prisma.proxyStreamSession.upsert({
+        await prisma.proxyStreamSession.upsert({
           where: {
             accountId_aiostreamsUser_clientIp_url: {
               accountId,
@@ -460,14 +368,6 @@ async function pollOnce(prisma, accountId, config) {
             endTime: null,
           },
         })
-
-        // Poster lookup runs once per stream (cached via metadataMatchedAt),
-        // not on every 30s poll while the same stream is still active. A
-        // retry pass elsewhere in this file catches any row that missed
-        // this attempt entirely (e.g. the connection ended mid-lookup).
-        if (!row.metadataMatchedAt) {
-          await attemptPosterLookup(prisma, accountId, row.id, displayName)
-        }
       }
     }
 

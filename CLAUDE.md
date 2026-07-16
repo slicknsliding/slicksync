@@ -82,7 +82,6 @@ test/                    node:test regression tests (node --test test/) - not ex
 | `/api/snapshots` | `snapshots.js` | Library/addon snapshots |
 | `/api/avatars` | `avatars.js` | Avatar upload/serving |
 | `/api/vault` | `vault.js` | Credential vault |
-| `/api/aiometadata` | `aiometadata.js` | AIOMetadata addon integration |
 | `/api/settings` | `settings.js` | Instance/account settings |
 | `/api/ext` | `externalApi.js` | External API surface |
 | `/api/invitations`, `/invite` | `invitations.js` | Invitations (authenticated admin + public accept flow) |

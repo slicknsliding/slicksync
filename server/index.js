@@ -37,7 +37,6 @@ const nuvioRouter = require('./routes/nuvio');
 const snapshotsRouter = require('./routes/snapshots');
 const avatarsRouter = require('./routes/avatars');
 const vaultRouter = require('./routes/vault');
-const aiometadataRouter = require('./routes/aiometadata');
 const { makeCreateProvider } = require('./providers');
 
 // Import configuration constants
@@ -231,7 +230,6 @@ app.use('/api/nuvio', nuvioRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/snapshots', snapshotsRouter({ prisma, getAccountId, encrypt, decrypt, createProvider }));
 app.use('/api/avatars', avatarsRouter({ imageUpload }));
 app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));
-app.use('/api/aiometadata', aiometadataRouter({ prisma, getAccountId }));
 app.use('/api/settings', settingsRouter({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }));
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({
