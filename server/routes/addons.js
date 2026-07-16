@@ -387,7 +387,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
           },
           backupAddon: true
         },
-        orderBy: { id: 'asc' }
+        orderBy: [{ position: 'asc' }, { id: 'asc' }]
       });
 
       const transformedAddons = await Promise.all(addons.map(async addon => {
