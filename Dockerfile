@@ -100,6 +100,12 @@ RUN mkdir -p /app/client/.next/standalone/public/_next/static && \
 COPY --from=builder --chown=appuser:nodejs /app/scripts/start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
+# Bring along the rest of scripts/ (one-off maintenance scripts run via
+# `docker exec` - e.g. fix-stale-watch-activity-dates.js) - only start.sh
+# itself was being copied above, everything else silently never made it
+# into the image.
+COPY --from=builder --chown=appuser:nodejs /app/scripts ./scripts
+
 # Switch to non-root user
 USER appuser
 
