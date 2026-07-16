@@ -86,8 +86,13 @@ interface AddonDisplay {
 // completely untouched.
 function SortableAddonWrapper({ id, children }: { id: string; children: React.ReactNode }) {
   const { dragHandleProps, itemProps } = useSortableDragState(id);
+  // dragHandleProps itself carries a style (cursor: grab) - destructure it
+  // out and merge explicitly rather than spreading dragHandleProps after
+  // an explicit style prop, which TypeScript correctly flags as a
+  // duplicate 'style' attribute.
+  const { style: dragStyle, ...restDragHandleProps } = dragHandleProps as { style?: React.CSSProperties; [key: string]: unknown };
   return (
-    <div ref={itemProps.ref} style={itemProps.style} className={itemProps.className} {...dragHandleProps}>
+    <div ref={itemProps.ref} className={itemProps.className} style={{ ...itemProps.style, ...dragStyle }} {...restDragHandleProps}>
       {children}
     </div>
   );
