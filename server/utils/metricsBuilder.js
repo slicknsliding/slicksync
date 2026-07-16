@@ -6,6 +6,7 @@ const { StremioAPIClient } = require('stremio-api-client')
 const { getCachedLibrary, setCachedLibrary } = require('./libraryCache')
 const { fetchKitsuMetadata } = require('./kitsuUtils')
 const { enrichPostersFromCinemeta } = require('./libraryHelpers')
+const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
 const { calculateAddonAnalytics, calculateServerHealth, generateOperationalAlerts } = require('./adminAnalytics')
 const { calculateTopItemsWithUsers, calculateWatchVelocity, calculateInterestingMetrics } = require('./enhancedMetrics')
 
@@ -342,6 +343,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   if (!accountId) {
     throw new Error('accountId is required to build metrics')
   }
+
+  const accountTimeZone = await resolveAccountTimezone(prisma, accountId)
 
   // Calculate date range based on period
   let startDate = new Date()
@@ -1229,9 +1232,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       let currentStreak = 0
       const dates = Array.from(user.dates).sort((a, b) => b.localeCompare(a))
       if (dates.length > 0) {
-        const today = new Date().toISOString().split('T')[0]
+        const today = getAccountDateString(new Date(), accountTimeZone)
         const yesterdayDate = new Date(); yesterdayDate.setDate(yesterdayDate.getDate() - 1)
-        const yesterday = yesterdayDate.toISOString().split('T')[0]
+        const yesterday = getAccountDateString(yesterdayDate, accountTimeZone)
         let checkDateStr = dates.includes(today) ? today : (dates.includes(yesterday) ? yesterday : null)
         if (checkDateStr) {
           let checkDate = new Date(checkDateStr)

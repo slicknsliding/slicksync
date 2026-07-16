@@ -9,6 +9,7 @@
  */
 
 const { resolveSinglePoster } = require('./libraryHelpers')
+const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
 
 /**
  * Extract season/episode from video_id
@@ -206,8 +207,8 @@ async function recordMovieWatch(prisma, accountId, userId, item) {
  * Get the most recent snapshot for an item on or before today.
  * This lets us compute deltas within the same day as well as across days.
  */
-async function getPreviousSnapshot(prisma, accountId, userId, itemId, today) {
-  const todayDate = today.toISOString().split('T')[0]
+async function getPreviousSnapshot(prisma, accountId, userId, itemId, today, timeZone) {
+  const todayDate = getAccountDateString(today, timeZone)
 
   try {
     const snapshot = await prisma.watchSnapshot.findFirst({
@@ -257,11 +258,12 @@ async function processLibraryItem(prisma, accountId, userId, item, today) {
     const itemId = item._id || item.id
     if (!itemId || !item.type) return { snapshotCreated: false, activityCreated: false }
 
-    const todayDate = today.toISOString().split('T')[0]
     const accountIdValue = accountId || 'default'
+    const timeZone = await resolveAccountTimezone(prisma, accountIdValue)
+    const todayDate = getAccountDateString(today, timeZone)
 
     // Get previous snapshot (for baseline comparison)
-    const previous = await getPreviousSnapshot(prisma, accountIdValue, userId, itemId, today)
+    const previous = await getPreviousSnapshot(prisma, accountIdValue, userId, itemId, today, timeZone)
 
     // Current state
     const current = {

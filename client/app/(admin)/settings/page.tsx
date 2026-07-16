@@ -224,6 +224,7 @@ export default function SettingsPage() {
     notifyOnActivity: false,
     notifyOnSync: false,
     notifyOnInvite: false,
+    accountTimezone: '',
   });
   
   // API Key state
@@ -262,6 +263,7 @@ export default function SettingsPage() {
           notifyOnActivity: settings.notifyOnActivity || false,
           notifyOnSync: settings.notifyOnSync || false,
           notifyOnInvite: settings.notifyOnInvite || false,
+          accountTimezone: settings.accountTimezone || '',
         });
       } catch (e) {
         // Settings may not exist yet, use defaults
@@ -500,6 +502,23 @@ export default function SettingsPage() {
                   label="Toggle custom addon names"
                 />
               </SettingRow>
+
+              <div className="p-4 rounded-lg bg-subtle">
+                <label className="block text-sm font-medium text-default mb-2">Timezone</label>
+                <input
+                  type="text"
+                  value={syncSettings.accountTimezone || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, accountTimezone: e.target.value }))}
+                  onBlur={() => handleSaveSetting('accountTimezone', syncSettings.accountTimezone)}
+                  placeholder="America/Los_Angeles"
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+                <p className="text-xs text-muted mt-2">
+                  IANA timezone name (e.g. America/New_York, Europe/London). Used server-side to decide what counts
+                  as &quot;today&quot; for Watch Time Today and streaks - background jobs have no browser to read a
+                  timezone from, so this has to be set explicitly rather than auto-detected.
+                </p>
+              </div>
             </div>
           </Card>
         </PageSection>

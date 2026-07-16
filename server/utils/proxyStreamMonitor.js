@@ -17,6 +17,7 @@
 // here is (accountId, aiostreamsUser, clientIp, url).
 
 const { lookupAiometadataPoster } = require('./aiometadataLookup')
+const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
 
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
@@ -213,6 +214,7 @@ async function resolveUserForClosedConnection(prisma, accountId, aiostreamsUser,
  * completed session does.
  */
 async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTime) {
+  const timeZone = await resolveAccountTimezone(prisma, accountId)
   const groups = new Map()
   for (const row of closedRows) {
     const key = normalizeTitleForHistory(row.displayName) || row.url
@@ -253,7 +255,7 @@ async function writeCompletedWatchSessions(prisma, accountId, closedRows, endTim
     // playing". Records this segment's own duration (not the cumulative
     // accumulatedDuration below) since WatchActivity rows are deltas.
     try {
-      const activityDate = new Date(endTime.toISOString().split('T')[0])
+      const activityDate = new Date(getAccountDateString(endTime, timeZone))
       await prisma.watchActivity.create({
         data: {
           accountId,

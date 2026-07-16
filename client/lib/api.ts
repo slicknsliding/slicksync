@@ -1562,6 +1562,7 @@ export interface SyncSettings {
   notifyOnActivity?: boolean;
   notifyOnSync?: boolean;
   notifyOnInvite?: boolean;
+  accountTimezone?: string;
 }
 
 export interface ExportedConfig {
