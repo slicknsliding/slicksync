@@ -227,27 +227,13 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
   let sessionsUpdated = 0
   let sessionsClosed = 0
 
-  // Fetch user data once for webhook notifications
+  // Fetch user data once (used for session records; the "started watching"
+  // notification is sent from the proxy pipeline, not here - see the note
+  // at the session-create site below).
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, username: true, email: true, colorIndex: true, discordWebhookUrl: true }
   })
-
-  // Fetch account sync config for webhook notifications
-  let accountWebhookUrl = null
-  try {
-    const account = await prisma.appAccount.findUnique({
-      where: { id: accountId },
-      select: { sync: true }
-    })
-    let syncCfg = account?.sync
-    if (typeof syncCfg === 'string') {
-      try { syncCfg = JSON.parse(syncCfg) } catch { syncCfg = null }
-    }
-    if (syncCfg && typeof syncCfg === 'object' && syncCfg.notifyOnActivity === true && syncCfg.webhookUrl) {
-      accountWebhookUrl = syncCfg.webhookUrl
-    }
-  } catch {}
 
   // Get all active sessions for this user
   const activeSessions = await prisma.watchSession.findMany({
@@ -514,10 +500,13 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           console.log(`[SessionTracker] Session created/reactivated successfully`)
           heartbeat('sessionTracker:session_created', { itemId, userId, sessionId: newSession.id })
 
-          // Send Discord webhook notification when session starts (now playing)
-          if (accountWebhookUrl) {
-            await sendSessionStartNotification(accountWebhookUrl, newSession, user)
-          }
+          // NOTE: the "started watching" Discord notification is NOT sent
+          // from here anymore. The native pipeline only detects a session
+          // once the provider writes a watch checkpoint (on pause/stop for
+          // Nuvio), so this fired late - typically around when the user
+          // STOPPED, not started. The instant "started watching"
+          // notification is now sent from the proxy pipeline
+          // (proxyStreamMonitor.js), which sees playback begin in real time.
         } catch (error) {
           // Ignore duplicate errors
           if (!error.message.includes('Unique constraint')) {
@@ -641,5 +630,6 @@ module.exports = {
   processAccountSessions,
   getRecentSessions,
   getActiveSessions,
-  extractSeasonEpisode
+  extractSeasonEpisode,
+  sendSessionStartNotification
 }
