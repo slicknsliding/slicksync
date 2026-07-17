@@ -2,6 +2,8 @@
 
 import { motion } from 'framer-motion';
 import { ReactNode } from 'react';
+import { Bars3Icon } from '@heroicons/react/24/outline';
+import { useUserMobileMenu } from '@/lib/hooks/useUserMobileMenu';
 
 interface UserPageContainerProps {
   children: ReactNode;
@@ -17,11 +19,11 @@ export function UserPageContainer({ children, className }: UserPageContainerProp
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
-      className={`ml-60 min-h-screen ${className || ''}`}
+      className={`ml-0 md:ml-60 min-h-screen ${className || ''}`}
       style={{ background: 'var(--color-bg)' }}
     >
       {/* Subtle background gradient */}
-      <div className="fixed inset-0 ml-60 pointer-events-none overflow-hidden">
+      <div className="fixed inset-0 ml-0 md:ml-60 pointer-events-none overflow-hidden">
         <div 
           className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full blur-[120px] opacity-30"
           style={{ background: 'var(--color-primaryMuted)' }}
@@ -48,29 +50,42 @@ interface UserPageHeaderProps {
 }
 
 export function UserPageHeader({ title, subtitle, actions }: UserPageHeaderProps) {
+  const { onOpen } = useUserMobileMenu();
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex items-center justify-between mb-6"
+      className="flex items-center justify-between mb-6 gap-4"
     >
-      <div>
-        <h1 
-          className="text-2xl font-bold font-display"
-          style={{ color: 'var(--color-text)' }}
+      <div className="flex items-center gap-3 min-w-0">
+        {/* Hamburger - only show on mobile */}
+        <button
+          onClick={onOpen}
+          className="md:hidden p-2 -ml-2 rounded-lg hover:bg-surface-hover transition-colors shrink-0"
+          aria-label="Open menu"
         >
-          {title}
-        </h1>
-        {subtitle && (
-          <p 
-            className="text-sm mt-1"
-            style={{ color: 'var(--color-text-muted)' }}
+          <Bars3Icon className="w-6 h-6 text-default" />
+        </button>
+
+        <div className="min-w-0">
+          <h1
+            className="text-2xl font-bold font-display truncate"
+            style={{ color: 'var(--color-text)' }}
           >
-            {subtitle}
-          </p>
-        )}
+            {title}
+          </h1>
+          {subtitle && (
+            <p
+              className="text-sm mt-1"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              {subtitle}
+            </p>
+          )}
+        </div>
       </div>
-      {actions && <div className="flex items-center gap-3">{actions}</div>}
+      {actions && <div className="flex items-center gap-3 shrink-0">{actions}</div>}
     </motion.div>
   );
 }

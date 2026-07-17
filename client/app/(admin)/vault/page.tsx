@@ -636,11 +636,11 @@ export default function VaultPage() {
 
           {categoryFieldMode(form.category) === 'provider' && (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input label="Host" placeholder="news.example.com" value={form.testHost} onChange={e => setForm(f => ({ ...f, testHost: e.target.value }))} />
                 <Input label="Port" placeholder="563" value={form.testPort} onChange={e => setForm(f => ({ ...f, testPort: e.target.value }))} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input label="Username" placeholder="Account username" value={form.secretUsername} onChange={e => setForm(f => ({ ...f, secretUsername: e.target.value }))} />
                 <Input
                   label={editingId ? 'Password (leave blank to keep current)' : 'Password'}
@@ -686,7 +686,7 @@ export default function VaultPage() {
                 <Input label="Test URL" placeholder="https://..." value={form.testUrl} onChange={e => setForm(f => ({ ...f, testUrl: e.target.value }))} />
               )}
               {form.testType === 'tcp_reachability' && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input label="Host" placeholder="news.example.com" value={form.testHost} onChange={e => setForm(f => ({ ...f, testHost: e.target.value }))} />
                   <Input label="Port" placeholder="563" value={form.testPort} onChange={e => setForm(f => ({ ...f, testPort: e.target.value }))} />
                 </div>
@@ -696,7 +696,7 @@ export default function VaultPage() {
 
           <Input label={form.category === 'aiostreams' ? 'UUID (optional)' : 'Dashboard URL (optional)'} placeholder={form.category === 'aiostreams' ? 'e.g. e2849659-fdcb-4ed8-9eb0-6cfd76324e15' : 'https://provider.com/dashboard'} value={form.dashboardUrl} onChange={e => setForm(f => ({ ...f, dashboardUrl: e.target.value }))} />
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Expires on (optional)" type="date" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} />
             <Input label="Notify days before" type="number" value={form.notifyDaysBefore} onChange={e => setForm(f => ({ ...f, notifyDaysBefore: e.target.value }))} />
           </div>
