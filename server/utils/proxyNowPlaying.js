@@ -66,11 +66,11 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   const userByUsername = new Map(
     users.filter((u) => u.username).map((u) => [u.username.toLowerCase(), u])
   )
-  // Secondary match: local-part of email (e.g. "slicknslidin" from
-  // "someuser@example.com"). Handles the common case where one
-  // AIOStreams login covers multiple per-provider SlickSync profiles that
-  // share the same email but have provider-specific usernames (e.g. "SLICK
-  // STREMIO", "NuvioSLICK") that don't match the AIOStreams username at all.
+  // Secondary match: local-part of email (e.g. "someuser" from
+  // "someuser@example.com"). Handles the common case where one AIOStreams
+  // login covers multiple per-provider SlickSync profiles that share the same
+  // email but have provider-specific usernames that don't match the AIOStreams
+  // username at all.
   const userByEmailLocalPart = new Map(
     users
       .filter((u) => u.email && u.email.includes('@'))
