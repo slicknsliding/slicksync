@@ -41,19 +41,21 @@ side-by-side with Stremio, rather than bolting it on:
 - Top Watched / Recent Activity / Top Viewers on the Dashboard and each
   user's detail page, built from real session duration - not just a
   count of events.
-- **Live "Now Playing" via AIOStreams proxy integration** (still in
-  testing): detects active streams in real time by observing connections
-  through AIOStreams' built-in proxy, independent of library-poll delays.
-  Handles multiple SlickSync profiles sharing one AIOStreams login,
-  disambiguating which profile is actually streaming using existing watch
-  history as a signal, and groups reconnections from seeking so duration
-  stays continuous instead of resetting.
-- **AIOMetadata-powered poster enrichment** (still in testing): fetches
-  posters for proxy-detected streams that have no library metadata match,
-  matched by parsed title and year.
-- Completed proxy streams write into watch history the same way any other
-  completed session does, so they show up in the Today/Yesterday timeline
-  once playback ends.
+- **Live "Now Playing" via AIOStreams proxy integration**: detects active
+  streams in real time by observing connections through AIOStreams' built-in
+  proxy, independent of library-poll delays. Handles multiple SlickSync
+  profiles sharing one AIOStreams login, disambiguating which profile is
+  actually streaming using existing watch history as a signal, and groups
+  reconnections from seeking so duration stays continuous instead of
+  resetting.
+- The proxy is a **presence signal only** - it never writes watch history or
+  durations. A proxy connection's wall-clock lifetime isn't watch time, so
+  History and Watch Time come from each provider's own counters, which also
+  covers sources the proxy never carries (usenet).
+- **Correct-or-nothing posters** for proxy-detected entries: a strict
+  Cinemeta title search that returns a poster only on an exact normalized-title
+  match, plus an exact year match when the filename carries a year. No
+  confident match means no poster rather than a wrong one.
 
 ### 🔐 Vault - credential tracking with expiry alerts and active-checks
 
