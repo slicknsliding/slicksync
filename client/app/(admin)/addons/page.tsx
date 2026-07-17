@@ -1874,7 +1874,7 @@ function AddonDetail({ addon, onClose }: { addon: AddonDisplay; onClose: () => v
             </div>
 
             {/* Basic Info Grid */}
-            <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-surface-hover">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-xl bg-surface-hover">
               <div>
                 <p className="text-sm mb-1 text-muted">Version</p>
                 <div className="mt-1">

@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import {
   HomeIcon,
@@ -11,9 +11,15 @@ import {
   ShareIcon,
   PuzzlePieceIcon,
   Cog6ToothIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { useUserAuth } from '@/lib/hooks/useUserAuth';
 import { PanelSwitcher } from '@/components/layout/PanelSwitcher';
+
+interface UserSidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
 
 // User panel navigation
 const navigationItems = [
@@ -31,9 +37,10 @@ interface NavItemProps {
   icon: React.ComponentType<{ className?: string }>;
   isActive: boolean;
   index: number;
+  onNavigate?: () => void;
 }
 
-function NavItem({ name, href, icon: Icon, isActive, index }: NavItemProps) {
+function NavItem({ name, href, icon: Icon, isActive, index, onNavigate }: NavItemProps) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -42,6 +49,7 @@ function NavItem({ name, href, icon: Icon, isActive, index }: NavItemProps) {
     >
       <Link
         href={href}
+        onClick={onNavigate}
         className="relative flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group"
         style={{
           background: isActive ? 'var(--color-primary-muted)' : 'transparent',
@@ -79,7 +87,7 @@ function NavItem({ name, href, icon: Icon, isActive, index }: NavItemProps) {
   );
 }
 
-export function UserSidebar() {
+export function UserSidebar({ isOpen = false, onClose }: UserSidebarProps) {
   const pathname = usePathname();
   const { userInfo, logout } = useUserAuth();
 
@@ -96,64 +104,103 @@ export function UserSidebar() {
     window.location.href = '/login?mode=user';
   };
 
+  const handleNavigate = () => {
+    if (onClose) {
+      onClose();
+    }
+  };
+
   return (
-    <motion.aside
-      initial={{ x: -280 }}
-      animate={{ x: 0 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="fixed left-0 top-0 bottom-0 w-60 flex flex-col z-40"
-      style={{
-        background: 'var(--color-surface)',
-        borderRight: '1px solid var(--color-surface-border)',
-      }}
-    >
-      {/* Logo */}
-      <div 
-        className="p-5"
-        style={{ borderBottom: '1px solid var(--color-surface-border)' }}
-      >
-        <Link href="/user" className="flex items-center gap-3">
+    <>
+      {/* Mobile Backdrop */}
+      <AnimatePresence>
+        {isOpen && (
           <motion.div
-            whileHover={{ scale: 1.05 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden"
-            style={{ background: 'var(--color-primary)' }}
-          >
-            <SlickSyncLogo className="w-7 h-7" />
-          </motion.div>
-          <div>
-            <h1 className="text-lg font-bold font-display" style={{ color: 'var(--color-text)' }}>
-              SlickSync
-            </h1>
-          </div>
-        </Link>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto custom-scrollbar">
-        {navigationItems.map((item, index) => (
-          <NavItem
-            key={item.href}
-            name={item.name}
-            href={item.href}
-            icon={item.icon}
-            isActive={isItemActive(item.href)}
-            index={index}
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={onClose}
           />
-        ))}
-      </nav>
+        )}
+      </AnimatePresence>
 
-      {/* Panel Switcher */}
-      <div 
-        className="p-3"
-        style={{ borderTop: '1px solid var(--color-surface-border)' }}
+      {/* Sidebar */}
+      <motion.aside
+        initial={{ x: -280 }}
+        animate={{ x: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        className={`
+          fixed left-0 top-0 bottom-0 w-60 flex flex-col z-50
+          md:z-40 md:translate-x-0 md:flex
+          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}
+        style={{
+          background: 'var(--color-surface)',
+          borderRight: '1px solid var(--color-surface-border)',
+        }}
       >
-        <PanelSwitcher
-          mode="user"
-          userInfo={userInfo}
-          onLogout={handleLogout}
-        />
-      </div>
-    </motion.aside>
+        {/* Mobile Close Button */}
+        <div className="flex items-center justify-between p-4 md:hidden">
+          <span className="text-sm font-medium text-muted">Menu</span>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-surface-hover transition-colors"
+          >
+            <XMarkIcon className="w-5 h-5 text-muted" />
+          </button>
+        </div>
+
+        {/* Logo */}
+        <div
+          className="p-5 hidden md:block"
+          style={{ borderBottom: '1px solid var(--color-surface-border)' }}
+        >
+          <Link href="/user" className="flex items-center gap-3">
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              transition={{ duration: 0.2 }}
+              className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden"
+              style={{ background: 'var(--color-primary)' }}
+            >
+              <SlickSyncLogo className="w-7 h-7" />
+            </motion.div>
+            <div>
+              <h1 className="text-lg font-bold font-display" style={{ color: 'var(--color-text)' }}>
+                SlickSync
+              </h1>
+            </div>
+          </Link>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto custom-scrollbar">
+          {navigationItems.map((item, index) => (
+            <NavItem
+              key={item.href}
+              name={item.name}
+              href={item.href}
+              icon={item.icon}
+              isActive={isItemActive(item.href)}
+              index={index}
+              onNavigate={handleNavigate}
+            />
+          ))}
+        </nav>
+
+        {/* Panel Switcher */}
+        <div
+          className="p-3"
+          style={{ borderTop: '1px solid var(--color-surface-border)' }}
+        >
+          <PanelSwitcher
+            mode="user"
+            userInfo={userInfo}
+            onLogout={handleLogout}
+          />
+        </div>
+      </motion.aside>
+    </>
   );
 }

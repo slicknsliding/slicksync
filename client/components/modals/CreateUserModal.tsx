@@ -472,7 +472,7 @@ export function CreateUserModal({
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             >
             <DialogPanel
-              className="w-full max-w-lg overflow-hidden"
+              className="w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]"
               style={{
                 background: 'var(--color-surface)',
                 borderRadius: '24px',
@@ -482,14 +482,14 @@ export function CreateUserModal({
             >
               {/* Decorative header gradient */}
               <div
-                className="h-1.5 w-full"
+                className="h-1.5 w-full shrink-0"
                 style={{
                   background: 'linear-gradient(90deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 60%, var(--color-secondary)) 50%, var(--color-secondary) 100%)'
                 }}
               />
 
               {/* Content */}
-              <div className="p-8">
+              <div className="p-8 overflow-y-auto">
                 <AnimatePresence mode="wait">
                   {/* Step: Select Method - 3 Tabs */}
                   {step === 'tabs' && (

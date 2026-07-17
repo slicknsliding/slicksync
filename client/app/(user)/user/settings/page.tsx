@@ -397,7 +397,7 @@ export default function UserSettingsPage() {
             </div>
 
             {/* Details grid */}
-            <div className="grid grid-cols-2 gap-4 pt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
               <div>
                 <p className="text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-subtle)' }}>
                   Group
