@@ -334,11 +334,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
         const { ensureEmailUniqueness } = require('../utils/helpers/database')
         await ensureEmailUniqueness(prisma, request.email, request.invitation.accountId)
 
-        // Check if user already exists in this account
+        // Check if user already exists in this account. Scoped by providerType so the
+        // same email can exist as both a Stremio and a Nuvio user (see the identical fix
+        // in stremio.js) - without this, accepting a Stremio invite for someone whose
+        // email already has a Nuvio account incorrectly rejects them as "already registered".
         const existingUser = await prisma.user.findFirst({
           where: {
             accountId: request.invitation.accountId,
-            email: request.email
+            email: request.email,
+            providerType: 'stremio'
           }
         })
 
@@ -1350,11 +1354,16 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
       const { ensureEmailUniqueness } = require('../utils/helpers/database')
       await ensureEmailUniqueness(prisma, email, invitation.accountId)
 
-      // Check if user already exists in this account (after cleanup)
+      // Check if user already exists in this account (after cleanup). Scoped by
+      // providerType so the same email can exist as both a Stremio and a Nuvio user
+      // (see the identical fix in stremio.js) - without this, accepting a Stremio
+      // invite for someone whose email already has a Nuvio account incorrectly
+      // rejects them as "already registered".
       const existingUser = await prisma.user.findFirst({
         where: {
           accountId: invitation.accountId,
-          email: email.trim().toLowerCase()
+          email: email.trim().toLowerCase(),
+          providerType: 'stremio'
         }
       })
 
