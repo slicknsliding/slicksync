@@ -64,7 +64,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
           >
             <DialogPanel
               className={clsx(
-                'w-full',
+                'w-full flex flex-col max-h-[85vh]',
                 sizeStyles[size],
                 'rounded-2xl p-0 overflow-hidden'
               )}
@@ -77,14 +77,14 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
             >
               {/* Header */}
               {(title || description) && (
-                <div 
-                  className="px-6 pt-6 pb-4"
+                <div
+                  className="px-6 pt-6 pb-4 shrink-0"
                   style={{ borderBottom: '1px solid var(--color-surfaceBorder)' }}
                 >
                   <div className="flex items-start justify-between">
                     <div>
                       {title && (
-                        <DialogTitle 
+                        <DialogTitle
                           className="text-xl font-semibold font-display"
                           style={{ color: 'var(--color-text)' }}
                         >
@@ -109,7 +109,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
               )}
 
               {/* Content */}
-              <div className="p-6">
+              <div className="p-6 overflow-y-auto">
                 {children}
               </div>
             </DialogPanel>

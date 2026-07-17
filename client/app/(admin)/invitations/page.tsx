@@ -1716,7 +1716,7 @@ function EditInvitationForm({
         onChange={(value) => setFormData({ ...formData, groupId: value })}
       />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
           label="Max Uses"
           type="number"
@@ -1841,7 +1841,7 @@ function DuplicateInvitationForm({
         onChange={(value) => setFormData({ ...formData, groupId: value })}
       />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
           label="Max Uses"
           type="number"
