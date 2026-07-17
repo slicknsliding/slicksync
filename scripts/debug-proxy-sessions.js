@@ -30,6 +30,18 @@ async function main() {
         `[${kind.padEnd(12)}] active=${r.isActive}  "${r.displayName || r.filename || '?'}"` +
         `  start=${r.startTime.toISOString()}  end=${r.endTime ? r.endTime.toISOString() : '(open)'}`
       )
+      // The URL is what the usenet-vs-debrid classification keys off, so print
+      // it (host + leading path only - the full URL can carry credentials and
+      // long encrypted blobs). This is how we identify a new usenet backend's
+      // pattern when the setup changes (e.g. nzbdav -> newznab).
+      let shown = r.url || ''
+      try {
+        const u = new URL(r.url)
+        shown = `${u.protocol}//${u.host}${u.pathname.split('/').slice(0, 4).join('/')}`
+      } catch {
+        shown = shown.slice(0, 100)
+      }
+      console.log(`                 url: ${shown}`)
     }
 
     console.log(`\nSummary: ${usenet} usenet row(s), ${other} debrid/other row(s), ${rows.length} total shown.`)
