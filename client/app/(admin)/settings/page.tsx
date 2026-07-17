@@ -545,6 +545,9 @@ export default function SettingsPage() {
                     showLabels={false}
                   />
                 </div>
+                <span className="md:hidden text-xs text-muted text-right max-w-[120px]">
+                  Grid view only on mobile
+                </span>
               </SettingRow>
             </div>
           </Card>
