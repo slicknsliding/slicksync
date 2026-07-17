@@ -22,19 +22,46 @@
 // list (e.g. the per-user publicLibrary.js route, which has no `user` field
 // at all since it's already scoped to one user) should wrap/unwrap around
 // this call - see publicLibrary.js for that pattern.
+// How far back a closed proxy connection still counts as "the proxy knows
+// this stream ended". Must comfortably exceed the native tracker's
+// actively-watching freshness window (~15 min - see sessionTracker.js), since
+// that window is exactly how long a native session lingers as "active" after
+// the provider's final checkpoint.
+const RECENTLY_CLOSED_MS = 20 * 60 * 1000
+
 async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPlaying) {
   let proxySessions
+  let recentlyClosedSessions
   try {
     proxySessions = await prisma.proxyStreamSession.findMany({
       where: { accountId, isActive: true },
       orderBy: { startTime: 'desc' },
     })
+    // Also load streams the proxy recently finished. The proxy is
+    // authoritative for content it carries: if it saw a stream and that
+    // stream has ended, a native "still watching" entry for the same title is
+    // a stale echo (native only learns of a session when the provider writes
+    // a checkpoint - at stop, for Nuvio - and then holds it "active" for its
+    // whole freshness window). Suppressing those keeps an exited stream from
+    // lingering in Now Playing. Content the proxy NEVER carried (e.g. usenet
+    // via newznab, which bypasses the proxy entirely) has no such signal, so
+    // its native entry is left alone - native is the only truth for it.
+    recentlyClosedSessions = await prisma.proxyStreamSession.findMany({
+      where: {
+        accountId,
+        isActive: false,
+        endTime: { gte: new Date(Date.now() - RECENTLY_CLOSED_MS) },
+      },
+      orderBy: { endTime: 'desc' },
+    })
   } catch (error) {
-    console.warn('[ProxyNowPlaying] Failed to fetch active proxy sessions:', error.message)
+    console.warn('[ProxyNowPlaying] Failed to fetch proxy sessions:', error.message)
     return watchSessionNowPlaying
   }
 
-  if (proxySessions.length === 0) return watchSessionNowPlaying
+  if (proxySessions.length === 0 && recentlyClosedSessions.length === 0) {
+    return watchSessionNowPlaying
+  }
 
   const userByUsername = new Map(
     users.filter((u) => u.username).map((u) => [u.username.toLowerCase(), u])
@@ -63,6 +90,9 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   // proxy at all) - only the specific title the proxy is covering should
   // be suppressed from the WatchSession pass below.
   const coveredTitlesByUser = new Map()
+  // Same idea, but for titles the proxy recently FINISHED carrying - used only
+  // to suppress a native entry that's a stale echo of an already-ended stream.
+  const recentlyClosedTitlesByUser = new Map()
 
   // Fallback: AIOStreams only has one login username, but a single person
   // can have multiple per-provider SlickSync profiles (e.g. one Stremio
@@ -237,12 +267,45 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     })
   }
 
+  // Titles the proxy recently FINISHED carrying, per user. A native entry for
+  // one of these is a stale echo of a stream the proxy knows already ended -
+  // drop it so an exited stream doesn't linger in Now Playing for the length
+  // of native's freshness window.
+  for (const closed of recentlyClosedSessions) {
+    const aiostreamsUserLower = (closed.aiostreamsUser || '').toLowerCase()
+    let candidates = []
+    const directMatch = userByUsername.get(aiostreamsUserLower)
+    const emailMatch = userByEmailLocalPart.get(aiostreamsUserLower)
+    if (directMatch) {
+      candidates = [directMatch]
+    } else if (emailMatch) {
+      candidates = users.filter(
+        (u) => u.email && u.email.split('@')[0].toLowerCase() === aiostreamsUserLower
+      )
+    } else if (fallbackUserIds.length > 0) {
+      candidates = fallbackUserIds.map((id) => usersById.get(id)).filter(Boolean)
+    }
+    // A closed stream can't be disambiguated by a live title match, so mark
+    // the title as recently-carried for every candidate this login maps to.
+    // That's deliberate: it only ever suppresses a native entry for THAT
+    // exact title, which the proxy has confirmed ended.
+    for (const candidate of candidates) {
+      if (!recentlyClosedTitlesByUser.has(candidate.id)) recentlyClosedTitlesByUser.set(candidate.id, new Set())
+      recentlyClosedTitlesByUser.get(candidate.id).add(normalizeTitle(closed.displayName))
+    }
+  }
+
   for (const np of watchSessionNowPlaying) {
     const uid = np.user && np.user.id
-    const coveredTitles = uid ? coveredTitlesByUser.get(uid) : null
     const npTitle = normalizeTitle(np.item?.name)
-    const isSuperseded = coveredTitles && npTitle &&
-      Array.from(coveredTitles).some((t) => titlesMatch(t, npTitle))
+    const activeTitles = uid ? coveredTitlesByUser.get(uid) : null
+    const endedTitles = uid ? recentlyClosedTitlesByUser.get(uid) : null
+
+    // Superseded when the proxy is currently carrying this title (the proxy
+    // entry above replaces it), or recently finished carrying it (stale echo).
+    const matches = (titles) =>
+      !!titles && !!npTitle && Array.from(titles).some((t) => titlesMatch(t, npTitle))
+    const isSuperseded = matches(activeTitles) || matches(endedTitles)
     if (!isSuperseded) result.push(np)
   }
 
