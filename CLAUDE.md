@@ -62,6 +62,19 @@ Rules that keep falling out of this, each fixing a real reported bug:
 - **Duration merges take `max()`, not `sum()`.** Both pipelines observe the *same* minutes; summing double-counted.
 - **Recording a delta and advancing the snapshot baseline must be one transaction** — a restart between them made
   the next poll re-record the identical delta.
+- **A single-sitting, no-pause watch cannot get a duration, in either pipeline, and that's correct — do not "fix"
+  it by seeding duration from the first observed value.** Nuvio only writes `overallTimeWatched`/`lastWatched` at
+  pause/stop, never continuously, so a movie watched straight through produces exactly one checkpoint. Both
+  `sessionTracker.js` (position-delta since session creation) and `metricsProcessor.js` (snapshot-delta since the
+  last observation) need *two* checkpoints to compute anything — one checkpoint is structurally insufficient,
+  regardless of which field or which pipeline you read it from. `metricsProcessor.js`'s `processLibraryItem`
+  already tried treating a first-ever observation's raw value as "today's delta" and reverted it after a confirmed
+  16.5-hour single-entry bug — `overallTimeWatched` can be cumulative across a long viewing history, not scoped to
+  "just now," so there's no safe way to convert one reading into a per-occasion duration. A watch that only ever
+  produces one checkpoint (started and finished with no pause/resume in between) should show no duration — same
+  "no confident match ⇒ nothing, never a guess" principle as the poster matching. Investigated 2026-07-17 while
+  chasing a "Yesterday: 0h in Activity" report; the underlying cross-pipeline *matching* logic had a real, separate
+  bug (fixed) — the duration in this case was correctly absent, not missing.
 - **Day bucketing goes through `dateUtils.js`**, never `toISOString()` (which is always UTC). See Timezone below.
 
 ## Timezone
