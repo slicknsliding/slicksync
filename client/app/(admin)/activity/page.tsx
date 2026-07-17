@@ -89,15 +89,12 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
     metrics.watchSessions.forEach((session) => {
       // Only completed sessions: must have endTime set
       if (!session.endTime) return;
-      const hasDuration = (session.durationSeconds || 0) > 0;
-      // Usenet entries are written by the proxy pipeline as presence markers
-      // with a requestCount but no duration (native tracking never records
-      // usenet, so this is its only path into History). Show them; skip only
-      // entries that have neither a real duration nor a proxy signal. Debrid
-      // is owned by native (with real duration), so its cards come through
-      // the hasDuration path - the proxy does not write debrid history.
-      const isProxyEntry = (session.requestCount || 0) > 0;
-      if (!hasDuration && !isProxyEntry) return;
+      // Must have a real tracked duration. History is owned entirely by the
+      // native pipeline, which records every source (including usenet) with a
+      // real title, poster and duration. The proxy writes no history, so any
+      // 0-duration row here is a leftover presence marker from an older build
+      // and would only show as a blank duplicate of the native card.
+      if ((session.durationSeconds || 0) <= 0) return;
 
       seenUserItemKeys.add(`${session.user.id}:${session.item.id}`);
       activities.push({
@@ -112,9 +109,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         contentName: session.item.name,
         season: session.item.season ?? undefined,
         episode: session.item.episode ?? undefined,
-        // Undefined (not 0) when there's no real duration, so the UI hides the
-        // duration badge rather than showing a misleading "<1m".
-        durationSeconds: hasDuration ? session.durationSeconds : undefined,
+        durationSeconds: session.durationSeconds,
         requestCount: session.requestCount ?? undefined,
         timestamp: new Date(session.startTime),
         endTime: new Date(session.endTime),
