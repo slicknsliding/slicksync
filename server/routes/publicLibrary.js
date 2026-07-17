@@ -25,12 +25,19 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const stremioUser = validation.user;
       const stremioEmail = stremioUser.email || null;
 
-      // Try to find existing user by email (search across all accounts first to get the user's accountId)
+      // Try to find existing user by email (search across all accounts first to get the user's accountId).
+      // Must scope to providerType: 'stremio' - email is only unique per (email, providerType), by design,
+      // so the same person can have both a Stremio and a Nuvio user row sharing one email. Without this,
+      // findFirst can non-deterministically resolve a Stremio login to the Nuvio row instead (or vice versa
+      // in a household where two different people share an email pattern), logging someone into the wrong
+      // account entirely. The Nuvio registration path (server/routes/nuvio.js) already scopes by
+      // providerType correctly - this call site predates that field and was never updated to match.
       let user = null
       if (stremioEmail) {
         user = await prisma.user.findFirst({
           where: {
             email: stremioEmail.toLowerCase(),
+            providerType: 'stremio',
             isActive: true  // Only find active users
           },
           select: {
