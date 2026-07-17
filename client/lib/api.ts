@@ -1596,6 +1596,10 @@ export interface MetricsData {
     profileLabel?: string | null;
     watchedAt: string;
     watchedAtTimestamp: number;
+    // Only present when backfilled from a matching native WatchSession -
+    // this feed has no per-event duration of its own (see metricsBuilder.js
+    // mergeCrossPipelineDuplicates).
+    durationSeconds?: number;
   }>;
   recentEpisodes?: Array<{
     user: { id: string; username: string; email?: string; colorIndex: number };
