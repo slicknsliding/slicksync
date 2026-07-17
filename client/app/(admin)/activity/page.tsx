@@ -124,9 +124,11 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
   // Merge in the reliable WatchActivity-derived feed (movies + episodes),
   // skipping anything already represented by a session above for the same
   // user+item so a watch that happened to be caught by both systems isn't
-  // shown twice. No durationSeconds here by design — this data doesn't
-  // track per-event duration, and the UI already hides that badge cleanly
-  // when it's undefined (see the render logic below).
+  // shown twice. This feed has no per-event duration of its own, but the
+  // backend backfills durationSeconds onto an entry when it can match it to
+  // a native WatchSession (mergeCrossPipelineDuplicates) - carry that
+  // through when present; the UI already hides the badge cleanly when it's
+  // undefined (see the render logic below).
   if (metrics.recentActivity && metrics.recentActivity.length > 0) {
     metrics.recentActivity.forEach((entry) => {
       const key = `${entry.user.id}:${entry.item.id}`;
@@ -144,6 +146,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         contentName: entry.item.name,
         season: entry.item.season ?? undefined,
         episode: entry.item.episode ?? undefined,
+        durationSeconds: entry.durationSeconds && entry.durationSeconds > 0 ? entry.durationSeconds : undefined,
         timestamp: new Date(entry.watchedAt),
         endTime: new Date(entry.watchedAt),
         isActive: false,

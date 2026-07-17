@@ -1073,23 +1073,23 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     console.warn(`[MetricsBuilder] Error fetching watch sessions:`, error.message)
   }
 
-  // Cross-pipeline dedup: the same real viewing event can be tracked by
-  // both native Nuvio tracking (recentActivity, real IMDb-style IDs) and
-  // AIOStreams-proxy tracking (watchSessions, synthetic "proxy:<title>"
-  // IDs) - two different ID namespaces that can never match by ID alone,
-  // even for the exact same content. Confirmed real case: "On Call"
-  // showed as two separate History cards from one viewing.
-  //
-  // Matching strategy deliberately does NOT use plain substring/prefix
-  // title comparison - "Chernobyl" is a prefix of "Chernobyl Diaries" the
-  // same way "On Call" is a prefix of "On Call S01E01 Pilot", but the
-  // first pair is two different real shows while the second is the same
-  // show with episode info attached. For series, season+episode number
-  // (which recentActivity's episode entries carry directly, and which
-  // can be extracted from the proxy's raw SxxExx-tagged title) is a far
-  // safer signal than the title text alone. Movies fall back to exact
-  // normalized-title equality, which is conservative but avoids the same
-  // false-positive risk without season/episode numbers to check against.
+  // Cross-pipeline dedup / duration backfill: recentActivity (from
+  // EpisodeWatchHistory/MovieWatchHistory) has no per-event duration by
+  // itself; watchSessions (WatchSession) does. As of the proxy no longer
+  // writing WatchSession rows at all ("proxy no longer writes watch
+  // history - native owns it"), every session here is native and shares
+  // the exact same real item ID as the recentActivity entry it
+  // corresponds to - there's no longer a "native real ID vs proxy
+  // synthetic proxy:<title> ID" mismatch to work around, so match on that
+  // ID directly. For a series, WatchSession is one row per SHOW, not per
+  // episode (sessionTracker.js updates season/episode on the same row in
+  // place as the show progresses), so also check the session's own
+  // season/episode columns against the activity's - this attributes the
+  // session's current duration to the episode it actually reflects,
+  // rather than whichever same-show episode happened to be checked
+  // first. Title-text matching is kept only as a fallback, in case any
+  // pre-upgrade proxy-created session rows are still lingering with a
+  // non-matching ID.
   function normalizeForMerge(name) {
     return (name || '')
       .toLowerCase()
@@ -1098,25 +1098,12 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       .trim()
   }
 
-  function extractSeasonEpisodeFromTitle(name) {
-    const m = (name || '').match(/S(\d{1,2})E(\d{1,3})/i)
-    if (m) return { season: parseInt(m[1], 10), episode: parseInt(m[2], 10) }
-    // Bare episode marker without an attached season marker (e.g.
-    // "Chernobyl E01" rather than "Chernobyl S01E01") - same edge
-    // case already handled for search-query cleanup in
-    // proxyStreamMonitor.js (v1.9.63), applied here too for matching.
-    const bareMatch = (name || '').match(/\bE(\d{1,3})\b/i)
-    if (bareMatch) return { season: null, episode: parseInt(bareMatch[1], 10) }
-    return null
-  }
-
   function isSameEvent(activity, session) {
-    if (activity.item?.type === 'series' && activity.item?.season != null && activity.item?.episode != null) {
-      const sessionSE = extractSeasonEpisodeFromTitle(session.item?.name)
-      if (sessionSE) {
-        if (sessionSE.season === null) return sessionSE.episode === activity.item.episode
-        return sessionSE.season === activity.item.season && sessionSE.episode === activity.item.episode
+    if (activity.item?.id && session.item?.id && activity.item.id === session.item.id) {
+      if (activity.item?.type === 'series' && activity.item?.season != null && activity.item?.episode != null) {
+        return session.item?.season === activity.item.season && session.item?.episode === activity.item.episode
       }
+      return true
     }
     const activityTitle = normalizeForMerge(activity.item?.name)
     const sessionTitle = normalizeForMerge(session.item?.name)
@@ -1131,7 +1118,14 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       const match = watchSessionsList.find((session) => {
         if (consumedSessionIds.has(session.id)) return false
         if (session.user.id !== activity.user.id) return false
-        const diff = Math.abs(session.startTimeTimestamp - activity.watchedAtTimestamp)
+        // updatedAtTimestamp, not startTimeTimestamp: a WatchSession row is
+        // reused/reactivated across every rewatch of the same item, and its
+        // startTime only ever moves backward - it holds the date of the
+        // FIRST watch, not the most recent one. Using startTime here meant
+        // any show watched across more than one sitting fell outside the
+        // merge window for every episode after the first, permanently
+        // losing its duration in the Activity feed.
+        const diff = Math.abs(session.updatedAtTimestamp - activity.watchedAtTimestamp)
         if (diff > MERGE_WINDOW_MS) return false
         return isSameEvent(activity, session)
       })
