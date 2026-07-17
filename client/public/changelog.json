@@ -1,5 +1,44 @@
 [
   {
+    "version": "1.9.76",
+    "date": "2026-07-17",
+    "title": "Watch tracking, settled: two pipelines with one job each - plus strict posters, usenet History, and timezone-aware days",
+    "features": [
+      "Now Playing and History are now fed by two deliberately separate pipelines. The AIOStreams proxy owns live presence (it sees streams open and close in real time); each provider's own library polling owns the record - History, duration, Watch Time - for every source including ones the proxy never carries. Neither can do the other's job, and the split is now enforced rather than assumed.",
+      "Correct-or-nothing posters. Proxy-detected entries, where the only clue is a title parsed out of a filename, go through a strict Cinemeta search that returns a poster only on an exact normalized-title match (plus an exact year match when the filename carries a year). No confident match means no poster, rather than a confidently wrong one.",
+      "Explicit account timezone (Settings -> Privacy & Display). Background pollers have no request context to infer a viewer's timezone from, so the day boundary for Watch Time Today and streaks is now a setting instead of an accident of UTC. Defaults to the ACCOUNT_TIMEZONE env var.",
+      "The 'started watching' notification now fires from the proxy the instant a stream opens. It previously fired at stop time, which read as an end-of-watch notification.",
+      "Drag-and-drop reordering on the Addons page (grid view), matching Vault's pattern. Order persists server-side via a new position field instead of resetting on refresh.",
+      "Request-count detail on Activity cards, matching AIOStreams' own Proxy History tab.",
+      "Vault notification settings moved into Settings -> Notifications, alongside per-type toggles for activity, sync, and invites. Vault alerts ride the same webhook as everything else - there's no separate Vault notification config to keep in sync anymore.",
+      "Vault: dropped the 'All' tab in favour of defaulting to the first real category, and AIOStreams entries now show their UUID label rather than a Dashboard URL."
+    ],
+    "bugFixes": [
+      "Now Playing no longer shows an already-exited stream as playing for ~15 minutes. The provider only checkpoints at pause/stop and then holds a session 'active', so presence is now proxy-driven whenever AIOStreams is configured.",
+      "Usenet playback appears in Now Playing, History, and Watch Time again. It never touches the proxy, so it needs native tracking - and the proxy's reconciliation was blanking it out.",
+      "Proxy/native reconciliation is per-title, not per-user. Suppressing per-user meant that finishing one proxied stream would blank out unrelated usenet playback for the same person.",
+      "The proxy no longer writes watch history or durations. A proxy connection's wall-clock lifetime is not watch time - AIOStreams holds stale connections open for hours, which once recorded a 5-minute view as 22 hours and, accumulated across replays, inflated Watch Time Today to 54 hours.",
+      "Duration merges between the two pipelines take max(), not sum(). Both observe the same minutes, so summing double-counted every watch seen by both.",
+      "Watch Time Today bucketed by UTC rather than the configured local timezone, so the day rolled over at the wrong hour.",
+      "A first-time watch recorded the account's entire cumulative total as a single day's delta.",
+      "Recording a duration delta and advancing the snapshot baseline now happen in one transaction. A restart landing between them made the next poll re-record the identical delta.",
+      "Sync status no longer reports false-unsynced: addon comparison is order-insensitive, so the same set in a different order matches.",
+      "Live addon count uses a provider-agnostic lookup instead of a Stremio-only fetch, so it's correct for Nuvio users.",
+      "'Watching for X' now shows on proxy Now Playing entries of any length, not just long ones.",
+      "Deduplication handles bare episode markers (E01 without an S01 prefix) and duplicates within a single session list, not just across pipelines.",
+      "Tasks export selectors show the correct Nuvio/Stremio label and the user's real avatar.",
+      "Activity and snapshot writes are atomic, with a grace period before treating a proxy connection as closed.",
+      "The scripts/ directory is copied into the production image, not just start.sh."
+    ],
+    "miscChores": [
+      "Removed the AIOMetadata poster-lookup integration entirely. Its fuzzy catalog matching routinely picked the wrong same-titled film; the strict Cinemeta search above replaces it.",
+      "Removed the dead usenet history writer and a set of one-off patch scripts.",
+      "Documented the watch-tracking architecture in CLAUDE.md, since this split has been reintroduced-as-a-bug more than once.",
+      "Added regression tests over the most-patched-over-time logic, and fixed the test runner.",
+      "Removed unused release-please and semantic-release configs - neither tool was wired to a workflow. Releases are cut by pushing a version tag."
+    ]
+  },
+  {
     "version": "1.9.39",
     "date": "2026-07-13",
     "title": "Now Playing: AIOStreams proxy integration",

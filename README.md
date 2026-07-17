@@ -75,22 +75,48 @@ side-by-side with Stremio, rather than bolting it on:
 - **Live "Now Playing" panel** on the Activity page, with a pulsing indicator,
   shows what's actively being streamed right now and disappears automatically
   once playback stops.
-- **AIOStreams proxy integration** *(experimental / still in testing)* —
-  supplements the library-poll detection above with a second signal: real
-  connections observed through AIOStreams' built-in stream proxy, giving
-  near-real-time detection independent of how often the source app
-  checkpoints its own watch progress. Reconnections from seeking are grouped
-  so reported duration stays continuous instead of resetting, and completed
-  proxy-detected streams are written into watch history once playback ends
-  — the same as any other completed session.
-- **AIOMetadata poster enrichment** *(experimental / still in testing)* —
-  fetches posters for proxy-detected streams that have no library metadata
-  match yet, matched by parsed title and release year. Configurable from
-  Settings (manifest URL), no redeploy required to change it.
+
+**Two independent signals feed this, each doing the job the other can't:**
+
+| Signal | Source | Owns |
+|---|---|---|
+| **Proxy** | Polls AIOStreams' built-in stream proxy every 30s | Live presence — the Now Playing panel and the instant "started watching" notification |
+| **Native** | Polls each provider's own library/watch state every 1m | The record — History, duration, and Watch Time, for every source |
+
+The proxy sees streams open and close in real time, but is blind to anything
+routed outside it (usenet via newznab, for instance). The provider only
+checkpoints at pause/stop, so it learns of a session late and then holds it
+"active" for ~15 minutes — accurate for history, useless for liveness. Hence
+the split:
+
+- **The proxy is a presence signal only** — it never writes watch history or
+  durations. A proxy connection's wall-clock lifetime isn't watch time
+  (AIOStreams holds stale connections open for hours), so all duration comes
+  from the provider's own counters.
+- **Now Playing is never based on native alone**, which would leave an
+  already-exited stream showing as playing for ~15 minutes.
+- **Reconciliation is per-title, not per-user** — the proxy is authoritative
+  only for content it actually carries, so usenet playback it never saw is
+  left to native and shows up correctly.
+- **Usenet is fully covered** in Now Playing, History, and Watch Time, despite
+  never touching the proxy.
 - **1-minute poll cycle** for fast detection of new activity, library changes,
   and session state, across every connected account and profile.
 - **Per-day, per-user Activity feed** grouped by date, with poster art,
   season/episode for series, and which profile the watch came from.
+- **Request-count detail** on Activity cards, matching AIOStreams' own Proxy
+  History tab.
+- **Correct-or-nothing posters.** Library items use the provider's own poster
+  with a Cinemeta-by-ID backfill. Proxy-detected items — where all we have is
+  a title parsed out of a filename — go through a strict Cinemeta title
+  search that returns a poster *only* on an exact normalized-title match,
+  plus an exact year match when the filename carries a year. No confident
+  match means no poster, never a guessed one.
+- **Explicit account timezone** (Settings → Privacy & Display). Background
+  pollers have no request context to infer a viewer's timezone from, so
+  "today" is a setting rather than a guess — otherwise Watch Time Today
+  silently bucketed by UTC and rolled over at the wrong hour. Defaults to the
+  `ACCOUNT_TIMEZONE` env var.
 - **Top Watched / Recent Activity / Top Viewers** on the Dashboard and each
   user's detail page, built from real session duration — not just a count of
   events.
@@ -111,8 +137,10 @@ secrets) in one place:
     inferred from a wrapper's return value), so it correctly distinguishes a
     genuinely bad password from a transient issue.
   - Generic HTTP/TCP-reachability checks for anything else.
-- **ntfy and/or Discord notifications** when something's expiring or a check
-  starts failing.
+- **Alerts when something's expiring or a check starts failing** — Vault
+  alerts ride the same webhook as every other notification, configured once
+  in Settings → Notifications with a per-type toggle. There's deliberately no
+  separate Vault notification config to keep in sync.
 - **Scheduled export**: a decrypted snapshot writes to `data/backup/vault/`
   nightly (`VAULT_BACKUP_INTERVAL_HOURS` to change the interval), so Vault
   data can be pulled off-server for backup or synced into an external
@@ -122,6 +150,24 @@ secrets) in one place:
   you're not actively using without deleting them — keeps the Addons page
   focused on what's actually deployed, and they can be moved back out just
   as easily.
+
+### 🔔 Notifications
+
+One Discord webhook, configured once in Settings → Notifications, with
+per-type toggles for activity, sync, invites, and Vault alerts. The "started
+watching" notification fires from the proxy pipeline the moment a stream
+opens, rather than at stop time — which read as an end-of-watch notification
+and defeated the point.
+
+### 🧩 Addons
+
+- **Drag-and-drop reordering** on the Addons page (grid view), matching
+  Vault's pattern. Order persists server-side rather than resetting on
+  refresh.
+- **Order-insensitive sync comparison** — a user whose addons are the same set
+  in a different order no longer reports as out of sync.
+- **Provider-agnostic live addon count**, correct for Nuvio users rather than
+  Stremio-only.
 
 ### 📦 Addon Snapshots (template library)
 
@@ -323,6 +369,7 @@ sensible default. The ones you're most likely to actually want to change:
 | `AUTH_RATE_LIMIT_WINDOW_MS` / `AUTH_RATE_LIMIT_MAX_REQUESTS` | Credential-endpoint rate limit | 20 / 15 min |
 | `POLL_RATE_LIMIT_MAX_REQUESTS` | OAuth device-flow poll limit | 60/min |
 | `VAULT_BACKUP_INTERVAL_HOURS` | How often the Vault export runs | 24 |
+| `ACCOUNT_TIMEZONE` | Default timezone for day-bucketing (Watch Time Today, streaks). Overridden per-account in Settings → Privacy & Display | `America/Los_Angeles` |
 | `AIOSTREAMS_URL` | Base URL of your AIOStreams instance, for the proxy-based Now Playing integration | — |
 | `AIOSTREAMS_AUTH_USERNAME` / `AIOSTREAMS_AUTH_PASSWORD` | Credentials matching AIOStreams' own `AIOSTREAMS_AUTH` | — |
 | `AIOSTREAMS_FALLBACK_USER_IDS` | Comma-separated SlickSync user IDs to attribute proxy-detected activity to when username/email matching can't resolve one | — |
