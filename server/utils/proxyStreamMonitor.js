@@ -268,10 +268,10 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
 // native provider pipeline, which records every source this deployment uses -
 // including usenet (confirmed: a newznab usenet watch lands in History via
 // native, with the real library title/poster/duration). A proxy-side usenet
-// history writer briefly existed for an nzbdav setup, where usenet DID route
-// through the proxy; with newznab it never becomes a proxy connection at all,
-// so that writer could never fire and was removed. The proxy remains a live
-// presence signal only: Now Playing + the instant "started watching"
+// history writer briefly existed for a usenet backend that DID route through
+// the proxy; with an indexer-API setup usenet never becomes a proxy connection
+// at all, so that writer could never fire and was removed. The proxy remains a
+// live presence signal only: Now Playing + the instant "started watching"
 // notification.
 
 async function pollOnce(prisma, accountId, config) {

@@ -10,7 +10,9 @@ management system. (Additional feature ideas credited to [AIOManager](https://gi
 - A custom **Slick** theme and full rebrand (logo, badges, UI polish) on top of upstream Syncio.
 
 Repo: `github.com/slicknsliding/slicksync` — **public**. Never commit real credentials, personal emails,
-private hostnames, or instance UUIDs (including in code comments, example values, or scripts under `archive/`).
+private hostnames, or instance UUIDs — including in code comments, example values, test fixtures, or one-off
+scripts. (An `archive/` folder of dead patch scripts was removed for exactly this: it leaked an email and an
+instance UUID.) Use placeholders like `someuser@example.com` / `example.com` in comments and tests.
 Runtime config comes from env vars — see the compose file, not the repo.
 
 Upstream docs preserved for reference: [README.upstream.md](README.upstream.md), [API.md](API.md), [DOCKER.md](DOCKER.md).
@@ -123,7 +125,6 @@ scripts/*fix*|reconcile* One-off maintenance, run via `docker exec`. Dry-run by 
 Dockerfile               Multi-stage build; ARG INSTANCE=private|public selects the Prisma schema at build time
 docker-compose.private.yml / docker-compose.public.yml   Standalone compose files for each mode (not what the VPS uses — see Deploy flow note above)
 src/index.ts             Unused stub (empty export)
-archive/                 Ad-hoc historical *.patch/fix_*.py/patch_*.py scripts from past fixes, not part of the build
 test/                    node:test regression tests (node --test test/) - not exhaustive, covers the most-patched-over-time logic
 ```
 
