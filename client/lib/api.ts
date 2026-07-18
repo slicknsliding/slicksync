@@ -1268,6 +1268,20 @@ class ApiClient {
     return this.fetch<MetricsData>(`/users/metrics?period=${period}`);
   }
 
+  // Cinemeta detail lookup (cast/rating/genres/etc) for the poster-click modal.
+  // Returns null (rather than throwing) when there's no metadata - proxy-parsed
+  // filename titles have no real IMDb ID to look up, and that's an expected,
+  // non-error state the UI should just render an empty state for.
+  async getMediaDetails(itemId: string, type: string, videoId?: string | null) {
+    const params = new URLSearchParams({ itemId, type });
+    if (videoId) params.set('videoId', videoId);
+    try {
+      return await this.fetch<MediaDetails>(`/users/media-details?${params.toString()}`);
+    } catch {
+      return null;
+    }
+  }
+
   // Manual sync (same as scheduled 5‑minute sync, but on demand)
   async triggerSyncNow() {
     return this.fetch<{ message: string; result?: any }>('/settings/sync-now', {
@@ -1541,6 +1555,29 @@ export interface ImportConfigResult {
   users: { created: number; reused: number };
   groups: { created: number; reused: number };
   addons: { created: number; reused: number };
+}
+
+export interface MediaDetails {
+  title: string | null;
+  poster: string | null;
+  background: string | null;
+  description: string | null;
+  cast: string[];
+  director: string[];
+  genres: string[];
+  imdbRating: string | null;
+  runtime: string | null;
+  releaseInfo: string | null;
+  country: string | null;
+  awards: string | null;
+  imdb_id: string | null;
+  moviedb_id: number | null;
+  episode?: {
+    title: string | null;
+    released: string | null;
+    overview: string | null;
+    thumbnail: string | null;
+  };
 }
 
 export interface MetricsData {
