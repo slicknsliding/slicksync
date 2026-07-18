@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.92",
+    "date": "2026-07-18",
+    "title": "Fixed: right-clicking a different Continue Watching card left the old menu open",
+    "features": [],
+    "bugFixes": [
+      "Each Continue Watching card tracked its own right-click menu independently. Right-clicking a second card while a first card's menu was still open closed the first one's \"close on click elsewhere\" listener before it could fire (the second card's own stopPropagation, needed to suppress the browser's native menu, cut off the event before it reached the first card's listener) - so the old menu was left open and orphaned instead of closing. Moved \"which card's menu is open\" to a single shared value instead of one per card, so opening one always closes any other by construction rather than relying on event timing between independent instances."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.91",
     "date": "2026-07-18",
     "title": "Fixed: drag-to-scroll on Continue Watching stopped working on the poster itself",
