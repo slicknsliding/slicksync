@@ -121,6 +121,25 @@ the split:
   user's detail page, built from real session duration — not just a count of
   events.
 
+### 🎞️ Media Details & Continue Watching
+
+- **Click any poster on the Activity page** for cast, IMDb rating, genres,
+  director, runtime, and awards — pulled from Cinemeta, the same free,
+  keyless service already used for posters elsewhere in the app, so this adds
+  no new API key or external account to manage.
+- **Trailers play inline** via an embedded YouTube player, right in the modal
+  — no bouncing out to youtube.com.
+- **Continue Watching** on the Dashboard: the next unwatched episode for any
+  show someone's partway through, most recently watched first. Click-and-drag
+  to scroll the row (works with mouse, touch, or pen — no scrollbar to grab),
+  right-click a card to remove it.
+- **Deep links open straight into the app** — Stremio and Nuvio both register
+  to handle the same `stremio:///detail/...` link format (confirmed against
+  Nuvio's own Android source), so tapping a Continue Watching card hands off
+  directly to whichever app the user has, landed on the right episode. Only
+  the show's public IMDb ID and a season/episode number are in that link —
+  nothing account-specific, no credentials.
+
 ### 🔐 Vault — credential tracking with expiry alerts and active-checks
 
 Track API keys, accounts, and credentials (debrid services, Usenet

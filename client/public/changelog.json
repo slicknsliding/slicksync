@@ -1,5 +1,31 @@
 [
   {
+    "version": "1.9.77",
+    "date": "2026-07-18",
+    "title": "Media detail modal with trailers, Continue Watching, and a run of real watch-tracking data bugs fixed",
+    "features": [
+      "Click any poster on the Activity page to see cast, IMDb rating, genres, director, runtime, and awards - all pulled from Cinemeta, the same free service already used for posters, so no new API key or account to manage.",
+      "Trailers play inline in the detail modal via an embedded YouTube player instead of linking out to YouTube.",
+      "New \"Continue Watching\" row on the Dashboard: the next unwatched episode for any show someone's partway through, most recently watched first. Click-and-drag to scroll the row (Pointer Events, works with mouse, touch, or pen), right-click a card to remove it from the row.",
+      "Continue Watching links open straight into the Stremio or Nuvio app on the next episode - confirmed against Nuvio's own Android source that it registers to handle Stremio-format deep links too, not just its own.",
+      "Cinemeta metadata lookups are now cached server-side for 24h, so reopening the same title's detail modal (or two household members opening the same one) is instant instead of a fresh external round trip every time."
+    ],
+    "bugFixes": [
+      "Activity feed's per-item duration merge was matching sessions to history entries using stale title/timestamp logic left over from before the proxy pipeline stopped writing watch sessions - switched to matching by real item ID, which is what actually fixed \"Yesterday\" and other days permanently stuck at 0h.",
+      "A session's duration now seeds from timeOffset (a position bounded by the item's own runtime) instead of always starting at 0 - fixes any single-sitting, no-pause watch, which previously could never get a duration no matter how long it was, since the position-delta calculation needs two checkpoints and a straight-through watch only ever produces one.",
+      "\"Watch Time Today\" / Watch Time Trend could be inflated by a real data race in Nuvio's multi-profile sync: a transient per-profile fetch failure could let a different, long-stale profile reading briefly resurface as if it were new progress. The delta calculation now compares against the highest value ever recorded for an item, not just the immediately prior one, so a revert-then-recover can never register as new watch time again.",
+      "Logging in via Stremio OAuth (or accepting a Stremio-provider invite) could resolve to the wrong account when the same email had both a Stremio and a Nuvio user record on file - now correctly scoped to the right provider.",
+      "The User self-service panel (/user/*) had no mobile drawer at all - the sidebar was a fixed 240px column with no responsive handling, silently clipping content on any phone. Ported the Admin panel's working drawer pattern over. Also fixed: modals could push their buttons off-screen on short viewports, several icon-only action rows were invisible on touch (hover-only), and a handful of cramped two-field form rows now stack on narrow screens instead of squeezing.",
+      "Settings' Default View Mode control silently disappeared on mobile with no explanation (list view genuinely isn't usable at phone width) - now shows a short note instead of a blank gap.",
+      "Detail modal: cast members were rendering as \"[object Object]\" (Cinemeta's richer cast field returns objects, not plain names), the modal had no way to close it at all in some cases, and the trailer's close button sat directly on top of YouTube's own settings/fullscreen controls."
+    ],
+    "miscChores": [
+      "Removed release-please and semantic-release configs - neither was ever wired to a workflow; releases are cut by pushing a version tag.",
+      "Added several read-only diagnostic scripts (debug-history-duration-merge, debug-watch-activity-today, debug-item-timeline) and dry-run/--apply backfill scripts (fix-zero-duration-sessions, fix-cross-provider-auth-key, reconcile-stale-snapshot-spikes) used to find and verify the fixes above on real production data.",
+      "Documented the timeOffset-vs-overallTimeWatched distinction and the running-max delta fix in CLAUDE.md so a future session doesn't regress either one."
+    ]
+  },
+  {
     "version": "1.9.76",
     "date": "2026-07-17",
     "title": "Watch tracking, settled: two pipelines with one job each - plus strict posters, usenet History, and timezone-aware days",
