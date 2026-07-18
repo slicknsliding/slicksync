@@ -34,6 +34,13 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Outfit:wght@300..700&family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
+        {/* The media detail modal's poster/background/cast images all come
+            from these two CDNs - preconnecting warms up DNS/TLS ahead of the
+            actual <img> requests instead of paying that setup cost right as
+            the modal opens, which matters most on higher-latency mobile
+            connections. */}
+        <link rel="preconnect" href="https://images.metahub.space" />
+        <link rel="preconnect" href="https://image.tmdb.org" />
       </head>
       <body
         className="antialiased aurora-scrollbar overflow-x-hidden bg-page"
