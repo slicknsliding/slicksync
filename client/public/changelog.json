@@ -4,7 +4,7 @@
     "date": "2026-07-18",
     "title": "Media detail modal with trailers, Continue Watching, and a run of real watch-tracking data bugs fixed",
     "features": [
-      "Click any poster on the Activity page to see cast, IMDb rating, genres, director, runtime, and awards - all pulled from Cinemeta, the same free service already used for posters, so no new API key or account to manage.",
+      "Click any poster on the Activity page to see cast (with photos), IMDb rating, genres, director, runtime, and awards - all pulled from Cinemeta, the same free service already used for posters, so no new API key or account to manage.",
       "Trailers play inline in the detail modal via an embedded YouTube player instead of linking out to YouTube.",
       "New \"Continue Watching\" row on the Dashboard: the next unwatched episode for any show someone's partway through, most recently watched first. Click-and-drag to scroll the row (Pointer Events, works with mouse, touch, or pen), right-click a card to remove it from the row.",
       "Continue Watching links open straight into the Stremio or Nuvio app on the next episode - confirmed against Nuvio's own Android source that it registers to handle Stremio-format deep links too, not just its own.",
