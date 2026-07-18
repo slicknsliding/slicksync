@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { StarIcon, ClockIcon, FilmIcon, PlayIcon } from '@heroicons/react/24/solid';
+import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { api, MediaDetails } from '@/lib/api';
@@ -59,7 +59,7 @@ export function MediaDetailModal({
   const trailerId = details?.trailers?.[0];
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl">
+    <Modal isOpen={isOpen} onClose={onClose} size="xl" hideCloseButton={isTrailerPlaying}>
       <div className="-mx-6 -mt-6">
         {isTrailerPlaying && trailerId ? (
           <div className="relative w-full h-40 sm:h-56 overflow-hidden rounded-t-2xl bg-black">
@@ -103,7 +103,19 @@ export function MediaDetailModal({
         )}
 
         <div className="px-6 pb-2 pt-4">
-          <h2 className="text-xl font-bold font-display text-default">{title}</h2>
+          <div className="flex items-start justify-between gap-3">
+            <h2 className="text-xl font-bold font-display text-default">{title}</h2>
+            {isTrailerPlaying && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="shrink-0 p-1.5 rounded-lg hover:bg-surface-hover transition-colors text-muted"
+                aria-label="Close"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            )}
+          </div>
 
           {isLoading && (
             <div className="flex items-center gap-2 mt-4 text-sm text-muted">
