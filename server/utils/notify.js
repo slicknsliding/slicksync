@@ -147,7 +147,16 @@ async function fetchMetadata(itemId, itemType, videoId) {
             imdb_id: meta.imdb_id || null,
             moviedb_id: meta.moviedb_id || null,
             genres: meta.genres || [],
-            released: meta.released || null
+            released: meta.released || null,
+            // Detail-view fields (media detail modal) - additive, existing callers
+            // (Discord notifications) only read the fields above and are unaffected.
+            background: meta.background || null,
+            imdbRating: meta.imdbRating || null,
+            runtime: meta.runtime || null,
+            releaseInfo: meta.releaseInfo || null,
+            director: meta.director || [],
+            country: meta.country || null,
+            awards: meta.awards || null
           }
 
           // For series, find the specific episode by video_id, season, and episode number

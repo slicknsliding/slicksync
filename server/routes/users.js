@@ -6,7 +6,7 @@ const { handleStremioError } = require('../utils/handlers');
 const { findUserById } = require('../utils/helpers');
 const { responseUtils, dbUtils } = require('../utils/routeUtils');
 const { sendShareNotification } = require('../utils/activityMonitor');
-const { postDiscord } = require('../utils/notify');
+const { postDiscord, fetchMetadata } = require('../utils/notify');
 
 // Export a function that returns the router, allowing dependency injection
 module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, encrypt, parseAddonIds, parseProtectedAddons, getDecryptedManifestUrl, StremioAPIClient, StremioAPIStore, assignUserToGroup, debug, defaultAddons, canonicalizeManifestUrl, getAccountDek, getServerKey, aesGcmDecrypt, validateStremioAuthKey, manifestUrlHmac, manifestHash, createProvider }) => {
@@ -198,6 +198,32 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       res.status(500).json({ message: 'Failed to fetch users' });
     }
   });
+
+  // GET /users/media-details - Cinemeta detail lookup for the Activity page's
+  // poster-click modal (cast, rating, genres, etc). Must be before /:id route.
+  router.get('/media-details', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+
+      const { itemId, type, videoId } = req.query
+      if (!itemId || !type) {
+        return res.status(400).json({ error: 'itemId and type are required' })
+      }
+
+      const metadata = await fetchMetadata(itemId, type, videoId || null)
+      if (!metadata) {
+        return res.status(404).json({ error: 'No metadata found for this item' })
+      }
+
+      res.json(metadata)
+    } catch (error) {
+      console.error('Error fetching media details:', error)
+      res.status(500).json({ error: 'Failed to fetch media details' })
+    }
+  })
 
   // GET /users/metrics - Get metrics data for dashboard (must be before /:id route)
   router.get('/metrics', async (req, res) => {

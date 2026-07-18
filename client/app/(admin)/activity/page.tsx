@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
-import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar } from '@/components/ui';
+import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, MetricsData, Invitation } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
@@ -347,10 +347,12 @@ const ActivityCard = memo(function ActivityCard({
   activity,
   onFilterByContent,
   onFilterByEpisode,
+  onOpenDetails,
 }: {
   activity: ActivityItem;
   onFilterByContent?: (name: string) => void;
   onFilterByEpisode?: (activity: ActivityItem) => void;
+  onOpenDetails?: (activity: ActivityItem) => void;
 }) {
   const showProgress = activity.type === 'watch' || activity.type === 'pause';
   const [imageError, setImageError] = useState(false);
@@ -365,7 +367,7 @@ const ActivityCard = memo(function ActivityCard({
         <button
           type="button"
           className="w-12 h-16 rounded-lg overflow-hidden shrink-0 bg-surface border border-default"
-          onClick={() => onFilterByContent?.(activity.contentName)}
+          onClick={() => onOpenDetails?.(activity)}
         >
           <img
             src={activity.poster}
@@ -463,9 +465,11 @@ const ActivityCard = memo(function ActivityCard({
 const ActivityCardGrid = memo(function ActivityCardGrid({
   activity,
   onFilterByContent,
+  onOpenDetails,
 }: {
   activity: ActivityItem;
   onFilterByContent?: (name: string) => void;
+  onOpenDetails?: (activity: ActivityItem) => void;
 }) {
   const [imageError, setImageError] = useState(false);
 
@@ -477,7 +481,10 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
       className="group relative cursor-pointer"
     >
       {/* Poster Card */}
-      <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl">
+      <div
+        className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl"
+        onClick={() => onOpenDetails?.(activity)}
+      >
         {activity.poster && !imageError ? (
           <>
             <img
@@ -880,6 +887,7 @@ function ActivityPageContent() {
   const { viewMode: watchActivityViewMode, setViewMode: setWatchActivityViewMode } = useDefaultViewMode();
   const [visibleCount, setVisibleCount] = useState(50); // lazy-load activity in chunks
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [detailModalItem, setDetailModalItem] = useState<ActivityItem | null>(null);
 
   // Fetch real data
   const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
@@ -1503,6 +1511,7 @@ function ActivityPageContent() {
                             setEpisodeFilter(null);
                             setSearchQuery(name);
                           }}
+                          onOpenDetails={setDetailModalItem}
                         />
                       ))}
                     </div>
@@ -1524,6 +1533,7 @@ function ActivityPageContent() {
                                 episode: act.episode,
                               });
                             }}
+                            onOpenDetails={setDetailModalItem}
                           />
                         </StaggerItem>
                       ))}
@@ -2012,6 +2022,22 @@ function ActivityPageContent() {
           </>
         )}
       </div>
+
+      {detailModalItem && (
+        <MediaDetailModal
+          isOpen={!!detailModalItem}
+          onClose={() => setDetailModalItem(null)}
+          itemId={detailModalItem.contentId}
+          itemType={detailModalItem.contentType}
+          videoId={
+            detailModalItem.contentType === 'series' && detailModalItem.season != null && detailModalItem.episode != null
+              ? `${detailModalItem.contentId}:${detailModalItem.season}:${detailModalItem.episode}`
+              : undefined
+          }
+          fallbackTitle={detailModalItem.contentName}
+          fallbackPoster={detailModalItem.poster}
+        />
+      )}
     </>
   );
 }

@@ -1,0 +1,169 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { StarIcon, ClockIcon, FilmIcon } from '@heroicons/react/24/solid';
+import { Modal } from './Modal';
+import { Badge } from './Badge';
+import { api, MediaDetails } from '@/lib/api';
+
+interface MediaDetailModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  itemId: string;
+  itemType: 'movie' | 'series';
+  videoId?: string | null;
+  fallbackTitle: string;
+  fallbackPoster?: string | null;
+}
+
+export function MediaDetailModal({
+  isOpen,
+  onClose,
+  itemId,
+  itemType,
+  videoId,
+  fallbackTitle,
+  fallbackPoster,
+}: MediaDetailModalProps) {
+  const [details, setDetails] = useState<MediaDetails | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    // Reset per-item, since the same modal instance is reused across clicks
+    setDetails(null);
+    setHasFetched(false);
+    setIsLoading(true);
+
+    let cancelled = false;
+    api.getMediaDetails(itemId, itemType, videoId).then((result) => {
+      if (cancelled) return;
+      setDetails(result);
+      setIsLoading(false);
+      setHasFetched(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, itemId, itemType, videoId]);
+
+  const title = details?.episode?.title
+    ? `${details?.title || fallbackTitle} — ${details.episode.title}`
+    : (details?.title || fallbackTitle);
+  const heroImage = details?.episode?.thumbnail || details?.background || details?.poster || fallbackPoster;
+  const overview = details?.episode?.overview || details?.description;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} size="xl">
+      <div className="-mx-6 -mt-6">
+        {heroImage && (
+          <div className="relative w-full h-40 sm:h-56 overflow-hidden rounded-t-2xl">
+            <img
+              src={heroImage}
+              alt=""
+              className="w-full h-full object-cover"
+              style={{ objectPosition: 'center 15%' }}
+            />
+            <div
+              className="absolute inset-0"
+              style={{ background: 'linear-gradient(180deg, transparent 40%, var(--color-surface) 100%)' }}
+            />
+          </div>
+        )}
+
+        <div className="px-6 pb-2 pt-4">
+          <h2 className="text-xl font-bold font-display text-default">{title}</h2>
+
+          {isLoading && (
+            <div className="flex items-center gap-2 mt-4 text-sm text-muted">
+              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              Loading details…
+            </div>
+          )}
+
+          {!isLoading && hasFetched && !details && (
+            <p className="mt-4 text-sm text-muted">
+              No additional details found for this title.
+            </p>
+          )}
+
+          {!isLoading && details && (
+            <div className="mt-3 space-y-4">
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted">
+                {details.releaseInfo && <span>{details.releaseInfo}</span>}
+                {details.runtime && (
+                  <span className="flex items-center gap-1">
+                    <ClockIcon className="w-4 h-4" />
+                    {details.runtime}
+                  </span>
+                )}
+                {details.imdbRating && (
+                  <span className="flex items-center gap-1 text-amber-400 font-medium">
+                    <StarIcon className="w-4 h-4" />
+                    {details.imdbRating}
+                    <span className="text-muted font-normal">/10</span>
+                  </span>
+                )}
+                {details.imdb_id && (
+                  <a
+                    href={`https://www.imdb.com/title/${details.imdb_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    IMDb
+                  </a>
+                )}
+                {details.moviedb_id && (
+                  <a
+                    href={`https://www.themoviedb.org/${itemType === 'movie' ? 'movie' : 'tv'}/${details.moviedb_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    TMDb
+                  </a>
+                )}
+              </div>
+
+              {details.genres && details.genres.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {details.genres.map((genre) => (
+                    <Badge key={genre} variant="default" size="sm">{genre}</Badge>
+                  ))}
+                </div>
+              )}
+
+              {overview && (
+                <p className="text-sm leading-relaxed text-default">{overview}</p>
+              )}
+
+              {details.director && details.director.length > 0 && (
+                <p className="text-sm">
+                  <span className="text-muted">Director: </span>
+                  <span className="text-default">{details.director.join(', ')}</span>
+                </p>
+              )}
+
+              {details.cast && details.cast.length > 0 && (
+                <p className="text-sm">
+                  <span className="text-muted">Cast: </span>
+                  <span className="text-default">{details.cast.slice(0, 8).join(', ')}</span>
+                </p>
+              )}
+
+              {details.awards && (
+                <p className="text-xs text-muted flex items-start gap-1.5">
+                  <FilmIcon className="w-4 h-4 shrink-0 mt-0.5" />
+                  {details.awards}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
