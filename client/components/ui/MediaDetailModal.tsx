@@ -105,6 +105,7 @@ export function MediaDetailModal({
             <img
               src={heroImage}
               alt=""
+              decoding="async"
               className="w-full h-full object-cover"
               style={{ objectPosition: 'center 15%' }}
             />
@@ -215,6 +216,8 @@ export function MediaDetailModal({
                           <img
                             src={member.photo}
                             alt={member.name}
+                            loading="lazy"
+                            decoding="async"
                             className="w-20 h-20 rounded-full object-cover mx-auto bg-surface-hover"
                           />
                         ) : (

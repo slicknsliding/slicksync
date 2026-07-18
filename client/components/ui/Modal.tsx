@@ -50,8 +50,14 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div 
-            className="fixed inset-0 backdrop-blur-sm"
+          <div
+            // backdrop-filter blur across the full viewport is GPU-heavy and,
+            // recomputed every frame of the panel's enter/exit transition, is
+            // a common cause of visibly janky modal opens on phones - the
+            // rgba dimming alone is enough to read as an overlay, so the
+            // blur itself only kicks in at sm: and up, where the extra
+            // compositing budget is less likely to be felt.
+            className="fixed inset-0 sm:backdrop-blur-sm"
             style={{ background: 'rgba(0, 0, 0, 0.7)' }}
           />
         </TransitionChild>
