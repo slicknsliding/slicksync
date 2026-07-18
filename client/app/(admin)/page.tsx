@@ -184,18 +184,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
 
   return (
-    <div
-      onContextMenu={(e) => {
-        handleContextMenu(e);
-        // TEMPORARY diagnostic - the remove button's own click already
-        // confirms with a toast (shipped last version), and it wasn't
-        // firing. This pins down whether the problem is upstream of that
-        // (the menu never opening at all) or the click on the button
-        // itself. Remove once confirmed either way.
-        toast('Menu should be open now', { duration: 2000 });
-      }}
-      className="shrink-0 relative"
-    >
+    <div onContextMenu={handleContextMenu} className="shrink-0 relative">
       <a
         href={item.appUrl || item.webUrl}
         target={item.appUrl ? undefined : '_blank'}
