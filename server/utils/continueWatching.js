@@ -98,12 +98,15 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
       lastWatchedAt: row.watchedAt
     }
 
-    if (user.providerType === 'stremio' && metadata.imdb_id) {
+    if (metadata.imdb_id) {
+      // Nuvio's own Android app (NuvioMedia/NuvioMobile, AndroidManifest.xml)
+      // registers an intent filter for the "stremio" scheme alongside its own
+      // "nuvio" scheme - it deliberately handles Stremio-format detail links,
+      // not just its native ones. Same link works for both providers; a
+      // device with both apps installed gets the normal OS app-picker.
       const links = buildStremioLinks(metadata.imdb_id, next.season, next.episode)
       entry.appUrl = links.appUrl
       entry.webUrl = links.webUrl
-    } else if (metadata.imdb_id) {
-      entry.webUrl = `https://www.imdb.com/title/${metadata.imdb_id}`
     }
 
     results.push(entry)
