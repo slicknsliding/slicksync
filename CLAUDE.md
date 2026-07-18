@@ -77,6 +77,18 @@ Rules that keep falling out of this, each fixing a real reported bug:
   elsewhere in this file needs a second one to produce anything at all otherwise). Do **not** extend this same
   seeding to anything that reads `overallTimeWatched` directly (including `metricsProcessor.js`'s WatchActivity
   delta computation) — that field genuinely needs two observations to diff safely.
+- **WatchActivity's delta baseline is the running max `overallTimeWatched` ever seen for an item, not just the
+  single most recent snapshot.** Nuvio's multi-profile merge (`providers/nuvio.js`) falls back to an empty
+  progress array when one profile's `sync_pull_watch_progress` call fails transiently — if a *different* profile
+  that watched the same item long ago is fetched successfully that same poll, its old frozen reading can briefly
+  become the only available data for that item, then self-correct next poll. Comparing against only the prior
+  snapshot treated that recovery as new watching (confirmed real case: a snapshot dropped 6543120→909494 across
+  profile-fetch failures, then "recovered" to 6389553 — a value already recorded six days earlier — producing a
+  bogus 5480-second/91-minute entry that inflated "Watch Time Today"). `getMaxOverallTimeWatched()` fixes this by
+  construction: recovering to a previously-seen value can never register as progress. Added 2026-07-18; a rewatch
+  that resets progress to near-zero and climbs back up is also suppressed under this rule, an accepted tradeoff
+  consistent with the "one History row per title" design. `scripts/reconcile-stale-snapshot-spikes.js` flags
+  already-written oversized rows from before this fix, for review.
 - **Day bucketing goes through `dateUtils.js`**, never `toISOString()` (which is always UTC). See Timezone below.
 
 ## Timezone
