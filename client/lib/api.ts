@@ -1268,6 +1268,10 @@ class ApiClient {
     return this.fetch<MetricsData>(`/users/metrics?period=${period}`);
   }
 
+  async getContinueWatching() {
+    return this.fetch<ContinueWatchingItem[]>('/users/continue-watching');
+  }
+
   // Cinemeta detail lookup (cast/rating/genres/etc) for the poster-click modal.
   // Returns null (rather than throwing) when there's no metadata - proxy-parsed
   // filename titles have no real IMDb ID to look up, and that's an expected,
@@ -1555,6 +1559,19 @@ export interface ImportConfigResult {
   users: { created: number; reused: number };
   groups: { created: number; reused: number };
   addons: { created: number; reused: number };
+}
+
+export interface ContinueWatchingItem {
+  userId: string;
+  username: string;
+  showId: string;
+  showName: string;
+  poster: string | null;
+  lastWatched: { season: number; episode: number };
+  nextEpisode: { season: number; episode: number; title: string | null; thumbnail: string | null };
+  lastWatchedAt: string;
+  appUrl?: string;
+  webUrl?: string;
 }
 
 export interface MediaDetails {
