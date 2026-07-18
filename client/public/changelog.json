@@ -2,189 +2,54 @@
   {
     "version": "1.9.94",
     "date": "2026-07-18",
-    "title": "Changelog page: fixed release titles and chore entries never actually rendering",
-    "features": [],
-    "bugFixes": [
-      "Every release's title (the human-readable one-line summary in changelog.json) was silently smuggled into an internal section that only rendered when it had list items - since a title has none, it was invisible on the actual page despite being written for every release. Now shown directly under the version number.",
-      "The \"miscChores\" field was read from changelog.json but never referenced anywhere in the page's render logic at all - any release with only chores and no features/bug fixes (like the previous one) expanded to a completely empty card. Added a proper \"Chores\" section, matching the existing Features/Bug Fixes pattern.",
-      "The \"View all releases on GitHub\" footer link pointed at the upstream Syncio author's GitHub account instead of this repo. Fixed to slicknsliding/slicksync. Each version number now also links straight to that specific release's page instead of just the repo root."
-    ],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.93",
-    "date": "2026-07-18",
-    "title": "Open in Stremio/Nuvio buttons now match each provider's own badge color",
-    "features": [],
-    "bugFixes": [],
-    "miscChores": [
-      "The \"Open in Stremio\"/\"Open in Nuvio\" buttons in the detail modal now use the same fixed, theme-independent colors as each provider's identity Badge elsewhere (the Users page, next to \"Synced\") - purple for Stremio, blue/orange for Nuvio - instead of a generic accent color, so they read as \"this specific provider\" at a glance."
-    ]
-  },
-  {
-    "version": "1.9.92",
-    "date": "2026-07-18",
-    "title": "Fixed: right-clicking a different Continue Watching card left the old menu open",
-    "features": [],
-    "bugFixes": [
-      "Each Continue Watching card tracked its own right-click menu independently. Right-clicking a second card while a first card's menu was still open closed the first one's \"close on click elsewhere\" listener before it could fire (the second card's own stopPropagation, needed to suppress the browser's native menu, cut off the event before it reached the first card's listener) - so the old menu was left open and orphaned instead of closing. Moved \"which card's menu is open\" to a single shared value instead of one per card, so opening one always closes any other by construction rather than relying on event timing between independent instances."
-    ],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.91",
-    "date": "2026-07-18",
-    "title": "Fixed: drag-to-scroll on Continue Watching stopped working on the poster itself",
-    "features": [],
-    "bugFixes": [
-      "Last version's fix for the dead info-icon button excluded clicks on both <button> AND <a> elements from the row's drag-to-scroll, but the card's own link never actually had that problem (native link navigation isn't affected by the pointer-capture issue that broke the button) - excluding it too was overly broad and killed click-and-drag on the poster/card area, which is most of each card's surface. Narrowed the exclusion back to just <button>, restoring drag-to-scroll on the poster while keeping the info-icon fix intact."
-    ],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.90",
-    "date": "2026-07-18",
-    "title": "New: Discover - browse and search movies/shows, open straight in Stremio or Nuvio",
+    "title": "Discover: browse & search catalogs, open in Stremio/Nuvio + Continue Watching interaction fixes",
     "features": [
-      "New \"Discover\" page: browse Cinemeta's Popular/New/Top Rated catalogs for movies and series, or search by title. Click any poster to open the same rich detail modal used elsewhere (cast, trailer, rating, IMDb/TMDb links) - now with \"Open in Stremio\" and \"Open in Nuvio\" buttons added to that modal, so anything you find can be opened straight into either app, not just things already in your watch history.",
-      "The Stremio/Nuvio deep-link builders used by Continue Watching are now shared with Discover instead of duplicated - Stremio's movie/no-specific-episode link formats came straight from Stremio's own SDK docs rather than guessed at."
+      "New \"Discover\" page (sidebar, under Overview): browse Cinemeta's real catalogs - Popular, New, and Top Rated - for movies and series, or search by title. This is a different Cinemeta host than the meta-only one already used elsewhere (that one's own manifest declares zero catalogs); v3-cinemeta.strem.io is the one that actually exposes browse/search, confirmed by reading its manifest directly rather than assumed. Search only works against the \"Popular\" catalog, since that's the only one the manifest advertises search support for. Click any poster to open the same rich detail modal used elsewhere.",
+      "That modal now has \"Open in Stremio\" / \"Open in Nuvio\" buttons, usable everywhere it appears (Activity, Continue Watching's fallback icon, and Discover) - not a Discover-only feature. Colored to match each provider's own identity badge (purple for Stremio, blue/orange for Nuvio) rather than a generic accent color.",
+      "The Stremio/Nuvio deep-link builders are now shared between Continue Watching and Discover in one module instead of duplicated. Stremio's movie and no-specific-episode link formats came from Stremio's own SDK documentation (movies use videoId = id; a series with no chosen episode omits videoId entirely to open its episode list) rather than guessed at."
     ],
-    "bugFixes": [],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.89",
-    "date": "2026-07-18",
-    "title": "Continue Watching confirmed fully working - diagnostics cleaned up",
-    "features": [],
     "bugFixes": [
-      "Removed the temporary \"Menu should be open now\" diagnostic toast added last version - right-click remove, the info-icon's detail modal, and the app-link click are all confirmed working now."
-    ],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.88",
-    "date": "2026-07-18",
-    "title": "Found the real reason the info-icon button did nothing",
-    "features": [],
-    "bugFixes": [
-      "The Continue Watching row's drag-to-scroll captured the mouse pointer on ANY left-click within the row, including one that landed on the info-icon button. Per the Pointer Events spec, once an element captures a pointer, every subsequent click for that pointer gets redirected to the capturing element instead of whatever's actually under the cursor - so the button's own click handler never received the event at all. The card's own link kept working through this same bug because native browser navigation isn't affected by that JS-level redirection, only plain onClick handlers are. The row now skips engaging its drag-capture entirely when a press starts on a button or link, letting those handle their own clicks normally.",
-      "Added a temporary diagnostic toast when the right-click menu opens, to pin down whether \"Remove from Continue Watching\" not working is the menu failing to open at all versus the click inside it not registering."
+      "The Continue Watching info-icon button did nothing at all - not about what it opened (IMDb, then the detail modal, neither worked), but that the row's own drag-to-scroll called setPointerCapture() on any left-click anywhere in the row, and per the Pointer Events spec, once an element captures a pointer, every subsequent click for that pointer gets redirected to the capturing element instead of whatever's actually under the cursor. The button's click handler never received the event. The card's own link kept working the whole time because native browser navigation isn't affected by that same JS-level redirection - only plain onClick handlers are.",
+      "Fixing that required excluding <button> presses from engaging the row's drag-capture - but the first attempt also excluded <a> presses, which broke drag-to-scroll on the poster itself (most of each card's surface), since the card's link never actually had the pointer-capture problem. Narrowed back to just <button>.",
+      "Right-clicking a different Continue Watching card while another card's menu was open left the old one orphaned on screen. Each card was tracking its own context-menu state independently; a second card's own stopPropagation() (needed to suppress the browser's native right-click menu) cut off the event before the first card's \"close on click elsewhere\" listener could fire. Fixed by lifting \"which card's menu is open\" to one shared value instead of one per card, so opening a new one closes any other by construction.",
+      "Every release's title on this Changelog page was invisible - smuggled into an internal section that only rendered when it had list items, and a title has none. Now shown under the version number.",
+      "The \"miscChores\" field was parsed from this file but never rendered anywhere - any release with only chores and no features/bug fixes expanded to a completely empty card. Added a proper \"Chores\" section.",
+      "The footer's GitHub link pointed at the upstream Syncio author's account instead of this repo. Fixed, and each version number now links to that specific release's page."
     ],
     "miscChores": []
   },
   {
     "version": "1.9.87",
     "date": "2026-07-18",
-    "title": "Continue Watching: right-click removal fixed, fallback icon now opens the real detail modal",
-    "features": [],
-    "bugFixes": [
-      "Right-clicking a Continue Watching card to remove it was landing on a real bug: the row's own click-and-drag handler didn't check which mouse button was pressed, so a right-click also engaged the drag-scroll logic and captured the pointer - which had no business happening for a gesture that was never a drag. Scoped that handler to the left button only. The remove button now also confirms with a toast so it's obvious the click landed.",
-      "The small fallback icon on each card (for when the app link doesn't have anywhere to go) opened a bare IMDb or web.stremio.com link. It now opens the same rich detail modal the Activity page's poster click already uses - cast photos, trailer, rating, IMDb/TMDb links, and more - instead of bouncing out to an external site for less information."
+    "title": "Nuvio deep links confirmed via source, watch history persistence, Continue Watching hardening",
+    "features": [
+      "Continue Watching now opens the Nuvio app directly for Nuvio accounts. Rather than guess at a URL format, read NuvioMedia/NuvioDesktop's own source (AppUrlBridge.kt) directly - it registers nuvio:// on Windows (Desktop 0.1.11-alpha+) and its own deep-link parser accepts nuvio://meta?type=series&id={imdbId}, built from the app's own link-builder function. One real limitation: unlike Stremio's link, Nuvio's format has no season/episode parameter at all, so it opens the show's own page rather than jumping straight to the next episode.",
+      "A small always-functional fallback link is now shown on every Continue Watching card with an app link, since a page has no way to detect whether a custom-scheme click actually found an app to catch it. Opens the web version directly - IMDb for Nuvio, web.stremio.com for Stremio."
     ],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.86",
-    "date": "2026-07-18",
-    "title": "Movie/episode watch history now actually stores its own duration",
-    "features": [],
     "bugFixes": [
-      "MovieWatchHistory and EpisodeWatchHistory rows never actually stored a duration - the field always stayed null. What looked like a working duration on the Activity page was really a separate in-memory merge computed fresh on every page load, not anything persisted. The native pipeline now writes the real duration (from the matching WatchSession) straight onto the row when it's created/updated, using the same max()-only-ever-increases rule used everywhere else duration gets merged in this codebase. For episodes specifically, the matching session is only trusted while its own videoId still points at that exact episode, since one session row can represent whichever episode of a show is currently playing.",
-      "Added scripts/backfill-history-durations.js to fill in durationSeconds on rows already written before this fix, using the same matching/max() logic. Dry-run by default, --apply to write."
-    ],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.85",
-    "date": "2026-07-18",
-    "title": "Continue Watching: guaranteed-working fallback link for when an app link can't be caught",
-    "features": [],
-    "bugFixes": [
-      "Confirmed (via a real test) that the nuvio:// link introduced last version is built correctly - the failure on one setup turned out to be Windows itself having no app registered to handle nuvio:// links at all, even with Nuvio installed (likely an in-place update that skipped the installer's protocol-registration step; a full reinstall or checking Nuvio's own Advanced settings for a URL-association option should resolve it). That's outside anything this app can control - a page has no way to detect whether a custom-scheme link found an app to open or not.",
-      "Added a small always-functional fallback link on each Continue Watching card (visible whenever there's an app link to fall back from) that opens the web version directly - IMDb for Nuvio, web.stremio.com for Stremio - so a missing app registration is never a dead end."
-    ],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.84",
-    "date": "2026-07-18",
-    "title": "Continue Watching now opens Nuvio's own app - confirmed via Nuvio's source, not guessed",
-    "features": [],
-    "bugFixes": [
-      "Continue Watching links for Nuvio accounts now open the Nuvio app directly, the same way Stremio's already did. This wasn't a guess this time - Nuvio Desktop's own source (NuvioMedia/NuvioDesktop, AppUrlBridge.kt) confirms it registers nuvio:// on Windows (since Desktop 0.1.11-alpha) and its deep-link parser accepts nuvio://meta?type=series&id={imdbId}. One real limitation: unlike Stremio's link, Nuvio's format has no season/episode parameter, so it opens the show's own page rather than jumping straight to the next episode. IMDb stays as the fallback link for anyone on an older Nuvio build without deep-link support."
+      "MovieWatchHistory/EpisodeWatchHistory rows never actually stored a duration. The field always stayed null - what looked like a working duration on the Activity page was a separate in-memory merge computed fresh on every page load, never persisted to the row itself. The native pipeline now writes the real duration at create/update time, using the same \"only ever increases\" merge rule already used everywhere else duration gets reconciled in this codebase. Added scripts/backfill-history-durations.js to fix already-written rows retroactively (dry-run by default, --apply to write).",
+      "Right-click remove on Continue Watching had a real bug: the row's mouse-drag handler didn't check which button was pressed, so a right-click also engaged the drag-scroll logic and captured the pointer. Scoped to the left mouse button only, and the remove action now confirms with a toast.",
+      "The fallback icon on each card now opens the real detail modal (cast, trailer, rating, IMDb/TMDb links) instead of a bare external link - the same modal the Activity page's poster click already uses."
     ],
     "miscChores": []
   },
   {
     "version": "1.9.83",
     "date": "2026-07-18",
-    "title": "Detail modal even faster; Nuvio's Continue Watching link no longer says stremio.com",
+    "title": "Continue Watching & detail modal polish, mobile performance",
     "features": [],
     "bugFixes": [
-      "The cast/details popup's API response was shipping the entire episode list for the show (every season, every episode - can be hundreds of entries) even though the popup only ever displays the one current episode. That's dead weight on the wire and dead JSON-parsing time competing with the popup's opening animation, especially on mobile networks/CPUs. It's no longer included in that response (still computed and cached server-side for Continue Watching, which does need it).",
-      "Added preconnect hints for the two image CDNs the popup's poster/background/cast photos load from, so DNS/TLS setup for those happens ahead of time instead of right as the popup opens.",
-      "Trimmed the popup's open/close animation slightly (300ms/200ms to 200ms/150ms) for a snappier feel.",
-      "Continue Watching's link for a Nuvio account showed \"web.stremio.com\" at the bottom of the browser, which read as a mismatch even though the page itself worked. Nuvio has no confirmed per-title deep-link format of its own to fall back to instead, so it now points at IMDb's title page - provider-neutral and guaranteed correct - rather than another guessed-at link format."
-    ],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.82",
-    "date": "2026-07-18",
-    "title": "Detail modal and Continue Watching: fixed hard lag on mobile",
-    "features": [],
-    "bugFixes": [
-      "Opening the cast/details popup felt like it was taking forever and stuttering hard on phones - the modal's full-screen dimming overlay was also running a GPU blur (backdrop-filter) across the entire viewport, recomputed every frame of the open/close animation. That's a well-known source of visible jank on phone GPUs in particular. The dimming alone reads fine as an overlay, so the blur now only applies at tablet/desktop widths, where there's more compositing headroom.",
-      "The cast photos (up to 10) and the Continue Watching row's thumbnails (up to 8) were all decoded eagerly the instant they entered the DOM, competing with the modal's opening animation for the same main thread on top of the network fetch. They're now lazy-loaded and decoded off the main thread, so only what's actually visible gets decoded up front.",
-      "Continue Watching's click-and-drag scrolling was capturing every touch gesture on the row, not just mouse drags - on a phone this could fight with the page's own vertical scroll if a swipe started on that row. Touch and pen now get the browser's native horizontal scrolling (which also has proper momentum, unlike the custom version); the custom drag logic now only runs for an actual mouse."
-    ],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.81",
-    "date": "2026-07-18",
-    "title": "Continue Watching: reverted the JS link fallback that broke Stremio",
-    "features": [],
-    "bugFixes": [
-      "Continue Watching's Stremio deep link stopped opening the app at all - it had been working before the popup-blocker fix in v1.9.79 introduced a JS-driven click handler (preventDefault + a scripted location.href assignment + a visibility-based fallback timer) to try to help Nuvio. Browsers handle a direct anchor click far more reliably than a script-driven navigation for custom URL schemes, even from inside a real click handler, so that change regressed the simpler case that already worked. Reverted to a plain native link click for the app URL, with only the drag-vs-click guard left as JS.",
-      "Nuvio's app link never had anywhere to go anyway - its desktop client (the one this was tested against) is alpha/testers-only with no confirmed protocol-handler registration on any platform, so no scheme was ever going to be caught there. Nuvio now gets the same web.stremio.com detail page as a plain link that opens in a new tab, same as Stremio's own fallback, instead of an app link that could never work."
-    ],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.80",
-    "date": "2026-07-18",
-    "title": "Trailer looked squished on the widened detail modal",
-    "features": [],
-    "bugFixes": [
-      "Widening the detail modal (v1.9.79) left the trailer video's container at a fixed short height regardless of the new width - YouTube's player always keeps its actual video at 16:9 internally, so it letterboxed down to a thin strip in the middle of a much wider box. The container now derives its height from its actual width instead of a fixed pixel value, so the video renders at full size again. Also added a gradient fade at the bottom of the video, matching the static poster view, instead of a hard cut straight into the text below."
-    ],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.79",
-    "date": "2026-07-18",
-    "title": "Continue Watching popup-blocked fallback, readable detail modal, trailer close goes back not out",
-    "features": [],
-    "bugFixes": [
-      "Continue Watching's web fallback was itself silently broken: it called window.open() from inside a setTimeout, which browsers treat as not user-triggered and quietly block as a popup - no error, no visible sign, so the link still looked completely dead even with a fallback in place. Switched to same-tab navigation (location.href), which isn't subject to popup blocking.",
-      "Detail modal text (title, overview, metadata, cast) was too small to read comfortably - sized everything up a step, widened the modal, and gave cast photos more room.",
-      "The last cast member's name could get visually clipped by the row's own edge with no trailing space. Added room at the end of the scrollable row.",
-      "The trailer's close button now returns to the poster/details view instead of closing the whole modal - backdrop click and Escape still fully close it."
-    ],
-    "miscChores": []
-  },
-  {
-    "version": "1.9.78",
-    "date": "2026-07-18",
-    "title": "Continue Watching link/drag fixes, cast photo cutoff, trailer close button repositioned",
-    "features": [],
-    "bugFixes": [
-      "Continue Watching links to Nuvio were opening nothing at all - switching both providers onto the same stremio:// deep link format (previous release) removed the plain web-link fallback Nuvio previously had, and a browser silently does nothing when it navigates to a custom URL scheme with no app registered to handle it. Links now try the app first and fall back to the web version automatically if nothing takes over the tab within ~1.2s.",
-      "Drag-to-scroll on Continue Watching mostly grabbed the poster image instead of scrolling, showing the browser's native \"can't drop here\" cursor - links and images are draggable by default in browsers, which was hijacking the custom scroll gesture. Explicitly disabled native drag on the card.",
-      "Cast member names with more than a few characters were truncating almost immediately - card width was too narrow. Widened slightly and names now wrap to two lines before truncating instead of cutting off after one.",
-      "Repositioned the trailer's close button lower and to the right, closer to YouTube's own bottom control row instead of overlapping its top-right settings/CC/volume cluster."
+      "Continue Watching links to Nuvio opened nothing. Switching both providers onto the same stremio:// deep link removed Nuvio's plain web fallback - a browser silently does nothing when navigating to a custom scheme with no registered handler. An attempt at a JS-driven fallback (try the app link, fall back to web after a timeout) turned out fragile itself - a popup-blocker false positive, and worse, it regressed the Stremio link that was already working. Browsers handle a direct anchor click far more reliably than script-driven navigation for custom URL schemes, even from inside a real click handler. Reverted to a plain native <a href> with no JS interception at all.",
+      "Nuvio's app link never had anywhere to go on this test setup - its desktop client is alpha/testers-only with no confirmed protocol-handler registration, so no scheme was ever going to be caught there. Fell back to IMDb's title page instead - provider-neutral and guaranteed to work - rather than guessing at another unverified link format.",
+      "Drag-to-scroll mostly grabbed the poster image instead of scrolling the row, showing the browser's \"can't drop here\" cursor - links and images are draggable by default, hijacking the custom scroll gesture. Disabled native drag explicitly.",
+      "Cast names were truncating almost immediately, and the detail modal's text overall was too small to read comfortably. Widened cast cards, switched to two-line wrap instead of single-line truncation, and sized up title/body/metadata text across the whole modal.",
+      "The trailer video looked squished after the modal was widened - its container had a fixed short height regardless of the new width, and YouTube's player always preserves 16:9 internally, so it letterboxed into a thin strip. Now derives height from width instead.",
+      "The trailer's close button now returns to the poster/details view instead of closing the whole modal, and was repositioned clear of YouTube's own top-right settings/CC/volume controls.",
+      "Opening the cast/details modal stuttered hard on phones. The shared modal's dimming overlay ran a full-viewport backdrop-filter blur, recomputed every frame of the open/close animation - a well-known jank source on phone GPUs. The blur now only applies at tablet/desktop widths; the plain dimming reads fine on its own.",
+      "Cast photos and Continue Watching thumbnails now lazy-load with async decoding instead of decoding eagerly on mount, which was competing with the modal's animation and the metadata fetch for the same main thread.",
+      "Continue Watching's drag-to-scroll was capturing every pointer type, fighting the page's native vertical scroll on a phone. Scoped to mouse only - touch and pen get native horizontal scrolling, which also has proper momentum the custom version lacked.",
+      "The media-details endpoint was shipping a show's entire episode list (hundreds of entries for long-running series) even though the modal only displays the current one. Stripped from that response.",
+      "Added preconnect hints for the two image CDNs the modal's images load from, and trimmed the open/close animation from 300ms/200ms to 200ms/150ms."
     ],
     "miscChores": []
   },
