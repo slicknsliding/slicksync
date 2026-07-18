@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.9.86",
+    "date": "2026-07-18",
+    "title": "Movie/episode watch history now actually stores its own duration",
+    "features": [],
+    "bugFixes": [
+      "MovieWatchHistory and EpisodeWatchHistory rows never actually stored a duration - the field always stayed null. What looked like a working duration on the Activity page was really a separate in-memory merge computed fresh on every page load, not anything persisted. The native pipeline now writes the real duration (from the matching WatchSession) straight onto the row when it's created/updated, using the same max()-only-ever-increases rule used everywhere else duration gets merged in this codebase. For episodes specifically, the matching session is only trusted while its own videoId still points at that exact episode, since one session row can represent whichever episode of a show is currently playing.",
+      "Added scripts/backfill-history-durations.js to fill in durationSeconds on rows already written before this fix, using the same matching/max() logic. Dry-run by default, --apply to write."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.85",
     "date": "2026-07-18",
     "title": "Continue Watching: guaranteed-working fallback link for when an app link can't be caught",
