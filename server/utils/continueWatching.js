@@ -18,18 +18,7 @@
  */
 
 const { fetchMetadata } = require('./notify')
-
-function buildStremioLinks(imdbId, season, episode) {
-  const videoId = `${imdbId}:${season}:${episode}`
-  return {
-    appUrl: `stremio:///detail/series/${imdbId}/${videoId}`,
-    webUrl: `https://web.stremio.com/#/detail/series/${imdbId}/${videoId}`
-  }
-}
-
-function buildNuvioAppUrl(imdbId) {
-  return `nuvio://meta?type=series&id=${encodeURIComponent(imdbId)}`
-}
+const { buildStremioLinks, buildNuvioAppUrl } = require('./appLinks')
 
 /**
  * Given the season/episode of the last-watched episode and the show's full
@@ -126,11 +115,11 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
       // installed - same known tradeoff Stremio's link already had, applied
       // symmetrically now that Nuvio has a real scheme to offer too.
       if (user.providerType === 'stremio') {
-        const links = buildStremioLinks(metadata.imdb_id, next.season, next.episode)
+        const links = buildStremioLinks(metadata.imdb_id, 'series', next.season, next.episode)
         entry.appUrl = links.appUrl
         entry.webUrl = links.webUrl
       } else {
-        entry.appUrl = buildNuvioAppUrl(metadata.imdb_id)
+        entry.appUrl = buildNuvioAppUrl('series', metadata.imdb_id)
         entry.webUrl = `https://www.imdb.com/title/${metadata.imdb_id}`
       }
     }

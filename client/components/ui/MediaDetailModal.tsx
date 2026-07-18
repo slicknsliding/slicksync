@@ -5,6 +5,7 @@ import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon } from '@heroicons/r
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { api, MediaDetails } from '@/lib/api';
+import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 
 interface MediaDetailModalProps {
   isOpen: boolean;
@@ -186,6 +187,34 @@ export function MediaDetailModal({
                   </a>
                 )}
               </div>
+
+              {/* Neither link can "detect and fall back" if the target app
+                  isn't installed/registered - a plain native <a href>, same
+                  as Continue Watching's card, since JS-driven interception
+                  of this exact kind of click has broken it before. Offered
+                  as two plain options rather than picking one, since this
+                  modal isn't tied to a specific managed user/provider the
+                  way Continue Watching is. */}
+              {details.imdb_id && (
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href={buildStremioAppUrl(details.imdb_id, itemType)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    style={{ background: 'var(--color-primary)', color: 'white' }}
+                  >
+                    <PlayIcon className="w-4 h-4" />
+                    Open in Stremio
+                  </a>
+                  <a
+                    href={buildNuvioAppUrl(details.imdb_id, itemType)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    style={{ background: 'var(--color-surfaceHover)', color: 'var(--color-text)', border: '1px solid var(--color-surfaceBorder)' }}
+                  >
+                    <PlayIcon className="w-4 h-4" />
+                    Open in Nuvio
+                  </a>
+                </div>
+              )}
 
               {details.genres && details.genres.length > 0 && (
                 <div className="flex flex-wrap gap-2">
