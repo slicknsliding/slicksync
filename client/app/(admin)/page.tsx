@@ -160,27 +160,39 @@ const RecentAddonItem = memo(function RecentAddonItem({
 // so "did it work" is inferred from whether the tab lost visibility (the OS
 // switching away to open the app) within a short window after trying.
 //
-// The fallback MUST be same-tab navigation (location.href), not
-// window.open(): a window.open() call made inside a setTimeout is no longer
-// considered to be triggered by the original user gesture, so browsers
-// silently block it as a popup - no error, no visible sign, which is
-// exactly why this looked like "nothing happens at all" even with a
-// fallback in place. location.href navigation isn't subject to that.
+// TEMPORARY diagnostic toasts/logs: two rounds of fixes here (v1.9.78,
+// v1.9.79) still didn't resolve "nothing happens at all" on a real device,
+// which means the actual failure point hasn't been confirmed yet - only
+// guessed at. These make every stage visible so the next test pins down
+// which of "click handler never runs" / "page navigates away and kills the
+// timer before it fires" / "fallback runs but web.stremio.com itself
+// doesn't work" it actually is, instead of a fourth blind guess. Remove
+// once confirmed working.
 function openAppLinkWithFallback(appUrl: string, webUrl?: string) {
+  console.log('[ContinueWatching] click handler ran. appUrl=', appUrl, 'webUrl=', webUrl);
+  toast(`Trying: ${appUrl}`, { duration: 4000 });
+
   if (!webUrl) {
     window.location.href = appUrl;
     return;
   }
   let handedOff = false;
   const onVisibilityChange = () => {
-    if (document.hidden) handedOff = true;
+    if (document.hidden) {
+      handedOff = true;
+      console.log('[ContinueWatching] tab lost visibility - assuming app opened');
+    }
   };
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.location.href = appUrl;
   setTimeout(() => {
     document.removeEventListener('visibilitychange', onVisibilityChange);
+    console.log('[ContinueWatching] fallback timer fired. handedOff=', handedOff);
     if (!handedOff) {
+      toast(`No app detected - opening: ${webUrl}`, { duration: 4000 });
       window.location.href = webUrl;
+    } else {
+      toast('App appears to have opened', { duration: 2000 });
     }
   }, 1200);
 }
@@ -208,11 +220,18 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
         onDragStart={(e) => e.preventDefault()}
         onClick={(e) => {
           e.preventDefault();
-          if (wasDraggedRef.current) return;
+          console.log('[ContinueWatching] card clicked.', { wasDragged: wasDraggedRef.current, appUrl: item.appUrl, webUrl: item.webUrl });
+          if (wasDraggedRef.current) {
+            toast('Click ignored - registered as a drag', { duration: 3000 });
+            return;
+          }
           if (item.appUrl) {
             openAppLinkWithFallback(item.appUrl, item.webUrl);
           } else if (item.webUrl) {
+            toast(`Opening web (no app link for this item): ${item.webUrl}`, { duration: 4000 });
             window.open(item.webUrl, '_blank', 'noopener,noreferrer');
+          } else {
+            toast.error('No link at all for this item - check server logs');
           }
         }}
         className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer"
