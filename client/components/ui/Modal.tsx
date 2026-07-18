@@ -13,6 +13,11 @@ interface ModalProps {
   description?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
   children: React.ReactNode;
+  /** Suppress the built-in overlaid close button - for content (e.g. an
+   * embedded video player) that has its own top-right controls the button
+   * would otherwise sit on top of. The caller is responsible for providing
+   * another way to close (backdrop click and Escape still work). */
+  hideCloseButton?: boolean;
 }
 
 const sizeStyles = {
@@ -31,7 +36,7 @@ const sizeMaxWidthPx = {
   full: '896px',
 };
 
-export function Modal({ isOpen, onClose, title, description, size = 'md', children }: ModalProps) {
+export function Modal({ isOpen, onClose, title, description, size = 'md', children, hideCloseButton = false }: ModalProps) {
   return (
     <Transition show={isOpen} as={Fragment}>
       <Dialog onClose={onClose} className="relative z-50">
@@ -78,7 +83,9 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
               {/* Close button - unconditional (not tied to title/description) and
                   positioned on the panel itself, not inside the scrollable content,
                   so it stays put regardless of what's rendered below (a custom
-                  hero-image header, a title, or nothing) and regardless of scroll. */}
+                  hero-image header, a title, or nothing) and regardless of scroll.
+                  Skipped entirely when hideCloseButton is set. */}
+              {!hideCloseButton && (
               <button
                 onClick={onClose}
                 className="absolute top-3 right-3 z-10 p-2 rounded-lg backdrop-blur-sm transition-colors"
@@ -87,6 +94,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
               >
                 <XMarkIcon className="w-5 h-5" />
               </button>
+              )}
 
               {/* Header */}
               {(title || description) && (
