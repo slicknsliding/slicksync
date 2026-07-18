@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.80",
+    "date": "2026-07-18",
+    "title": "Trailer looked squished on the widened detail modal",
+    "features": [],
+    "bugFixes": [
+      "Widening the detail modal (v1.9.79) left the trailer video's container at a fixed short height regardless of the new width - YouTube's player always keeps its actual video at 16:9 internally, so it letterboxed down to a thin strip in the middle of a much wider box. The container now derives its height from its actual width instead of a fixed pixel value, so the video renders at full size again. Also added a gradient fade at the bottom of the video, matching the static poster view, instead of a hard cut straight into the text below."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.79",
     "date": "2026-07-18",
     "title": "Continue Watching popup-blocked fallback, readable detail modal, trailer close goes back not out",
