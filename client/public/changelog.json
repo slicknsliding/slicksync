@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.9.81",
+    "date": "2026-07-18",
+    "title": "Continue Watching: reverted the JS link fallback that broke Stremio",
+    "features": [],
+    "bugFixes": [
+      "Continue Watching's Stremio deep link stopped opening the app at all - it had been working before the popup-blocker fix in v1.9.79 introduced a JS-driven click handler (preventDefault + a scripted location.href assignment + a visibility-based fallback timer) to try to help Nuvio. Browsers handle a direct anchor click far more reliably than a script-driven navigation for custom URL schemes, even from inside a real click handler, so that change regressed the simpler case that already worked. Reverted to a plain native link click for the app URL, with only the drag-vs-click guard left as JS.",
+      "Nuvio's app link never had anywhere to go anyway - its desktop client (the one this was tested against) is alpha/testers-only with no confirmed protocol-handler registration on any platform, so no scheme was ever going to be caught there. Nuvio now gets the same web.stremio.com detail page as a plain link that opens in a new tab, same as Stremio's own fallback, instead of an app link that could never work."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.80",
     "date": "2026-07-18",
     "title": "Trailer looked squished on the widened detail modal",

@@ -106,13 +106,23 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
     }
 
     if (metadata.imdb_id) {
-      // Nuvio's own Android app (NuvioMedia/NuvioMobile, AndroidManifest.xml)
-      // registers an intent filter for the "stremio" scheme alongside its own
-      // "nuvio" scheme - it deliberately handles Stremio-format detail links,
-      // not just its native ones. Same link works for both providers; a
-      // device with both apps installed gets the normal OS app-picker.
       const links = buildStremioLinks(metadata.imdb_id, next.season, next.episode)
-      entry.appUrl = links.appUrl
+
+      // Stremio's own desktop/mobile clients have long-established stremio://
+      // registration - confirmed working (a real click opened the app). Nuvio's
+      // Android app also registers that scheme in its manifest, but Nuvio's
+      // desktop client is alpha/testers-only and has no confirmed protocol
+      // registration on any platform - handing it an app link that can never
+      // be caught just adds a broken step before the fallback, and a prior
+      // attempt at JS-driven fallback logic for exactly this case ended up
+      // breaking the Stremio path that already worked. Simplest reliable
+      // split: Stremio gets the real app link (plain <a href>, no JS
+      // involved - that's what was confirmed working). Everyone else gets
+      // the web.stremio.com link as an ordinary web link - same rich detail
+      // page, no native handoff attempted.
+      if (user.providerType === 'stremio') {
+        entry.appUrl = links.appUrl
+      }
       entry.webUrl = links.webUrl
     }
 
