@@ -20,6 +20,7 @@ import {
   DocumentTextIcon,
   XMarkIcon,
   ShieldCheckIcon,
+  MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 import { PanelSwitcher } from './PanelSwitcher';
 import { api } from '@/lib/api';
@@ -36,6 +37,7 @@ const navigationSections = [
     label: 'Overview',
     items: [
       { name: 'Dashboard', href: '/', icon: HomeIcon },
+      { name: 'Discover', href: '/discover', icon: MagnifyingGlassIcon },
       { name: 'Activity', href: '/activity', icon: ClockIcon },
       { name: 'Metrics', href: '/metrics', icon: ChartBarIcon },
     ],
