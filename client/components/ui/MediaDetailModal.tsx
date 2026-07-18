@@ -62,13 +62,26 @@ export function MediaDetailModal({
     <Modal isOpen={isOpen} onClose={onClose} size="full" hideCloseButton={isTrailerPlaying}>
       <div className="-mx-6 -mt-6">
         {isTrailerPlaying && trailerId ? (
-          <div className="relative w-full h-40 sm:h-56 overflow-hidden rounded-t-2xl bg-black">
+          // aspect-video (not a fixed height like the static hero below) -
+          // YouTube's player always keeps its actual video content at 16:9
+          // internally, so a fixed short height on a wide modal (size="full")
+          // squished the container into a much wider-than-16:9 box and the
+          // player letterboxed down to a thin strip in the middle of it.
+          // Deriving height from width keeps the video itself full-size.
+          <div className="relative w-full aspect-video max-h-[60vh] overflow-hidden rounded-t-2xl bg-black">
             <iframe
               src={`https://www.youtube.com/embed/${trailerId}?autoplay=1`}
               title="Trailer"
               className="w-full h-full"
               allow="autoplay; encrypted-media; picture-in-picture"
               allowFullScreen
+            />
+            {/* Fades the video's bottom edge into the surface color below,
+                matching the static hero's gradient - a hard cut from a black
+                video box straight into the text content looked disjointed. */}
+            <div
+              className="absolute bottom-0 left-0 right-0 h-12 pointer-events-none"
+              style={{ background: 'linear-gradient(180deg, transparent, var(--color-surface))' }}
             />
             {/* Positioned low and to the right, clear of YouTube's own
                 top-right controls (volume/CC/settings) - roughly level with
