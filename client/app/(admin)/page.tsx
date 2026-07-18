@@ -333,12 +333,13 @@ export default function DashboardPage() {
     // Events spec) instead of whatever element was actually under the
     // cursor - which silently ate clicks on the info-icon button (a plain
     // <button onClick>, entirely dependent on the JS click event actually
-    // reaching it). The card's own <a href> link is unaffected since
-    // browsers handle native navigation independent of this JS-level
-    // retargeting, which is why it kept working through this same bug.
-    // Skip engaging drag-capture at all when the press starts on an
-    // interactive element - let it handle its own click normally.
-    if ((e.target as HTMLElement).closest('button, a')) return;
+    // reaching it). The card's own <a href> link is UNaffected by this,
+    // since browsers handle native navigation independent of this JS-level
+    // retargeting (confirmed - it kept working the whole time this bug
+    // existed) - so only <button> needs to be excluded here. Excluding <a>
+    // too was overly broad and killed drag-to-scroll on the poster/card
+    // area itself, which never had this problem to begin with.
+    if ((e.target as HTMLElement).closest('button')) return;
     isPointerDownRef.current = true;
     wasDraggedRef.current = false;
     dragStartXRef.current = e.clientX;

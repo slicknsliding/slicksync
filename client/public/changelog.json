@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.91",
+    "date": "2026-07-18",
+    "title": "Fixed: drag-to-scroll on Continue Watching stopped working on the poster itself",
+    "features": [],
+    "bugFixes": [
+      "Last version's fix for the dead info-icon button excluded clicks on both <button> AND <a> elements from the row's drag-to-scroll, but the card's own link never actually had that problem (native link navigation isn't affected by the pointer-capture issue that broke the button) - excluding it too was overly broad and killed click-and-drag on the poster/card area, which is most of each card's surface. Narrowed the exclusion back to just <button>, restoring drag-to-scroll on the poster while keeping the info-icon fix intact."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.90",
     "date": "2026-07-18",
     "title": "New: Discover - browse and search movies/shows, open straight in Stremio or Nuvio",
