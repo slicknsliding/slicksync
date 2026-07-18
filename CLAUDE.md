@@ -62,19 +62,21 @@ Rules that keep falling out of this, each fixing a real reported bug:
 - **Duration merges take `max()`, not `sum()`.** Both pipelines observe the *same* minutes; summing double-counted.
 - **Recording a delta and advancing the snapshot baseline must be one transaction** — a restart between them made
   the next poll re-record the identical delta.
-- **A single-sitting, no-pause watch cannot get a duration, in either pipeline, and that's correct — do not "fix"
-  it by seeding duration from the first observed value.** Nuvio only writes `overallTimeWatched`/`lastWatched` at
-  pause/stop, never continuously, so a movie watched straight through produces exactly one checkpoint. Both
-  `sessionTracker.js` (position-delta since session creation) and `metricsProcessor.js` (snapshot-delta since the
-  last observation) need *two* checkpoints to compute anything — one checkpoint is structurally insufficient,
-  regardless of which field or which pipeline you read it from. `metricsProcessor.js`'s `processLibraryItem`
-  already tried treating a first-ever observation's raw value as "today's delta" and reverted it after a confirmed
-  16.5-hour single-entry bug — `overallTimeWatched` can be cumulative across a long viewing history, not scoped to
-  "just now," so there's no safe way to convert one reading into a per-occasion duration. A watch that only ever
-  produces one checkpoint (started and finished with no pause/resume in between) should show no duration — same
-  "no confident match ⇒ nothing, never a guess" principle as the poster matching. Investigated 2026-07-17 while
-  chasing a "Yesterday: 0h in Activity" report; the underlying cross-pipeline *matching* logic had a real, separate
-  bug (fixed) — the duration in this case was correctly absent, not missing.
+- **`state.timeOffset`/`timeWatched` and `state.overallTimeWatched` are NOT interchangeable, despite
+  `sessionTracker.js` treating them as a `??` fallback chain in several places.** `timeOffset`/`timeWatched` is a
+  per-item playback position, bounded by that item's own `state.duration` — safe to read at a single point in
+  time. `overallTimeWatched` is cumulative across the account's whole viewing history and can run to absurd values
+  (confirmed real example in `stremioWatchedDecoder.js`: `timeOffset` ≈ the current episode's ~54min runtime,
+  `overallTimeWatched` ≈ 28.6 **hours** on the same item). `metricsProcessor.js`'s `processLibraryItem` once treated
+  a first-ever `overallTimeWatched` observation as "today's delta" and caused a confirmed 16.5-hour single-entry
+  bug — **that incident is about `overallTimeWatched` specifically, not a blanket rule against ever reading a
+  first-observed value.** `sessionTracker.js`'s session-create path now seeds `durationSeconds` from
+  `state.timeOffset` (capped against `state.duration` as a safety net) precisely because that field doesn't have
+  the same risk — added 2026-07-17 to fix single-sitting, no-pause watches (Nuvio/Stremio only checkpoint at
+  pause/stop, so a straight-through watch produces exactly one checkpoint, and the position-delta computed
+  elsewhere in this file needs a second one to produce anything at all otherwise). Do **not** extend this same
+  seeding to anything that reads `overallTimeWatched` directly (including `metricsProcessor.js`'s WatchActivity
+  delta computation) — that field genuinely needs two observations to diff safely.
 - **Day bucketing goes through `dateUtils.js`**, never `toISOString()` (which is always UTC). See Timezone below.
 
 ## Timezone
