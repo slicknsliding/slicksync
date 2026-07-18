@@ -5,10 +5,16 @@
  *
  * Stremio has a well-established deep-link URL scheme (stremio:///detail/...)
  * that opens the app directly to a specific episode, with a web.stremio.com
- * fallback for anyone without the app installed. Nuvio has no known
- * equivalent - rather than guess at a URL scheme that might not exist and
- * ship a broken button, Nuvio users get an IMDb link instead, which is still
- * useful for finding what's next even without a one-tap launch into the app.
+ * fallback for anyone without the app installed.
+ *
+ * Nuvio's own format was confirmed by reading NuvioMedia/NuvioDesktop's
+ * source directly (composeApp/src/commonMain/kotlin/com/nuvio/app/core/
+ * deeplink/AppUrlBridge.kt, buildMetaDeepLinkUrl) rather than guessed at -
+ * the app registers nuvio:// on Windows (Nuvio Desktop 0.1.11-alpha+) and
+ * its parser accepts nuvio://meta?type={movie|series}&id={imdbId}. Unlike
+ * Stremio's link, that format has no season/episode parameter at all, so it
+ * can only open the show's own page, not a specific episode - still a real
+ * improvement over the IMDb-only fallback used before this was confirmed.
  */
 
 const { fetchMetadata } = require('./notify')
@@ -19,6 +25,10 @@ function buildStremioLinks(imdbId, season, episode) {
     appUrl: `stremio:///detail/series/${imdbId}/${videoId}`,
     webUrl: `https://web.stremio.com/#/detail/series/${imdbId}/${videoId}`
   }
+}
+
+function buildNuvioAppUrl(imdbId) {
+  return `nuvio://meta?type=series&id=${encodeURIComponent(imdbId)}`
 }
 
 /**
@@ -106,27 +116,21 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
     }
 
     if (metadata.imdb_id) {
-      // Stremio's own desktop/mobile clients have long-established stremio://
-      // registration - confirmed working (a real click opened the app).
-      // Nuvio's desktop client is alpha/testers-only with no confirmed
-      // protocol registration on any platform, so it gets no app link.
-      //
-      // Nuvio's web fallback deliberately isn't web.stremio.com: that domain
-      // is correct for what it links to (Stremio's own detail page format),
-      // but showing "stremio.com" as the link target for a Nuvio account is
-      // confusing branding-wise - it reads as a mismatch even though the
-      // page itself works fine. Nuvio does have its own web client
-      // (web.nuvioapp.space), but it's aimed at TV platforms (WebOS/Tizen)
-      // and there's no confirmed per-title deep-link URL format for it - and
-      // guessing at another unverified link format is exactly what broke the
-      // Stremio path last time. IMDb's title page is provider-neutral,
-      // guaranteed to work, and was the original fallback here before the
-      // Stremio-link experiments started.
+      // Both branches use a plain native <a href> on the client with no JS
+      // in the way (see ContinueWatchingCard in page.tsx) - a prior attempt
+      // at JS-driven fallback logic (intercept the click, set location.href
+      // programmatically, time a fallback) broke the Stremio link that
+      // already worked, because browsers handle a direct anchor click far
+      // more reliably than scripted navigation for custom URL schemes. That
+      // means neither link can "detect and fall back" if the app isn't
+      // installed - same known tradeoff Stremio's link already had, applied
+      // symmetrically now that Nuvio has a real scheme to offer too.
       if (user.providerType === 'stremio') {
         const links = buildStremioLinks(metadata.imdb_id, next.season, next.episode)
         entry.appUrl = links.appUrl
         entry.webUrl = links.webUrl
       } else {
+        entry.appUrl = buildNuvioAppUrl(metadata.imdb_id)
         entry.webUrl = `https://www.imdb.com/title/${metadata.imdb_id}`
       }
     }
