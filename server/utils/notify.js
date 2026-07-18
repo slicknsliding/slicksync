@@ -39,8 +39,25 @@ async function postDiscord(webhookUrl, content, options = {}) {
   } catch {}
 }
 
+// In-memory cache for fetchMetadata results, keyed by itemId+itemType+videoId.
+// Movie/show metadata practically never changes, so there's no reason to hit
+// Cinemeta again for the same lookup - most valuable for the media detail
+// modal, where reopening the same poster (or two household members opening
+// the same title) previously re-did the full external round trip every time.
+// Simple Map with a TTL, not a real LRU - this data is small and the process
+// restarts on every deploy anyway, so unbounded growth between deploys isn't
+// a real concern at this scale.
+const metadataCache = new Map()
+const METADATA_CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+
 async function fetchMetadata(itemId, itemType, videoId) {
   if (!itemId) return null
+
+  const cacheKey = `${itemId}|${itemType}|${videoId || ''}`
+  const cached = metadataCache.get(cacheKey)
+  if (cached && (Date.now() - cached.at) < METADATA_CACHE_TTL_MS) {
+    return cached.value
+  }
 
   try {
     // Extract base ID and episode info from video_id if available (format: "tt8080122:season:episode")
@@ -237,6 +254,7 @@ async function fetchMetadata(itemId, itemType, videoId) {
             }
           }
 
+          metadataCache.set(cacheKey, { value: result, at: Date.now() })
           return result
         }
       }
