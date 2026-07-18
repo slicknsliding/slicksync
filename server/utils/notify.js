@@ -199,6 +199,20 @@ async function fetchMetadata(itemId, itemType, videoId) {
 
           // For series, find the specific episode by video_id, season, and episode number
           if (itemType === 'series' && meta.videos && Array.isArray(meta.videos)) {
+            // Full episode list (for "what's next after the last one watched"
+            // callers, e.g. Continue Watching) - season 0 is specials, excluded
+            // since they're not part of normal watch-order progression.
+            result.allEpisodes = meta.videos
+              .filter((v) => v.season !== 0 && v.season != null && v.episode != null)
+              .map((v) => ({
+                season: v.season,
+                episode: v.episode,
+                title: v.title || v.name || null,
+                released: v.released || null,
+                thumbnail: v.thumbnail || null
+              }))
+              .sort((a, b) => a.season - b.season || a.episode - b.episode)
+
             let episodeData = null
 
             // Ensure season and episode are numbers
