@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.9.79",
+    "date": "2026-07-18",
+    "title": "Continue Watching popup-blocked fallback, readable detail modal, trailer close goes back not out",
+    "features": [],
+    "bugFixes": [
+      "Continue Watching's web fallback was itself silently broken: it called window.open() from inside a setTimeout, which browsers treat as not user-triggered and quietly block as a popup - no error, no visible sign, so the link still looked completely dead even with a fallback in place. Switched to same-tab navigation (location.href), which isn't subject to popup blocking.",
+      "Detail modal text (title, overview, metadata, cast) was too small to read comfortably - sized everything up a step, widened the modal, and gave cast photos more room.",
+      "The last cast member's name could get visually clipped by the row's own edge with no trailing space. Added room at the end of the scrollable row.",
+      "The trailer's close button now returns to the poster/details view instead of closing the whole modal - backdrop click and Escape still fully close it."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.78",
     "date": "2026-07-18",
     "title": "Continue Watching link/drag fixes, cast photo cutoff, trailer close button repositioned",

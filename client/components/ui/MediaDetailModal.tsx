@@ -59,7 +59,7 @@ export function MediaDetailModal({
   const trailerId = details?.trailers?.[0];
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl" hideCloseButton={isTrailerPlaying}>
+    <Modal isOpen={isOpen} onClose={onClose} size="full" hideCloseButton={isTrailerPlaying}>
       <div className="-mx-6 -mt-6">
         {isTrailerPlaying && trailerId ? (
           <div className="relative w-full h-40 sm:h-56 overflow-hidden rounded-t-2xl bg-black">
@@ -74,13 +74,15 @@ export function MediaDetailModal({
                 top-right controls (volume/CC/settings) - roughly level with
                 YouTube's own bottom-row icons (share/save), past the right
                 edge of its scrub bar. YouTube's own overlay isn't something
-                we control, so this is an approximation, not a guarantee. */}
+                we control, so this is an approximation, not a guarantee.
+                Goes back to the poster/details view, not a full close -
+                backdrop click and Escape still fully close the modal. */}
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => setIsTrailerPlaying(false)}
               className="absolute bottom-9 right-2 z-10 p-1 rounded-md transition-colors"
               style={{ color: 'white', background: 'rgba(0,0,0,0.6)' }}
-              aria-label="Close"
+              aria-label="Back to details"
             >
               <XMarkIcon className="w-4 h-4" />
             </button>
@@ -117,34 +119,34 @@ export function MediaDetailModal({
         )}
 
         <div className="px-6 pb-2 pt-4">
-          <h2 className="text-xl font-bold font-display text-default">{title}</h2>
+          <h2 className="text-2xl font-bold font-display text-default">{title}</h2>
 
           {isLoading && (
-            <div className="flex items-center gap-2 mt-4 text-sm text-muted">
-              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            <div className="flex items-center gap-2 mt-4 text-base text-muted">
+              <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
               Loading details…
             </div>
           )}
 
           {!isLoading && hasFetched && !details && (
-            <p className="mt-4 text-sm text-muted">
+            <p className="mt-4 text-base text-muted">
               No additional details found for this title.
             </p>
           )}
 
           {!isLoading && details && (
             <div className="mt-3 space-y-4">
-              <div className="flex flex-wrap items-center gap-3 text-sm text-muted">
+              <div className="flex flex-wrap items-center gap-3 text-base text-muted">
                 {details.releaseInfo && <span>{details.releaseInfo}</span>}
                 {details.runtime && (
-                  <span className="flex items-center gap-1">
-                    <ClockIcon className="w-4 h-4" />
+                  <span className="flex items-center gap-1.5">
+                    <ClockIcon className="w-5 h-5" />
                     {details.runtime}
                   </span>
                 )}
                 {details.imdbRating && (
-                  <span className="flex items-center gap-1 text-amber-400 font-medium">
-                    <StarIcon className="w-4 h-4" />
+                  <span className="flex items-center gap-1.5 text-amber-400 font-medium">
+                    <StarIcon className="w-5 h-5" />
                     {details.imdbRating}
                     <span className="text-muted font-normal">/10</span>
                   </span>
@@ -174,17 +176,17 @@ export function MediaDetailModal({
               {details.genres && details.genres.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {details.genres.map((genre) => (
-                    <Badge key={genre} variant="default" size="sm">{genre}</Badge>
+                    <Badge key={genre} variant="default" size="md">{genre}</Badge>
                   ))}
                 </div>
               )}
 
               {overview && (
-                <p className="text-sm leading-relaxed text-default">{overview}</p>
+                <p className="text-base leading-relaxed text-default">{overview}</p>
               )}
 
               {details.director && details.director.length > 0 && (
-                <p className="text-sm">
+                <p className="text-base">
                   <span className="text-muted">Director: </span>
                   <span className="text-default">{details.director.join(', ')}</span>
                 </p>
@@ -192,23 +194,23 @@ export function MediaDetailModal({
 
               {details.cast && details.cast.length > 0 && (
                 <div>
-                  <p className="text-sm text-muted mb-2">Cast</p>
-                  <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
+                  <p className="text-base text-muted mb-2">Cast</p>
+                  <div className="flex gap-4 overflow-x-auto pb-1 pr-6 no-scrollbar">
                     {details.cast.slice(0, 10).map((member) => (
-                      <div key={member.name} className="shrink-0 w-20 text-center">
+                      <div key={member.name} className="shrink-0 w-24 text-center">
                         {member.photo ? (
                           <img
                             src={member.photo}
                             alt={member.name}
-                            className="w-16 h-16 rounded-full object-cover mx-auto bg-surface-hover"
+                            className="w-20 h-20 rounded-full object-cover mx-auto bg-surface-hover"
                           />
                         ) : (
-                          <div className="w-16 h-16 rounded-full mx-auto bg-surface-hover flex items-center justify-center text-muted text-lg font-medium">
+                          <div className="w-20 h-20 rounded-full mx-auto bg-surface-hover flex items-center justify-center text-muted text-xl font-medium">
                             {member.name.charAt(0)}
                           </div>
                         )}
                         <p
-                          className="mt-1.5 text-[11px] font-medium text-default leading-tight"
+                          className="mt-2 text-sm font-medium text-default leading-tight"
                           style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
                           title={member.name}
                         >
@@ -216,7 +218,7 @@ export function MediaDetailModal({
                         </p>
                         {member.character && (
                           <p
-                            className="text-[10px] text-subtle leading-tight"
+                            className="text-xs text-subtle leading-tight"
                             style={{ display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
                             title={member.character}
                           >
@@ -230,8 +232,8 @@ export function MediaDetailModal({
               )}
 
               {details.awards && (
-                <p className="text-xs text-muted flex items-start gap-1.5">
-                  <FilmIcon className="w-4 h-4 shrink-0 mt-0.5" />
+                <p className="text-sm text-muted flex items-start gap-1.5">
+                  <FilmIcon className="w-5 h-5 shrink-0 mt-0.5" />
                   {details.awards}
                 </p>
               )}
