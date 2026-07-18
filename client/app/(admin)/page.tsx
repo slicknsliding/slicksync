@@ -4,7 +4,7 @@ import { memo, useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
-import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu } from '@/components/ui';
+import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu, MediaDetailModal } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -174,10 +174,12 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   item,
   wasDraggedRef,
   onRemove,
+  onOpenDetails,
 }: {
   item: ContinueWatchingItem;
   wasDraggedRef: React.RefObject<boolean>;
   onRemove: (item: ContinueWatchingItem) => void;
+  onOpenDetails: (item: ContinueWatchingItem) => void;
 }) {
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
 
@@ -231,30 +233,38 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
           to detect which happened or react to it (an earlier attempt to
           intercept the click and add a JS-driven fallback ended up breaking
           the Stremio link that already worked). Rather than try that again,
-          this is a second, ordinary, always-functional link - can't nest it
+          this is a second, always-functional affordance - can't nest it
           inside the card's own <a> (invalid HTML), so it's a small
-          absolutely-positioned sibling instead. Only shown when there's an
-          app link to fall back FROM; when there's only a web link, the card
-          itself already goes straight there. */}
-      {item.appUrl && item.webUrl && (
-        <a
-          href={item.webUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          draggable={false}
-          onDragStart={(e) => e.preventDefault()}
-          title="App didn't open? Open in browser instead"
-          aria-label="App didn't open? Open in browser instead"
+          absolutely-positioned sibling instead. Opens the same rich detail
+          modal the Activity page's poster click uses (cast, trailer,
+          rating, IMDb/TMDb links) instead of bouncing straight to an
+          external site - more useful than a bare link, and sidesteps
+          picking "the right" external URL entirely. Only shown when
+          there's an app link to fall back FROM; when there's only a web
+          link, the card itself already goes straight there. */}
+      {item.appUrl && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            onOpenDetails(item);
+          }}
+          title="App didn't open? View details instead"
+          aria-label="App didn't open? View details instead"
           className="absolute top-1.5 right-1.5 z-10 p-1 rounded-md transition-colors"
           style={{ color: 'white', background: 'rgba(0,0,0,0.6)' }}
         >
           <InformationCircleIcon className="w-3.5 h-3.5" />
-        </a>
+        </button>
       )}
 
       <ContextMenu isOpen={isOpen} position={position} onClose={close}>
         <button
-          onClick={() => { close(); onRemove(item); }}
+          onClick={() => {
+            close();
+            onRemove(item);
+            toast.success(`Removed "${item.showName}" from Continue Watching`);
+          }}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
         >
           <XCircleIcon className="w-4 h-4" />
@@ -275,6 +285,7 @@ export default function DashboardPage() {
   const [nowTick, setNowTick] = useState(Date.now());
   const [reloadingAddons, setReloadingAddons] = useState<Set<string>>(new Set());
   const [continueWatching, setContinueWatching] = useState<ContinueWatchingItem[]>([]);
+  const [detailModalItem, setDetailModalItem] = useState<ContinueWatchingItem | null>(null);
 
   // Fetched independently of the main dashboard load - Cinemeta lookups
   // powering this are a nice-to-have, and shouldn't be able to fail the
@@ -312,7 +323,11 @@ export default function DashboardPage() {
   const wasDraggedRef = useRef(false);
 
   const handleRowPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.pointerType !== 'mouse' || !scrollRowRef.current) return;
+    // button 0 = primary/left only - a right-click (button 2, opening the
+    // context menu) was falling through this same check and calling
+    // setPointerCapture on the row, which had no business engaging for a
+    // gesture that was never a drag to begin with.
+    if (e.pointerType !== 'mouse' || e.button !== 0 || !scrollRowRef.current) return;
     isPointerDownRef.current = true;
     wasDraggedRef.current = false;
     dragStartXRef.current = e.clientX;
@@ -613,6 +628,7 @@ export default function DashboardPage() {
                     item={item}
                     wasDraggedRef={wasDraggedRef}
                     onRemove={handleDismissContinueWatching}
+                    onOpenDetails={setDetailModalItem}
                   />
                 ))}
               </div>
@@ -857,6 +873,18 @@ export default function DashboardPage() {
           </Card>
         </PageSection>
       </div>
+
+      {detailModalItem && (
+        <MediaDetailModal
+          isOpen={!!detailModalItem}
+          onClose={() => setDetailModalItem(null)}
+          itemId={detailModalItem.showId}
+          itemType="series"
+          videoId={`${detailModalItem.showId}:${detailModalItem.nextEpisode.season}:${detailModalItem.nextEpisode.episode}`}
+          fallbackTitle={detailModalItem.showName}
+          fallbackPoster={detailModalItem.poster}
+        />
+      )}
     </>
   );
 }
