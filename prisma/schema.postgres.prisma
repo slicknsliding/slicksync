@@ -358,6 +358,20 @@ model WatchSession {
   @@map("watch_sessions")
 }
 
+// Dashboard: shows a user has removed from their own Continue Watching row.
+// Account-scoped (not per-browser) so a dismissal made from one browser/
+// device stays dismissed when checking the Dashboard from another.
+model DismissedContinueWatching {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  userId    String // The show's owner (matches ContinueWatchingItem.userId), not who dismissed it - this is a single shared admin dashboard
+  showId    String
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, userId, showId])
+  @@map("dismissed_continue_watching")
+}
+
 // Metrics: Proxy stream sessions - "Now Playing" data sourced from AIOStreams'
 // built-in proxy (which sees every stream request passing through it in real
 // time, regardless of provider - Stremio, Nuvio, anything using the proxy).
