@@ -1,6 +1,6 @@
 {
   "name": "slicksync",
-  "version": "1.9.79",
+  "version": "1.9.80",
   "description": "SlickSync - Stremio addon and user management system",
   "main": "server/index.js",
   "scripts": {
