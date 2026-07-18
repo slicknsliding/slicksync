@@ -169,6 +169,7 @@ test/                    node:test regression tests (node --test test/) - not ex
 | `/api/avatars` | `avatars.js` | Avatar upload/serving |
 | `/api/vault` | `vault.js` | Credential vault |
 | `/api/settings` | `settings.js` | Instance/account settings |
+| `/api/discover` | `discover.js` | Browse/search Cinemeta's real catalogs (Popular/New/Top Rated) — stateless proxy, no account scoping needed |
 | `/api/ext` | `externalApi.js` | External API surface |
 | `/api/invitations`, `/invite` | `invitations.js` | Invitations (authenticated admin + public accept flow) |
 | `/api/public-library` | `publicLibrary.js` | Public-mode library reads |
@@ -184,6 +185,7 @@ Each folder is a Next.js route segment with its own `layout.tsx` + `page.tsx`:
 - `activity/` — activity feed
 - `addons/` (+ `[id]`) — addon list and detail/edit
 - `changelog/` — release changelog viewer
+- `discover/` — browse/search Cinemeta catalogs, open a title straight in Stremio or Nuvio
 - `groups/` (+ `[id]`) — group list and detail
 - `invitations/` (+ `[id]`) — invitation list and detail
 - `metrics/` — dashboard metrics

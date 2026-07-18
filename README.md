@@ -121,24 +121,40 @@ the split:
   user's detail page, built from real session duration — not just a count of
   events.
 
-### 🎞️ Media Details & Continue Watching
+### 🎞️ Media Details, Continue Watching & Discover
 
-- **Click any poster on the Activity page** for cast, IMDb rating, genres,
-  director, runtime, and awards — pulled from Cinemeta, the same free,
-  keyless service already used for posters elsewhere in the app, so this adds
-  no new API key or external account to manage.
+- **Click any poster** — on the Activity page, a Continue Watching card, or
+  anywhere in Discover — for cast (with photos), IMDb rating, genres,
+  director, runtime, and awards, pulled from Cinemeta, the same free, keyless
+  service already used for posters elsewhere in the app, so this adds no new
+  API key or external account to manage.
 - **Trailers play inline** via an embedded YouTube player, right in the modal
   — no bouncing out to youtube.com.
+- **Discover**: browse Cinemeta's real catalogs — Popular, New, and Top
+  Rated — for movies and series, or search by title. Every result opens the
+  same detail modal, with **"Open in Stremio" / "Open in Nuvio" buttons**
+  (color-matched to each provider's own identity badge) to jump straight into
+  either app — not limited to things already in someone's watch history.
 - **Continue Watching** on the Dashboard: the next unwatched episode for any
   show someone's partway through, most recently watched first. Click-and-drag
   to scroll the row (works with mouse, touch, or pen — no scrollbar to grab),
   right-click a card to remove it.
-- **Deep links open straight into the app** — Stremio and Nuvio both register
-  to handle the same `stremio:///detail/...` link format (confirmed against
-  Nuvio's own Android source), so tapping a Continue Watching card hands off
-  directly to whichever app the user has, landed on the right episode. Only
-  the show's public IMDb ID and a season/episode number are in that link —
-  nothing account-specific, no credentials.
+- **Deep links open straight into the app**, with each provider's real
+  format used correctly rather than assumed:
+  - **Stremio**: `stremio:///detail/{type}/{imdbId}/{videoId}` — documented
+    directly by Stremio's own SDK. Movies and no-specific-episode series
+    links resolve correctly (`videoId = id` for movies, empty for a series
+    overview page); Continue Watching adds a season/episode to land on the
+    right one.
+  - **Nuvio**: `nuvio://meta?type={movie|series}&id={imdbId}` — an entirely
+    different format, confirmed by reading Nuvio Desktop's own source rather
+    than guessed at. Nuvio's format has no season/episode concept, so it
+    always opens the show's own page.
+  - Either way, only the title's public IMDb ID (and season/episode, for
+    Stremio) is in the link — nothing account-specific, no credentials. A
+    fallback link is always shown alongside the app link too, since a
+    browser has no way to detect whether the target app was actually
+    installed to catch it.
 
 ### 🔐 Vault — credential tracking with expiry alerts and active-checks
 
