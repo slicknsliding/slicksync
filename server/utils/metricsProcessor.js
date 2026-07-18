@@ -235,6 +235,50 @@ async function getPreviousSnapshot(prisma, accountId, userId, itemId, today, tim
 }
 
 /**
+ * Highest overallTimeWatched ever recorded for this (user, item), across all
+ * history - not just the single most recent snapshot. Nuvio's multi-profile
+ * merge (server/providers/nuvio.js) falls back to an empty progress array
+ * for a profile whose sync_pull_watch_progress call fails transiently on a
+ * given poll; if a second, unrelated profile happens to have watched the
+ * same item long ago and is fetched successfully that same poll, its old,
+ * frozen reading can briefly become the only available data for that item -
+ * a real regression that self-corrects the moment the active profile's next
+ * poll succeeds. Comparing against the single prior snapshot treats that
+ * recovery-back-up-to-an-old-value as new watching (confirmed real case:
+ * a snapshot dropped from 6543120 to 909494 across two profile-fetch
+ * failures, then "recovered" to exactly 6389553 - a value already recorded
+ * six days earlier - producing a bogus 5480-second delta). Comparing
+ * against the running max instead means recovering to a previously-seen
+ * value can never register as progress, since the max already accounts for
+ * it. This can only ever reduce a delta relative to the old single-snapshot
+ * comparison, never inflate one - a real rewatch that resets progress to
+ * near-zero and climbs back up would also be suppressed, which is an
+ * accepted tradeoff consistent with this app's existing "one History row
+ * per title, a rewatch moves the card rather than duplicating it" design.
+ */
+async function getMaxOverallTimeWatched(prisma, accountId, userId, itemId) {
+  try {
+    const snapshots = await prisma.watchSnapshot.findMany({
+      where: { accountId: accountId || 'default', userId, itemId },
+      select: { overallTimeWatched: true }
+    })
+    let max = null
+    for (const s of snapshots) {
+      if (!s.overallTimeWatched) continue
+      const value = BigInt(s.overallTimeWatched)
+      if (max === null || value > max) max = value
+    }
+    return max
+  } catch (error) {
+    console.warn(
+      `[MetricsProcessor] Error fetching max snapshot for ${userId}/${itemId}:`,
+      error.message
+    )
+    return null
+  }
+}
+
+/**
  * Check if snapshot values have changed
  */
 function hasChanged(previous, current) {
@@ -307,10 +351,15 @@ async function processLibraryItem(prisma, accountId, userId, item, today) {
       let totalDeltaSeconds = 0
 
       if (oldSnapshotValue) {
-        // Existing item: calculate delta from previous snapshot
-        const snapshotOverall = BigInt(oldSnapshotValue)
+        // Existing item: calculate delta from the highest overallTimeWatched
+        // ever recorded for this item, not just the single most recent
+        // snapshot - see getMaxOverallTimeWatched's comment for why. Falls
+        // back to the plain prior-snapshot comparison only in the
+        // practically-unreachable case where the max lookup itself fails.
+        const maxSeen = await getMaxOverallTimeWatched(prisma, accountIdValue, userId, itemId)
+        const deltaBaseline = maxSeen !== null ? maxSeen : BigInt(oldSnapshotValue)
         const currOverall = BigInt(current.overallTimeWatched)
-        const totalDeltaMs = currOverall - snapshotOverall
+        const totalDeltaMs = currOverall - deltaBaseline
 
         // Only create activity if delta is significant (> 60 seconds) and positive
         if (totalDeltaMs > 0) {
