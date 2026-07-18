@@ -225,6 +225,24 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // GET /users/continue-watching - next unwatched episode per in-progress
+  // show, across all users on the account. Must be before /:id route.
+  router.get('/continue-watching', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+
+      const { getContinueWatching } = require('../utils/continueWatching')
+      const items = await getContinueWatching(prisma, accountId)
+      res.json(items)
+    } catch (error) {
+      console.error('Error fetching continue watching:', error)
+      res.status(500).json({ error: 'Failed to fetch continue watching' })
+    }
+  })
+
   // GET /users/metrics - Get metrics data for dashboard (must be before /:id route)
   router.get('/metrics', async (req, res) => {
     try {

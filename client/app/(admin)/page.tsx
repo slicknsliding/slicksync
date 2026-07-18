@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { api, AccountStats, MetricsData, Addon } from '@/lib/api';
+import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import {
   UsersIcon,
@@ -19,6 +19,7 @@ import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   FireIcon,
+  PlayIcon,
 } from '@heroicons/react/24/outline';
 import {
   AreaChart,
@@ -161,6 +162,14 @@ export default function DashboardPage() {
   const [error, setError] = useState<Error | null>(null);
   const [nowTick, setNowTick] = useState(Date.now());
   const [reloadingAddons, setReloadingAddons] = useState<Set<string>>(new Set());
+  const [continueWatching, setContinueWatching] = useState<ContinueWatchingItem[]>([]);
+
+  // Fetched independently of the main dashboard load - Cinemeta lookups
+  // powering this are a nice-to-have, and shouldn't be able to fail the
+  // whole dashboard if Cinemeta is briefly unreachable.
+  useEffect(() => {
+    api.getContinueWatching().then(setContinueWatching).catch(() => setContinueWatching([]));
+  }, []);
 
   // Update ticker every second
   useEffect(() => {
@@ -420,6 +429,56 @@ export default function DashboardPage() {
             </Link>
           </div>
         </PageSection>
+
+        {/* Continue Watching */}
+        {continueWatching.length > 0 && (
+          <PageSection className="mb-6" delay={0.18}>
+            <Card padding="lg">
+              <h3 className="text-base font-semibold font-display text-default mb-4">
+                Continue Watching
+              </h3>
+              <div className="flex gap-3 overflow-x-auto pb-1 custom-scrollbar">
+                {continueWatching.map((item) => (
+                  <a
+                    key={`${item.userId}-${item.showId}`}
+                    href={item.appUrl || item.webUrl}
+                    target={item.appUrl ? undefined : '_blank'}
+                    rel={item.appUrl ? undefined : 'noopener noreferrer'}
+                    className="group relative shrink-0 w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg"
+                  >
+                    <div className="relative aspect-video">
+                      {(item.nextEpisode.thumbnail || item.poster) ? (
+                        <img
+                          src={item.nextEpisode.thumbnail || item.poster || ''}
+                          alt={item.showName}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-slate-800">
+                          <PlayIcon className="w-8 h-8 text-slate-600" />
+                        </div>
+                      )}
+                      <div
+                        className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ background: 'rgba(0,0,0,0.4)' }}
+                      >
+                        <PlayIcon className="w-8 h-8 text-white" />
+                      </div>
+                    </div>
+                    <div className="p-2">
+                      <p className="text-xs font-medium text-default truncate">{item.showName}</p>
+                      <p className="text-[11px] text-muted truncate">
+                        S{String(item.nextEpisode.season).padStart(2, '0')}E{String(item.nextEpisode.episode).padStart(2, '0')}
+                        {item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}
+                      </p>
+                      <p className="text-[10px] text-subtle truncate mt-0.5">{item.username}</p>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </Card>
+          </PageSection>
+        )}
 
         {/* Main content grid - Matched heights */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
