@@ -233,35 +233,23 @@ export default function DashboardPage() {
   const [nowTick, setNowTick] = useState(Date.now());
   const [reloadingAddons, setReloadingAddons] = useState<Set<string>>(new Set());
   const [continueWatching, setContinueWatching] = useState<ContinueWatchingItem[]>([]);
-  const [dismissedContinueWatching, setDismissedContinueWatching] = useState<Set<string>>(new Set());
-
-  const continueWatchingKey = (item: { userId: string; showId: string }) => `${item.userId}:${item.showId}`;
 
   // Fetched independently of the main dashboard load - Cinemeta lookups
   // powering this are a nice-to-have, and shouldn't be able to fail the
   // whole dashboard if Cinemeta is briefly unreachable.
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('slicksync-dismissed-continue-watching');
-      if (stored) setDismissedContinueWatching(new Set(JSON.parse(stored)));
-    } catch {}
     api.getContinueWatching().then(setContinueWatching).catch(() => setContinueWatching([]));
   }, []);
 
-  const visibleContinueWatching = useMemo(
-    () => continueWatching.filter((item) => !dismissedContinueWatching.has(continueWatchingKey(item))),
-    [continueWatching, dismissedContinueWatching]
-  );
-
+  // Dismissal is persisted server-side (DismissedContinueWatching), not
+  // localStorage, so it stays dismissed when checking the Dashboard from a
+  // different browser or device. Removed from local state immediately for a
+  // responsive click; the backend call is fire-and-forget since the item is
+  // already gone from view either way, and the next full fetch would exclude
+  // it regardless.
   const handleDismissContinueWatching = useCallback((item: ContinueWatchingItem) => {
-    setDismissedContinueWatching((prev) => {
-      const next = new Set(prev);
-      next.add(continueWatchingKey(item));
-      try {
-        localStorage.setItem('slicksync-dismissed-continue-watching', JSON.stringify([...next]));
-      } catch {}
-      return next;
-    });
+    setContinueWatching((prev) => prev.filter((i) => !(i.userId === item.userId && i.showId === item.showId)));
+    api.dismissContinueWatching(item.userId, item.showId).catch(() => {});
   }, []);
 
   // Grab-and-drag horizontal scrolling for the Continue Watching row (Pointer
@@ -556,7 +544,7 @@ export default function DashboardPage() {
         </PageSection>
 
         {/* Continue Watching */}
-        {visibleContinueWatching.length > 0 && (
+        {continueWatching.length > 0 && (
           <PageSection className="mb-6" delay={0.18}>
             <Card padding="lg">
               <h3 className="text-base font-semibold font-display text-default mb-4">
@@ -570,7 +558,7 @@ export default function DashboardPage() {
                 onPointerLeave={handleRowPointerUp}
                 className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar"
               >
-                {visibleContinueWatching.map((item) => (
+                {continueWatching.map((item) => (
                   <ContinueWatchingCard
                     key={`${item.userId}-${item.showId}`}
                     item={item}

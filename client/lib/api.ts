@@ -1272,6 +1272,13 @@ class ApiClient {
     return this.fetch<ContinueWatchingItem[]>('/users/continue-watching');
   }
 
+  async dismissContinueWatching(userId: string, showId: string) {
+    return this.fetch<{ success: boolean }>('/users/continue-watching/dismiss', {
+      method: 'POST',
+      body: JSON.stringify({ userId, showId }),
+    });
+  }
+
   // Cinemeta detail lookup (cast/rating/genres/etc) for the poster-click modal.
   // Returns null (rather than throwing) when there's no metadata - proxy-parsed
   // filename titles have no real IMDb ID to look up, and that's an expected,
