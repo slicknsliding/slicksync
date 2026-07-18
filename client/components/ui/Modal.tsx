@@ -43,10 +43,10 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
         {/* Backdrop */}
         <TransitionChild
           as={Fragment}
-          enter="ease-out duration-300"
+          enter="ease-out duration-200"
           enterFrom="opacity-0"
           enterTo="opacity-100"
-          leave="ease-in duration-200"
+          leave="ease-in duration-150"
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
@@ -66,10 +66,10 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
         <div className="fixed inset-0 flex items-center justify-center p-4">
           <TransitionChild
             as={Fragment}
-            enter="ease-out duration-300"
+            enter="ease-out duration-200"
             enterFrom="opacity-0 scale-95 translate-y-4"
             enterTo="opacity-100 scale-100 translate-y-0"
-            leave="ease-in duration-200"
+            leave="ease-in duration-150"
             leaveFrom="opacity-100 scale-100 translate-y-0"
             leaveTo="opacity-0 scale-95 translate-y-4"
           >

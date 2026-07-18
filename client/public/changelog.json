@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.9.83",
+    "date": "2026-07-18",
+    "title": "Detail modal even faster; Nuvio's Continue Watching link no longer says stremio.com",
+    "features": [],
+    "bugFixes": [
+      "The cast/details popup's API response was shipping the entire episode list for the show (every season, every episode - can be hundreds of entries) even though the popup only ever displays the one current episode. That's dead weight on the wire and dead JSON-parsing time competing with the popup's opening animation, especially on mobile networks/CPUs. It's no longer included in that response (still computed and cached server-side for Continue Watching, which does need it).",
+      "Added preconnect hints for the two image CDNs the popup's poster/background/cast photos load from, so DNS/TLS setup for those happens ahead of time instead of right as the popup opens.",
+      "Trimmed the popup's open/close animation slightly (300ms/200ms to 200ms/150ms) for a snappier feel.",
+      "Continue Watching's link for a Nuvio account showed \"web.stremio.com\" at the bottom of the browser, which read as a mismatch even though the page itself worked. Nuvio has no confirmed per-title deep-link format of its own to fall back to instead, so it now points at IMDb's title page - provider-neutral and guaranteed correct - rather than another guessed-at link format."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.82",
     "date": "2026-07-18",
     "title": "Detail modal and Continue Watching: fixed hard lag on mobile",

@@ -218,7 +218,15 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(404).json({ error: 'No metadata found for this item' })
       }
 
-      res.json(metadata)
+      // allEpisodes (every episode of the whole series - can be hundreds of
+      // entries for long-running shows) only exists for Continue Watching's
+      // "find the next episode" logic. This modal only ever renders the one
+      // current episode (already in `episode`), so shipping the full list
+      // here is pure wasted payload/parse time competing with the modal's
+      // opening animation on mobile. Stripped at the response boundary only -
+      // fetchMetadata's cache entry (shared with Continue Watching) still has it.
+      const { allEpisodes, ...detailsForClient } = metadata
+      res.json(detailsForClient)
     } catch (error) {
       console.error('Error fetching media details:', error)
       res.status(500).json({ error: 'Failed to fetch media details' })
