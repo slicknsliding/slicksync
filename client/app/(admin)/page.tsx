@@ -1,10 +1,10 @@
 'use client';
 
-import { memo, useEffect, useState, useMemo, useCallback } from 'react';
+import { memo, useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
-import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge } from '@/components/ui';
+import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -20,6 +20,7 @@ import {
   ExclamationCircleIcon,
   FireIcon,
   PlayIcon,
+  XCircleIcon,
 } from '@heroicons/react/24/outline';
 import {
   AreaChart,
@@ -153,6 +154,75 @@ const RecentAddonItem = memo(function RecentAddonItem({
   );
 });
 
+// Continue Watching card - right-click to remove, and guards its own click
+// against firing right after a drag-to-scroll gesture on the parent row
+// (checked via a shared ref rather than local state, since the drag
+// happens on the scroll container, not the card itself).
+const ContinueWatchingCard = memo(function ContinueWatchingCard({
+  item,
+  wasDraggedRef,
+  onRemove,
+}: {
+  item: ContinueWatchingItem;
+  wasDraggedRef: React.RefObject<boolean>;
+  onRemove: (item: ContinueWatchingItem) => void;
+}) {
+  const { isOpen, position, handleContextMenu, close } = useContextMenu();
+
+  return (
+    <div onContextMenu={handleContextMenu} className="shrink-0">
+      <a
+        href={item.appUrl || item.webUrl}
+        target={item.appUrl ? undefined : '_blank'}
+        rel={item.appUrl ? undefined : 'noopener noreferrer'}
+        onClick={(e) => {
+          if (wasDraggedRef.current) e.preventDefault();
+        }}
+        className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none"
+      >
+        <div className="relative aspect-video">
+          {(item.nextEpisode.thumbnail || item.poster) ? (
+            <img
+              src={item.nextEpisode.thumbnail || item.poster || ''}
+              alt={item.showName}
+              draggable={false}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 pointer-events-none"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-slate-800">
+              <PlayIcon className="w-8 h-8 text-slate-600" />
+            </div>
+          )}
+          <div
+            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ background: 'rgba(0,0,0,0.4)' }}
+          >
+            <PlayIcon className="w-8 h-8 text-white" />
+          </div>
+        </div>
+        <div className="p-2">
+          <p className="text-xs font-medium text-default truncate">{item.showName}</p>
+          <p className="text-[11px] text-muted truncate">
+            S{String(item.nextEpisode.season).padStart(2, '0')}E{String(item.nextEpisode.episode).padStart(2, '0')}
+            {item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}
+          </p>
+          <p className="text-[10px] text-subtle truncate mt-0.5">{item.username}</p>
+        </div>
+      </a>
+
+      <ContextMenu isOpen={isOpen} position={position} onClose={close}>
+        <button
+          onClick={() => { close(); onRemove(item); }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+        >
+          <XCircleIcon className="w-4 h-4" />
+          Remove from Continue Watching
+        </button>
+      </ContextMenu>
+    </div>
+  );
+});
+
 export default function DashboardPage() {
   const [accountStats, setAccountStats] = useState<AccountStats | null>(null);
   const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
@@ -163,12 +233,67 @@ export default function DashboardPage() {
   const [nowTick, setNowTick] = useState(Date.now());
   const [reloadingAddons, setReloadingAddons] = useState<Set<string>>(new Set());
   const [continueWatching, setContinueWatching] = useState<ContinueWatchingItem[]>([]);
+  const [dismissedContinueWatching, setDismissedContinueWatching] = useState<Set<string>>(new Set());
+
+  const continueWatchingKey = (item: { userId: string; showId: string }) => `${item.userId}:${item.showId}`;
 
   // Fetched independently of the main dashboard load - Cinemeta lookups
   // powering this are a nice-to-have, and shouldn't be able to fail the
   // whole dashboard if Cinemeta is briefly unreachable.
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem('slicksync-dismissed-continue-watching');
+      if (stored) setDismissedContinueWatching(new Set(JSON.parse(stored)));
+    } catch {}
     api.getContinueWatching().then(setContinueWatching).catch(() => setContinueWatching([]));
+  }, []);
+
+  const visibleContinueWatching = useMemo(
+    () => continueWatching.filter((item) => !dismissedContinueWatching.has(continueWatchingKey(item))),
+    [continueWatching, dismissedContinueWatching]
+  );
+
+  const handleDismissContinueWatching = useCallback((item: ContinueWatchingItem) => {
+    setDismissedContinueWatching((prev) => {
+      const next = new Set(prev);
+      next.add(continueWatchingKey(item));
+      try {
+        localStorage.setItem('slicksync-dismissed-continue-watching', JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  // Grab-and-drag horizontal scrolling for the Continue Watching row (Pointer
+  // Events cover mouse/touch/pen in one API). wasDragged distinguishes a real
+  // drag from a click so dragging past a card doesn't also open its link -
+  // it's a ref, not state, since it needs to be read synchronously in the
+  // click handler that fires immediately after pointerup.
+  const scrollRowRef = useRef<HTMLDivElement>(null);
+  const isPointerDownRef = useRef(false);
+  const dragStartXRef = useRef(0);
+  const dragStartScrollLeftRef = useRef(0);
+  const wasDraggedRef = useRef(false);
+
+  const handleRowPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!scrollRowRef.current) return;
+    isPointerDownRef.current = true;
+    wasDraggedRef.current = false;
+    dragStartXRef.current = e.clientX;
+    dragStartScrollLeftRef.current = scrollRowRef.current.scrollLeft;
+    scrollRowRef.current.setPointerCapture(e.pointerId);
+  }, []);
+
+  const handleRowPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isPointerDownRef.current || !scrollRowRef.current) return;
+    const dx = e.clientX - dragStartXRef.current;
+    if (Math.abs(dx) > 5) wasDraggedRef.current = true;
+    scrollRowRef.current.scrollLeft = dragStartScrollLeftRef.current - dx;
+  }, []);
+
+  const handleRowPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    isPointerDownRef.current = false;
+    scrollRowRef.current?.releasePointerCapture(e.pointerId);
   }, []);
 
   // Update ticker every second
@@ -431,49 +556,27 @@ export default function DashboardPage() {
         </PageSection>
 
         {/* Continue Watching */}
-        {continueWatching.length > 0 && (
+        {visibleContinueWatching.length > 0 && (
           <PageSection className="mb-6" delay={0.18}>
             <Card padding="lg">
               <h3 className="text-base font-semibold font-display text-default mb-4">
                 Continue Watching
               </h3>
-              <div className="flex gap-3 overflow-x-auto pb-1 custom-scrollbar">
-                {continueWatching.map((item) => (
-                  <a
+              <div
+                ref={scrollRowRef}
+                onPointerDown={handleRowPointerDown}
+                onPointerMove={handleRowPointerMove}
+                onPointerUp={handleRowPointerUp}
+                onPointerLeave={handleRowPointerUp}
+                className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar"
+              >
+                {visibleContinueWatching.map((item) => (
+                  <ContinueWatchingCard
                     key={`${item.userId}-${item.showId}`}
-                    href={item.appUrl || item.webUrl}
-                    target={item.appUrl ? undefined : '_blank'}
-                    rel={item.appUrl ? undefined : 'noopener noreferrer'}
-                    className="group relative shrink-0 w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg"
-                  >
-                    <div className="relative aspect-video">
-                      {(item.nextEpisode.thumbnail || item.poster) ? (
-                        <img
-                          src={item.nextEpisode.thumbnail || item.poster || ''}
-                          alt={item.showName}
-                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-slate-800">
-                          <PlayIcon className="w-8 h-8 text-slate-600" />
-                        </div>
-                      )}
-                      <div
-                        className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        style={{ background: 'rgba(0,0,0,0.4)' }}
-                      >
-                        <PlayIcon className="w-8 h-8 text-white" />
-                      </div>
-                    </div>
-                    <div className="p-2">
-                      <p className="text-xs font-medium text-default truncate">{item.showName}</p>
-                      <p className="text-[11px] text-muted truncate">
-                        S{String(item.nextEpisode.season).padStart(2, '0')}E{String(item.nextEpisode.episode).padStart(2, '0')}
-                        {item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}
-                      </p>
-                      <p className="text-[10px] text-subtle truncate mt-0.5">{item.username}</p>
-                    </div>
-                  </a>
+                    item={item}
+                    wasDraggedRef={wasDraggedRef}
+                    onRemove={handleDismissContinueWatching}
+                  />
                 ))}
               </div>
             </Card>
