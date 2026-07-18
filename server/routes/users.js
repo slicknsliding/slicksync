@@ -243,6 +243,29 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // POST /users/continue-watching/dismiss - remove a show from the Continue
+  // Watching row. Must be before /:id route.
+  router.post('/continue-watching/dismiss', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+
+      const { userId, showId } = req.body
+      if (!userId || !showId) {
+        return res.status(400).json({ error: 'userId and showId are required' })
+      }
+
+      const { dismissContinueWatching } = require('../utils/continueWatching')
+      await dismissContinueWatching(prisma, accountId, userId, showId)
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error dismissing continue watching item:', error)
+      res.status(500).json({ error: 'Failed to dismiss item' })
+    }
+  })
+
   // GET /users/metrics - Get metrics data for dashboard (must be before /:id route)
   router.get('/metrics', async (req, res) => {
     try {

@@ -65,7 +65,14 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
   })
   const userMap = new Map(users.map((u) => [u.id, u]))
 
+  const dismissed = await prisma.dismissedContinueWatching.findMany({
+    where: { accountId: accountIdValue },
+    select: { userId: true, showId: true }
+  })
+  const dismissedKeys = new Set(dismissed.map((d) => `${d.userId}:${d.showId}`))
+
   const candidates = Array.from(latestPerShow.values())
+    .filter((row) => !dismissedKeys.has(`${row.userId}:${row.showId}`))
     .sort((a, b) => b.watchedAt.getTime() - a.watchedAt.getTime())
     .slice(0, limit * 2) // fetch extra since some won't have a computable next episode
 
@@ -115,4 +122,18 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
   return results
 }
 
-module.exports = { getContinueWatching }
+/**
+ * Removes a show from the account's Continue Watching row. Persisted
+ * server-side (not localStorage) so a dismissal made from one browser or
+ * device stays dismissed everywhere.
+ */
+async function dismissContinueWatching(prisma, accountId, userId, showId) {
+  const accountIdValue = accountId || 'default'
+  await prisma.dismissedContinueWatching.upsert({
+    where: { accountId_userId_showId: { accountId: accountIdValue, userId, showId } },
+    create: { accountId: accountIdValue, userId, showId },
+    update: {}
+  })
+}
+
+module.exports = { getContinueWatching, dismissContinueWatching }
