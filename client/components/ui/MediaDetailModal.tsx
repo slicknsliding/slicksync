@@ -189,10 +189,34 @@ export function MediaDetailModal({
               )}
 
               {details.cast && details.cast.length > 0 && (
-                <p className="text-sm">
-                  <span className="text-muted">Cast: </span>
-                  <span className="text-default">{details.cast.slice(0, 8).join(', ')}</span>
-                </p>
+                <div>
+                  <p className="text-sm text-muted mb-2">Cast</p>
+                  <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
+                    {details.cast.slice(0, 10).map((member) => (
+                      <div key={member.name} className="shrink-0 w-16 text-center">
+                        {member.photo ? (
+                          <img
+                            src={member.photo}
+                            alt={member.name}
+                            className="w-16 h-16 rounded-full object-cover mx-auto bg-surface-hover"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 rounded-full mx-auto bg-surface-hover flex items-center justify-center text-muted text-lg font-medium">
+                            {member.name.charAt(0)}
+                          </div>
+                        )}
+                        <p className="mt-1.5 text-[11px] font-medium text-default leading-tight truncate" title={member.name}>
+                          {member.name}
+                        </p>
+                        {member.character && (
+                          <p className="text-[10px] text-subtle leading-tight truncate" title={member.character}>
+                            {member.character}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
 
               {details.awards && (

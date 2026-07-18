@@ -158,14 +158,20 @@ async function fetchMetadata(itemId, itemType, videoId) {
         if (meta) {
           // credits_cast entries are {character, name, profile_path, id} objects,
           // not plain strings - meta.cast (the older/simpler field) is plain
-          // strings. Normalize both shapes to a single display string per person
-          // so every consumer (Discord notification, media detail modal) gets a
-          // consistent, renderable array regardless of which one Cinemeta returned.
+          // strings with no photo. Normalize both shapes to a consistent
+          // {name, character, photo} object per person. profile_path is a
+          // TMDb image path (e.g. "/mkdRcVIQl4WZhDf1vXKWTD7HZrZ.jpg") - TMDb's
+          // image CDN is public and needs no API key, unlike TMDb's own API.
+          const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w185'
           const normalizedCast = (meta.credits_cast || meta.cast || [])
             .map((c) => {
-              if (typeof c === 'string') return c
+              if (typeof c === 'string') return { name: c, character: null, photo: null }
               if (c && typeof c === 'object' && c.name) {
-                return c.character ? `${c.name} as ${c.character}` : c.name
+                return {
+                  name: c.name,
+                  character: c.character || null,
+                  photo: c.profile_path ? `${TMDB_IMAGE_BASE}${c.profile_path}` : null
+                }
               }
               return null
             })
