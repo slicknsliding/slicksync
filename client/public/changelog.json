@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.9.88",
+    "date": "2026-07-18",
+    "title": "Found the real reason the info-icon button did nothing",
+    "features": [],
+    "bugFixes": [
+      "The Continue Watching row's drag-to-scroll captured the mouse pointer on ANY left-click within the row, including one that landed on the info-icon button. Per the Pointer Events spec, once an element captures a pointer, every subsequent click for that pointer gets redirected to the capturing element instead of whatever's actually under the cursor - so the button's own click handler never received the event at all. The card's own link kept working through this same bug because native browser navigation isn't affected by that JS-level redirection, only plain onClick handlers are. The row now skips engaging its drag-capture entirely when a press starts on a button or link, letting those handle their own clicks normally.",
+      "Added a temporary diagnostic toast when the right-click menu opens, to pin down whether \"Remove from Continue Watching\" not working is the menu failing to open at all versus the click inside it not registering."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.87",
     "date": "2026-07-18",
     "title": "Continue Watching: right-click removal fixed, fallback icon now opens the real detail modal",
