@@ -154,53 +154,21 @@ const RecentAddonItem = memo(function RecentAddonItem({
   );
 });
 
-// Navigates to a custom-scheme app link (stremio:///...), falling back to a
-// normal web URL if nothing handled it. A failed custom-scheme navigation
-// doesn't error or reject in JS - the browser just silently does nothing -
-// so "did it work" is inferred from whether the tab lost visibility (the OS
-// switching away to open the app) within a short window after trying.
-//
-// TEMPORARY diagnostic toasts/logs: two rounds of fixes here (v1.9.78,
-// v1.9.79) still didn't resolve "nothing happens at all" on a real device,
-// which means the actual failure point hasn't been confirmed yet - only
-// guessed at. These make every stage visible so the next test pins down
-// which of "click handler never runs" / "page navigates away and kills the
-// timer before it fires" / "fallback runs but web.stremio.com itself
-// doesn't work" it actually is, instead of a fourth blind guess. Remove
-// once confirmed working.
-function openAppLinkWithFallback(appUrl: string, webUrl?: string) {
-  console.log('[ContinueWatching] click handler ran. appUrl=', appUrl, 'webUrl=', webUrl);
-  toast(`Trying: ${appUrl}`, { duration: 4000 });
-
-  if (!webUrl) {
-    window.location.href = appUrl;
-    return;
-  }
-  let handedOff = false;
-  const onVisibilityChange = () => {
-    if (document.hidden) {
-      handedOff = true;
-      console.log('[ContinueWatching] tab lost visibility - assuming app opened');
-    }
-  };
-  document.addEventListener('visibilitychange', onVisibilityChange);
-  window.location.href = appUrl;
-  setTimeout(() => {
-    document.removeEventListener('visibilitychange', onVisibilityChange);
-    console.log('[ContinueWatching] fallback timer fired. handedOff=', handedOff);
-    if (!handedOff) {
-      toast(`No app detected - opening: ${webUrl}`, { duration: 4000 });
-      window.location.href = webUrl;
-    } else {
-      toast('App appears to have opened', { duration: 2000 });
-    }
-  }, 1200);
-}
-
 // Continue Watching card - right-click to remove, and guards its own click
 // against firing right after a drag-to-scroll gesture on the parent row
 // (checked via a shared ref rather than local state, since the drag
 // happens on the scroll container, not the card itself).
+//
+// Navigation is a plain native <a href> with no JS in the way - confirmed
+// working for Stremio's app link (a real click opened the app). An earlier
+// attempt to add a JS-driven fallback (intercepting the click, setting
+// location.href programmatically, timing a fallback) broke that working
+// case: browsers treat a direct anchor click far more reliably for
+// custom-scheme navigation than a script-driven location.href assignment,
+// even from inside a genuine click handler. So: appUrl (Stremio only - see
+// continueWatching.js) opens natively in the same tab; webUrl (everyone
+// else, or Stremio's own fallback if no appUrl) opens as an ordinary link
+// in a new tab. The only JS involved is the drag-cancel.
 const ContinueWatchingCard = memo(function ContinueWatchingCard({
   item,
   wasDraggedRef,
@@ -216,23 +184,12 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
     <div onContextMenu={handleContextMenu} className="shrink-0">
       <a
         href={item.appUrl || item.webUrl}
+        target={item.appUrl ? undefined : '_blank'}
+        rel={item.appUrl ? undefined : 'noopener noreferrer'}
         draggable={false}
         onDragStart={(e) => e.preventDefault()}
         onClick={(e) => {
-          e.preventDefault();
-          console.log('[ContinueWatching] card clicked.', { wasDragged: wasDraggedRef.current, appUrl: item.appUrl, webUrl: item.webUrl });
-          if (wasDraggedRef.current) {
-            toast('Click ignored - registered as a drag', { duration: 3000 });
-            return;
-          }
-          if (item.appUrl) {
-            openAppLinkWithFallback(item.appUrl, item.webUrl);
-          } else if (item.webUrl) {
-            toast(`Opening web (no app link for this item): ${item.webUrl}`, { duration: 4000 });
-            window.open(item.webUrl, '_blank', 'noopener,noreferrer');
-          } else {
-            toast.error('No link at all for this item - check server logs');
-          }
+          if (wasDraggedRef.current) e.preventDefault();
         }}
         className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer"
       >
