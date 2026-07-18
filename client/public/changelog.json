@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.9.85",
+    "date": "2026-07-18",
+    "title": "Continue Watching: guaranteed-working fallback link for when an app link can't be caught",
+    "features": [],
+    "bugFixes": [
+      "Confirmed (via a real test) that the nuvio:// link introduced last version is built correctly - the failure on one setup turned out to be Windows itself having no app registered to handle nuvio:// links at all, even with Nuvio installed (likely an in-place update that skipped the installer's protocol-registration step; a full reinstall or checking Nuvio's own Advanced settings for a URL-association option should resolve it). That's outside anything this app can control - a page has no way to detect whether a custom-scheme link found an app to open or not.",
+      "Added a small always-functional fallback link on each Continue Watching card (visible whenever there's an app link to fall back from) that opens the web version directly - IMDb for Nuvio, web.stremio.com for Stremio - so a missing app registration is never a dead end."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.84",
     "date": "2026-07-18",
     "title": "Continue Watching now opens Nuvio's own app - confirmed via Nuvio's source, not guessed",
