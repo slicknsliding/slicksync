@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.84",
+    "date": "2026-07-18",
+    "title": "Continue Watching now opens Nuvio's own app - confirmed via Nuvio's source, not guessed",
+    "features": [],
+    "bugFixes": [
+      "Continue Watching links for Nuvio accounts now open the Nuvio app directly, the same way Stremio's already did. This wasn't a guess this time - Nuvio Desktop's own source (NuvioMedia/NuvioDesktop, AppUrlBridge.kt) confirms it registers nuvio:// on Windows (since Desktop 0.1.11-alpha) and its deep-link parser accepts nuvio://meta?type=series&id={imdbId}. One real limitation: unlike Stremio's link, Nuvio's format has no season/episode parameter, so it opens the show's own page rather than jumping straight to the next episode. IMDb stays as the fallback link for anyone on an older Nuvio build without deep-link support."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.83",
     "date": "2026-07-18",
     "title": "Detail modal even faster; Nuvio's Continue Watching link no longer says stremio.com",
