@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.9.82",
+    "date": "2026-07-18",
+    "title": "Detail modal and Continue Watching: fixed hard lag on mobile",
+    "features": [],
+    "bugFixes": [
+      "Opening the cast/details popup felt like it was taking forever and stuttering hard on phones - the modal's full-screen dimming overlay was also running a GPU blur (backdrop-filter) across the entire viewport, recomputed every frame of the open/close animation. That's a well-known source of visible jank on phone GPUs in particular. The dimming alone reads fine as an overlay, so the blur now only applies at tablet/desktop widths, where there's more compositing headroom.",
+      "The cast photos (up to 10) and the Continue Watching row's thumbnails (up to 8) were all decoded eagerly the instant they entered the DOM, competing with the modal's opening animation for the same main thread on top of the network fetch. They're now lazy-loaded and decoded off the main thread, so only what's actually visible gets decoded up front.",
+      "Continue Watching's click-and-drag scrolling was capturing every touch gesture on the row, not just mouse drags - on a phone this could fight with the page's own vertical scroll if a swipe started on that row. Touch and pen now get the browser's native horizontal scrolling (which also has proper momentum, unlike the custom version); the custom drag logic now only runs for an actual mouse."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.81",
     "date": "2026-07-18",
     "title": "Continue Watching: reverted the JS link fallback that broke Stremio",
