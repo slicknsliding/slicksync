@@ -106,24 +106,29 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
     }
 
     if (metadata.imdb_id) {
-      const links = buildStremioLinks(metadata.imdb_id, next.season, next.episode)
-
       // Stremio's own desktop/mobile clients have long-established stremio://
-      // registration - confirmed working (a real click opened the app). Nuvio's
-      // Android app also registers that scheme in its manifest, but Nuvio's
-      // desktop client is alpha/testers-only and has no confirmed protocol
-      // registration on any platform - handing it an app link that can never
-      // be caught just adds a broken step before the fallback, and a prior
-      // attempt at JS-driven fallback logic for exactly this case ended up
-      // breaking the Stremio path that already worked. Simplest reliable
-      // split: Stremio gets the real app link (plain <a href>, no JS
-      // involved - that's what was confirmed working). Everyone else gets
-      // the web.stremio.com link as an ordinary web link - same rich detail
-      // page, no native handoff attempted.
+      // registration - confirmed working (a real click opened the app).
+      // Nuvio's desktop client is alpha/testers-only with no confirmed
+      // protocol registration on any platform, so it gets no app link.
+      //
+      // Nuvio's web fallback deliberately isn't web.stremio.com: that domain
+      // is correct for what it links to (Stremio's own detail page format),
+      // but showing "stremio.com" as the link target for a Nuvio account is
+      // confusing branding-wise - it reads as a mismatch even though the
+      // page itself works fine. Nuvio does have its own web client
+      // (web.nuvioapp.space), but it's aimed at TV platforms (WebOS/Tizen)
+      // and there's no confirmed per-title deep-link URL format for it - and
+      // guessing at another unverified link format is exactly what broke the
+      // Stremio path last time. IMDb's title page is provider-neutral,
+      // guaranteed to work, and was the original fallback here before the
+      // Stremio-link experiments started.
       if (user.providerType === 'stremio') {
+        const links = buildStremioLinks(metadata.imdb_id, next.season, next.episode)
         entry.appUrl = links.appUrl
+        entry.webUrl = links.webUrl
+      } else {
+        entry.webUrl = `https://www.imdb.com/title/${metadata.imdb_id}`
       }
-      entry.webUrl = links.webUrl
     }
 
     results.push(entry)
