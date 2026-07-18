@@ -21,6 +21,7 @@ import {
   FireIcon,
   PlayIcon,
   XCircleIcon,
+  InformationCircleIcon,
 } from '@heroicons/react/24/outline';
 import {
   AreaChart,
@@ -181,7 +182,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
 
   return (
-    <div onContextMenu={handleContextMenu} className="shrink-0">
+    <div onContextMenu={handleContextMenu} className="shrink-0 relative">
       <a
         href={item.appUrl || item.webUrl}
         target={item.appUrl ? undefined : '_blank'}
@@ -224,6 +225,32 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
           <p className="text-[10px] text-subtle truncate mt-0.5">{item.username}</p>
         </div>
       </a>
+
+      {/* A custom-scheme app link either opens the app or the OS shows its
+          own "no app registered for this link" dialog - the page has no way
+          to detect which happened or react to it (an earlier attempt to
+          intercept the click and add a JS-driven fallback ended up breaking
+          the Stremio link that already worked). Rather than try that again,
+          this is a second, ordinary, always-functional link - can't nest it
+          inside the card's own <a> (invalid HTML), so it's a small
+          absolutely-positioned sibling instead. Only shown when there's an
+          app link to fall back FROM; when there's only a web link, the card
+          itself already goes straight there. */}
+      {item.appUrl && item.webUrl && (
+        <a
+          href={item.webUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          draggable={false}
+          onDragStart={(e) => e.preventDefault()}
+          title="App didn't open? Open in browser instead"
+          aria-label="App didn't open? Open in browser instead"
+          className="absolute top-1.5 right-1.5 z-10 p-1 rounded-md transition-colors"
+          style={{ color: 'white', background: 'rgba(0,0,0,0.6)' }}
+        >
+          <InformationCircleIcon className="w-3.5 h-3.5" />
+        </a>
+      )}
 
       <ContextMenu isOpen={isOpen} position={position} onClose={close}>
         <button
