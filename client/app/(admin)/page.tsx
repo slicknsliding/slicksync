@@ -154,6 +154,30 @@ const RecentAddonItem = memo(function RecentAddonItem({
   );
 });
 
+// Navigates to a custom-scheme app link (stremio:///...), falling back to a
+// normal web URL if nothing handled it. A failed custom-scheme navigation
+// doesn't error or reject in JS - the browser just silently does nothing -
+// so "did it work" is inferred from whether the tab lost visibility (the OS
+// switching away to open the app) within a short window after trying.
+function openAppLinkWithFallback(appUrl: string, webUrl?: string) {
+  if (!webUrl) {
+    window.location.href = appUrl;
+    return;
+  }
+  let handedOff = false;
+  const onVisibilityChange = () => {
+    if (document.hidden) handedOff = true;
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.location.href = appUrl;
+  setTimeout(() => {
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    if (!handedOff) {
+      window.open(webUrl, '_blank', 'noopener,noreferrer');
+    }
+  }, 1200);
+}
+
 // Continue Watching card - right-click to remove, and guards its own click
 // against firing right after a drag-to-scroll gesture on the parent row
 // (checked via a shared ref rather than local state, since the drag
@@ -173,12 +197,18 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
     <div onContextMenu={handleContextMenu} className="shrink-0">
       <a
         href={item.appUrl || item.webUrl}
-        target={item.appUrl ? undefined : '_blank'}
-        rel={item.appUrl ? undefined : 'noopener noreferrer'}
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
         onClick={(e) => {
-          if (wasDraggedRef.current) e.preventDefault();
+          e.preventDefault();
+          if (wasDraggedRef.current) return;
+          if (item.appUrl) {
+            openAppLinkWithFallback(item.appUrl, item.webUrl);
+          } else if (item.webUrl) {
+            window.open(item.webUrl, '_blank', 'noopener,noreferrer');
+          }
         }}
-        className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none"
+        className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer"
       >
         <div className="relative aspect-video">
           {(item.nextEpisode.thumbnail || item.poster) ? (
