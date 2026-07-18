@@ -199,6 +199,8 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
               src={item.nextEpisode.thumbnail || item.poster || ''}
               alt={item.showName}
               draggable={false}
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 pointer-events-none"
             />
           ) : (
@@ -265,11 +267,17 @@ export default function DashboardPage() {
     api.dismissContinueWatching(item.userId, item.showId).catch(() => {});
   }, []);
 
-  // Grab-and-drag horizontal scrolling for the Continue Watching row (Pointer
-  // Events cover mouse/touch/pen in one API). wasDragged distinguishes a real
-  // drag from a click so dragging past a card doesn't also open its link -
-  // it's a ref, not state, since it needs to be read synchronously in the
-  // click handler that fires immediately after pointerup.
+  // Grab-and-drag horizontal scrolling for the Continue Watching row - mouse
+  // only. Touch/pen are deliberately left alone: overflow-x-auto already
+  // gives touch native horizontal scrolling with proper momentum, and this
+  // row sits inside a vertically-scrolling page - capturing every pointer
+  // move here (as an earlier version did for all pointer types) fought with
+  // the browser's own touch scroll gesture on the same element, which is
+  // exactly the kind of thing that reads as "laggy" on a phone. wasDragged
+  // distinguishes a real drag from a click so dragging past a card doesn't
+  // also open its link - it's a ref, not state, since it needs to be read
+  // synchronously in the click handler that fires immediately after
+  // pointerup.
   const scrollRowRef = useRef<HTMLDivElement>(null);
   const isPointerDownRef = useRef(false);
   const dragStartXRef = useRef(0);
@@ -277,7 +285,7 @@ export default function DashboardPage() {
   const wasDraggedRef = useRef(false);
 
   const handleRowPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!scrollRowRef.current) return;
+    if (e.pointerType !== 'mouse' || !scrollRowRef.current) return;
     isPointerDownRef.current = true;
     wasDraggedRef.current = false;
     dragStartXRef.current = e.clientX;
@@ -286,13 +294,14 @@ export default function DashboardPage() {
   }, []);
 
   const handleRowPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isPointerDownRef.current || !scrollRowRef.current) return;
+    if (e.pointerType !== 'mouse' || !isPointerDownRef.current || !scrollRowRef.current) return;
     const dx = e.clientX - dragStartXRef.current;
     if (Math.abs(dx) > 5) wasDraggedRef.current = true;
     scrollRowRef.current.scrollLeft = dragStartScrollLeftRef.current - dx;
   }, []);
 
   const handleRowPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse') return;
     isPointerDownRef.current = false;
     scrollRowRef.current?.releasePointerCapture(e.pointerId);
   }, []);
