@@ -159,6 +159,13 @@ const RecentAddonItem = memo(function RecentAddonItem({
 // doesn't error or reject in JS - the browser just silently does nothing -
 // so "did it work" is inferred from whether the tab lost visibility (the OS
 // switching away to open the app) within a short window after trying.
+//
+// The fallback MUST be same-tab navigation (location.href), not
+// window.open(): a window.open() call made inside a setTimeout is no longer
+// considered to be triggered by the original user gesture, so browsers
+// silently block it as a popup - no error, no visible sign, which is
+// exactly why this looked like "nothing happens at all" even with a
+// fallback in place. location.href navigation isn't subject to that.
 function openAppLinkWithFallback(appUrl: string, webUrl?: string) {
   if (!webUrl) {
     window.location.href = appUrl;
@@ -173,7 +180,7 @@ function openAppLinkWithFallback(appUrl: string, webUrl?: string) {
   setTimeout(() => {
     document.removeEventListener('visibilitychange', onVisibilityChange);
     if (!handedOff) {
-      window.open(webUrl, '_blank', 'noopener,noreferrer');
+      window.location.href = webUrl;
     }
   }, 1200);
 }
