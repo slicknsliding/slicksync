@@ -70,6 +70,20 @@ export function MediaDetailModal({
               allow="autoplay; encrypted-media; picture-in-picture"
               allowFullScreen
             />
+            {/* Positioned low and to the right, clear of YouTube's own
+                top-right controls (volume/CC/settings) - roughly level with
+                YouTube's own bottom-row icons (share/save), past the right
+                edge of its scrub bar. YouTube's own overlay isn't something
+                we control, so this is an approximation, not a guarantee. */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute bottom-9 right-2 z-10 p-1 rounded-md transition-colors"
+              style={{ color: 'white', background: 'rgba(0,0,0,0.6)' }}
+              aria-label="Close"
+            >
+              <XMarkIcon className="w-4 h-4" />
+            </button>
           </div>
         ) : heroImage && (
           <div className="relative w-full h-40 sm:h-56 overflow-hidden rounded-t-2xl">
@@ -103,19 +117,7 @@ export function MediaDetailModal({
         )}
 
         <div className="px-6 pb-2 pt-4">
-          <div className="flex items-start justify-between gap-3">
-            <h2 className="text-xl font-bold font-display text-default">{title}</h2>
-            {isTrailerPlaying && (
-              <button
-                type="button"
-                onClick={onClose}
-                className="shrink-0 p-1.5 rounded-lg hover:bg-surface-hover transition-colors text-muted"
-                aria-label="Close"
-              >
-                <XMarkIcon className="w-5 h-5" />
-              </button>
-            )}
-          </div>
+          <h2 className="text-xl font-bold font-display text-default">{title}</h2>
 
           {isLoading && (
             <div className="flex items-center gap-2 mt-4 text-sm text-muted">
@@ -193,7 +195,7 @@ export function MediaDetailModal({
                   <p className="text-sm text-muted mb-2">Cast</p>
                   <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
                     {details.cast.slice(0, 10).map((member) => (
-                      <div key={member.name} className="shrink-0 w-16 text-center">
+                      <div key={member.name} className="shrink-0 w-20 text-center">
                         {member.photo ? (
                           <img
                             src={member.photo}
@@ -205,11 +207,19 @@ export function MediaDetailModal({
                             {member.name.charAt(0)}
                           </div>
                         )}
-                        <p className="mt-1.5 text-[11px] font-medium text-default leading-tight truncate" title={member.name}>
+                        <p
+                          className="mt-1.5 text-[11px] font-medium text-default leading-tight"
+                          style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                          title={member.name}
+                        >
                           {member.name}
                         </p>
                         {member.character && (
-                          <p className="text-[10px] text-subtle leading-tight truncate" title={member.character}>
+                          <p
+                            className="text-[10px] text-subtle leading-tight"
+                            style={{ display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                            title={member.character}
+                          >
                             {member.character}
                           </p>
                         )}

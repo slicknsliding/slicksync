@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.9.78",
+    "date": "2026-07-18",
+    "title": "Continue Watching link/drag fixes, cast photo cutoff, trailer close button repositioned",
+    "features": [],
+    "bugFixes": [
+      "Continue Watching links to Nuvio were opening nothing at all - switching both providers onto the same stremio:// deep link format (previous release) removed the plain web-link fallback Nuvio previously had, and a browser silently does nothing when it navigates to a custom URL scheme with no app registered to handle it. Links now try the app first and fall back to the web version automatically if nothing takes over the tab within ~1.2s.",
+      "Drag-to-scroll on Continue Watching mostly grabbed the poster image instead of scrolling, showing the browser's native \"can't drop here\" cursor - links and images are draggable by default in browsers, which was hijacking the custom scroll gesture. Explicitly disabled native drag on the card.",
+      "Cast member names with more than a few characters were truncating almost immediately - card width was too narrow. Widened slightly and names now wrap to two lines before truncating instead of cutting off after one.",
+      "Repositioned the trailer's close button lower and to the right, closer to YouTube's own bottom control row instead of overlapping its top-right settings/CC/volume cluster."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.77",
     "date": "2026-07-18",
     "title": "Media detail modal with trailers, Continue Watching, and a run of real watch-tracking data bugs fixed",
