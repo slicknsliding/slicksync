@@ -454,6 +454,28 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
             }
           } catch {}
 
+          // A brand-new session (no recent prior row to inherit from) has no duration
+          // yet, but the provider only checkpoints on pause/stop - so the very first
+          // checkpoint we ever see for a single-sitting, no-pause watch is often ALSO
+          // the only one we'll ever see, and durationSeconds would stay 0 forever
+          // (the position-delta computed elsewhere in this file needs a SECOND
+          // checkpoint to produce anything). state.timeOffset is safe to read
+          // directly here, unlike state.overallTimeWatched: it's a per-item playback
+          // position bounded by the item's own runtime, not a lifetime-cumulative
+          // counter across a whole viewing history (confirmed against real API data -
+          // see stremioWatchedDecoder.js's captured example, where timeOffset ~=
+          // duration for the current video while overallTimeWatched is 30x larger).
+          // Capped against state.duration as a safety net regardless.
+          let seedDurationSeconds = 0
+          if (priorDurationSeconds === 0 && typeof state.timeOffset === 'number' && state.timeOffset > 0) {
+            const durationMs = Number(state.duration ?? NaN)
+            const cappedMs = Number.isNaN(durationMs) || durationMs <= 0
+              ? state.timeOffset
+              : Math.min(state.timeOffset, durationMs)
+            seedDurationSeconds = Math.max(0, Math.floor(cappedMs / 1000))
+          }
+          const initialDurationSeconds = Math.max(priorDurationSeconds, seedDurationSeconds)
+
           const newSession = await prisma.watchSession.upsert({
             where: {
               accountId_userId_itemId: {
@@ -478,7 +500,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
               lastPosition: startPositionValue,
               totalDuration: totalDurationValue,
               isActive: true,
-              durationSeconds: priorDurationSeconds
+              durationSeconds: initialDurationSeconds
             },
             update: {
               videoId,
@@ -493,7 +515,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
               totalDuration: totalDurationValue,
               endTime: null,
               isActive: true,
-              durationSeconds: priorDurationSeconds
+              durationSeconds: initialDurationSeconds
             }
           })
           sessionsCreated++
