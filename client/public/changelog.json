@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.9.87",
+    "date": "2026-07-18",
+    "title": "Continue Watching: right-click removal fixed, fallback icon now opens the real detail modal",
+    "features": [],
+    "bugFixes": [
+      "Right-clicking a Continue Watching card to remove it was landing on a real bug: the row's own click-and-drag handler didn't check which mouse button was pressed, so a right-click also engaged the drag-scroll logic and captured the pointer - which had no business happening for a gesture that was never a drag. Scoped that handler to the left button only. The remove button now also confirms with a toast so it's obvious the click landed.",
+      "The small fallback icon on each card (for when the app link doesn't have anywhere to go) opened a bare IMDb or web.stremio.com link. It now opens the same rich detail modal the Activity page's poster click already uses - cast photos, trailer, rating, IMDb/TMDb links, and more - instead of bouncing out to an external site for less information."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.86",
     "date": "2026-07-18",
     "title": "Movie/episode watch history now actually stores its own duration",
