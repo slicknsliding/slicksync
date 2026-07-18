@@ -1572,6 +1572,7 @@ export interface MediaDetails {
   awards: string | null;
   imdb_id: string | null;
   moviedb_id: number | null;
+  trailers: string[];
   episode?: {
     title: string | null;
     released: string | null;
