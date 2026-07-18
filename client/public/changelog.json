@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.93",
+    "date": "2026-07-18",
+    "title": "Open in Stremio/Nuvio buttons now match each provider's own badge color",
+    "features": [],
+    "bugFixes": [],
+    "miscChores": [
+      "The \"Open in Stremio\"/\"Open in Nuvio\" buttons in the detail modal now use the same fixed, theme-independent colors as each provider's identity Badge elsewhere (the Users page, next to \"Synced\") - purple for Stremio, blue/orange for Nuvio - instead of a generic accent color, so they read as \"this specific provider\" at a glance."
+    ]
+  },
+  {
     "version": "1.9.92",
     "date": "2026-07-18",
     "title": "Fixed: right-clicking a different Continue Watching card left the old menu open",

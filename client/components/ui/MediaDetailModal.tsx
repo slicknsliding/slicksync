@@ -195,12 +195,21 @@ export function MediaDetailModal({
                   as two plain options rather than picking one, since this
                   modal isn't tied to a specific managed user/provider the
                   way Continue Watching is. */}
+              {/* Same fixed, theme-independent colors as each provider's
+                  identity Badge elsewhere (Users page, next to "Synced") -
+                  purple for Stremio, blue/orange for Nuvio - rather than the
+                  generic accent color, so these read as "this specific
+                  provider" the same way the badges already do. */}
               {details.imdb_id && (
                 <div className="flex flex-wrap gap-2">
                   <a
                     href={buildStremioAppUrl(details.imdb_id, itemType)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                    style={{ background: 'var(--color-primary)', color: 'white' }}
+                    style={{
+                      background: 'rgba(167, 139, 250, 0.15)',
+                      color: 'rgb(196, 181, 253)',
+                      border: '1px solid rgba(167, 139, 250, 0.25)',
+                    }}
                   >
                     <PlayIcon className="w-4 h-4" />
                     Open in Stremio
@@ -208,7 +217,11 @@ export function MediaDetailModal({
                   <a
                     href={buildNuvioAppUrl(details.imdb_id, itemType)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                    style={{ background: 'var(--color-surfaceHover)', color: 'var(--color-text)', border: '1px solid var(--color-surfaceBorder)' }}
+                    style={{
+                      background: 'linear-gradient(90deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
+                      color: 'rgb(186, 208, 240)',
+                      border: '1px solid rgba(255, 152, 0, 0.18)',
+                    }}
                   >
                     <PlayIcon className="w-4 h-4" />
                     Open in Nuvio
