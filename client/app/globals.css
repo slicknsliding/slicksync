@@ -613,6 +613,18 @@ body {
     background-color: var(--color-text-muted);
   }
 
+  /* Fully hidden scrollbar for click-and-drag horizontal rows (Continue
+     Watching) - the drag gesture is the intended way to scroll, a visible
+     scrollbar track/thumb is redundant clutter for that interaction. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   /* ----- Gradients & Effects ----- */
   .text-gradient {
     background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
