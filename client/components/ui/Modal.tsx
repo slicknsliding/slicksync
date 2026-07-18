@@ -64,7 +64,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
           >
             <DialogPanel
               className={clsx(
-                'w-full flex flex-col max-h-[85vh]',
+                'relative w-full flex flex-col max-h-[85vh]',
                 sizeStyles[size],
                 'rounded-2xl p-0 overflow-hidden'
               )}
@@ -75,36 +75,38 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
                 maxWidth: sizeMaxWidthPx[size],
               }}
             >
+              {/* Close button - unconditional (not tied to title/description) and
+                  positioned on the panel itself, not inside the scrollable content,
+                  so it stays put regardless of what's rendered below (a custom
+                  hero-image header, a title, or nothing) and regardless of scroll. */}
+              <button
+                onClick={onClose}
+                className="absolute top-3 right-3 z-10 p-2 rounded-lg backdrop-blur-sm transition-colors"
+                style={{ color: 'var(--color-textMuted)', background: 'color-mix(in srgb, var(--color-surface) 70%, transparent)' }}
+                aria-label="Close"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+
               {/* Header */}
               {(title || description) && (
                 <div
-                  className="px-6 pt-6 pb-4 shrink-0"
+                  className="px-6 pt-6 pb-4 pr-14 shrink-0"
                   style={{ borderBottom: '1px solid var(--color-surfaceBorder)' }}
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      {title && (
-                        <DialogTitle
-                          className="text-xl font-semibold font-display"
-                          style={{ color: 'var(--color-text)' }}
-                        >
-                          {title}
-                        </DialogTitle>
-                      )}
-                      {description && (
-                        <p className="mt-1 text-sm" style={{ color: 'var(--color-textMuted)' }}>
-                          {description}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      onClick={onClose}
-                      className="p-2 rounded-lg transition-colors"
-                      style={{ color: 'var(--color-textMuted)' }}
+                  {title && (
+                    <DialogTitle
+                      className="text-xl font-semibold font-display"
+                      style={{ color: 'var(--color-text)' }}
                     >
-                      <XMarkIcon className="w-5 h-5" />
-                    </button>
-                  </div>
+                      {title}
+                    </DialogTitle>
+                  )}
+                  {description && (
+                    <p className="mt-1 text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                      {description}
+                    </p>
+                  )}
                 </div>
               )}
 
