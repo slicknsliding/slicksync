@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.9.94",
+    "date": "2026-07-18",
+    "title": "Changelog page: fixed release titles and chore entries never actually rendering",
+    "features": [],
+    "bugFixes": [
+      "Every release's title (the human-readable one-line summary in changelog.json) was silently smuggled into an internal section that only rendered when it had list items - since a title has none, it was invisible on the actual page despite being written for every release. Now shown directly under the version number.",
+      "The \"miscChores\" field was read from changelog.json but never referenced anywhere in the page's render logic at all - any release with only chores and no features/bug fixes (like the previous one) expanded to a completely empty card. Added a proper \"Chores\" section, matching the existing Features/Bug Fixes pattern.",
+      "The \"View all releases on GitHub\" footer link pointed at the upstream Syncio author's GitHub account instead of this repo. Fixed to slicknsliding/slicksync. Each version number now also links straight to that specific release's page instead of just the repo root."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.93",
     "date": "2026-07-18",
     "title": "Open in Stremio/Nuvio buttons now match each provider's own badge color",

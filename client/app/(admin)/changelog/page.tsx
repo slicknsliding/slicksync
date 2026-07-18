@@ -12,6 +12,7 @@ import {
   ChevronUpIcon,
   SparklesIcon,
   BugAntIcon,
+  WrenchScrewdriverIcon,
   DocumentTextIcon,
   ClipboardDocumentIcon,
   CheckIcon,
@@ -28,6 +29,7 @@ interface Release {
   version: string;
   tagName: string;
   date: string;
+  title?: string;
   features: string[];
   bugFixes: string[];
   miscChores: string[];
@@ -198,12 +200,13 @@ const mapLocalEntry = (entry: LocalChangelogEntry): Release => ({
   version: entry.version,
   tagName: `v${entry.version}`,
   date: entry.date,
+  title: entry.title,
   features: entry.features || [],
   bugFixes: entry.bugFixes || [],
   miscChores: entry.miscChores || [],
-  otherSections: entry.title ? [{ title: entry.title, items: [] }] : [],
+  otherSections: [],
   rawBody: '',
-  htmlUrl: 'https://github.com/slicknsliding/slicksync',
+  htmlUrl: `https://github.com/slicknsliding/slicksync/releases/tag/v${entry.version}`,
   isPreRelease: false,
 });
 
@@ -367,55 +370,60 @@ export default function ChangelogPage() {
                       className="w-full px-6 py-4 flex items-center justify-between hover:bg-surface-hover transition-colors"
                     >
                       <div className="flex items-center gap-4">
-                        <TagIcon className="w-5 h-5 text-default" />
-                        <div className="flex items-baseline gap-3 flex-wrap">
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={release.htmlUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-xl font-semibold hover:text-primary transition-colors"
-                            >
-                              v{release.version}
-                            </a>
+                        <TagIcon className="w-5 h-5 text-default shrink-0" />
+                        <div className="flex flex-col items-start gap-1 text-left">
+                          <div className="flex items-baseline gap-3 flex-wrap">
                             <div className="flex items-center gap-2">
-                              {isLatest && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    copyUpdateCommand();
-                                  }}
-                                  className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-medium bg-primary text-white hover:bg-primary-hover transition-colors min-w-[74px] justify-center cursor-pointer"
-                                >
-                                  {copied ? (
-                                    <CheckIcon className="w-3 h-3" />
-                                  ) : (
-                                    <ClipboardDocumentIcon className="w-3 h-3" />
-                                  )}
-                                  <span>{copied ? 'Copied!' : 'Latest'}</span>
-                                </button>
-                              )}
-                              {isCurrentVersion && (
-                                <Badge variant="success" size="sm">
-                                  <CheckIcon className="w-3 h-3 mr-1" />
-                                  Current
+                              <a
+                                href={release.htmlUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-xl font-semibold hover:text-primary transition-colors"
+                              >
+                                v{release.version}
+                              </a>
+                              <div className="flex items-center gap-2">
+                                {isLatest && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyUpdateCommand();
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-medium bg-primary text-white hover:bg-primary-hover transition-colors min-w-[74px] justify-center cursor-pointer"
+                                  >
+                                    {copied ? (
+                                      <CheckIcon className="w-3 h-3" />
+                                    ) : (
+                                      <ClipboardDocumentIcon className="w-3 h-3" />
+                                    )}
+                                    <span>{copied ? 'Copied!' : 'Latest'}</span>
+                                  </button>
+                                )}
+                                {isCurrentVersion && (
+                                  <Badge variant="success" size="sm">
+                                    <CheckIcon className="w-3 h-3 mr-1" />
+                                    Current
+                                  </Badge>
+                                )}
+                              </div>
+                              {release.isPreRelease && (
+                                <Badge variant="warning" size="sm">
+                                  Pre-release
                                 </Badge>
                               )}
                             </div>
-                            {release.isPreRelease && (
-                              <Badge variant="warning" size="sm">
-                                Pre-release
-                              </Badge>
-                            )}
+                            <span className="text-sm text-muted">
+                              {new Date(release.date).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                              })}
+                            </span>
                           </div>
-                          <span className="text-sm text-muted">
-                            {new Date(release.date).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric',
-                            })}
-                          </span>
+                          {release.title && (
+                            <p className="text-sm font-medium text-default">{release.title}</p>
+                          )}
                         </div>
                       </div>
                       {isExpanded ? (
@@ -476,6 +484,26 @@ export default function ChangelogPage() {
                               </div>
                             )}
 
+                            {/* Misc Chores */}
+                            {release.miscChores.length > 0 && (
+                              <div>
+                                <h3 className="text-base font-semibold mb-3 flex items-center gap-2 text-default">
+                                  <WrenchScrewdriverIcon className="w-4 h-4 text-secondary" />
+                                  <span>Chores</span>
+                                </h3>
+                                <ul className="space-y-2">
+                                  {release.miscChores.map((chore, idx) => (
+                                    <li
+                                      key={idx}
+                                      className="text-sm text-muted pl-4 relative before:content-['•'] before:absolute before:left-0 before:text-muted"
+                                    >
+                                      {capitalizeFirst(chore)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
                             {/* Other Sections */}
                             {release.otherSections.map((section) =>
                               section.items.length > 0 ? (
@@ -514,7 +542,7 @@ export default function ChangelogPage() {
             <p className="text-sm text-muted">
               View all releases on{' '}
               <a
-                href="https://github.com/iamneur0/slicksync/releases"
+                href="https://github.com/slicknsliding/slicksync/releases"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary hover:text-primary-hover underline font-medium"
