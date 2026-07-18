@@ -175,16 +175,33 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   wasDraggedRef,
   onRemove,
   onOpenDetails,
+  isMenuOpen,
+  onMenuOpenChange,
 }: {
   item: ContinueWatchingItem;
   wasDraggedRef: React.RefObject<boolean>;
   onRemove: (item: ContinueWatchingItem) => void;
   onOpenDetails: (item: ContinueWatchingItem) => void;
+  isMenuOpen: boolean;
+  onMenuOpenChange: (open: boolean) => void;
 }) {
-  const { isOpen, position, handleContextMenu, close } = useContextMenu();
+  // position/preventDefault still come from the hook, but which card's menu
+  // is actually rendered open is driven by isMenuOpen (lifted to the parent)
+  // rather than this hook's own isOpen - each card had its own independent
+  // isOpen before, and right-clicking a second card's own stopPropagation
+  // (needed to suppress the native menu) blocked the FIRST card's "close on
+  // outside click" listener from ever firing, orphaning it open. A single
+  // shared "which card owns the open menu" value fixes that by construction.
+  const { position, handleContextMenu } = useContextMenu();
 
   return (
-    <div onContextMenu={handleContextMenu} className="shrink-0 relative">
+    <div
+      onContextMenu={(e) => {
+        handleContextMenu(e);
+        onMenuOpenChange(true);
+      }}
+      className="shrink-0 relative"
+    >
       <a
         href={item.appUrl || item.webUrl}
         target={item.appUrl ? undefined : '_blank'}
@@ -258,10 +275,10 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
         </button>
       )}
 
-      <ContextMenu isOpen={isOpen} position={position} onClose={close}>
+      <ContextMenu isOpen={isMenuOpen} position={position} onClose={() => onMenuOpenChange(false)}>
         <button
           onClick={() => {
-            close();
+            onMenuOpenChange(false);
             onRemove(item);
             toast.success(`Removed "${item.showName}" from Continue Watching`);
           }}
@@ -286,6 +303,10 @@ export default function DashboardPage() {
   const [reloadingAddons, setReloadingAddons] = useState<Set<string>>(new Set());
   const [continueWatching, setContinueWatching] = useState<ContinueWatchingItem[]>([]);
   const [detailModalItem, setDetailModalItem] = useState<ContinueWatchingItem | null>(null);
+  // Which Continue Watching card's context menu is open, keyed the same way
+  // as each card - shared across all cards so opening one always closes any
+  // other, instead of each card tracking its own independent isOpen.
+  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
 
   // Fetched independently of the main dashboard load - Cinemeta lookups
   // powering this are a nice-to-have, and shouldn't be able to fail the
@@ -641,6 +662,10 @@ export default function DashboardPage() {
                     wasDraggedRef={wasDraggedRef}
                     onRemove={handleDismissContinueWatching}
                     onOpenDetails={setDetailModalItem}
+                    isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
+                    onMenuOpenChange={(open) =>
+                      setOpenMenuKey(open ? `${item.userId}-${item.showId}` : null)
+                    }
                   />
                 ))}
               </div>
