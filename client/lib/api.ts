@@ -1579,7 +1579,7 @@ export interface MediaDetails {
   poster: string | null;
   background: string | null;
   description: string | null;
-  cast: string[];
+  cast: Array<{ name: string; character: string | null; photo: string | null }>;
   director: string[];
   genres: string[];
   imdbRating: string | null;
