@@ -1293,6 +1293,28 @@ class ApiClient {
     }
   }
 
+  // Discover - browse/search Cinemeta's real catalogs (Popular/New/Featured).
+  async discoverBrowse(type: 'movie' | 'series', options?: { catalog?: string; genre?: string; skip?: number }) {
+    const params = new URLSearchParams({ type });
+    if (options?.catalog) params.set('catalog', options.catalog);
+    if (options?.genre) params.set('genre', options.genre);
+    if (options?.skip) params.set('skip', String(options.skip));
+    try {
+      return await this.fetch<DiscoverItem[]>(`/discover/browse?${params.toString()}`);
+    } catch {
+      return [];
+    }
+  }
+
+  async discoverSearch(type: 'movie' | 'series', query: string) {
+    const params = new URLSearchParams({ type, query });
+    try {
+      return await this.fetch<DiscoverItem[]>(`/discover/search?${params.toString()}`);
+    } catch {
+      return [];
+    }
+  }
+
   // Manual sync (same as scheduled 5‑minute sync, but on demand)
   async triggerSyncNow() {
     return this.fetch<{ message: string; result?: any }>('/settings/sync-now', {
@@ -1579,6 +1601,16 @@ export interface ContinueWatchingItem {
   lastWatchedAt: string;
   appUrl?: string;
   webUrl?: string;
+}
+
+export interface DiscoverItem {
+  id: string;
+  type: 'movie' | 'series';
+  name: string;
+  poster: string | null;
+  releaseInfo: string | null;
+  imdbRating: string | null;
+  genres: string[];
 }
 
 export interface MediaDetails {

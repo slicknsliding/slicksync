@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.9.90",
+    "date": "2026-07-18",
+    "title": "New: Discover - browse and search movies/shows, open straight in Stremio or Nuvio",
+    "features": [
+      "New \"Discover\" page: browse Cinemeta's Popular/New/Top Rated catalogs for movies and series, or search by title. Click any poster to open the same rich detail modal used elsewhere (cast, trailer, rating, IMDb/TMDb links) - now with \"Open in Stremio\" and \"Open in Nuvio\" buttons added to that modal, so anything you find can be opened straight into either app, not just things already in your watch history.",
+      "The Stremio/Nuvio deep-link builders used by Continue Watching are now shared with Discover instead of duplicated - Stremio's movie/no-specific-episode link formats came straight from Stremio's own SDK docs rather than guessed at."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.9.89",
     "date": "2026-07-18",
     "title": "Continue Watching confirmed fully working - diagnostics cleaned up",
