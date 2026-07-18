@@ -100,17 +100,44 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
       if (!isNaN(d.getTime())) watchedAt = d
     }
 
+    const accountIdValue = accountId || 'default'
+
+    // durationSeconds was previously never written here at all - it only ever
+    // got "backfilled" in-memory for the Activity feed's API response
+    // (metricsBuilder.js's mergeCrossPipelineDuplicates), never persisted to
+    // this row. WatchSession has the real duration but tracks one row per
+    // (user, show) - itemId is the show's own base ID, not per-episode - so
+    // it only reflects THIS episode's duration while it's the one
+    // currently/most-recently playing. Confirm videoId still matches before
+    // trusting it, so backfilling S1E2's history row doesn't grab S1E3's
+    // duration once the session has moved on to the next episode. max()
+    // against the row's own existing value for the same reason every other
+    // duration merge in this codebase does - never let a later, possibly
+    // stale/lower reading regress an already-recorded higher one.
+    const [existing, session] = await Promise.all([
+      prisma.episodeWatchHistory.findUnique({
+        where: { accountId_userId_videoId: { accountId: accountIdValue, userId, videoId } },
+        select: { durationSeconds: true }
+      }),
+      prisma.watchSession.findUnique({
+        where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId: showId } },
+        select: { videoId: true, durationSeconds: true }
+      })
+    ])
+    const sessionDuration = session?.videoId === videoId ? (session.durationSeconds || 0) : 0
+    const durationSeconds = Math.max(existing?.durationSeconds || 0, sessionDuration) || undefined
+
     // Upsert the episode watch (updates watchedAt if already exists)
     await prisma.episodeWatchHistory.upsert({
       where: {
         accountId_userId_videoId: {
-          accountId: accountId || 'default',
+          accountId: accountIdValue,
           userId,
           videoId
         }
       },
       create: {
-        accountId: accountId || 'default',
+        accountId: accountIdValue,
         userId,
         showId,
         showName,
@@ -119,13 +146,15 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
         episode,
         poster,
         profileLabel,
-        watchedAt
+        watchedAt,
+        durationSeconds
       },
       update: {
         watchedAt, // Update watch time if re-watching
         showName, // Update in case show name changed
         poster, // Update in case poster changed
-        profileLabel
+        profileLabel,
+        durationSeconds
       }
     })
 
@@ -167,29 +196,53 @@ async function recordMovieWatch(prisma, accountId, userId, item) {
       if (!isNaN(d.getTime())) watchedAt = d
     }
 
+    const accountIdValue = accountId || 'default'
+
+    // durationSeconds was previously never written here at all - it only ever
+    // got "backfilled" in-memory for the Activity feed's API response
+    // (metricsBuilder.js's mergeCrossPipelineDuplicates), never persisted to
+    // this row. WatchSession has the real duration, keyed the same way for
+    // movies (one row per (user, item)). max() against the row's own
+    // existing value for the same reason every other duration merge in this
+    // codebase does - never let a later, possibly stale/lower reading
+    // regress an already-recorded higher one.
+    const [existing, session] = await Promise.all([
+      prisma.movieWatchHistory.findUnique({
+        where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
+        select: { durationSeconds: true }
+      }),
+      prisma.watchSession.findUnique({
+        where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
+        select: { durationSeconds: true }
+      })
+    ])
+    const durationSeconds = Math.max(existing?.durationSeconds || 0, session?.durationSeconds || 0) || undefined
+
     // Upsert the movie watch (updates watchedAt if already exists)
     await prisma.movieWatchHistory.upsert({
       where: {
         accountId_userId_itemId: {
-          accountId: accountId || 'default',
+          accountId: accountIdValue,
           userId,
           itemId
         }
       },
       create: {
-        accountId: accountId || 'default',
+        accountId: accountIdValue,
         userId,
         itemId,
         itemName,
         poster,
         profileLabel,
-        watchedAt
+        watchedAt,
+        durationSeconds
       },
       update: {
         watchedAt, // Update watch time if re-watching
         itemName, // Update in case name changed
         poster, // Update in case poster changed
-        profileLabel
+        profileLabel,
+        durationSeconds
       }
     })
 
