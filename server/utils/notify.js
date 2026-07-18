@@ -188,7 +188,13 @@ async function fetchMetadata(itemId, itemType, videoId) {
             releaseInfo: meta.releaseInfo || null,
             director: meta.director || [],
             country: meta.country || null,
-            awards: meta.awards || null
+            awards: meta.awards || null,
+            // meta.trailers entries are {source, type} - source is a plain YouTube
+            // video ID (e.g. "cdx31ak4KbQ"), embeddable directly via YouTube's own
+            // public embed URL. Only expose entries actually typed as a trailer.
+            trailers: Array.isArray(meta.trailers)
+              ? meta.trailers.filter((t) => t?.source && t?.type === 'Trailer').map((t) => t.source)
+              : []
           }
 
           // For series, find the specific episode by video_id, season, and episode number

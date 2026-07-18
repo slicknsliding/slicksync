@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { StarIcon, ClockIcon, FilmIcon } from '@heroicons/react/24/solid';
+import { StarIcon, ClockIcon, FilmIcon, PlayIcon } from '@heroicons/react/24/solid';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { api, MediaDetails } from '@/lib/api';
@@ -28,6 +28,7 @@ export function MediaDetailModal({
   const [details, setDetails] = useState<MediaDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [isTrailerPlaying, setIsTrailerPlaying] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -35,6 +36,7 @@ export function MediaDetailModal({
     setDetails(null);
     setHasFetched(false);
     setIsLoading(true);
+    setIsTrailerPlaying(false);
 
     let cancelled = false;
     api.getMediaDetails(itemId, itemType, videoId).then((result) => {
@@ -54,11 +56,22 @@ export function MediaDetailModal({
     : (details?.title || fallbackTitle);
   const heroImage = details?.episode?.thumbnail || details?.background || details?.poster || fallbackPoster;
   const overview = details?.episode?.overview || details?.description;
+  const trailerId = details?.trailers?.[0];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="xl">
       <div className="-mx-6 -mt-6">
-        {heroImage && (
+        {isTrailerPlaying && trailerId ? (
+          <div className="relative w-full h-40 sm:h-56 overflow-hidden rounded-t-2xl bg-black">
+            <iframe
+              src={`https://www.youtube.com/embed/${trailerId}?autoplay=1`}
+              title="Trailer"
+              className="w-full h-full"
+              allow="autoplay; encrypted-media; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        ) : heroImage && (
           <div className="relative w-full h-40 sm:h-56 overflow-hidden rounded-t-2xl">
             <img
               src={heroImage}
@@ -70,6 +83,22 @@ export function MediaDetailModal({
               className="absolute inset-0"
               style={{ background: 'linear-gradient(180deg, transparent 40%, var(--color-surface) 100%)' }}
             />
+            {trailerId && (
+              <button
+                type="button"
+                onClick={() => setIsTrailerPlaying(true)}
+                className="absolute inset-0 flex items-center justify-center group"
+                aria-label="Play trailer"
+              >
+                <span
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-full font-medium text-sm transition-transform group-hover:scale-105"
+                  style={{ background: 'color-mix(in srgb, var(--color-surface) 60%, transparent)', color: 'white', backdropFilter: 'blur(4px)' }}
+                >
+                  <PlayIcon className="w-5 h-5" />
+                  Play Trailer
+                </span>
+              </button>
+            )}
           </div>
         )}
 
