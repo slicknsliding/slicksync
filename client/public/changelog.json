@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.89",
+    "date": "2026-07-18",
+    "title": "Continue Watching confirmed fully working - diagnostics cleaned up",
+    "features": [],
+    "bugFixes": [
+      "Removed the temporary \"Menu should be open now\" diagnostic toast added last version - right-click remove, the info-icon's detail modal, and the app-link click are all confirmed working now."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.88",
     "date": "2026-07-18",
     "title": "Found the real reason the info-icon button did nothing",
