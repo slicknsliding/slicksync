@@ -139,11 +139,26 @@ async function fetchMetadata(itemId, itemType, videoId) {
         const data = await response.json()
         const meta = data?.meta
         if (meta) {
+          // credits_cast entries are {character, name, profile_path, id} objects,
+          // not plain strings - meta.cast (the older/simpler field) is plain
+          // strings. Normalize both shapes to a single display string per person
+          // so every consumer (Discord notification, media detail modal) gets a
+          // consistent, renderable array regardless of which one Cinemeta returned.
+          const normalizedCast = (meta.credits_cast || meta.cast || [])
+            .map((c) => {
+              if (typeof c === 'string') return c
+              if (c && typeof c === 'object' && c.name) {
+                return c.character ? `${c.name} as ${c.character}` : c.name
+              }
+              return null
+            })
+            .filter(Boolean)
+
           const result = {
             title: meta.name || meta.title || null,
             poster: meta.poster || null,
             description: meta.description || null,
-            cast: meta.credits_cast || meta.cast || [],
+            cast: normalizedCast,
             imdb_id: meta.imdb_id || null,
             moviedb_id: meta.moviedb_id || null,
             genres: meta.genres || [],
