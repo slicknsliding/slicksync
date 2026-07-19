@@ -1,5 +1,7 @@
 // Phase 3: Enhanced Metrics Calculations
 
+const { getAccountDateString } = require('./dateUtils')
+
 /**
  * Calculate top items with user details
  * Uses watchSessions to get item details and track per-user watch time
@@ -82,17 +84,21 @@ function calculateTopItemsWithUsers(watchSessions, allUsers) {
  * Uses WatchSession data to count actual episodes watched per day
  * This provides accurate binge watching statistics
  */
-function calculateWatchVelocity(watchSessions) {
+function calculateWatchVelocity(watchSessions, accountTimeZone) {
   const seriesStats = new Map()
-  
+
   // Group sessions by show and track episodes per day
   watchSessions.forEach(session => {
     if (session.item.type !== 'series') return
-    
+
     const itemId = session.item.id
     const episode = session.item.episode
     const season = session.item.season
-    const watchDate = new Date(session.startTime).toISOString().split('T')[0]
+    // session.startTime is a real timestamp (unlike WatchActivity.date, which
+    // is pre-bucketed to account-day at write time) - bucketing it by UTC day
+    // could split one binge-watching evening into two "days" (or merge two
+    // into one) for any account west of UTC, skewing episodes-per-day.
+    const watchDate = getAccountDateString(new Date(session.startTime), accountTimeZone)
     
     if (!seriesStats.has(itemId)) {
       seriesStats.set(itemId, {

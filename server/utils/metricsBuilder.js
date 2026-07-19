@@ -1311,7 +1311,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
 
   // Phase 3: Enhanced Metrics
   const topItems = calculateTopItemsWithUsers(watchSessions, allUsers)
-  const watchVelocity = calculateWatchVelocity(watchSessions)
+  const watchVelocity = calculateWatchVelocity(watchSessions, accountTimeZone)
   const interestingMetrics = calculateInterestingMetrics(watchActivityByUser, engagement, watchSessions, allUsers)
 
   return {
