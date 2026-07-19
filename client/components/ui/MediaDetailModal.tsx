@@ -57,6 +57,15 @@ export function MediaDetailModal({
 
   const handleCastPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'mouse' || !isCastPointerDownRef.current || !castRowRef.current) return;
+    // Same recovery as Continue Watching's row (see page.tsx): capture is
+    // deferred until the drag threshold, so a release before that point (e.g.
+    // mostly-vertical movement off the row) never reaches handleCastPointerUp.
+    // Catch it here via e.buttons instead of letting a later hover compute
+    // scrollLeft from a stale drag-start.
+    if ((e.buttons & 1) === 0) {
+      isCastPointerDownRef.current = false;
+      return;
+    }
     const dx = e.clientX - castDragStartXRef.current;
     if (Math.abs(dx) > 5 && !hasCapturedCastPointerRef.current) {
       castRowRef.current.setPointerCapture(e.pointerId);

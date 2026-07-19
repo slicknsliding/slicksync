@@ -372,6 +372,18 @@ export default function DashboardPage() {
 
   const handleRowPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'mouse' || !isPointerDownRef.current || !scrollRowRef.current) return;
+    // Deferring capture (below) means a release that happens before the drag
+    // threshold is crossed - e.g. mostly-vertical movement off the row's top
+    // or bottom edge with under 5px of horizontal travel - never reaches
+    // handleRowPointerUp at all, since nothing retargets it back to us.
+    // e.buttons catches that on the very next move/hover: if the primary
+    // button isn't pressed anymore, the "pointer down" state is stale, so
+    // clear it now instead of letting a later hover compute scrollLeft from
+    // a stale drag-start and yank the row around with no button even held.
+    if ((e.buttons & 1) === 0) {
+      isPointerDownRef.current = false;
+      return;
+    }
     const dx = e.clientX - dragStartXRef.current;
     if (Math.abs(dx) > 5) {
       wasDraggedRef.current = true;
