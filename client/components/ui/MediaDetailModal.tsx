@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
@@ -30,6 +30,49 @@ export function MediaDetailModal({
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [isTrailerPlaying, setIsTrailerPlaying] = useState(false);
+
+  // Mouse-only grab-and-drag horizontal scrolling for the Cast row, matching
+  // the Dashboard's Continue Watching row. Pointer capture is deliberately
+  // deferred until an actual drag crosses the 5px threshold, not engaged on
+  // every mouse-down - Continue Watching's fix (see page.tsx) found that
+  // capturing eagerly on a plain click blocks Firefox's external-protocol
+  // handoff for nuvio://\stremio:// links elsewhere in this same modal, and
+  // there's no reason for this row to behave differently just because it
+  // has no links of its own. Touch/pen are left alone - overflow-x-auto's
+  // native scroll already handles those, and capturing every pointer type
+  // fights the page's own vertical touch scroll.
+  const castRowRef = useRef<HTMLDivElement>(null);
+  const isCastPointerDownRef = useRef(false);
+  const castDragStartXRef = useRef(0);
+  const castDragStartScrollLeftRef = useRef(0);
+  const hasCapturedCastPointerRef = useRef(false);
+
+  const handleCastPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || !castRowRef.current) return;
+    isCastPointerDownRef.current = true;
+    hasCapturedCastPointerRef.current = false;
+    castDragStartXRef.current = e.clientX;
+    castDragStartScrollLeftRef.current = castRowRef.current.scrollLeft;
+  }, []);
+
+  const handleCastPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || !isCastPointerDownRef.current || !castRowRef.current) return;
+    const dx = e.clientX - castDragStartXRef.current;
+    if (Math.abs(dx) > 5 && !hasCapturedCastPointerRef.current) {
+      castRowRef.current.setPointerCapture(e.pointerId);
+      hasCapturedCastPointerRef.current = true;
+    }
+    castRowRef.current.scrollLeft = castDragStartScrollLeftRef.current - dx;
+  }, []);
+
+  const handleCastPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse') return;
+    isCastPointerDownRef.current = false;
+    if (hasCapturedCastPointerRef.current) {
+      castRowRef.current?.releasePointerCapture(e.pointerId);
+      hasCapturedCastPointerRef.current = false;
+    }
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -251,7 +294,13 @@ export function MediaDetailModal({
               {details.cast && details.cast.length > 0 && (
                 <div>
                   <p className="text-base text-muted mb-2">Cast</p>
-                  <div className="flex gap-4 overflow-x-auto pb-1 pr-6 no-scrollbar">
+                  <div
+                    ref={castRowRef}
+                    onPointerDown={handleCastPointerDown}
+                    onPointerMove={handleCastPointerMove}
+                    onPointerUp={handleCastPointerUp}
+                    className="flex gap-4 overflow-x-auto pb-1 pr-6 no-scrollbar cursor-grab active:cursor-grabbing select-none"
+                  >
                     {details.cast.slice(0, 10).map((member) => (
                       <div key={member.name} className="shrink-0 w-24 text-center">
                         {member.photo ? (
@@ -260,7 +309,9 @@ export function MediaDetailModal({
                             alt={member.name}
                             loading="lazy"
                             decoding="async"
-                            className="w-20 h-20 rounded-full object-cover mx-auto bg-surface-hover"
+                            draggable={false}
+                            onDragStart={(e) => e.preventDefault()}
+                            className="w-20 h-20 rounded-full object-cover mx-auto bg-surface-hover pointer-events-none"
                           />
                         ) : (
                           <div className="w-20 h-20 rounded-full mx-auto bg-surface-hover flex items-center justify-center text-muted text-xl font-medium">
