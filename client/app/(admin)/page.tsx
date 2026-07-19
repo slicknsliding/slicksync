@@ -4,7 +4,7 @@ import { memo, useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
-import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu, MediaDetailModal } from '@/components/ui';
+import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu, MediaDetailModal, RatingBadges } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -233,6 +233,13 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
             style={{ background: 'rgba(0,0,0,0.4)' }}
           >
             <PlayIcon className="w-8 h-8 text-white" />
+          </div>
+          <div className="absolute bottom-1 left-1 right-1 pointer-events-none">
+            <RatingBadges
+              imdbRating={item.imdbRating}
+              rottenTomatoes={item.rottenTomatoes}
+              metacritic={item.metacritic}
+            />
           </div>
         </div>
         <div className="p-2">

@@ -3,8 +3,9 @@
 import { useState, useEffect, memo } from 'react';
 import { Header } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
-import { PageToolbar, MediaDetailModal, PageToolbarProps } from '@/components/ui';
-import { api, DiscoverItem } from '@/lib/api';
+import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges } from '@/components/ui';
+import { api, DiscoverItem, RatingsBatchEntry } from '@/lib/api';
+import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { FilmIcon, TvIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 
 // Only "top" (Popular) supports search per Cinemeta's own manifest - "year"
@@ -18,9 +19,11 @@ const CATALOGS = [
 
 const PosterCard = memo(function PosterCard({
   item,
+  ratings,
   onOpenDetails,
 }: {
   item: DiscoverItem;
+  ratings?: RatingsBatchEntry;
   onOpenDetails: (item: DiscoverItem) => void;
 }) {
   const [imageError, setImageError] = useState(false);
@@ -50,13 +53,13 @@ const PosterCard = memo(function PosterCard({
           </div>
         )}
 
-        {item.imdbRating && (
-          <div className="absolute top-2 left-2">
-            <div className="px-2 py-1 rounded-md text-xs font-medium shadow-lg bg-slate-900/80 text-amber-400">
-              ★ {item.imdbRating}
-            </div>
-          </div>
-        )}
+        <div className="absolute bottom-1.5 left-1.5 right-1.5">
+          <RatingBadges
+            imdbRating={item.imdbRating}
+            rottenTomatoes={ratings?.rottenTomatoes}
+            metacritic={ratings?.metacritic}
+          />
+        </div>
       </div>
 
       <div className="mt-2 space-y-0.5 text-center">
@@ -79,6 +82,7 @@ export default function DiscoverPage() {
   const [items, setItems] = useState<DiscoverItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [detailItem, setDetailItem] = useState<DiscoverItem | null>(null);
+  const ratingsById = useRatingsBatch(items.map((i) => i.id));
 
   // Debounce typing so search isn't firing a request per keystroke.
   useEffect(() => {
@@ -169,7 +173,7 @@ export default function DiscoverPage() {
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
               {items.map((item) => (
-                <PosterCard key={item.id} item={item} onOpenDetails={setDetailItem} />
+                <PosterCard key={item.id} item={item} ratings={ratingsById[item.id]} onOpenDetails={setDetailItem} />
               ))}
             </div>
           )}

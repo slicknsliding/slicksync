@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon } from '@heroicons/react/24/solid';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
+import { metacriticColor as metacriticTextColor } from './RatingBadges';
 import { api, MediaDetails } from '@/lib/api';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 
@@ -216,6 +217,18 @@ export function MediaDetailModal({
                     <StarIcon className="w-5 h-5" />
                     {details.imdbRating}
                     <span className="text-muted font-normal">/10</span>
+                  </span>
+                )}
+                {details.rottenTomatoes && (
+                  <span className="flex items-center gap-1.5 font-medium" style={{ color: '#fa320a' }} title="Rotten Tomatoes">
+                    <span aria-hidden>🍅</span>
+                    {details.rottenTomatoes}
+                  </span>
+                )}
+                {details.metacritic && (
+                  <span className="flex items-center gap-1.5 font-medium" style={{ color: metacriticTextColor(details.metacritic) }} title="Metacritic score">
+                    <span aria-hidden>Ⓜ</span>
+                    {details.metacritic}
                   </span>
                 )}
                 {details.imdb_id && (

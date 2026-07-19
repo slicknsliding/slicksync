@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.12.0",
+    "date": "2026-07-19",
+    "title": "Rotten Tomatoes and Metacritic ratings, everywhere a poster shows",
+    "features": [
+      "Poster cards on Discover, the Dashboard's Continue Watching row, and Activity's grid view now show Rotten Tomatoes and Metacritic scores alongside IMDb's rating (color-banded green/yellow/red, matching Metacritic's own convention) - previously only a bare IMDb rating showed, and only on Discover. The media detail modal got the same two ratings added next to its existing IMDb/TMDb row. Sourced from OMDb (needs a free OMDb API key set as OMDB_API_KEY - everything degrades gracefully to showing nothing if it's unset, not an error).",
+      "New POST /users/ratings-batch endpoint for Discover and Activity's grid views, which render many poster cards at once and can't afford a full metadata round trip per item the way the modal and Continue Watching (which already resolve full metadata per item) do. Callers pass only the deduplicated IMDb IDs actually on screen; results are cached server-side for 7 days per title, so repeat views and overlapping page loads don't re-hit OMDb at all.",
+      "Activity's grid gets IMDb ratings for the first time too (not just the two new ones) - its history feed never touched Cinemeta before, so there was no rating data available for it at all until this."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.11.1",
     "date": "2026-07-19",
     "title": "More timezone bugs: user self-service \"Watch Time Today\", binge-watching stats",

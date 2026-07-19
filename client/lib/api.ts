@@ -1322,6 +1322,17 @@ class ApiClient {
     });
   }
 
+  // Rotten Tomatoes/Metacritic/IMDb ratings for a batch of IMDb IDs, for grid
+  // views (Discover, Activity) that render many poster cards at once. Pass
+  // only the deduplicated IDs actually on screen - server caps the batch size.
+  async getRatingsBatch(imdbIds: string[]) {
+    if (imdbIds.length === 0) return { ratings: {} };
+    return this.fetch<{ ratings: Record<string, RatingsBatchEntry> }>('/users/ratings-batch', {
+      method: 'POST',
+      body: JSON.stringify({ imdbIds }),
+    });
+  }
+
   // Cinemeta detail lookup (cast/rating/genres/etc) for the poster-click modal.
   // Returns null (rather than throwing) when there's no metadata - proxy-parsed
   // filename titles have no real IMDb ID to look up, and that's an expected,
@@ -1644,6 +1655,9 @@ export interface ContinueWatchingItem {
   lastWatchedAt: string;
   appUrl?: string;
   webUrl?: string;
+  imdbRating: string | null;
+  rottenTomatoes: string | null;
+  metacritic: string | null;
 }
 
 export interface DiscoverItem {
@@ -1654,6 +1668,16 @@ export interface DiscoverItem {
   releaseInfo: string | null;
   imdbRating: string | null;
   genres: string[];
+  // Merged in client-side after a separate ratings-batch call - Discover's
+  // own catalog fetch is Cinemeta-only and has no Rotten Tomatoes/Metacritic.
+  rottenTomatoes?: string | null;
+  metacritic?: string | null;
+}
+
+export interface RatingsBatchEntry {
+  imdbRating: string | null;
+  rottenTomatoes: string | null;
+  metacritic: string | null;
 }
 
 export interface MediaDetails {
@@ -1665,6 +1689,8 @@ export interface MediaDetails {
   director: string[];
   genres: string[];
   imdbRating: string | null;
+  rottenTomatoes: string | null;
+  metacritic: string | null;
   runtime: string | null;
   releaseInfo: string | null;
   country: string | null;
