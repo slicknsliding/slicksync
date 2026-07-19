@@ -4,10 +4,12 @@ import { memo, useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
+import { NebulaTopbar, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu, MediaDetailModal, RatingBadges } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
+import { useLayoutMode } from '@/lib/layout-mode';
 import {
   UsersIcon,
   UserGroupIcon,
@@ -300,6 +302,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
 });
 
 export default function DashboardPage() {
+  const { layoutMode } = useLayoutMode();
   const [accountStats, setAccountStats] = useState<AccountStats | null>(null);
   const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
   const [recentAddonsData, setRecentAddons] = useState<Addon[]>([]);
@@ -472,6 +475,12 @@ export default function DashboardPage() {
     };
   }, [accountStats, metricsData, recentAddonsData]);
 
+  // Nebula layout's ring stat - active users out of total, for real (not
+  // the mockup's hardcoded 2/2).
+  const activeUsers = metricsData?.summary?.activeUsers ?? 0;
+  const ringCircumference = 2 * Math.PI * 28;
+  const ringRatio = stats.totalUsers > 0 ? Math.min(1, activeUsers / stats.totalUsers) : 0;
+
   const handleSyncAll = async () => {
     setIsSyncing(true);
     try {
@@ -600,6 +609,185 @@ export default function DashboardPage() {
       };
     });
   }, [recentAddonsData]);
+
+  // Nebula layout - same data/handlers as above (refreshData, continueWatching,
+  // recentActivityItems, etc.), just a different arrangement: top nav instead
+  // of the sidebar (swapped in by AdminClientLayout based on layoutMode),
+  // glass panels, an orbital-style ring stat instead of a flat stat card.
+  // Continue Watching reuses the exact same ContinueWatchingCard + row drag
+  // handlers as Current mode - only the wrapping panel is different - so the
+  // carefully-debugged pointer-capture/context-menu/app-link logic isn't
+  // duplicated.
+  if (layoutMode === 'nebula') {
+    return (
+      <>
+        <NebulaTopbar
+          actions={
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
+              onClick={handleSyncAll}
+              isLoading={isSyncing}
+            >
+              Sync All
+            </Button>
+          }
+        />
+
+        <div className="px-4 md:px-6 pb-8 pt-5">
+          <h1 className="text-xl font-bold font-display mb-0.5 text-default">Dashboard</h1>
+          <p className="text-sm text-muted mb-5">Welcome back! Here's what's happening with SlickSync.</p>
+
+          {error && (
+            <div className="mb-6 p-4 rounded-xl bg-error-muted border border-error text-error text-sm flex items-center gap-3">
+              <ExclamationCircleIcon className="w-5 h-5 shrink-0" />
+              <div>
+                <p className="font-semibold">Failed to load dashboard data</p>
+                <p className="opacity-90">{error.message}</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => refreshData()} className="ml-auto">
+                Retry
+              </Button>
+            </div>
+          )}
+
+          {/* Ring stat + mini stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <div className={`${NEBULA_GLASS_CLASS} p-4 flex items-center gap-4`} style={nebulaGlassStyle}>
+              <NebulaGlassStripe />
+              <svg width="64" height="64" viewBox="0 0 64 64" className="shrink-0 -rotate-90">
+                <circle cx="32" cy="32" r="28" fill="none" stroke="var(--color-surface-border)" strokeWidth="6" />
+                <circle
+                  cx="32" cy="32" r="28" fill="none"
+                  stroke="url(#nebulaRingGradient)" strokeWidth="6" strokeLinecap="round"
+                  strokeDasharray={ringCircumference}
+                  strokeDashoffset={ringCircumference * (1 - ringRatio)}
+                />
+                <defs>
+                  <linearGradient id="nebulaRingGradient" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="var(--color-primary)" />
+                    <stop offset="100%" stopColor="var(--color-secondary)" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <div>
+                <p className="text-xs text-muted mb-0.5">Active Now</p>
+                <p className="text-2xl font-bold text-default">
+                  {isLoading ? '...' : activeUsers}
+                  <span className="text-sm text-muted font-normal"> / {isLoading ? '...' : stats.totalUsers} users</span>
+                </p>
+              </div>
+            </div>
+            <Link href="/groups" className={`${NEBULA_GLASS_CLASS} p-4 block`} style={nebulaGlassStyle}>
+              <NebulaGlassStripe />
+              <p className="text-xs text-muted mb-1.5">Groups</p>
+              <p className="text-2xl font-bold text-default">{isLoading ? '...' : stats.totalGroups}</p>
+            </Link>
+            <Link href="/addons" className={`${NEBULA_GLASS_CLASS} p-4 block`} style={nebulaGlassStyle}>
+              <NebulaGlassStripe />
+              <p className="text-xs text-muted mb-1.5">Addons</p>
+              <p className="text-2xl font-bold text-default">{isLoading ? '...' : stats.totalAddons}</p>
+            </Link>
+          </div>
+
+          {/* Continue Watching - identical cards/drag logic to Current mode */}
+          {continueWatching.length > 0 && (
+            <div className={`${NEBULA_GLASS_CLASS} p-4 mb-4`} style={nebulaGlassStyle}>
+              <NebulaGlassStripe />
+              <h3 className="text-sm font-semibold font-display text-default mb-3">Continue Watching</h3>
+              <div
+                ref={scrollRowRef}
+                onPointerDown={handleRowPointerDown}
+                onPointerMove={handleRowPointerMove}
+                onPointerUp={handleRowPointerUp}
+                onPointerLeave={handleRowPointerUp}
+                className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar"
+              >
+                {continueWatching.map((item) => (
+                  <ContinueWatchingCard
+                    key={`${item.userId}-${item.showId}`}
+                    item={item}
+                    wasDraggedRef={wasDraggedRef}
+                    onRemove={handleDismissContinueWatching}
+                    onOpenDetails={setDetailModalItem}
+                    isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
+                    onMenuOpenChange={(open) =>
+                      setOpenMenuKey(open ? `${item.userId}-${item.showId}` : null)
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent Activity */}
+          <div className={`${NEBULA_GLASS_CLASS} p-4`} style={nebulaGlassStyle}>
+            <NebulaGlassStripe />
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold font-display text-default">Recent Activity</h3>
+              <Link href="/activity" className="text-xs font-medium" style={{ color: 'var(--color-secondary)' }}>
+                View All →
+              </Link>
+            </div>
+            <div className="flex flex-col gap-1">
+              {isLoading ? (
+                <div className="text-center py-8 text-sm text-muted">Loading...</div>
+              ) : recentActivityItems.length > 0 ? (
+                recentActivityItems.map((np, index) => (
+                  <div
+                    key={`${np.user.id}-${np.item.id}-${np.timestamp}-${index}`}
+                    className="flex items-center gap-3 p-2 rounded-xl relative pl-3"
+                  >
+                    <span
+                      className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full opacity-70"
+                      style={{ background: 'linear-gradient(180deg, var(--color-primary), var(--color-secondary))' }}
+                    />
+                    <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm truncate text-muted">
+                        <span className="font-medium" style={{ color: 'var(--color-secondary)' }}>
+                          {np.user.username.split(' ')[0]}
+                        </span>{' '}
+                        {np.isLive ? 'is watching' : 'watched'} {np.item.name}
+                        {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
+                          <span className="text-subtle ml-1">
+                            {np.item.season !== undefined && np.item.season > 0
+                              ? `S${String(np.item.season).padStart(2, '0')}E${String(np.item.episode).padStart(2, '0')}`
+                              : `E${String(np.item.episode).padStart(2, '0')}`}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-subtle">{new Date(np.watchedAt).toLocaleTimeString()}</p>
+                    </div>
+                    {np.isLive && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wider animate-pulse" style={{ color: 'var(--color-secondary)' }}>
+                        Live
+                      </span>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-sm text-muted">No recent activity</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {detailModalItem && (
+          <MediaDetailModal
+            isOpen={!!detailModalItem}
+            onClose={() => setDetailModalItem(null)}
+            itemId={detailModalItem.showId}
+            itemType="series"
+            videoId={`${detailModalItem.showId}:${detailModalItem.nextEpisode.season}:${detailModalItem.nextEpisode.episode}`}
+            fallbackTitle={detailModalItem.showName}
+            fallbackPoster={detailModalItem.poster}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <>
