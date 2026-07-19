@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.97",
+    "date": "2026-07-19",
+    "title": "Continue Watching: clicking the card stopped opening Stremio/Nuvio",
+    "features": [],
+    "bugFixes": [
+      "Clicking a Continue Watching card's poster silently did nothing in Firefox, even with the Stremio/Nuvio desktop app installed and registered - only the fallback detail modal's explicit \"Open in Stremio\"/\"Open in Nuvio\" buttons worked. Root cause: the row's drag-to-scroll called setPointerCapture() on every left mouse-down in the row, including a plain click with no drag at all. v1.9.94 already found that pointer capture breaks plain onClick handlers (fixed then by excluding <button> from it) and confirmed ordinary <a href> navigation was unaffected - true for same-origin links, but Firefox specifically distrusts external-protocol handoff (nuvio://, stremio://) when the click's pointer was captured by an ancestor, even though the DOM click event still reaches the anchor normally. Excluding <a> from capture entirely (the obvious fix) was already tried and reverted in v1.9.94 because it broke drag-to-scroll on the poster itself. Fixed properly this time by deferring setPointerCapture until an actual drag is detected (past the existing 5px threshold) instead of engaging it on every mouse-down - a plain click now never touches capture at all, while dragging still works exactly as before."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.96",
     "date": "2026-07-19",
     "title": "Public/multi-tenant mode: built the missing registration page, fixed a run of real bugs found along the way",
