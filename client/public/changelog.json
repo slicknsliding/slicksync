@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.13.1",
+    "date": "2026-07-19",
+    "title": "Nebula layout: fixed sparse desktop rendering, added the real logo and an account menu",
+    "features": [],
+    "bugFixes": [
+      "Nebula's top nav bar and content panels looked sparse and disproportionate at real desktop widths - tiny nav text packed to one side, huge dead space around small stat numbers. Caused by a max-w-6xl Tailwind class that never actually applied: globals.css has an unlayered `* { max-width: 100vw }` rule (added to prevent horizontal overflow) which, per the CSS Cascade Layers spec, always wins over ANY Tailwind utility class regardless of specificity - silently no-oping the width cap. Switched to an inline style, which does win, and confirmed via direct DOM measurement (not just a screenshot) that the bar and content now render at a real, centered 72rem cap on desktop. Also enlarged the nav links, stat card padding/type, and gave the Groups/Addons cards icon badges (matching Current's stat cards) so they aren't just a bare number floating in an oversized box.",
+      "The topbar's brand mark was a plain gradient square placeholder - swapped in the actual SlickSync chain-link logo (SlickSyncLogo.tsx) and enlarged the whole brand lockup to match the sidebar's own treatment (gradient-clipped text, larger badge)."
+    ],
+    "miscChores": [
+      "Nebula's topbar had no way to see who's logged in, switch to the User panel, or log out - the sidebar's equivalent (PanelSwitcher, the \"Administrator\" control) simply wasn't present. Reused the same PanelSwitcher component as a compact icon button on the topbar's right side rather than rebuilding the menu separately, adding a `variant=\"compact\"` (icon-only trigger) and `dropdownPosition=\"down\"` (sidebar's version opens upward, which would render off-screen at the top of the page) option to it."
+    ]
+  },
+  {
     "version": "1.13.0",
     "date": "2026-07-19",
     "title": "New Layout option: Nebula, a structural redesign of Dashboard (top nav, glass panels)",
