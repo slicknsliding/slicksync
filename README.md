@@ -363,9 +363,12 @@ that file.)
 docker compose -f docker-compose.public.yml up -d --build
 ```
 
-First visit to the frontend will show a registration screen rather than
-going straight to a dashboard - that's expected; it's where each separate
-account/group signs up.
+First visit to the frontend will show a login screen with a "Create one"
+link rather than going straight to a dashboard - that's expected. Registration
+(`/register`) generates a random account UUID server-side and shows it once;
+that UUID *is* the login ID (public mode has no separate username/email), so
+there's no recovery if it's lost. Set a password, and you're straight into
+that account's own isolated dashboard.
 
 ### Persisting data
 
