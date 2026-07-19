@@ -62,7 +62,7 @@ export function UserLifecycleCard({ lifecycle, userJoins }: UserLifecycleCardPro
               fontSize={12}
               tickFormatter={(value) => {
                 const date = new Date(value);
-                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
               }}
             />
             <YAxis stroke="#64748b" fontSize={12} />
@@ -74,7 +74,7 @@ export function UserLifecycleCard({ lifecycle, userJoins }: UserLifecycleCardPro
               }}
               labelFormatter={(value) => {
                 const date = new Date(value);
-                return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+                return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
               }}
             />
             <Area

@@ -971,8 +971,12 @@ function ActivityPageContent() {
     // Start with the base time from the API (completed sessions today)
     let totalSeconds = 0;
     if (metricsData.watchTime?.byDay) {
-      const todayLocal = todayStart.toLocaleDateString('sv-SE');
-      const todayEntry = metricsData.watchTime.byDay.find(d => d.date === todayLocal);
+      // byDay is keyed by the account's configured timezone, not the
+      // browser's - computing "today" locally could miss the entry entirely
+      // whenever the two disagree about what day it currently is. metricsData.today
+      // is the account-day string the server used to build these same keys.
+      const todayAccount = metricsData.today || todayStart.toLocaleDateString('sv-SE');
+      const todayEntry = metricsData.watchTime.byDay.find(d => d.date === todayAccount);
       if (todayEntry) {
         totalSeconds = (todayEntry.hours || 0) * 3600;
       }
@@ -1167,10 +1171,13 @@ function ActivityPageContent() {
 
   let watchTimeTodayHours = 0;
   if (metricsData?.watchTime?.byDay && Array.isArray(metricsData.watchTime.byDay)) {
-    // Use local date string to avoid timezone issues with toISOString()
-    const todayLocal = todayStart.toLocaleDateString('sv-SE'); // YYYY-MM-DD format
+    // byDay is keyed by the account's configured timezone, not the browser's
+    // - metricsData.today is the account-day string the server used to build
+    // these same keys (falls back to browser-local for older cached responses
+    // without the field).
+    const todayAccount = metricsData.today || todayStart.toLocaleDateString('sv-SE');
     const todayEntry = metricsData.watchTime.byDay.find((d) =>
-      d.date === todayLocal
+      d.date === todayAccount
     );
     if (todayEntry) {
       watchTimeTodayHours = todayEntry.hours || 0;

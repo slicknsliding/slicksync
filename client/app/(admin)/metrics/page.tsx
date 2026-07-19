@@ -99,7 +99,7 @@ const WatchTimeChart = memo(function WatchTimeChart({ data }: { data: Array<{ da
           fontSize={12}
           tickFormatter={(value) => {
             const date = new Date(value);
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
           }}
         />
         <YAxis 
@@ -119,7 +119,7 @@ const WatchTimeChart = memo(function WatchTimeChart({ data }: { data: Array<{ da
           labelStyle={TOOLTIP_LABEL_STYLE}
           labelFormatter={(value) => {
             const date = new Date(value);
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
           }}
           formatter={(value: any) => [formatMinutes(Math.round(value * 60)), 'Time']}
         />
@@ -148,7 +148,7 @@ const ContentBreakdownChart = memo(function ContentBreakdownChart({ data }: { da
           fontSize={12}
           tickFormatter={(value) => {
             const date = new Date(value);
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
           }}
         />
         <YAxis stroke="#64748b" fontSize={12} />
@@ -157,7 +157,7 @@ const ContentBreakdownChart = memo(function ContentBreakdownChart({ data }: { da
           labelStyle={TOOLTIP_LABEL_STYLE}
           labelFormatter={(value) => {
             const date = new Date(value);
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
           }}
         />
         <Bar dataKey="movies" fill="var(--color-chart-1)" radius={[4, 4, 0, 0]} name="Movies" />
@@ -693,7 +693,7 @@ export default function MetricsPage() {
                           fontSize={12}
                           tickFormatter={(value) => {
                             const date = new Date(value);
-                            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
                           }}
                         />
                         <YAxis stroke="#64748b" fontSize={12} />
@@ -702,7 +702,7 @@ export default function MetricsPage() {
                           labelStyle={TOOLTIP_LABEL_STYLE}
                           labelFormatter={(value) => {
                             const date = new Date(value);
-                            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
                           }}
                           formatter={(value) => [`${value} user${Number(value) !== 1 ? 's' : ''}`, 'New Signups']}
                         />
