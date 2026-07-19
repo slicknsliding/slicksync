@@ -7,6 +7,7 @@ const { repairAddonsList } = require('../utils/repair');
 const { responseUtils, dbUtils } = require('../utils/routeUtils');
 const { validateStremioAuthKey } = require('../utils/stremio');
 const { encrypt } = require('../utils/encryption');
+const { startNuvioTvLogin, pollNuvioTvLogin, exchangeNuvioTvLogin, refreshNuvioToken, parseJwtPayload } = require('../providers/nuvioAuth');
 
 module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, PRIVATE_AUTH_USERNAME, PRIVATE_AUTH_PASSWORD, DEFAULT_ACCOUNT_ID, issueAccessToken, issueRefreshToken, cookieName, isProdEnv, encrypt, decrypt, getDecryptedManifestUrl, scopedWhere, getAccountDek, decryptWithFallback, manifestUrlHmac, manifestHash, filterManifestByResources, filterManifestByCatalogs, parseCookies, JWT_SECRET }) => {
   console.log('PublicAuth router initialized, prisma available:', !!prisma);
@@ -113,6 +114,40 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       const storedAuthKey = decrypt(user.stremioAuthKey, req)
       const storedAuthKeyInfo = await validateStremioAuthKey(storedAuthKey)
       const storedEmail = String(storedAuthKeyInfo?.user?.email || '').trim().toLowerCase()
+
+      if (storedEmail !== email) {
+        return { valid: false, user }
+      }
+
+      return { valid: true, user }
+    } catch (error) {
+      return { valid: false, user }
+    }
+  }
+
+  // Same shape as validateUserStremioAuth, but re-validated via a live
+  // Nuvio/Supabase token refresh instead of a Stremio session check - Nuvio
+  // has no equivalent of Stremio's single long-lived authKey, so the stored
+  // credential is a refresh token and "is it still valid" means "does
+  // refreshing it still work".
+  async function validateUserNuvioAuth(accountId, email, req) {
+    const user = await prisma.user.findFirst({
+      where: { accountId, email, providerType: 'nuvio' }
+    })
+
+    if (!user) {
+      return { valid: false, user: null }
+    }
+
+    if (!user.nuvioRefreshToken) {
+      return { valid: false, user }
+    }
+
+    try {
+      const storedRefreshToken = decrypt(user.nuvioRefreshToken, req)
+      const refreshed = await refreshNuvioToken(storedRefreshToken)
+      const payload = parseJwtPayload(refreshed.access_token)
+      const storedEmail = String(payload?.email || '').trim().toLowerCase()
 
       if (storedEmail !== email) {
         return { valid: false, user }
@@ -531,6 +566,282 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       })
     } catch (error) {
       console.error('Stremio login error:', error);
+      return responseUtils.internalError(res, String(error && error.message || error));
+    }
+  })
+
+  // --- Nuvio admin login ---
+  //
+  // Mirrors the Stremio admin login above (same account find/create/link
+  // logic, same cookie issuance), but Nuvio has no single long-lived authKey
+  // a client can hand over directly - logging in needs its own start/poll/
+  // exchange device-code round trip first. /nuvio-login does that exchange
+  // itself and reads the resulting identity straight out of Nuvio's own
+  // response, so unlike Stremio's flow there's no client-supplied email or
+  // user ID to validate - the exchange succeeding IS the proof of identity.
+
+  const nuvioAdminOAuthSessions = new Map() // ip -> pending count
+  const NUVIO_ADMIN_OAUTH_CAP = 3
+  const NUVIO_ADMIN_OAUTH_TTL_MS = 5 * 60 * 1000
+
+  router.post('/nuvio-start-oauth', async (req, res) => {
+    try {
+      if (INSTANCE_TYPE !== 'public') {
+        return res.status(400).json({ message: 'Nuvio login is only available in public auth mode' })
+      }
+
+      // Same anonymous-Supabase-signup spam cap as the authenticated
+      // /api/nuvio/start-oauth flow (server/routes/nuvio.js) - this route
+      // exists specifically so it's reachable BEFORE login, so it needs its
+      // own cap rather than relying on that route's.
+      const ip = req.ip
+      const current = nuvioAdminOAuthSessions.get(ip) || 0
+      if (current >= NUVIO_ADMIN_OAUTH_CAP) {
+        return res.status(429).json({ message: 'Too many pending Nuvio login attempts. Please wait and try again.' })
+      }
+
+      const result = await startNuvioTvLogin()
+      nuvioAdminOAuthSessions.set(ip, current + 1)
+      setTimeout(() => {
+        const c = nuvioAdminOAuthSessions.get(ip) || 0
+        if (c <= 1) nuvioAdminOAuthSessions.delete(ip)
+        else nuvioAdminOAuthSessions.set(ip, c - 1)
+      }, NUVIO_ADMIN_OAUTH_TTL_MS)
+
+      res.json(result)
+    } catch (error) {
+      console.error('Nuvio admin start-oauth error:', error?.message)
+      res.status(500).json({ message: 'Failed to start Nuvio login' })
+    }
+  })
+
+  router.post('/nuvio-poll-oauth', async (req, res) => {
+    try {
+      if (INSTANCE_TYPE !== 'public') {
+        return res.status(400).json({ message: 'Nuvio login is only available in public auth mode' })
+      }
+
+      const { code, deviceNonce, anonToken } = req.body || {}
+      if (!code || !deviceNonce || !anonToken) {
+        return responseUtils.badRequest(res, 'code, deviceNonce, and anonToken are required')
+      }
+
+      const result = await pollNuvioTvLogin(code, deviceNonce, anonToken)
+      res.json(result)
+    } catch (error) {
+      console.error('Nuvio admin poll-oauth error:', error?.message)
+      res.status(500).json({ message: 'Failed to poll Nuvio login' })
+    }
+  })
+
+  router.post('/nuvio-login', async (req, res) => {
+    try {
+      if (INSTANCE_TYPE !== 'public') {
+        return res.status(400).json({ message: 'Nuvio login is only available in public auth mode' })
+      }
+
+      const { code, deviceNonce, anonToken } = req.body || {}
+      if (!code || !deviceNonce || !anonToken) {
+        return responseUtils.badRequest(res, 'code, deviceNonce, and anonToken are required')
+      }
+
+      let exchanged
+      try {
+        exchanged = await exchangeNuvioTvLogin(code, deviceNonce, anonToken)
+      } catch (err) {
+        return res.status(401).json({ message: err?.message || 'Nuvio approval failed or expired' })
+      }
+
+      const nuvioUserId = exchanged?.user?.id
+      const refreshToken = exchanged?.refreshToken
+      const email = String(exchanged?.user?.email || '').trim().toLowerCase()
+      if (!nuvioUserId || !refreshToken || !email) {
+        return res.status(400).json({ message: 'Nuvio account email not available' })
+      }
+
+      // Extract account ID from session cookies (since route is allowlisted, middleware might not set it)
+      let originalAccountId = req.appAccountId
+      if (!originalAccountId && parseCookies && JWT_SECRET) {
+        try {
+          const cookies = parseCookies(req)
+          const accessCookie = cookies[cookieName('sfm_at')] || cookies['sfm_at']
+          const refreshCookie = cookies[cookieName('sfm_rt')] || cookies['sfm_rt']
+          const token = accessCookie || refreshCookie
+          if (token) {
+            const decoded = jwt.verify(token, JWT_SECRET)
+            if (decoded && decoded.accId) {
+              const accountExists = await prisma.appAccount.findUnique({ where: { id: decoded.accId } })
+              if (accountExists) {
+                originalAccountId = decoded.accId
+                req.appAccountId = originalAccountId
+              }
+            }
+          }
+        } catch (e) {
+          // Can't extract account ID from cookies - not logged in, that's OK
+        }
+      }
+
+      let account
+      let isNewAccount = false
+
+      // If logged in and linking, verify this Nuvio account isn't already linked elsewhere
+      if (originalAccountId) {
+        const currentAccount = await prisma.appAccount.findUnique({ where: { id: originalAccountId } })
+        if (!currentAccount) {
+          originalAccountId = undefined
+        } else {
+          const existingAccountWithEmail = await prisma.appAccount.findUnique({ where: { email } })
+          if (existingAccountWithEmail && existingAccountWithEmail.id !== originalAccountId) {
+            return res.status(409).json({
+              message: 'This Nuvio account is already linked to another SlickSync account',
+              error: 'EMAIL_ALREADY_LINKED'
+            })
+          }
+
+          if (currentAccount.email && currentAccount.email !== email) {
+            return res.status(409).json({
+              message: 'Your account is already linked to a different Nuvio account',
+              error: 'ACCOUNT_ALREADY_LINKED'
+            })
+          }
+
+          const validation = await validateUserNuvioAuth(currentAccount.id, email, req)
+
+          if (!validation.user) {
+            return res.status(400).json({
+              message: 'No user found with this email address. Please create a user with this email first before linking your Nuvio account.',
+              error: 'NO_USER_WITH_EMAIL'
+            })
+          }
+
+          if (!validation.user.nuvioRefreshToken) {
+            return res.status(400).json({
+              message: 'User exists but has no Nuvio authentication. Please connect the user to Nuvio first before linking the account.',
+              error: 'USER_NO_NUVIO_AUTH'
+            })
+          }
+
+          if (!validation.valid) {
+            return res.status(409).json({
+              message: 'A user with this email already exists in your account, but their Nuvio authentication does not match. Please contact support.',
+              error: 'STORED_AUTHKEY_EMAIL_MISMATCH'
+            })
+          }
+
+          if (currentAccount.email == null) {
+            account = await prisma.appAccount.update({
+              where: { id: currentAccount.id },
+              data: { email }
+            })
+          } else {
+            account = currentAccount
+          }
+          req.appAccountId = account.id
+
+          const encryptedRefreshToken = encrypt(refreshToken, req)
+          await prisma.user.update({
+            where: { id: validation.user.id },
+            data: { nuvioRefreshToken: encryptedRefreshToken, nuvioUserId, isActive: true }
+          })
+
+          const at = issueAccessToken(account.id)
+          const rt = issueRefreshToken(account.id)
+          const csrf = randomCsrfToken()
+          res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
+          res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 })
+          res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
+
+          return res.json({
+            message: 'Account already linked',
+            token: at,
+            account: { id: account.id, uuid: account.uuid, email: account.email || null }
+          })
+        }
+      }
+
+      // Normal login flow (not logged in, or stale cookie account no longer exists)
+      if (!account) {
+        account = await prisma.appAccount.findUnique({ where: { email } })
+
+        if (account) {
+          const validation = await validateUserNuvioAuth(account.id, email, req)
+          if (!validation.valid) {
+            await prisma.appAccount.update({
+              where: { id: account.id },
+              data: { email: null }
+            })
+            account = null
+          }
+        }
+
+        if (!account) {
+          account = await prisma.appAccount.create({
+            data: {
+              uuid: null,
+              email,
+              passwordHash: null
+            }
+          })
+          isNewAccount = true
+        } else if (account.email == null) {
+          account = await prisma.appAccount.update({
+            where: { id: account.id },
+            data: { email }
+          })
+        }
+
+        req.appAccountId = account.id
+      }
+
+      const encryptedRefreshToken = encrypt(refreshToken, req)
+
+      const { ensureEmailUniqueness } = require('../utils/helpers/database')
+      await ensureEmailUniqueness(prisma, email, account.id)
+
+      let user = null
+      const existingUser = await prisma.user.findFirst({
+        where: { accountId: account.id },
+        orderBy: { id: 'asc' }
+      })
+
+      if (isNewAccount) {
+        const baseUsername = email.split('@')[0] || 'nuvio-user'
+        const username = await ensureUniqueUsername(baseUsername, account.id)
+        const createdUser = await prisma.user.create({
+          data: {
+            accountId: account.id,
+            email,
+            username,
+            isActive: true,
+            providerType: 'nuvio',
+            nuvioRefreshToken: encryptedRefreshToken,
+            nuvioUserId
+          }
+        })
+        user = { id: createdUser.id, email: createdUser.email, username: createdUser.username }
+      } else if (existingUser) {
+        await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { nuvioRefreshToken: encryptedRefreshToken, nuvioUserId, isActive: true }
+        })
+      }
+
+      const at = issueAccessToken(account.id);
+      const rt = issueRefreshToken(account.id);
+      const csrf = randomCsrfToken();
+      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 });
+      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+
+      return res.json({
+        message: 'Login successful',
+        token: at,
+        account: { id: account.id, uuid: account.uuid, email: account.email || null },
+        ...(user ? { user } : {})
+      })
+    } catch (error) {
+      console.error('Nuvio login error:', error);
       return responseUtils.internalError(res, String(error && error.message || error));
     }
   })

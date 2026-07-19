@@ -34,10 +34,27 @@ function LoginContent() {
   const [adminPassword, setAdminPassword] = useState('');
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminLoading, setAdminLoading] = useState(false);
-  const [adminLoginType, setAdminLoginType] = useState<'credentials' | 'stremio'>(
+  const [adminLoginType, setAdminLoginType] = useState<'credentials' | 'stremio' | 'nuvio'>(
     searchParams.get('linkStremio') === '1' && initialMode === 'admin' ? 'stremio' : 'credentials'
   );
   const [checkingAuth, setCheckingAuth] = useState(INSTANCE_TYPE !== 'public');
+
+  // Nuvio admin OAuth state - separate from the Stremio OAuth state below
+  // since Nuvio's device-code flow needs its own code/deviceNonce/anonToken
+  // tracked across start -> poll -> login, unlike Stremio's single-code poll.
+  const [nuvioCode, setNuvioCode] = useState<string>('');
+  const [nuvioWebUrl, setNuvioWebUrl] = useState<string | null>(null);
+  const [nuvioExpiresAt, setNuvioExpiresAt] = useState<string | null>(null);
+  const [nuvioDeviceNonce, setNuvioDeviceNonce] = useState<string>('');
+  const [nuvioAnonToken, setNuvioAnonToken] = useState<string>('');
+  const [isNuvioGenerating, setIsNuvioGenerating] = useState(false);
+  const [isNuvioPolling, setIsNuvioPolling] = useState(false);
+  const [isNuvioAuthenticating, setIsNuvioAuthenticating] = useState(false);
+  const [nuvioError, setNuvioError] = useState<string | null>(null);
+  const [nuvioTimeLeft, setNuvioTimeLeft] = useState<string | null>(null);
+  const [nuvioCopied, setNuvioCopied] = useState(false);
+  const nuvioPollIntervalRef = useRef<number | null>(null);
+  const nuvioTimerIntervalRef = useRef<number | null>(null);
 
   // Check if auth is required for private instance
   useEffect(() => {
@@ -213,6 +230,126 @@ function LoginContent() {
     }
   }, [mode, adminLoginType, oauthLink, isGenerating, generateOAuthLink]);
 
+  // Nuvio admin OAuth - kept as one self-contained function (start, countdown,
+  // poll, login) rather than split across effects like the Stremio flow
+  // above, matching how the same start/poll/exchange sequence is already
+  // done in CreateUserModal's Nuvio OAuth step.
+  const stopNuvioPolling = useCallback(() => {
+    setIsNuvioPolling(false);
+    if (nuvioPollIntervalRef.current) {
+      window.clearInterval(nuvioPollIntervalRef.current);
+      nuvioPollIntervalRef.current = null;
+    }
+  }, []);
+
+  const startNuvioCountdown = useCallback((expiresAt: string) => {
+    if (nuvioTimerIntervalRef.current) window.clearInterval(nuvioTimerIntervalRef.current);
+    const update = () => {
+      const diff = Math.max(0, new Date(expiresAt).getTime() - Date.now());
+      if (diff === 0) {
+        setNuvioTimeLeft('Expired');
+        stopNuvioPolling();
+        if (nuvioTimerIntervalRef.current) {
+          window.clearInterval(nuvioTimerIntervalRef.current);
+          nuvioTimerIntervalRef.current = null;
+        }
+        return;
+      }
+      const minutes = Math.floor(diff / 60000);
+      const seconds = Math.floor((diff % 60000) / 1000);
+      setNuvioTimeLeft(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+    };
+    update();
+    nuvioTimerIntervalRef.current = window.setInterval(update, 1000);
+  }, [stopNuvioPolling]);
+
+  const handleStartNuvioOAuth = useCallback(async () => {
+    if (isNuvioGenerating) return;
+    setIsNuvioGenerating(true);
+    setNuvioError(null);
+    try {
+      const result = await api.startNuvioAdminOAuth();
+      setNuvioCode(result.code);
+      setNuvioWebUrl(result.webUrl);
+      setNuvioExpiresAt(result.expiresAt);
+      setNuvioDeviceNonce(result.deviceNonce);
+      setNuvioAnonToken(result.anonToken);
+      setIsNuvioPolling(true);
+      startNuvioCountdown(result.expiresAt);
+
+      const intervalMs = Math.max(2, result.pollIntervalSeconds || 3) * 1000;
+      nuvioPollIntervalRef.current = window.setInterval(async () => {
+        try {
+          const poll = await api.pollNuvioAdminOAuth({
+            code: result.code,
+            deviceNonce: result.deviceNonce,
+            anonToken: result.anonToken,
+          });
+          // Status is opaque (passed through from Nuvio's own session state) -
+          // 'pending' means keep waiting; anything else, attempt the login.
+          if (poll.status === 'pending') return;
+
+          stopNuvioPolling();
+          if (nuvioTimerIntervalRef.current) {
+            window.clearInterval(nuvioTimerIntervalRef.current);
+            nuvioTimerIntervalRef.current = null;
+          }
+          setIsNuvioAuthenticating(true);
+
+          try {
+            const loginResult = await api.nuvioLogin({
+              code: result.code,
+              deviceNonce: result.deviceNonce,
+              anonToken: result.anonToken,
+            });
+            if (loginResult.token || loginResult.account) {
+              router.push('/');
+            } else {
+              setNuvioError('Failed to link Nuvio account to admin');
+              setIsNuvioAuthenticating(false);
+            }
+          } catch (err: any) {
+            setNuvioError(err.message || 'Nuvio login failed');
+            setIsNuvioAuthenticating(false);
+          }
+        } catch (err) {
+          // Silently handle polling errors, same as the Stremio flow above
+        }
+      }, intervalMs);
+    } catch (err: any) {
+      setNuvioError(err?.message || 'Failed to start Nuvio login');
+    } finally {
+      setIsNuvioGenerating(false);
+    }
+  }, [isNuvioGenerating, router, startNuvioCountdown, stopNuvioPolling]);
+
+  // Auto-generate Nuvio OAuth session when its tab is selected
+  useEffect(() => {
+    if (mode === 'admin' && adminLoginType === 'nuvio' && !nuvioCode && !isNuvioGenerating) {
+      handleStartNuvioOAuth();
+    }
+  }, [mode, adminLoginType, nuvioCode, isNuvioGenerating, handleStartNuvioOAuth]);
+
+  // Clean up Nuvio timers on unmount
+  useEffect(() => {
+    return () => {
+      if (nuvioPollIntervalRef.current) window.clearInterval(nuvioPollIntervalRef.current);
+      if (nuvioTimerIntervalRef.current) window.clearInterval(nuvioTimerIntervalRef.current);
+    };
+  }, []);
+
+  const copyNuvioCode = useCallback(() => {
+    if (!nuvioCode) return;
+    navigator.clipboard.writeText(nuvioCode);
+    setNuvioCopied(true);
+    setTimeout(() => setNuvioCopied(false), 2000);
+  }, [nuvioCode]);
+
+  const openNuvioLink = useCallback(() => {
+    if (!nuvioWebUrl) return;
+    window.open(nuvioWebUrl, '_blank', 'noopener,noreferrer');
+  }, [nuvioWebUrl]);
+
   // Handle auto-linking stremio
   useEffect(() => {
     if (searchParams.get('linkStremio') === '1' && oauthLink && !isAuthenticating) {
@@ -289,6 +426,7 @@ function LoginContent() {
     setMode(newMode);
     setAdminError(null);
     setUserError(null);
+    setNuvioError(null);
     // Update URL while preserving other search params
     const newParams = new URLSearchParams(searchParams.toString());
     newParams.set('mode', newMode);
@@ -430,6 +568,18 @@ function LoginContent() {
                       >
                         Stremio Login
                       </button>
+                      <button
+                        onClick={() => {
+                          setAdminLoginType('nuvio');
+                          if (!nuvioCode) handleStartNuvioOAuth();
+                        }}
+                        className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${adminLoginType === 'nuvio'
+                          ? 'bg-surface shadow-sm text-default'
+                          : 'text-muted hover:text-default'
+                          }`}
+                      >
+                        Nuvio Login
+                      </button>
                     </div>
                   )}
 
@@ -531,7 +681,7 @@ function LoginContent() {
                         </p>
                       )}
                     </form>
-                  ) : (
+                  ) : adminLoginType === 'stremio' ? (
                     /* Admin Stremio Login UI */
                     <div className="space-y-4">
                       <p className="text-sm text-center mb-4" style={{ color: 'var(--color-text-muted)' }}>
@@ -599,6 +749,107 @@ function LoginContent() {
 
                       {/* Polling indicator reused */}
                       {isPolling && !isExpired && !adminError && !isAuthenticating && (
+                        <div className="flex items-center justify-center gap-2 pt-2">
+                          <div className="flex gap-1">
+                            {[0, 1, 2].map((i) => (
+                              <motion.div
+                                key={i}
+                                className="w-1.5 h-1.5 rounded-full"
+                                style={{ background: 'var(--color-success)' }}
+                                animate={{ scale: [1, 1.3, 1], opacity: [0.4, 1, 0.4] }}
+                                transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
+                            Waiting for authorization...
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* Admin Nuvio Login UI - same shape as the Stremio panel
+                       above, but backed by Nuvio's own device-code fields */
+                    <div className="space-y-4">
+                      <p className="text-sm text-center mb-4" style={{ color: 'var(--color-text-muted)' }}>
+                        Link your Nuvio account to your administrator profile.
+                      </p>
+
+                      <button
+                        onClick={openNuvioLink}
+                        disabled={!nuvioWebUrl || nuvioTimeLeft === 'Expired' || isNuvioAuthenticating}
+                        className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+                        style={{
+                          background: 'var(--color-primary)',
+                          color: 'white',
+                          opacity: !nuvioWebUrl || nuvioTimeLeft === 'Expired' || isNuvioAuthenticating ? 0.5 : 1,
+                        }}
+                      >
+                        {isNuvioAuthenticating ? (
+                          <>
+                            <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            Verifying...
+                          </>
+                        ) : isNuvioGenerating ? (
+                          <>
+                            <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            Generating Link...
+                          </>
+                        ) : (
+                          <>
+                            <ArrowTopRightOnSquareIcon className="w-5 h-5" />
+                            Open Nuvio
+                          </>
+                        )}
+                      </button>
+
+                      <div className="text-center space-y-3 pt-2">
+                        <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
+                          Verification Code
+                        </p>
+                        <button
+                          onClick={copyNuvioCode}
+                          disabled={!nuvioCode}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg transition-all"
+                          style={{
+                            background: 'var(--color-bg)',
+                            border: '1px solid var(--color-surface-border)',
+                          }}
+                        >
+                          <span className="font-mono text-lg tracking-widest" style={{ color: 'var(--color-text)' }}>
+                            {nuvioCode || '----'}
+                          </span>
+                          {nuvioCopied ? (
+                            <CheckIcon className="w-4 h-4 text-success" />
+                          ) : (
+                            <ClipboardIcon className="w-4 h-4 text-muted" />
+                          )}
+                        </button>
+                        {nuvioTimeLeft && (
+                          <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
+                            {nuvioTimeLeft === 'Expired' ? 'Expired' : `Expires in ${nuvioTimeLeft}`}
+                          </p>
+                        )}
+                      </div>
+
+                      {nuvioError && (
+                        <p className="text-sm text-center" style={{ color: 'var(--color-error)' }}>
+                          {nuvioError}
+                        </p>
+                      )}
+
+                      {nuvioTimeLeft === 'Expired' && !isNuvioGenerating && (
+                        <button
+                          type="button"
+                          onClick={handleStartNuvioOAuth}
+                          className="w-full text-sm text-center hover:underline"
+                          style={{ color: 'var(--color-primary)' }}
+                        >
+                          Generate a new code
+                        </button>
+                      )}
+
+                      {isNuvioPolling && nuvioTimeLeft !== 'Expired' && !nuvioError && !isNuvioAuthenticating && (
                         <div className="flex items-center justify-center gap-2 pt-2">
                           <div className="flex gap-1">
                             {[0, 1, 2].map((i) => (
