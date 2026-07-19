@@ -161,6 +161,13 @@ app.use('/api/nuvio/connect', authLimiter);
 app.use('/api/nuvio/start-oauth', authLimiter);
 app.use('/api/nuvio/exchange-oauth', authLimiter);
 app.use('/api/nuvio/connect-authkey', authLimiter);
+// Nuvio admin login (publicAuth.js) - same shape as the /api/nuvio ones
+// above, but reachable pre-auth, so it needs its own limiter mounts on both
+// aliases the router is mounted under.
+app.use('/api/auth/nuvio-start-oauth', authLimiter);
+app.use('/api/public-auth/nuvio-start-oauth', authLimiter);
+app.use('/api/auth/nuvio-login', authLimiter);
+app.use('/api/public-auth/nuvio-login', authLimiter);
 
 // Higher-frequency limiter for OAuth polling (device-code flow polls every few seconds)
 const pollLimiter = rateLimit({
@@ -170,6 +177,8 @@ const pollLimiter = rateLimit({
   legacyHeaders: false,
 });
 app.use('/api/nuvio/poll-oauth', pollLimiter);
+app.use('/api/auth/nuvio-poll-oauth', pollLimiter);
+app.use('/api/public-auth/nuvio-poll-oauth', pollLimiter);
 
 app.use(express.json({ limit: '10mb' }));
 
