@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.10.1",
+    "date": "2026-07-19",
+    "title": "Metrics: Watch Time Today could silently undercount, New Signups chart mis-dated late signups",
+    "features": [],
+    "bugFixes": [
+      "Found while sweeping for the same class of bug as the Changelog date fix. Activity's \"Watch Time Today\" stat looks up today's entry in the metrics API's watchTime.byDay array by string-matching a locally-computed date - but it used the browser's own local calendar day, while byDay is actually keyed by the account's configured timezone (Settings -> Privacy & Display). Whenever those two disagreed about what day it currently was, the lookup silently found nothing and fell back to 0 base seconds, undercounting until the mismatch resolved itself hours later - plausibly explaining an earlier discrepancy this session where a recently-watched title didn't show up in the total. Added an authoritative today field to the metrics API response (the account-day string the server itself used to build byDay's keys) so the client no longer has to guess.",
+      "Separately, the New Signups chart bucketed new users by UTC calendar day instead of the account's configured timezone - a real bug, not just a display issue, since User.createdAt is an actual timestamp: anyone who signed up late in the account's own day (which, for any timezone west of UTC, is a large chunk of every day) had their signup counted on the wrong day's bar.",
+      "Also fixed the same UTC-vs-viewer-timezone date-label bug the Changelog page had (added timeZone: 'UTC' consistently) in the three Metrics charts and the Users-page lifecycle card that render account-day bucket strings - Watch Time, Content Breakdown, New Signups (both places it's charted). Confirmed via the write path (metricsProcessor.js) that WatchActivity/WatchSnapshot day-bucketing itself was already correct (pre-computed via getAccountDateString at record time) - only the newly-found spots above were actually broken."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.10.0",
     "date": "2026-07-19",
     "title": "Changelog page showed every release one day early",

@@ -1654,6 +1654,11 @@ export interface MediaDetails {
 }
 
 export interface MetricsData {
+  // The account's current calendar day (YYYY-MM-DD) in its configured
+  // timezone - use this instead of computing "today" client-side (browser
+  // local time or UTC) when looking up an entry in watchTime.byDay /
+  // watchActivity.byDay, since those arrays are keyed by account-day.
+  today?: string;
   summary: {
     totalUsers: number;
     activeUsers: number;
