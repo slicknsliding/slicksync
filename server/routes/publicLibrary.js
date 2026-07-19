@@ -3,6 +3,7 @@ const { StremioAPIClient } = require('stremio-api-client');
 const { validateStremioAuthKey } = require('../utils/stremio');
 const { encrypt, decrypt } = require('../utils/encryption');
 const { canonicalizeManifestUrl } = require('../utils/validation');
+const { getAccountDateString, resolveAccountTimezone } = require('../utils/dateUtils');
 
 /**
  * Public Library Router - Allows users to access their library via OAuth
@@ -1867,8 +1868,18 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }));
 
       // Calculate stats
-      const now = new Date();
-      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      // todayStart used to be server-local midnight (new Date(now.getFullYear(),
+      // now.getMonth(), now.getDate())) - the server's own process timezone
+      // (UTC in Docker), not the account's configured one. WatchActivity.date
+      // is written as new Date(getAccountDateString(...)) (UTC-midnight of
+      // the ACCOUNT's day, per metricsProcessor.js), so comparing against a
+      // server-local "today" silently missed or misattributed activity
+      // whenever the two disagreed about what day it currently is - the same
+      // bug class as the Activity page's "Watch Time Today" fixed earlier,
+      // just computed a different way here. Building todayStart the same way
+      // WatchActivity rows are keyed keeps this comparison meaningful.
+      const accountTimeZone = await resolveAccountTimezone(prisma, user.accountId || DEFAULT_ACCOUNT_ID)
+      const todayStart = new Date(getAccountDateString(new Date(), accountTimeZone));
       const oneWeekAgo = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
 
       // Total watch time (all watch activities)
@@ -1914,7 +1925,11 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         const daySeries = dayActivities.filter(a => a.itemType === 'series').length;
 
         watchTimeByDay.push({
-          date: date.toLocaleDateString('en-US', { weekday: 'short' }),
+          // date is UTC-midnight of an account-day (derived from the fixed
+          // todayStart above) - explicit timeZone: 'UTC' keeps the weekday
+          // label tied to that same day regardless of the server process's
+          // own TZ setting, rather than relying on it happening to be UTC.
+          date: date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }),
           hours: daySeconds / 3600,
           minutes: Math.round(daySeconds / 60),
           movies: dayMovies,

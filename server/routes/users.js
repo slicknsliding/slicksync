@@ -7,6 +7,7 @@ const { findUserById } = require('../utils/helpers');
 const { responseUtils, dbUtils } = require('../utils/routeUtils');
 const { sendShareNotification } = require('../utils/activityMonitor');
 const { postDiscord, fetchMetadata } = require('../utils/notify');
+const { getAccountDateString, resolveAccountTimezone } = require('../utils/dateUtils');
 
 // Export a function that returns the router, allowing dependency injection
 module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, encrypt, parseAddonIds, parseProtectedAddons, getDecryptedManifestUrl, StremioAPIClient, StremioAPIStore, assignUserToGroup, debug, defaultAddons, canonicalizeManifestUrl, getAccountDek, getServerKey, aesGcmDecrypt, validateStremioAuthKey, manifestUrlHmac, manifestHash, createProvider }) => {
@@ -655,11 +656,17 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         }
       }
 
+      // start/end default to a real "N days ago from right now" timestamp
+      // (not pre-bucketed like WatchActivity.date), so their day string needs
+      // the account's timezone too - purely informational here (unconsumed by
+      // the client, which only reads byDate), but kept consistent with
+      // everything else fixed this session rather than left as a stray UTC one.
+      const accountTimeZone = await resolveAccountTimezone(prisma, accountIdValue)
       res.json({
         userId: user.id,
         username: user.username || user.email,
-        startDate: start.toISOString().split('T')[0],
-        endDate: end.toISOString().split('T')[0],
+        startDate: getAccountDateString(start, accountTimeZone),
+        endDate: getAccountDateString(end, accountTimeZone),
         totalWatchTimeSeconds: totalSeconds,
         totalWatchTimeHours: Math.round((totalSeconds / 3600) * 100) / 100,
         byDate: result,
