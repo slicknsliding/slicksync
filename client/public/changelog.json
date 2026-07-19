@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.99",
+    "date": "2026-07-19",
+    "title": "Fixed a stuck-state edge case in today's two drag-to-scroll fixes",
+    "features": [],
+    "bugFixes": [
+      "Self-review of 1.9.97/1.9.98 (deferring setPointerCapture until an actual drag, instead of engaging it on every mouse-down) found a real edge case: capture is what guaranteed the row still received pointerup even if the cursor left its bounds during the drag. Deferring it removed that guarantee for the brief window before the 5px threshold is crossed - a press-and-release that moves mostly vertically off the row (e.g. toward the stat cards above Continue Watching) with under 5px of horizontal travel never fires pointerup on the row at all, leaving its 'pointer is down' state stuck true. The next time the mouse merely hovered over the row afterward (no button held), it would compute scrollLeft from stale drag-start values and yank the row around on its own. Fixed in both Continue Watching (page.tsx) and the media detail modal's Cast row by checking e.buttons on the next move event - if the primary button isn't pressed anymore, the stale state clears itself instead of producing a phantom scroll."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.98",
     "date": "2026-07-19",
     "title": "Media detail modal: Cast row never actually supported grab-and-drag scrolling",
