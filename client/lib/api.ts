@@ -159,6 +159,22 @@ class ApiClient {
     return data;
   }
 
+  // Public-mode (multi-tenant) self-registration. The uuid isn't user-chosen -
+  // it's generated server-side (generateAccountUuid) and doubles as the login
+  // identifier, since public mode has no separate username/email requirement.
+  async generateAccountUuid() {
+    return this.fetch<{ success: boolean; uuid: string }>('/auth/generate-uuid');
+  }
+
+  async register(uuid: string, password: string) {
+    const data = await this.fetch<{ token: string; account: { id: string; uuid: string; email: string | null } }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ uuid, password }),
+    });
+    this.setToken(data.token);
+    return data;
+  }
+
   async stremioLogin(authKey: string) {
     const data = await this.fetch<{ token: string; account: any }>('/auth/stremio-login', {
       method: 'POST',
