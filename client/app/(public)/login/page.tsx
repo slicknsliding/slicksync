@@ -516,6 +516,20 @@ function LoginContent() {
                           </>
                         )}
                       </button>
+
+                      {INSTANCE_TYPE === 'public' && (
+                        <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
+                          Don&apos;t have an account?{' '}
+                          <button
+                            type="button"
+                            onClick={() => router.push('/register')}
+                            className="hover:underline"
+                            style={{ color: 'var(--color-primary)' }}
+                          >
+                            Create one
+                          </button>
+                        </p>
+                      )}
                     </form>
                   ) : (
                     /* Admin Stremio Login UI */

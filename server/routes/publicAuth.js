@@ -187,6 +187,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
       return res.status(201).json({
         message: 'Registered successfully',
+        token: at,
         account: { id: account.id, uuid: account.uuid, email: account.email || null },
       });
     } catch (error) {

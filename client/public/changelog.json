@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.9.96",
+    "date": "2026-07-19",
+    "title": "Public/multi-tenant mode: built the missing registration page, fixed a run of real bugs found along the way",
+    "features": [
+      "New self-registration page for public (multi-tenant) mode. The backend's POST /auth/register endpoint already worked, but there was no frontend page or link to reach it at all - a brand-new public-mode deployment was completely unusable through the web UI despite the README documenting a registration screen. Generates a server-side account ID (shown with a copy button and a clear \"save this, it can't be recovered\" warning, since it doubles as the permanent login identifier), takes a password, and signs straight in on success. Linked from the login page's Admin tab (\"Don't have an account? Create one\"), public mode only."
+    ],
+    "bugFixes": [
+      "The real reason registration couldn't have worked even with a naive implementation: the global auth allowlist only exempted /api/public-auth/register and /api/public-auth/generate-uuid from requiring a valid token, not their /api/auth/... equivalents - the exact paths the rest of the client codebase actually uses for every other auth call (login, stremio-login, etc). Added the missing entries.",
+      "POST /auth/register set auth cookies correctly but never returned a token in its JSON response, unlike /auth/login which returns both. Added it, so the client can store it the same way for both flows.",
+      "Set up a real local test deployment (Docker + a live Postgres instance) to actually verify public mode end-to-end, since it's never been exercised - INSTANCE=private is all that's ever actually been deployed. Found and fixed three more real gaps this surfaced: migrate deploy (the proper production migration path for Postgres) has likely never worked in this fork's history at all - migration_lock.toml declared provider = \"sqlite\" while the schema itself is postgresql, so every schema change silently fell back to db push --accept-data-loss instead. Regenerated a correct baseline migration against a real Postgres instance. Also found two fields present in the SQLite schema but missing from the Postgres one - WatchSession's @@unique([accountId, userId, itemId]) (broke the compound-key selector sessionTracker.js and this fork's own duration-persistence fix depend on) and Addon.position (broke the whole Addons page in public mode, added for the drag-and-drop reordering feature well before this session) - both restored.",
+      "A CRLF line-ending issue in scripts/start.sh (introduced by this specific Windows checkout's core.autocrlf, not anything actually committed) silently crashed any Docker image built from a Windows machine with \"exec: line 8: ./start.sh: not found\" - the kernel was looking for a literal \"/bin/sh\\r\" interpreter. Added .gitattributes to force LF for .sh files regardless of the checking-out machine's autocrlf setting, so this can't happen again for anyone else building on Windows."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.95",
     "date": "2026-07-18",
     "title": "Postgres (public/multi-tenant) schema: WatchSession was missing a constraint the app code depends on",

@@ -62,6 +62,7 @@ model Group {
 // GroupMember and GroupInvite removed – using JSON arrays on Group
 
 model Addon {
+  position         Int     @default(0)
   id               String  @id @default(cuid())
   name             String
   description      String?

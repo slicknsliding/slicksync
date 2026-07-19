@@ -12,6 +12,8 @@ function pathIsAllowlisted(path) {
     '/health',
     '/api/health',
     '/api/auth/login',
+    '/api/auth/register',
+    '/api/auth/generate-uuid',
     '/api/public-auth',
     '/api/public-auth/login',
     '/api/public-auth/register',
