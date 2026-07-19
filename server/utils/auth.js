@@ -20,6 +20,11 @@ function pathIsAllowlisted(path) {
     '/api/public-auth/generate-uuid',
     '/api/public-auth/stremio-login',
     '/api/auth/stremio-login',
+    '/api/auth/nuvio-start-oauth',
+    '/api/auth/nuvio-poll-oauth',
+    '/api/auth/nuvio-login',
+    // '/api/public-auth/nuvio-*' variants are covered by the blanket
+    // '/api/public-auth' prefix entry above already.
     '/api/public-auth/private-login', // Private instance username/password login
     '/api/auth/private-login', // Private instance username/password login (alt path)
     '/api/public-auth/suggest-uuid',

@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.11.0",
+    "date": "2026-07-19",
+    "title": "Public mode: Nuvio login for admin accounts, matching the existing Stremio option",
+    "features": [
+      "The admin login page's public-mode toggle now has a third option, \"Nuvio Login\", alongside \"UUID / Pass\" and \"Stremio Login\" - same device-code flow as Stremio's (open the app or scan/enter a code), backed by Nuvio's own OAuth mechanism since it has no single long-lived auth key like Stremio does. Supports both a fresh login (find-or-create an account by the Nuvio account's email) and linking Nuvio to an already-logged-in admin account, with the same conflict handling as the Stremio flow (a Nuvio account already linked elsewhere, or an admin account already linked to a different Nuvio account).",
+      "Unlike the Stremio login (which trusts a client-supplied auth key and separately re-validates it), the new /auth/nuvio-login endpoint does the whole OAuth exchange itself server-side and reads the resulting identity straight out of Nuvio's own response - there's no client-supplied email or user ID to spoof at all."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.10.1",
     "date": "2026-07-19",
     "title": "Metrics: Watch Time Today could silently undercount, New Signups chart mis-dated late signups",

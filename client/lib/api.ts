@@ -186,6 +186,33 @@ class ApiClient {
     return data;
   }
 
+  // Nuvio admin login (public mode only) - unlike Stremio's single authKey,
+  // Nuvio needs its own start/poll device-code round trip before there's
+  // anything to log in with.
+  async startNuvioAdminOAuth() {
+    return this.fetch<{
+      code: string; webUrl: string; expiresAt: string;
+      pollIntervalSeconds: number; anonToken: string; deviceNonce: string;
+    }>('/auth/nuvio-start-oauth', { method: 'POST', body: JSON.stringify({}) });
+  }
+
+  async pollNuvioAdminOAuth(params: { code: string; deviceNonce: string; anonToken: string }) {
+    return this.fetch<{ status: string; expiresAt: string; pollIntervalSeconds: number }>(
+      '/auth/nuvio-poll-oauth', { method: 'POST', body: JSON.stringify(params) }
+    );
+  }
+
+  async nuvioLogin(params: { code: string; deviceNonce: string; anonToken: string }) {
+    const data = await this.fetch<{ token: string; account: any }>('/auth/nuvio-login', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+    if (data.token) {
+      this.setToken(data.token);
+    }
+    return data;
+  }
+
   async unlinkStremio(password: string) {
     return this.fetch<{ message: string; uuid: string }>('/auth/unlink-stremio', {
       method: 'POST',
