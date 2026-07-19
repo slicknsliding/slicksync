@@ -342,6 +342,7 @@ export default function DashboardPage() {
   const dragStartXRef = useRef(0);
   const dragStartScrollLeftRef = useRef(0);
   const wasDraggedRef = useRef(false);
+  const hasCapturedPointerRef = useRef(false);
 
   const handleRowPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // button 0 = primary/left only - a right-click (button 2, opening the
@@ -349,36 +350,46 @@ export default function DashboardPage() {
     // setPointerCapture on the row, which had no business engaging for a
     // gesture that was never a drag to begin with.
     if (e.pointerType !== 'mouse' || e.button !== 0 || !scrollRowRef.current) return;
-    // Once this row captures a pointer, every subsequent mouse/click event
-    // for that pointer gets retargeted to the row itself (per the Pointer
-    // Events spec) instead of whatever element was actually under the
-    // cursor - which silently ate clicks on the info-icon button (a plain
-    // <button onClick>, entirely dependent on the JS click event actually
-    // reaching it). The card's own <a href> link is UNaffected by this,
-    // since browsers handle native navigation independent of this JS-level
-    // retargeting (confirmed - it kept working the whole time this bug
-    // existed) - so only <button> needs to be excluded here. Excluding <a>
-    // too was overly broad and killed drag-to-scroll on the poster/card
-    // area itself, which never had this problem to begin with.
     if ((e.target as HTMLElement).closest('button')) return;
     isPointerDownRef.current = true;
     wasDraggedRef.current = false;
+    hasCapturedPointerRef.current = false;
     dragStartXRef.current = e.clientX;
     dragStartScrollLeftRef.current = scrollRowRef.current.scrollLeft;
-    scrollRowRef.current.setPointerCapture(e.pointerId);
+    // setPointerCapture is deliberately NOT called here. It used to fire on
+    // every mouse-down regardless of whether a drag ever happened, on the
+    // theory that native <a href> navigation is independent of this JS-level
+    // pointer retargeting (per the Pointer Events spec, a captured pointer's
+    // subsequent events retarget to the capturing element) - true for
+    // ordinary navigation, but not for external-protocol links
+    // (nuvio://, stremio://): Firefox silently refused to hand off to the
+    // registered app when the click's pointer had been captured by an
+    // ancestor, even though the DOM click event itself still reached the
+    // <a> and fired normally. Deferred to handleRowPointerMove instead, so a
+    // plain click (no movement past the drag threshold) never touches
+    // capture at all - only a real drag does.
   }, []);
 
   const handleRowPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'mouse' || !isPointerDownRef.current || !scrollRowRef.current) return;
     const dx = e.clientX - dragStartXRef.current;
-    if (Math.abs(dx) > 5) wasDraggedRef.current = true;
+    if (Math.abs(dx) > 5) {
+      wasDraggedRef.current = true;
+      if (!hasCapturedPointerRef.current) {
+        scrollRowRef.current.setPointerCapture(e.pointerId);
+        hasCapturedPointerRef.current = true;
+      }
+    }
     scrollRowRef.current.scrollLeft = dragStartScrollLeftRef.current - dx;
   }, []);
 
   const handleRowPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== 'mouse') return;
     isPointerDownRef.current = false;
-    scrollRowRef.current?.releasePointerCapture(e.pointerId);
+    if (hasCapturedPointerRef.current) {
+      scrollRowRef.current?.releasePointerCapture(e.pointerId);
+      hasCapturedPointerRef.current = false;
+    }
   }, []);
 
   // Update ticker every second
