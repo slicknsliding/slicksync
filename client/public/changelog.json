@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.11.1",
+    "date": "2026-07-19",
+    "title": "More timezone bugs: user self-service \"Watch Time Today\", binge-watching stats",
+    "features": [],
+    "bugFixes": [
+      "Extended the earlier timezone sweep (1.10.1) beyond metricsBuilder.js to the rest of the server. Found a second, separate \"Watch Time Today\" bug on the user self-service page (/user) - its stats endpoint computed \"today\" as the server process's own local midnight (UTC in Docker) instead of the account's configured timezone, so a real timestamp comparison (not a pre-bucketed WatchActivity.date, which was already correct) silently miscounted for any account west of UTC. Same root cause as the admin Activity page's bug, different code path (server/routes/publicLibrary.js's /activity endpoint) that the first pass didn't cover.",
+      "Watch velocity (episodes-per-day / binge-watching stats) bucketed WatchSession.startTime - a real timestamp - by UTC day instead of account day, which could split one binge-watching evening into two counted \"days\" or merge two separate days into one, skewing the stat.",
+      "Confirmed everywhere else that reads WatchActivity.date/WatchSnapshot.date back out (metricsBuilder.js, users.js, groups.js, publicLibrary.js's streak calculation) is already correct as-is - those fields are pre-bucketed to account-day at write time, so extracting the UTC calendar day back out is a lossless round-trip, not a bug, despite looking identical to the buggy pattern at a glance. Also added an explicit timeZone: 'UTC' to one more day-label formatter and a stray, unused-by-the-client startDate/endDate pair on a legacy per-user endpoint, for full consistency."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.11.0",
     "date": "2026-07-19",
     "title": "Public mode: Nuvio login for admin accounts, matching the existing Stremio option",
