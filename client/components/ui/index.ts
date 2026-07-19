@@ -21,3 +21,4 @@ export * from './SelectionCheckbox';
 export * from './FilterTabs';
 export * from './PageToolbar';
 export * from './DragSortable';
+export * from './RatingBadges';
