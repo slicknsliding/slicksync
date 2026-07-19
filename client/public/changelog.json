@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.13.0",
+    "date": "2026-07-19",
+    "title": "New Layout option: Nebula, a structural redesign of Dashboard (top nav, glass panels)",
+    "features": [
+      "Settings now has a Layout section, independent of Theme: Theme picks colors, Layout picks structure. The new \"Nebula\" layout replaces the Dashboard's sidebar with a top nav bar, and restyles its stat cards and panels as translucent glass panels with a gradient top-accent stripe, over the currently-selected color theme's own palette (so it looks right no matter which Theme is active, not just the Nebula color theme it's named after). \"Current\" (the existing sidebar/card layout) remains available as the other option.",
+      "Nebula is the default layout for new sessions, so day-to-day use surfaces any rough edges quickly. Every other page (Users, Groups, Addons, Settings, etc.) keeps its normal sidebar regardless of this setting - only Dashboard has a Nebula-styled render path so far; Activity is next."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.12.0",
     "date": "2026-07-19",
     "title": "Rotten Tomatoes and Metacritic ratings, everywhere a poster shows",

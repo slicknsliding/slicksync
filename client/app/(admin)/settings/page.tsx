@@ -6,12 +6,14 @@ import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, Modal, ConfirmModal } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { useTheme, themeMeta, themeIds, ThemeId } from '@/lib/theme';
+import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId } from '@/lib/layout-mode';
 import { api, SyncSettings } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import {
   PaintBrushIcon,
+  Squares2X2Icon,
   CloudArrowUpIcon,
   TrashIcon,
   ArrowPathIcon,
@@ -170,6 +172,82 @@ const ThemeCard = memo(function ThemeCard({
   );
 });
 
+// Layout mode card - structure preview only (sidebar-vs-topbar), not colors,
+// since layout mode is orthogonal to the Theme setting above and should read
+// as "shape," not "another color choice."
+const LayoutModeCard = memo(function LayoutModeCard({
+  layoutId,
+  isSelected,
+  onSelect,
+}: {
+  layoutId: LayoutModeId;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const meta = layoutModeMeta[layoutId];
+
+  return (
+    <motion.button
+      whileHover={{ scale: 1.02, y: -2 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onSelect}
+      className={`relative p-3 rounded-xl border-2 transition-all text-left w-full card ${
+        isSelected ? 'border-primary bg-primary-muted' : 'border-default'
+      }`}
+    >
+      {isSelected && (
+        <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center bg-primary">
+          <CheckIcon className="w-3 h-3" style={{ color: 'var(--color-bg)' }} />
+        </div>
+      )}
+
+      <div
+        className="w-full h-20 rounded-lg mb-2 overflow-hidden border border-default"
+        style={{ backgroundColor: 'var(--color-bg)' }}
+      >
+        {layoutId === 'current' ? (
+          <div className="flex h-full">
+            <div className="w-8 h-full flex flex-col gap-1 p-1.5" style={{ backgroundColor: 'var(--color-surface)' }}>
+              <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }} />
+              <div className="w-full h-1 rounded-full opacity-30 bg-white" />
+              <div className="w-full h-1 rounded-full opacity-30 bg-white" />
+            </div>
+            <div className="flex-1 p-2 flex flex-col gap-1.5">
+              <div className="flex gap-1">
+                <div className="w-6 h-6 rounded" style={{ backgroundColor: 'var(--color-surface)' }} />
+                <div className="w-6 h-6 rounded" style={{ backgroundColor: 'var(--color-surface)' }} />
+              </div>
+              <div className="flex-1 rounded mt-1" style={{ backgroundColor: 'var(--color-surface)' }} />
+            </div>
+          </div>
+        ) : (
+          <div className="h-full flex flex-col p-1.5 gap-1.5">
+            <div
+              className="h-4 rounded-full flex items-center justify-center gap-0.5"
+              style={{ backgroundColor: 'var(--color-surface)' }}
+            >
+              <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))' }} />
+              <div className="w-4 h-1 rounded-full opacity-40 bg-white" />
+            </div>
+            <div className="flex-1 flex gap-1">
+              <div className="flex-1 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.8 }} />
+              <div className="w-6 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.5 }} />
+              <div className="w-6 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.5 }} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <p className="font-medium text-sm text-default">
+        {meta.name}
+      </p>
+      <p className="text-xs text-muted">
+        {meta.description}
+      </p>
+    </motion.button>
+  );
+});
+
 // Toggle switch component
 function ToggleSwitch({
   enabled,
@@ -233,6 +311,7 @@ function SettingRow({
 
 export default function SettingsPage() {
   const { themeId, setTheme, hideSensitive, toggleHideSensitive } = useTheme();
+  const { layoutMode, setLayoutMode } = useLayoutMode();
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -410,6 +489,33 @@ export default function SettingsPage() {
                   meta={themeMeta[id]}
                   isSelected={themeId === id}
                   onSelect={() => setTheme(id)}
+                />
+              ))}
+            </div>
+          </Card>
+        </PageSection>
+
+        {/* Layout - structure, independent of Theme's color choice. Scoped
+            to Dashboard + Activity today; other pages are unaffected. */}
+        <PageSection className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
+                <Squares2X2Icon className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold font-display text-default">Layout</h3>
+                <p className="text-xs text-muted">Choose how Dashboard and Activity are arranged - applies on top of whichever Theme you pick above</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {layoutModeIds.map((id) => (
+                <LayoutModeCard
+                  key={id}
+                  layoutId={id}
+                  isSelected={layoutMode === id}
+                  onSelect={() => setLayoutMode(id)}
                 />
               ))}
             </div>
