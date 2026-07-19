@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.10.0",
+    "date": "2026-07-19",
+    "title": "Changelog page showed every release one day early",
+    "features": [],
+    "bugFixes": [
+      "Found while checking that today's own new entries rendered correctly: every release date on this page was off by one calendar day for anyone in a timezone west of UTC - including this project's own documented default, America/Los_Angeles. changelog.json stores dates as plain YYYY-MM-DD strings, which Date parses as UTC midnight, but the page displayed them with toLocaleDateString() and no timeZone option - rendering in the viewer's local time, which sits earlier in the day than UTC midnight west of the prime meridian. Added timeZone: 'UTC' to the formatting call so the displayed date always matches the literal string in the file, regardless of viewer timezone. Affected every entry on the page, not just new ones."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.99",
     "date": "2026-07-19",
     "title": "Fixed a stuck-state edge case in today's two drag-to-scroll fixes",

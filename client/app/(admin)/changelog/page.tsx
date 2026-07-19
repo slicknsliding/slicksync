@@ -414,10 +414,19 @@ export default function ChangelogPage() {
                               )}
                             </div>
                             <span className="text-sm text-muted">
+                              {/* release.date is a plain YYYY-MM-DD string, which
+                                  Date parses as UTC midnight - rendering it in the
+                                  viewer's local timezone (anyone west of UTC, e.g.
+                                  the project's own default America/Los_Angeles)
+                                  showed every release one calendar day early. Since
+                                  these are date-only values with no meaningful time
+                                  component, display in UTC too so it always matches
+                                  the literal date string regardless of viewer TZ. */}
                               {new Date(release.date).toLocaleDateString('en-US', {
                                 year: 'numeric',
                                 month: 'long',
                                 day: 'numeric',
+                                timeZone: 'UTC',
                               })}
                             </span>
                           </div>
