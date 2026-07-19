@@ -407,7 +407,12 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     const date = new Date(user.createdAt)
     if (period !== 'all' && date < startDate) return
 
-    const dayKey = date.toISOString().split('T')[0]
+    // createdAt is a real timestamp (unlike WatchActivity.date, which is
+    // pre-bucketed to account-day at write time), so bucketing it by UTC day
+    // put anyone who signed up late in the account's own day into "tomorrow"
+    // on the New Signups chart, for any account west of UTC (including this
+    // project's own documented default, America/Los_Angeles).
+    const dayKey = getAccountDateString(date, accountTimeZone)
     userJoinsByDay[dayKey] = (userJoinsByDay[dayKey] || 0) + 1
 
     const weekStart = new Date(date)
@@ -435,7 +440,11 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
 
   // Try to use WatchActivity first (accurate daily deltas)
   const accountIdValue = accountId || 'default'
-  const startDateStr = startDate.toISOString().split('T')[0]
+  // startDate is a real "N days/hours ago from right now" timestamp, not a
+  // pre-bucketed account-day value - deriving its day string via account
+  // timezone (not UTC) keeps this period-start boundary aligned with the
+  // account-day keys everything else in this chart is compared against.
+  const startDateStr = getAccountDateString(startDate, accountTimeZone)
 
   // Track if we have any WatchActivity data
   let hasWatchActivityData = false
@@ -655,7 +664,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       if (shouldUseFallback) {
         // If period is 'all', show everything. Otherwise check start date.
         if (period === 'all') return true
-        return date >= startDate.toISOString().split('T')[0]
+        return date >= startDateStr
       }
       
       // If fallback disabled, respect earliest snapshot/activity date
@@ -683,7 +692,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
           // If fallback is enabled, show all dates that are within the requested period
           if (shouldUseFallback) {
             if (period === 'all') return true
-            return date >= startDate.toISOString().split('T')[0]
+            return date >= startDateStr
           }
 
           // If fallback disabled, respect earliest snapshot/activity date
@@ -1306,6 +1315,17 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   const interestingMetrics = calculateInterestingMetrics(watchActivityByUser, engagement, watchSessions, allUsers)
 
   return {
+    // The account's current calendar day, in its configured timezone - the
+    // one authoritative source for "what day is today" here. watchTime.byDay
+    // and watchActivity.byDay are already keyed by account-day (WatchActivity.date
+    // is written as new Date(getAccountDateString(...)) at record time, so
+    // reading it back losslessly recovers that same account-day string - no
+    // bug there). But a client trying to find "today"'s entry in those arrays
+    // by computing its own "today" (browser-local time, or worse, UTC) can
+    // land on the wrong key whenever the viewer's clock and the account's
+    // configured timezone disagree about what day it currently is - this
+    // field removes the need for the client to guess at all.
+    today: getAccountDateString(new Date(), accountTimeZone),
     summary: {
       totalUsers: allUsers.length,
       activeUsers: activeUserCount,
