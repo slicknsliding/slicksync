@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.95",
+    "date": "2026-07-18",
+    "title": "Postgres (public/multi-tenant) schema: WatchSession was missing a constraint the app code depends on",
+    "features": [],
+    "bugFixes": [
+      "schema.postgres.prisma's WatchSession model was missing the @@unique([accountId, userId, itemId]) constraint that schema.sqlite.prisma has - found while checking whether the SQLite and Postgres schemas had drifted after this session's changes. Prisma only generates the accountId_userId_itemId compound-key selector when the constraint actually exists in the schema, and sessionTracker.js's upsert-based session tracking (plus this session's watch-history duration persistence fix) both depend on exactly that selector - a genuine gap for anyone running public/multi-tenant mode, not just a cosmetic difference. Added the missing constraint to match SQLite. A fresh public-mode deploy applies this automatically via db push on next boot; an existing public deployment with real data would only hit an issue if duplicate (accountId, userId, itemId) rows already exist in watch_sessions, since a unique constraint can't be added over existing duplicates."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.94",
     "date": "2026-07-18",
     "title": "Discover: browse & search catalogs, open in Stremio/Nuvio + Continue Watching interaction fixes",
