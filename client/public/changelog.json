@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.9.98",
+    "date": "2026-07-19",
+    "title": "Media detail modal: Cast row never actually supported grab-and-drag scrolling",
+    "features": [],
+    "bugFixes": [
+      "The Cast row in the rich detail modal (opened from Continue Watching's fallback icon, Activity, and Discover) was a plain overflow-x-auto div with no drag-to-scroll of its own - unlike the Dashboard's Continue Watching row, which has always had custom grab-and-drag. Native click-and-drag doesn't scroll a div in any browser by default, only trackpad swipe or shift+scroll-wheel, so mouse users had no way to drag through the cast list. Added the same mouse-only drag-to-scroll Continue Watching has, applying this session's fix directly: pointer capture is deferred until an actual drag crosses the 5px threshold rather than engaged on every mouse-down, so it can't reintroduce the Firefox external-protocol block found earlier today for this same modal's Open in Stremio/Nuvio buttons. Cast photos also got draggable={false} + pointer-events-none, matching the fix already applied to Continue Watching's poster images, so the browser's native image-drag doesn't hijack the gesture."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.9.97",
     "date": "2026-07-19",
     "title": "Continue Watching: clicking the card stopped opening Stremio/Nuvio",
