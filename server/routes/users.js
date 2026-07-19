@@ -8,6 +8,7 @@ const { responseUtils, dbUtils } = require('../utils/routeUtils');
 const { sendShareNotification } = require('../utils/activityMonitor');
 const { postDiscord, fetchMetadata } = require('../utils/notify');
 const { getAccountDateString, resolveAccountTimezone } = require('../utils/dateUtils');
+const { fetchOmdbRatings } = require('../utils/omdb');
 
 // Export a function that returns the router, allowing dependency injection
 module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, encrypt, parseAddonIds, parseProtectedAddons, getDecryptedManifestUrl, StremioAPIClient, StremioAPIStore, assignUserToGroup, debug, defaultAddons, canonicalizeManifestUrl, getAccountDek, getServerKey, aesGcmDecrypt, validateStremioAuthKey, manifestUrlHmac, manifestHash, createProvider }) => {
@@ -231,6 +232,47 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     } catch (error) {
       console.error('Error fetching media details:', error)
       res.status(500).json({ error: 'Failed to fetch media details' })
+    }
+  })
+
+  // POST /users/ratings-batch - Rotten Tomatoes/Metacritic/IMDb ratings for a
+  // batch of IMDb IDs, for grid views (Discover, Activity) that render many
+  // poster cards at once and can't afford a full fetchMetadata() round trip
+  // (Cinemeta + OMDb) per item the way the detail modal and Continue
+  // Watching do. Callers are expected to pass only the IMDb IDs of items
+  // actually rendered on screen, deduplicated - fetchOmdbRatings's own
+  // 7-day cache absorbs repeat calls across page loads, but a single
+  // request here is still capped to keep one grid render from firing an
+  // unbounded number of concurrent external requests.
+  const RATINGS_BATCH_MAX = 60
+  router.post('/ratings-batch', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+
+      const { imdbIds } = req.body || {}
+      if (!Array.isArray(imdbIds)) {
+        return res.status(400).json({ error: 'imdbIds must be an array' })
+      }
+
+      const uniqueIds = [...new Set(imdbIds)].filter(id => typeof id === 'string' && /^tt\d+$/.test(id)).slice(0, RATINGS_BATCH_MAX)
+
+      const results = await Promise.all(uniqueIds.map(async (id) => {
+        const ratings = await fetchOmdbRatings(id)
+        return [id, ratings]
+      }))
+
+      const ratingsById = {}
+      for (const [id, ratings] of results) {
+        if (ratings) ratingsById[id] = ratings
+      }
+
+      res.json({ ratings: ratingsById })
+    } catch (error) {
+      console.error('Error fetching ratings batch:', error)
+      res.status(500).json({ error: 'Failed to fetch ratings batch' })
     }
   })
 

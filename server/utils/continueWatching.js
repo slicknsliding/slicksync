@@ -101,7 +101,10 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
         title: next.title,
         thumbnail: next.thumbnail
       },
-      lastWatchedAt: row.watchedAt
+      lastWatchedAt: row.watchedAt,
+      imdbRating: metadata.imdbRating || null,
+      rottenTomatoes: metadata.rottenTomatoes || null,
+      metacritic: metadata.metacritic || null
     }
 
     if (metadata.imdb_id) {

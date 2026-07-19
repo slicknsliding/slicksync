@@ -5,9 +5,10 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
-import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal } from '@/components/ui';
+import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal, RatingBadges } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { api, MetricsData, Invitation } from '@/lib/api';
+import { api, MetricsData, Invitation, RatingsBatchEntry } from '@/lib/api';
+import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import {
   ClockIcon,
@@ -464,10 +465,12 @@ const ActivityCard = memo(function ActivityCard({
 // Grid view activity card component - Cinematic poster design
 const ActivityCardGrid = memo(function ActivityCardGrid({
   activity,
+  ratings,
   onFilterByContent,
   onOpenDetails,
 }: {
   activity: ActivityItem;
+  ratings?: RatingsBatchEntry;
   onFilterByContent?: (name: string) => void;
   onOpenDetails?: (activity: ActivityItem) => void;
 }) {
@@ -553,6 +556,16 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             {activity.contentName}
           </h4>
         </button>
+
+        {ratings && (ratings.imdbRating || ratings.rottenTomatoes || ratings.metacritic) && (
+          <div className="flex justify-center">
+            <RatingBadges
+              imdbRating={ratings.imdbRating}
+              rottenTomatoes={ratings.rottenTomatoes}
+              metacritic={ratings.metacritic}
+            />
+          </div>
+        )}
 
         {/* Episode info for series */}
         {activity.contentType === 'series' && activity.episode !== undefined && activity.episode > 0 && (
@@ -1120,6 +1133,10 @@ function ActivityPageContent() {
   });
   // Apply lazy-load window
   const visibleActivities = filteredActivities.slice(0, visibleCount);
+  // Only the currently-rendered window's ratings are fetched, not the whole
+  // filtered history (which can run to thousands of rows) - grows
+  // incrementally as visibleCount does via infinite scroll.
+  const ratingsById = useRatingsBatch(visibleActivities.map((a) => a.contentId));
 
   // Get date keys for today and yesterday (stable for render)
   const todayKey = getDateKey(todayStart);
@@ -1514,6 +1531,7 @@ function ActivityPageContent() {
                         <ActivityCardGrid
                           key={activity.id}
                           activity={activity}
+                          ratings={ratingsById[activity.contentId]}
                           onFilterByContent={(name) => {
                             setEpisodeFilter(null);
                             setSearchQuery(name);

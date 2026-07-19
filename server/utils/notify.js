@@ -1,6 +1,7 @@
 const https = require('https')
 const { getUserAvatarUrl } = require('./avatarUtils')
 const { fetchKitsuMetadata } = require('./kitsuUtils')
+const { fetchOmdbRatings } = require('./omdb')
 
 async function postDiscord(webhookUrl, content, options = {}) {
   try {
@@ -277,6 +278,19 @@ async function fetchMetadata(itemId, itemType, videoId) {
               if (meta.videos && meta.videos.length > 0) {
                 console.log(`[ActivityMonitor] Available video IDs (first 5): ${meta.videos.slice(0, 5).map(v => v.id).join(', ')}`)
               }
+            }
+          }
+
+          // OMDb ratings (Rotten Tomatoes / Metacritic), keyed off the real
+          // IMDb ID Cinemeta just confirmed - additive, resolves to nulls
+          // (not an error) when OMDB_API_KEY is unset.
+          result.rottenTomatoes = null
+          result.metacritic = null
+          if (result.imdb_id) {
+            const omdbRatings = await fetchOmdbRatings(result.imdb_id)
+            if (omdbRatings) {
+              result.rottenTomatoes = omdbRatings.rottenTomatoes
+              result.metacritic = omdbRatings.metacritic
             }
           }
 
