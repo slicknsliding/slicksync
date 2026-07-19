@@ -4,6 +4,7 @@ import { useState, useEffect, createContext, useContext, ReactNode } from "react
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { useLayoutMode, isNebulaEligiblePath } from "@/lib/layout-mode";
 import { DndContext, DragOverlay, closestCenter } from "@/components/ui/DragSortable";
 import { useSortableSensors } from "@/components/ui/DragSortable";
 import { pointerWithin } from "@dnd-kit/core";
@@ -85,6 +86,13 @@ export default function AdminClientLayout({
 }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
+  const { layoutMode } = useLayoutMode();
+  // Dashboard/Activity render their own top-nav chrome in Nebula mode, so
+  // the shared sidebar (and the content offset that reserves space for it)
+  // needs to get out of the way on exactly those two routes - every other
+  // page keeps the sidebar regardless of this setting, since there's no
+  // Nebula version of them to switch to.
+  const useNebulaChrome = layoutMode === 'nebula' && isNebulaEligiblePath(pathname);
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -111,11 +119,13 @@ export default function AdminClientLayout({
       <VaultDragProvider>
         <LayoutDndWrapper>
           <div className="relative min-h-screen">
-            <Sidebar 
-              isOpen={isMobileMenuOpen} 
-              onClose={handleClose} 
-            />
-            <PageContainer>
+            {!useNebulaChrome && (
+              <Sidebar
+                isOpen={isMobileMenuOpen}
+                onClose={handleClose}
+              />
+            )}
+            <PageContainer noSidebarOffset={useNebulaChrome}>
               {children}
             </PageContainer>
           </div>

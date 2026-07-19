@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ThemeProvider } from "@/lib/theme";
+import { LayoutModeProvider } from "@/lib/layout-mode";
 import { UserCacheProvider } from "@/components/providers/UserCacheProvider";
 
 export const metadata: Metadata = {
@@ -59,11 +60,13 @@ export default function RootLayout({
         />
         <div className="relative z-10">
         <ThemeProvider>
-          <UserCacheProvider>
-            <ToastProvider>
-              {children}
-            </ToastProvider>
-          </UserCacheProvider>
+          <LayoutModeProvider>
+            <UserCacheProvider>
+              <ToastProvider>
+                {children}
+              </ToastProvider>
+            </UserCacheProvider>
+          </LayoutModeProvider>
         </ThemeProvider>
         </div>
       </body>
