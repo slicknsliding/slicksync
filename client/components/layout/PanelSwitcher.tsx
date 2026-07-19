@@ -31,13 +31,21 @@ interface PanelSwitcherProps {
   onLogout?: () => void;
   /** Whether the component is collapsed (for sidebar) */
   collapsed?: boolean;
+  /** 'compact' renders a small icon-only trigger (topbar use) instead of the
+   *  full-width name/email row the sidebar uses. */
+  variant?: 'full' | 'compact';
+  /** Sidebar trigger sits at the bottom of the screen, so its dropdown opens
+   *  upward ('up', the default). A topbar trigger sits at the top, so it
+   *  needs the dropdown to open downward instead - otherwise it renders
+   *  off the top of the viewport. */
+  dropdownPosition?: 'up' | 'down';
 }
 
 /**
  * Panel switcher component for switching between Admin and User panels
  * Appears in the sidebar of both panels
  */
-export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false }: PanelSwitcherProps) {
+export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, variant = 'full', dropdownPosition = 'up' }: PanelSwitcherProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
@@ -129,6 +137,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false }: P
   const isPublicInstance = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') === 'public';
   const targetPanel = isAdmin ? 'User' : 'Admin';
   const TargetIcon = isAdmin ? UserIcon : ShieldCheckIcon;
+  const isCompact = variant === 'compact';
 
   return (
     <div className="relative" ref={menuRef}>
@@ -137,7 +146,9 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false }: P
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200"
+        className={isCompact
+          ? 'flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-200'
+          : 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200'}
         style={{
           background: isOpen ? 'var(--color-surface-elevated)' : 'transparent',
           color: 'var(--color-text)',
@@ -196,7 +207,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false }: P
           )}
         </div>
 
-        {!collapsed && (
+        {!collapsed && !isCompact && (
           <>
             <div className="flex-1 text-left min-w-0">
               <p className="text-sm font-medium truncate">
@@ -219,11 +230,15 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false }: P
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+            initial={{ opacity: 0, y: dropdownPosition === 'down' ? 10 : -10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            exit={{ opacity: 0, y: dropdownPosition === 'down' ? 10 : -10, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="absolute bottom-full left-0 right-0 mb-2 rounded-xl overflow-hidden shadow-xl z-50"
+            className={
+              dropdownPosition === 'down'
+                ? `absolute top-full mt-2 rounded-xl overflow-hidden shadow-xl z-50 ${isCompact ? 'right-0 w-72' : 'left-0 right-0'}`
+                : `absolute bottom-full mb-2 rounded-xl overflow-hidden shadow-xl z-50 ${isCompact ? 'right-0 w-72' : 'left-0 right-0'}`
+            }
             style={{
               background: 'var(--color-surface)',
               border: '1px solid var(--color-surface-border)',
