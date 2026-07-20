@@ -245,7 +245,9 @@ export function NebulaPageHeading({
         {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-2 flex-wrap">
-        <NotificationsDropdown activities={[]} inviteHistory={[]} taskHistory={[]} />
+        {/* No props needed - it self-fetches real recent activity and
+            invite history now (see NotificationsDropdown.tsx). */}
+        <NotificationsDropdown />
         {actions}
       </div>
     </div>

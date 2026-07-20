@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.16.1",
+    "date": "2026-07-20",
+    "title": "Notifications now show real activity, individually dismissible; Dashboard tidied up",
+    "bugFixes": [
+      "The notification bell always showed \"No new notifications\" - every caller of it passed hardcoded empty arrays for activities/invites, so the only thing it could ever surface was pending access requests. It now self-fetches real recent watch activity (same cached metrics endpoint Activity/Dashboard already use) and real invite-acceptance history, in both layouts.",
+      "Dashboard's Recent Activity times had no date, ambiguous once more than a day's worth of entries are visible - now shows e.g. \"Jul 20, 10:56 AM\"."
+    ],
+    "features": [
+      "Notifications can now be dismissed individually (a new X per row), not just all at once. \"Clear\" also resets the dismissed set, so it doesn't accumulate indefinitely.",
+      "Dashboard's Recent Addons panel is no longer its own oversized full-width section with a lot of empty space next to each row - on desktop it now stacks under Top Viewers in the same column, matching that panel's width. Recent Activity grows to fill the matching height on the left. Mobile is unchanged (already single-column, already fine)."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.16.0",
     "date": "2026-07-20",
     "title": "Activity feed labels debrid service, when confidently detected via the proxy",
