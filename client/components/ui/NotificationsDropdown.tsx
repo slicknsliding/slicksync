@@ -19,12 +19,19 @@ interface NotificationItem {
 }
 
 interface NotificationsDropdownProps {
-  activities: any[];
-  inviteHistory: any[];
-  taskHistory: any[];
+  // Optional - self-fetched real activity/invite data (see the effects
+  // below) covers everything today. These stay accepted and merged in
+  // case a future caller has cheaper data already in hand (e.g. a page
+  // that already fetched metrics for its own use), so nothing needs to
+  // change here if that gets wired up later.
+  activities?: any[];
+  inviteHistory?: any[];
+  taskHistory?: any[];
 }
 
-export function NotificationsDropdown({ activities, inviteHistory, taskHistory }: NotificationsDropdownProps) {
+const DISMISSED_STORAGE_KEY = 'notifications-dismissed-ids';
+
+export function NotificationsDropdown({ activities = [], inviteHistory = [], taskHistory = [] }: NotificationsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -36,21 +43,57 @@ export function NotificationsDropdown({ activities, inviteHistory, taskHistory }
     return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   });
 
-  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  // IDs individually dismissed via the per-row X button - kept separate
+  // from lastChecked (which hides everything at once) so dismissing one
+  // notification doesn't also hide unrelated newer ones.
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const stored = localStorage.getItem(DISMISSED_STORAGE_KEY);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
 
-  // Fetch pending requests
+  const persistDismissedIds = (next: Set<string>) => {
+    setDismissedIds(next);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(DISMISSED_STORAGE_KEY, JSON.stringify(Array.from(next)));
+    }
+  };
+
+  const handleDismiss = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    persistDismissedIds(new Set(dismissedIds).add(id));
+  };
+
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  // Accepted invite requests, from the same fetch as pendingRequests below -
+  // this IS "real" inviteHistory, no separate endpoint needed. Merged with
+  // any inviteHistory passed in via props.
+  const [acceptedRequests, setAcceptedRequests] = useState<any[]>([]);
+  // Recent watch activity, from the same cached metrics endpoint the
+  // Activity/Dashboard pages use (server-side cache refreshed every 5
+  // minutes by activityMonitor.js, so polling this here is cheap). Merged
+  // with any activities passed in via props.
+  const [recentWatchActivity, setRecentWatchActivity] = useState<any[]>([]);
+
+  // Fetch pending + accepted invite requests
   useEffect(() => {
     const fetchRequests = async () => {
       try {
         const invitations = await api.getInvitations();
         const allRequests: any[] = [];
-        
+
         for (const inv of invitations) {
           const invName = inv.name || inv.code || inv.inviteCode || 'Invitation';
+          const groupName = (inv as any).groupName || 'a group';
           if (inv.requests && Array.isArray(inv.requests)) {
             allRequests.push(...inv.requests.map((req: any) => ({
               ...req,
-              invitationName: invName
+              invitationName: invName,
+              groupName,
             })));
           } else {
             try {
@@ -58,7 +101,8 @@ export function NotificationsDropdown({ activities, inviteHistory, taskHistory }
               if (Array.isArray(reqs)) {
                 allRequests.push(...reqs.map((req: any) => ({
                   ...req,
-                  invitationName: invName
+                  invitationName: invName,
+                  groupName,
                 })));
               }
             } catch {
@@ -66,8 +110,9 @@ export function NotificationsDropdown({ activities, inviteHistory, taskHistory }
             }
           }
         }
-        
+
         setPendingRequests(allRequests.filter((r: any) => r.status === 'pending'));
+        setAcceptedRequests(allRequests.filter((r: any) => r.status === 'accepted'));
       } catch (e) {
         console.error('Failed to fetch pending requests', e);
       }
@@ -76,6 +121,22 @@ export function NotificationsDropdown({ activities, inviteHistory, taskHistory }
     fetchRequests();
     // Poll every 30 seconds
     const interval = setInterval(fetchRequests, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch recent watch activity for the "activity" notification type
+  useEffect(() => {
+    const fetchActivity = async () => {
+      try {
+        const metrics = await api.getMetrics('30d');
+        setRecentWatchActivity(metrics.recentActivity || []);
+      } catch (e) {
+        console.error('Failed to fetch recent activity for notifications', e);
+      }
+    };
+
+    fetchActivity();
+    const interval = setInterval(fetchActivity, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -101,10 +162,37 @@ export function NotificationsDropdown({ activities, inviteHistory, taskHistory }
     }
   };
 
+  // Real recent-activity feed, mapped to the shape the block below expects.
+  // metrics.recentActivity's own shape (see MetricsData in lib/api.ts) is
+  // {user: {username}, item: {name, poster}, watchedAt, ...} - flatten that
+  // out rather than pass it through raw, so this component's own shape
+  // doesn't leak metrics-API details into ITS callers via the activities prop.
+  const combinedActivities = useMemo(() => {
+    const fromMetrics = recentWatchActivity.map((entry) => ({
+      id: `${entry.user?.id}-${entry.item?.id}-${entry.watchedAt}`,
+      userName: entry.user?.username || 'Someone',
+      type: 'complete',
+      contentName: entry.item?.name || 'something',
+      timestamp: entry.watchedAt,
+      poster: entry.item?.poster,
+    }));
+    return [...activities, ...fromMetrics];
+  }, [activities, recentWatchActivity]);
+
+  const combinedInviteHistory = useMemo(() => {
+    const fromAccepted = acceptedRequests.map((req) => ({
+      id: req.id,
+      action: 'used',
+      userName: req.username || req.email,
+      groupName: req.groupName || 'a group',
+      timestamp: req.respondedAt || req.createdAt,
+    }));
+    return [...inviteHistory, ...fromAccepted];
+  }, [inviteHistory, acceptedRequests]);
+
   // Generate notifications from activities, invites, and tasks since last checked
   const notifications = useMemo(() => {
     const items: NotificationItem[] = [];
-    const now = new Date();
 
     // Add pending requests (ALWAYS show these, regardless of last checked)
     pendingRequests.forEach((req) => {
@@ -120,7 +208,7 @@ export function NotificationsDropdown({ activities, inviteHistory, taskHistory }
     });
 
     // Add recent activities
-    activities
+    combinedActivities
       .filter((activity) => new Date(activity.timestamp) > lastChecked)
       .slice(0, 5)
       .forEach((activity) => {
@@ -136,7 +224,7 @@ export function NotificationsDropdown({ activities, inviteHistory, taskHistory }
       });
 
     // Add recent invite uses
-    inviteHistory
+    combinedInviteHistory
       .filter((invite) => invite.action === 'used' && new Date(invite.timestamp) > lastChecked)
       .slice(0, 3)
       .forEach((invite) => {
@@ -165,11 +253,12 @@ export function NotificationsDropdown({ activities, inviteHistory, taskHistory }
         });
       });
 
-    // Sort by timestamp, most recent first
-    // Requests should stay at top if we want them prominent? 
-    // Or just sort by time. Pending requests are usually recent.
-    return items.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-  }, [activities, inviteHistory, taskHistory, lastChecked, pendingRequests]);
+    // Sort by timestamp, most recent first, then drop anything individually
+    // dismissed via the per-row X button.
+    return items
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      .filter((item) => !dismissedIds.has(item.id));
+  }, [combinedActivities, combinedInviteHistory, taskHistory, lastChecked, pendingRequests, dismissedIds]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -188,6 +277,10 @@ export function NotificationsDropdown({ activities, inviteHistory, taskHistory }
     if (typeof window !== 'undefined') {
       localStorage.setItem('notifications-last-checked', now.toISOString());
     }
+    // Nothing before `now` will ever be shown again anyway (see the
+    // lastChecked filter above), so the individually-dismissed set can be
+    // reset too instead of accumulating indefinitely.
+    persistDismissedIds(new Set());
     setIsOpen(false);
   };
 
@@ -365,6 +458,21 @@ export function NotificationsDropdown({ activities, inviteHistory, taskHistory }
                                 <p className="text-xs text-muted mt-0.5 truncate">{notification.message}</p>
                                 <p className="text-xs text-subtle mt-1">{formatNotificationTime(notification.timestamp)}</p>
                               </div>
+                              {/* Pending requests already clear themselves
+                                  from the list via Accept/Reject below - an
+                                  extra dismiss button there would let one
+                                  get hidden without ever being acted on. */}
+                              {notification.type !== 'request' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDismiss(e, notification.id)}
+                                  className="p-1 rounded-md shrink-0 text-subtle hover:text-default hover:bg-surface transition-colors"
+                                  aria-label="Dismiss notification"
+                                  title="Dismiss"
+                                >
+                                  <XMarkIcon className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
 
                             {/* Actions for requests */}

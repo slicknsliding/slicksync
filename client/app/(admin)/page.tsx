@@ -752,13 +752,18 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Recent Activity + Top Viewers, side by side - was previously
-                a single full-width Recent Activity panel with a lot of
-                empty space below its 5 rows on desktop; pairing it with
-                Top Viewers (same data Current mode already shows) fills
-                that space with something useful instead of padding. */}
+            {/* Recent Activity (left, spans both rows) + Top Viewers / Recent
+                Addons stacked on the right - desktop only (lg:). Recent
+                Addons used to be its own full-width panel below this grid,
+                which on a wide screen meant one addon-row per line with a
+                lot of empty horizontal space next to it; folding it into
+                the right column under Top Viewers instead gives it the
+                same half-width sizing those panels already use. Below lg,
+                grid-cols-1 and the row-span both collapse to a normal
+                single-column stack - unchanged from before, since that
+                was already fine on mobile. */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 items-start">
-              <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
+              <div className={`${NEBULA_GLASS_CLASS} p-5 lg:row-span-2`} style={nebulaGlassStyle}>
                 <NebulaGlassStripe />
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-base font-semibold font-display text-default">Recent Activity</h3>
@@ -794,7 +799,9 @@ export default function DashboardPage() {
                               </span>
                             )}
                           </p>
-                          <p className="text-xs text-subtle">{new Date(np.watchedAt).toLocaleTimeString()}</p>
+                          <p className="text-xs text-subtle">
+                            {new Date(np.watchedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          </p>
                         </div>
                         {np.isLive && (
                           <span className="text-[10px] font-semibold uppercase tracking-wider animate-pulse" style={{ color: 'var(--color-secondary)' }}>
@@ -863,52 +870,56 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
-            </div>
 
-            {/* Recent Addons - reuses the exact same RecentAddonItem rows
-                (and reload handler) as Current mode, just inside a glass
-                panel instead of a Card. */}
-            <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
-              <NebulaGlassStripe />
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-semibold font-display text-default">Recent Addons</h3>
-                <Link href="/addons" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
-                  View All →
-                </Link>
-              </div>
-              <div className="flex flex-col gap-2">
-                {isLoading ? (
-                  <div className="text-center py-8 text-sm text-muted">Loading...</div>
-                ) : recentAddons.length > 0 ? (
-                  recentAddons.map((addon) => (
-                    <RecentAddonItem
-                      key={addon.id}
-                      addon={addon}
-                      isReloading={reloadingAddons.has(addon.id)}
-                      onReload={async (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (reloadingAddons.has(addon.id)) return;
+              {/* Recent Addons - reuses the exact same RecentAddonItem rows
+                  (and reload handler) as Current mode, just inside a glass
+                  panel instead of a Card. Third grid child, not a separate
+                  full-width section - CSS Grid auto-placement drops it into
+                  the right column's second row, under Top Viewers, since
+                  Recent Activity's row-span-2 already claims the left
+                  column for both rows. */}
+              <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
+                <NebulaGlassStripe />
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-semibold font-display text-default">Recent Addons</h3>
+                  <Link href="/addons" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
+                    View All →
+                  </Link>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {isLoading ? (
+                    <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                  ) : recentAddons.length > 0 ? (
+                    recentAddons.map((addon) => (
+                      <RecentAddonItem
+                        key={addon.id}
+                        addon={addon}
+                        isReloading={reloadingAddons.has(addon.id)}
+                        onReload={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (reloadingAddons.has(addon.id)) return;
 
-                        setReloadingAddons((prev) => new Set(prev).add(addon.id));
-                        try {
-                          await api.reloadAddon(addon.id);
-                          toast.success(`Reloaded ${addon.name}`);
-                        } catch (err: any) {
-                          toast.error(err.message || 'Reload failed');
-                        } finally {
-                          setReloadingAddons((prev) => {
-                            const next = new Set(prev);
-                            next.delete(addon.id);
-                            return next;
-                          });
-                        }
-                      }}
-                    />
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-sm text-muted">No recent addons</div>
-                )}
+                          setReloadingAddons((prev) => new Set(prev).add(addon.id));
+                          try {
+                            await api.reloadAddon(addon.id);
+                            toast.success(`Reloaded ${addon.name}`);
+                          } catch (err: any) {
+                            toast.error(err.message || 'Reload failed');
+                          } finally {
+                            setReloadingAddons((prev) => {
+                              const next = new Set(prev);
+                              next.delete(addon.id);
+                              return next;
+                            });
+                          }
+                        }}
+                      />
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-sm text-muted">No recent addons</div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
