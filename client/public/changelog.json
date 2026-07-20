@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.13.13",
+    "date": "2026-07-20",
+    "title": "Reverted the two-tone logo back to plain white",
+    "miscChores": [
+      "The primary/secondary two-tone chain links from 1.13.12 are reverted - flat white read better against the badge's own gradient background. Back to the original SlickSyncLogo everywhere it renders."
+    ],
+    "features": [],
+    "bugFixes": []
+  },
+  {
     "version": "1.13.12",
     "date": "2026-07-20",
     "title": "Two-tone logo: each chain link now matches the brand gradient's own colors",
