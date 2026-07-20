@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.13.10",
+    "date": "2026-07-20",
+    "title": "Nebula layout comes to Users, Groups, and Addons",
+    "features": [
+      "All three management pages now get Nebula's top-nav chrome, a real-data stat row (e.g. Users: Total/Active/Expired), and their existing toolbar + grid/list wrapped in one floating glass panel - Current has no such enclosing panel at all today, each card just sits directly on the page background, so this is a structural addition, not a recolor. The cards themselves (UserCard, GroupCard, AddonCard) and every existing feature - search, multi-select, grid/list toggle, drag-to-reorder on Addons, filter tabs - are completely unchanged."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.13.9",
     "date": "2026-07-19",
     "title": "Nebula's nav links now light up on hover, matching Original",
