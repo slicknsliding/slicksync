@@ -39,13 +39,21 @@ interface PanelSwitcherProps {
    *  needs the dropdown to open downward instead - otherwise it renders
    *  off the top of the viewport. */
   dropdownPosition?: 'up' | 'down';
+  /** Which edge of the compact trigger the dropdown's own edge anchors to.
+   *  'right' (default) suits a trigger near the right edge of the screen -
+   *  the menu opens leftward, staying on-screen. A trigger near the left
+   *  edge (e.g. Nebula's bottom-left account button) needs 'left' instead,
+   *  or the menu opens leftward off the edge of the viewport. Only affects
+   *  variant="compact" - the full-width sidebar trigger always spans
+   *  left-0 right-0 regardless. */
+  align?: 'left' | 'right';
 }
 
 /**
  * Panel switcher component for switching between Admin and User panels
  * Appears in the sidebar of both panels
  */
-export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, variant = 'full', dropdownPosition = 'up' }: PanelSwitcherProps) {
+export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, variant = 'full', dropdownPosition = 'up', align = 'right' }: PanelSwitcherProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
@@ -235,9 +243,9 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             exit={{ opacity: 0, y: dropdownPosition === 'down' ? 10 : -10, scale: 0.95 }}
             transition={{ duration: 0.15 }}
             className={
-              dropdownPosition === 'down'
-                ? `absolute top-full mt-2 rounded-xl overflow-hidden shadow-xl z-50 ${isCompact ? 'right-0 w-72' : 'left-0 right-0'}`
-                : `absolute bottom-full mb-2 rounded-xl overflow-hidden shadow-xl z-50 ${isCompact ? 'right-0 w-72' : 'left-0 right-0'}`
+              `absolute rounded-xl overflow-hidden shadow-xl z-50 ${dropdownPosition === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'} ${
+                isCompact ? `${align === 'left' ? 'left-0' : 'right-0'} w-72` : 'left-0 right-0'
+              }`
             }
             style={{
               background: 'var(--color-surface)',

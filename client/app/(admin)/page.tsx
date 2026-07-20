@@ -742,54 +742,162 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Recent Activity */}
+            {/* Recent Activity + Top Viewers, side by side - was previously
+                a single full-width Recent Activity panel with a lot of
+                empty space below its 5 rows on desktop; pairing it with
+                Top Viewers (same data Current mode already shows) fills
+                that space with something useful instead of padding. */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 items-start">
+              <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
+                <NebulaGlassStripe />
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-semibold font-display text-default">Recent Activity</h3>
+                  <Link href="/activity" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
+                    View All →
+                  </Link>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {isLoading ? (
+                    <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                  ) : recentActivityItems.length > 0 ? (
+                    recentActivityItems.map((np, index) => (
+                      <div
+                        key={`${np.user.id}-${np.item.id}-${np.timestamp}-${index}`}
+                        className="flex items-center gap-3 p-2.5 rounded-xl relative pl-4"
+                      >
+                        <span
+                          className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full opacity-70"
+                          style={{ background: 'linear-gradient(180deg, var(--color-primary), var(--color-secondary))' }}
+                        />
+                        <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm truncate text-muted">
+                            <span className="font-medium" style={{ color: 'var(--color-secondary)' }}>
+                              {np.user.username.split(' ')[0]}
+                            </span>{' '}
+                            {np.isLive ? 'is watching' : 'watched'} {np.item.name}
+                            {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
+                              <span className="text-subtle ml-1">
+                                {np.item.season !== undefined && np.item.season > 0
+                                  ? `S${String(np.item.season).padStart(2, '0')}E${String(np.item.episode).padStart(2, '0')}`
+                                  : `E${String(np.item.episode).padStart(2, '0')}`}
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-subtle">{new Date(np.watchedAt).toLocaleTimeString()}</p>
+                        </div>
+                        {np.isLive && (
+                          <span className="text-[10px] font-semibold uppercase tracking-wider animate-pulse" style={{ color: 'var(--color-secondary)' }}>
+                            Live
+                          </span>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-sm text-muted">No recent activity</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Top Viewers - same topUsers data Current mode's own panel
+                  uses, restyled to match Nebula's glass treatment. */}
+              <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
+                <NebulaGlassStripe />
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-semibold font-display text-default">Top Viewers</h3>
+                  <Link href="/users" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
+                    See All →
+                  </Link>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {isLoading ? (
+                    <div className="text-center py-8 text-sm text-muted">Loading...</div>
+                  ) : topUsers.length > 0 ? (
+                    topUsers.map((user, index) => (
+                      <Link key={user.id || user.name} href={`/users/${user.id}`} className="flex items-center gap-3 p-2.5 rounded-xl relative pl-4">
+                        <span
+                          className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full opacity-70"
+                          style={{ background: 'linear-gradient(180deg, var(--color-primary), var(--color-secondary))' }}
+                        />
+                        <div className="relative shrink-0">
+                          <UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} size="sm" />
+                          <div
+                            className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold"
+                            style={{
+                              background: index === 0 ? 'var(--color-warning)' : index === 1 ? 'var(--color-text-muted)' : 'var(--color-text-subtle)',
+                              color: 'var(--color-bg)',
+                            }}
+                          >
+                            {index + 1}
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate text-default">{user.name}</p>
+                          <div className="flex items-center gap-3 text-xs text-muted">
+                            <span className="flex items-center gap-1">
+                              <ClockIcon className="w-3.5 h-3.5" />
+                              {Math.floor(user.watchTime / 60)}h {user.watchTime % 60}m
+                            </span>
+                            {user.streak > 0 && (
+                              <span className="flex items-center gap-1">
+                                <FireIcon className="w-3.5 h-3.5 text-warning" />
+                                {user.streak}d
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-sm text-muted">No user data</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Addons - reuses the exact same RecentAddonItem rows
+                (and reload handler) as Current mode, just inside a glass
+                panel instead of a Card. */}
             <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
               <NebulaGlassStripe />
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-semibold font-display text-default">Recent Activity</h3>
-                <Link href="/activity" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
+                <h3 className="text-base font-semibold font-display text-default">Recent Addons</h3>
+                <Link href="/addons" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
                   View All →
                 </Link>
               </div>
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-2">
                 {isLoading ? (
                   <div className="text-center py-8 text-sm text-muted">Loading...</div>
-                ) : recentActivityItems.length > 0 ? (
-                  recentActivityItems.map((np, index) => (
-                    <div
-                      key={`${np.user.id}-${np.item.id}-${np.timestamp}-${index}`}
-                      className="flex items-center gap-3 p-2.5 rounded-xl relative pl-4"
-                    >
-                      <span
-                        className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full opacity-70"
-                        style={{ background: 'linear-gradient(180deg, var(--color-primary), var(--color-secondary))' }}
-                      />
-                      <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm truncate text-muted">
-                          <span className="font-medium" style={{ color: 'var(--color-secondary)' }}>
-                            {np.user.username.split(' ')[0]}
-                          </span>{' '}
-                          {np.isLive ? 'is watching' : 'watched'} {np.item.name}
-                          {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
-                            <span className="text-subtle ml-1">
-                              {np.item.season !== undefined && np.item.season > 0
-                                ? `S${String(np.item.season).padStart(2, '0')}E${String(np.item.episode).padStart(2, '0')}`
-                                : `E${String(np.item.episode).padStart(2, '0')}`}
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-subtle">{new Date(np.watchedAt).toLocaleTimeString()}</p>
-                      </div>
-                      {np.isLive && (
-                        <span className="text-[10px] font-semibold uppercase tracking-wider animate-pulse" style={{ color: 'var(--color-secondary)' }}>
-                          Live
-                        </span>
-                      )}
-                    </div>
+                ) : recentAddons.length > 0 ? (
+                  recentAddons.map((addon) => (
+                    <RecentAddonItem
+                      key={addon.id}
+                      addon={addon}
+                      isReloading={reloadingAddons.has(addon.id)}
+                      onReload={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (reloadingAddons.has(addon.id)) return;
+
+                        setReloadingAddons((prev) => new Set(prev).add(addon.id));
+                        try {
+                          await api.reloadAddon(addon.id);
+                          toast.success(`Reloaded ${addon.name}`);
+                        } catch (err: any) {
+                          toast.error(err.message || 'Reload failed');
+                        } finally {
+                          setReloadingAddons((prev) => {
+                            const next = new Set(prev);
+                            next.delete(addon.id);
+                            return next;
+                          });
+                        }
+                      }}
+                    />
                   ))
                 ) : (
-                  <div className="text-center py-8 text-sm text-muted">No recent activity</div>
+                  <div className="text-center py-8 text-sm text-muted">No recent addons</div>
                 )}
               </div>
             </div>
