@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.13.5",
+    "date": "2026-07-19",
+    "title": "Nebula background: replaced the diagonal wash with corner spotlight glows",
+    "features": [
+      "Swapped the hard-edged linear-gradient diagonal split for soft, blurred spotlight glows pooling in each corner instead (purple top-left, secondary color bottom-right) - matches the original approved concept mockup's look, which was closer to ambient light than a geometric color block. Drifts gently via a transform-only animation (translate + scale), which can't have the earlier off-screen-corner failure mode since the blobs are always anchored by their own position/size regardless of animation frame."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.13.4",
     "date": "2026-07-19",
     "title": "Nebula background: fixed the teal corner disappearing mid-drift",
