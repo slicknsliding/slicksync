@@ -138,14 +138,21 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
           border: '1px solid var(--color-surface-border)',
         }}
       >
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 mb-4">
-          <span aria-hidden />
-          <Link href="/" className="flex items-center gap-2 md:gap-4 justify-center min-w-0">
-            {/* Smaller on mobile - at full desktop size this alone was wider
-                than the space left over once the top row's 1fr/auto/1fr grid
-                also has to fit the account button + bell + Sync All on the
-                right, which forced the whole row (and with it the page)
-                wider than the viewport instead of respecting it. */}
+        {/* Stacked (logo row, then actions row) on mobile instead of one
+            1fr/auto/1fr grid row - squeezing the logo plus bell + a page
+            action + the account button all onto one row never fit on a
+            phone regardless of how far each individual piece got shrunk,
+            since a wordmark, an icon button, and a page-specific control
+            (some pages pass a whole <select>) all have their own minimum
+            width that can't shrink further without becoming unreadable or
+            unusable. Each row gets the FULL width to itself below md, so
+            there's no contention at all; reverts to the original single-row
+            grid from md up, where there's genuine room. */}
+        <div className="flex flex-col md:grid md:grid-cols-[1fr_auto_1fr] items-center gap-2 mb-4">
+          <span aria-hidden className="hidden md:block" />
+          <Link href="/" className="flex items-center gap-2 md:gap-4 justify-center min-w-0 md:order-2">
+            {/* Smaller on mobile - even with its own row now, full desktop
+                size read as oversized on a phone-width screen. */}
             <div
               className="w-10 h-10 md:w-16 md:h-16 rounded-2xl flex items-center justify-center flex-shrink-0"
               style={{
@@ -167,7 +174,7 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
               SlickSync
             </b>
           </Link>
-          <div className="flex items-center gap-2 justify-self-end">
+          <div className="flex items-center justify-center flex-wrap gap-2 md:justify-self-end md:order-3">
             <NotificationsDropdown activities={[]} inviteHistory={[]} taskHistory={[]} />
             {actions}
             {/* Mobile-only counterpart to the fixed bottom-left button above

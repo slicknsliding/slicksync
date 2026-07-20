@@ -1487,11 +1487,14 @@ function ActivityPageContent() {
     <select
       value={selectedGroup || ''}
       onChange={(e) => setSelectedGroup(e.target.value || null)}
-      // max-w on mobile only - a native <select> sizes itself to its longest
-      // option text (e.g. "SLICK STREMIO Imports"), which was wide enough to
-      // push Nebula's topbar row past the phone's screen width and overlap
-      // the logo. Unconstrained again from md up, where there's room.
-      className="px-3 py-2 bg-surface border border-default rounded-lg text-default text-sm focus:outline-none focus:border-primary max-w-[110px] overflow-hidden text-ellipsis whitespace-nowrap md:max-w-none"
+      // group-filter-select (globals.css) caps this on mobile only -
+      // a native <select> sizes itself to its longest option text (e.g.
+      // "SLICK STREMIO Imports"), wide enough to overlap the logo on a
+      // phone. A Tailwind max-w-[110px] class doesn't work here: it's
+      // layered CSS, and globals.css's unlayered `* { max-width: 100vw }`
+      // always wins over it regardless of source order - see that rule's
+      // own comment for the same issue.
+      className="px-3 py-2 bg-surface border border-default rounded-lg text-default text-sm focus:outline-none focus:border-primary overflow-hidden text-ellipsis whitespace-nowrap group-filter-select"
     >
       <option value="">All Groups</option>
       {groups.map((group) => (
