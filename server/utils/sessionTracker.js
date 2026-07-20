@@ -329,7 +329,14 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     if (watchDate) {
       lastActivityByItemId.set(itemId, watchDate)
     }
-    const currentPositionForItem = Number(state.timeOffset ?? state.overallTimeWatched ?? NaN)
+    // state.timeOffset only, never state.overallTimeWatched here - the latter
+    // is a lifetime-cumulative counter that can run to absurd values (see the
+    // CLAUDE.md note this file already documents elsewhere), unsafe to treat
+    // as a single-point-in-time "position" the way timeOffset is. Falling
+    // back to it produced a bogus 92h+ duration badge on a session that had
+    // been running for minutes, the one time timeOffset was momentarily
+    // absent from a poll's state payload.
+    const currentPositionForItem = Number(state.timeOffset ?? NaN)
     if (!Number.isNaN(currentPositionForItem)) {
       lastPositionByItemId.set(itemId, currentPositionForItem)
     }
@@ -369,7 +376,12 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
         // that case. Falls back to the previous wall-clock calculation
         // only when a startPosition isn't available (older sessions, or a
         // provider/item that doesn't report a position at all).
-        const currentPosition = Number(state.timeOffset ?? state.overallTimeWatched ?? NaN)
+        // state.timeOffset only - never state.overallTimeWatched, which is
+        // lifetime-cumulative and can be huge; falling back to it here (when
+        // timeOffset is momentarily missing from a poll) produced a one-poll
+        // "duration" equal to that entire cumulative value once diffed
+        // against a much smaller startPosition.
+        const currentPosition = Number(state.timeOffset ?? NaN)
         const hasPositionData = existingSession.startPosition != null && !Number.isNaN(currentPosition)
         const sessionDurationSeconds = hasPositionData
           ? Math.max(0, Math.floor((currentPosition - existingSession.startPosition) / 1000))
@@ -427,9 +439,11 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           // so by the time we get here, we genuinely need a new/reactivated session
           const sessionStartTime = watchDate && watchDate.getTime() <= nowMs ? watchDate : now
 
-          const startPositionValue = Number.isNaN(Number(state.timeOffset ?? state.overallTimeWatched ?? NaN))
+          // state.timeOffset only - see the matching comments above on why
+          // state.overallTimeWatched is never safe to use as a position here.
+          const startPositionValue = Number.isNaN(Number(state.timeOffset ?? NaN))
             ? null
-            : Number(state.timeOffset ?? state.overallTimeWatched)
+            : Number(state.timeOffset)
           const totalDurationValue = Number.isNaN(Number(state.duration ?? NaN)) ? null : Number(state.duration)
           const resolvedPoster = await resolveSinglePoster(itemId, item.type, item.poster)
 
