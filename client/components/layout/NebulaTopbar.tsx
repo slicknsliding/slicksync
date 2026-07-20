@@ -184,3 +184,42 @@ export function NebulaGlassStripe() {
     />
   );
 }
+
+// Nebula's stat-card equivalent of Current mode's <StatCard> - same
+// label/value/icon shape, so other pages can swap between the two based on
+// layoutMode without restructuring the surrounding grid. Icon color
+// alternates primary/secondary by index so a row of these doesn't read as
+// one flat block of a single hue.
+export function NebulaStatCard({
+  label,
+  value,
+  icon,
+  colorIndex = 0,
+}: {
+  label: string;
+  value: string | number;
+  icon?: ReactNode;
+  colorIndex?: number;
+}) {
+  const isPrimary = colorIndex % 2 === 0;
+  return (
+    <div className={`${NEBULA_GLASS_CLASS} p-5 flex items-center justify-between`} style={nebulaGlassStyle}>
+      <NebulaGlassStripe />
+      <div>
+        <p className="text-sm text-muted mb-1">{label}</p>
+        <p className="text-2xl font-bold text-default">{value}</p>
+      </div>
+      {icon && (
+        <div
+          className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+          style={{
+            background: isPrimary ? 'var(--color-primary-muted)' : 'var(--color-secondary-muted)',
+            color: isPrimary ? 'var(--color-primary)' : 'var(--color-secondary)',
+          }}
+        >
+          {icon}
+        </div>
+      )}
+    </div>
+  );
+}

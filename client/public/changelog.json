@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.13.6",
+    "date": "2026-07-19",
+    "title": "Nebula layout comes to Activity - topbar chrome and Watch tab stat cards",
+    "features": [
+      "Activity now gets Nebula's top-nav chrome and corner spotlight background instead of the sidebar. Its Watch tab (the default one) also gets glass-panel stat cards matching Dashboard's. The Tasks, Invites, and Proxy tabs are fully functional but still use Current's existing card styling for their content for now - that code has a lot of carefully-tuned session-matching logic (see the Now Playing duration calculation) that isn't worth the risk of duplicating into a second styled copy in one pass. Full glass-panel treatment for those three tabs is a planned follow-up, working incrementally through the rest of the app the same way Dashboard was built."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.13.5",
     "date": "2026-07-19",
     "title": "Nebula background: replaced the diagonal wash with corner spotlight glows",

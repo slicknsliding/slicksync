@@ -7,6 +7,8 @@ import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal, RatingBadges } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
+import { NebulaTopbar, NebulaStatCard } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
 import { api, MetricsData, Invitation, RatingsBatchEntry } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useDefaultViewMode } from '@/lib/viewMode';
@@ -884,6 +886,7 @@ function ProxyHistoryView() {
 }
 
 function ActivityPageContent() {
+  const { layoutMode } = useLayoutMode();
   const searchParams = useSearchParams();
   const userParam = searchParams.get('user');
   const periodParam = searchParams.get('period'); // 'today' | 'week'
@@ -1208,31 +1211,45 @@ function ActivityPageContent() {
   const yesterdayTasks: TaskHistoryItem[] = [];
   const olderTasks: TaskHistoryItem[] = [];
 
+  const groupFilterSelect = (
+    <select
+      value={selectedGroup || ''}
+      onChange={(e) => setSelectedGroup(e.target.value || null)}
+      className="px-3 py-2 bg-surface border border-default rounded-lg text-default text-sm focus:outline-none focus:border-primary"
+    >
+      <option value="">All Groups</option>
+      {groups.map((group) => (
+        <option key={group.id} value={group.id}>
+          {group.name}
+        </option>
+      ))}
+    </select>
+  );
+
   return (
     <>
-      <Header
-        title="Activity"
-        subtitle="Track watch history and sync operations across your SlickSync instance"
-        actions={
-          <div className="flex items-center gap-3">
-            {/* Group Filter Dropdown */}
-            <select
-              value={selectedGroup || ''}
-              onChange={(e) => setSelectedGroup(e.target.value || null)}
-              className="px-3 py-2 bg-surface border border-default rounded-lg text-default text-sm focus:outline-none focus:border-primary"
-            >
-              <option value="">All Groups</option>
-              {groups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        }
-      />
+      {layoutMode === 'nebula' ? (
+        <NebulaTopbar actions={groupFilterSelect} />
+      ) : (
+        <Header
+          title="Activity"
+          subtitle="Track watch history and sync operations across your SlickSync instance"
+          actions={<div className="flex items-center gap-3">{groupFilterSelect}</div>}
+        />
+      )}
 
-      <div className="p-8">
+      {/* Nebula gets the same 72rem centered column as Dashboard - set
+          inline, not via a max-w-* class, since globals.css's unlayered
+          `* { max-width: 100vw }` silently no-ops any Tailwind max-w-*
+          class (see PageContainer.tsx for the full explanation). Only the
+          Watch tab's stat cards and this outer chrome are Nebula-styled so
+          far - Tasks/Invites/Proxy still render Current's existing Card
+          styling below, since their content involves a lot of carefully-
+          debugged session-matching logic (see the Now Playing duration
+          calc a bit further down) that isn't worth the risk of duplicating
+          into a second copy right now. */}
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
         {/* Primary Tabs - Centered */}
         <PageToolbar
           animate={false}
@@ -1254,34 +1271,18 @@ function ActivityPageContent() {
             {/* Activity Stats (from real metrics data) */}
             <PageSection delay={0.05} className="mb-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard
-                  label="Currently Watching"
-                  value={isLoading ? '...' : String(currentlyWatchingCount)}
-                  icon={<PlayIcon className="w-6 h-6" />}
-                  delay={0}
-                />
-                <StatCard
-                  label="Watched Today"
-                  value={isLoading ? '...' : String(completedTodayCount)}
-                  icon={<CheckCircleIcon className="w-6 h-6" />}
-                  delay={0.05}
-                />
-                <StatCard
-                  label="Watch Time Today"
-                  value={
-                    isLoading
-                      ? '...'
-                      : formatHours(liveWatchTimeTodayHours)
-                  }
-                  icon={<ClockIcon className="w-6 h-6" />}
-                  delay={0.1}
-                />
-                <StatCard
-                  label="Active Users"
-                  value={isLoading ? '...' : String(activeUsersCount)}
-                  icon={<UserIcon className="w-6 h-6" />}
-                  delay={0.15}
-                />
+                {[
+                  { label: 'Currently Watching', value: isLoading ? '...' : String(currentlyWatchingCount), icon: <PlayIcon className="w-6 h-6" /> },
+                  { label: 'Watched Today', value: isLoading ? '...' : String(completedTodayCount), icon: <CheckCircleIcon className="w-6 h-6" /> },
+                  { label: 'Watch Time Today', value: isLoading ? '...' : formatHours(liveWatchTimeTodayHours), icon: <ClockIcon className="w-6 h-6" /> },
+                  { label: 'Active Users', value: isLoading ? '...' : String(activeUsersCount), icon: <UserIcon className="w-6 h-6" /> },
+                ].map((stat, index) =>
+                  layoutMode === 'nebula' ? (
+                    <NebulaStatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} colorIndex={index} />
+                  ) : (
+                    <StatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} delay={index * 0.05} />
+                  )
+                )}
               </div>
             </PageSection>
 
@@ -2046,6 +2047,7 @@ function ActivityPageContent() {
             ) : null}
           </>
         )}
+      </div>
       </div>
 
       {detailModalItem && (
