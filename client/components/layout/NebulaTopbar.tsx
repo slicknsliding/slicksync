@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Fragment, ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { PanelSwitcher } from './PanelSwitcher';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
@@ -21,10 +21,13 @@ import { api } from '@/lib/api';
 // NOT here - those three live only in the account dropdown (PanelSwitcher)
 // now, since the topbar has no room to spare and that dropdown is already
 // the natural "everything about this admin session" spot.
-const NEBULA_NAV_SECTIONS = [
+const NEBULA_NAV_SECTIONS: Array<{ id: string; label: string | null; items: { href: string; label: string }[] }> = [
   {
+    // No "Overview" badge - it's the first/default group (Dashboard is the
+    // landing page), so unlike Management it doesn't need a label to read
+    // as a section.
     id: 'overview',
-    label: 'Overview',
+    label: null,
     items: [
       { href: '/', label: 'Dashboard' },
       { href: '/discover', label: 'Discover' },
@@ -149,49 +152,46 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
           </div>
         </div>
         <nav
-          className="flex flex-wrap items-center justify-center gap-x-1 gap-y-3 pt-4"
+          className="flex flex-col items-center gap-3 pt-4"
           style={{ borderTop: '1px solid var(--color-surface-border)' }}
         >
-          {NEBULA_NAV_SECTIONS.map((section, sectionIndex) => (
-            <Fragment key={section.id}>
-              {sectionIndex > 0 && (
-                <span
-                  aria-hidden
-                  className="hidden md:block w-px h-6 mx-3 self-center"
-                  style={{ background: 'var(--color-surface-border)' }}
-                />
-              )}
-              <div className="flex flex-wrap items-center gap-2">
+          {NEBULA_NAV_SECTIONS.map((section) => (
+            // Each section is its own row, same as Sidebar.tsx's vertical
+            // stack of labeled groups - was previously one flex-wrap row
+            // where a group's label could end up squeezed inline next to
+            // the previous group's last pill instead of clearly its own block.
+            <div key={section.id} className="flex flex-wrap items-center justify-center gap-2">
+              {section.label && (
                 <span
                   className="text-[10px] font-semibold uppercase tracking-wider mr-1"
                   style={{ color: 'var(--color-text-subtle)' }}
                 >
                   {section.label}
                 </span>
-                {section.items.map((link) => {
-                  const isActive = pathname === link.href;
-                  return (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      className="nav-item-hover-pill text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap"
-                      style={
-                        isActive
-                          ? {
-                              color: '#fff',
-                              background:
-                                'linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 55%, transparent), color-mix(in srgb, var(--color-secondary) 30%, transparent))',
-                              boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 40%, transparent)',
-                            }
-                          : { color: 'var(--color-text-muted)' }
-                      }
-                    >
-                      {link.label}
-                    </Link>
-                  );
-                })}
-              </div>
-            </Fragment>
+              )}
+              {section.items.map((link) => {
+                const isActive = pathname === link.href;
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="nav-item-hover-pill text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap"
+                    style={
+                      isActive
+                        ? {
+                            color: '#fff',
+                            background:
+                              'linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 55%, transparent), color-mix(in srgb, var(--color-secondary) 30%, transparent))',
+                            boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 40%, transparent)',
+                          }
+                        : { color: 'var(--color-text-muted)' }
+                    }
+                  >
+                    {link.label}
+                  </Link>
+                );
+              })}
+            </div>
           ))}
         </nav>
       </div>
