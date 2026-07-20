@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.15.0",
+    "date": "2026-07-20",
+    "title": "Nebula: actions moved to each page's title row, account button un-fixed on mobile, real centered nav",
+    "features": [
+      "Notifications and each page's own action (Sync All, a period picker, the group filter, Add Entry, Reload All, etc.) moved out of the shared topbar and onto the page's own title row instead - the same place Current's <Header> already puts them. The topbar itself is back to just the centered logo on every screen size, which is also what fixed the crowding that kept causing mobile bugs the last few versions - there's nothing left in that row to crowd."
+    ],
+    "bugFixes": [
+      "The account button is fixed bottom-left on every screen size again, not just desktop - an earlier version moved it into the mobile top row to dodge a content-overlap bug, but that gave up the \"always reachable while scrolling\" behavior it's there for, which turned out to matter more.",
+      "Nebula's nav rows now actually center when they fit (desktop, and the 4-item row on most phones), matching how they looked before the mobile-wrapping fixes started. A previous attempt used a Tailwind justify-[safe_center] class that silently didn't compile - fixed with a plain CSS rule (`justify-content: safe center`), which also keeps every item swipeable-to instead of clipping part of an overflowing row off the left edge the way plain `center` would."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.14.9",
     "date": "2026-07-20",
     "title": "Nebula topbar: real fix for mobile - stacked rows instead of one crowded row",

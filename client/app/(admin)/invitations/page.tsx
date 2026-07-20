@@ -5,7 +5,7 @@ import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
-import { NebulaTopbar, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { Button, Card, Badge, Avatar, Modal, Input, Select, ConfirmModal, ToggleSwitch, DateTimePicker, UserAvatar, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
@@ -309,10 +309,10 @@ export default function InvitationsPage() {
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
       {layoutMode === 'nebula' && (
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold font-display mb-1 text-default">Invitations</h1>
-          <p className="text-sm text-muted">{isLoading ? 'Loading...' : `${invitations.length} active invite${invitations.length !== 1 ? 's' : ''} • ${pendingRequests.length} pending request${pendingRequests.length !== 1 ? 's' : ''}`}</p>
-        </div>
+        <NebulaPageHeading
+          title="Invitations"
+          subtitle={isLoading ? 'Loading...' : `${invitations.length} active invite${invitations.length !== 1 ? 's' : ''} • ${pendingRequests.length} pending request${pendingRequests.length !== 1 ? 's' : ''}`}
+        />
       )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}

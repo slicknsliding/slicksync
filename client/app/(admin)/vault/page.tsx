@@ -3,7 +3,7 @@
 import Head from 'next/head';
 import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/layout/Header';
-import { NebulaTopbar, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { useSortableDragState } from '@/components/ui/DragSortable';
@@ -537,13 +537,7 @@ export default function VaultPage() {
     <>
       <Head><title>SlickSync - Vault</title></Head>
       {layoutMode === 'nebula' ? (
-        <NebulaTopbar
-          actions={
-            <Button variant="primary" leftIcon={<PlusIcon className="w-5 h-5" />} onClick={openAddModal}>
-              Add Entry
-            </Button>
-          }
-        />
+        <NebulaTopbar />
       ) : (
         <Header
           title="Vault"
@@ -561,10 +555,15 @@ export default function VaultPage() {
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'px-4 md:px-6 pb-6'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
       {layoutMode === 'nebula' && (
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold font-display mb-1 text-default">Vault</h1>
-          <p className="text-sm text-muted">{isLoading ? 'Loading...' : `${total} ${total === 1 ? 'entry' : 'entries'}`}</p>
-        </div>
+        <NebulaPageHeading
+          title="Vault"
+          subtitle={isLoading ? 'Loading...' : `${total} ${total === 1 ? 'entry' : 'entries'}`}
+          actions={
+            <Button variant="primary" leftIcon={<PlusIcon className="w-5 h-5" />} onClick={openAddModal}>
+              Add Entry
+            </Button>
+          }
+        />
       )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}

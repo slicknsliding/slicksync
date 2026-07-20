@@ -3,7 +3,7 @@
 import { useState, useEffect, memo } from 'react';
 import { Header } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges } from '@/components/ui';
 import { api, DiscoverItem, RatingsBatchEntry } from '@/lib/api';
@@ -132,10 +132,10 @@ export default function DiscoverPage() {
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
       {layoutMode === 'nebula' && (
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold font-display mb-1 text-default">Discover</h1>
-          <p className="text-sm text-muted">Browse or search for something to watch, then open it straight in Stremio or Nuvio</p>
-        </div>
+        <NebulaPageHeading
+          title="Discover"
+          subtitle="Browse or search for something to watch, then open it straight in Stremio or Nuvio"
+        />
       )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}
