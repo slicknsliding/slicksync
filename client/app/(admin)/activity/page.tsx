@@ -7,7 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal, RatingBadges } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, MetricsData, Invitation, RatingsBatchEntry } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
@@ -1508,7 +1508,7 @@ function ActivityPageContent() {
   return (
     <>
       {layoutMode === 'nebula' ? (
-        <NebulaTopbar actions={groupFilterSelect} />
+        <NebulaTopbar />
       ) : (
         <Header
           title="Activity"
@@ -1529,6 +1529,13 @@ function ActivityPageContent() {
           into a second copy right now. */}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <NebulaPageHeading
+          title="Activity"
+          subtitle="Track watch history and sync operations across your SlickSync instance"
+          actions={groupFilterSelect}
+        />
+      )}
         {/* Primary Tabs - Centered */}
         <PageToolbar
           animate={false}

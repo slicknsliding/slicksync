@@ -56,7 +56,7 @@ const NEBULA_NAV_SECTIONS = [
   },
 ];
 
-export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
+export function NebulaTopbar() {
   const pathname = usePathname();
   // Mirrors Sidebar.tsx's own account-info fetch - Nebula's topbar had no
   // equivalent of the sidebar's bottom "Administrator" panel switcher at
@@ -87,20 +87,17 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
 
   return (
     <>
-      {/* Account/profile access, fixed bottom-left - mirrors where the
-          sidebar's own "Administrator" panel switcher lives in Current mode
-          (bottom of the nav), rather than sitting in the topbar's action
-          row up top. dropdownPosition="up" (the default) is correct again
-          here since this sits at the BOTTOM of the screen.
-          Desktop only (hidden below md): on a short mobile page (few stat
-          cards, no scrolling needed) this fixed-position button sat right on
-          top of whatever content happened to render at that same
-          bottom-left screen position - there's no page-content padding that
-          reliably clears a viewport-fixed element across every page's
-          differing content height. Below md it moves into the top row
-          instead (see the mobile-only trigger further down), which is
-          proper document flow and can never overlap anything. */}
-      <div className="hidden md:block fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40">
+      {/* Account/profile access, fixed bottom-left, on every viewport size -
+          mirrors where the sidebar's own "Administrator" panel switcher
+          lives in Current mode (bottom of the nav). Deliberately
+          viewport-fixed (not part of the page's own scrolling content) so
+          it stays reachable while scrolling, the same way Current's sidebar
+          version always stays on screen. An earlier attempt moved this into
+          the top row specifically on mobile to dodge a content-overlap bug
+          on short pages, but that traded away the "always there" behavior
+          this is for - reverted. dropdownPosition="up" (the default) is
+          correct since this sits at the BOTTOM of the screen. */}
+      <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40">
         <div
           className="rounded-2xl p-1.5"
           style={{
@@ -138,21 +135,17 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
           border: '1px solid var(--color-surface-border)',
         }}
       >
-        {/* Stacked (logo row, then actions row) on mobile instead of one
-            1fr/auto/1fr grid row - squeezing the logo plus bell + a page
-            action + the account button all onto one row never fit on a
-            phone regardless of how far each individual piece got shrunk,
-            since a wordmark, an icon button, and a page-specific control
-            (some pages pass a whole <select>) all have their own minimum
-            width that can't shrink further without becoming unreadable or
-            unusable. Each row gets the FULL width to itself below md, so
-            there's no contention at all; reverts to the original single-row
-            grid from md up, where there's genuine room. */}
-        <div className="flex flex-col md:grid md:grid-cols-[1fr_auto_1fr] items-center gap-2 mb-4">
-          <span aria-hidden className="hidden md:block" />
-          <Link href="/" className="flex items-center gap-2 md:gap-4 justify-center min-w-0 md:order-2">
-            {/* Smaller on mobile - even with its own row now, full desktop
-                size read as oversized on a phone-width screen. */}
+        {/* Just the centered logo now - notifications and any page-specific
+            controls (Sync All, period pickers, etc.) moved out of here and
+            onto each page's own title row instead (see NebulaPageHeading
+            below), matching where Current's own Header component puts them.
+            That also means this row no longer has to fit a bell, a page
+            action, and the account button alongside the wordmark, which
+            never reliably worked on a phone regardless of how far each
+            piece got shrunk - it's just the logo now, so nothing to shrink
+            for or stack rows over on any screen size. */}
+        <div className="flex items-center justify-center gap-2 md:gap-4 mb-4">
+          <Link href="/" className="flex items-center gap-2 md:gap-4 justify-center min-w-0">
             <div
               className="w-10 h-10 md:w-16 md:h-16 rounded-2xl flex items-center justify-center flex-shrink-0"
               style={{
@@ -174,30 +167,6 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
               SlickSync
             </b>
           </Link>
-          <div className="flex items-center justify-center flex-wrap gap-2 md:justify-self-end md:order-3">
-            <NotificationsDropdown activities={[]} inviteHistory={[]} taskHistory={[]} />
-            {actions}
-            {/* Mobile-only counterpart to the fixed bottom-left button above
-                (hidden below md there) - sits in normal document flow here,
-                so it can never overlap page content the way a viewport-fixed
-                element could on a short page. Last in this row (not first)
-                so it sits flush against the true right edge of the screen,
-                same edge assumption the bottom-left trigger relies on -
-                align="right" (the default) anchors the dropdown's right edge
-                to the TRIGGER's right edge and extends leftward, which only
-                stays on-screen on a narrow viewport when that edge is close
-                to the real screen edge. dropdownPosition="down" since this
-                is in the TOP row, not the bottom. */}
-            <div className="md:hidden">
-              <PanelSwitcher
-                mode="admin"
-                userInfo={accountInfo}
-                onLogout={handleLogout}
-                variant="compact"
-                dropdownPosition="down"
-              />
-            </div>
-          </div>
         </div>
         <nav
           className="flex flex-col items-center gap-3 pt-4"
@@ -209,14 +178,15 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
             // label above either row. flex-nowrap + overflow-x-auto instead
             // of flex-wrap: on a narrow phone width, wrapping split a row of
             // 4-5 pills across 2-3 uneven lines (one item stranded alone on
-            // its own line) - a horizontal swipe reads far better than that.
-            // justify-start (the default), not -center, so a row wider than
-            // the viewport starts flush left with its overflow predictably
-            // off to the right, rather than centering the overflow and
-            // hiding an equal, unreachable-feeling sliver on both edges.
+            // its own line) - a swipeable row reads far better than that.
+            // nebula-nav-row (globals.css) centers the row when it fits
+            // (desktop, and most phones for the 4-item Overview row) but
+            // falls back to start-alignment when it overflows, so every
+            // item stays reachable by swiping right - see that rule's own
+            // comment for why this can't be a Tailwind justify-* class.
             <div
               key={section.id}
-              className="flex flex-nowrap items-center gap-2 w-full overflow-x-auto no-scrollbar px-1 -mx-1"
+              className="flex flex-nowrap items-center gap-2 w-full overflow-x-auto no-scrollbar px-1 -mx-1 nebula-nav-row"
             >
               {section.items.map((link) => {
                 const isActive = pathname === link.href;
@@ -248,6 +218,37 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
       </div>
     </div>
     </>
+  );
+}
+
+// Each page's title row - notifications and any page-specific controls
+// (Sync All, a period picker, a group filter, etc.) live here now, to the
+// right of the title, the same spot Current's own <Header> puts its actions
+// - not in the shared topbar above, which has no room to spare once you
+// account for every page's differing actions, and whose own crowding fixes
+// kept getting undone by the fact that content was living in the wrong
+// place to begin with. flex-wrap so actions drop to their own line below
+// the title on a narrow screen rather than fighting it for space.
+export function NebulaPageHeading({
+  title,
+  subtitle,
+  actions,
+}: {
+  title: string;
+  subtitle?: string;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="mb-6 flex items-start justify-between gap-x-4 gap-y-3 flex-wrap">
+      <div>
+        <h1 className="text-2xl font-bold font-display mb-1 text-default">{title}</h1>
+        {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <NotificationsDropdown activities={[]} inviteHistory={[]} taskHistory={[]} />
+        {actions}
+      </div>
+    </div>
   );
 }
 

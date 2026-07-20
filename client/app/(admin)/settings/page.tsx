@@ -3,7 +3,7 @@
 import { useState, useEffect, memo } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
-import { NebulaTopbar } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { Button, Card, Badge, Modal, ConfirmModal, Avatar } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { useTheme, themeMeta, themeIds, ThemeId } from '@/lib/theme';
@@ -497,10 +497,7 @@ export default function SettingsPage() {
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-6 lg:p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : 'max-w-4xl'} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
       {layoutMode === 'nebula' && (
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold font-display mb-1 text-default">Settings</h1>
-          <p className="text-sm text-muted">Customize your SlickSync experience</p>
-        </div>
+        <NebulaPageHeading title="Settings" subtitle="Customize your SlickSync experience" />
       )}
         {/* Profile Picture - shown on the account button (bottom-left in
             Nebula, bottom of sidebar in Original) and its dropdown menu. */}

@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, UserAvatar, ConfirmModal } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
-import { NebulaTopbar } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, User } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -677,10 +677,7 @@ export default function TasksPage() {
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-6 lg:p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : 'max-w-3xl'} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
       {layoutMode === 'nebula' && (
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold font-display mb-1 text-default">Tasks</h1>
-          <p className="text-sm text-muted">Manage and export all your SlickSync data</p>
-        </div>
+        <NebulaPageHeading title="Tasks" subtitle="Manage and export all your SlickSync data" />
       )}
         {/* Users */}
         <PageSection>

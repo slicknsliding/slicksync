@@ -3,7 +3,7 @@
 import { useState, memo, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
-import { NebulaTopbar } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { Card, StatCard, Badge, UserAvatar, PageToolbar } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
@@ -280,7 +280,7 @@ export default function MetricsPage() {
   return (
     <>
       {layoutMode === 'nebula' ? (
-        <NebulaTopbar actions={periodSelect} />
+        <NebulaTopbar />
       ) : (
         <Header
           title="Metrics"
@@ -292,10 +292,11 @@ export default function MetricsPage() {
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
       {layoutMode === 'nebula' && (
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold font-display mb-1 text-default">Metrics</h1>
-          <p className="text-sm text-muted">Track watch time, content consumption, and user activity</p>
-        </div>
+        <NebulaPageHeading
+          title="Metrics"
+          subtitle="Track watch time, content consumption, and user activity"
+          actions={periodSelect}
+        />
       )}
         {/* View Mode Toggle - Centered */}
         <PageSection className="mb-6">

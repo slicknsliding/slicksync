@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Card, Button, Badge } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
-import { NebulaTopbar } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import {
@@ -305,10 +305,7 @@ export default function ChangelogPage() {
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
       {layoutMode === 'nebula' && (
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold font-display mb-1 text-default">What's New</h1>
-          <p className="text-sm text-muted">All notable changes to this project will be documented here.</p>
-        </div>
+        <NebulaPageHeading title="What's New" subtitle="All notable changes to this project will be documented here." />
       )}
         {/* Loading State */}
         {isInitialLoading && (

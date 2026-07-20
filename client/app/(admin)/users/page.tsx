@@ -8,7 +8,7 @@ import { Header } from '@/components/layout/Header';
 import { Button, Card, Avatar, Badge, StatusBadge, SearchInput, ConfirmModal, SyncBadge, ToggleSwitch, Modal, Input, UserAvatar, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, User, Group } from '@/lib/api';
@@ -343,7 +343,7 @@ export default function UsersPage() {
         <title>SlickSync - Users</title>
       </Head>
       {layoutMode === 'nebula' ? (
-        <NebulaTopbar actions={syncAllButton} />
+        <NebulaTopbar />
       ) : (
         <Header
           title="Users"
@@ -360,6 +360,13 @@ export default function UsersPage() {
           not a recolor. UserCard itself is completely unchanged either way. */}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <NebulaPageHeading
+          title="Users"
+          subtitle={isLoading ? 'Loading...' : `${users.length} total user${users.length !== 1 ? 's' : ''}`}
+          actions={syncAllButton}
+        />
+      )}
       {layoutMode === 'nebula' && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
           <NebulaStatCard label="Total Users" value={isLoading ? '...' : users.length} icon={<UsersIcon className="w-6 h-6" />} colorIndex={0} />

@@ -4,7 +4,7 @@ import { memo, useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
-import { NebulaTopbar, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu, MediaDetailModal, RatingBadges } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
@@ -630,19 +630,7 @@ export default function DashboardPage() {
   if (layoutMode === 'nebula') {
     return (
       <>
-        <NebulaTopbar
-          actions={
-            <Button
-              variant="primary"
-              size="sm"
-              leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
-              onClick={handleSyncAll}
-              isLoading={isSyncing}
-            >
-              Sync All
-            </Button>
-          }
-        />
+        <NebulaTopbar />
 
         <div className="px-4 md:px-6 pb-8 pt-6">
           {/* Same 72rem cap as NebulaTopbar, set inline for the same reason
@@ -650,8 +638,21 @@ export default function DashboardPage() {
               no-ops the max-w-6xl class) - keeps the whole page reading as
               one centered column instead of stretching into dead space. */}
           <div className="mx-auto" style={{ maxWidth: '72rem' }}>
-            <h1 className="text-2xl font-bold font-display mb-1 text-default">Dashboard</h1>
-            <p className="text-sm text-muted mb-6">Welcome back! Here's what's happening with SlickSync.</p>
+            <NebulaPageHeading
+              title="Dashboard"
+              subtitle="Welcome back! Here's what's happening with SlickSync."
+              actions={
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
+                  onClick={handleSyncAll}
+                  isLoading={isSyncing}
+                >
+                  Sync All
+                </Button>
+              }
+            />
 
             {error && (
               <div className="mb-6 p-4 rounded-xl bg-error-muted border border-error text-error text-sm flex items-center gap-3">
