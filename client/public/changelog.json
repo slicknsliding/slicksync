@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.14.3",
+    "date": "2026-07-20",
+    "title": "Tasks, Settings, Changelog moved out of Nebula's top nav",
+    "features": [
+      "Nebula's topbar nav no longer lists Tasks, Settings, or Changelog - those three (Sidebar's \"System\" group) now live only in the account dropdown (bottom-left), alongside the Tasks link that dropdown just gained. Keeps the top nav to the two groups people actually navigate between often; the account menu is already the natural spot for session-level pages."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.14.2",
     "date": "2026-07-20",
     "title": "Nebula nav grouping, a real \"Active Now\" count, bigger info button",
