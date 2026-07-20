@@ -818,7 +818,7 @@ export default function AddonsPage() {
               value={moveToVaultCategory}
               onChange={e => setMoveToVaultCategory(e.target.value)}
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
-              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             >
               {ADDON_VAULT_CATEGORIES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
             </select>
@@ -867,7 +867,7 @@ export default function AddonsPage() {
               value={bulkMoveToVaultCategory}
               onChange={e => setBulkMoveToVaultCategory(e.target.value)}
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
-              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             >
               {ADDON_VAULT_CATEGORIES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
             </select>
@@ -1362,7 +1362,7 @@ function AddAddonModal({
                 style={{
                   background: 'var(--color-surface)',
                   borderRadius: '24px',
-                  border: '1px solid var(--color-surfaceBorder)',
+                  border: '1px solid var(--color-surface-border)',
                   boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)'
                 }}
               >
@@ -1395,7 +1395,7 @@ function AddAddonModal({
                                 ? 'var(--color-subtle)'
                                 : 'linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 70%, var(--color-secondary)) 100%)',
                               boxShadow: '0 8px 32px -8px var(--color-primary)',
-                              border: manifestData?.logo ? '1px solid var(--color-surfaceBorder)' : 'none'
+                              border: manifestData?.logo ? '1px solid var(--color-surface-border)' : 'none'
                             }}
                           >
                             {manifestData?.logo ? (
@@ -1453,7 +1453,7 @@ function AddAddonModal({
                                 className="w-full pl-12 pr-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none"
                                 style={{
                                   background: 'var(--color-subtle)',
-                                  border: `1px solid ${error || urlError ? 'var(--color-error)' : 'var(--color-surfaceBorder)'}`,
+                                  border: `1px solid ${error || urlError ? 'var(--color-error)' : 'var(--color-surface-border)'}`,
                                   color: 'var(--color-text)'
                                 }}
                               />
