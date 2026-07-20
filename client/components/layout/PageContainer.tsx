@@ -23,21 +23,30 @@ export function PageContainer({ children, className, noSidebarOffset }: PageCont
       className={`${offsetClass} min-h-screen ${className || ''}`}
       style={{ background: 'var(--color-bg)' }}
     >
-      {/* Background gradient - Nebula gets a smooth diagonal wash (purple
-          anchored to the top-left corner, secondary color anchored to the
-          bottom-right, matching the layout's own namesake and the original
-          concept mockup) instead of the two small static corner blobs every
-          other page uses. animate-aurora-drift (globals.css) wobbles the
-          gradient's ANGLE, not its position/size - an earlier version
-          animated backgroundPosition against an oversized (180%)
-          backgroundSize, which meant at one end of the cycle the teal stop
-          got pushed entirely past the bottom-right edge and was never
-          visible at all. Both color stops now stay pinned to 0%/100% (their
-          own corners) at all times; only the angle drifts, gated behind
-          prefers-reduced-motion in globals.css. */}
+      {/* Background gradient - Nebula gets a soft spotlight glow pooling in
+          each corner (purple top-left, secondary color bottom-right,
+          matching the layout's own namesake and the approved concept
+          mockup) instead of the two small static corner blobs every other
+          page uses. Two earlier attempts at a diagonal linear-gradient
+          "wash" both had one color stop go invisible under certain
+          conditions (an oversized backgroundSize could push it off-screen
+          entirely) - large blurred radial blobs with a gentle transform-only
+          float (translate + scale, gated behind prefers-reduced-motion in
+          globals.css) can't have that failure mode, since they're always
+          anchored by their own position/size regardless of animation
+          frame. */}
       <div className={`fixed inset-0 ${offsetClass} pointer-events-none overflow-hidden`}>
         {noSidebarOffset ? (
-          <div className="absolute inset-0 opacity-50 animate-aurora-drift" />
+          <>
+            <div
+              className="absolute -top-32 -left-32 w-[520px] h-[520px] rounded-full blur-[110px] opacity-45 animate-float-slow"
+              style={{ background: 'var(--color-primary)' }}
+            />
+            <div
+              className="absolute -bottom-32 -right-32 w-[480px] h-[480px] rounded-full blur-[110px] opacity-40 animate-float-slow-reverse"
+              style={{ background: 'var(--color-secondary)' }}
+            />
+          </>
         ) : (
           <>
             <div
