@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.13.9",
+    "date": "2026-07-19",
+    "title": "Nebula's nav links now light up on hover, matching Original",
+    "bugFixes": [
+      "The sidebar's nav links have a hover effect (gradient highlight, glow) via a shared nav-item-hover-pill CSS class - Nebula's topbar nav links never had this class applied, so they had no hover feedback at all. Added it, matching Original's existing behavior exactly."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.13.8",
     "date": "2026-07-19",
     "title": "Activity's Tasks/Invites/Proxy tabs remastered, layout renamed to Original, Nebula opt-in again",

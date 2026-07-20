@@ -141,7 +141,7 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
               <Link
                 key={link.href}
                 href={link.href}
-                className="text-sm font-semibold px-4 py-2 rounded-full transition-colors whitespace-nowrap"
+                className="nav-item-hover-pill text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap"
                 style={
                   isActive
                     ? {
