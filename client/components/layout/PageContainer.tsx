@@ -39,11 +39,11 @@ export function PageContainer({ children, className, noSidebarOffset }: PageCont
         {noSidebarOffset ? (
           <>
             <div
-              className="absolute -top-32 -left-32 w-[520px] h-[520px] rounded-full blur-[110px] opacity-45 animate-float-slow"
+              className="absolute -top-32 -left-32 w-[560px] h-[560px] rounded-full blur-[110px] opacity-55 animate-float-slow"
               style={{ background: 'var(--color-primary)' }}
             />
             <div
-              className="absolute -bottom-32 -right-32 w-[480px] h-[480px] rounded-full blur-[110px] opacity-40 animate-float-slow-reverse"
+              className="absolute -bottom-32 -right-32 w-[520px] h-[520px] rounded-full blur-[110px] opacity-50 animate-float-slow-reverse"
               style={{ background: 'var(--color-secondary)' }}
             />
           </>
