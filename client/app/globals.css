@@ -831,3 +831,15 @@ body {
     max-width: none;
   }
 }
+
+/* Nebula's per-section nav row: centers its pills when they fit, but a
+   plain `justify-content: center` on a row that overflows shifts the start
+   negative, permanently clipping that portion outside the scrollable range
+   in every browser - `safe center` falls back to start-alignment
+   specifically when there isn't room, keeping every item reachable by
+   swiping right. Tailwind's justify-[safe_center] arbitrary-value syntax
+   doesn't compile here (its justify-* utility generator doesn't appear to
+   support two-word values), so this has to be a plain rule too. */
+.nebula-nav-row {
+  justify-content: safe center;
+}
