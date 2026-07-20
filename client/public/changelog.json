@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.16.4",
+    "date": "2026-07-20",
+    "title": "Addons page: compact header stats instead of a big card row",
+    "features": [
+      "Addons' Total Addons / Protected / Assignments cards were a full-width row of large stat cards, disproportionately big for numbers most people glance at rather than study. They're now a compact inline strip that sits in the page header itself, between the title and the bell/Reload All button on desktop; on mobile (where there isn't room for all three in one row) they drop to their own centered row right below title+actions instead of stacking as three separate full-width cards. Everything below (search, filters, the addon list) moves up to fill the freed space."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.16.3",
     "date": "2026-07-20",
     "title": "Now Playing shows up in the notification bell; Watch Time Today no longer undercounts",

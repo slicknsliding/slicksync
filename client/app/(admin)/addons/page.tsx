@@ -8,7 +8,7 @@ import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, ResourceBadge, SearchInput, Modal, Input, ConfirmModal, VersionBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading, NebulaHeaderStats, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, Addon } from '@/lib/api';
@@ -410,14 +410,16 @@ export default function AddonsPage() {
           title="Addons"
           subtitle={isLoading ? 'Loading...' : `${addons.length} addon${addons.length !== 1 ? 's' : ''} • ${protectedCount} protected`}
           actions={reloadAllButton}
+          stats={
+            <NebulaHeaderStats
+              stats={[
+                { label: 'Total Addons', value: isLoading ? '...' : addons.length },
+                { label: 'Protected', value: isLoading ? '...' : protectedCount },
+                { label: 'Assignments', value: isLoading ? '...' : totalAddonAssignments },
+              ]}
+            />
+          }
         />
-      )}
-      {layoutMode === 'nebula' && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-          <NebulaStatCard label="Total Addons" value={isLoading ? '...' : addons.length} icon={<PuzzlePieceIcon className="w-6 h-6" />} colorIndex={0} />
-          <NebulaStatCard label="Protected" value={isLoading ? '...' : protectedCount} icon={<ShieldCheckIcon className="w-6 h-6" />} colorIndex={1} />
-          <NebulaStatCard label="Assignments" value={isLoading ? '...' : totalAddonAssignments} icon={<UsersIcon className="w-6 h-6" />} colorIndex={0} />
-        </div>
       )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}
