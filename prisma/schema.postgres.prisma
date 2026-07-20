@@ -290,6 +290,7 @@ model EpisodeWatchHistory {
   poster      String? // Show poster URL
   profileLabel String?
   durationSeconds Int?     // Real duration, backfilled from a matching AIOStreams-proxy WatchSession entry when the two are merged as the same viewing event // Which provider profile this was watched under (e.g. Nuvio profile name), if known
+  debridService String? // e.g. "torbox" - only set when this watch was confidently correlated to a ProxyStreamSession AND a known debrid pattern was found in its resolved URL (server/utils/debridDetection.js). Null means either not proxied, or proxied but not confidently identified - never a guess either way.
   watchedAt   DateTime // When this episode was watched
   createdAt   DateTime @default(now())
 
@@ -314,6 +315,7 @@ model MovieWatchHistory {
   poster    String? // Movie poster URL
   profileLabel String?
   durationSeconds Int?     // Real duration, backfilled from a matching AIOStreams-proxy WatchSession entry when the two are merged as the same viewing event // Which provider profile this was watched under (e.g. Nuvio profile name), if known
+  debridService String? // See EpisodeWatchHistory.debridService's comment - same field, same rules.
   watchedAt DateTime // When this movie was watched
   createdAt DateTime @default(now())
 

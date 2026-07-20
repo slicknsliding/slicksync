@@ -1778,6 +1778,11 @@ export interface MetricsData {
     // this feed has no per-event duration of its own (see metricsBuilder.js
     // mergeCrossPipelineDuplicates).
     durationSeconds?: number;
+    // Only present when this watch was confidently correlated to a stream
+    // seen by the AIOStreams proxy AND its resolved URL matched a known
+    // debrid pattern (server/utils/debridDetection.js). e.g. "torbox".
+    // Absent doesn't mean "not debrid" - it means not confidently detected.
+    debridService?: string;
   }>;
   recentEpisodes?: Array<{
     user: { id: string; username: string; email?: string; colorIndex: number };
