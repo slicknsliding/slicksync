@@ -233,23 +233,59 @@ export function NebulaPageHeading({
   title,
   subtitle,
   actions,
+  stats,
 }: {
   title: string;
   subtitle?: string;
   actions?: ReactNode;
+  /** Compact inline KPI strip (see NebulaHeaderStats) - sits centered
+      between the title and actions on desktop (where justify-between
+      naturally puts a 3rd flex child), drops to its own full-width
+      centered row below them on mobile since it can't share a row with
+      both without crowding - a page-specific opt-in replacement for a
+      full NebulaStatCard grid when the stats are secondary context, not
+      the page's main content (see the Addons page for the first use). */
+  stats?: ReactNode;
 }) {
   return (
     <div className="mb-6 flex items-start justify-between gap-x-4 gap-y-3 flex-wrap">
-      <div>
+      <div className="order-1">
         <h1 className="text-2xl font-bold font-display mb-1 text-default">{title}</h1>
         {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
       </div>
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap order-2 md:order-3">
         {/* No props needed - it self-fetches real recent activity and
             invite history now (see NotificationsDropdown.tsx). */}
         <NotificationsDropdown />
         {actions}
       </div>
+      {stats && (
+        <div className="order-3 md:order-2 w-full md:w-auto flex justify-center">
+          {stats}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Compact inline KPI strip for NebulaPageHeading's `stats` slot - numbers
+// over labels, thin dividers between them, no cards/icons/backgrounds. Much
+// smaller than NebulaStatCard by design: for a page whose stats are useful
+// context but not the point (e.g. Addons), a full stat-card grid was
+// disproportionately large relative to how often anyone looks at it.
+export function NebulaHeaderStats({
+  stats,
+}: {
+  stats: Array<{ label: string; value: string | number }>;
+}) {
+  return (
+    <div className="flex items-center divide-x divide-default/30">
+      {stats.map((s) => (
+        <div key={s.label} className="px-3 sm:px-4 first:pl-0 last:pr-0 text-center">
+          <div className="text-lg font-bold font-display text-default leading-none">{s.value}</div>
+          <div className="text-[11px] text-muted mt-1 whitespace-nowrap">{s.label}</div>
+        </div>
+      ))}
     </div>
   );
 }
