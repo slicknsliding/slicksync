@@ -515,7 +515,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -10 }}
               transition={{ duration: 0.15 }}
-              className="absolute right-0 top-full mt-2 z-50 w-80 max-w-[calc(100vw-2rem)]"
+              className="absolute right-0 top-full mt-2 z-50 w-80"
+              style={{ maxWidth: 'calc(100vw - 2rem)' }}
             >
               {/* Small caret pointing up at the bell that opened this, so
                   the panel reads unambiguously as "a popup from that

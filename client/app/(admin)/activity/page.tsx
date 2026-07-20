@@ -1841,7 +1841,7 @@ function ActivityPageContent() {
                       <ClockIcon className="w-8 h-8 text-subtle" />
                     </div>
                     <h3 className="text-lg font-semibold text-default mb-2">No Activity Found</h3>
-                    <p className="text-muted max-w-md mx-auto">
+                    <p className="text-muted mx-auto" style={{ maxWidth: '448px' }}>
                       {searchQuery
                         ? `No activity matches "${searchQuery}". Try a different search term.`
                         : 'No activity matches your current filters. Try adjusting your filters.'}
@@ -1935,7 +1935,7 @@ function ActivityPageContent() {
                       <EnvelopeIcon className="w-8 h-8 text-subtle" />
                     </div>
                     <h3 className="text-lg font-semibold text-default mb-2">No Invitation History</h3>
-                    <p className="text-muted max-w-md mx-auto">
+                    <p className="text-muted mx-auto" style={{ maxWidth: '448px' }}>
                       Invitation history will appear here when invitations are created, used, or expire.
                     </p>
                   </Card>
@@ -2030,7 +2030,7 @@ function ActivityPageContent() {
                       <ClockIcon className="w-8 h-8 text-subtle" />
                     </div>
                     <h3 className="text-lg font-semibold text-default mb-2">No Task History</h3>
-                    <p className="text-muted max-w-md mx-auto">
+                    <p className="text-muted mx-auto" style={{ maxWidth: '448px' }}>
                       Task history will appear here after running sync operations, backups, or imports.
                     </p>
                   </Card>

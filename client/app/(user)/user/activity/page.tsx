@@ -805,7 +805,7 @@ export default function UserActivityPage() {
             transition={{ delay: 0.25 }}
             className="flex items-center justify-between gap-4 mb-6"
           >
-            <div className="relative flex-1 max-w-sm">
+            <div className="relative flex-1" style={{ maxWidth: '384px' }}>
               <MagnifyingGlassIcon
                 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5"
                 style={{ color: 'var(--color-text-muted)' }}

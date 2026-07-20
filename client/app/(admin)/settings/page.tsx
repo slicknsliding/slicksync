@@ -458,7 +458,7 @@ export default function SettingsPage() {
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-6 lg:p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : 'max-w-4xl'} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={{ maxWidth: layoutMode === 'nebula' ? '72rem' : '896px' }}>
       {layoutMode === 'nebula' && (
         <NebulaPageHeading title="Settings" subtitle="Customize your SlickSync experience" />
       )}
@@ -625,7 +625,7 @@ export default function SettingsPage() {
                     showLabels={false}
                   />
                 </div>
-                <span className="md:hidden text-xs text-muted text-right max-w-[120px]">
+                <span className="md:hidden text-xs text-muted text-right" style={{ maxWidth: '120px' }}>
                   Grid view only on mobile
                 </span>
               </SettingRow>
