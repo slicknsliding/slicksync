@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.13.11",
+    "date": "2026-07-20",
+    "title": "Nebula background glow was getting swallowed on long pages",
+    "bugFixes": [
+      "On a long page (Activity's Watch tab with real history can run 7000px+ tall), the corner background glow is `position: fixed` so it's always present at the current viewport's corners regardless of scroll - but once scrolled past the first screenful, the glass panels' 66% opacity plus their own 18px backdrop-blur (applied to whatever's behind them) diluted what little glow reached through into something close to invisible. Reduced panel opacity to 55% and increased the glow's own opacity/size so it stays visibly present behind content throughout a long scroll instead of reading as having disappeared."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.13.10",
     "date": "2026-07-20",
     "title": "Nebula layout comes to Users, Groups, and Addons",

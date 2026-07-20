@@ -169,8 +169,18 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
 // blurred background. A plain className string, not a component, so callers
 // can still control their own padding/layout freely.
 export const NEBULA_GLASS_CLASS = 'relative rounded-2xl overflow-hidden';
+// 55% opacity (was 66%) - on a long page (e.g. Activity's Watch tab with
+// many stacked date-group panels, confirmed 7000px+ tall with real history)
+// the corner background glow is `position: fixed`, so it's always present
+// at the current viewport's corners regardless of scroll - but panels
+// covering nearly the full viewport width left very little exposed
+// background for it to show through, and what did reach through a panel
+// was further muted by backdropFilter's own blur on top of the glow's
+// already-blurred (110px) source. Letting more of the panel go through
+// keeps the glow visibly present behind content instead of reading as
+// having disappeared once scrolled past the first screenful.
 export const nebulaGlassStyle: React.CSSProperties = {
-  background: 'color-mix(in srgb, var(--color-surface) 66%, transparent)',
+  background: 'color-mix(in srgb, var(--color-surface) 55%, transparent)',
   backdropFilter: 'blur(18px)',
   WebkitBackdropFilter: 'blur(18px)',
   border: '1px solid var(--color-surfaceBorder)',
