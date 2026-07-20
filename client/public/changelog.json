@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.13.7",
+    "date": "2026-07-19",
+    "title": "Nebula's Activity Watch tab: real layout remaster, not just recoloring",
+    "features": [
+      "The Watch tab's Now Playing section and each day's activity group are now their own floating glass panels instead of a flat list on the page background - a genuine structural change, matching the same panel-based language Dashboard already uses, not just a palette swap on the existing Card layout."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Extracted the Now Playing card's header and body (including the carefully-tuned live-session duration matching logic) into shared components used by both Current and Nebula, instead of duplicating that logic into a second copy for the new layout."
+    ]
+  },
+  {
     "version": "1.13.6",
     "date": "2026-07-19",
     "title": "Nebula layout comes to Activity - topbar chrome and Watch tab stat cards",
