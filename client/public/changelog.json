@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.14.2",
+    "date": "2026-07-20",
+    "title": "Nebula nav grouping, a real \"Active Now\" count, bigger info button",
+    "features": [
+      "Nebula's top nav now groups links into the same Overview / Management / System sections the Original sidebar already uses, instead of one flat row of 12 links."
+    ],
+    "bugFixes": [
+      "Dashboard's \"Active Now\" ring was reading metricsData.summary.activeUsers, which counts anyone with watch activity anywhere in the metrics period - on a small instance where both users have watched something recently, that's permanently \"2/2\" even with nobody watching live, contradicting Activity's own \"Currently Watching\" count sitting at 0 right next to it. Now derived from the same live nowPlaying feed Activity uses, deduped by user id.",
+      "The small info-circle fallback button on Continue Watching cards (shown when a card's app link might not open) was easy to miss-click at 14px - enlarged the icon and its tap target."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.14.1",
     "date": "2026-07-20",
     "title": "Admin profile picture, Settings & Changelog in the account menu",

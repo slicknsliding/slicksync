@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ReactNode, useEffect, useState } from 'react';
+import { Fragment, ReactNode, useEffect, useState } from 'react';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { PanelSwitcher } from './PanelSwitcher';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
@@ -14,19 +14,41 @@ import { api } from '@/lib/api';
 // Colors come from the active Theme's CSS variables, not hardcoded hex, so
 // this looks right regardless of which color theme is selected - layout and
 // color are independent settings.
-const NEBULA_NAV_LINKS = [
-  { href: '/', label: 'Dashboard' },
-  { href: '/discover', label: 'Discover' },
-  { href: '/activity', label: 'Activity' },
-  { href: '/metrics', label: 'Metrics' },
-  { href: '/users', label: 'Users' },
-  { href: '/groups', label: 'Groups' },
-  { href: '/addons', label: 'Addons' },
-  { href: '/vault', label: 'Vault' },
-  { href: '/invitations', label: 'Invitations' },
-  { href: '/tasks', label: 'Tasks' },
-  { href: '/settings', label: 'Settings' },
-  { href: '/changelog', label: 'Changelog' },
+// Same three groups as Sidebar.tsx's navigationSections (Overview /
+// Management / System) - kept in sync manually since one is a flat pill row
+// and the other a vertical list, too different to share a single data
+// structure cleanly.
+const NEBULA_NAV_SECTIONS = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    items: [
+      { href: '/', label: 'Dashboard' },
+      { href: '/discover', label: 'Discover' },
+      { href: '/activity', label: 'Activity' },
+      { href: '/metrics', label: 'Metrics' },
+    ],
+  },
+  {
+    id: 'management',
+    label: 'Management',
+    items: [
+      { href: '/users', label: 'Users' },
+      { href: '/groups', label: 'Groups' },
+      { href: '/addons', label: 'Addons' },
+      { href: '/vault', label: 'Vault' },
+      { href: '/invitations', label: 'Invitations' },
+    ],
+  },
+  {
+    id: 'system',
+    label: 'System',
+    items: [
+      { href: '/tasks', label: 'Tasks' },
+      { href: '/settings', label: 'Settings' },
+      { href: '/changelog', label: 'Changelog' },
+    ],
+  },
 ];
 
 export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
@@ -133,31 +155,50 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
           </div>
         </div>
         <nav
-          className="flex flex-wrap justify-center gap-2 pt-4"
+          className="flex flex-wrap items-center justify-center gap-x-1 gap-y-3 pt-4"
           style={{ borderTop: '1px solid var(--color-surface-border)' }}
         >
-          {NEBULA_NAV_LINKS.map((link) => {
-            const isActive = pathname === link.href;
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="nav-item-hover-pill text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap"
-                style={
-                  isActive
-                    ? {
-                        color: '#fff',
-                        background:
-                          'linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 55%, transparent), color-mix(in srgb, var(--color-secondary) 30%, transparent))',
-                        boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 40%, transparent)',
+          {NEBULA_NAV_SECTIONS.map((section, sectionIndex) => (
+            <Fragment key={section.id}>
+              {sectionIndex > 0 && (
+                <span
+                  aria-hidden
+                  className="hidden md:block w-px h-6 mx-3 self-center"
+                  style={{ background: 'var(--color-surface-border)' }}
+                />
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-wider mr-1"
+                  style={{ color: 'var(--color-text-subtle)' }}
+                >
+                  {section.label}
+                </span>
+                {section.items.map((link) => {
+                  const isActive = pathname === link.href;
+                  return (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className="nav-item-hover-pill text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap"
+                      style={
+                        isActive
+                          ? {
+                              color: '#fff',
+                              background:
+                                'linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 55%, transparent), color-mix(in srgb, var(--color-secondary) 30%, transparent))',
+                              boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 40%, transparent)',
+                            }
+                          : { color: 'var(--color-text-muted)' }
                       }
-                    : { color: 'var(--color-text-muted)' }
-                }
-              >
-                {link.label}
-              </Link>
-            );
-          })}
+                    >
+                      {link.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            </Fragment>
+          ))}
         </nav>
       </div>
     </div>
