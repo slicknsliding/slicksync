@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.16.5",
+    "date": "2026-07-20",
+    "title": "Now Playing freshness window widened from 15min to 18min",
+    "features": [
+      "sessionTracker.js's isActivelyWatching() window (how long a native watch session keeps showing as \"Now Playing\" after the provider's last checkpoint) is now 18 minutes, up from 15. Verified against real production data first: a single pause alone is enough to write a fresh checkpoint - confirmed by pausing a live usenet stream and watching a checkpoint land in the DB ~16 seconds later, with Now Playing/Active Users correctly lighting up from it. The tradeoff either way is real and unavoidable (Nuvio's data only tells us \"last saved position,\" never \"still playing\" vs \"paused\" vs \"stopped\"), so this stops short of the 20min value already tried and reverted in v1.9.35 for lingering too long after a real stop, rather than re-trying that exact number. proxyNowPlaying.js's RECENTLY_CLOSED_MS (which must stay comfortably above this window for proxy/native reconciliation to stay correct) moved from 20min to 23min to preserve the same margin. Both the isActivelyWatching() gate and the separate hasRecentActivity check in sessionTracker.js were updated together, same as they were kept in sync in v1.9.35."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.16.4",
     "date": "2026-07-20",
     "title": "Addons page: compact header stats instead of a big card row",
