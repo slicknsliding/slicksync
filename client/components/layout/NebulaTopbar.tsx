@@ -3,6 +3,17 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
+import {
+  HomeIcon,
+  MagnifyingGlassIcon,
+  ClockIcon,
+  ChartBarIcon,
+  UsersIcon,
+  UserGroupIcon,
+  PuzzlePieceIcon,
+  ShieldCheckIcon,
+  EnvelopeIcon,
+} from '@heroicons/react/24/outline';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { PanelSwitcher } from './PanelSwitcher';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
@@ -14,36 +25,33 @@ import { api } from '@/lib/api';
 // Colors come from the active Theme's CSS variables, not hardcoded hex, so
 // this looks right regardless of which color theme is selected - layout and
 // color are independent settings.
-// Overview / Management groups mirror Sidebar.tsx's navigationSections -
-// kept in sync manually since one is a flat pill row and the other a
-// vertical list, too different to share a single data structure cleanly.
+// Overview / Management groups mirror Sidebar.tsx's navigationSections and
+// its per-item icons - kept in sync manually since one is a flat pill row
+// and the other a vertical list, too different to share a single data
+// structure cleanly. No group labels ("Overview"/"Management" text) - just
+// the two rows of icon+label pills, spacing alone marks the grouping.
 // Sidebar's third group (System: Tasks/Settings/Changelog) is deliberately
 // NOT here - those three live only in the account dropdown (PanelSwitcher)
 // now, since the topbar has no room to spare and that dropdown is already
 // the natural "everything about this admin session" spot.
-const NEBULA_NAV_SECTIONS: Array<{ id: string; label: string | null; items: { href: string; label: string }[] }> = [
+const NEBULA_NAV_SECTIONS = [
   {
-    // No "Overview" badge - it's the first/default group (Dashboard is the
-    // landing page), so unlike Management it doesn't need a label to read
-    // as a section.
     id: 'overview',
-    label: null,
     items: [
-      { href: '/', label: 'Dashboard' },
-      { href: '/discover', label: 'Discover' },
-      { href: '/activity', label: 'Activity' },
-      { href: '/metrics', label: 'Metrics' },
+      { href: '/', label: 'Dashboard', icon: HomeIcon },
+      { href: '/discover', label: 'Discover', icon: MagnifyingGlassIcon },
+      { href: '/activity', label: 'Activity', icon: ClockIcon },
+      { href: '/metrics', label: 'Metrics', icon: ChartBarIcon },
     ],
   },
   {
     id: 'management',
-    label: 'Management',
     items: [
-      { href: '/users', label: 'Users' },
-      { href: '/groups', label: 'Groups' },
-      { href: '/addons', label: 'Addons' },
-      { href: '/vault', label: 'Vault' },
-      { href: '/invitations', label: 'Invitations' },
+      { href: '/users', label: 'Users', icon: UsersIcon },
+      { href: '/groups', label: 'Groups', icon: UserGroupIcon },
+      { href: '/addons', label: 'Addons', icon: PuzzlePieceIcon },
+      { href: '/vault', label: 'Vault', icon: ShieldCheckIcon },
+      { href: '/invitations', label: 'Invitations', icon: EnvelopeIcon },
     ],
   },
 ];
@@ -157,25 +165,17 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
         >
           {NEBULA_NAV_SECTIONS.map((section) => (
             // Each section is its own row, same as Sidebar.tsx's vertical
-            // stack of labeled groups - was previously one flex-wrap row
-            // where a group's label could end up squeezed inline next to
-            // the previous group's last pill instead of clearly its own block.
+            // stack of groups - spacing alone marks the grouping, no text
+            // label above either row.
             <div key={section.id} className="flex flex-wrap items-center justify-center gap-2">
-              {section.label && (
-                <span
-                  className="text-[10px] font-semibold uppercase tracking-wider mr-1"
-                  style={{ color: 'var(--color-text-subtle)' }}
-                >
-                  {section.label}
-                </span>
-              )}
               {section.items.map((link) => {
                 const isActive = pathname === link.href;
+                const Icon = link.icon;
                 return (
                   <Link
                     key={link.href}
                     href={link.href}
-                    className="nav-item-hover-pill text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap"
+                    className="nav-item-hover-pill flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap"
                     style={
                       isActive
                         ? {
@@ -187,6 +187,7 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
                         : { color: 'var(--color-text-muted)' }
                     }
                   >
+                    <Icon className="w-4 h-4 shrink-0" />
                     {link.label}
                   </Link>
                 );

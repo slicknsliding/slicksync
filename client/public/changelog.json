@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.14.5",
+    "date": "2026-07-20",
+    "title": "Nebula nav: real icons per link, no more \"Management\" text",
+    "bugFixes": [
+      "\"Badges\" turned out to mean the per-item icons the sidebar already has (magnifying glass for Discover, clock for Activity, etc.), not the group-label text added over the last couple versions - Nebula's nav now has those icons on every link, matching Sidebar.tsx exactly. The remaining group label (\"Management\") is dropped too, same reasoning as \"Overview\" going earlier: the icons plus spacing between rows already read as two groups without needing text to say so."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.14.4",
     "date": "2026-07-20",
     "title": "Nebula nav badges: stacked rows, no redundant \"Overview\"",
