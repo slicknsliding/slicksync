@@ -813,3 +813,21 @@ body {
 .overflow-x-auto {
   max-width: none;
 }
+
+/* Nebula Activity's group filter <select> sizes itself to its longest
+   option text (a group name), wide enough to overlap the logo on a phone
+   screen - needs a TIGHTER cap than the 100vw default on mobile. A Tailwind
+   max-w-[110px] utility class doesn't work here: it's layered CSS, and the
+   unlayered `* { max-width: 100vw }` above always wins over any layered
+   utility regardless of source order or specificity (same reason
+   .overflow-x-auto above has to be a plain rule, not a Tailwind class).
+   This has to be a plain rule too, for the same reason. */
+.group-filter-select {
+  max-width: 7rem;
+}
+
+@media (min-width: 768px) {
+  .group-filter-select {
+    max-width: none;
+  }
+}
