@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.13.3",
+    "date": "2026-07-19",
+    "title": "Nebula layout: restored the drifting purple/teal background wash",
+    "features": [
+      "Brought back the diagonal background gradient from the original Nebula concept mockup - a purple wash bleeding from the top-left into a teal wash from the bottom-right, slowly drifting over a 22s cycle rather than sitting static. Only Nebula gets this; every other page keeps the smaller, static two-blob background it always had."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.13.2",
     "date": "2026-07-19",
     "title": "Nebula layout: account menu repositioned, full nav coverage, richer dashboard",

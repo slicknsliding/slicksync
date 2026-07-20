@@ -727,6 +727,27 @@ body {
   animation: float 4s ease-in-out infinite;
 }
 
+/* Nebula layout's diagonal background wash (PageContainer.tsx) - drifts the
+   oversized gradient's position slowly back and forth so the purple/teal
+   transition feels alive without ever snapping or looping visibly. */
+@keyframes aurora-drift {
+  0%, 100% { background-position: 0% 0%; }
+  50% { background-position: 100% 100%; }
+}
+
+.animate-aurora-drift {
+  animation: aurora-drift 22s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-shimmer,
+  .animate-pulse-soft,
+  .animate-float,
+  .animate-aurora-drift {
+    animation: none;
+  }
+}
+
 /* Animation delays */
 .delay-100 { animation-delay: 100ms; }
 .delay-200 { animation-delay: 200ms; }
