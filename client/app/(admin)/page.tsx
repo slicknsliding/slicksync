@@ -277,10 +277,10 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
           }}
           title="App didn't open? View details instead"
           aria-label="App didn't open? View details instead"
-          className="absolute top-1.5 right-1.5 z-10 p-1 rounded-md transition-colors"
+          className="absolute top-1.5 right-1.5 z-10 p-1.5 rounded-md transition-colors"
           style={{ color: 'white', background: 'rgba(0,0,0,0.6)' }}
         >
-          <InformationCircleIcon className="w-3.5 h-3.5" />
+          <InformationCircleIcon className="w-5 h-5" />
         </button>
       )}
 
@@ -475,9 +475,18 @@ export default function DashboardPage() {
     };
   }, [accountStats, metricsData, recentAddonsData]);
 
-  // Nebula layout's ring stat - active users out of total, for real (not
-  // the mockup's hardcoded 2/2).
-  const activeUsers = metricsData?.summary?.activeUsers ?? 0;
+  // Nebula layout's ring stat - users currently watching right now, out of
+  // total. metricsData.summary.activeUsers counts anyone with watch activity
+  // in the whole metrics period (i.e. "watched something recently"), which
+  // reads as permanently-active on a small instance and contradicts "Active
+  // Now" / Activity's own "Currently Watching" count sitting at 0 alongside
+  // it. nowPlaying is the same live-presence feed Activity's "Currently
+  // Watching" stat uses - dedupe by user id since one user can have more
+  // than one nowPlaying entry (e.g. the same title picked up under both
+  // their Stremio and Nuvio profiles).
+  const activeUsers = metricsData?.nowPlaying
+    ? new Set(metricsData.nowPlaying.map((np) => np.user.id)).size
+    : 0;
   const ringCircumference = 2 * Math.PI * 28;
   const ringRatio = stats.totalUsers > 0 ? Math.min(1, activeUsers / stats.totalUsers) : 0;
 
