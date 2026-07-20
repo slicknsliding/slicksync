@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.16.3",
+    "date": "2026-07-20",
+    "title": "Now Playing shows up in the notification bell; Watch Time Today no longer undercounts",
+    "bugFixes": [
+      "Starting a watch has always sent an instant Discord ping (that's the proxy pipeline's job - see CLAUDE.md), but the in-app bell never got the same event, only ever showing completed watches. It now also surfaces from the same live nowPlaying feed Activity/Dashboard already poll, so \"started watching\" shows up in both places.",
+      "Activity's \"Watch Time Today\" stat could show 0h/undercount while the \"Today\" poster cards right below it already totaled real minutes for the same day (e.g. two entries totaling 26m, stat reading 0h). Root cause: the stat is built from the WatchActivity table, which needs two overallTimeWatched observations to produce a delta (see CLAUDE.md) - a title watched for the very first time today can sit at zero for a poll cycle even though its History row already has a real duration (seeded immediately from state.timeOffset). Now takes max() against the same day's History-derived total instead of trusting WatchActivity alone - same \"duration merges take max(), not sum()\" rule CLAUDE.md already documents for proxy/native reconciliation, so this can no longer under-report but also can't double count."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.16.2",
     "date": "2026-07-20",
     "title": "Activity's Active Users stat, debrid badge says \"Proxied\", ratings off poster cards",

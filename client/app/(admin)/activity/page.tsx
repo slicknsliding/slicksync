@@ -1273,6 +1273,13 @@ function ActivityPageContent() {
     return () => clearInterval(id);
   }, []);
 
+  // Transform API data to activity items
+  // Activity feed shows ALL history - Now Playing is handled separately by the backend
+  const activityData = useMemo(
+    () => transformMetricsToActivity(metricsData),
+    [metricsData]
+  );
+
   // Calculate live watch time today (base watch time + elapsed active sessions)
   const liveWatchTimeTodayHours = useMemo(() => {
     if (!metricsData) return 0;
@@ -1316,8 +1323,24 @@ function ActivityPageContent() {
       });
     }
 
-    return totalSeconds / 3600;
-  }, [metricsData, nowTick, todayStart]);
+    // Floor against today's individual watch entries (same durationSeconds
+    // shown on the "Today" poster cards below). WatchActivity needs two
+    // overallTimeWatched observations to produce a delta (see CLAUDE.md), so
+    // a title watched for the first time ever today can sit at 0 here for a
+    // poll cycle while the card already shows a real duration seeded from
+    // state.timeOffset on its first observation. Duration merges take max(),
+    // not sum() - same rule CLAUDE.md documents for proxy/native
+    // reconciliation, since both numbers already approximate the same real
+    // total and summing them would double count.
+    let historySeconds = 0;
+    activityData.forEach((activity) => {
+      if (activity.timestamp >= todayStart) {
+        historySeconds += activity.durationSeconds || 0;
+      }
+    });
+
+    return Math.max(totalSeconds, historySeconds) / 3600;
+  }, [metricsData, nowTick, todayStart, activityData]);
 
   // Infinite scroll: load more when sentinel is visible
   const loadMore = useCallback(() => {
@@ -1346,13 +1369,6 @@ function ActivityPageContent() {
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [loadMore]);
-
-  // Transform API data to activity items
-  // Activity feed shows ALL history - Now Playing is handled separately by the backend
-  const activityData = useMemo(
-    () => transformMetricsToActivity(metricsData),
-    [metricsData]
-  );
 
   // Transform invitations to history
   const inviteHistory = useMemo(() => transformInvitationsToHistory(invitations, groups), [invitations, groups]);
