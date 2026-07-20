@@ -727,47 +727,35 @@ body {
   animation: float 4s ease-in-out infinite;
 }
 
-/* Nebula layout's diagonal background wash (PageContainer.tsx) - both color
-   stops stay pinned to their own corner (0%/100%) at all times; only the
-   gradient's angle wobbles, so purple (top-left) and the secondary color
-   (bottom-right) are always visible together instead of trading off. */
-.animate-aurora-drift {
-  background-image: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--color-primary) 65%, transparent) 0%,
-    transparent 45%,
-    transparent 55%,
-    color-mix(in srgb, var(--color-secondary) 65%, transparent) 100%
-  );
-  animation: aurora-drift 22s ease-in-out infinite;
+/* Nebula layout's corner spotlight glows (PageContainer.tsx) - a gentle
+   transform-only drift (translate + scale) so the blobs feel alive without
+   ever being able to move off their corner entirely, unlike the two earlier
+   linear-gradient "wash" attempts where a color stop could end up pushed
+   off-screen depending on the animation frame. */
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, 24px) scale(1.06); }
 }
 
-@keyframes aurora-drift {
-  0%, 100% {
-    background-image: linear-gradient(
-      120deg,
-      color-mix(in srgb, var(--color-primary) 65%, transparent) 0%,
-      transparent 45%,
-      transparent 55%,
-      color-mix(in srgb, var(--color-secondary) 65%, transparent) 100%
-    );
-  }
-  50% {
-    background-image: linear-gradient(
-      150deg,
-      color-mix(in srgb, var(--color-primary) 65%, transparent) 0%,
-      transparent 45%,
-      transparent 55%,
-      color-mix(in srgb, var(--color-secondary) 65%, transparent) 100%
-    );
-  }
+@keyframes float-slow-reverse {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-30px, -24px) scale(1.06); }
+}
+
+.animate-float-slow {
+  animation: float-slow 18s ease-in-out infinite;
+}
+
+.animate-float-slow-reverse {
+  animation: float-slow-reverse 18s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-shimmer,
   .animate-pulse-soft,
   .animate-float,
-  .animate-aurora-drift {
+  .animate-float-slow,
+  .animate-float-slow-reverse {
     animation: none;
   }
 }
