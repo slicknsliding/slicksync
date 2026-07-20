@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.13.4",
+    "date": "2026-07-19",
+    "title": "Nebula background: fixed the teal corner disappearing mid-drift",
+    "bugFixes": [
+      "The drifting background wash added in 1.13.3 animated its position against an oversized (180%) gradient - at one end of the cycle this pushed the teal corner entirely past the bottom-right edge, so it was never actually visible, only purple. Both colors now stay pinned to their own corner permanently; the drift instead comes from a subtle wobble in the gradient's angle, so purple (top-left) and teal (bottom-right) are always visible together."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.13.3",
     "date": "2026-07-19",
     "title": "Nebula layout: restored the drifting purple/teal background wash",
