@@ -4,14 +4,15 @@ import { useState, useEffect, memo } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { NebulaTopbar } from '@/components/layout/NebulaTopbar';
-import { Button, Card, Badge, Modal, ConfirmModal } from '@/components/ui';
+import { Button, Card, Badge, Modal, ConfirmModal, Avatar } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { useTheme, themeMeta, themeIds, ThemeId } from '@/lib/theme';
 import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId } from '@/lib/layout-mode';
-import { api, SyncSettings } from '@/lib/api';
+import { api, SyncSettings, AccountStats } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
+import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import {
   PaintBrushIcon,
   Squares2X2Icon,
@@ -29,6 +30,7 @@ import {
   CogIcon,
   BoltIcon,
   DocumentTextIcon,
+  UserCircleIcon,
 } from '@heroicons/react/24/outline';
 
 // Small curated fallback for environments without Intl.supportedValuesOf
@@ -316,6 +318,7 @@ export default function SettingsPage() {
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const isPublicInstance = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') === 'public';
   
   // Sync settings state
   const [syncSettings, setSyncSettings] = useState<Partial<SyncSettings>>({
@@ -338,9 +341,20 @@ export default function SettingsPage() {
   // Webhook testing
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
 
+  // Account/avatar state
+  const [accountInfo, setAccountInfo] = useState<AccountStats | null>(null);
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
+
   // Load settings on mount
   useEffect(() => {
     const loadSettings = async () => {
+      try {
+        const stats = await api.getAccountStats();
+        setAccountInfo(stats);
+      } catch (e) {
+        // Account stats endpoint may not be available
+      }
+
       try {
         const settings = await api.getSyncSettings();
         setSyncSettings({
@@ -386,6 +400,14 @@ export default function SettingsPage() {
     } catch (e: any) {
       toast.error(e.message || 'Failed to save setting');
     }
+  };
+
+  const handleAvatarSave = async (data: { avatarUrl?: string | null; colorIndex?: number }) => {
+    await api.updateAccountAvatar(data.avatarUrl ?? null);
+    setAccountInfo((prev) => prev ? { ...prev, avatarUrl: data.avatarUrl ?? null } : prev);
+    // Sidebar/Nebula topbar fetch account info independently on mount, so a
+    // full reload is the simplest way to get the new picture to show there too.
+    setTimeout(() => window.location.reload(), 600);
   };
 
   const handleTestWebhook = async () => {
@@ -480,6 +502,40 @@ export default function SettingsPage() {
           <p className="text-sm text-muted">Customize your SlickSync experience</p>
         </div>
       )}
+        {/* Profile Picture - shown on the account button (bottom-left in
+            Nebula, bottom of sidebar in Original) and its dropdown menu. */}
+        <PageSection className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
+                <UserCircleIcon className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold font-display text-default">Profile Picture</h3>
+                <p className="text-xs text-muted">Shown on your account button and its menu</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <Avatar
+                name={isPublicInstance ? (accountInfo?.uuid || accountInfo?.email || 'Admin') : 'Administrator'}
+                src={accountInfo?.avatarUrl || undefined}
+                email={accountInfo?.email || undefined}
+                size="xl"
+                fallbackIcon={<ShieldCheckIcon className="w-7 h-7" style={{ color: 'white' }} />}
+              />
+              <div className="flex-1">
+                <Button variant="secondary" size="sm" onClick={() => setAvatarModalOpen(true)}>
+                  Change Picture
+                </Button>
+                <p className="text-xs text-muted mt-2">
+                  Upload an image, paste a URL, or pick a color
+                </p>
+              </div>
+            </div>
+          </Card>
+        </PageSection>
+
         {/* Theme Selection */}
         <PageSection className="mb-6">
           <Card padding="lg">
@@ -865,6 +921,15 @@ export default function SettingsPage() {
         description="Are you sure you want to reset all settings to their defaults? This cannot be undone."
         confirmText="Reset Settings"
         variant="danger"
+      />
+
+      {/* Avatar Picker Modal */}
+      <AvatarPickerModal
+        isOpen={avatarModalOpen}
+        onClose={() => setAvatarModalOpen(false)}
+        name={isPublicInstance ? (accountInfo?.uuid || accountInfo?.email || 'Admin') : 'Administrator'}
+        currentAvatarUrl={accountInfo?.avatarUrl}
+        onSave={handleAvatarSave}
       />
     </>
   );

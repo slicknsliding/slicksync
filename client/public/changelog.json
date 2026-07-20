@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.14.1",
+    "date": "2026-07-20",
+    "title": "Admin profile picture, Settings & Changelog in the account menu",
+    "features": [
+      "The account button (bottom-left in Nebula, bottom of the sidebar in Original) can now show a real profile picture instead of always falling back to a randomized pale-gradient icon. Settings gets a new Profile Picture section - upload an image, paste a URL, or pick a color, reusing the same picker already used for Users/Groups. Requires a schema addition (AppAccount.avatarUrl), applied automatically on next deploy via the existing db-push startup step.",
+      "The account dropdown now has direct Settings and Changelog links alongside Switch Panel and Logout - previously the only way to those pages from Nebula's topbar-anchored account menu was the top nav itself."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.14.0",
     "date": "2026-07-20",
     "title": "Nebula: full coverage across every admin page",
