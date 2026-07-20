@@ -9,7 +9,9 @@
     "bugFixes": [
       "Found while touching Card.tsx: `var(--color-surfaceBorder)` (camelCase) was used in 14 files, including core shared components (Header, Modal, Badge, Toast, CreateUserModal, AvatarPickerModal) that predate this session's Nebula work entirely - but only `--color-surface-border` (hyphenated) was ever actually defined anywhere in globals.css. Referencing an undefined custom property with no fallback makes the whole declaration invalid at computed-value time, so every one of those borders was silently rendering as `border-style: none`. Fixed globally across all 14 files."
     ],
-    "miscChores": []
+    "miscChores": [
+      "Caught before deploy: the bulk find-replace script used for the surfaceBorder fix above recursed over every file in client/ rather than just the ones that needed it, and a rare Get-Content failure on two unrelated files (addons/[id]/page.tsx, invitations/[id]/page.tsx) caused stale content from a previously-read file to get written to the wrong path instead. Neither file actually had the bug being fixed; both were restored to their original content with no further changes needed. Verified via a full-repo diff that nothing else was affected."
+    ]
   },
   {
     "version": "1.13.13",
