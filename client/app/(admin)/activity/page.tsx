@@ -39,6 +39,14 @@ import {
 type ActivityType = 'watch' | 'pause' | 'complete' | 'sync';
 type ContentType = 'movie' | 'series';
 
+// Display labels for ActivityItem.debridService values - mirrors
+// server/utils/debridDetection.js's DEBRID_LABELS. Duplicated rather than
+// shared since server utils aren't importable into client bundles; keep
+// these two lists in sync when adding a new recognized service.
+const DEBRID_SERVICE_LABELS: Record<string, string> = {
+  torbox: 'TorBox',
+};
+
 interface ActivityItem {
   id: string;
   userId: string;
@@ -62,6 +70,7 @@ interface ActivityItem {
   poster?: string;
   profileLabel?: string; // Nuvio profile name this was watched under, if known
   userAvatarUrl?: string | null;
+  debridService?: string; // e.g. "torbox" - only set when confidently detected via the AIOStreams proxy (see server/utils/debridDetection.js). Absent doesn't mean "not debrid".
 }
 
 // Invite history types
@@ -157,6 +166,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         poster: entry.item.poster,
         profileLabel: entry.profileLabel ?? undefined,
         userAvatarUrl: entry.user.useGravatar ? null : (entry.user.avatarUrl ?? null),
+        debridService: entry.debridService,
       });
     });
   }
@@ -453,6 +463,14 @@ const ActivityCard = memo(function ActivityCard({
               <span>{activity.requestCount} {activity.requestCount === 1 ? 'request' : 'requests'}</span>
             </>
           )}
+          {activity.debridService && (
+            <>
+              <span className="mx-1">•</span>
+              <span title="Detected via AIOStreams proxy">
+                {DEBRID_SERVICE_LABELS[activity.debridService] || activity.debridService}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -536,11 +554,24 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           </div>
         )}
 
-        {/* Request count badge - bottom right, mirrors the profile badge on the opposite corner */}
-        {!activity.isSynthetic && activity.requestCount !== undefined && activity.requestCount > 0 && (
+        {/* Request count / debrid service badge - bottom right, mirrors the
+            profile badge on the opposite corner. Both pieces of info only
+            ever show up for proxy-observed streams, so they share one
+            corner instead of needing a 5th badge position. */}
+        {!activity.isSynthetic && (
+          (activity.requestCount !== undefined && activity.requestCount > 0) || activity.debridService
+        ) && (
           <div className="absolute bottom-2 right-2">
-            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
-              {activity.requestCount} {activity.requestCount === 1 ? 'req' : 'reqs'}
+            <div
+              className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm"
+              title={activity.debridService ? 'Detected via AIOStreams proxy' : undefined}
+            >
+              {[
+                activity.debridService ? (DEBRID_SERVICE_LABELS[activity.debridService] || activity.debridService) : null,
+                activity.requestCount !== undefined && activity.requestCount > 0
+                  ? `${activity.requestCount} ${activity.requestCount === 1 ? 'req' : 'reqs'}`
+                  : null,
+              ].filter(Boolean).join(' · ')}
             </div>
           </div>
         )}

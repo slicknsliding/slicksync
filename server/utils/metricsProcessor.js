@@ -10,6 +10,7 @@
 
 const { resolveSinglePoster } = require('./libraryHelpers')
 const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
+const { findDebridServiceForWatch } = require('./debridDetection')
 
 /**
  * Extract season/episode from video_id
@@ -79,7 +80,7 @@ function isActuallyWatched(item) {
 /**
  * Record episode watch in history (for series items)
  */
-async function recordEpisodeWatch(prisma, accountId, userId, item) {
+async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
   try {
     // Only process series items with video_id and real watch progress
     if (item.type !== 'series' || !item.state?.video_id || !isActuallyWatched(item)) return
@@ -117,7 +118,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
     const [existing, session] = await Promise.all([
       prisma.episodeWatchHistory.findUnique({
         where: { accountId_userId_videoId: { accountId: accountIdValue, userId, videoId } },
-        select: { durationSeconds: true }
+        select: { durationSeconds: true, debridService: true }
       }),
       prisma.watchSession.findUnique({
         where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId: showId } },
@@ -126,6 +127,13 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
     ])
     const sessionDuration = session?.videoId === videoId ? (session.durationSeconds || 0) : 0
     const durationSeconds = Math.max(existing?.durationSeconds || 0, sessionDuration) || undefined
+
+    // Only run the correlation lookup if this row doesn't already have a
+    // confirmed label - once found, a debrid service never changes for a
+    // given episode, and re-querying ProxyStreamSession on every poll for
+    // already-labeled rows would be pure waste.
+    const debridService = existing?.debridService
+      || await findDebridServiceForWatch(prisma, { accountId: accountIdValue, userId, title: showName, watchedAt, users })
 
     // Upsert the episode watch (updates watchedAt if already exists)
     await prisma.episodeWatchHistory.upsert({
@@ -147,14 +155,19 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
         poster,
         profileLabel,
         watchedAt,
-        durationSeconds
+        durationSeconds,
+        debridService
       },
       update: {
         watchedAt, // Update watch time if re-watching
         showName, // Update in case show name changed
         poster, // Update in case poster changed
         profileLabel,
-        durationSeconds
+        durationSeconds,
+        // Only overwrite if we found something this time - never blank out
+        // an already-confirmed label just because a later poll's window no
+        // longer catches the original proxy session.
+        ...(debridService ? { debridService } : {})
       }
     })
 
@@ -174,7 +187,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item) {
  * watched for aggregate counts, but has no title/poster to display; this
  * captures that metadata the same way EpisodeWatchHistory does for series.
  */
-async function recordMovieWatch(prisma, accountId, userId, item) {
+async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
   try {
     // Only process movie items with real watch progress - a bare library
     // bookmark (no video_id, no position) was previously sailing through
@@ -209,7 +222,7 @@ async function recordMovieWatch(prisma, accountId, userId, item) {
     const [existing, session] = await Promise.all([
       prisma.movieWatchHistory.findUnique({
         where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
-        select: { durationSeconds: true }
+        select: { durationSeconds: true, debridService: true }
       }),
       prisma.watchSession.findUnique({
         where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
@@ -217,6 +230,11 @@ async function recordMovieWatch(prisma, accountId, userId, item) {
       })
     ])
     const durationSeconds = Math.max(existing?.durationSeconds || 0, session?.durationSeconds || 0) || undefined
+
+    // See recordEpisodeWatch's matching comment - only look up if not
+    // already confirmed.
+    const debridService = existing?.debridService
+      || await findDebridServiceForWatch(prisma, { accountId: accountIdValue, userId, title: itemName, watchedAt, users })
 
     // Upsert the movie watch (updates watchedAt if already exists)
     await prisma.movieWatchHistory.upsert({
@@ -235,14 +253,16 @@ async function recordMovieWatch(prisma, accountId, userId, item) {
         poster,
         profileLabel,
         watchedAt,
-        durationSeconds
+        durationSeconds,
+        debridService
       },
       update: {
         watchedAt, // Update watch time if re-watching
         itemName, // Update in case name changed
         poster, // Update in case poster changed
         profileLabel,
-        durationSeconds
+        durationSeconds,
+        ...(debridService ? { debridService } : {})
       }
     })
 
@@ -350,7 +370,7 @@ function hasChanged(previous, current) {
 /**
  * Process a single library item and store snapshot/delta
  */
-async function processLibraryItem(prisma, accountId, userId, item, today) {
+async function processLibraryItem(prisma, accountId, userId, item, today, users = []) {
   try {
     const itemId = item._id || item.id
     if (!itemId || !item.type) return { snapshotCreated: false, activityCreated: false }
@@ -559,9 +579,9 @@ async function processLibraryItem(prisma, accountId, userId, item, today) {
     // for movies. This runs regardless of whether snapshot changed, to
     // capture all watched items.
     if (item.type === 'series' && item.state?.video_id) {
-      await recordEpisodeWatch(prisma, accountIdValue, userId, item)
+      await recordEpisodeWatch(prisma, accountIdValue, userId, item, users)
     } else if (item.type === 'movie') {
-      await recordMovieWatch(prisma, accountIdValue, userId, item)
+      await recordMovieWatch(prisma, accountIdValue, userId, item, users)
     }
 
     return { snapshotCreated, activityCreated }
@@ -574,7 +594,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today) {
 /**
  * Process all library items for a user
  */
-async function processUserLibrary(prisma, accountId, userId, library, today = new Date()) {
+async function processUserLibrary(prisma, accountId, userId, library, today = new Date(), users = []) {
   if (!library || !Array.isArray(library) || library.length === 0) {
     console.log(`[MetricsProcessor] No library items for user ${userId}`)
     return { snapshotsCreated: 0, activitiesCreated: 0 }
@@ -587,7 +607,7 @@ async function processUserLibrary(prisma, accountId, userId, library, today = ne
 
   for (const item of library) {
     try {
-      const result = await processLibraryItem(prisma, accountId, userId, item, today)
+      const result = await processLibraryItem(prisma, accountId, userId, item, today, users)
       processed++
       if (result?.snapshotCreated) snapshotsCreated++
       if (result?.activityCreated) activitiesCreated++
@@ -621,7 +641,7 @@ async function processAccountMetrics(prisma, accountId, users, getLibraryForUser
       const library = await getLibraryForUser(user)
       if (library && Array.isArray(library) && library.length > 0) {
         console.log(`[MetricsProcessor] Processing ${library.length} items for user ${user.id}`)
-        const result = await processUserLibrary(prisma, accountIdValue, user.id, library, today)
+        const result = await processUserLibrary(prisma, accountIdValue, user.id, library, today, users)
         totalProcessed += library.length
         if (result) {
           totalSnapshots += result.snapshotsCreated || 0

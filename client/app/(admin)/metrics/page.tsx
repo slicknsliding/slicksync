@@ -119,7 +119,7 @@ const WatchTimeChart = memo(function WatchTimeChart({ data }: { data: Array<{ da
         <Tooltip 
           contentStyle={TOOLTIP_STYLE} 
           labelStyle={TOOLTIP_LABEL_STYLE}
-          labelFormatter={(value) => {
+          labelFormatter={(value: any) => {
             const date = new Date(value);
             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
           }}
@@ -157,7 +157,7 @@ const ContentBreakdownChart = memo(function ContentBreakdownChart({ data }: { da
         <Tooltip 
           contentStyle={TOOLTIP_STYLE} 
           labelStyle={TOOLTIP_LABEL_STYLE}
-          labelFormatter={(value) => {
+          labelFormatter={(value: any) => {
             const date = new Date(value);
             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
           }}
@@ -715,7 +715,7 @@ export default function MetricsPage() {
                         <Tooltip 
                           contentStyle={TOOLTIP_STYLE} 
                           labelStyle={TOOLTIP_LABEL_STYLE}
-                          labelFormatter={(value) => {
+                          labelFormatter={(value: any) => {
                             const date = new Date(value);
                             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
                           }}
