@@ -8,6 +8,8 @@ import { Header } from '@/components/layout/Header';
 import { Button, Card, Avatar, Badge, StatusBadge, SearchInput, ConfirmModal, SyncBadge, ToggleSwitch, Modal, Input, UserAvatar, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
+import { NebulaTopbar, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, User, Group } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
@@ -57,6 +59,7 @@ function formatWatchTime(minutes: number): string {
 }
 
 export default function UsersPage() {
+  const { layoutMode } = useLayoutMode();
   const { hideSensitive } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const { viewMode, setViewMode } = useDefaultViewMode();
@@ -166,6 +169,11 @@ export default function UsersPage() {
     (user.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (user.email || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Nebula's stat row - real counts from the same usersDisplay data the
+  // grid/table already render, not a new fetch.
+  const activeCount = usersDisplay.filter(u => u.status === 'active').length;
+  const expiredCount = usersDisplay.filter(u => u.status === 'expired').length;
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
@@ -285,60 +293,82 @@ export default function UsersPage() {
     });
   }, []);
 
+  const handleSyncAll = async () => {
+    setIsSyncing(true);
+    setSyncingUserIds(new Set(users.map(u => u.id)));
+    try {
+      const userIds = users.map(u => u.id);
+      let success = 0;
+      for (const id of userIds) {
+        try {
+          await api.syncUser(id);
+          success++;
+        } catch (err) {
+          console.error('Failed to sync user:', err);
+        }
+        // Remove from syncing set as each completes - this triggers the badge to refetch status
+        setSyncingUserIds((prev) => {
+          const nextSet = new Set(prev);
+          nextSet.delete(id);
+          return nextSet;
+        });
+      }
+      if (success > 0) {
+        toast.success(`Synced ${success} user${success !== 1 ? 's' : ''} successfully`);
+      }
+      const usersData = await api.getUsers();
+      setUsers(usersData);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to sync all users');
+    } finally {
+      setIsSyncing(false);
+      setSyncingUserIds(new Set());
+    }
+  };
+
+  const syncAllButton = (
+    <Button
+      variant="secondary"
+      leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
+      onClick={handleSyncAll}
+      disabled={isSyncing}
+    >
+      {isSyncing ? 'Syncing...' : 'Sync All'}
+    </Button>
+  );
+
   return (
     <>
       <Head>
         <title>SlickSync - Users</title>
       </Head>
-      <Header
-        title="Users"
-        subtitle={isLoading ? 'Loading...' : `${users.length} total user${users.length !== 1 ? 's' : ''}`}
-        actions={
-          <>
-            <Button
-              variant="secondary"
-              leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
-              onClick={async () => {
-                setIsSyncing(true);
-                setSyncingUserIds(new Set(users.map(u => u.id)));
-                try {
-                  const userIds = users.map(u => u.id);
-                  let success = 0;
-                  for (const id of userIds) {
-                    try {
-                      await api.syncUser(id);
-                      success++;
-                    } catch (err) {
-                      console.error('Failed to sync user:', err);
-                    }
-                    // Remove from syncing set as each completes - this triggers the badge to refetch status
-                    setSyncingUserIds((prev) => {
-                      const nextSet = new Set(prev);
-                      nextSet.delete(id);
-                      return nextSet;
-                    });
-                  }
-                  if (success > 0) {
-                    toast.success(`Synced ${success} user${success !== 1 ? 's' : ''} successfully`);
-                  }
-                  const usersData = await api.getUsers();
-                  setUsers(usersData);
-                } catch (err: any) {
-                  toast.error(err.message || 'Failed to sync all users');
-                } finally {
-                  setIsSyncing(false);
-                  setSyncingUserIds(new Set());
-                }
-              }}
-              disabled={isSyncing}
-            >
-              {isSyncing ? 'Syncing...' : 'Sync All'}
-            </Button>
-          </>
-        }
-      />
+      {layoutMode === 'nebula' ? (
+        <NebulaTopbar actions={syncAllButton} />
+      ) : (
+        <Header
+          title="Users"
+          subtitle={isLoading ? 'Loading...' : `${users.length} total user${users.length !== 1 ? 's' : ''}`}
+          actions={syncAllButton}
+        />
+      )}
 
-      <div className="p-8">
+      {/* Nebula: same 72rem centered column as Dashboard/Activity (inline
+          style, not a max-w-* class - see PageContainer.tsx for why), with
+          the stat row + toolbar + grid/list all inside one glass panel.
+          Current has no such enclosing panel at all - each card just floats
+          on the page background - so this is a real structural addition,
+          not a recolor. UserCard itself is completely unchanged either way. */}
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+          <NebulaStatCard label="Total Users" value={isLoading ? '...' : users.length} icon={<UsersIcon className="w-6 h-6" />} colorIndex={0} />
+          <NebulaStatCard label="Active" value={isLoading ? '...' : activeCount} icon={<CheckIcon className="w-6 h-6" />} colorIndex={1} />
+          <NebulaStatCard label="Expired" value={isLoading ? '...' : expiredCount} icon={<XMarkIcon className="w-6 h-6" />} colorIndex={0} />
+        </div>
+      )}
+      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
+      {layoutMode === 'nebula' && <NebulaGlassStripe />}
         {/* Filters and controls */}
         <PageToolbar
           selectionConfig={{
@@ -572,6 +602,8 @@ export default function UsersPage() {
             )}
           </>
         )}
+      </div>
+      </div>
       </div>
 
       {/* Floating Action Bar */}

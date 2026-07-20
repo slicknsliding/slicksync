@@ -8,6 +8,8 @@ import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, ResourceBadge, SearchInput, Modal, Input, ConfirmModal, VersionBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
+import { NebulaTopbar, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, Addon } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
@@ -98,6 +100,7 @@ function SortableAddonWrapper({ id, children }: { id: string; children: React.Re
   );
 }
 export default function AddonsPage() {
+  const { layoutMode } = useLayoutMode();
   const [searchQuery, setSearchQuery] = useState('');
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -210,6 +213,8 @@ export default function AddonsPage() {
   });
 
   const protectedCount = addonsDisplay.filter(a => a.isProtected).length;
+  // Nebula's stat row - real total from the same addonsDisplay data already rendered.
+  const totalAddonAssignments = addonsDisplay.reduce((sum, a) => sum + (a.userCount || 0), 0);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
@@ -347,52 +352,68 @@ export default function AddonsPage() {
   }, [filteredAddons, registerDragEndHandler]);
 
 
+  const handleReloadAllAddons = async () => {
+    setIsReloading(true);
+    try {
+      const addonIds = addons.map(a => a.id);
+      let success = 0;
+      for (const id of addonIds) {
+        try {
+          await api.reloadAddon(id);
+          success++;
+        } catch (err) {
+          console.error('Failed to reload addon:', err);
+        }
+      }
+      if (success > 0) {
+        toast.success(`Reloaded ${success} addon${success !== 1 ? 's' : ''} successfully`);
+      }
+      const addonsData = await api.getAddons();
+      setAddons(addonsData);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to reload all addons');
+    } finally {
+      setIsReloading(false);
+    }
+  };
+
+  const reloadAllButton = (
+    <Button
+      variant="secondary"
+      leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isReloading ? 'animate-spin' : ''}`} />}
+      onClick={handleReloadAllAddons}
+      disabled={isReloading}
+    >
+      {isReloading ? 'Reloading...' : 'Reload All'}
+    </Button>
+  );
+
   return (
     <>
       <Head>
         <title>SlickSync - Addons</title>
       </Head>
-      <Header
-        title="Addons"
-        subtitle={isLoading ? 'Loading...' : `${addons.length} addon${addons.length !== 1 ? 's' : ''} • ${protectedCount} protected`}
-        actions={
-          <>
-            <Button
-              variant="secondary"
-              leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isReloading ? 'animate-spin' : ''}`} />}
-              onClick={async () => {
-                setIsReloading(true);
-                try {
-                  const addonIds = addons.map(a => a.id);
-                  let success = 0;
-                  for (const id of addonIds) {
-                    try {
-                      await api.reloadAddon(id);
-                      success++;
-                    } catch (err) {
-                      console.error('Failed to reload addon:', err);
-                    }
-                  }
-                  if (success > 0) {
-                    toast.success(`Reloaded ${success} addon${success !== 1 ? 's' : ''} successfully`);
-                  }
-                  const addonsData = await api.getAddons();
-                  setAddons(addonsData);
-                } catch (err: any) {
-                  toast.error(err.message || 'Failed to reload all addons');
-                } finally {
-                  setIsReloading(false);
-                }
-              }}
-              disabled={isReloading}
-            >
-              {isReloading ? 'Reloading...' : 'Reload All'}
-            </Button>
-          </>
-        }
-      />
+      {layoutMode === 'nebula' ? (
+        <NebulaTopbar actions={reloadAllButton} />
+      ) : (
+        <Header
+          title="Addons"
+          subtitle={isLoading ? 'Loading...' : `${addons.length} addon${addons.length !== 1 ? 's' : ''} • ${protectedCount} protected`}
+          actions={reloadAllButton}
+        />
+      )}
 
-      <div className="p-8">
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+          <NebulaStatCard label="Total Addons" value={isLoading ? '...' : addons.length} icon={<PuzzlePieceIcon className="w-6 h-6" />} colorIndex={0} />
+          <NebulaStatCard label="Protected" value={isLoading ? '...' : protectedCount} icon={<ShieldCheckIcon className="w-6 h-6" />} colorIndex={1} />
+          <NebulaStatCard label="Assignments" value={isLoading ? '...' : totalAddonAssignments} icon={<UsersIcon className="w-6 h-6" />} colorIndex={0} />
+        </div>
+      )}
+      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
+      {layoutMode === 'nebula' && <NebulaGlassStripe />}
         {/* Filters */}
         <PageToolbar
           selectionConfig={{
@@ -657,6 +678,8 @@ export default function AddonsPage() {
             )}
           </>
         )}
+      </div>
+      </div>
       </div>
 
       {/* Floating Action Bar */}
