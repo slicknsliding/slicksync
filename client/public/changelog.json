@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.14.7",
+    "date": "2026-07-20",
+    "title": "Nebula on mobile: fixed nav wrapping, button overlap, and a real page-width overflow",
+    "bugFixes": [
+      "Nebula's nav pills wrapped unevenly on narrow phones (one item stranded alone on its own line) - each group row now scrolls horizontally instead of wrapping.",
+      "The floating account button (bottom-left) sat on top of whatever card happened to render at that same screen position on a short mobile page, since a viewport-fixed element ignores page content height entirely. Moved into the topbar's own top row on mobile (normal document flow, can't overlap anything) - the bottom-left floating version now only shows at desktop widths where it had genuine clearance.",
+      "That move briefly caused a real bug of its own: the added button pushed the top row wider than it had room for, which forced the whole page into horizontal scroll on mobile (not just visual clipping - the actual layout viewport widened past the phone's screen width). Fixed by shrinking the logo/wordmark responsively so the row's content fits within the viewport again, and by re-anchoring the account dropdown against the true screen edge instead of the trigger's own position (it briefly ran off the left edge of the screen after the reorder)."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.14.6",
     "date": "2026-07-20",
     "title": "Fix massively undercounted daily watch time, bogus 92h live duration",
