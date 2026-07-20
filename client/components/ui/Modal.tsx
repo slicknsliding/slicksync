@@ -81,7 +81,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
               )}
               style={{
                 background: 'var(--color-surface)',
-                border: '1px solid var(--color-surfaceBorder)',
+                border: '1px solid var(--color-surface-border)',
                 boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
                 maxWidth: sizeMaxWidthPx[size],
               }}
@@ -106,7 +106,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
               {(title || description) && (
                 <div
                   className="px-6 pt-6 pb-4 pr-14 shrink-0"
-                  style={{ borderBottom: '1px solid var(--color-surfaceBorder)' }}
+                  style={{ borderBottom: '1px solid var(--color-surface-border)' }}
                 >
                   {title && (
                     <DialogTitle
@@ -171,7 +171,7 @@ export function ConfirmModal({
           style={{
             background: 'var(--color-surfaceHover)',
             color: 'var(--color-text)',
-            border: '1px solid var(--color-surfaceBorder)'
+            border: '1px solid var(--color-surface-border)'
           }}
         >
           {cancelText}

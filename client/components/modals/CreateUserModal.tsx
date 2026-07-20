@@ -476,7 +476,7 @@ export function CreateUserModal({
               style={{
                 background: 'var(--color-surface)',
                 borderRadius: '24px',
-                border: '1px solid var(--color-surfaceBorder)',
+                border: '1px solid var(--color-surface-border)',
                 boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)'
               }}
             >
@@ -567,7 +567,7 @@ export function CreateUserModal({
                           className="w-full p-4 rounded-2xl text-left transition-all group relative overflow-hidden"
                           style={{
                             background: authMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
-                            border: `1px solid ${authMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surfaceBorder)'}`,
+                            border: `1px solid ${authMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surface-border)'}`,
                             opacity: authMethod === 'credentials' ? 1 : 0.85
                           }}
                         >
@@ -602,7 +602,7 @@ export function CreateUserModal({
                           className="w-full p-4 rounded-2xl text-left transition-all group relative overflow-hidden"
                           style={{
                             background: authMethod === 'authKey' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
-                            border: `1px solid ${authMethod === 'authKey' ? 'var(--color-primary)' : 'var(--color-surfaceBorder)'}`,
+                            border: `1px solid ${authMethod === 'authKey' ? 'var(--color-primary)' : 'var(--color-surface-border)'}`,
                             opacity: authMethod === 'authKey' ? 1 : 0.85
                           }}
                         >
@@ -641,7 +641,7 @@ export function CreateUserModal({
                           className="w-full p-4 rounded-2xl text-left transition-all group relative overflow-hidden"
                           style={{
                             background: authMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
-                            border: `1px solid ${authMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surfaceBorder)'}`,
+                            border: `1px solid ${authMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surface-border)'}`,
                             opacity: authMethod === 'oauth' ? 1 : 0.85
                           }}
                         >
@@ -701,7 +701,7 @@ export function CreateUserModal({
                                   className="w-full px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none"
                                   style={{
                                     background: 'var(--color-surfaceHover)',
-                                    border: '1px solid var(--color-surfaceBorder)',
+                                    border: '1px solid var(--color-surface-border)',
                                     color: 'var(--color-text)'
                                   }}
                                 />
@@ -722,7 +722,7 @@ export function CreateUserModal({
                                     className="w-full px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none"
                                     style={{
                                       background: 'var(--color-surfaceHover)',
-                                      border: '1px solid var(--color-surfaceBorder)',
+                                      border: '1px solid var(--color-surface-border)',
                                       color: 'var(--color-text)'
                                     }}
                                   />
@@ -740,7 +740,7 @@ export function CreateUserModal({
                                     className="w-full px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none"
                                     style={{
                                       background: 'var(--color-surfaceHover)',
-                                      border: '1px solid var(--color-surfaceBorder)',
+                                      border: '1px solid var(--color-surface-border)',
                                       color: 'var(--color-text)'
                                     }}
                                   />
@@ -776,7 +776,7 @@ export function CreateUserModal({
                                   className="w-full px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none"
                                   style={{
                                     background: 'var(--color-surfaceHover)',
-                                    border: '1px solid var(--color-surfaceBorder)',
+                                    border: '1px solid var(--color-surface-border)',
                                     color: 'var(--color-text)'
                                   }}
                                 />
@@ -823,7 +823,7 @@ export function CreateUserModal({
                             className="w-full p-4 rounded-2xl text-left transition-all"
                             style={{
                               background: nuvioAuthMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
-                              border: `1px solid ${nuvioAuthMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surfaceBorder)'}`,
+                              border: `1px solid ${nuvioAuthMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surface-border)'}`,
                             }}
                           >
                             <span className="font-semibold" style={{ color: nuvioAuthMethod === 'credentials' ? 'white' : 'var(--color-text)' }}>
@@ -844,7 +844,7 @@ export function CreateUserModal({
                             className="w-full p-4 rounded-2xl text-left transition-all"
                             style={{
                               background: nuvioAuthMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
-                              border: `1px solid ${nuvioAuthMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surfaceBorder)'}`,
+                              border: `1px solid ${nuvioAuthMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surface-border)'}`,
                             }}
                           >
                             <div className="flex items-center gap-2">
@@ -877,7 +877,7 @@ export function CreateUserModal({
                                   value={username}
                                   onChange={(e) => setUsername(e.target.value)}
                                   className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+                                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                                 />
                               </div>
                               <div>
@@ -890,7 +890,7 @@ export function CreateUserModal({
                                   value={nuvioEmail}
                                   onChange={(e) => setNuvioEmail(e.target.value)}
                                   className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+                                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                                 />
                               </div>
                               <div>
@@ -903,7 +903,7 @@ export function CreateUserModal({
                                   value={nuvioPassword}
                                   onChange={(e) => setNuvioPassword(e.target.value)}
                                   className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+                                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                                 />
                               </div>
                             </div>
@@ -1173,7 +1173,7 @@ export function CreateUserModal({
                           value={username}
                           onChange={(e) => setUsername(e.target.value)}
                           className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                          style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+                          style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                         />
                         <div className="flex gap-3 mt-6">
                           <button
@@ -1241,7 +1241,7 @@ export function CreateUserModal({
                             className="w-full px-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none"
                             style={{
                               background: 'var(--color-subtle)',
-                              border: '1px solid var(--color-surfaceBorder)',
+                              border: '1px solid var(--color-surface-border)',
                               color: 'var(--color-text)'
                             }}
                           />

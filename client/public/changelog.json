@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.14.0",
+    "date": "2026-07-20",
+    "title": "Nebula: full coverage across every admin page",
+    "features": [
+      "Discover, Metrics, Vault, Invitations, Tasks, Settings, and Changelog all get Nebula's top-nav chrome now, joining Dashboard, Activity, Users, Groups, and Addons - every top-level admin page has a Nebula render path. Settings and Tasks in particular are built almost entirely out of independent Card sections rather than a single list, so instead of hand-restyling each one, Card and StatCard (client/components/ui/Card.tsx) were made layout-aware directly - they render with the glass-panel treatment automatically whenever Nebula is active, which also means Metrics' and Changelog's existing Card-based sections picked up the same look for free."
+    ],
+    "bugFixes": [
+      "Found while touching Card.tsx: `var(--color-surfaceBorder)` (camelCase) was used in 14 files, including core shared components (Header, Modal, Badge, Toast, CreateUserModal, AvatarPickerModal) that predate this session's Nebula work entirely - but only `--color-surface-border` (hyphenated) was ever actually defined anywhere in globals.css. Referencing an undefined custom property with no fallback makes the whole declaration invalid at computed-value time, so every one of those borders was silently rendering as `border-style: none`. Fixed globally across all 14 files."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.13.13",
     "date": "2026-07-20",
     "title": "Reverted the two-tone logo back to plain white",

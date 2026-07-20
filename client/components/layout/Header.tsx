@@ -102,7 +102,7 @@ export function Header({
           {actions ? (
             <div 
               className="flex items-center gap-2 pl-3"
-              style={{ borderLeft: '1px solid var(--color-surfaceBorder)' }}
+              style={{ borderLeft: '1px solid var(--color-surface-border)' }}
             >
               {actions}
             </div>

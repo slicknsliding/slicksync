@@ -71,7 +71,7 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
             background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
             backdropFilter: 'blur(18px)',
             WebkitBackdropFilter: 'blur(18px)',
-            border: '1px solid var(--color-surfaceBorder)',
+            border: '1px solid var(--color-surface-border)',
             boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
           }}
         >
@@ -99,7 +99,7 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
           background: 'color-mix(in srgb, var(--color-surface) 70%, transparent)',
           backdropFilter: 'blur(18px)',
           WebkitBackdropFilter: 'blur(18px)',
-          border: '1px solid var(--color-surfaceBorder)',
+          border: '1px solid var(--color-surface-border)',
         }}
       >
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 mb-4">
@@ -133,7 +133,7 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
         </div>
         <nav
           className="flex flex-wrap justify-center gap-2 pt-4"
-          style={{ borderTop: '1px solid var(--color-surfaceBorder)' }}
+          style={{ borderTop: '1px solid var(--color-surface-border)' }}
         >
           {NEBULA_NAV_LINKS.map((link) => {
             const isActive = pathname === link.href;
@@ -183,7 +183,7 @@ export const nebulaGlassStyle: React.CSSProperties = {
   background: 'color-mix(in srgb, var(--color-surface) 55%, transparent)',
   backdropFilter: 'blur(18px)',
   WebkitBackdropFilter: 'blur(18px)',
-  border: '1px solid var(--color-surfaceBorder)',
+  border: '1px solid var(--color-surface-border)',
 };
 
 export function NebulaGlassStripe() {

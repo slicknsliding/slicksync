@@ -17,7 +17,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           style: {
             background: 'var(--color-surface)',
             color: 'var(--color-text)',
-            border: '1px solid var(--color-surfaceBorder)',
+            border: '1px solid var(--color-surface-border)',
             borderRadius: '12px',
             padding: '12px 16px',
             boxShadow: '0 10px 40px -10px rgba(0, 0, 0, 0.5)',

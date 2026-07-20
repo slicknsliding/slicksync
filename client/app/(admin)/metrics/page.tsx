@@ -3,6 +3,8 @@
 import { useState, memo, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
+import { NebulaTopbar } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
 import { Card, StatCard, Badge, UserAvatar, PageToolbar } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, MetricsData, AtRiskUser } from '@/lib/api';
@@ -168,6 +170,7 @@ const ContentBreakdownChart = memo(function ContentBreakdownChart({ data }: { da
 });
 
 export default function MetricsPage() {
+  const { layoutMode } = useLayoutMode();
   const [period, setPeriod] = useState('30d');
   const [viewMode, setViewMode] = useState<'users' | 'content' | 'admin'>('users');
   const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
@@ -259,30 +262,41 @@ export default function MetricsPage() {
       }));
   }, [metricsData]);
 
+  const periodSelect = (
+    <select
+      value={period}
+      onChange={(e) => setPeriod(e.target.value)}
+      className="px-4 py-2 rounded-xl text-sm bg-surface border border-default text-default"
+      aria-label="Select time period"
+    >
+      {PERIOD_OPTIONS.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+
   return (
     <>
-      <Header
-        title="Metrics"
-        subtitle="Track watch time, content consumption, and user activity"
-        actions={
-          <div className="flex items-center gap-3">
-            <select
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-              className="px-4 py-2 rounded-xl text-sm bg-surface border border-default text-default"
-              aria-label="Select time period"
-            >
-              {PERIOD_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        }
-      />
+      {layoutMode === 'nebula' ? (
+        <NebulaTopbar actions={periodSelect} />
+      ) : (
+        <Header
+          title="Metrics"
+          subtitle="Track watch time, content consumption, and user activity"
+          actions={<div className="flex items-center gap-3">{periodSelect}</div>}
+        />
+      )}
 
-      <div className="p-8">
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold font-display mb-1 text-default">Metrics</h1>
+          <p className="text-sm text-muted">Track watch time, content consumption, and user activity</p>
+        </div>
+      )}
         {/* View Mode Toggle - Centered */}
         <PageSection className="mb-6">
           <PageToolbar
@@ -815,6 +829,7 @@ export default function MetricsPage() {
             </PageSection>
           </div>
         )}
+      </div>
       </div>
     </>
   );

@@ -815,7 +815,7 @@ function ProxyHistoryView() {
               className="flex items-center gap-4 p-3 rounded-lg transition-colors"
               style={
                 layoutMode === 'nebula'
-                  ? { background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surfaceBorder)' }
+                  ? { background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surface-border)' }
                   : { background: 'var(--color-surface-hover)', border: '1px solid var(--color-border)' }
               }
             >
@@ -1106,7 +1106,7 @@ function InviteHistoryRow({ invite }: { invite: InviteHistoryItem }) {
       className="flex items-start gap-4 p-4 rounded-xl transition-colors"
       style={
         layoutMode === 'nebula'
-          ? { background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surfaceBorder)' }
+          ? { background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surface-border)' }
           : { background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }
       }
     >
@@ -1571,7 +1571,7 @@ function ActivityPageContent() {
                           initial={{ opacity: 0, scale: 0.95 }}
                           animate={{ opacity: 1, scale: 1 }}
                           className="flex items-center gap-3 p-3 rounded-xl transition-colors"
-                          style={{ background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surfaceBorder)' }}
+                          style={{ background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surface-border)' }}
                         >
                           <NowPlayingItemBody np={np} metricsData={metricsData} nowTick={nowTick} />
                         </motion.div>
