@@ -7,7 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal, RatingBadges } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NebulaStatCard } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, MetricsData, Invitation, RatingsBatchEntry } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
@@ -885,6 +885,197 @@ function ProxyHistoryView() {
   );
 }
 
+// Now Playing section header - identical in both Current and Nebula, just
+// extracted so it's declared once instead of duplicated per layout branch.
+function NowPlayingHeader({ count }: { count: number }) {
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-full bg-primary/10 flex items-center justify-center">
+          <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+        </div>
+        <h2 className="text-lg font-semibold text-default font-display">Now Playing</h2>
+        <Badge variant="primary" size="sm">
+          {count} {count === 1 ? 'user' : 'users'}
+        </Badge>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-muted">
+        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+        <span>Live</span>
+      </div>
+    </div>
+  );
+}
+
+// Now Playing card body (poster, user, title, live duration) - identical in
+// both Current and Nebula, just extracted so this carefully-tuned
+// session-matching/duration logic (see the inline comments) only exists
+// once instead of being duplicated per layout branch, which would risk the
+// two copies drifting apart on the next bug fix.
+function NowPlayingItemBody({
+  np,
+  metricsData,
+  nowTick,
+}: {
+  np: NonNullable<MetricsData['nowPlaying']>[number];
+  metricsData: MetricsData;
+  nowTick: number;
+}) {
+  return (
+    <>
+      {/* Poster */}
+      {np.item.poster ? (
+        <div className="w-10 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-hover">
+          <img
+            src={np.item.poster}
+            alt={np.item.name}
+            className="w-full h-full object-cover"
+          />
+        </div>
+      ) : (
+        <div className="w-10 h-14 rounded-lg bg-surface-hover flex items-center justify-center shrink-0">
+          {np.item.type === 'movie' ? (
+            <FilmIcon className="w-5 h-5 text-muted" />
+          ) : (
+            <TvIcon className="w-5 h-5 text-muted" />
+          )}
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <Link href={`/users/${np.user.id}`} className="flex items-center gap-2 mb-1">
+          <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
+          <span className="text-sm font-medium text-default truncate hover:text-primary transition-colors">
+            {np.user.username}
+          </span>
+        </Link>
+        <p className="text-sm text-muted truncate">
+          {np.item.name}
+          {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
+            <span className="ml-1">
+              {np.item.season !== undefined && np.item.season > 0 ? `S${String(np.item.season).padStart(2, '0')}E` : 'E'}
+              {String(np.item.episode).padStart(2, '0')}
+            </span>
+          )}
+        </p>
+        {/* Live duration for now playing: now - session start.
+            Only shown when we have a proper WatchSession (so it doesn't reset on each sync). */}
+        {(() => {
+          let session: NonNullable<typeof metricsData.watchSessions>[0] | undefined = undefined;
+          let startMs: number | null = null;
+
+          // Find matching active session from watchSessions
+          // Match by: userId + itemId + videoId (for series) or userId + itemId (for movies)
+          if (metricsData?.watchSessions && metricsData.watchSessions.length > 0) {
+            const matchingSessions = metricsData.watchSessions.filter((s) => {
+              // Must be active and match user + item
+              if (!s.isActive || s.user.id !== np.user.id || s.item.id !== np.item.id) {
+                return false;
+              }
+
+              // For series: match by videoId if available (most reliable)
+              if (np.item.type === 'series') {
+                const npVideoId = np.videoId || null;
+                const sVideoId = s.videoId || null;
+
+                // If both have videoId, they must match
+                if (npVideoId && sVideoId) {
+                  return npVideoId === sVideoId;
+                }
+
+                // If only one has videoId, don't match (prevents wrong episode)
+                if ((npVideoId && !sVideoId) || (!npVideoId && sVideoId)) {
+                  return false;
+                }
+
+                // If neither has videoId, fall back to season/episode matching
+                const npSeason = np.item.season ?? null;
+                const npEpisode = np.item.episode ?? null;
+                const sSeason = s.item.season ?? null;
+                const sEpisode = s.item.episode ?? null;
+
+                // Both must have season/episode and they must match
+                if (npSeason !== null && npEpisode !== null && sSeason !== null && sEpisode !== null) {
+                  return npSeason === sSeason && npEpisode === sEpisode;
+                }
+
+                // If Now Playing has season/episode but session doesn't, don't match
+                if ((npSeason !== null || npEpisode !== null) && (sSeason === null && sEpisode === null)) {
+                  return false;
+                }
+
+                // If both missing season/episode, match by item ID only (fallback)
+              }
+
+              // For movies: match by item ID only (no videoId)
+              return true;
+            });
+
+            // If multiple matches, use the one with EARLIEST startTime (oldest session)
+            // This prevents resets when new sessions are created
+            if (matchingSessions.length > 0) {
+              session = matchingSessions.reduce((oldest, current) => {
+                const oldestTime = new Date(oldest.startTime).getTime();
+                const currentTime = new Date(current.startTime).getTime();
+                return currentTime < oldestTime ? current : oldest;
+              });
+
+              startMs = new Date(session.startTime).getTime();
+              if (Number.isNaN(startMs)) startMs = null;
+            }
+          }
+
+          // Fallback: If no matching session found, use watchedAtTimestamp from nowPlaying item.
+          if (!startMs && np.watchedAtTimestamp) {
+            const watchedAtMs = typeof np.watchedAtTimestamp === 'number'
+              ? np.watchedAtTimestamp
+              : new Date(np.watchedAt).getTime();
+
+            // Proxy-sourced entries carry the real connection start time and
+            // never have a WatchSession to match, so trust it directly - a
+            // watch longer than 5 minutes must still show "Watching for X".
+            // For other (native) entries, keep the 5-minute guard: those
+            // watchedAt values can be stale (last checkpoint, not "now"), and
+            // the cap prevents showing an inflated/resetting duration before a
+            // real session row exists.
+            const isProxyEntry = np.source === 'aiostreams-proxy';
+            const ageMs = nowTick - watchedAtMs;
+            if (isProxyEntry ? ageMs >= 0 : (ageMs >= 0 && ageMs <= 300000)) {
+              startMs = watchedAtMs;
+            }
+          }
+
+          // Prefer the backend's durationSeconds when a matched session exists -
+          // that value now reflects real watched-content progress (position
+          // delta since the session started), refreshed once per poll cycle.
+          // A pure client-side "now - startTime" tick looked "live" but climbed
+          // every second regardless of whether the provider's position had
+          // actually advanced at all, which overstated progress whenever the
+          // provider went a while between checkpoints (common - see the
+          // freshness-window notes in sessionTracker.js). Still falls back to
+          // the wall-clock estimate when no session row exists yet.
+          const elapsedSeconds = (session && typeof session.durationSeconds === 'number')
+            ? Math.max(0, session.durationSeconds)
+            : (startMs && !Number.isNaN(startMs))
+              ? Math.max(0, Math.floor((nowTick - startMs) / 1000))
+              : null;
+
+          // Only show duration if we have something to show (from session or recent fallback)
+          if (elapsedSeconds === null) return null;
+
+          return (
+            <p className="text-xs text-subtle mt-0.5">
+              Watching for{' '}
+              {elapsedSeconds > 0
+                ? formatDuration(elapsedSeconds)
+                : '<1m'}
+            </p>
+          );
+        })()}
+      </div>
+    </>
+  );
+}
+
 function ActivityPageContent() {
   const { layoutMode } = useLayoutMode();
   const searchParams = useSearchParams();
@@ -1288,22 +1479,27 @@ function ActivityPageContent() {
 
             {metricsData?.nowPlaying && metricsData.nowPlaying.length > 0 && (
               <PageSection delay={0.02} className="mb-6">
-                <Card padding="md" className="border-2 border-primary/30 bg-primary/5">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-full bg-primary/10 flex items-center justify-center">
-                        <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
-                      </div>
-                      <h2 className="text-lg font-semibold text-default font-display">Now Playing</h2>
-                      <Badge variant="primary" size="sm">
-                        {metricsData.nowPlaying.length} {metricsData.nowPlaying.length === 1 ? 'user' : 'users'}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted">
-                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                      <span>Live</span>
+                {layoutMode === 'nebula' ? (
+                  <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
+                    <NebulaGlassStripe />
+                    <NowPlayingHeader count={metricsData.nowPlaying.length} />
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {metricsData.nowPlaying.map((np) => (
+                        <motion.div
+                          key={`now-${np.user.id}-${np.item.id}`}
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="flex items-center gap-3 p-3 rounded-xl transition-colors"
+                          style={{ background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surfaceBorder)' }}
+                        >
+                          <NowPlayingItemBody np={np} metricsData={metricsData} nowTick={nowTick} />
+                        </motion.div>
+                      ))}
                     </div>
                   </div>
+                ) : (
+                <Card padding="md" className="border-2 border-primary/30 bg-primary/5">
+                  <NowPlayingHeader count={metricsData.nowPlaying.length} />
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {metricsData.nowPlaying.map((np) => (
                       <motion.div
@@ -1312,159 +1508,12 @@ function ActivityPageContent() {
                         animate={{ opacity: 1, scale: 1 }}
                         className="flex items-center gap-3 p-3 rounded-xl bg-surface-hover hover:bg-surface border border-default hover:border-primary/50 transition-colors"
                       >
-                        {/* Poster */}
-                        {np.item.poster ? (
-                          <div className="w-10 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-hover">
-                            <img
-                              src={np.item.poster}
-                              alt={np.item.name}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        ) : (
-                          <div className="w-10 h-14 rounded-lg bg-surface-hover flex items-center justify-center shrink-0">
-                            {np.item.type === 'movie' ? (
-                              <FilmIcon className="w-5 h-5 text-muted" />
-                            ) : (
-                              <TvIcon className="w-5 h-5 text-muted" />
-                            )}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <Link href={`/users/${np.user.id}`} className="flex items-center gap-2 mb-1">
-                            <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
-                            <span className="text-sm font-medium text-default truncate hover:text-primary transition-colors">
-                              {np.user.username}
-                            </span>
-                          </Link>
-                          <p className="text-sm text-muted truncate">
-                            {np.item.name}
-                            {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
-                              <span className="ml-1">
-                                {np.item.season !== undefined && np.item.season > 0 ? `S${String(np.item.season).padStart(2, '0')}E` : 'E'}
-                                {String(np.item.episode).padStart(2, '0')}
-                              </span>
-                            )}
-                          </p>
-                          {/* Live duration for now playing: now - session start.
-                              Only shown when we have a proper WatchSession (so it doesn't reset on each sync). */}
-                          {(() => {
-                            let session: NonNullable<typeof metricsData.watchSessions>[0] | undefined = undefined;
-                            let startMs: number | null = null;
-
-                            // Find matching active session from watchSessions
-                            // Match by: userId + itemId + videoId (for series) or userId + itemId (for movies)
-                            if (metricsData?.watchSessions && metricsData.watchSessions.length > 0) {
-                              const matchingSessions = metricsData.watchSessions.filter((s) => {
-                                // Must be active and match user + item
-                                if (!s.isActive || s.user.id !== np.user.id || s.item.id !== np.item.id) {
-                                  return false;
-                                }
-
-                                // For series: match by videoId if available (most reliable)
-                                if (np.item.type === 'series') {
-                                  const npVideoId = np.videoId || null;
-                                  const sVideoId = s.videoId || null;
-
-                                  // If both have videoId, they must match
-                                  if (npVideoId && sVideoId) {
-                                    return npVideoId === sVideoId;
-                                  }
-
-                                  // If only one has videoId, don't match (prevents wrong episode)
-                                  if ((npVideoId && !sVideoId) || (!npVideoId && sVideoId)) {
-                                    return false;
-                                  }
-
-                                  // If neither has videoId, fall back to season/episode matching
-                                  const npSeason = np.item.season ?? null;
-                                  const npEpisode = np.item.episode ?? null;
-                                  const sSeason = s.item.season ?? null;
-                                  const sEpisode = s.item.episode ?? null;
-
-                                  // Both must have season/episode and they must match
-                                  if (npSeason !== null && npEpisode !== null && sSeason !== null && sEpisode !== null) {
-                                    return npSeason === sSeason && npEpisode === sEpisode;
-                                  }
-
-                                  // If Now Playing has season/episode but session doesn't, don't match
-                                  if ((npSeason !== null || npEpisode !== null) && (sSeason === null && sEpisode === null)) {
-                                    return false;
-                                  }
-
-                                  // If both missing season/episode, match by item ID only (fallback)
-                                }
-
-                                // For movies: match by item ID only (no videoId)
-                                return true;
-                              });
-
-                              // If multiple matches, use the one with EARLIEST startTime (oldest session)
-                              // This prevents resets when new sessions are created
-                              if (matchingSessions.length > 0) {
-                                session = matchingSessions.reduce((oldest, current) => {
-                                  const oldestTime = new Date(oldest.startTime).getTime();
-                                  const currentTime = new Date(current.startTime).getTime();
-                                  return currentTime < oldestTime ? current : oldest;
-                                });
-
-                                startMs = new Date(session.startTime).getTime();
-                                if (Number.isNaN(startMs)) startMs = null;
-                              }
-                            }
-
-                            // Fallback: If no matching session found, use watchedAtTimestamp from nowPlaying item.
-                            if (!startMs && np.watchedAtTimestamp) {
-                              const watchedAtMs = typeof np.watchedAtTimestamp === 'number'
-                                ? np.watchedAtTimestamp
-                                : new Date(np.watchedAt).getTime();
-
-                              // Proxy-sourced entries carry the real connection start time and
-                              // never have a WatchSession to match, so trust it directly - a
-                              // watch longer than 5 minutes must still show "Watching for X".
-                              // For other (native) entries, keep the 5-minute guard: those
-                              // watchedAt values can be stale (last checkpoint, not "now"), and
-                              // the cap prevents showing an inflated/resetting duration before a
-                              // real session row exists.
-                              const isProxyEntry = np.source === 'aiostreams-proxy';
-                              const ageMs = nowTick - watchedAtMs;
-                              if (isProxyEntry ? ageMs >= 0 : (ageMs >= 0 && ageMs <= 300000)) {
-                                startMs = watchedAtMs;
-                              }
-                            }
-
-                            // Prefer the backend's durationSeconds when a matched session exists -
-                            // that value now reflects real watched-content progress (position
-                            // delta since the session started), refreshed once per poll cycle.
-                            // A pure client-side "now - startTime" tick looked "live" but climbed
-                            // every second regardless of whether the provider's position had
-                            // actually advanced at all, which overstated progress whenever the
-                            // provider went a while between checkpoints (common - see the
-                            // freshness-window notes in sessionTracker.js). Still falls back to
-                            // the wall-clock estimate when no session row exists yet.
-                            const elapsedSeconds = (session && typeof session.durationSeconds === 'number')
-                              ? Math.max(0, session.durationSeconds)
-                              : (startMs && !Number.isNaN(startMs))
-                                ? Math.max(0, Math.floor((nowTick - startMs) / 1000))
-                                : null;
-
-                            // Only show duration if we have something to show (from session or recent fallback)
-                            if (elapsedSeconds === null) return null;
-
-                            return (
-                              <p className="text-xs text-subtle mt-0.5">
-                                Watching for{' '}
-                                {elapsedSeconds > 0
-                                  ? formatDuration(elapsedSeconds)
-                                  : '<1m'}
-                              </p>
-                            );
-                          })()}
-                        </div>
+                        <NowPlayingItemBody np={np} metricsData={metricsData} nowTick={nowTick} />
                       </motion.div>
                     ))}
                   </div>
                 </Card>
+                )}
               </PageSection>
             )}
 
@@ -1514,17 +1563,24 @@ function ActivityPageContent() {
               {/* Date-grouped activities */}
               {groupedActivities.map((group, groupIndex) => (
                 <PageSection key={group.dateKey} delay={0.1 + groupIndex * 0.02}>
+                  {/* Nebula wraps each day's group in its own glass panel
+                      instead of a flat heading-on-background section - the
+                      grid/list of cards inside (ActivityCardGrid/ActivityCard)
+                      is completely unchanged either way, only the wrapper
+                      differs. */}
+                  <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
+                  {layoutMode === 'nebula' && <NebulaGlassStripe />}
                   <div className="flex items-center gap-3 mb-4">
                     <CalendarIcon className={`w-5 h-5 ${group.isToday ? 'text-secondary' : group.isYesterday ? 'text-muted' : 'text-subtle'}`} />
                     <div className="flex items-baseline gap-2">
                       <h2 className="text-lg font-semibold text-default font-display">{group.label}</h2>
                       <span className="text-sm text-muted">
-                        • {formatHours(group.totalDuration / 3600)} 
+                        • {formatHours(group.totalDuration / 3600)}
                         <span className="ml-1 opacity-70">({group.activities.length})</span>
                       </span>
                     </div>
                   </div>
-                  
+
                   {watchActivityViewMode === 'grid' ? (
                     // Grid view - Cinematic poster cards
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
@@ -1565,6 +1621,7 @@ function ActivityPageContent() {
                       ))}
                     </StaggerContainer>
                   )}
+                  </div>
                 </PageSection>
               ))}
 
