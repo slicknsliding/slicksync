@@ -23,16 +23,35 @@ export function PageContainer({ children, className, noSidebarOffset }: PageCont
       className={`${offsetClass} min-h-screen ${className || ''}`}
       style={{ background: 'var(--color-bg)' }}
     >
-      {/* Subtle background gradient */}
+      {/* Background gradient - Nebula gets a smooth diagonal wash (purple
+          bleeding down from the top-left, secondary color up from the
+          bottom-right, matching the layout's own namesake and the original
+          concept mockup) instead of the two small static corner blobs every
+          other page uses. animate-aurora-drift is defined in globals.css
+          and slowly shifts the gradient's position for a "transitioning"
+          feel, already gated behind prefers-reduced-motion there. */}
       <div className={`fixed inset-0 ${offsetClass} pointer-events-none overflow-hidden`}>
-        <div
-          className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full blur-[120px] opacity-30"
-          style={{ background: 'var(--color-primaryMuted)' }}
-        />
-        <div
-          className="absolute -bottom-40 -left-40 w-[400px] h-[400px] rounded-full blur-[100px] opacity-20"
-          style={{ background: 'var(--color-secondaryMuted)' }}
-        />
+        {noSidebarOffset ? (
+          <div
+            className="absolute inset-0 opacity-50 animate-aurora-drift"
+            style={{
+              backgroundImage:
+                'linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 65%, transparent) 0%, transparent 45%, transparent 55%, color-mix(in srgb, var(--color-secondary) 65%, transparent) 100%)',
+              backgroundSize: '180% 180%',
+            }}
+          />
+        ) : (
+          <>
+            <div
+              className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full blur-[120px] opacity-30"
+              style={{ background: 'var(--color-primaryMuted)' }}
+            />
+            <div
+              className="absolute -bottom-40 -left-40 w-[400px] h-[400px] rounded-full blur-[100px] opacity-20"
+              style={{ background: 'var(--color-secondaryMuted)' }}
+            />
+          </>
+        )}
       </div>
 
       {/* Content */}
