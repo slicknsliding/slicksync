@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.13.2",
+    "date": "2026-07-19",
+    "title": "Nebula layout: account menu repositioned, full nav coverage, richer dashboard",
+    "features": [
+      "Nebula's nav bar now links to every page the sidebar does - Vault, Invitations, Tasks, Settings, and Changelog were missing before, making them unreachable from this layout without knowing the URL directly.",
+      "Recent Activity was the only thing filling the bottom of the Dashboard, leaving a lot of empty space below it on desktop. Added Top Viewers (paired next to Recent Activity) and Recent Addons panels, reusing the same data and components Current mode already shows."
+    ],
+    "bugFixes": [
+      "Moved the account/profile menu from the topbar's top-right corner to a floating button in the bottom-left, matching where Current mode's own \"Administrator\" control sits. Its dropdown was also anchored to open leftward (correct for the old top-right position) - now anchors rightward from the bottom-left position instead of clipping off the edge of the screen; added an `align` option to PanelSwitcher to support both."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.13.1",
     "date": "2026-07-19",
     "title": "Nebula layout: fixed sparse desktop rendering, added the real logo and an account menu",

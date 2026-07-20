@@ -22,6 +22,11 @@ const NEBULA_NAV_LINKS = [
   { href: '/users', label: 'Users' },
   { href: '/groups', label: 'Groups' },
   { href: '/addons', label: 'Addons' },
+  { href: '/vault', label: 'Vault' },
+  { href: '/invitations', label: 'Invitations' },
+  { href: '/tasks', label: 'Tasks' },
+  { href: '/settings', label: 'Settings' },
+  { href: '/changelog', label: 'Changelog' },
 ];
 
 export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
@@ -53,6 +58,32 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
   };
 
   return (
+    <>
+      {/* Account/profile access, fixed bottom-left - mirrors where the
+          sidebar's own "Administrator" panel switcher lives in Current mode
+          (bottom of the nav), rather than sitting in the topbar's action
+          row up top. dropdownPosition="up" (the default) is correct again
+          here since this sits at the BOTTOM of the screen. */}
+      <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40">
+        <div
+          className="rounded-2xl p-1.5"
+          style={{
+            background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
+            border: '1px solid var(--color-surfaceBorder)',
+            boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
+          }}
+        >
+          <PanelSwitcher
+            mode="admin"
+            userInfo={accountInfo}
+            onLogout={handleLogout}
+            variant="compact"
+            align="left"
+          />
+        </div>
+      </div>
     <div className="px-4 pt-4 md:px-6 md:pt-6">
       {/* Caps the bar at 72rem so it reads as a floating island on wide
           desktop viewports instead of stretching edge-to-edge into empty
@@ -98,13 +129,6 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
           <div className="flex items-center gap-2 justify-self-end">
             <NotificationsDropdown activities={[]} inviteHistory={[]} taskHistory={[]} />
             {actions}
-            <PanelSwitcher
-              mode="admin"
-              userInfo={accountInfo}
-              onLogout={handleLogout}
-              variant="compact"
-              dropdownPosition="down"
-            />
           </div>
         </div>
         <nav
@@ -136,6 +160,7 @@ export function NebulaTopbar({ actions }: { actions?: ReactNode }) {
         </nav>
       </div>
     </div>
+    </>
   );
 }
 
