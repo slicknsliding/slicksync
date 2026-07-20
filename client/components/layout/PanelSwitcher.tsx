@@ -12,6 +12,7 @@ import {
   ClipboardDocumentIcon,
   CheckIcon,
   Cog6ToothIcon,
+  NewspaperIcon,
 } from '@heroicons/react/24/outline';
 import { Avatar } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
@@ -23,9 +24,10 @@ interface PanelSwitcherProps {
   /** User info for display (optional) */
   userInfo?: {
     username?: string;
-    email?: string;
+    email?: string | null;
     colorIndex?: number;
     uuid?: string | null;
+    avatarUrl?: string | null;
   } | null;
   /** Called when logout is clicked */
   onLogout?: () => void;
@@ -180,7 +182,8 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             userInfo ? (
               <Avatar
                 name={userInfo.username || 'A'}
-                email={userInfo.email}
+                src={userInfo.avatarUrl || undefined}
+                email={userInfo.email || undefined}
                 size="sm"
                 className="w-8 h-8"
                 avatarClassName="rounded-lg"
@@ -198,7 +201,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
             userInfo ? (
               <Avatar
                 name={userInfo.username || 'U'}
-                email={userInfo.email}
+                email={userInfo.email || undefined}
                 colorIndex={userInfo.colorIndex || 0}
                 size="sm"
                 className="w-8 h-8"
@@ -283,6 +286,53 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
               </div>
               <ArrowsRightLeftIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
             </button>
+
+            {/* Settings / Changelog quick links (Admin Mode only) - Nebula's
+                topbar keeps this trigger pinned bottom-left with no sidebar
+                nearby, so these two pages need a way in from here too. */}
+            {isAdmin && (
+              <>
+                <div className="h-px" style={{ background: 'var(--color-surface-border)' }} />
+                <button
+                  onClick={() => { setIsOpen(false); router.push('/settings'); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
+                  style={{ color: 'var(--color-text)' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--color-surface-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ background: 'var(--color-surface-hover)' }}
+                  >
+                    <Cog6ToothIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                  </div>
+                  <span className="text-sm font-medium">Settings</span>
+                </button>
+                <button
+                  onClick={() => { setIsOpen(false); router.push('/changelog'); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
+                  style={{ color: 'var(--color-text)' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--color-surface-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ background: 'var(--color-surface-hover)' }}
+                  >
+                    <NewspaperIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                  </div>
+                  <span className="text-sm font-medium">Changelog</span>
+                </button>
+              </>
+            )}
 
             {/* Copy UUID Button (Admin Mode / Public Instance / Has UUID only) */}
             {isAdmin && isPublicInstance && userInfo?.uuid && (

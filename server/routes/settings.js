@@ -70,6 +70,22 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // PUT /account-avatar - set or clear the admin's own profile picture
+  // (full URL or /uploads/avatars/<file> from the shared avatar upload endpoint)
+  router.put('/account-avatar', async (req, res) => {
+    try {
+      const { avatarUrl } = req.body || {}
+      const accountId = INSTANCE_TYPE !== 'public' ? (await ensureDefaultAccount()).id : req.appAccountId
+      if (!accountId) {
+        return res.status(401).json({ message: 'Unauthorized' })
+      }
+      await prisma.appAccount.update({ where: { id: accountId }, data: { avatarUrl: avatarUrl || null } })
+      return res.json({ avatarUrl: avatarUrl || null })
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to update avatar', error: e?.message })
+    }
+  })
+
   // Backup settings endpoints - only available in private mode
   if (INSTANCE_TYPE !== 'public') {
     // Use centralized backup utilities

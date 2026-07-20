@@ -764,6 +764,13 @@ class ApiClient {
     return this.fetch<AccountStats>('/ext/account');
   }
 
+  async updateAccountAvatar(avatarUrl: string | null) {
+    return this.fetch<{ avatarUrl: string | null }>('/settings/account-avatar', {
+      method: 'PUT',
+      body: JSON.stringify({ avatarUrl }),
+    });
+  }
+
   // Settings
   async getSyncSettings() {
     return this.fetch<SyncSettings>('/settings/account-sync');
@@ -1615,6 +1622,9 @@ export interface AccountStats {
   totalGroups: number;
   totalAddons: number;
   pendingInvites: number;
+  uuid?: string | null;
+  email?: string | null;
+  avatarUrl?: string | null;
 }
 
 export interface SyncSettings {
