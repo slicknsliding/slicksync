@@ -153,7 +153,7 @@ export function AvatarPickerModal({
               value={urlInput}
               onChange={(e) => { setUrlInput(e.target.value); setPreviewUrl(e.target.value); }}
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
-              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             />
             <Button variant="primary" className="w-full" onClick={handleSaveImage} isLoading={isSaving}>
               Save Image URL

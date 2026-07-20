@@ -73,8 +73,12 @@ export function useLayoutMode() {
 // keeps the sidebar/current chrome even when Nebula mode is selected -
 // there's no Nebula version of those pages (yet), so there's nothing to
 // switch to. Detail routes (e.g. /users/[id]) aren't listed - exact-match
-// only below, so they correctly keep the sidebar regardless.
-const NEBULA_ELIGIBLE_PATHS = ['/', '/activity', '/users', '/groups', '/addons'];
+// only below, so they correctly keep the sidebar regardless. This is now
+// every top-level admin page - full Nebula coverage.
+const NEBULA_ELIGIBLE_PATHS = [
+  '/', '/activity', '/users', '/groups', '/addons',
+  '/discover', '/metrics', '/vault', '/invitations', '/tasks', '/settings', '/changelog',
+];
 
 export function isNebulaEligiblePath(pathname: string): boolean {
   return NEBULA_ELIGIBLE_PATHS.includes(pathname);

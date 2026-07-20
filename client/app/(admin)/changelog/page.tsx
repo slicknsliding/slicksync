@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Card, Button, Badge } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
+import { NebulaTopbar } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import {
   TagIcon,
@@ -225,6 +227,7 @@ const fetchChangelog = async (): Promise<Release[]> => {
 };
 
 export default function ChangelogPage() {
+  const { layoutMode } = useLayoutMode();
   const appVersion = (process.env.NEXT_PUBLIC_APP_VERSION as string) || 'dev';
   const [releases, setReleases] = useState<Release[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -290,12 +293,23 @@ export default function ChangelogPage() {
 
   return (
     <>
-      <Header
-        title={<Breadcrumbs items={[{ label: "What's New" }]} className="text-xl font-semibold" />}
-        subtitle="All notable changes to this project will be documented here."
-      />
+      {layoutMode === 'nebula' ? (
+        <NebulaTopbar />
+      ) : (
+        <Header
+          title={<Breadcrumbs items={[{ label: "What's New" }]} className="text-xl font-semibold" />}
+          subtitle="All notable changes to this project will be documented here."
+        />
+      )}
 
-      <div className="p-8">
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold font-display mb-1 text-default">What's New</h1>
+          <p className="text-sm text-muted">All notable changes to this project will be documented here.</p>
+        </div>
+      )}
         {/* Loading State */}
         {isInitialLoading && (
           <PageSection>
@@ -561,6 +575,7 @@ export default function ChangelogPage() {
             </p>
           </Card>
         </PageSection>
+      </div>
       </div>
     </>
   );

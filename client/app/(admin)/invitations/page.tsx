@@ -5,6 +5,8 @@ import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
+import { NebulaTopbar, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
 import { Button, Card, Badge, Avatar, Modal, Input, Select, ConfirmModal, ToggleSwitch, DateTimePicker, UserAvatar, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
@@ -62,6 +64,7 @@ interface RequestDisplay {
 }
 
 export default function InvitationsPage() {
+  const { layoutMode } = useLayoutMode();
   const [activeTab, setActiveTab] = useState<'invitations' | 'requests'>('invitations');
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -294,12 +297,25 @@ export default function InvitationsPage() {
 
   return (
     <>
-      <Header
-        title="Invitations"
-        subtitle={isLoading ? 'Loading...' : `${invitations.length} active invite${invitations.length !== 1 ? 's' : ''} • ${pendingRequests.length} pending request${pendingRequests.length !== 1 ? 's' : ''}`}
-      />
+      {layoutMode === 'nebula' ? (
+        <NebulaTopbar />
+      ) : (
+        <Header
+          title="Invitations"
+          subtitle={isLoading ? 'Loading...' : `${invitations.length} active invite${invitations.length !== 1 ? 's' : ''} • ${pendingRequests.length} pending request${pendingRequests.length !== 1 ? 's' : ''}`}
+        />
+      )}
 
-      <div className="p-8">
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold font-display mb-1 text-default">Invitations</h1>
+          <p className="text-sm text-muted">{isLoading ? 'Loading...' : `${invitations.length} active invite${invitations.length !== 1 ? 's' : ''} • ${pendingRequests.length} pending request${pendingRequests.length !== 1 ? 's' : ''}`}</p>
+        </div>
+      )}
+      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
+      {layoutMode === 'nebula' && <NebulaGlassStripe />}
         {/* Filters */}
         <PageToolbar
           selectionConfig={activeTab === 'invitations' ? {
@@ -567,6 +583,8 @@ export default function InvitationsPage() {
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
+      </div>
       </div>
 
       {/* Floating Action Bar */}
@@ -1371,7 +1389,7 @@ function CreateInvitationModal({
                 style={{
                   background: 'var(--color-surface)',
                   borderRadius: '24px',
-                  border: '1px solid var(--color-surfaceBorder)',
+                  border: '1px solid var(--color-surface-border)',
                   boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)'
                 }}
               >
@@ -1427,7 +1445,7 @@ function CreateInvitationModal({
                               className="w-full px-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none"
                               style={{
                                 background: 'var(--color-subtle)',
-                                border: '1px solid var(--color-surfaceBorder)',
+                                border: '1px solid var(--color-surface-border)',
                                 color: 'var(--color-text)'
                               }}
                             />
@@ -1446,7 +1464,7 @@ function CreateInvitationModal({
                               className="w-full px-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none appearance-none"
                               style={{
                                 background: 'var(--color-subtle)',
-                                border: '1px solid var(--color-surfaceBorder)',
+                                border: '1px solid var(--color-surface-border)',
                                 color: 'var(--color-text)'
                               }}
                             >
@@ -1469,7 +1487,7 @@ function CreateInvitationModal({
                               className="w-full px-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none"
                               style={{
                                 background: 'var(--color-subtle)',
-                                border: '1px solid var(--color-surfaceBorder)',
+                                border: '1px solid var(--color-surface-border)',
                                 color: 'var(--color-text)'
                               }}
                             />
@@ -1564,7 +1582,7 @@ function CreateInvitationModal({
                             className={`w-full flex items-center gap-3 p-4 rounded-xl transition-all cursor-pointer ${!formData.groupId ? 'opacity-50 cursor-not-allowed' : ''}`}
                             style={{
                               background: formData.syncOnJoin && formData.groupId ? 'color-mix(in srgb, var(--color-primary) 15%, transparent)' : 'var(--color-subtle)',
-                              border: `1px solid ${formData.syncOnJoin && formData.groupId ? 'var(--color-primary)' : 'var(--color-surfaceBorder)'}`
+                              border: `1px solid ${formData.syncOnJoin && formData.groupId ? 'var(--color-primary)' : 'var(--color-surface-border)'}`
                             }}
                             disabled={!formData.groupId}
                           >
@@ -1572,7 +1590,7 @@ function CreateInvitationModal({
                               className="w-5 h-5 rounded-md flex items-center justify-center transition-all"
                               style={{
                                 background: formData.syncOnJoin && formData.groupId ? 'var(--color-primary)' : 'transparent',
-                                border: formData.syncOnJoin && formData.groupId ? 'none' : '2px solid var(--color-surfaceBorder)'
+                                border: formData.syncOnJoin && formData.groupId ? 'none' : '2px solid var(--color-surface-border)'
                               }}
                             >
                               {formData.syncOnJoin && formData.groupId && <CheckIcon className="w-3 h-3 text-white" />}

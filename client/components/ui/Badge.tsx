@@ -59,7 +59,7 @@ function getBadgeStyles(variant: BadgeVariant) {
       return {
         background: 'transparent',
         color: 'var(--color-textMuted)',
-        borderColor: 'var(--color-surfaceBorder)',
+        borderColor: 'var(--color-surface-border)',
       };
     case 'muted':
       return {

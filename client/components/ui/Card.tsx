@@ -2,6 +2,7 @@
 
 import { motion, HTMLMotionProps } from 'framer-motion';
 import clsx from 'clsx';
+import { useLayoutMode } from '@/lib/layout-mode';
 
 interface CardProps extends HTMLMotionProps<'div'> {
   variant?: 'default' | 'elevated' | 'bordered' | 'interactive' | 'aurora';
@@ -16,6 +17,13 @@ const paddingStyles = {
   lg: 'p-5',
 };
 
+// Card and StatCard both check layoutMode directly rather than requiring
+// every page that renders one to pass a prop through - pages like Settings
+// and Tasks are built almost entirely out of independent <Card> sections
+// (not the toolbar+grid shape Dashboard/Activity/Users/Groups/Addons have),
+// so making the shared component itself Nebula-aware upgrades all of them
+// to the glass-panel look for free, instead of needing a second styled
+// copy of every section on every such page.
 export function Card({
   variant = 'default',
   padding = 'md',
@@ -24,8 +32,10 @@ export function Card({
   style,
   ...props
 }: CardProps) {
+  const { layoutMode } = useLayoutMode();
   const isInteractive = variant === 'interactive';
   const isAurora = variant === 'aurora';
+  const isNebula = layoutMode === 'nebula' && !isAurora;
 
   return (
     <motion.div
@@ -40,7 +50,11 @@ export function Card({
       style={{
         background: isAurora
           ? 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)'
-          : 'var(--color-surface)',
+          : isNebula
+            ? 'color-mix(in srgb, var(--color-surface) 55%, transparent)'
+            : 'var(--color-surface)',
+        backdropFilter: isNebula ? 'blur(18px)' : undefined,
+        WebkitBackdropFilter: isNebula ? 'blur(18px)' : undefined,
         border: isAurora ? 'none' : '1px solid var(--color-surface-border)',
         boxShadow: isAurora
           ? '0 12px 32px -12px var(--color-primary)'
@@ -72,6 +86,8 @@ interface StatCardProps {
 }
 
 export function StatCard({ label, value, icon, trend, delay = 0, onClick }: StatCardProps) {
+  const { layoutMode } = useLayoutMode();
+  const isNebula = layoutMode === 'nebula';
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -81,10 +97,19 @@ export function StatCard({ label, value, icon, trend, delay = 0, onClick }: Stat
       onClick={onClick}
       className={`rounded-xl p-4 relative overflow-hidden h-[100px] group ${onClick ? 'cursor-pointer' : ''}`}
       style={{
-        background: 'var(--color-surface)',
+        background: isNebula ? 'color-mix(in srgb, var(--color-surface) 55%, transparent)' : 'var(--color-surface)',
+        backdropFilter: isNebula ? 'blur(18px)' : undefined,
+        WebkitBackdropFilter: isNebula ? 'blur(18px)' : undefined,
         border: '1px solid var(--color-surface-border)',
       }}
     >
+      {isNebula && (
+        <div
+          aria-hidden
+          className="absolute top-0 left-0 right-0 h-[2px]"
+          style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))' }}
+        />
+      )}
       {/* Hover glow */}
       <div 
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"

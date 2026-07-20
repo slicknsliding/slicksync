@@ -3,6 +3,8 @@
 import Head from 'next/head';
 import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/layout/Header';
+import { NebulaTopbar, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { useSortableDragState } from '@/components/ui/DragSortable';
 import { SortableContext, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
@@ -191,6 +193,7 @@ function SortableEntryCard({
 }
 
 export default function VaultPage() {
+  const { layoutMode } = useLayoutMode();
   const [entries, setEntries] = useState<VaultEntry[]>([]);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
@@ -496,7 +499,7 @@ export default function VaultPage() {
         <p className="text-xs mb-3" style={{ color: 'var(--color-textMuted)' }}>{entry.lastCheckMessage}</p>
       )}
 
-      <div className="mt-auto flex items-center gap-2 pt-2 flex-wrap" style={{ borderTop: '1px solid var(--color-surfaceBorder)' }}>
+      <div className="mt-auto flex items-center gap-2 pt-2 flex-wrap" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
         <button
           onClick={() => handleTest(entry)}
           disabled={testingId === entry.id || entry.testType === 'manual'}
@@ -533,19 +536,38 @@ export default function VaultPage() {
   return (
     <>
       <Head><title>SlickSync - Vault</title></Head>
-      <Header
-        title="Vault"
-        subtitle={isLoading ? 'Loading...' : `${total} ${total === 1 ? 'entry' : 'entries'}`}
-        actions={
-          <>
+      {layoutMode === 'nebula' ? (
+        <NebulaTopbar
+          actions={
             <Button variant="primary" leftIcon={<PlusIcon className="w-5 h-5" />} onClick={openAddModal}>
               Add Entry
             </Button>
-          </>
-        }
-      />
+          }
+        />
+      ) : (
+        <Header
+          title="Vault"
+          subtitle={isLoading ? 'Loading...' : `${total} ${total === 1 ? 'entry' : 'entries'}`}
+          actions={
+            <>
+              <Button variant="primary" leftIcon={<PlusIcon className="w-5 h-5" />} onClick={openAddModal}>
+                Add Entry
+              </Button>
+            </>
+          }
+        />
+      )}
 
-      <div className="px-4 md:px-6 pb-6">
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'px-4 md:px-6 pb-6'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold font-display mb-1 text-default">Vault</h1>
+          <p className="text-sm text-muted">{isLoading ? 'Loading...' : `${total} ${total === 1 ? 'entry' : 'entries'}`}</p>
+        </div>
+      )}
+      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
+      {layoutMode === 'nebula' && <NebulaGlassStripe />}
         <div className="mb-5">
           <FilterTabsResponsive options={filterOptions} activeKey={activeCategory} onChange={setActiveCategory} layoutId="vault-filter" enableDropTargets />
         </div>
@@ -587,6 +609,8 @@ export default function VaultPage() {
           </>
         )}
       </div>
+      </div>
+      </div>
 
       {/* Add/Edit Modal */}
       <Modal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} title={editingId ? 'Edit Vault Entry' : 'Add Vault Entry'} size="lg">
@@ -599,7 +623,7 @@ export default function VaultPage() {
               value={form.category}
               onChange={e => handleCategoryChange(e.target.value as VaultCategory)}
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
-              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             >
               {Object.entries(CATEGORY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
@@ -676,7 +700,7 @@ export default function VaultPage() {
                   value={form.testType}
                   onChange={e => setForm(f => ({ ...f, testType: e.target.value as VaultTestType }))}
                   className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surfaceBorder)', color: 'var(--color-text)' }}
+                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                 >
                   {Object.entries(TEST_TYPE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                 </select>

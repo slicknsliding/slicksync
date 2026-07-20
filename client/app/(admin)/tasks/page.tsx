@@ -5,6 +5,8 @@ import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, UserAvatar, ConfirmModal } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
+import { NebulaTopbar } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
 import { api, User } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import {
@@ -93,6 +95,7 @@ function ActionButton({
 }
 
 export default function TasksPage() {
+  const { layoutMode } = useLayoutMode();
   // State for loading indicators
   const [syncingUsers, setSyncingUsers] = useState(false);
   const [syncingGroups, setSyncingGroups] = useState(false);
@@ -662,12 +665,23 @@ export default function TasksPage() {
 
   return (
     <>
-      <Header
-        title="Tasks"
-        subtitle="Manage and export all your SlickSync data"
-      />
+      {layoutMode === 'nebula' ? (
+        <NebulaTopbar />
+      ) : (
+        <Header
+          title="Tasks"
+          subtitle="Manage and export all your SlickSync data"
+        />
+      )}
 
-      <div className="p-6 lg:p-8 max-w-3xl">
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-6 lg:p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : 'max-w-3xl'} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold font-display mb-1 text-default">Tasks</h1>
+          <p className="text-sm text-muted">Manage and export all your SlickSync data</p>
+        </div>
+      )}
         {/* Users */}
         <PageSection>
           <TaskCard
@@ -1240,6 +1254,7 @@ export default function TasksPage() {
         <PageSection delay={0.4}>
           <ScheduledTasksSection syncFrequency={syncFrequency} backupDays={backupDays} healthCheckMinutes={healthCheckMinutes} />
         </PageSection>
+      </div>
       </div>
 
       {/* Confirm Modal */}

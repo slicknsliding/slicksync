@@ -896,7 +896,7 @@ function CreateGroupModal({
                 style={{
                   background: 'var(--color-surface)',
                   borderRadius: '24px',
-                  border: '1px solid var(--color-surfaceBorder)',
+                  border: '1px solid var(--color-surface-border)',
                   boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)'
                 }}
               >
@@ -953,7 +953,7 @@ function CreateGroupModal({
                               className="w-full px-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none"
                               style={{
                                 background: 'var(--color-subtle)',
-                                border: '1px solid var(--color-surfaceBorder)',
+                                border: '1px solid var(--color-surface-border)',
                                 color: 'var(--color-text)'
                               }}
                             />
@@ -971,7 +971,7 @@ function CreateGroupModal({
                               className="w-full px-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none"
                               style={{
                                 background: 'var(--color-subtle)',
-                                border: '1px solid var(--color-surfaceBorder)',
+                                border: '1px solid var(--color-surface-border)',
                                 color: 'var(--color-text)'
                               }}
                             />
@@ -1149,7 +1149,7 @@ function CloneGroupModal({
                 style={{
                   background: 'var(--color-surface)',
                   borderRadius: '24px',
-                  border: '1px solid var(--color-surfaceBorder)',
+                  border: '1px solid var(--color-surface-border)',
                   boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)'
                 }}
               >
@@ -1194,7 +1194,7 @@ function CloneGroupModal({
                         className="w-full px-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none"
                         style={{
                           background: 'var(--color-subtle)',
-                          border: '1px solid var(--color-surfaceBorder)',
+                          border: '1px solid var(--color-surface-border)',
                           color: 'var(--color-text)'
                         }}
                       />
@@ -1211,7 +1211,7 @@ function CloneGroupModal({
                         className="w-full px-4 py-3.5 rounded-xl transition-all duration-200 focus:outline-none"
                         style={{
                           background: 'var(--color-subtle)',
-                          border: '1px solid var(--color-surfaceBorder)',
+                          border: '1px solid var(--color-surface-border)',
                           color: 'var(--color-text)'
                         }}
                       />
@@ -1249,14 +1249,14 @@ function CloneGroupModal({
                       className="w-full flex items-center gap-3 p-4 rounded-xl transition-all cursor-pointer"
                       style={{
                         background: includeUsers ? 'color-mix(in srgb, var(--color-primary) 15%, transparent)' : 'var(--color-subtle)',
-                        border: `1px solid ${includeUsers ? 'var(--color-primary)' : 'var(--color-surfaceBorder)'}`
+                        border: `1px solid ${includeUsers ? 'var(--color-primary)' : 'var(--color-surface-border)'}`
                       }}
                     >
                       <div
                         className="w-5 h-5 rounded-md flex items-center justify-center transition-all"
                         style={{
                           background: includeUsers ? 'var(--color-primary)' : 'transparent',
-                          border: includeUsers ? 'none' : '2px solid var(--color-surfaceBorder)'
+                          border: includeUsers ? 'none' : '2px solid var(--color-surface-border)'
                         }}
                       >
                         {includeUsers && <CheckIcon className="w-3 h-3 text-white" />}
