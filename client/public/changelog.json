@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.16.2",
+    "date": "2026-07-20",
+    "title": "Activity's Active Users stat, debrid badge says \"Proxied\", ratings off poster cards",
+    "bugFixes": [
+      "Activity's own \"Active Users\" stat had the exact same bug just fixed on Dashboard - metricsData.summary.activeUsers counts anyone with watch activity in the whole period, so it read \"2\" right next to \"Currently Watching: 0\" on the very same page. Same fix: derived from the live nowPlaying feed instead. (Metrics page's own \"Active Users\" stat is correctly left alone - it's explicitly period-scoped there, e.g. \"30 Days\", so summary.activeUsers is the right field for it.)"
+    ],
+    "features": [
+      "The debrid badge now says \"Proxied · TorBox\" instead of just \"TorBox\" - the source (AIOStreams proxy) was previously only in a hover tooltip, not visible text.",
+      "Removed the star/Rotten Tomatoes/Metacritic ratings row from Activity's poster grid cards - already shown in the detail modal each card opens into, which has room for them alongside cast and trailer info; redundant and cramped repeated on every card."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.16.1",
     "date": "2026-07-20",
     "title": "Notifications now show real activity, individually dismissible; Dashboard tidied up",
