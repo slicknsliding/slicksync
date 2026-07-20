@@ -45,7 +45,7 @@ old bugs, so read this before touching it.
 | Signal | Source | Owns | Why not the other |
 |---|---|---|---|
 | **Proxy** (`proxyStreamMonitor.js`) | Polls AIOStreams' built-in proxy stats every 30s | **Live presence only**: Now Playing + the instant "started watching" Discord notification | It sees streams open/close in real time, but is blind to anything routed outside the proxy (e.g. usenet via newznab) |
-| **Native** (`sessionTracker.js`, `metricsProcessor.js`) | Polls the provider's own library/watch state every 1m | **The record**: History, duration, Watch Time — for *every* source, usenet included | The provider only checkpoints at pause/stop, so it learns of a session late and then holds it "active" for ~15min — useless as a liveness signal |
+| **Native** (`sessionTracker.js`, `metricsProcessor.js`) | Polls the provider's own library/watch state every 1m | **The record**: History, duration, Watch Time — for *every* source, usenet included | The provider only checkpoints at pause/stop, so it learns of a session late and then holds it "active" for ~18min (`isActivelyWatching()`'s freshness window, `sessionTracker.js`) — useless as a liveness signal |
 
 Rules that keep falling out of this, each fixing a real reported bug:
 
@@ -54,7 +54,11 @@ Rules that keep falling out of this, each fixing a real reported bug:
   across replays and inflated Watch Time Today to 54h). Native's `overallTimeWatched` deltas are the only real
   duration source.
 - **Native must never be the sole basis for Now Playing.** Its freshness window kept an already-exited stream
-  showing as playing for ~15 minutes.
+  showing as playing for ~18 minutes (widened from 15min on 2026-07-20, see `isActivelyWatching()` in
+  `sessionTracker.js` for the tuning history) — and a single pause is enough to (re)start that window, confirmed
+  against real production data, so a paused-but-not-stopped session can show as "playing" for the same length of
+  time. `proxyNowPlaying.js`'s `RECENTLY_CLOSED_MS` must stay comfortably above this window — it was bumped in the
+  same change to keep the same margin.
 - **`mergeProxyNowPlaying` reconciles them per-title, not per-user.** The proxy is authoritative only for content it
   actually carries: it replaces native's entry for a title it's carrying, and suppresses native's *stale echo* of a
   title it recently finished. A title the proxy never carried (usenet) is left alone — native is the only truth for

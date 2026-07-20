@@ -191,22 +191,27 @@ function getWatchDate(item) {
  * update cadence, at the cost of "Now Playing" potentially lingering up to
  * one window's worth of time after playback genuinely stops.
  *
- * Window at 3x (15min) as of v1.9.35, down from 4x (20min) - direct user
- * feedback that 20min of lingering "Now Playing" after a real stop was too
- * long in practice. 15min stays just above the measured 13.4-minute
- * worst-case checkpoint gap (see v1.9.32), so it shouldn't reintroduce the
- * false-negative bug that window was sized to fix - but there's inherent
- * tension here: Nuvio's data only tells us "last saved position," never
- * "user just stopped," so any fixed window is a tradeoff between missing
- * genuine slow-checkpoint sessions and lingering after a real stop. If
- * checkpoint gaps ever measure wider than ~13min again, this may need
- * raising back up.
+ * Window at 3.6x (18min) as of this change, up from 3x (15min) - direct user
+ * request for a bit more slack after confirming (real production check,
+ * 2026-07-20) that a single pause is enough to write a checkpoint, but the
+ * "Now Playing" that checkpoint produces then stays showing for the rest of
+ * this window even while genuinely paused, not just while still playing -
+ * there's no signal that distinguishes the two, only "a checkpoint landed
+ * recently." 15min itself was already a deliberate walk-back from 4x
+ * (20min) in v1.9.35, after direct user feedback that 20min of lingering
+ * after a real stop was too long in practice - so this stops short of that
+ * value rather than re-trying it outright. Inherent tension either way:
+ * Nuvio's data only tells us "last saved position," never "user just
+ * stopped" or "user just paused," so any fixed window trades missing
+ * genuine slow-checkpoint sessions against lingering after a real stop/
+ * pause. If this still lingers too long in practice, walk it back toward
+ * 15min rather than raising it further.
  */
 function isActivelyWatching(item, userId, now) {
   const watchDate = getWatchDate(item)
   if (!watchDate) return false
 
-  return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 3)
+  return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 3.6)
 }
 
 /**
@@ -319,7 +324,10 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     const hasTimeWatched = state.timeWatched > 0 || state.overallTimeWatched > 0 || state.timeOffset > 0
     const hasVideoId = !!state.video_id
     const watchDate = getWatchDate(item)
-    const hasRecentActivity = watchDate && (nowMs - watchDate.getTime()) < (CHECK_INTERVAL_MS * 3)
+    // Same window as isActivelyWatching() above - kept in sync since v1.9.35
+    // specifically to avoid this gate and that one disagreeing about what
+    // counts as "recent."
+    const hasRecentActivity = watchDate && (nowMs - watchDate.getTime()) < (CHECK_INTERVAL_MS * 3.6)
 
     const hasWatchProgress = hasTimeWatched || hasVideoId || hasRecentActivity
 

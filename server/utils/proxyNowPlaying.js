@@ -24,10 +24,11 @@
 // this call - see publicLibrary.js for that pattern.
 // How far back a closed proxy connection still counts as "the proxy knows
 // this stream ended". Must comfortably exceed the native tracker's
-// actively-watching freshness window (~15 min - see sessionTracker.js), since
-// that window is exactly how long a native session lingers as "active" after
-// the provider's final checkpoint.
-const RECENTLY_CLOSED_MS = 20 * 60 * 1000
+// actively-watching freshness window (~18 min as of 2026-07-20, widened from
+// 15min - see sessionTracker.js), since that window is exactly how long a
+// native session lingers as "active" after the provider's final checkpoint.
+// Kept at the same ~5min margin above that window as before (was 20 vs 15).
+const RECENTLY_CLOSED_MS = 23 * 60 * 1000
 
 async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPlaying) {
   let proxySessions
