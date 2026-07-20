@@ -8,6 +8,8 @@ import { Header } from '@/components/layout/Header';
 import { Button, Card, Avatar, UserAvatar, AvatarGroup, Badge, SearchInput, Input, ConfirmModal, SyncBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
+import { NebulaTopbar, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, Group, User } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
@@ -51,6 +53,7 @@ const colorOptions = [
 ];
 
 export default function GroupsPage() {
+  const { layoutMode } = useLayoutMode();
   const [searchQuery, setSearchQuery] = useState('');
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -143,6 +146,10 @@ export default function GroupsPage() {
     group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     group.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Nebula's stat row - real totals from the same groupsDisplay data already rendered.
+  const totalMembers = groupsDisplay.reduce((sum, g) => sum + (g.userCount || 0), 0);
+  const totalGroupAddons = groupsDisplay.reduce((sum, g) => sum + (g.addonCount || 0), 0);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
@@ -246,52 +253,68 @@ export default function GroupsPage() {
 
   const hasSelection = selectedIds.size > 0;
 
+  const handleSyncAllGroups = async () => {
+    setIsSyncing(true);
+    try {
+      const groupIds = groups.map(g => g.id);
+      let success = 0;
+      for (const id of groupIds) {
+        try {
+          await api.syncGroup(id);
+          success++;
+        } catch (err) {
+          console.error('Failed to sync group:', err);
+        }
+      }
+      if (success > 0) {
+        toast.success(`Synced ${success} group${success !== 1 ? 's' : ''} successfully`);
+      }
+      const groupsData = await api.getGroups();
+      setGroups(groupsData);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to sync all groups');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const syncAllGroupsButton = (
+    <Button
+      variant="secondary"
+      leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
+      onClick={handleSyncAllGroups}
+      disabled={isSyncing}
+    >
+      {isSyncing ? 'Syncing...' : 'Sync All'}
+    </Button>
+  );
+
   return (
     <>
       <Head>
         <title>SlickSync - Groups</title>
       </Head>
-      <Header
-        title="Groups"
-        subtitle={isLoading ? 'Loading...' : `${groups.length} group${groups.length !== 1 ? 's' : ''}`}
-        actions={
-          <>
-            <Button
-              variant="secondary"
-              leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
-              onClick={async () => {
-                setIsSyncing(true);
-                try {
-                  const groupIds = groups.map(g => g.id);
-                  let success = 0;
-                  for (const id of groupIds) {
-                    try {
-                      await api.syncGroup(id);
-                      success++;
-                    } catch (err) {
-                      console.error('Failed to sync group:', err);
-                    }
-                  }
-                  if (success > 0) {
-                    toast.success(`Synced ${success} group${success !== 1 ? 's' : ''} successfully`);
-                  }
-                  const groupsData = await api.getGroups();
-                  setGroups(groupsData);
-                } catch (err: any) {
-                  toast.error(err.message || 'Failed to sync all groups');
-                } finally {
-                  setIsSyncing(false);
-                }
-              }}
-              disabled={isSyncing}
-            >
-              {isSyncing ? 'Syncing...' : 'Sync All'}
-            </Button>
-          </>
-        }
-      />
+      {layoutMode === 'nebula' ? (
+        <NebulaTopbar actions={syncAllGroupsButton} />
+      ) : (
+        <Header
+          title="Groups"
+          subtitle={isLoading ? 'Loading...' : `${groups.length} group${groups.length !== 1 ? 's' : ''}`}
+          actions={syncAllGroupsButton}
+        />
+      )}
 
-      <div className="p-8">
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+          <NebulaStatCard label="Total Groups" value={isLoading ? '...' : groups.length} icon={<UsersIcon className="w-6 h-6" />} colorIndex={0} />
+          <NebulaStatCard label="Total Members" value={isLoading ? '...' : totalMembers} icon={<UsersIcon className="w-6 h-6" />} colorIndex={1} />
+          <NebulaStatCard label="Addons Assigned" value={isLoading ? '...' : totalGroupAddons} icon={<PuzzlePieceIcon className="w-6 h-6" />} colorIndex={0} />
+        </div>
+      )}
+      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
+      {layoutMode === 'nebula' && <NebulaGlassStripe />}
         {/* Filters */}
         <PageToolbar
           selectionConfig={{
@@ -504,6 +527,8 @@ export default function GroupsPage() {
             )}
           </>
         )}
+      </div>
+      </div>
       </div>
 
       {/* Floating Action Bar */}

@@ -72,12 +72,9 @@ export function useLayoutMode() {
 // Pages that actually have a Nebula-styled render path. Everything else
 // keeps the sidebar/current chrome even when Nebula mode is selected -
 // there's no Nebula version of those pages (yet), so there's nothing to
-// switch to. '/activity' has the topbar chrome + its Watch tab's stat cards
-// done; its Tasks/Invites/Proxy tabs still render Current's own styling for
-// their content (deliberately, for now - see the comment above the return
-// statement in activity/page.tsx) but are fully functional either way, so
-// it's safe to list here.
-const NEBULA_ELIGIBLE_PATHS = ['/', '/activity'];
+// switch to. Detail routes (e.g. /users/[id]) aren't listed - exact-match
+// only below, so they correctly keep the sidebar regardless.
+const NEBULA_ELIGIBLE_PATHS = ['/', '/activity', '/users', '/groups', '/addons'];
 
 export function isNebulaEligiblePath(pathname: string): boolean {
   return NEBULA_ELIGIBLE_PATHS.includes(pathname);
