@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.14.8",
+    "date": "2026-07-20",
+    "title": "Activity's group filter overlapped the logo on mobile",
+    "bugFixes": [
+      "Swept all 12 Nebula pages on mobile after the last round of fixes. Found one more: Activity's \"All Groups\" filter is a native <select>, which sizes itself to its longest option text (a group name like \"SLICK STREMIO Imports\") - wide enough to overlap the SlickSync logo on a phone screen. Capped its width on mobile with truncation, unconstrained again from md up. Everything else (Metrics' period picker, Addons' Reload All, Vault's Add Entry, Tasks, Discover, Groups, Invitations) was already clean."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.14.7",
     "date": "2026-07-20",
     "title": "Nebula on mobile: fixed nav wrapping, button overlap, and a real page-width overflow",

@@ -1487,7 +1487,11 @@ function ActivityPageContent() {
     <select
       value={selectedGroup || ''}
       onChange={(e) => setSelectedGroup(e.target.value || null)}
-      className="px-3 py-2 bg-surface border border-default rounded-lg text-default text-sm focus:outline-none focus:border-primary"
+      // max-w on mobile only - a native <select> sizes itself to its longest
+      // option text (e.g. "SLICK STREMIO Imports"), which was wide enough to
+      // push Nebula's topbar row past the phone's screen width and overlap
+      // the logo. Unconstrained again from md up, where there's room.
+      className="px-3 py-2 bg-surface border border-default rounded-lg text-default text-sm focus:outline-none focus:border-primary max-w-[110px] overflow-hidden text-ellipsis whitespace-nowrap md:max-w-none"
     >
       <option value="">All Groups</option>
       {groups.map((group) => (
