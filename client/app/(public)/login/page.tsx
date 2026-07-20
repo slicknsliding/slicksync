@@ -464,7 +464,8 @@ function LoginContent() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md relative"
+        className="w-full relative"
+        style={{ maxWidth: '448px' }}
       >
         {/* Logo */}
         <div className="text-center mb-8">

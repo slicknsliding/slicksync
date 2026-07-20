@@ -907,7 +907,7 @@ export default function TasksPage() {
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-6 lg:p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : 'max-w-3xl'} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={{ maxWidth: layoutMode === 'nebula' ? '72rem' : '768px' }}>
       {layoutMode === 'nebula' && (
         <NebulaPageHeading title="Tasks" subtitle="Manage and export all your SlickSync data" />
       )}
@@ -1650,7 +1650,7 @@ export default function TasksPage() {
             // Migration Confirm Modal
             {showMigrationConfirm && migrationPreview && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                <div className="bg-surface border border-default rounded-xl p-6 max-w-md w-full mx-4">
+                <div className="bg-surface border border-default rounded-xl p-6 w-full mx-4" style={{ maxWidth: '448px' }}>
                   <h3 className="text-lg font-semibold text-default mb-2">Confirm Migration</h3>
                   <p className="text-sm text-muted mb-4">
                     This will import {migrationPreview.totals.movies} movies, {migrationPreview.totals.shows} shows, 

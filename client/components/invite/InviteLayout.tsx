@@ -101,8 +101,10 @@ export function InviteLayout({
 
       {/* Main content */}
       <main className="min-h-screen flex items-center justify-center p-6 pt-24 pb-12">
-        <motion.div 
-          className="w-full max-w-md relative"
+        {/* max-w-md no-ops under globals.css's unlayered `* { max-width: 100vw }` - see NebulaTopbar.tsx */}
+        <motion.div
+          className="w-full relative"
+          style={{ maxWidth: '448px' }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1, ease: 'easeOut' }}
