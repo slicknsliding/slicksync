@@ -43,9 +43,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
   router.get('/account', async (req, res) => {
     try {
       console.log(`[ext/account] Fetching stats for accountId: "${req.appAccountId}"`)
-      const account = await prisma.appAccount.findUnique({ 
-        where: { id: req.appAccountId }, 
-        select: { id: true, uuid: true, email: true, sync: true } 
+      const account = await prisma.appAccount.findUnique({
+        where: { id: req.appAccountId },
+        select: { id: true, uuid: true, email: true, sync: true, avatarUrl: true }
       })
       const sync = account?.sync && typeof account.sync === 'string' ? JSON.parse(account.sync) : account?.sync || {}
       const [totalUsers, totalGroups, totalAddons, pendingInvites] = await Promise.all([
@@ -55,15 +55,16 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
         prisma.inviteRequest.count({ where: { accountId: req.appAccountId, status: 'pending' } })
       ])
       console.log(`[ext/account] Result: users=${totalUsers}, groups=${totalGroups}, addons=${totalAddons}`)
-      return res.json({ 
+      return res.json({
         id: account?.id,
         uuid: account?.uuid,
         email: account?.email,
-        lastRunAt: sync?.lastRunAt || null, 
-        totalUsers, 
-        totalGroups, 
-        totalAddons, 
-        pendingInvites 
+        avatarUrl: account?.avatarUrl || null,
+        lastRunAt: sync?.lastRunAt || null,
+        totalUsers,
+        totalGroups,
+        totalAddons,
+        pendingInvites
       })
     } catch (e) {
       console.error(`[ext/account] Error:`, e.message)

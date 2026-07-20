@@ -139,6 +139,7 @@ model AppAccount {
   sync         String?
   apiKeyHash   String? // Encrypted API key
   aiometadataManifestUrl String? // User-editable AIOMetadata addon manifest URL, used to look up posters for AIOStreams-proxy-detected Now Playing entries that have no WatchSession match
+  avatarUrl    String? // Admin's own profile picture: full URL or /uploads/avatars/<file> for uploaded images
 
   // Relationships
   invitations Invitation[]
