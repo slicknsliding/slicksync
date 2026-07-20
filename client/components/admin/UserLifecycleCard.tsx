@@ -72,7 +72,7 @@ export function UserLifecycleCard({ lifecycle, userJoins }: UserLifecycleCardPro
                 border: '1px solid rgba(255,255,255,0.1)',
                 borderRadius: '12px',
               }}
-              labelFormatter={(value) => {
+              labelFormatter={(value: any) => {
                 const date = new Date(value);
                 return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
               }}

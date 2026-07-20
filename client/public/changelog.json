@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.16.0",
+    "date": "2026-07-20",
+    "title": "Activity feed labels debrid service, when confidently detected via the proxy",
+    "features": [
+      "Watched entries now show which debrid service resolved the stream (currently just TorBox) when it can be confidently determined - but only for streams the AIOStreams proxy actually observed. Investigated the full label set the request described (Proxied / Debrid+which / Usenet, for every entry): not feasible - Stremio's and Nuvio's own watch-progress APIs never expose which addon/stream/resolver served the content, only playback position, so anything not caught live by the proxy has no signal at all. Guessing \"Usenet\" for the rest would just mean \"the proxy didn't see it,\" which isn't the same thing and would be wrong often. Shipped the part that's actually knowable: the resolved stream URL AIOStreams captures does contain a real debrid fingerprint for the two resolvers in use here (Torrentio, StremThru) - confirmed against real captured production URLs, not guessed - so proxy-observed watches get correlated (same user, matching title, a multi-hour window) and labeled; everything else stays unlabeled rather than showing a guess."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Fixed a latent TypeScript error in three Recharts labelFormatter callbacks (metrics/page.tsx, UserLifecycleCard.tsx) that a fresh full build surfaced - unrelated to this feature, but blocked shipping it."
+    ]
+  },
+  {
     "version": "1.15.0",
     "date": "2026-07-20",
     "title": "Nebula: actions moved to each page's title row, account button un-fixed on mobile, real centered nav",

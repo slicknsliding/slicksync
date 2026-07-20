@@ -990,7 +990,11 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
           // moving that session's updatedAt forward, so older History entries
           // silently fall out of the merge window forever and previously
           // showed 0 duration despite the real value sitting right here.
-          durationSeconds: ep.durationSeconds && ep.durationSeconds > 0 ? ep.durationSeconds : undefined
+          durationSeconds: ep.durationSeconds && ep.durationSeconds > 0 ? ep.durationSeconds : undefined,
+          // See debridDetection.js - only set when this watch was
+          // confidently correlated to a proxy-observed stream with a
+          // recognized debrid URL pattern. Never a guess.
+          debridService: ep.debridService || undefined
         }
       })
 
@@ -1020,7 +1024,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
           watchedAt: m.watchedAt.toISOString(),
           watchedAtTimestamp: m.watchedAt.getTime(),
           // See the matching comment on episodeEntries above.
-          durationSeconds: m.durationSeconds && m.durationSeconds > 0 ? m.durationSeconds : undefined
+          durationSeconds: m.durationSeconds && m.durationSeconds > 0 ? m.durationSeconds : undefined,
+          debridService: m.debridService || undefined
         }
       })
 
