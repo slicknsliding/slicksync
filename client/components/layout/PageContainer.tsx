@@ -24,22 +24,20 @@ export function PageContainer({ children, className, noSidebarOffset }: PageCont
       style={{ background: 'var(--color-bg)' }}
     >
       {/* Background gradient - Nebula gets a smooth diagonal wash (purple
-          bleeding down from the top-left, secondary color up from the
+          anchored to the top-left corner, secondary color anchored to the
           bottom-right, matching the layout's own namesake and the original
           concept mockup) instead of the two small static corner blobs every
-          other page uses. animate-aurora-drift is defined in globals.css
-          and slowly shifts the gradient's position for a "transitioning"
-          feel, already gated behind prefers-reduced-motion there. */}
+          other page uses. animate-aurora-drift (globals.css) wobbles the
+          gradient's ANGLE, not its position/size - an earlier version
+          animated backgroundPosition against an oversized (180%)
+          backgroundSize, which meant at one end of the cycle the teal stop
+          got pushed entirely past the bottom-right edge and was never
+          visible at all. Both color stops now stay pinned to 0%/100% (their
+          own corners) at all times; only the angle drifts, gated behind
+          prefers-reduced-motion in globals.css. */}
       <div className={`fixed inset-0 ${offsetClass} pointer-events-none overflow-hidden`}>
         {noSidebarOffset ? (
-          <div
-            className="absolute inset-0 opacity-50 animate-aurora-drift"
-            style={{
-              backgroundImage:
-                'linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 65%, transparent) 0%, transparent 45%, transparent 55%, color-mix(in srgb, var(--color-secondary) 65%, transparent) 100%)',
-              backgroundSize: '180% 180%',
-            }}
-          />
+          <div className="absolute inset-0 opacity-50 animate-aurora-drift" />
         ) : (
           <>
             <div
