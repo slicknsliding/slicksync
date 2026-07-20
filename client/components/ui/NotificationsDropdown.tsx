@@ -78,6 +78,13 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   // minutes by activityMonitor.js, so polling this here is cheap). Merged
   // with any activities passed in via props.
   const [recentWatchActivity, setRecentWatchActivity] = useState<any[]>([]);
+  // Live "now playing" sessions, from the same metrics response. Discord
+  // gets an instant "started watching" ping from the proxy pipeline (see
+  // CLAUDE.md), but nothing ever fed that event into this bell - it only
+  // ever showed completed watches. Each entry keeps a stable id/timestamp
+  // (session start) across polls, so it surfaces once and sticks until
+  // marked read/dismissed rather than re-notifying every 30s.
+  const [recentNowPlaying, setRecentNowPlaying] = useState<any[]>([]);
 
   // Fetch pending + accepted invite requests
   useEffect(() => {
@@ -130,6 +137,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       try {
         const metrics = await api.getMetrics('30d');
         setRecentWatchActivity(metrics.recentActivity || []);
+        setRecentNowPlaying(metrics.nowPlaying || []);
       } catch (e) {
         console.error('Failed to fetch recent activity for notifications', e);
       }
@@ -176,8 +184,16 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       timestamp: entry.watchedAt,
       poster: entry.item?.poster,
     }));
-    return [...activities, ...fromMetrics];
-  }, [activities, recentWatchActivity]);
+    const fromNowPlaying = recentNowPlaying.map((np) => ({
+      id: `now-playing-${np.user?.id}-${np.item?.id}-${np.videoId || ''}`,
+      userName: np.user?.username || 'Someone',
+      type: 'watch',
+      contentName: np.item?.name || 'something',
+      timestamp: np.watchedAtTimestamp || np.watchedAt,
+      poster: np.item?.poster,
+    }));
+    return [...activities, ...fromMetrics, ...fromNowPlaying];
+  }, [activities, recentWatchActivity, recentNowPlaying]);
 
   const combinedInviteHistory = useMemo(() => {
     const fromAccepted = acceptedRequests.map((req) => ({
