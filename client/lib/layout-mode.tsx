@@ -11,7 +11,7 @@ export type LayoutModeId = (typeof layoutModeIds)[number];
 
 export const layoutModeMeta: Record<LayoutModeId, { name: string; description: string }> = {
   current: {
-    name: 'Current',
+    name: 'Original',
     description: 'Sidebar navigation with card-based dashboard',
   },
   nebula: {
@@ -25,25 +25,24 @@ interface LayoutModeContextValue {
   setLayoutMode: (id: LayoutModeId) => void;
 }
 
-// Defaulting to 'nebula' (rather than 'current', the safer/proven choice)
-// while it's actively being built out and dogfooded - makes it the thing
-// you actually see day to day so bugs surface and get fixed quickly,
-// instead of sitting unused behind an opt-in toggle. Worth revisiting once
-// it's had real mileage.
+// Back to defaulting to 'current' (Original) - Nebula is still actively
+// being remastered page by page (only Dashboard and part of Activity are
+// done so far), so it's not ready to be what people land on by default.
+// Nebula stays fully available as an opt-in toggle in the meantime.
 const defaultContextValue: LayoutModeContextValue = {
-  layoutMode: 'nebula',
+  layoutMode: 'current',
   setLayoutMode: () => {},
 };
 
 const LayoutModeContext = createContext<LayoutModeContextValue>(defaultContextValue);
 
 export function LayoutModeProvider({ children }: { children: ReactNode }) {
-  const [layoutMode, setLayoutModeState] = useState<LayoutModeId>('nebula');
+  const [layoutMode, setLayoutModeState] = useState<LayoutModeId>('current');
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('slicksync-layout-mode') as LayoutModeId | null;
-    const initial = saved && layoutModeIds.includes(saved) ? saved : 'nebula';
+    const initial = saved && layoutModeIds.includes(saved) ? saved : 'current';
     setLayoutModeState(initial);
     setMounted(true);
   }, []);
