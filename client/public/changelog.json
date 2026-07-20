@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.13.12",
+    "date": "2026-07-20",
+    "title": "Two-tone logo: each chain link now matches the brand gradient's own colors",
+    "features": [
+      "The logo's two chain links are now colored instead of flat white - the upper-left link takes the primary/\"top\" color, the lower-right link takes the secondary/\"bottom\" color, matching the same gradient direction already used everywhere else (the badge background, Nebula's corner glow). A translucent white outline sits behind each link for definition, since a same-hued link over a same-hued patch of the badge's own gradient would otherwise have very little contrast. SlickSyncLogo is one shared component, so this applies everywhere it renders - both layouts' nav chrome, login, register, invite pages, and the create-user modal - automatically."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.13.11",
     "date": "2026-07-20",
     "title": "Nebula background glow was getting swallowed on long pages",
