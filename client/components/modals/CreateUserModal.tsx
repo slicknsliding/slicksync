@@ -472,12 +472,13 @@ export function CreateUserModal({
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             >
             <DialogPanel
-              className="w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]"
+              className="w-full overflow-hidden flex flex-col max-h-[85vh]"
               style={{
                 background: 'var(--color-surface)',
                 borderRadius: '24px',
                 border: '1px solid var(--color-surfaceBorder)',
-                boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)'
+                boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)',
+                maxWidth: '512px'
               }}
             >
               {/* Decorative header gradient */}

@@ -88,7 +88,8 @@ export default function RegisterPage() {
         className="min-h-screen flex items-center justify-center p-6"
         style={{ background: 'var(--color-bg)' }}
       >
-        <div className="w-full max-w-md text-center">
+        {/* max-w-md no-ops under globals.css's unlayered `* { max-width: 100vw }` - see NebulaTopbar.tsx */}
+        <div className="w-full text-center" style={{ maxWidth: '448px' }}>
           <h1 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
             Registration isn't available
           </h1>
@@ -128,7 +129,8 @@ export default function RegisterPage() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md relative"
+        className="w-full relative"
+        style={{ maxWidth: '448px' }}
       >
         {/* Logo */}
         <div className="text-center mb-8">

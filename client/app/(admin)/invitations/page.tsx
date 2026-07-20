@@ -437,7 +437,7 @@ export default function InvitationsPage() {
                                   </td>
                                   <td className="px-6 py-4">
                                     <div>
-                                      <p className="font-medium text-default truncate max-w-[200px]">{invite.name || invite.code}</p>
+                                      <p className="font-medium text-default truncate" style={{ maxWidth: '200px' }}>{invite.name || invite.code}</p>
                                       <p className="text-sm text-muted font-mono">{invite.code}</p>
                                     </div>
                                   </td>
@@ -1367,11 +1367,12 @@ function CreateInvitationModal({
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             >
               <DialogPanel
-                className="w-full max-w-lg overflow-hidden my-8"
+                className="w-full overflow-hidden my-8"
                 style={{
                   background: 'var(--color-surface)',
                   borderRadius: '24px',
                   border: '1px solid var(--color-surfaceBorder)',
+                  maxWidth: '512px',
                   boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)'
                 }}
               >

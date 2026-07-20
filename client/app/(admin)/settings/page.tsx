@@ -467,7 +467,7 @@ export default function SettingsPage() {
         subtitle="Customize your SlickSync experience"
       />
 
-      <div className="p-6 lg:p-8 max-w-4xl">
+      <div className="p-6 lg:p-8" style={{ maxWidth: '896px' }}>
         {/* Theme Selection */}
         <PageSection className="mb-6">
           <Card padding="lg">
@@ -651,7 +651,7 @@ export default function SettingsPage() {
                     showLabels={false}
                   />
                 </div>
-                <span className="md:hidden text-xs text-muted text-right max-w-[120px]">
+                <span className="md:hidden text-xs text-muted text-right" style={{ maxWidth: '120px' }}>
                   Grid view only on mobile
                 </span>
               </SettingRow>

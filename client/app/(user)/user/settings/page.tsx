@@ -344,7 +344,7 @@ export default function UserSettingsPage() {
         subtitle="Manage your account preferences"
       />
 
-      <div className="max-w-3xl space-y-6">
+      <div className="space-y-6" style={{ maxWidth: '768px' }}>
         {/* Profile Info */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

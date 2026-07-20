@@ -536,10 +536,11 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                         className="fixed inset-0 z-[100] flex items-center justify-center p-4 pointer-events-none"
                     >
                         <div
-                            className="w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl pointer-events-auto"
+                            className="w-full rounded-2xl overflow-hidden shadow-2xl pointer-events-auto"
                             style={{
                                 backgroundColor: 'var(--color-surface)',
                                 border: '1px solid var(--color-surface-border)',
+                                maxWidth: '384px',
                             }}
                             onClick={(e) => e.stopPropagation()}
                         >

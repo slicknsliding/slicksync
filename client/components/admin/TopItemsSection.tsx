@@ -120,7 +120,8 @@ export const TopItemsSection = memo(function TopItemsSection({ movies, series }:
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-surface rounded-xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto"
+              className="bg-surface rounded-xl p-6 w-full max-h-[80vh] overflow-y-auto"
+              style={{ maxWidth: '448px' }}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">

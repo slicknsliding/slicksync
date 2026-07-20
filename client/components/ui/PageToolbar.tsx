@@ -328,7 +328,7 @@ export function PageToolbarCompact({
     >
       {/* Search */}
       {searchConfig && (
-        <div className="flex-1 max-w-md">
+        <div className="flex-1" style={{ maxWidth: '448px' }}>
           <SearchInput
             size="sm"
             value={searchConfig.value}

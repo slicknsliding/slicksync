@@ -196,7 +196,7 @@ const GroupWatchTimeChart = memo(function GroupWatchTimeChart({
               className="w-3 h-3 rounded-full"
               style={{ backgroundColor: USER_COLORS[index % USER_COLORS.length] }}
             />
-            <span className="text-sm text-muted truncate max-w-[120px]">
+            <span className="text-sm text-muted truncate" style={{ maxWidth: '120px' }}>
               {user.username || user.name || 'Unknown'}
             </span>
           </div>

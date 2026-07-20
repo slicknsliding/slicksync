@@ -432,10 +432,10 @@ export default function GroupsPage() {
                                     colorIndex={group.colorIndex ?? 0}
                                   />
                                   <div>
-                                    <p className="font-medium transition-colors group-hover:text-primary text-default truncate max-w-[200px]">
+                                    <p className="font-medium transition-colors group-hover:text-primary text-default truncate" style={{ maxWidth: '200px' }}>
                                       {group.name}
                                     </p>
-                                    <p className="text-sm text-muted truncate max-w-[200px]">
+                                    <p className="text-sm text-muted truncate" style={{ maxWidth: '200px' }}>
                                       {group.description || 'No description'}
                                     </p>
                                   </div>
@@ -867,12 +867,13 @@ function CreateGroupModal({
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             >
               <DialogPanel
-                className="w-full max-w-lg overflow-hidden"
+                className="w-full overflow-hidden"
                 style={{
                   background: 'var(--color-surface)',
                   borderRadius: '24px',
                   border: '1px solid var(--color-surfaceBorder)',
-                  boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)'
+                  boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)',
+                  maxWidth: '512px'
                 }}
               >
                 {/* Decorative header gradient */}
@@ -1120,12 +1121,13 @@ function CloneGroupModal({
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             >
               <DialogPanel
-                className="w-full max-w-lg overflow-hidden"
+                className="w-full overflow-hidden"
                 style={{
                   background: 'var(--color-surface)',
                   borderRadius: '24px',
                   border: '1px solid var(--color-surfaceBorder)',
-                  boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)'
+                  boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 40px 80px -20px rgba(0,0,0,0.5)',
+                  maxWidth: '512px'
                 }}
               >
                 <div

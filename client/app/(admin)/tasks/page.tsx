@@ -667,7 +667,7 @@ export default function TasksPage() {
         subtitle="Manage and export all your SlickSync data"
       />
 
-      <div className="p-6 lg:p-8 max-w-3xl">
+      <div className="p-6 lg:p-8" style={{ maxWidth: '768px' }}>
         {/* Users */}
         <PageSection>
           <TaskCard
@@ -1192,7 +1192,7 @@ export default function TasksPage() {
             // Migration Confirm Modal
             {showMigrationConfirm && migrationPreview && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                <div className="bg-surface border border-default rounded-xl p-6 max-w-md w-full mx-4">
+                <div className="bg-surface border border-default rounded-xl p-6 w-full mx-4" style={{ maxWidth: '448px' }}>
                   <h3 className="text-lg font-semibold text-default mb-2">Confirm Migration</h3>
                   <p className="text-sm text-muted mb-4">
                     This will import {migrationPreview.totals.movies} movies, {migrationPreview.totals.shows} shows, 

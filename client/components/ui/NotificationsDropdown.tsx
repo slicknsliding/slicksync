@@ -289,7 +289,8 @@ export function NotificationsDropdown({ activities, inviteHistory, taskHistory }
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -10 }}
               transition={{ duration: 0.15 }}
-              className="absolute right-0 top-full mt-2 z-50 w-80 max-w-[calc(100vw-2rem)]"
+              className="absolute right-0 top-full mt-2 z-50 w-80"
+              style={{ maxWidth: 'calc(100vw - 2rem)' }}
             >
               <Card padding="none" className="shadow-xl border border-default max-h-[500px] flex flex-col">
                 {/* Header */}

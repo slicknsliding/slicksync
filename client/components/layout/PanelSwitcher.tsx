@@ -302,7 +302,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                   </div>
                   <div className="flex-1 text-left">
                     <p className="text-sm font-medium">Copy Account UUID</p>
-                    <p className="text-[10px] font-mono opacity-50 truncate max-w-[180px]">
+                    <p className="text-[10px] font-mono opacity-50 truncate" style={{ maxWidth: '180px' }}>
                       {userInfo.uuid}
                     </p>
                   </div>
