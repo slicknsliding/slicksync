@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.14.4",
+    "date": "2026-07-20",
+    "title": "Nebula nav badges: stacked rows, no redundant \"Overview\"",
+    "bugFixes": [
+      "The Overview/Management group labels added last version were rendered inside one continuous flex-wrap row, so at wide viewports \"Management\" could end up squeezed inline right next to \"Metrics\" instead of reading as its own section, unlike the sidebar's version where each group is unambiguously its own block."
+    ],
+    "features": [
+      "Each Nebula nav group is now its own row, same as the sidebar's stacked layout. Dropped the \"Overview\" label itself, since it's the first/default group (Dashboard is the landing page) and doesn't need one - \"Management\" stays, since it marks a real transition."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.14.3",
     "date": "2026-07-20",
     "title": "Tasks, Settings, Changelog moved out of Nebula's top nav",
