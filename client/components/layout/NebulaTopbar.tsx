@@ -14,10 +14,13 @@ import { api } from '@/lib/api';
 // Colors come from the active Theme's CSS variables, not hardcoded hex, so
 // this looks right regardless of which color theme is selected - layout and
 // color are independent settings.
-// Same three groups as Sidebar.tsx's navigationSections (Overview /
-// Management / System) - kept in sync manually since one is a flat pill row
-// and the other a vertical list, too different to share a single data
-// structure cleanly.
+// Overview / Management groups mirror Sidebar.tsx's navigationSections -
+// kept in sync manually since one is a flat pill row and the other a
+// vertical list, too different to share a single data structure cleanly.
+// Sidebar's third group (System: Tasks/Settings/Changelog) is deliberately
+// NOT here - those three live only in the account dropdown (PanelSwitcher)
+// now, since the topbar has no room to spare and that dropdown is already
+// the natural "everything about this admin session" spot.
 const NEBULA_NAV_SECTIONS = [
   {
     id: 'overview',
@@ -38,15 +41,6 @@ const NEBULA_NAV_SECTIONS = [
       { href: '/addons', label: 'Addons' },
       { href: '/vault', label: 'Vault' },
       { href: '/invitations', label: 'Invitations' },
-    ],
-  },
-  {
-    id: 'system',
-    label: 'System',
-    items: [
-      { href: '/tasks', label: 'Tasks' },
-      { href: '/settings', label: 'Settings' },
-      { href: '/changelog', label: 'Changelog' },
     ],
   },
 ];
