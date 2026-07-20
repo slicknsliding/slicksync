@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.13.8",
+    "date": "2026-07-19",
+    "title": "Activity's Tasks/Invites/Proxy tabs remastered, layout renamed to Original, Nebula opt-in again",
+    "features": [
+      "The Tasks, Invites, and Proxy tabs now get the same glass-panel treatment as Watch and Dashboard - each date-grouped history section is its own floating panel instead of a flat list. Along the way, the Invites tab's per-row markup (which was duplicated three times, once per date group) got extracted into one shared component."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Renamed the \"Current\" layout option to \"Original\" in Settings.",
+      "Nebula is no longer the default layout for new sessions - it's still being actively remastered page by page (Dashboard and Activity so far), so Original is the safer default again while that work continues. Nebula remains fully available as an opt-in toggle, and anyone who already had it selected keeps that choice."
+    ]
+  },
+  {
     "version": "1.13.7",
     "date": "2026-07-19",
     "title": "Nebula's Activity Watch tab: real layout remaster, not just recoloring",

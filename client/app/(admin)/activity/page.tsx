@@ -771,48 +771,54 @@ function ProxyHistoryView() {
       });
   }, [selectedAddon]);
 
-  return (
-    <PageSection delay={0.1}>
-      <Card padding="lg">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-default">Proxy Request History</h3>
-            <p className="text-sm text-muted">
-              View all requests made through proxied addon URLs
-            </p>
-          </div>
-          <select
-            value={selectedAddon || ''}
-            onChange={(e) => setSelectedAddon(e.target.value || null)}
-            className="px-3 py-2 bg-surface border border-default rounded-lg text-default"
-          >
-            <option value="">All Addons</option>
-            {addons.map((addon) => (
-              <option key={addon.id} value={addon.id}>
-                {addon.name}
-              </option>
-            ))}
-          </select>
-        </div>
+  const { layoutMode } = useLayoutMode();
 
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
-          </div>
-        ) : proxyLogs.length === 0 ? (
-          <div className="text-center py-12">
-            <ShieldCheckIcon className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
-            <p className="text-muted">
-              {selectedAddon ? 'No proxy requests yet for this addon' : 'No proxy requests yet'}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {proxyLogs.map((log, index) => (
-              <div
-                key={index}
-                className="flex items-center gap-4 p-3 rounded-lg bg-surface-hover border border-default"
-              >
+  const body = (
+    <>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-lg font-semibold text-default">Proxy Request History</h3>
+          <p className="text-sm text-muted">
+            View all requests made through proxied addon URLs
+          </p>
+        </div>
+        <select
+          value={selectedAddon || ''}
+          onChange={(e) => setSelectedAddon(e.target.value || null)}
+          className="px-3 py-2 bg-surface border border-default rounded-lg text-default"
+        >
+          <option value="">All Addons</option>
+          {addons.map((addon) => (
+            <option key={addon.id} value={addon.id}>
+              {addon.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
+        </div>
+      ) : proxyLogs.length === 0 ? (
+        <div className="text-center py-12">
+          <ShieldCheckIcon className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
+          <p className="text-muted">
+            {selectedAddon ? 'No proxy requests yet for this addon' : 'No proxy requests yet'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {proxyLogs.map((log, index) => (
+            <div
+              key={index}
+              className="flex items-center gap-4 p-3 rounded-lg transition-colors"
+              style={
+                layoutMode === 'nebula'
+                  ? { background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surfaceBorder)' }
+                  : { background: 'var(--color-surface-hover)', border: '1px solid var(--color-border)' }
+              }
+            >
                 <div className="flex-shrink-0">
                   {log.cacheHit ? (
                     <Badge variant="success" size="sm">Cache Hit</Badge>
@@ -871,16 +877,28 @@ function ProxyHistoryView() {
                     )}
                   </div>
                 </div>
-                {log.ip && (
-                  <div className="text-xs text-subtle font-mono hidden sm:block" title="Client IP">
-                    {log.ip}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
+              {log.ip && (
+                <div className="text-xs text-subtle font-mono hidden sm:block" title="Client IP">
+                  {log.ip}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <PageSection delay={0.1}>
+      {layoutMode === 'nebula' ? (
+        <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
+          <NebulaGlassStripe />
+          {body}
+        </div>
+      ) : (
+        <Card padding="lg">{body}</Card>
+      )}
     </PageSection>
   );
 }
@@ -1073,6 +1091,69 @@ function NowPlayingItemBody({
         })()}
       </div>
     </>
+  );
+}
+
+// Single row in the Invites tab's Today/Yesterday/Earlier history - the
+// original had this exact ~50-line block duplicated three times (once per
+// date group). Extracted so styling it for Nebula only has to happen once,
+// and Current's own three copies collapse to one call site each too.
+function InviteHistoryRow({ invite }: { invite: InviteHistoryItem }) {
+  const { layoutMode } = useLayoutMode();
+  return (
+    <motion.div
+      whileHover={{ x: 4 }}
+      className="flex items-start gap-4 p-4 rounded-xl transition-colors"
+      style={
+        layoutMode === 'nebula'
+          ? { background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surfaceBorder)' }
+          : { background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }
+      }
+    >
+      {/* Invite action icon */}
+      <div className={`p-2 rounded-lg ${invite.action === 'created'
+        ? 'text-primary bg-primary-muted'
+        : invite.action === 'used'
+          ? 'text-success bg-success-muted'
+          : invite.action === 'expired'
+            ? 'text-warning bg-warning-muted'
+            : 'text-error bg-error-muted'
+        }`}>
+        {invite.action === 'created' ? (
+          <EnvelopeIcon className="w-4 h-4" />
+        ) : invite.action === 'used' ? (
+          <CheckCircleIcon className="w-4 h-4" />
+        ) : invite.action === 'expired' ? (
+          <ClockIcon className="w-4 h-4" />
+        ) : (
+          <XMarkIcon className="w-4 h-4" />
+        )}
+      </div>
+
+      {/* Invite details */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <h4 className="text-sm font-medium text-default">
+            Invite <span className="font-mono">{invite.inviteCode}</span>
+          </h4>
+          <Badge variant="primary" size="sm">
+            {invite.groupName}
+          </Badge>
+        </div>
+        <p className="text-xs text-muted mt-1">
+          {invite.action === 'created' && 'Invite created'}
+          {invite.action === 'used' && invite.userName && `Used by ${invite.userName}`}
+          {invite.action === 'used' && !invite.userName && 'Invite used'}
+          {invite.action === 'expired' && 'Invite expired'}
+          {invite.action === 'deleted' && 'Invite deleted'}
+        </p>
+      </div>
+
+      {/* Timestamp */}
+      <div className="text-right">
+        <p className="text-xs text-subtle">{formatTimestamp(invite.timestamp)}</p>
+      </div>
+    </motion.div>
   );
 }
 
@@ -1681,30 +1762,18 @@ function ActivityPageContent() {
             {/* Invitation History Stats */}
             <PageSection delay={0.05} className="mb-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard
-                  label="Total Invites"
-                  value={isLoading ? '...' : inviteHistory.length}
-                  icon={<EnvelopeIcon className="w-6 h-6" />}
-                  delay={0}
-                />
-                <StatCard
-                  label="Created"
-                  value={isLoading ? '...' : inviteHistory.filter(i => i.action === 'created').length}
-                  icon={<EnvelopeIcon className="w-6 h-6" />}
-                  delay={0.05}
-                />
-                <StatCard
-                  label="Used"
-                  value={isLoading ? '...' : inviteHistory.filter(i => i.action === 'used').length}
-                  icon={<CheckCircleIcon className="w-6 h-6" />}
-                  delay={0.1}
-                />
-                <StatCard
-                  label="Expired"
-                  value={isLoading ? '...' : inviteHistory.filter(i => i.action === 'expired').length}
-                  icon={<ClockIcon className="w-6 h-6" />}
-                  delay={0.15}
-                />
+                {[
+                  { label: 'Total Invites', value: isLoading ? '...' : inviteHistory.length, icon: <EnvelopeIcon className="w-6 h-6" /> },
+                  { label: 'Created', value: isLoading ? '...' : inviteHistory.filter(i => i.action === 'created').length, icon: <EnvelopeIcon className="w-6 h-6" /> },
+                  { label: 'Used', value: isLoading ? '...' : inviteHistory.filter(i => i.action === 'used').length, icon: <CheckCircleIcon className="w-6 h-6" /> },
+                  { label: 'Expired', value: isLoading ? '...' : inviteHistory.filter(i => i.action === 'expired').length, icon: <ClockIcon className="w-6 h-6" /> },
+                ].map((stat, index) =>
+                  layoutMode === 'nebula' ? (
+                    <NebulaStatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} colorIndex={index} />
+                  ) : (
+                    <StatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} delay={index * 0.05} />
+                  )
+                )}
               </div>
             </PageSection>
 
@@ -1743,245 +1812,32 @@ function ActivityPageContent() {
                 </PageSection>
               ) : (
                 <>
-                  {/* Today */}
-                  {inviteHistory.filter(i => {
-                    const date = new Date(i.timestamp);
-                    return date >= todayStart;
-                  }).length > 0 && (
-                      <PageSection delay={0.1}>
-                        <div className="flex items-center gap-3 mb-4">
-                          <CalendarIcon className="w-5 h-5 text-primary" />
-                          <h2 className="text-lg font-semibold text-default font-display">Today</h2>
-                          <Badge variant="primary" size="sm">
-                            {inviteHistory.filter(i => new Date(i.timestamp) >= todayStart).length}
-                          </Badge>
-                        </div>
-                        <StaggerContainer className="space-y-3">
-                          {inviteHistory
-                            .filter(i => new Date(i.timestamp) >= todayStart)
-                            .map((invite) => (
-                              <StaggerItem key={invite.id}>
-                                <motion.div
-                                  whileHover={{ x: 4 }}
-                                  className="flex items-start gap-4 p-4 rounded-xl bg-surface hover:bg-surface-hover transition-colors"
-                                  style={{
-                                    background: 'var(--color-surface)',
-                                    border: '1px solid var(--color-surface-border)',
-                                  }}
-                                >
-                                  {/* Invite action icon */}
-                                  <div className={`p-2 rounded-lg ${invite.action === 'created'
-                                    ? 'text-primary bg-primary-muted'
-                                    : invite.action === 'used'
-                                      ? 'text-success bg-success-muted'
-                                      : invite.action === 'expired'
-                                        ? 'text-warning bg-warning-muted'
-                                        : 'text-error bg-error-muted'
-                                    }`}>
-                                    {invite.action === 'created' ? (
-                                      <EnvelopeIcon className="w-4 h-4" />
-                                    ) : invite.action === 'used' ? (
-                                      <CheckCircleIcon className="w-4 h-4" />
-                                    ) : invite.action === 'expired' ? (
-                                      <ClockIcon className="w-4 h-4" />
-                                    ) : (
-                                      <XMarkIcon className="w-4 h-4" />
-                                    )}
-                                  </div>
-
-                                  {/* Invite details */}
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <h4 className="text-sm font-medium text-default">
-                                        Invite <span className="font-mono">{invite.inviteCode}</span>
-                                      </h4>
-                                      <Badge
-                                        variant="primary"
-                                        size="sm"
-                                      >
-                                        {invite.groupName}
-                                      </Badge>
-                                    </div>
-                                    <p className="text-xs text-muted mt-1">
-                                      {invite.action === 'created' && 'Invite created'}
-                                      {invite.action === 'used' && invite.userName && `Used by ${invite.userName}`}
-                                      {invite.action === 'used' && !invite.userName && 'Invite used'}
-                                      {invite.action === 'expired' && 'Invite expired'}
-                                      {invite.action === 'deleted' && 'Invite deleted'}
-                                    </p>
-                                  </div>
-
-                                  {/* Timestamp */}
-                                  <div className="text-right">
-                                    <p className="text-xs text-subtle">{formatTimestamp(invite.timestamp)}</p>
-                                  </div>
-                                </motion.div>
-                              </StaggerItem>
-                            ))}
-                        </StaggerContainer>
-                      </PageSection>
-                    )}
-
-                  {/* Yesterday */}
-                  {inviteHistory.filter(i => {
-                    const date = new Date(i.timestamp);
-                    return date >= yesterdayStart && date < todayStart;
-                  }).length > 0 && (
-                      <PageSection delay={0.15}>
-                        <div className="flex items-center gap-3 mb-4">
-                          <CalendarIcon className="w-5 h-5 text-muted" />
-                          <h2 className="text-lg font-semibold text-default font-display">Yesterday</h2>
-                          <Badge variant="muted" size="sm">
-                            {inviteHistory.filter(i => {
-                              const date = new Date(i.timestamp);
-                              return date >= yesterdayStart && date < todayStart;
-                            }).length}
-                          </Badge>
-                        </div>
-                        <StaggerContainer className="space-y-3">
-                          {inviteHistory
-                            .filter(i => {
-                              const date = new Date(i.timestamp);
-                              return date >= yesterdayStart && date < todayStart;
-                            })
-                            .map((invite) => (
-                              <StaggerItem key={invite.id}>
-                                <motion.div
-                                  whileHover={{ x: 4 }}
-                                  className="flex items-start gap-4 p-4 rounded-xl bg-surface hover:bg-surface-hover transition-colors"
-                                  style={{
-                                    background: 'var(--color-surface)',
-                                    border: '1px solid var(--color-surface-border)',
-                                  }}
-                                >
-                                  {/* Invite action icon */}
-                                  <div className={`p-2 rounded-lg ${invite.action === 'created'
-                                    ? 'text-primary bg-primary-muted'
-                                    : invite.action === 'used'
-                                      ? 'text-success bg-success-muted'
-                                      : invite.action === 'expired'
-                                        ? 'text-warning bg-warning-muted'
-                                        : 'text-error bg-error-muted'
-                                    }`}>
-                                    {invite.action === 'created' ? (
-                                      <EnvelopeIcon className="w-4 h-4" />
-                                    ) : invite.action === 'used' ? (
-                                      <CheckCircleIcon className="w-4 h-4" />
-                                    ) : invite.action === 'expired' ? (
-                                      <ClockIcon className="w-4 h-4" />
-                                    ) : (
-                                      <XMarkIcon className="w-4 h-4" />
-                                    )}
-                                  </div>
-
-                                  {/* Invite details */}
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <h4 className="text-sm font-medium text-default">
-                                        Invite <span className="font-mono">{invite.inviteCode}</span>
-                                      </h4>
-                                      <Badge
-                                        variant="primary"
-                                        size="sm"
-                                      >
-                                        {invite.groupName}
-                                      </Badge>
-                                    </div>
-                                    <p className="text-xs text-muted mt-1">
-                                      {invite.action === 'created' && 'Invite created'}
-                                      {invite.action === 'used' && invite.userName && `Used by ${invite.userName}`}
-                                      {invite.action === 'used' && !invite.userName && 'Invite used'}
-                                      {invite.action === 'expired' && 'Invite expired'}
-                                      {invite.action === 'deleted' && 'Invite deleted'}
-                                    </p>
-                                  </div>
-
-                                  {/* Timestamp */}
-                                  <div className="text-right">
-                                    <p className="text-xs text-subtle">{formatTimestamp(invite.timestamp)}</p>
-                                  </div>
-                                </motion.div>
-                              </StaggerItem>
-                            ))}
-                        </StaggerContainer>
-                      </PageSection>
-                    )}
-
-                  {/* Older */}
-                  {inviteHistory.filter(i => new Date(i.timestamp) < yesterdayStart).length > 0 && (
-                    <PageSection delay={0.2}>
+                  {[
+                    { key: 'today', label: 'Today', icon: 'text-primary', badge: 'primary' as const, delay: 0.1, items: inviteHistory.filter(i => new Date(i.timestamp) >= todayStart) },
+                    { key: 'yesterday', label: 'Yesterday', icon: 'text-muted', badge: 'muted' as const, delay: 0.15, items: inviteHistory.filter(i => { const d = new Date(i.timestamp); return d >= yesterdayStart && d < todayStart; }) },
+                    { key: 'earlier', label: 'Earlier', icon: 'text-subtle', badge: 'muted' as const, delay: 0.2, items: inviteHistory.filter(i => new Date(i.timestamp) < yesterdayStart) },
+                  ].map((group) => group.items.length === 0 ? null : (
+                    <PageSection key={group.key} delay={group.delay}>
+                      {/* Nebula wraps each date group in its own glass panel,
+                          same as the Watch tab - the rows inside
+                          (InviteHistoryRow) are identical either way. */}
+                      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
+                      {layoutMode === 'nebula' && <NebulaGlassStripe />}
                       <div className="flex items-center gap-3 mb-4">
-                        <CalendarIcon className="w-5 h-5 text-subtle" />
-                        <h2 className="text-lg font-semibold text-default font-display">Earlier</h2>
-                        <Badge variant="muted" size="sm">
-                          {inviteHistory.filter(i => new Date(i.timestamp) < yesterdayStart).length}
-                        </Badge>
+                        <CalendarIcon className={`w-5 h-5 ${group.icon}`} />
+                        <h2 className="text-lg font-semibold text-default font-display">{group.label}</h2>
+                        <Badge variant={group.badge} size="sm">{group.items.length}</Badge>
                       </div>
                       <StaggerContainer className="space-y-3">
-                        {inviteHistory
-                          .filter(i => new Date(i.timestamp) < yesterdayStart)
-                          .map((invite) => (
-                              <StaggerItem key={invite.id}>
-                                <motion.div
-                                  whileHover={{ x: 4 }}
-                                  className="flex items-start gap-4 p-4 rounded-xl bg-surface hover:bg-surface-hover transition-colors"
-                                  style={{
-                                    background: 'var(--color-surface)',
-                                    border: '1px solid var(--color-surface-border)',
-                                  }}
-                                >
-                                {/* Invite action icon */}
-                                <div className={`p-2 rounded-lg ${invite.action === 'created'
-                                  ? 'text-primary bg-primary-muted'
-                                  : invite.action === 'used'
-                                    ? 'text-success bg-success-muted'
-                                    : invite.action === 'expired'
-                                      ? 'text-warning bg-warning-muted'
-                                      : 'text-error bg-error-muted'
-                                  }`}>
-                                  {invite.action === 'created' ? (
-                                    <EnvelopeIcon className="w-4 h-4" />
-                                  ) : invite.action === 'used' ? (
-                                    <CheckCircleIcon className="w-4 h-4" />
-                                  ) : invite.action === 'expired' ? (
-                                    <ClockIcon className="w-4 h-4" />
-                                  ) : (
-                                    <XMarkIcon className="w-4 h-4" />
-                                  )}
-                                </div>
-
-                                {/* Invite details */}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <h4 className="text-sm font-medium text-default">
-                                      Invite <span className="font-mono">{invite.inviteCode}</span>
-                                    </h4>
-                                    <Badge
-                                      variant="primary"
-                                      size="sm"
-                                    >
-                                      {invite.groupName}
-                                    </Badge>
-                                  </div>
-                                  <p className="text-xs text-muted mt-1">
-                                    {invite.action === 'created' && 'Invite created'}
-                                    {invite.action === 'used' && invite.userName && `Used by ${invite.userName}`}
-                                    {invite.action === 'used' && !invite.userName && 'Invite used'}
-                                    {invite.action === 'expired' && 'Invite expired'}
-                                    {invite.action === 'deleted' && 'Invite deleted'}
-                                  </p>
-                                </div>
-
-                                {/* Timestamp */}
-                                <div className="text-right">
-                                  <p className="text-xs text-subtle">{formatTimestamp(invite.timestamp)}</p>
-                                </div>
-                              </motion.div>
-                            </StaggerItem>
-                          ))}
+                        {group.items.map((invite) => (
+                          <StaggerItem key={invite.id}>
+                            <InviteHistoryRow invite={invite} />
+                          </StaggerItem>
+                        ))}
                       </StaggerContainer>
+                      </div>
                     </PageSection>
-                  )}
+                  ))}
                 </>
               )}
             </div>
@@ -1993,88 +1849,48 @@ function ActivityPageContent() {
             {/* Task History Stats */}
             <PageSection delay={0.05} className="mb-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard
-                  label="Successful"
-                  value={taskHistory.filter(t => t.status === 'success').length}
-                  icon={<CheckCircleIcon className="w-6 h-6" />}
-                  delay={0}
-                />
-                <StatCard
-                  label="Partial"
-                  value={taskHistory.filter(t => t.status === 'partial').length}
-                  icon={<ExclamationTriangleIcon className="w-6 h-6" />}
-                  delay={0.05}
-                />
-                <StatCard
-                  label="Failed"
-                  value={taskHistory.filter(t => t.status === 'failed').length}
-                  icon={<ExclamationTriangleIcon className="w-6 h-6" />}
-                  delay={0.1}
-                />
-                <StatCard
-                  label="Total Tasks"
-                  value={taskHistory.length}
-                  icon={<ClockIcon className="w-6 h-6" />}
-                  delay={0.15}
-                />
+                {[
+                  { label: 'Successful', value: taskHistory.filter(t => t.status === 'success').length, icon: <CheckCircleIcon className="w-6 h-6" /> },
+                  { label: 'Partial', value: taskHistory.filter(t => t.status === 'partial').length, icon: <ExclamationTriangleIcon className="w-6 h-6" /> },
+                  { label: 'Failed', value: taskHistory.filter(t => t.status === 'failed').length, icon: <ExclamationTriangleIcon className="w-6 h-6" /> },
+                  { label: 'Total Tasks', value: taskHistory.length, icon: <ClockIcon className="w-6 h-6" /> },
+                ].map((stat, index) =>
+                  layoutMode === 'nebula' ? (
+                    <NebulaStatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} colorIndex={index} />
+                  ) : (
+                    <StatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} delay={index * 0.05} />
+                  )
+                )}
               </div>
             </PageSection>
 
             {/* Task History Feed */}
             <div className="space-y-6">
-              {/* Today */}
-              {todayTasks.length > 0 ? (
-                <PageSection delay={0.1}>
+              {[
+                { key: 'today', label: 'Today', icon: 'text-primary', badge: 'primary' as const, delay: 0.1, items: todayTasks },
+                { key: 'yesterday', label: 'Yesterday', icon: 'text-muted', badge: 'muted' as const, delay: 0.15, items: yesterdayTasks },
+                { key: 'earlier', label: 'Earlier', icon: 'text-subtle', badge: 'muted' as const, delay: 0.2, items: olderTasks },
+              ].map((group) => group.items.length === 0 ? null : (
+                <PageSection key={group.key} delay={group.delay}>
+                  {/* Same glass-panel-per-date-group treatment as Watch and
+                      Invites - TaskHistoryCard itself is unchanged either way. */}
+                  <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
+                  {layoutMode === 'nebula' && <NebulaGlassStripe />}
                   <div className="flex items-center gap-3 mb-4">
-                    <CalendarIcon className="w-5 h-5 text-primary" />
-                    <h2 className="text-lg font-semibold text-default font-display">Today</h2>
-                    <Badge variant="primary" size="sm">{todayTasks.length}</Badge>
+                    <CalendarIcon className={`w-5 h-5 ${group.icon}`} />
+                    <h2 className="text-lg font-semibold text-default font-display">{group.label}</h2>
+                    <Badge variant={group.badge} size="sm">{group.items.length}</Badge>
                   </div>
                   <StaggerContainer className="space-y-3">
-                    {todayTasks.map((task) => (
+                    {group.items.map((task) => (
                       <StaggerItem key={task.id}>
                         <TaskHistoryCard task={task} />
                       </StaggerItem>
                     ))}
                   </StaggerContainer>
-                </PageSection>
-              ) : null}
-
-              {/* Yesterday */}
-              {yesterdayTasks.length > 0 ? (
-                <PageSection delay={0.15}>
-                  <div className="flex items-center gap-3 mb-4">
-                    <CalendarIcon className="w-5 h-5 text-muted" />
-                    <h2 className="text-lg font-semibold text-default font-display">Yesterday</h2>
-                    <Badge variant="muted" size="sm">{yesterdayTasks.length}</Badge>
                   </div>
-                  <StaggerContainer className="space-y-3">
-                    {yesterdayTasks.map((task) => (
-                      <StaggerItem key={task.id}>
-                        <TaskHistoryCard task={task} />
-                      </StaggerItem>
-                    ))}
-                  </StaggerContainer>
                 </PageSection>
-              ) : null}
-
-              {/* Older */}
-              {olderTasks.length > 0 ? (
-                <PageSection delay={0.2}>
-                  <div className="flex items-center gap-3 mb-4">
-                    <CalendarIcon className="w-5 h-5 text-subtle" />
-                    <h2 className="text-lg font-semibold text-default font-display">Earlier</h2>
-                    <Badge variant="muted" size="sm">{olderTasks.length}</Badge>
-                  </div>
-                  <StaggerContainer className="space-y-3">
-                    {olderTasks.map((task) => (
-                      <StaggerItem key={task.id}>
-                        <TaskHistoryCard task={task} />
-                      </StaggerItem>
-                    ))}
-                  </StaggerContainer>
-                </PageSection>
-              ) : null}
+              ))}
 
               {/* Empty state */}
               {taskHistory.length === 0 ? (
