@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.14.6",
+    "date": "2026-07-20",
+    "title": "Fix massively undercounted daily watch time, bogus 92h live duration",
+    "bugFixes": [
+      "Activity's daily totals (\"Yesterday · 4m (2)\", \"Saturday, July 18 · 0h (1)\") were massively undercounting real watch time - a movie or episode's actual recorded duration (e.g. 6628s for one entry) never made it into the feed the day-total badges sum from. The feed's base entries never read the History table's own durationSeconds column at all; they relied entirely on a fragile backfill that matches each entry to a live WatchSession within a 3-hour window - which fails permanently for any item watched more than once, since that item's one (reused) session row keeps drifting forward in time with every later poll. Entries now carry their History-recorded duration directly, with the session-based backfill only upgrading it when a more accurate live figure is available.",
+      "The live \"Watching for\" badge could briefly show an absurd duration (92h+ on a session that had been running for minutes) - sessionTracker.js fell back to state.overallTimeWatched (a lifetime-cumulative counter that can run to very large values) whenever a poll's state payload happened to omit state.timeOffset, then diffed that huge number against a much smaller starting position. Position tracking now uses state.timeOffset only, falling back to a wall-clock estimate instead of ever touching overallTimeWatched."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.14.5",
     "date": "2026-07-20",
     "title": "Nebula nav: real icons per link, no more \"Management\" text",

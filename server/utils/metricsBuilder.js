@@ -980,7 +980,17 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
           videoId: ep.videoId,
           profileLabel: ep.profileLabel || null,
           watchedAt: ep.watchedAt.toISOString(),
-          watchedAtTimestamp: ep.watchedAt.getTime()
+          watchedAtTimestamp: ep.watchedAt.getTime(),
+          // The History row itself already carries the duration this specific
+          // watch occasion recorded (see sessionTracker.js/metricsProcessor.js) -
+          // read it directly instead of relying solely on the session-merge
+          // backfill below, which only succeeds when the item's single reused
+          // WatchSession row still falls within a 3-hour window of THIS
+          // watchedAt. For anything watched more than once, later polls keep
+          // moving that session's updatedAt forward, so older History entries
+          // silently fall out of the merge window forever and previously
+          // showed 0 duration despite the real value sitting right here.
+          durationSeconds: ep.durationSeconds && ep.durationSeconds > 0 ? ep.durationSeconds : undefined
         }
       })
 
@@ -1008,7 +1018,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
           videoId: null,
           profileLabel: m.profileLabel || null,
           watchedAt: m.watchedAt.toISOString(),
-          watchedAtTimestamp: m.watchedAt.getTime()
+          watchedAtTimestamp: m.watchedAt.getTime(),
+          // See the matching comment on episodeEntries above.
+          durationSeconds: m.durationSeconds && m.durationSeconds > 0 ? m.durationSeconds : undefined
         }
       })
 
@@ -1082,12 +1094,16 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     console.warn(`[MetricsBuilder] Error fetching watch sessions:`, error.message)
   }
 
-  // Cross-pipeline dedup / duration backfill: recentActivity (from
-  // EpisodeWatchHistory/MovieWatchHistory) has no per-event duration by
-  // itself; watchSessions (WatchSession) does. As of the proxy no longer
-  // writing WatchSession rows at all ("proxy no longer writes watch
-  // history - native owns it"), every session here is native and shares
-  // the exact same real item ID as the recentActivity entry it
+  // Cross-pipeline dedup / duration upgrade: recentActivity entries now
+  // carry their own durationSeconds straight from the History row (see
+  // episodeEntries/movieEntries above), but a still-active or more-recently-
+  // updated WatchSession can have a MORE accurate figure for the same watch
+  // (e.g. a session that kept accumulating real progress after the History
+  // row was written) - Math.max below takes whichever is larger rather than
+  // ever overwriting a good History-sourced value with a worse one. As of
+  // the proxy no longer writing WatchSession rows at all ("proxy no longer
+  // writing watch history - native owns it"), every session here is native
+  // and shares the exact same real item ID as the recentActivity entry it
   // corresponds to - there's no longer a "native real ID vs proxy
   // synthetic proxy:<title> ID" mismatch to work around, so match on that
   // ID directly. For a series, WatchSession is one row per SHOW, not per
