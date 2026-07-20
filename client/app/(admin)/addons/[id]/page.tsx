@@ -1,1955 +1,2769 @@
 'use client';
 
-import { useState, memo, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { Header } from '@/components/layout/Header';
-import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal, RatingBadges } from '@/components/ui';
+import { api, Addon, Group } from '@/lib/api';
+import { Header, Breadcrumbs } from '@/components/layout/Header';
+import { Button, Card, Badge, ResourceBadge, Modal, ConfirmModal, Input, ToggleSwitch, VersionBadge, InlineEdit, SyncBadge } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
-import { useLayoutMode } from '@/lib/layout-mode';
-import { api, MetricsData, Invitation, RatingsBatchEntry } from '@/lib/api';
-import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
-import { useDefaultViewMode } from '@/lib/viewMode';
+import { toast, showToast } from '@/components/ui/Toast';
 import {
-  ClockIcon,
-  FilmIcon,
-  TvIcon,
-  PlayIcon,
-  PauseIcon,
-  CheckCircleIcon,
-  CalendarIcon,
-  MagnifyingGlassIcon,
-  UserIcon,
   ArrowPathIcon,
-  UsersIcon,
+  TrashIcon,
   PuzzlePieceIcon,
-  ExclamationTriangleIcon,
-  ArchiveBoxIcon,
-  EnvelopeIcon,
+  LinkIcon,
+  UsersIcon,
+  ClockIcon,
+  CalendarIcon,
+  DocumentDuplicateIcon,
   XMarkIcon,
-  Squares2X2Icon,
-  ListBulletIcon,
-  ShieldCheckIcon,
+  Bars3Icon,
+  PlusIcon,
+  ArrowUturnLeftIcon,
   FolderIcon,
+  ShieldCheckIcon,
+  HeartIcon,
+  CubeIcon,
+  BookOpenIcon,
+  ChevronDownIcon,
+  CodeBracketIcon,
+  Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
 
-// Activity types
-type ActivityType = 'watch' | 'pause' | 'complete' | 'sync';
-type ContentType = 'movie' | 'series';
-
-interface ActivityItem {
-  id: string;
-  userId: string;
-  userName: string;
-  userEmail?: string;
-  userColorIndex?: number;
-  type: ActivityType;
-  contentType: ContentType;
-  contentId: string;
-  contentName: string;
-  season?: number;
-  episode?: number;
-  episodeName?: string;
-  progress?: number;
-  durationSeconds?: number; // Watch duration in seconds
-  requestCount?: number; // Number of individual requests merged into this session (from AIOStreams proxy stats)
-  timestamp: Date; // Start time of the session
-  endTime?: Date; // End time (if session is complete)
-  isActive?: boolean; // True if still watching
-  isSynthetic?: boolean;
-  poster?: string;
-  profileLabel?: string; // Nuvio profile name this was watched under, if known
-  userAvatarUrl?: string | null;
-}
-
-// Invite history types
-interface InviteHistoryItem {
-  id: string;
-  inviteCode: string;
-  groupName: string;
-  groupColor?: string;
-  action: 'created' | 'used' | 'expired' | 'deleted';
-  userName?: string;
-  timestamp: Date;
-}
-
-// Helper to transform metrics data to activity items
-// History = completed DB sessions (endTime set, durationSeconds > 0), merged
-// with recentActivity (movie/episode watch history from a separate, more
-// reliable pipeline) for anything sessions missed — deduplicated by
-// user+item so a watch caught by both isn't shown twice.
-// Now Playing = handled separately (DB sessions with no endTime)
-// startedPlaying = never shown
-function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[] {
-  if (!metrics) return [];
-
-  const activities: ActivityItem[] = [];
-  const seenUserItemKeys = new Set<string>();
-
-  if (metrics.watchSessions && metrics.watchSessions.length > 0) {
-    metrics.watchSessions.forEach((session) => {
-      // Only completed sessions: must have endTime set
-      if (!session.endTime) return;
-      // Must have a real tracked duration. History is owned entirely by the
-      // native pipeline, which records every source (including usenet) with a
-      // real title, poster and duration. The proxy writes no history, so any
-      // 0-duration row here is a leftover presence marker from an older build
-      // and would only show as a blank duplicate of the native card.
-      if ((session.durationSeconds || 0) <= 0) return;
-
-      seenUserItemKeys.add(`${session.user.id}:${session.item.id}`);
-      activities.push({
-        id: session.id,
-        userId: session.user.id,
-        userName: session.user.username,
-        userEmail: session.user.email,
-        userColorIndex: session.user.colorIndex,
-        type: 'complete' as ActivityType,
-        contentType: (session.item.type === 'movie' ? 'movie' : 'series') as ContentType,
-        contentId: session.item.id,
-        contentName: session.item.name,
-        season: session.item.season ?? undefined,
-        episode: session.item.episode ?? undefined,
-        durationSeconds: session.durationSeconds,
-        requestCount: session.requestCount ?? undefined,
-        timestamp: new Date(session.startTime),
-        endTime: new Date(session.endTime),
-        isActive: false,
-        isSynthetic: false,
-        poster: session.item.poster,
-        userAvatarUrl: session.user.useGravatar ? null : (session.user.avatarUrl ?? null),
-      });
-    });
+// Helper to compute configure URL from manifest URL
+function getConfigureUrl(addon: any): string | null {
+  const manifestUrl = addon?.manifestUrl || addon?.url;
+  if (!manifestUrl) return null;
+  try {
+    const url = new URL(manifestUrl);
+    const baseUrl = `${url.origin}${url.pathname.replace(/\/manifest(\.[^/?#]+)?$/i, '').replace(/\/$/, '')}`;
+    return baseUrl.endsWith('/configure') ? baseUrl : `${baseUrl}/configure`;
+  } catch {
+    return null;
   }
+}
 
-  // Merge in the reliable WatchActivity-derived feed (movies + episodes),
-  // skipping anything already represented by a session above for the same
-  // user+item so a watch that happened to be caught by both systems isn't
-  // shown twice. This feed has no per-event duration of its own, but the
-  // backend backfills durationSeconds onto an entry when it can match it to
-  // a native WatchSession (mergeCrossPipelineDuplicates) - carry that
-  // through when present; the UI already hides the badge cleanly when it's
-  // undefined (see the render logic below).
-  if (metrics.recentActivity && metrics.recentActivity.length > 0) {
-    metrics.recentActivity.forEach((entry) => {
-      const key = `${entry.user.id}:${entry.item.id}`;
-      if (seenUserItemKeys.has(key)) return;
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { DraggableList, useSortableSensors, DragOverlay } from '@/components/ui/DragSortable';
 
-      activities.push({
-        id: `activity-${entry.user.id}-${entry.item.id}-${entry.videoId || 'movie'}-${entry.watchedAtTimestamp}`,
-        userId: entry.user.id,
-        userName: entry.user.username,
-        userEmail: entry.user.email,
-        userColorIndex: entry.user.colorIndex,
-        type: 'complete' as ActivityType,
-        contentType: (entry.item.type === 'movie' ? 'movie' : 'series') as ContentType,
-        contentId: entry.item.id,
-        contentName: entry.item.name,
-        season: entry.item.season ?? undefined,
-        episode: entry.item.episode ?? undefined,
-        durationSeconds: entry.durationSeconds && entry.durationSeconds > 0 ? entry.durationSeconds : undefined,
-        timestamp: new Date(entry.watchedAt),
-        endTime: new Date(entry.watchedAt),
-        isActive: false,
-        isSynthetic: false,
-        poster: entry.item.poster,
-        profileLabel: entry.profileLabel ?? undefined,
-        userAvatarUrl: entry.user.useGravatar ? null : (entry.user.avatarUrl ?? null),
-      });
-    });
+interface AddonWithGroups extends Addon {
+  groups?: Array<{
+    id: string;
+    name: string;
+    users?: number;
+    addonCount?: number;
+  }>;
+  customLogo?: string | null;
+  logo?: string;
+  manifest?: any;
+  originalManifest?: any;
+  isActive?: boolean;
+  lastHealthCheck?: string;
+  healthCheckError?: string;
+}
+
+// Helper function to generate unique catalog keys
+const getCatalogKey = (catalog: any) => {
+  if (!catalog || typeof catalog !== 'object') return 'unknown:unknown';
+  const type = catalog.type || 'unknown';
+  const id = catalog.id || 'unknown';
+  // Use catalogHasSearch to handle both manifest (extra array) and saved (search boolean) formats
+  const isSearch = catalogHasSearch(catalog);
+  return isSearch ? `${type}:${id}:search` : `${type}:${id}`;
+};
+
+// Check if a catalog has search functionality
+const catalogHasSearch = (catalog: any) => {
+  if (!catalog || typeof catalog !== 'object') return false;
+  if (Array.isArray(catalog.extra)) {
+    return catalog.extra.some((e: any) => e && e.name === 'search');
   }
+  return catalog.search === true;
+};
 
-  // Sort by timestamp, most recent first
-  return activities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-}
+// Build a unified manifest diff where catalog/resource items are highlighted as complete blocks
+type DiffLine = { type: 'same' | 'add' | 'del'; text: string };
+function buildManifestUnifiedDiff(orig: any, curr: any): DiffLine[] {
+  const result: DiffLine[] = [];
+  const catKey = (c: any) => `${c.type}:${c.id}`;
+  const resName = (r: any) => (typeof r === 'string' ? r : r?.name ?? '');
+  const currCatKeys = new Set((curr.catalogs || []).map(catKey));
+  const origCatKeys = new Set((orig.catalogs || []).map(catKey));
+  const currResNames = new Set((curr.resources || []).map(resName));
+  const origResNames = new Set((orig.resources || []).map(resName));
+  const push = (type: DiffLine['type'], text: string) => result.push({ type, text });
 
-// Format duration in a human-readable way
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.round((seconds % 3600) / 60);
-  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-}
+  const allCats = [
+    ...(orig.catalogs || []).map((c: any) => ({ c, t: (currCatKeys.has(catKey(c)) ? 'same' : 'del') as DiffLine['type'] })),
+    ...(curr.catalogs || []).filter((c: any) => !origCatKeys.has(catKey(c))).map((c: any) => ({ c, t: 'add' as DiffLine['type'] })),
+  ];
+  const allRes = [
+    ...(orig.resources || []).map((r: any) => ({ r, t: (currResNames.has(resName(r)) ? 'same' : 'del') as DiffLine['type'] })),
+    ...(curr.resources || []).filter((r: any) => !origResNames.has(resName(r))).map((r: any) => ({ r, t: 'add' as DiffLine['type'] })),
+  ];
 
-// Format fractional hours in a human-readable way (Xh Xm)
-function formatHours(hours: number): string {
-  if (hours === 0) return '0h';
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
+  push('same', '{');
+  const allKeys = [...new Set([...Object.keys(orig), ...Object.keys(curr)])];
+  allKeys.forEach((key, ki) => {
+    const trail = ki < allKeys.length - 1 ? ',' : '';
+    const inOrig = key in orig, inCurr = key in curr;
 
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
-}
-
-// Format time for display (e.g., "2:30 PM")
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
-
-// Task history types
-type TaskStatus = 'success' | 'failed' | 'partial';
-type TaskType = 'sync_users' | 'sync_groups' | 'backup' | 'reload_addons' | 'import';
-
-interface TaskHistoryItem {
-  id: string;
-  type: TaskType;
-  status: TaskStatus;
-  timestamp: Date;
-  duration: number; // in seconds
-  details: {
-    total?: number;
-    success?: number;
-    failed?: number;
-    groupName?: string;
-    userName?: string;
-    filename?: string;
-  };
-}
-
-// Helper to transform invitations to invite history
-function transformInvitationsToHistory(invitations: Invitation[] | null, groups: any[] | null): InviteHistoryItem[] {
-  if (!invitations) return [];
-
-  const history: InviteHistoryItem[] = [];
-  const groupMap = new Map((groups || []).map(g => [g.id, g]));
-
-  invitations.forEach((inv) => {
-    const group = inv.groupId ? groupMap.get(inv.groupId) : null;
-    const code = (inv as any).code || (inv as any).inviteCode || '';
-
-    // Add created event
-    history.push({
-      id: `created-${inv.id}`,
-      inviteCode: code,
-      groupName: group?.name || 'No Group',
-      groupColor: group?.color,
-      action: 'created' as const,
-      timestamp: new Date(inv.createdAt),
-    });
-
-    // Add used events from requests
-    if (inv.requests && Array.isArray(inv.requests)) {
-      inv.requests
-        .filter((req: any) => req.status === 'accepted')
-        .forEach((req: any) => {
-          history.push({
-            id: `used-${inv.id}-${req.id}`,
-            inviteCode: code,
-            groupName: group?.name || 'No Group',
-            groupColor: group?.color,
-            action: 'used' as const,
-            userName: req.username || req.email,
-            timestamp: new Date(req.respondedAt || req.createdAt),
-          });
-        });
-    }
-
-    // Check if expired
-    if (inv.expiresAt && new Date(inv.expiresAt) < new Date()) {
-      history.push({
-        id: `expired-${inv.id}`,
-        inviteCode: code,
-        groupName: group?.name || 'No Group',
-        groupColor: group?.color,
-        action: 'expired' as const,
-        timestamp: new Date(inv.expiresAt),
+    if (key === 'resources') {
+      push('same', `  "resources": [`);
+      allRes.forEach(({ r, t }, ri) => push(t, `    ${JSON.stringify(r)}${ri < allRes.length - 1 ? ',' : ''}`));
+      push('same', `  ]${trail}`);
+    } else if (key === 'catalogs') {
+      push('same', `  "catalogs": [`);
+      allCats.forEach(({ c, t }, ci) => {
+        const lines = JSON.stringify(c, null, 2).split('\n');
+        lines.forEach((line, li) => push(t, `    ${line}${li === lines.length - 1 && ci < allCats.length - 1 ? ',' : ''}`));
       });
+      push('same', `  ]${trail}`);
+    } else if (!inOrig) {
+      push('add', `  ${JSON.stringify(key)}: ${JSON.stringify(curr[key])}${trail}`);
+    } else if (!inCurr) {
+      push('del', `  ${JSON.stringify(key)}: ${JSON.stringify(orig[key])}${trail}`);
+    } else {
+      const same = JSON.stringify(orig[key]) === JSON.stringify(curr[key]);
+      push(same ? 'same' : 'del', `  ${JSON.stringify(key)}: ${JSON.stringify(orig[key])}${trail}`);
+      if (!same) push('add', `  ${JSON.stringify(key)}: ${JSON.stringify(curr[key])}${trail}`);
     }
   });
-
-  // Sort by timestamp, most recent first
-  return history.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  push('same', '}');
+  return result;
 }
 
-// Task history data - will be fetched from API when endpoint is available
-const taskHistory: TaskHistoryItem[] = [];
 
-// Helper functions
-function formatTimestamp(date: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+// Parse a catalog key back into type and id
+const parseCatalogKey = (key: string) => {
+  const parts = key.split(':');
+  return {
+    type: parts[0] || 'unknown',
+    id: parts[1] || 'unknown',
+    isSearch: parts[2] === 'search',
+  };
+};
 
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays === 1) return 'Yesterday';
-  return `${diffDays} days ago`;
+// Manifest URL Input Component
+interface ManifestUrlInputProps {
+  value: string;
+  onSave: (data: { manifestUrl: string }) => Promise<void>;
 }
 
-// Helper to get date key for grouping (YYYY-MM-DD format)
-function getDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-// Helper to format date header (Today, Yesterday, or formatted date)
-function formatDateHeader(dateKey: string): string {
-  const today = new Date();
-  const todayKey = getDateKey(today);
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayKey = getDateKey(yesterday);
-
-  if (dateKey === todayKey) return 'Today';
-  if (dateKey === yesterdayKey) return 'Yesterday';
-
-  const date = new Date(dateKey + 'T00:00:00');
-  return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-}
-
-function getActivityIcon(type: ActivityType) {
-  switch (type) {
-    case 'watch':
-      return <PlayIcon className="w-4 h-4" />;
-    case 'pause':
-      return <PauseIcon className="w-4 h-4" />;
-    case 'complete':
-      return <CheckCircleIcon className="w-4 h-4" />;
-    case 'sync':
-      return <ArrowPathIcon className="w-4 h-4" />;
-  }
-}
-
-function getActivityColor(type: ActivityType) {
-  switch (type) {
-    case 'watch':
-      return 'text-secondary bg-secondary-muted';
-    case 'pause':
-      return 'text-warning bg-warning-muted';
-    case 'complete':
-      return 'text-secondary bg-secondary-muted';
-    case 'sync':
-      return 'text-primary bg-primary-muted';
-  }
-}
-
-function getActivityText(activity: ActivityItem): string {
-  switch (activity.type) {
-    case 'watch':
-      return 'is watching';
-    case 'pause':
-      return 'paused';
-    case 'complete':
-      return 'watched';
-    case 'sync':
-      return 'synced';
-  }
-}
-
-// Memoized activity card component
-const ActivityCard = memo(function ActivityCard({
-  activity,
-  onFilterByContent,
-  onFilterByEpisode,
-  onOpenDetails,
-}: {
-  activity: ActivityItem;
-  onFilterByContent?: (name: string) => void;
-  onFilterByEpisode?: (activity: ActivityItem) => void;
-  onOpenDetails?: (activity: ActivityItem) => void;
-}) {
-  const showProgress = activity.type === 'watch' || activity.type === 'pause';
-  const [imageError, setImageError] = useState(false);
-
-  return (
-    <motion.div
-      whileHover={{ x: 4 }}
-      className="flex items-start gap-4 p-4 rounded-xl bg-surface border border-default hover:border-primary/50 transition-colors"
-    >
-      {/* Activity type icon or poster (clickable for show/movie history) */}
-      {activity.type === 'complete' && activity.poster && !imageError ? (
-        <button
-          type="button"
-          className="w-12 h-16 rounded-lg overflow-hidden shrink-0 bg-surface border border-default"
-          onClick={() => onOpenDetails?.(activity)}
-        >
-          <img
-            src={activity.poster}
-            alt={activity.contentName}
-            className="w-full h-full object-cover"
-            onError={() => setImageError(true)}
-          />
-        </button>
-      ) : (
-        <button
-          type="button"
-          className={`p-2 rounded-lg ${getActivityColor(activity.type)}`}
-          onClick={() => onFilterByContent?.(activity.contentName)}
-        >
-          {getActivityIcon(activity.type)}
-        </button>
-      )}
-
-      {/* User avatar */}
-      <Link href={`/users/${activity.userId}`}>
-        <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="md" />
-      </Link>
-
-      {/* Activity details */}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-muted">
-          <Link href={`/users/${activity.userId}`} className="font-medium text-default hover:text-primary transition-colors truncate">
-            {activity.userName}
-          </Link>{' '}
-          {getActivityText(activity)}
-        </p>
-
-        {/* Content info */}
-        <div className="flex items-center gap-2 mt-1">
-          {activity.contentType === 'movie' ? (
-            <FilmIcon className="w-4 h-4 text-primary" />
-          ) : (
-            <TvIcon className="w-4 h-4 text-secondary" />
-          )}
-          <button
-            type="button"
-            onClick={() => onFilterByContent?.(activity.contentName)}
-            className="font-medium text-default hover:text-primary transition-colors text-left"
-          >
-            {activity.contentName}
-            {activity.contentType === 'series' && activity.episode !== undefined && activity.episode > 0 && (
-              <span className="ml-1 text-muted">
-                {activity.season !== undefined && activity.season > 0 ? `S${String(activity.season).padStart(2, '0')}E` : 'E'}
-                {String(activity.episode).padStart(2, '0')}
-                {activity.episodeName ? ` - ${activity.episodeName}` : ''}
-              </span>
-            )}
-          </button>
-          {activity.profileLabel && (
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-300">
-              {activity.profileLabel}
-            </span>
-          )}
-        </div>
-
-        {/* Session meta: duration & start/end time */}
-        <div className="mt-3 flex items-center gap-1 text-xs text-muted">
-          <ClockIcon className="w-3 h-3" />
-          {!activity.isSynthetic && activity.durationSeconds !== undefined && (
-            <span>
-              {activity.durationSeconds > 0 ? formatDuration(activity.durationSeconds) : '<1m'}
-            </span>
-          )}
-          {!activity.isSynthetic && activity.durationSeconds !== undefined && <span className="mx-1">•</span>}
-          <span>{formatTime(activity.timestamp)}</span>
-          {activity.endTime && !activity.isSynthetic && (
-            <>
-              <span className="mx-1">→</span>
-              <span>{formatTime(activity.endTime)}</span>
-            </>
-          )}
-          {activity.requestCount !== undefined && activity.requestCount > 0 && (
-            <>
-              <span className="mx-1">•</span>
-              <span>{activity.requestCount} {activity.requestCount === 1 ? 'request' : 'requests'}</span>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Timestamp */}
-      <div className="text-right">
-        <p className="text-xs text-subtle">{formatTimestamp(activity.timestamp)}</p>
-      </div>
-    </motion.div>
-  );
-});
-
-// Grid view activity card component - Cinematic poster design
-const ActivityCardGrid = memo(function ActivityCardGrid({
-  activity,
-  ratings,
-  onFilterByContent,
-  onOpenDetails,
-}: {
-  activity: ActivityItem;
-  ratings?: RatingsBatchEntry;
-  onFilterByContent?: (name: string) => void;
-  onOpenDetails?: (activity: ActivityItem) => void;
-}) {
-  const [imageError, setImageError] = useState(false);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      whileHover={{ y: -4 }}
-      className="group relative cursor-pointer"
-    >
-      {/* Poster Card */}
-      <div
-        className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl"
-        onClick={() => onOpenDetails?.(activity)}
-      >
-        {activity.poster && !imageError ? (
-          <>
-            <img
-              src={activity.poster}
-              alt={activity.contentName}
-              className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
-              onError={() => setImageError(true)}
-            />
-            {/* Gradient overlay - subtle since no text on poster */}
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 to-transparent opacity-40 group-hover:opacity-60 transition-opacity" />
-          </>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-slate-800">
-            {activity.contentType === 'movie' ? (
-              <FilmIcon className="w-12 h-12 text-slate-600" />
-            ) : (
-              <TvIcon className="w-12 h-12 text-slate-600" />
-            )}
-          </div>
-        )}
-
-        {/* User avatar - top right */}
-        <div className="absolute top-2 right-2">
-          <Link href={`/users/${activity.userId}`} onClick={(e) => e.stopPropagation()}>
-            <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
-          </Link>
-        </div>
-
-        {/* Nuvio profile badge - bottom left, only shown when known */}
-        {activity.profileLabel && (
-          <div className="absolute bottom-2 left-2">
-            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
-              {activity.profileLabel}
-            </div>
-          </div>
-        )}
-
-        {/* Session duration badge - top left, styled like the activity type tick */}
-        {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
-          <div className="absolute top-2 left-2">
-            <div className={`px-2 py-1 rounded-md text-xs font-medium shadow-lg ${getActivityColor(activity.type)}`}>
-              {formatDuration(activity.durationSeconds)}
-            </div>
-          </div>
-        )}
-
-        {/* Request count badge - bottom right, mirrors the profile badge on the opposite corner */}
-        {!activity.isSynthetic && activity.requestCount !== undefined && activity.requestCount > 0 && (
-          <div className="absolute bottom-2 right-2">
-            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
-              {activity.requestCount} {activity.requestCount === 1 ? 'req' : 'reqs'}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Content Info - Below the poster */}
-      <div className="mt-2 space-y-0.5 text-center">
-        {/* Content title */}
-        <button
-          type="button"
-          onClick={() => onFilterByContent?.(activity.contentName)}
-          className="block w-full"
-        >
-          <h4 className="font-semibold text-sm text-slate-500 leading-tight line-clamp-2">
-            {activity.contentName}
-          </h4>
-        </button>
-
-        {ratings && (ratings.imdbRating || ratings.rottenTomatoes || ratings.metacritic) && (
-          <div className="flex justify-center">
-            <RatingBadges
-              imdbRating={ratings.imdbRating}
-              rottenTomatoes={ratings.rottenTomatoes}
-              metacritic={ratings.metacritic}
-            />
-          </div>
-        )}
-
-        {/* Episode info for series */}
-        {activity.contentType === 'series' && activity.episode !== undefined && activity.episode > 0 && (
-          <p className="text-xs text-slate-500 font-medium">
-            {activity.season !== undefined && activity.season > 0 ? `Season ${activity.season}, ` : ''}
-            Episode {activity.episode}
-            {activity.episodeName && ` - ${activity.episodeName}`}
-          </p>
-        )}
-
-        {/* Timestamp - "XX Oct 2026 XX:XX" format */}
-        <div className="flex items-center justify-center text-xs text-slate-500">
-          <span>
-            {activity.timestamp.toLocaleDateString('en-GB', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric'
-            }).replace(/ /g, ' ')} {formatTime(activity.timestamp)}
-          </span>
-        </div>
-      </div>
-    </motion.div>
-  );
-});
-
-// Task history helper functions
-function getTaskIcon(type: TaskType) {
-  switch (type) {
-    case 'sync_users':
-      return <UsersIcon className="w-4 h-4" />;
-    case 'sync_groups':
-      return <UsersIcon className="w-4 h-4" />;
-    case 'backup':
-      return <ArchiveBoxIcon className="w-4 h-4" />;
-    case 'reload_addons':
-      return <PuzzlePieceIcon className="w-4 h-4" />;
-    case 'import':
-      return <ArrowPathIcon className="w-4 h-4" />;
-  }
-}
-
-function getTaskColor(status: TaskStatus) {
-  switch (status) {
-    case 'success':
-      return 'text-success bg-success-muted';
-    case 'failed':
-      return 'text-error bg-error-muted';
-    case 'partial':
-      return 'text-warning bg-warning-muted';
-  }
-}
-
-function getTaskName(type: TaskType): string {
-  switch (type) {
-    case 'sync_users':
-      return 'Sync Users';
-    case 'sync_groups':
-      return 'Sync Groups';
-    case 'backup':
-      return 'Backup';
-    case 'reload_addons':
-      return 'Reload Addons';
-    case 'import':
-      return 'Import';
-  }
-}
-
-function formatTaskDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}m ${secs}s`;
-}
-
-// Task History Card component
-const TaskHistoryCard = memo(function TaskHistoryCard({ task }: { task: TaskHistoryItem }) {
-  // Get the task type icon with color based on status
-  const getColoredTaskIcon = () => {
-    const statusColor = task.status === 'success'
-      ? 'text-success'
-      : task.status === 'failed'
-        ? 'text-error'
-        : 'text-warning'
-
-    // Render the icon with the appropriate color
-    let iconElement
-    switch (task.type) {
-      case 'sync_users':
-        iconElement = <UsersIcon className={`w-4 h-4 ${statusColor}`} />;
-        break;
-      case 'sync_groups':
-        iconElement = <UsersIcon className={`w-4 h-4 ${statusColor}`} />;
-        break;
-      case 'backup':
-        iconElement = <ArchiveBoxIcon className={`w-4 h-4 ${statusColor}`} />;
-        break;
-      case 'reload_addons':
-        iconElement = <PuzzlePieceIcon className={`w-4 h-4 ${statusColor}`} />;
-        break;
-      case 'import':
-        iconElement = <ArrowPathIcon className={`w-4 h-4 ${statusColor}`} />;
-        break;
-    }
-
-    return (
-      <div className={`p-2 rounded-lg ${getTaskColor(task.status)}`}>
-        {iconElement}
-      </div>
-    )
-  }
-
-  return (
-    <motion.div
-      whileHover={{ x: 4 }}
-      className="flex items-start gap-4 p-4 rounded-xl bg-surface-hover hover:bg-surface transition-colors"
-    >
-      {/* Task type icon with status color */}
-      {getColoredTaskIcon()}
-
-      {/* Task details */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <h4 className="text-sm font-medium text-default">{getTaskName(task.type)}</h4>
-          <Badge
-            variant={task.status === 'success' ? 'success' : task.status === 'failed' ? 'error' : 'warning'}
-            size="sm"
-          >
-            {task.status}
-          </Badge>
-        </div>
-
-        {/* Task result details */}
-        <div className="mt-1 text-xs text-muted">
-          {task.details.total !== undefined && (
-            <span>
-              {task.details.success}/{task.details.total} successful
-              {task.details.failed && task.details.failed > 0 && (
-                <span className="text-error"> ({task.details.failed} failed)</span>
-              )}
-            </span>
-          )}
-          {task.details.filename && (
-            <span className="font-mono">{task.details.filename}</span>
-          )}
-          {task.details.groupName && (
-            <span>Group: {task.details.groupName}</span>
-          )}
-        </div>
-
-        {/* Duration */}
-        <div className="flex items-center gap-2 mt-2 text-xs text-subtle">
-          <ClockIcon className="w-3 h-3" />
-          <span>Duration: {formatTaskDuration(task.duration)}</span>
-        </div>
-      </div>
-
-      {/* Timestamp */}
-      <div className="text-right">
-        <p className="text-xs text-subtle">{formatTimestamp(task.timestamp)}</p>
-        <p className="text-xs text-muted mt-1">
-          {task.timestamp.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-          })}
-        </p>
-      </div>
-    </motion.div>
-  );
-});
-
-// Proxy History View Component
-function ProxyHistoryView() {
-  const [proxyLogs, setProxyLogs] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedAddon, setSelectedAddon] = useState<string | null>(null);
-  const [addons, setAddons] = useState<any[]>([]);
+function ManifestUrlInput({ value, onSave }: ManifestUrlInputProps) {
+  const [isFocused, setIsFocused] = useState(false);
+  const [localValue, setLocalValue] = useState(value);
+  const [currentSavedUrl, setCurrentSavedUrl] = useState(value);
+  const [urlBeforeLastUpdate, setUrlBeforeLastUpdate] = useState(value);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    // Fetch addons list
-    api.getAddons().then(setAddons).catch(console.error);
+    setLocalValue(value);
+    setCurrentSavedUrl(value);
+    setUrlBeforeLastUpdate(value);
   }, []);
 
-  useEffect(() => {
-    setIsLoading(true);
-    
-    // If no addon selected, fetch ALL logs. Otherwise fetch logs for specific addon
-    const fetchLogs = selectedAddon 
-      ? api.getProxyLogs(selectedAddon, 100)
-      : api.getAllProxyLogs(100);
-    
-    fetchLogs
-      .then((data) => {
-        setProxyLogs(data.logs || []);
-        setIsLoading(false);
-      })
-      .catch((err) => {
-        console.error('Failed to load proxy logs:', err);
-        setIsLoading(false);
-      });
-  }, [selectedAddon]);
+  const validateAndFetchManifest = async (url: string): Promise<{ valid: boolean; error?: string; data?: any }> => {
+    if (!url || url.trim() === '') {
+      return { valid: false, error: 'URL is required' };
+    }
 
-  const { layoutMode } = useLayoutMode();
+    const urlPattern = /^@?(https?|stremio):\/\/.+\.json$/;
+    if (!urlPattern.test(url.trim())) {
+      return { valid: false, error: 'URL must be a valid JSON manifest URL' };
+    }
 
-  const body = (
-    <>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h3 className="text-lg font-semibold text-default">Proxy Request History</h3>
-          <p className="text-sm text-muted">
-            View all requests made through proxied addon URLs
-          </p>
-        </div>
-        <select
-          value={selectedAddon || ''}
-          onChange={(e) => setSelectedAddon(e.target.value || null)}
-          className="px-3 py-2 bg-surface border border-default rounded-lg text-default"
+    try {
+      let fetchUrl = url.trim();
+      if (fetchUrl.startsWith('stremio://')) {
+        fetchUrl = fetchUrl.replace(/^stremio:\/\//, 'https://');
+      }
+
+      const response = await fetch(fetchUrl, { mode: 'cors', cache: 'no-cache' });
+      if (!response.ok) {
+        return { valid: false, error: `Failed to fetch manifest (HTTP ${response.status})` };
+      }
+
+      const data = await response.json();
+
+      if (!data.name || typeof data.name !== 'string') {
+        return { valid: false, error: 'Invalid manifest: missing or invalid "name" field' };
+      }
+      if (!data.version || typeof data.version !== 'string') {
+        return { valid: false, error: 'Invalid manifest: missing or invalid "version" field' };
+      }
+      if (!data.id || typeof data.id !== 'string') {
+        return { valid: false, error: 'Invalid manifest: missing or invalid "id" field' };
+      }
+
+      return { valid: true, data };
+    } catch (err: any) {
+      const isCorsError = err?.message?.includes('CORS') || err?.message?.includes('Failed to fetch') || err?.name === 'TypeError';
+      if (isCorsError) {
+        return { valid: false, error: 'Cannot validate manifest (CORS error). Server will handle it.' };
+      }
+      return { valid: false, error: err?.message || 'Failed to validate manifest' };
+    }
+  };
+
+  const handleRevert = () => {
+    setLocalValue(urlBeforeLastUpdate);
+    setCurrentSavedUrl(urlBeforeLastUpdate);
+    onSave({ manifestUrl: urlBeforeLastUpdate });
+    toast('Reverted to previous URL', { icon: '↩️' });
+  };
+
+  const handleBlur = async () => {
+    setIsFocused(false);
+
+    if (localValue === currentSavedUrl) {
+      return;
+    }
+
+    const trimmedValue = localValue.trim();
+    setIsSaving(true);
+    const validation = await validateAndFetchManifest(trimmedValue);
+
+    if (!validation.valid) {
+      setIsSaving(false);
+      if (validation.error?.includes('CORS')) {
+        try {
+          await onSave({ manifestUrl: trimmedValue });
+          setUrlBeforeLastUpdate(currentSavedUrl);
+          setCurrentSavedUrl(trimmedValue);
+          toast.success('Manifest URL updated successfully');
+        } catch (err: any) {
+          setLocalValue(currentSavedUrl);
+          toast.error(err.message || 'Failed to update manifest URL');
+        } finally {
+          setIsSaving(false);
+        }
+        return;
+      }
+
+      toast.error(
+        <div className="flex flex-col gap-2">
+          <span>{validation.error}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setLocalValue(currentSavedUrl);
+              toast('Reverted to previous URL', { icon: '↩️' });
+            }}
+            className="self-start text-warning hover:text-warning"
+          >
+            Revert to previous URL
+          </Button>
+        </div>,
+        { duration: 5000 }
+      );
+      setIsSaving(false);
+      return;
+    }
+
+    try {
+      await onSave({ manifestUrl: trimmedValue });
+      setUrlBeforeLastUpdate(currentSavedUrl);
+      setCurrentSavedUrl(trimmedValue);
+      toast.success('Manifest URL updated successfully');
+    } catch (err: any) {
+      setLocalValue(currentSavedUrl);
+      toast.error(err.message || 'Failed to update manifest URL');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const canRevert = currentSavedUrl !== urlBeforeLastUpdate && urlBeforeLastUpdate !== '' && urlBeforeLastUpdate !== currentSavedUrl;
+
+  return (
+    <div
+      className={`flex-1 flex items-center gap-3 p-3 rounded-xl border bg-surface-hover transition-all ${
+        isFocused ? 'border-theme-secondary' : 'border-default'
+      } ${isSaving ? 'opacity-70' : ''}`}
+    >
+      <LinkIcon className="w-5 h-5 text-muted shrink-0" />
+      <input
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onFocus={() => setIsFocused(true)}
+        onBlur={handleBlur}
+        disabled={isSaving}
+        className="flex-1 bg-transparent text-default placeholder:text-subtle disabled:cursor-not-allowed"
+        style={{ border: 'none', outline: 'none', boxShadow: 'none' }}
+        placeholder="Enter manifest URL (e.g., https://example.com/manifest.json)"
+      />
+      {isSaving && (
+        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin text-primary shrink-0" />
+      )}
+      {!isSaving && canRevert && (
+        <button
+          type="button"
+          onClick={handleRevert}
+          className="p-1.5 rounded-lg hover:bg-surface-hover text-muted hover:text-default transition-colors shrink-0"
+          title={`Revert to: ${urlBeforeLastUpdate.substring(0, 40)}${urlBeforeLastUpdate.length > 40 ? '...' : ''}`}
         >
-          <option value="">All Addons</option>
-          {addons.map((addon) => (
-            <option key={addon.id} value={addon.id}>
-              {addon.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
-        </div>
-      ) : proxyLogs.length === 0 ? (
-        <div className="text-center py-12">
-          <ShieldCheckIcon className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
-          <p className="text-muted">
-            {selectedAddon ? 'No proxy requests yet for this addon' : 'No proxy requests yet'}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {proxyLogs.map((log, index) => (
-            <div
-              key={index}
-              className="flex items-center gap-4 p-3 rounded-lg transition-colors"
-              style={
-                layoutMode === 'nebula'
-                  ? { background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surface-border)' }
-                  : { background: 'var(--color-surface-hover)', border: '1px solid var(--color-border)' }
-              }
-            >
-                <div className="flex-shrink-0">
-                  {log.cacheHit ? (
-                    <Badge variant="success" size="sm">Cache Hit</Badge>
-                  ) : (
-                    <Badge variant="primary" size="sm">Proxy</Badge>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <code className="text-xs text-subtle font-mono">{log.method}</code>
-                    {log.url ? (
-                      <a 
-                        href={log.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary hover:text-primary-hover truncate underline underline-offset-2"
-                        title={log.url}
-                      >
-                        {log.path}
-                      </a>
-                    ) : (
-                      <span className="text-sm text-default truncate">{log.path}</span>
-                    )}
-                  </div>
-                  {log.upstreamUrl && (
-                    <div className="flex items-center gap-1 mt-0.5 min-w-0">
-                      <span className="text-[10px] text-muted uppercase font-semibold flex-shrink-0">Original:</span>
-                      <a 
-                        href={log.upstreamUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-muted hover:text-primary truncate underline decoration-muted/30 underline-offset-2"
-                        title={log.upstreamUrl}
-                      >
-                        {log.upstreamUrl}
-                      </a>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3 text-xs text-muted mt-1">
-                    {!selectedAddon && log.addonName && (
-                      <>
-                        <Badge variant="secondary" size="sm">{log.addonName}</Badge>
-                        <span>•</span>
-                      </>
-                    )}
-                    <span>{new Date(log.timestamp).toLocaleString()}</span>
-                    <span>•</span>
-                    <span>{log.responseTimeMs}ms</span>
-                    {log.statusCode && (
-                      <>
-                        <span>•</span>
-                        <span className={log.statusCode >= 400 ? 'text-error' : 'text-success'}>
-                          {log.statusCode}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              {log.ip && (
-                <div className="text-xs text-subtle font-mono hidden sm:block" title="Client IP">
-                  {log.ip}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+          <ArrowUturnLeftIcon className="w-4 h-4" />
+        </button>
       )}
-    </>
-  );
-
-  return (
-    <PageSection delay={0.1}>
-      {layoutMode === 'nebula' ? (
-        <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
-          <NebulaGlassStripe />
-          {body}
-        </div>
-      ) : (
-        <Card padding="lg">{body}</Card>
-      )}
-    </PageSection>
-  );
-}
-
-// Now Playing section header - identical in both Current and Nebula, just
-// extracted so it's declared once instead of duplicated per layout branch.
-function NowPlayingHeader({ count }: { count: number }) {
-  return (
-    <div className="flex items-center justify-between mb-4">
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-full bg-primary/10 flex items-center justify-center">
-          <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
-        </div>
-        <h2 className="text-lg font-semibold text-default font-display">Now Playing</h2>
-        <Badge variant="primary" size="sm">
-          {count} {count === 1 ? 'user' : 'users'}
-        </Badge>
-      </div>
-      <div className="flex items-center gap-2 text-xs text-muted">
-        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-        <span>Live</span>
-      </div>
     </div>
   );
 }
 
-// Now Playing card body (poster, user, title, live duration) - identical in
-// both Current and Nebula, just extracted so this carefully-tuned
-// session-matching/duration logic (see the inline comments) only exists
-// once instead of being duplicated per layout branch, which would risk the
-// two copies drifting apart on the next bug fix.
-function NowPlayingItemBody({
-  np,
-  metricsData,
-  nowTick,
-}: {
-  np: NonNullable<MetricsData['nowPlaying']>[number];
-  metricsData: MetricsData;
-  nowTick: number;
-}) {
-  return (
-    <>
-      {/* Poster */}
-      {np.item.poster ? (
-        <div className="w-10 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-hover">
-          <img
-            src={np.item.poster}
-            alt={np.item.name}
-            className="w-full h-full object-cover"
-          />
-        </div>
-      ) : (
-        <div className="w-10 h-14 rounded-lg bg-surface-hover flex items-center justify-center shrink-0">
-          {np.item.type === 'movie' ? (
-            <FilmIcon className="w-5 h-5 text-muted" />
-          ) : (
-            <TvIcon className="w-5 h-5 text-muted" />
-          )}
-        </div>
-      )}
-      <div className="flex-1 min-w-0">
-        <Link href={`/users/${np.user.id}`} className="flex items-center gap-2 mb-1">
-          <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
-          <span className="text-sm font-medium text-default truncate hover:text-primary transition-colors">
-            {np.user.username}
-          </span>
-        </Link>
-        <p className="text-sm text-muted truncate">
-          {np.item.name}
-          {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
-            <span className="ml-1">
-              {np.item.season !== undefined && np.item.season > 0 ? `S${String(np.item.season).padStart(2, '0')}E` : 'E'}
-              {String(np.item.episode).padStart(2, '0')}
-            </span>
-          )}
-        </p>
-        {/* Live duration for now playing: now - session start.
-            Only shown when we have a proper WatchSession (so it doesn't reset on each sync). */}
-        {(() => {
-          let session: NonNullable<typeof metricsData.watchSessions>[0] | undefined = undefined;
-          let startMs: number | null = null;
+// Sortable Catalog Item Component
+function SortableCatalogItem({ catalog, isSelected, onToggle }: { catalog: any; isSelected: boolean; onToggle: () => void }) {
+  const key = getCatalogKey(catalog);
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: key || '' });
 
-          // Find matching active session from watchSessions
-          // Match by: userId + itemId + videoId (for series) or userId + itemId (for movies)
-          if (metricsData?.watchSessions && metricsData.watchSessions.length > 0) {
-            const matchingSessions = metricsData.watchSessions.filter((s) => {
-              // Must be active and match user + item
-              if (!s.isActive || s.user.id !== np.user.id || s.item.id !== np.item.id) {
-                return false;
-              }
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: isDragging ? 'none' : transition,
+    zIndex: isDragging ? 100 : undefined,
+    opacity: isDragging ? 0 : 1,
+  } as React.CSSProperties;
 
-              // For series: match by videoId if available (most reliable)
-              if (np.item.type === 'series') {
-                const npVideoId = np.videoId || null;
-                const sVideoId = s.videoId || null;
-
-                // If both have videoId, they must match
-                if (npVideoId && sVideoId) {
-                  return npVideoId === sVideoId;
-                }
-
-                // If only one has videoId, don't match (prevents wrong episode)
-                if ((npVideoId && !sVideoId) || (!npVideoId && sVideoId)) {
-                  return false;
-                }
-
-                // If neither has videoId, fall back to season/episode matching
-                const npSeason = np.item.season ?? null;
-                const npEpisode = np.item.episode ?? null;
-                const sSeason = s.item.season ?? null;
-                const sEpisode = s.item.episode ?? null;
-
-                // Both must have season/episode and they must match
-                if (npSeason !== null && npEpisode !== null && sSeason !== null && sEpisode !== null) {
-                  return npSeason === sSeason && npEpisode === sEpisode;
-                }
-
-                // If Now Playing has season/episode but session doesn't, don't match
-                if ((npSeason !== null || npEpisode !== null) && (sSeason === null && sEpisode === null)) {
-                  return false;
-                }
-
-                // If both missing season/episode, match by item ID only (fallback)
-              }
-
-              // For movies: match by item ID only (no videoId)
-              return true;
-            });
-
-            // If multiple matches, use the one with EARLIEST startTime (oldest session)
-            // This prevents resets when new sessions are created
-            if (matchingSessions.length > 0) {
-              session = matchingSessions.reduce((oldest, current) => {
-                const oldestTime = new Date(oldest.startTime).getTime();
-                const currentTime = new Date(current.startTime).getTime();
-                return currentTime < oldestTime ? current : oldest;
-              });
-
-              startMs = new Date(session.startTime).getTime();
-              if (Number.isNaN(startMs)) startMs = null;
-            }
-          }
-
-          // Fallback: If no matching session found, use watchedAtTimestamp from nowPlaying item.
-          if (!startMs && np.watchedAtTimestamp) {
-            const watchedAtMs = typeof np.watchedAtTimestamp === 'number'
-              ? np.watchedAtTimestamp
-              : new Date(np.watchedAt).getTime();
-
-            // Proxy-sourced entries carry the real connection start time and
-            // never have a WatchSession to match, so trust it directly - a
-            // watch longer than 5 minutes must still show "Watching for X".
-            // For other (native) entries, keep the 5-minute guard: those
-            // watchedAt values can be stale (last checkpoint, not "now"), and
-            // the cap prevents showing an inflated/resetting duration before a
-            // real session row exists.
-            const isProxyEntry = np.source === 'aiostreams-proxy';
-            const ageMs = nowTick - watchedAtMs;
-            if (isProxyEntry ? ageMs >= 0 : (ageMs >= 0 && ageMs <= 300000)) {
-              startMs = watchedAtMs;
-            }
-          }
-
-          // Prefer the backend's durationSeconds when a matched session exists -
-          // that value now reflects real watched-content progress (position
-          // delta since the session started), refreshed once per poll cycle.
-          // A pure client-side "now - startTime" tick looked "live" but climbed
-          // every second regardless of whether the provider's position had
-          // actually advanced at all, which overstated progress whenever the
-          // provider went a while between checkpoints (common - see the
-          // freshness-window notes in sessionTracker.js). Still falls back to
-          // the wall-clock estimate when no session row exists yet.
-          const elapsedSeconds = (session && typeof session.durationSeconds === 'number')
-            ? Math.max(0, session.durationSeconds)
-            : (startMs && !Number.isNaN(startMs))
-              ? Math.max(0, Math.floor((nowTick - startMs) / 1000))
-              : null;
-
-          // Only show duration if we have something to show (from session or recent fallback)
-          if (elapsedSeconds === null) return null;
-
-          return (
-            <p className="text-xs text-subtle mt-0.5">
-              Watching for{' '}
-              {elapsedSeconds > 0
-                ? formatDuration(elapsedSeconds)
-                : '<1m'}
-            </p>
-          );
-        })()}
-      </div>
-    </>
-  );
-}
-
-// Single row in the Invites tab's Today/Yesterday/Earlier history - the
-// original had this exact ~50-line block duplicated three times (once per
-// date group). Extracted so styling it for Nebula only has to happen once,
-// and Current's own three copies collapse to one call site each too.
-function InviteHistoryRow({ invite }: { invite: InviteHistoryItem }) {
-  const { layoutMode } = useLayoutMode();
   return (
     <motion.div
-      whileHover={{ x: 4 }}
-      className="flex items-start gap-4 p-4 rounded-xl transition-colors"
-      style={
-        layoutMode === 'nebula'
-          ? { background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surface-border)' }
-          : { background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }
-      }
+      ref={setNodeRef}
+      style={style}
+      className={`group flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-200 bg-surface-hover hover:bg-surface border border-default hover:border-primary ${
+        isDragging ? 'shadow-lg ring-2 ring-primary' : ''
+      }`}
     >
-      {/* Invite action icon */}
-      <div className={`p-2 rounded-lg ${invite.action === 'created'
-        ? 'text-primary bg-primary-muted'
-        : invite.action === 'used'
-          ? 'text-success bg-success-muted'
-          : invite.action === 'expired'
-            ? 'text-warning bg-warning-muted'
-            : 'text-error bg-error-muted'
-        }`}>
-        {invite.action === 'created' ? (
-          <EnvelopeIcon className="w-4 h-4" />
-        ) : invite.action === 'used' ? (
-          <CheckCircleIcon className="w-4 h-4" />
-        ) : invite.action === 'expired' ? (
-          <ClockIcon className="w-4 h-4" />
-        ) : (
-          <XMarkIcon className="w-4 h-4" />
-        )}
+
+      {/* Drag handle */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-hover"
+        style={{ touchAction: 'none' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Bars3Icon className="w-5 h-5 text-subtle" />
       </div>
 
-      {/* Invite details */}
-      <div className="flex-1 min-w-0">
+      {/* Content */}
+      <div className="flex-1 min-w-0" onClick={onToggle}>
         <div className="flex items-center gap-2">
-          <h4 className="text-sm font-medium text-default">
-            Invite <span className="font-mono">{invite.inviteCode}</span>
-          </h4>
-          <Badge variant="primary" size="sm">
-            {invite.groupName}
-          </Badge>
+          <span className={`font-medium truncate ${isSelected ? 'text-default' : 'text-subtle group-hover:text-default'}`}>
+            {catalog.name || catalog.id}
+          </span>
+          <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-primary-muted text-primary border border-primary/20">
+            {catalog.type}
+          </span>
         </div>
-        <p className="text-xs text-muted mt-1">
-          {invite.action === 'created' && 'Invite created'}
-          {invite.action === 'used' && invite.userName && `Used by ${invite.userName}`}
-          {invite.action === 'used' && !invite.userName && 'Invite used'}
-          {invite.action === 'expired' && 'Invite expired'}
-          {invite.action === 'deleted' && 'Invite deleted'}
-        </p>
       </div>
 
-      {/* Timestamp */}
-      <div className="text-right">
-        <p className="text-xs text-subtle">{formatTimestamp(invite.timestamp)}</p>
+      {/* Selection indicator circle */}
+      <div
+        className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
+          isSelected 
+            ? 'bg-primary border-primary' 
+            : 'border-default group-hover:border-primary/50'
+        }`}
+      >
+        {isSelected && (
+          <motion.div 
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="w-2 h-2 rounded-full bg-white"
+          />
+        )}
       </div>
     </motion.div>
   );
 }
 
-function ActivityPageContent() {
-  const { layoutMode } = useLayoutMode();
-  const searchParams = useSearchParams();
-  const userParam = searchParams.get('user');
-  const periodParam = searchParams.get('period'); // 'today' | 'week'
-  
-  const [searchQuery, setSearchQuery] = useState(userParam || '');
-  const [timePeriod, setTimePeriod] = useState<string | null>(periodParam);
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
-  const [episodeFilter, setEpisodeFilter] = useState<{
-    name: string;
-    season?: number;
-    episode?: number;
-  } | null>(null);
-  const [viewMode, setViewMode] = useState<'watch' | 'tasks' | 'invites' | 'proxy'>('watch');
-  const { viewMode: watchActivityViewMode, setViewMode: setWatchActivityViewMode } = useDefaultViewMode();
-  const [visibleCount, setVisibleCount] = useState(50); // lazy-load activity in chunks
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [detailModalItem, setDetailModalItem] = useState<ActivityItem | null>(null);
+export default function AddonDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isAddToGroupModalOpen, setIsAddToGroupModalOpen] = useState(false);
+  const [isReloading, setIsReloading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
-  // Fetch real data
-  const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [groups, setGroups] = useState<any[]>([]);
+  // Data state
+  const [addon, setAddon] = useState<AddonWithGroups | null>(null);
+  const [allGroups, setAllGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [totalUsers, setTotalUsers] = useState(0);
 
-  // Auto-refresh interval for Now Playing section (30 seconds)
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  // Resources / catalogs editing
+  const [selectedResources, setSelectedResources] = useState<Set<string>>(new Set());
+  const [selectedCatalogs, setSelectedCatalogs] = useState<Set<string>>(new Set());
+  const [orderedRegularCatalogs, setOrderedRegularCatalogs] = useState<any[]>([]);
+  const [orderedSearchCatalogs, setOrderedSearchCatalogs] = useState<any[]>([]);
+  const [manifestData, setManifestData] = useState<any>(null);
+  const [originalManifestData, setOriginalManifestData] = useState<any>(null);
+  const [loadingManifest, setLoadingManifest] = useState(false);
+  const [isSavingResources, setIsSavingResources] = useState(false);
+  const [isSavingCatalogs, setIsSavingCatalogs] = useState(false);
+  const [activeCatalogId, setActiveCatalogId] = useState<string | null>(null);
+  const resourceSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catalogSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Ticking "now" for live Now Playing durations - using state to trigger UI updates
-  const [nowTick, setNowTick] = useState<number>(Date.now());
+  // Form state for editing
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+    customLogo: '',
+  });
 
-  // Time boundaries for grouping
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
-  const twoDaysAgoStart = new Date(todayStart.getTime() - 2 * 24 * 60 * 60 * 1000);
-  const threeDaysAgoStart = new Date(todayStart.getTime() - 3 * 24 * 60 * 60 * 1000);
-  const oneWeekAgoStart = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const twoWeeksAgoStart = new Date(todayStart.getTime() - 14 * 24 * 60 * 60 * 1000);
-  const oneMonthAgoStart = new Date(todayStart.getTime() - 30 * 24 * 60 * 60 * 1000);
+  // Manifest diff section state
+  const [isManifestExpanded, setIsManifestExpanded] = useState(false);
 
-  // Ref for infinite scroll sentinel
-  const loadMoreRef = useRef<HTMLDivElement>(null);
+  // Proxy state
+  const [isTogglingProxy, setIsTogglingProxy] = useState(false);
+  const [isRegeneratingProxy, setIsRegeneratingProxy] = useState(false);
 
-  const fetchData = async (showLoading = true) => {
-    if (showLoading) setIsLoading(true);
+  // Drag sensors
+  const sensors = useSortableSensors();
+
+  // Fetch addon data
+  const fetchAddon = useCallback(async (skipLoading = false) => {
+    if (!skipLoading) {
+      setIsLoading(true);
+    }
     setError(null);
     try {
-      // Parallelize API calls for better performance
-      const [metrics, invs, grps] = await Promise.all([
-        api.getMetrics('all'),
-        api.getInvitations(),
-        api.getGroups()
-      ]);
+      const addonData = await api.getAddon(params.id as string);
+      const anyAddon = addonData as any;
 
-      console.log('[ActivityPage] Metrics received:', {
-        sessions: metrics.watchSessions?.length,
-        synthetic: metrics.watchSessions?.filter((s: any) => s.isSynthetic)?.length,
-        nowPlaying: metrics.nowPlaying?.length
+      const logo =
+        anyAddon.customLogo ||
+        (anyAddon.manifest && anyAddon.manifest.logo) ||
+        anyAddon.logo ||
+        anyAddon.iconUrl ||
+        (anyAddon.manifest?.id && `https://stremio-addon.netlify.app/${anyAddon.manifest.id}/icon.png`) ||
+        undefined;
+
+      const groupsData = await api.getGroups();
+
+      // Filter groups to find which ones contain this addon
+      const groupsWithAddon = [];
+      let userCount = 0;
+      for (const group of groupsData) {
+        try {
+          const groupAddons = await api.getGroupAddons(group.id);
+          const hasAddon = groupAddons.some((ga: any) => ga.id === params.id);
+          if (hasAddon) {
+            groupsWithAddon.push(group);
+            // Get user count for this group
+            const groupData = await api.getGroup(group.id);
+            let userIds: string[] = [];
+            if (groupData?.userIds) {
+              try {
+                if (typeof groupData.userIds === 'string') {
+                  userIds = JSON.parse(groupData.userIds);
+                } else if (Array.isArray(groupData.userIds)) {
+                  userIds = groupData.userIds;
+                }
+              } catch (e) {
+                console.error('Error parsing group userIds:', e);
+              }
+            }
+            userCount += userIds.length;
+          }
+        } catch (e) {
+          // Skip groups we can't access
+        }
+      }
+
+      setAddon({
+        ...addonData,
+        groups: groupsWithAddon,
+        logo,
       });
+      setTotalUsers(userCount);
+      setSelectedResources(new Set((addonData as any).resources || []));
+      const savedCatalogs = (addonData as any).catalogs || [];
+      const catalogKeys = savedCatalogs.map((c: any) => getCatalogKey(c)).filter(Boolean);
+      setSelectedCatalogs(new Set(catalogKeys));
+      setAllGroups(groupsData);
+      setLogoError(false);
 
-      setMetricsData(metrics);
-      setInvitations(invs);
-      setGroups(grps);
-
-      setIsLoading(false);
-      setLastRefresh(new Date());
+      if (anyAddon.originalManifest) {
+        setOriginalManifestData(anyAddon.originalManifest);
+      }
     } catch (err) {
       setError(err as Error);
+    } finally {
       setIsLoading(false);
+    }
+  }, [params.id]);
+
+  // Initial fetch
+  useEffect(() => {
+    if (params.id) {
+      fetchAddon();
+    }
+  }, [params.id, fetchAddon]);
+
+  useEffect(() => {
+    if (addon) {
+      document.title = `SlickSync - ${addon.name || 'Addon Detail'}`;
+    }
+  }, [addon]);
+
+  const handleReload = useCallback(async () => {
+    setIsReloading(true);
+    try {
+      await api.reloadAddon(params.id as string);
+      const addonData = await api.getAddon(params.id as string);
+      const anyAddon = addonData as any;
+      
+      const logo =
+        anyAddon.customLogo ||
+        (anyAddon.manifest && anyAddon.manifest.logo) ||
+        anyAddon.logo ||
+        anyAddon.iconUrl ||
+        (anyAddon.manifest?.id && `https://stremio-addon.netlify.app/${anyAddon.manifest.id}/icon.png`) ||
+        undefined;
+      
+      setAddon(prev => prev ? { ...prev, ...addonData, logo } : null);
+      setSelectedResources(new Set(anyAddon.resources || []));
+      const savedCatalogs = anyAddon.catalogs || [];
+      const catalogKeys = savedCatalogs.map((c: any) => getCatalogKey(c)).filter(Boolean);
+      setSelectedCatalogs(new Set(catalogKeys));
+      
+      if (anyAddon.originalManifest) {
+        setOriginalManifestData(anyAddon.originalManifest);
+      }
+      if (anyAddon.manifest) {
+        setManifestData(anyAddon.manifest);
+      }
+      
+      toast.success('Addon reloaded successfully');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to reload addon');
+    } finally {
+      setIsReloading(false);
+    }
+  }, [params.id]);
+
+  const handleDelete = useCallback(async () => {
+    setIsDeleting(true);
+    try {
+      await api.deleteAddon(params.id as string);
+      toast.success('Addon deleted successfully');
+      router.push('/addons');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete addon');
+      setIsDeleting(false);
+      setIsDeleteModalOpen(false);
+    }
+  }, [params.id, router]);
+
+  const handleToggleStatus = async () => {
+    if (!addon) return;
+
+    setIsTogglingStatus(true);
+    try {
+      const newStatus = !addon.isActive;
+      await api.toggleAddonStatus(addon.id, newStatus);
+      setAddon({ ...addon, isActive: newStatus });
+      toast.success(newStatus ? 'Addon enabled' : 'Addon disabled');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to toggle status');
+    } finally {
+      setIsTogglingStatus(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
+  // Handle proxy toggle
+  const handleToggleProxy = async () => {
+    if (!addon) return;
 
-    // Auto-refresh every 30 seconds to keep Now Playing updated
-    const interval = setInterval(() => {
-      fetchData(false); // Don't show loading spinner for auto-refresh
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Update "now" every second so Now Playing durations tick up in the UI
-  useEffect(() => {
-    const id = setInterval(() => {
-      setNowTick(Date.now());
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Calculate live watch time today (base watch time + elapsed active sessions)
-  const liveWatchTimeTodayHours = useMemo(() => {
-    if (!metricsData) return 0;
-    
-    // Start with the base time from the API (completed sessions today)
-    let totalSeconds = 0;
-    if (metricsData.watchTime?.byDay) {
-      // byDay is keyed by the account's configured timezone, not the
-      // browser's - computing "today" locally could miss the entry entirely
-      // whenever the two disagree about what day it currently is. metricsData.today
-      // is the account-day string the server used to build these same keys.
-      const todayAccount = metricsData.today || todayStart.toLocaleDateString('sv-SE');
-      const todayEntry = metricsData.watchTime.byDay.find(d => d.date === todayAccount);
-      if (todayEntry) {
-        totalSeconds = (todayEntry.hours || 0) * 3600;
-      }
-    }
-
-    // Add elapsed time from all active "Now Playing" sessions
-    if (metricsData.nowPlaying && metricsData.nowPlaying.length > 0) {
-      metricsData.nowPlaying.forEach(np => {
-        let startMs: number | null = null;
-
-        // Find session to get accurate start time
-        if (metricsData.watchSessions) {
-          const session = metricsData.watchSessions.find(s => 
-            s.isActive && s.user.id === np.user.id && s.item.id === np.item.id
-          );
-          if (session) startMs = new Date(session.startTime).getTime();
-        }
-
-        // Fallback to watchedAtTimestamp
-        if (!startMs && np.watchedAtTimestamp) {
-          startMs = np.watchedAtTimestamp;
-        }
-
-        if (startMs) {
-          const elapsed = Math.max(0, (nowTick - startMs) / 1000);
-          totalSeconds += elapsed;
-        }
-      });
-    }
-
-    return totalSeconds / 3600;
-  }, [metricsData, nowTick, todayStart]);
-
-  // Infinite scroll: load more when sentinel is visible
-  const loadMore = useCallback(() => {
-    if (isLoadingMore) return;
-    setIsLoadingMore(true);
-    // Use setTimeout to give a smooth transition feel
-    setTimeout(() => {
-      setVisibleCount((prev) => prev + 50);
-      setIsLoadingMore(false);
-    }, 100);
-  }, [isLoadingMore, setVisibleCount, setIsLoadingMore]);
-
-  useEffect(() => {
-    const sentinel = loadMoreRef.current;
-    if (!sentinel) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          loadMore();
-        }
-      },
-      { rootMargin: '200px' } // Load more before reaching the bottom
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [loadMore]);
-
-  // Transform API data to activity items
-  // Activity feed shows ALL history - Now Playing is handled separately by the backend
-  const activityData = useMemo(
-    () => transformMetricsToActivity(metricsData),
-    [metricsData]
-  );
-
-  // Transform invitations to history
-  const inviteHistory = useMemo(() => transformInvitationsToHistory(invitations, groups), [invitations, groups]);
-
-  // Build user to groups mapping
-  const userGroupsMap = useMemo(() => {
-    const map = new Map<string, string[]>();
-    groups.forEach((group) => {
-      // Parse userIds if it's a JSON string
-      let groupUsers: string[] = [];
-      if (group.userIds) {
-        if (typeof group.userIds === 'string') {
-          try {
-            groupUsers = JSON.parse(group.userIds);
-          } catch {
-            groupUsers = [];
-          }
-        } else if (Array.isArray(group.userIds)) {
-          groupUsers = group.userIds;
-        }
-      }
-      groupUsers.forEach((userId: string) => {
-        if (!map.has(userId)) {
-          map.set(userId, []);
-        }
-        map.get(userId)!.push(group.id);
-      });
-    });
-    return map;
-  }, [groups]);
-
-  // Filter activities by search, time period, group, and optional episode filter
-  const filteredActivities = activityData.filter((activity) => {
-    // 1. Time Period Filter
-    if (timePeriod === 'today') {
-      if (activity.timestamp < todayStart) return false;
-    } else if (timePeriod === 'week') {
-      if (activity.timestamp < oneWeekAgoStart) return false;
-    }
-
-    // 2. Group Filter
-    if (selectedGroup) {
-      const userGroupIds = userGroupsMap.get(activity.userId) || [];
-      if (!userGroupIds.includes(selectedGroup)) {
-        return false;
-      }
-    }
-
-    // 3. Search Query Filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      if (
-        activity.userName.toLowerCase().includes(query) ||
-        activity.contentName.toLowerCase().includes(query)
-      ) {
-        // ok
+    setIsTogglingProxy(true);
+    try {
+      const anyAddon = addon as any;
+      if (anyAddon.proxyEnabled) {
+        await api.disableProxy(addon.id);
+        setAddon({ ...addon, proxyEnabled: false } as any);
+        toast.success('Proxy disabled');
       } else {
-        return false;
+        const result = await api.enableProxy(addon.id);
+        setAddon({ 
+          ...addon, 
+          proxyEnabled: true, 
+          proxyUuid: result.proxyUuid,
+          proxyManifestUrl: result.proxyManifestUrl 
+        } as any);
+        toast.success('Proxy enabled');
       }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to toggle proxy');
+    } finally {
+      setIsTogglingProxy(false);
     }
+  };
 
-    // 4. Episode-level filter (for specific episode history)
-    if (episodeFilter) {
-      if (
-        activity.contentName !== episodeFilter.name ||
-        activity.season !== episodeFilter.season ||
-        activity.episode !== episodeFilter.episode
-      ) {
-        return false;
+  // Handle regenerate proxy UUID
+  const handleRegenerateProxyUuid = async () => {
+    if (!addon) return;
+
+    setIsRegeneratingProxy(true);
+    try {
+      const result = await api.regenerateProxyUuid(addon.id);
+      setAddon({ 
+        ...addon, 
+        proxyUuid: result.proxyUuid,
+        proxyManifestUrl: result.proxyManifestUrl 
+      } as any);
+      toast.success('Proxy URL regenerated');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to regenerate proxy URL');
+    } finally {
+      setIsRegeneratingProxy(false);
+    }
+  };
+
+  // Handle name update
+  const handleNameUpdate = useCallback(async (newName: string) => {
+    if (!addon) return;
+    try {
+      await api.updateAddon(addon.id, { name: newName });
+      setAddon({ ...addon, name: newName });
+      toast.success('Addon name updated');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update name');
+    }
+  }, [addon]);
+
+  // Handle description update
+  const handleDescriptionUpdate = useCallback(async (newDescription: string) => {
+    if (!addon) return;
+    try {
+      await api.updateAddon(addon.id, { description: newDescription || undefined });
+      setAddon({ ...addon, description: newDescription });
+      toast.success('Addon description updated');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update description');
+    }
+  }, [addon]);
+
+  // Load manifest data
+  useEffect(() => {
+    if (!addon || manifestData || loadingManifest) return;
+
+    const loadManifest = async () => {
+      setLoadingManifest(true);
+      try {
+        const manifestUrl = (addon as any).url || (addon as any).manifestUrl;
+        if (manifestUrl) {
+          let fetchUrl = manifestUrl;
+          if (fetchUrl.startsWith('stremio://')) {
+            fetchUrl = fetchUrl.replace(/^stremio:\/\//, 'https://');
+          }
+          const response = await fetch(fetchUrl);
+          if (response.ok) {
+            const data = await response.json();
+            setManifestData(data);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch manifest:', err);
+      } finally {
+        setLoadingManifest(false);
       }
+    };
+
+    const apiManifest = (addon as any).manifest || (addon as any).originalManifest;
+    if (apiManifest) {
+      setManifestData(apiManifest);
+    } else if (addon.manifestUrl) {
+      loadManifest();
     }
+  }, [addon, manifestData, loadingManifest]);
 
-    return true;
-  });
-  // Apply lazy-load window
-  const visibleActivities = filteredActivities.slice(0, visibleCount);
-  // Only the currently-rendered window's ratings are fetched, not the whole
-  // filtered history (which can run to thousands of rows) - grows
-  // incrementally as visibleCount does via infinite scroll.
-  const ratingsById = useRatingsBatch(visibleActivities.map((a) => a.contentId));
+  // Compute filtered manifest from original + current selections (used for diff)
+  const currentManifest = useMemo(() => {
+    if (!originalManifestData) return null;
+    const base = originalManifestData;
+    const resources = (base.resources || []).filter((r: any) => {
+      const name = typeof r === 'string' ? r : r?.name;
+      return name && selectedResources.has(name);
+    });
+    const catalogs = (base.catalogs || []).filter((c: any) => selectedCatalogs.has(getCatalogKey(c)));
+    return { ...base, resources, catalogs };
+  }, [originalManifestData, selectedResources, selectedCatalogs]);
 
-  // Get date keys for today and yesterday (stable for render)
-  const todayKey = getDateKey(todayStart);
-  const yesterdayKey = getDateKey(yesterdayStart);
+  // Initialize ordered catalogs
+  useEffect(() => {
+    const catalogs = originalManifestData?.catalogs || manifestData?.catalogs || (addon as any)?.manifest?.catalogs || [];
 
-  // Group visible activities by date (each day gets its own group)
-  const groupedActivities = useMemo(() => {
-    const groups = new Map<string, ActivityItem[]>();
+    // Regular catalogs: those without search functionality
+    const regularCatalogs = catalogs.filter((c: any) => {
+      if (!c || typeof c !== 'object') return true;
+      return !catalogHasSearch(c);
+    });
 
-    for (const activity of visibleActivities) {
-      const dateKey = getDateKey(activity.timestamp);
-      if (!groups.has(dateKey)) {
-        groups.set(dateKey, []);
-      }
-      groups.get(dateKey)!.push(activity);
-    }
+    // Search catalogs: any catalog with search functionality (even if it has other extras)
+    const searchCatalogs = catalogs.filter((c: any) => {
+      if (!c || typeof c !== 'object') return false;
+      return catalogHasSearch(c);
+    });
 
-    // Convert to sorted array (most recent first)
-    return Array.from(groups.entries())
-      .sort(([a], [b]) => b.localeCompare(a))
-      .map(([dateKey, activities]) => {
-        const totalDuration = activities.reduce((sum, a) => sum + (a.durationSeconds || 0), 0);
-        return {
-          dateKey,
-          label: formatDateHeader(dateKey),
-          activities,
-          totalDuration,
-          isToday: dateKey === todayKey,
-          isYesterday: dateKey === yesterdayKey,
-        };
+    const savedCatalogs = (addon as any)?.catalogs || [];
+    const savedKeys = new Set(savedCatalogs.map((c: any) => getCatalogKey(c)));
+
+    const selectedRegular = savedCatalogs
+      .filter((c: any) => {
+        const key = getCatalogKey(c);
+        return key && regularCatalogs.some((rc: any) => getCatalogKey(rc) === key);
+      })
+      .map((c: any) => {
+        const fullCatalog = regularCatalogs.find((rc: any) => getCatalogKey(rc) === getCatalogKey(c));
+        return fullCatalog || c;
       });
-  }, [visibleActivities, todayKey, yesterdayKey]);
 
-  // For backwards compat with stats
-  const todayActivities = visibleActivities.filter((a) => a.timestamp >= todayStart);
-  const yesterdayActivities = visibleActivities.filter(
-    (a) => a.timestamp >= yesterdayStart && a.timestamp < todayStart
-  );
+    const unselectedRegular = regularCatalogs.filter((c: any) => {
+      const key = getCatalogKey(c);
+      return key && !savedKeys.has(key);
+    });
 
-  // Activity stats derived from real metrics data
-  const currentlyWatchingCount =
-    metricsData?.nowPlaying && Array.isArray(metricsData.nowPlaying)
-      ? metricsData.nowPlaying.length
-      : 0;
+    const orderedRegular = [...selectedRegular, ...unselectedRegular];
 
-  const completedTodayCount = activityData.filter((activity) => {
-    return activity.timestamp >= todayStart;
-  }).length;
+    const selectedSearch = savedCatalogs
+      .filter((c: any) => {
+        const key = getCatalogKey(c);
+        return key && searchCatalogs.some((sc: any) => getCatalogKey(sc) === key);
+      })
+      .map((c: any) => {
+        const fullCatalog = searchCatalogs.find((sc: any) => getCatalogKey(sc) === getCatalogKey(c));
+        return fullCatalog || c;
+      });
 
-  let watchTimeTodayHours = 0;
-  if (metricsData?.watchTime?.byDay && Array.isArray(metricsData.watchTime.byDay)) {
-    // byDay is keyed by the account's configured timezone, not the browser's
-    // - metricsData.today is the account-day string the server used to build
-    // these same keys (falls back to browser-local for older cached responses
-    // without the field).
-    const todayAccount = metricsData.today || todayStart.toLocaleDateString('sv-SE');
-    const todayEntry = metricsData.watchTime.byDay.find((d) =>
-      d.date === todayAccount
-    );
-    if (todayEntry) {
-      watchTimeTodayHours = todayEntry.hours || 0;
+    const unselectedSearch = searchCatalogs.filter((c: any) => {
+      const key = getCatalogKey(c);
+      return key && !savedKeys.has(key);
+    });
+
+    const orderedSearch = [...selectedSearch, ...unselectedSearch];
+
+    setOrderedRegularCatalogs(orderedRegular);
+    setOrderedSearchCatalogs(orderedSearch);
+  }, [originalManifestData, manifestData, addon]);
+
+  // Initialize selectedResources and selectedCatalogs when addon is first loaded
+  useEffect(() => {
+    if (addon) {
+      // Initialize resources
+      if ((addon as any)?.resources) {
+        let savedResources = (addon as any).resources;
+        
+        // Auto-add "search" resource if any catalog has search functionality and wasn't already saved
+        if ((addon as any)?.catalogs) {
+          const savedCatalogs = (addon as any).catalogs;
+          const hasSearchCatalog = savedCatalogs.some((c: any) => c?.search);
+          if (hasSearchCatalog && !savedResources.includes('search')) {
+            savedResources = [...savedResources, 'search'];
+          }
+        }
+        
+        setSelectedResources(new Set(savedResources));
+      }
+      
+      // Initialize catalogs
+      if ((addon as any)?.catalogs) {
+        const savedCatalogs = (addon as any).catalogs;
+        const catalogKeys = savedCatalogs.map((c: any) => getCatalogKey(c)).filter(Boolean);
+        setSelectedCatalogs(new Set(catalogKeys));
+      }
     }
+  }, [addon?.id]); // Only run when addon ID changes (initial load)
+
+  // Combine manifest resources with addon's saved resources to show all available resources
+  const allResources = useMemo(() => {
+    const manifestResources = manifestData?.resources || [];
+    const savedResources = (addon as any)?.resources || [];
+    
+    // Create a set of resource names from manifest to avoid duplicates
+    const manifestNames = new Set(
+      manifestResources.map((r: any) => typeof r === 'string' ? r : r.name)
+    );
+    
+    // Start with manifest resources
+    const combined = [...manifestResources];
+    
+    // Add saved resources that aren't in the manifest (like "search")
+    for (const resource of savedResources) {
+      if (!manifestNames.has(resource)) {
+        combined.push(resource);
+      }
+    }
+    
+    // Auto-add "search" resource if any catalog has search functionality
+    const hasSearchCatalog = (manifestData?.catalogs || []).some((c: any) =>
+      c?.extra?.some((e: any) => e.name === 'search')
+    );
+    if (hasSearchCatalog && !manifestNames.has('search') && !savedResources.includes('search')) {
+      combined.push('search');
+    }
+    
+    return combined;
+  }, [manifestData, addon]);
+
+  // Auto-save helpers (debounced)
+  const autoSaveResources = useCallback((resources: Set<string>) => {
+    if (!addon) return;
+    if (resourceSaveTimer.current) clearTimeout(resourceSaveTimer.current);
+    resourceSaveTimer.current = setTimeout(async () => {
+      setIsSavingResources(true);
+      try {
+        await api.updateAddon(addon.id, { resources: Array.from(resources) });
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to update resources');
+      } finally {
+        setIsSavingResources(false);
+      }
+    }, 500);
+  }, [addon]);
+
+  const autoSaveCatalogs = useCallback((
+    selectedCats: Set<string>,
+    regularCats: any[],
+    searchCats: any[]
+  ) => {
+    if (!addon) return;
+    if (catalogSaveTimer.current) clearTimeout(catalogSaveTimer.current);
+    catalogSaveTimer.current = setTimeout(async () => {
+      setIsSavingCatalogs(true);
+      try {
+        const finalCatalogs: { type: string; id: string; search: boolean }[] = [];
+        let hasSearchCatalog = false;
+        
+        for (const cat of regularCats) {
+          const key = getCatalogKey(cat);
+          if (selectedCats.has(key)) {
+            const { type, id, isSearch } = parseCatalogKey(key);
+            finalCatalogs.push({ type, id, search: isSearch });
+            if (isSearch) hasSearchCatalog = true;
+          }
+        }
+        for (const cat of searchCats) {
+          const key = getCatalogKey(cat);
+          if (selectedCats.has(key)) {
+            const { type, id, isSearch } = parseCatalogKey(key);
+            finalCatalogs.push({ type, id, search: isSearch });
+            if (isSearch) hasSearchCatalog = true;
+          }
+        }
+        await api.updateAddon(addon.id, { catalogs: finalCatalogs });
+        
+        // Auto-add "search" resource if any search catalog is enabled
+        const currentResources = (addon as any)?.resources || [];
+        if (hasSearchCatalog && !currentResources.includes('search')) {
+          const newResources = [...currentResources, 'search'];
+          await api.updateAddon(addon.id, { resources: newResources });
+          setSelectedResources(new Set(newResources));
+        }
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to update catalogs');
+      } finally {
+        setIsSavingCatalogs(false);
+      }
+    }, 500);
+  }, [addon]);
+
+  // Resource toggle handler
+  const handleResourceToggle = (resource: string) => {
+    const newSelectedResources = new Set(selectedResources);
+    const isDeactivating = newSelectedResources.has(resource);
+
+    if (isDeactivating) {
+      newSelectedResources.delete(resource);
+
+      // Cascade: deselect matching catalogs when their resource is disabled
+      if (resource === 'search' || resource === 'catalog') {
+        const newSelectedCatalogs = new Set(selectedCatalogs);
+        for (const key of newSelectedCatalogs) {
+          const { isSearch } = parseCatalogKey(key);
+          if (resource === 'search' ? isSearch : !isSearch) {
+            newSelectedCatalogs.delete(key);
+          }
+        }
+        setSelectedCatalogs(newSelectedCatalogs);
+        autoSaveCatalogs(newSelectedCatalogs, orderedRegularCatalogs, orderedSearchCatalogs);
+      }
+    } else {
+      newSelectedResources.add(resource);
+    }
+
+    setSelectedResources(newSelectedResources);
+    autoSaveResources(newSelectedResources);
+  };
+
+  // Catalog toggle handler
+  const handleCatalogToggle = (catalogKey: string) => {
+    const newSelected = new Set(selectedCatalogs);
+    if (newSelected.has(catalogKey)) {
+      newSelected.delete(catalogKey);
+    } else {
+      newSelected.add(catalogKey);
+    }
+    setSelectedCatalogs(newSelected);
+    autoSaveCatalogs(newSelected, orderedRegularCatalogs, orderedSearchCatalogs);
+  };
+
+  // Check if all catalogs selected
+  const allRegularSelected = orderedRegularCatalogs.length > 0 &&
+    orderedRegularCatalogs.every((c: any) => selectedCatalogs.has(getCatalogKey(c)));
+
+  const allSearchSelected = orderedSearchCatalogs.length > 0 &&
+    orderedSearchCatalogs.every((c: any) => selectedCatalogs.has(getCatalogKey(c)));
+
+  // Toggle all catalogs
+  const handleToggleAllRegular = () => {
+    const newSelected = new Set(selectedCatalogs);
+    if (allRegularSelected) {
+      orderedRegularCatalogs.forEach((c: any) => newSelected.delete(getCatalogKey(c)));
+    } else {
+      orderedRegularCatalogs.forEach((c: any) => newSelected.add(getCatalogKey(c)));
+    }
+    setSelectedCatalogs(newSelected);
+    autoSaveCatalogs(newSelected, orderedRegularCatalogs, orderedSearchCatalogs);
+  };
+
+  const handleToggleAllSearch = () => {
+    const newSelected = new Set(selectedCatalogs);
+    if (allSearchSelected) {
+      orderedSearchCatalogs.forEach((c: any) => newSelected.delete(getCatalogKey(c)));
+    } else {
+      orderedSearchCatalogs.forEach((c: any) => newSelected.add(getCatalogKey(c)));
+    }
+    setSelectedCatalogs(newSelected);
+    autoSaveCatalogs(newSelected, orderedRegularCatalogs, orderedSearchCatalogs);
+  };
+
+  // Drag handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveCatalogId(event.active.id as string);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const activeKey = active.id as string;
+      const isRegular = orderedRegularCatalogs.some((c: any) => getCatalogKey(c) === activeKey);
+      if (isRegular) {
+        const oldIndex = orderedRegularCatalogs.findIndex((c: any) => getCatalogKey(c) === activeKey);
+        const newIndex = orderedRegularCatalogs.findIndex((c: any) => getCatalogKey(c) === over.id);
+        const newOrder = arrayMove(orderedRegularCatalogs, oldIndex, newIndex);
+        setOrderedRegularCatalogs(newOrder);
+        autoSaveCatalogs(selectedCatalogs, newOrder, orderedSearchCatalogs);
+      } else {
+        const oldIndex = orderedSearchCatalogs.findIndex((c: any) => getCatalogKey(c) === activeKey);
+        const newIndex = orderedSearchCatalogs.findIndex((c: any) => getCatalogKey(c) === over.id);
+        const newOrder = arrayMove(orderedSearchCatalogs, oldIndex, newIndex);
+        setOrderedSearchCatalogs(newOrder);
+        autoSaveCatalogs(selectedCatalogs, orderedRegularCatalogs, newOrder);
+      }
+    }
+    setActiveCatalogId(null);
+  };
+
+  // Handle save from edit modal
+  const handleSaveEdit = async () => {
+    if (!addon) return;
+    try {
+      await api.updateAddon(addon.id, {
+        name: editForm.name,
+        description: editForm.description,
+        customLogo: editForm.customLogo,
+      } as any);
+      
+      // Compute the new logo URL using the same logic as fetchAddon
+      const anyAddon = addon as any;
+      const newLogoUrl =
+        editForm.customLogo ||
+        addon.logo ||
+        anyAddon.iconUrl ||
+        (addon.manifest?.logo) ||
+        (addon.manifest?.id && `https://stremio-addon.netlify.app/${addon.manifest.id}/icon.png`) ||
+        undefined;
+      
+      setAddon({
+        ...addon,
+        name: editForm.name,
+        description: editForm.description,
+        customLogo: editForm.customLogo,
+        logo: newLogoUrl,
+      });
+      
+      // Reset logo error so the new image will be attempted
+      setLogoError(false);
+      
+      setIsEditModalOpen(false);
+      toast.success('Addon updated successfully');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update addon');
+    }
+  };
+
+  // Handle reset to manifest defaults
+  const handleResetToManifest = async () => {
+    if (!addon) return;
+    try {
+      const manifest = originalManifestData || manifestData;
+      if (!manifest) {
+        toast.error('No manifest data available');
+        return;
+      }
+
+      // Prepare reset values
+      const resetName = manifest.name || addon.name;
+      const resetDescription = manifest.description || '';
+      const resetLogo = manifest.logo || '';
+
+      // Update addon via API
+      await api.updateAddon(addon.id, {
+        name: resetName,
+        description: resetDescription,
+        customLogo: resetLogo,
+      } as any);
+
+      // Compute the logo using the same logic as fetchAddon
+      const anyAddon = addon as any;
+      const resetLogoUrl =
+        resetLogo ||
+        (manifest && manifest.logo) ||
+        addon.logo ||
+        anyAddon.iconUrl ||
+        (manifest?.id && `https://stremio-addon.netlify.app/${manifest.id}/icon.png`) ||
+        undefined;
+
+      // Update local state
+      setAddon({
+        ...addon,
+        name: resetName,
+        description: resetDescription,
+        customLogo: resetLogo,
+        logo: resetLogoUrl,
+      });
+      
+      // Reset logo error state so the new logo will be attempted
+      setLogoError(false);
+
+      // Reset resources
+      const manifestResources = manifest?.resources || [];
+      const resourceNames = manifestResources.map((r: any) =>
+        typeof r === 'string' ? r : r.name
+      ).filter(Boolean);
+      const hasSearch = (manifest?.catalogs || []).some((c: any) =>
+        c.extra?.some((e: any) => e.name === 'search')
+      );
+      if (hasSearch && !resourceNames.includes('search')) {
+        resourceNames.push('search');
+      }
+      await api.updateAddon(addon.id, { resources: resourceNames });
+      setSelectedResources(new Set(resourceNames));
+
+      // Reset catalogs
+      const catalogs = manifest?.catalogs || [];
+      const regularCatalogs = catalogs.filter((c: any) => {
+        if (!c || typeof c !== 'object') return true;
+        return !catalogHasSearch(c);
+      });
+      const searchCatalogs = catalogs.filter((c: any) => {
+        if (!c || typeof c !== 'object') return false;
+        return catalogHasSearch(c);
+      });
+      
+      const finalCatalogs = catalogs.map((c: any) => ({
+        type: c.type,
+        id: c.id,
+        search: catalogHasSearch(c),
+      }));
+      await api.updateAddon(addon.id, { catalogs: finalCatalogs });
+      
+      setOrderedRegularCatalogs(regularCatalogs);
+      setOrderedSearchCatalogs(searchCatalogs);
+      const allKeys = catalogs.map((c: any) => getCatalogKey(c)).filter(Boolean);
+      setSelectedCatalogs(new Set(allKeys));
+
+      // Update edit form
+      setEditForm({
+        name: resetName,
+        description: resetDescription,
+        customLogo: resetLogo,
+      });
+
+      showToast.info('Reset to manifest defaults');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to reset addon');
+    }
+  };
+
+  // Handle remove from group
+  const handleRemoveFromGroup = async (groupId: string, groupName: string) => {
+    if (!addon) return;
+    try {
+      await api.removeAddonFromGroup(groupId, addon.id);
+      toast.success(`Removed from ${groupName}`);
+      await fetchAddon();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to remove from group');
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <>
+        <Header title="Loading..." />
+        <div className="p-8">
+          <div className="flex items-center justify-center h-40 md:h-64">
+            <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
+          </div>
+        </div>
+      </>
+    );
   }
 
-  const activeUsersCount = metricsData?.summary?.activeUsers ?? 0;
+  if (error) {
+    return (
+      <>
+        <Header title="Error" />
+        <div className="p-8">
+          <div className="flex flex-col items-center justify-center h-40 md:h-64 gap-4">
+            <p className="text-lg text-error">Failed to load addon</p>
+            <p className="text-sm text-subtle">{error.message}</p>
+            <Button onClick={() => window.location.reload()}>Retry</Button>
+          </div>
+        </div>
+      </>
+    );
+  }
 
-  // Group task history by time periods (TODO: fetch from API)
-  const todayTasks: TaskHistoryItem[] = [];
-  const yesterdayTasks: TaskHistoryItem[] = [];
-  const olderTasks: TaskHistoryItem[] = [];
+  if (!addon) {
+    return (
+      <>
+        <Header title="Not Found" />
+        <div className="p-8">
+          <div className="flex flex-col items-center justify-center h-40 md:h-64 gap-4">
+            <p className="text-lg text-default">Addon not found</p>
+            <Link href="/addons">
+              <Button variant="secondary">Back to Addons</Button>
+            </Link>
+          </div>
+        </div>
+      </>
+    );
+  }
 
-  const groupFilterSelect = (
-    <select
-      value={selectedGroup || ''}
-      onChange={(e) => setSelectedGroup(e.target.value || null)}
-      className="px-3 py-2 bg-surface border border-default rounded-lg text-default text-sm focus:outline-none focus:border-primary"
-    >
-      <option value="">All Groups</option>
-      {groups.map((group) => (
-        <option key={group.id} value={group.id}>
-          {group.name}
-        </option>
-      ))}
-    </select>
-  );
+  const anyAddon = addon as any;
 
   return (
     <>
-      {layoutMode === 'nebula' ? (
-        <NebulaTopbar actions={groupFilterSelect} />
-      ) : (
-        <Header
-          title="Activity"
-          subtitle="Track watch history and sync operations across your SlickSync instance"
-          actions={<div className="flex items-center gap-3">{groupFilterSelect}</div>}
-        />
-      )}
+      <Header
+        title={
+          <Breadcrumbs
+            items={[
+              { label: 'Addons', href: '/addons' },
+              { label: addon.name },
+            ]}
+            className="text-xl font-semibold"
+          />
+        }
+        actions={
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted">Active</span>
+              <ToggleSwitch
+                checked={addon.isActive !== false}
+                onChange={handleToggleStatus}
+                size="sm"
+                disabled={isTogglingStatus}
+              />
+            </div>
+            <Button
+              variant="glass"
+              leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isReloading ? 'animate-spin' : ''}`} />}
+              onClick={handleReload}
+              isLoading={isReloading}
+            >
+              Reload Addon
+            </Button>
+            {getConfigureUrl(addon) && (
+              <Button
+                variant="glass"
+                leftIcon={<Cog6ToothIcon className="w-5 h-5" />}
+                onClick={() => {
+                  const configUrl = getConfigureUrl(addon);
+                  if (configUrl) {
+                    window.open(configUrl, '_blank', 'noopener,noreferrer');
+                  }
+                }}
+              >
+                Configure
+              </Button>
+            )}
+            <Button
+              variant="glass"
+              leftIcon={<ArrowUturnLeftIcon className="w-5 h-5" />}
+              onClick={handleResetToManifest}
+            >
+              Reset
+            </Button>
+            <Button
+              variant="danger"
+              leftIcon={<TrashIcon className="w-5 h-5" />}
+              onClick={() => setIsDeleteModalOpen(true)}
+            >
+              Delete
+            </Button>
+          </div>
+        }
+      />
 
-      {/* Nebula gets the same 72rem centered column as Dashboard - set
-          inline, not via a max-w-* class, since globals.css's unlayered
-          `* { max-width: 100vw }` silently no-ops any Tailwind max-w-*
-          class (see PageContainer.tsx for the full explanation). Only the
-          Watch tab's stat cards and this outer chrome are Nebula-styled so
-          far - Tasks/Invites/Proxy still render Current's existing Card
-          styling below, since their content involves a lot of carefully-
-          debugged session-matching logic (see the Now Playing duration
-          calc a bit further down) that isn't worth the risk of duplicating
-          into a second copy right now. */}
-      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
-        {/* Primary Tabs - Centered */}
-        <PageToolbar
-          animate={false}
-          filterTabs={{
-            options: [
-              { key: 'watch', label: 'Watch', icon: <PlayIcon className="w-4 h-4" /> },
-              { key: 'tasks', label: 'Tasks', icon: <ClockIcon className="w-4 h-4" /> },
-              { key: 'invites', label: 'Invites', icon: <EnvelopeIcon className="w-4 h-4" /> },
-              { key: 'proxy', label: 'Proxy', icon: <ShieldCheckIcon className="w-4 h-4" /> },
-            ],
-            activeKey: viewMode,
-            onChange: (key) => setViewMode(key as 'watch' | 'tasks' | 'invites' | 'proxy'),
-            layoutId: 'activity-primary-tabs',
-          }}
-        />
-
-        {viewMode === 'watch' ? (
-          <>
-            {/* Activity Stats (from real metrics data) */}
-            <PageSection delay={0.05} className="mb-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  { label: 'Currently Watching', value: isLoading ? '...' : String(currentlyWatchingCount), icon: <PlayIcon className="w-6 h-6" /> },
-                  { label: 'Watched Today', value: isLoading ? '...' : String(completedTodayCount), icon: <CheckCircleIcon className="w-6 h-6" /> },
-                  { label: 'Watch Time Today', value: isLoading ? '...' : formatHours(liveWatchTimeTodayHours), icon: <ClockIcon className="w-6 h-6" /> },
-                  { label: 'Active Users', value: isLoading ? '...' : String(activeUsersCount), icon: <UserIcon className="w-6 h-6" /> },
-                ].map((stat, index) =>
-                  layoutMode === 'nebula' ? (
-                    <NebulaStatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} colorIndex={index} />
-                  ) : (
-                    <StatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} delay={index * 0.05} />
-                  )
-                )}
-              </div>
-            </PageSection>
-
-            {metricsData?.nowPlaying && metricsData.nowPlaying.length > 0 && (
-              <PageSection delay={0.02} className="mb-6">
-                {layoutMode === 'nebula' ? (
-                  <div className={`${NEBULA_GLASS_CLASS} p-5`} style={nebulaGlassStyle}>
-                    <NebulaGlassStripe />
-                    <NowPlayingHeader count={metricsData.nowPlaying.length} />
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {metricsData.nowPlaying.map((np) => (
-                        <motion.div
-                          key={`now-${np.user.id}-${np.item.id}`}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className="flex items-center gap-3 p-3 rounded-xl transition-colors"
-                          style={{ background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surface-border)' }}
-                        >
-                          <NowPlayingItemBody np={np} metricsData={metricsData} nowTick={nowTick} />
-                        </motion.div>
-                      ))}
+      <div className="p-8">
+        {/* Hero Section */}
+        <PageSection className="mb-8">
+          <Card padding="lg">
+            <div className="relative">
+              <div className="flex items-start gap-6">
+                {/* Addon Logo - Large and clickable */}
+                <motion.div
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 200 }}
+                  className="relative shrink-0"
+                >
+                  <div
+                    onClick={() => {
+                      setEditForm({
+                        name: addon.name,
+                        description: addon.description || '',
+                        customLogo: addon.customLogo || '',
+                      });
+                      setIsEditModalOpen(true);
+                    }}
+                    className="cursor-pointer hover:scale-105 transition-transform"
+                  >
+                    <div className="w-24 h-24 rounded-2xl flex items-center justify-center bg-surface border-2 border-default overflow-hidden shadow-lg">
+                      {addon.logo && !logoError ? (
+                        <img
+                          src={addon.logo}
+                          alt={addon.name}
+                          className="w-full h-full object-contain p-2"
+                          onError={() => setLogoError(true)}
+                        />
+                      ) : (
+                        <PuzzlePieceIcon className="w-12 h-12 text-primary" />
+                      )}
                     </div>
                   </div>
-                ) : (
-                <Card padding="md" className="border-2 border-primary/30 bg-primary/5">
-                  <NowPlayingHeader count={metricsData.nowPlaying.length} />
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {metricsData.nowPlaying.map((np) => (
-                      <motion.div
-                        key={`now-${np.user.id}-${np.item.id}`}
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="flex items-center gap-3 p-3 rounded-xl bg-surface-hover hover:bg-surface border border-default hover:border-primary/50 transition-colors"
+                </motion.div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  {/* Name with version badge */}
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <InlineEdit
+                      value={addon.name}
+                      onSave={handleNameUpdate}
+                      placeholder="Enter addon name..."
+                      maxLength={50}
+                      className="text-2xl font-bold"
+                    />
+                    {addon.version && (
+                      <VersionBadge version={addon.version} size="sm" />
+                    )}
+                    {addon.lastHealthCheck && (
+                      <div 
+                        className={`w-2.5 h-2.5 rounded-full ${addon.isOnline ? 'bg-success' : 'bg-danger'}`}
+                        title={addon.isOnline ? 'Online' : 'Offline'}
+                      />
+                    )}
+                    {getConfigureUrl(addon) && (
+                      <button
+                        onClick={() => {
+                          const configUrl = getConfigureUrl(addon);
+                          if (configUrl) {
+                            window.open(configUrl, '_blank', 'noopener,noreferrer');
+                          }
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-surface-hover transition-colors"
+                        title="Open configure page"
                       >
-                        <NowPlayingItemBody np={np} metricsData={metricsData} nowTick={nowTick} />
-                      </motion.div>
-                    ))}
+                        <Cog6ToothIcon className="w-5 h-5 text-muted" />
+                      </button>
+                    )}
                   </div>
-                </Card>
-                )}
-              </PageSection>
-            )}
+                  <div className="mb-4">
+                    <InlineEdit
+                      value={addon.description || undefined}
+                      onSave={handleDescriptionUpdate}
+                      placeholder="Enter description..."
+                      maxLength={200}
+                      className="text-muted"
+                    />
+                  </div>
 
-
-            {/* Search and View Toggle - Below Stat Cards */}
-            <PageSection delay={0.08} className="mb-6">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <SearchInput
-                    size="sm"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search users or content..."
-                    className="w-64"
-                  />
-
-                  {selectedGroup && (
-                    <Badge variant="secondary" className="pl-3 pr-1 py-1 flex items-center gap-2">
-                      <FolderIcon className="w-3.5 h-3.5" />
-                      <span>{groups.find(g => g.id === selectedGroup)?.name || 'Group'}</span>
-                      <button
-                        onClick={() => setSelectedGroup(null)}
-                        className="p-0.5 rounded-md hover:bg-white/20 transition-colors"
-                      >
-                        <XMarkIcon className="w-3.5 h-3.5" />
-                      </button>
-                    </Badge>
-                  )}
-
-                  {timePeriod && (
-                    <Badge variant="secondary" className="pl-3 pr-1 py-1 flex items-center gap-2">
-                      <span className="capitalize">{timePeriod}</span>
-                      <button
-                        onClick={() => setTimePeriod(null)}
-                        className="p-0.5 rounded-md hover:bg-white/20 transition-colors"
-                      >
-                        <XMarkIcon className="w-3.5 h-3.5" />
-                      </button>
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </PageSection>
-
-            {/* Activity Feed */}
-            <div className="space-y-6">
-              {/* Date-grouped activities */}
-              {groupedActivities.map((group, groupIndex) => (
-                <PageSection key={group.dateKey} delay={0.1 + groupIndex * 0.02}>
-                  {/* Nebula wraps each day's group in its own glass panel
-                      instead of a flat heading-on-background section - the
-                      grid/list of cards inside (ActivityCardGrid/ActivityCard)
-                      is completely unchanged either way, only the wrapper
-                      differs. */}
-                  <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
-                  {layoutMode === 'nebula' && <NebulaGlassStripe />}
-                  <div className="flex items-center gap-3 mb-4">
-                    <CalendarIcon className={`w-5 h-5 ${group.isToday ? 'text-secondary' : group.isYesterday ? 'text-muted' : 'text-subtle'}`} />
-                    <div className="flex items-baseline gap-2">
-                      <h2 className="text-lg font-semibold text-default font-display">{group.label}</h2>
-                      <span className="text-sm text-muted">
-                        • {formatHours(group.totalDuration / 3600)}
-                        <span className="ml-1 opacity-70">({group.activities.length})</span>
+                  {/* Quick stats row */}
+                  <div className="flex flex-wrap items-center gap-6">
+                    <div className="flex items-center gap-2">
+                      <UsersIcon className="w-5 h-5 text-secondary" />
+                      <span className="text-default font-medium">{totalUsers}</span>
+                      <span className="text-muted">user{totalUsers !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FolderIcon className="w-5 h-5 text-secondary" />
+                      <span className="text-default font-medium">{addon.groups?.length || 0}</span>
+                      <span className="text-muted">group{addon.groups?.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <PuzzlePieceIcon className="w-5 h-5 text-secondary" />
+                      <span className="text-default font-medium">{selectedResources.size}</span>
+                      <span className="text-muted">resource{selectedResources.size !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CalendarIcon className="w-5 h-5 text-secondary" />
+                      <span className="text-muted">
+                        Created: {addon.createdAt ? new Date(addon.createdAt).toLocaleDateString() : 'Unknown'}
                       </span>
                     </div>
+                    
                   </div>
+                </div>
 
-                  {watchActivityViewMode === 'grid' ? (
-                    // Grid view - Cinematic poster cards
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
-                      {group.activities.map((activity, idx) => (
-                        <ActivityCardGrid
-                          key={activity.id}
-                          activity={activity}
-                          ratings={ratingsById[activity.contentId]}
-                          onFilterByContent={(name) => {
-                            setEpisodeFilter(null);
-                            setSearchQuery(name);
-                          }}
-                          onOpenDetails={setDetailModalItem}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    // List view - Traditional activity cards
-                    <StaggerContainer className="space-y-3">
-                      {group.activities.map((activity) => (
-                        <StaggerItem key={activity.id}>
-                          <ActivityCard
-                            activity={activity}
-                            onFilterByContent={(name) => {
-                              setEpisodeFilter(null);
-                              setSearchQuery(name);
-                            }}
-                            onFilterByEpisode={(act) => {
-                              setEpisodeFilter({
-                                name: act.contentName,
-                                season: act.season,
-                                episode: act.episode,
-                              });
-                            }}
-                            onOpenDetails={setDetailModalItem}
-                          />
-                        </StaggerItem>
-                      ))}
-                    </StaggerContainer>
-                  )}
+
+              </div>
+            </div>
+          </Card>
+        </PageSection>
+
+        {/* Manifest URL Section */}
+        <PageSection delay={0.1} className="mb-8">
+          <Card padding="lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-500/20">
+                  <LinkIcon className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-default">Manifest URL</h3>
+                  <p className="text-sm text-muted">The source URL for this addon</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {loadingManifest && (
+                  <div className="flex items-center gap-2 text-xs text-subtle">
+                    <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                    Loading manifest...
                   </div>
-                </PageSection>
-              ))}
-
-              {/* Empty state */}
-              {filteredActivities.length === 0 ? (
-                <PageSection delay={0.1}>
-                  <Card padding="lg" className="text-center py-16">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-hover flex items-center justify-center">
-                      <ClockIcon className="w-8 h-8 text-subtle" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-default mb-2">No Activity Found</h3>
-                    <p className="text-muted max-w-md mx-auto">
-                      {searchQuery
-                        ? `No activity matches "${searchQuery}". Try a different search term.`
-                        : 'No activity matches your current filters. Try adjusting your filters.'}
-                    </p>
-                    <Button
-                      variant="glass"
-                      className="mt-6"
-                      onClick={() => {
-                        setSearchQuery('');
-                        setTimePeriod(null);
-                        setEpisodeFilter(null);
-                      }}
-                    >
-                      Clear Filters
-                    </Button>
-                  </Card>
-                </PageSection>
-              ) : null}
+                )}
+              </div>
             </div>
 
-            {/* Infinite scroll sentinel & Load More fallback */}
-            {visibleCount < filteredActivities.length && (
-              <div ref={loadMoreRef} className="mt-8">
-                <div className="text-center">
-                  {isLoadingMore ? (
-                    <div className="flex items-center justify-center gap-2 text-sm text-muted py-4">
-                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      <span>Loading more...</span>
+            <div className="flex items-center gap-2">
+              <ManifestUrlInput
+                value={(addon as any).url || (addon as any).manifestUrl || ''}
+                onSave={async (updateData) => {
+                  await api.updateAddon(params.id as string, updateData as any);
+                  const addonData = await api.getAddon(params.id as string);
+                  const anyAddon = addonData as any;
+                  const logo =
+                    anyAddon.customLogo ||
+                    (anyAddon.manifest && anyAddon.manifest.logo) ||
+                    anyAddon.logo ||
+                    anyAddon.iconUrl ||
+                    (anyAddon.manifest?.id && `https://stremio-addon.netlify.app/${anyAddon.manifest.id}/icon.png`) ||
+                    undefined;
+                  setAddon(prev => prev ? { ...prev, ...addonData, logo } : null);
+                  setLogoError(false);
+                  if (anyAddon.manifest) {
+                    setManifestData(anyAddon.manifest);
+                  }
+                  if (anyAddon.originalManifest) {
+                    setOriginalManifestData(anyAddon.originalManifest);
+                  }
+                  
+                  // Initialize resources, auto-add "search" if search catalogs enabled
+                  let savedResources = anyAddon.resources || [];
+                  const savedCatalogs = anyAddon.catalogs || [];
+                  const hasSearchCatalog = savedCatalogs.some((c: any) => c?.search);
+                  if (hasSearchCatalog && !savedResources.includes('search')) {
+                    savedResources = [...savedResources, 'search'];
+                    // Update addon with the search resource
+                    await api.updateAddon(params.id as string, { resources: savedResources });
+                  }
+                  setSelectedResources(new Set(savedResources));
+                  
+                  const catalogKeys = savedCatalogs.map((c: any) => getCatalogKey(c)).filter(Boolean);
+                  setSelectedCatalogs(new Set(catalogKeys));
+                }}
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  const url = (addon as any).url || (addon as any).manifestUrl;
+                  if (url) {
+                    try {
+                      await navigator.clipboard.writeText(url);
+                      toast.success('Copied to clipboard');
+                    } catch (err) {
+                      toast.error('Failed to copy to clipboard');
+                    }
+                  } else {
+                    toast.error('No URL available to copy');
+                  }
+                }}
+              >
+                <DocumentDuplicateIcon className="w-4 h-4" />
+              </Button>
+            </div>
+          </Card>
+        </PageSection>
+
+        {/* Manifest Diff Section */}
+        {(originalManifestData || manifestData) && (
+          <PageSection delay={0.15} className="mb-8">
+            <Card padding="lg">
+              <button
+                type="button"
+                onClick={() => setIsManifestExpanded((prev: boolean) => !prev)}
+                className="w-full flex items-center justify-between gap-3"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-amber-500/20">
+                    <CodeBracketIcon className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="text-lg font-semibold text-default">Manifest</h3>
+                    <p className="text-sm text-muted">
+                      {originalManifestData && currentManifest ? 'Diff between original and current' : 'Manifest JSON'}
+                    </p>
+                  </div>
+                </div>
+                <ChevronDownIcon
+                  className={`w-5 h-5 text-muted transition-transform duration-200 ${isManifestExpanded ? 'rotate-180' : ''}`}
+                />
+              </button>
+
+              <AnimatePresence>
+                {isManifestExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-4">
+                      {(() => {
+                        if (originalManifestData && currentManifest) {
+                          const lines = buildManifestUnifiedDiff(originalManifestData, currentManifest);
+                          const hasDiff = lines.some(l => l.type !== 'same');
+                          return (
+                            <>
+                              {!hasDiff && <p className="text-xs text-subtle italic mb-2">No differences — manifests are identical.</p>}
+                              <pre className="p-4 rounded-xl bg-surface border border-default text-xs font-mono overflow-auto max-h-[32rem] leading-5">
+                                {lines.map((line, i) => (
+                                  <span key={i} className={`block ${
+                                    line.type === 'del' ? 'bg-red-500/10 text-red-400'
+                                    : line.type === 'add' ? 'bg-green-500/10 text-green-400'
+                                    : 'text-subtle'
+                                  }`}>
+                                    {line.type === 'del' ? '- ' : line.type === 'add' ? '+ ' : '  '}
+                                    {line.text}
+                                  </span>
+                                ))}
+                              </pre>
+                            </>
+                          );
+                        }
+
+                        // Only one available — show plain JSON
+                        const json = JSON.stringify(originalManifestData ?? manifestData, null, 2);
+                        return (
+                          <pre className="p-4 rounded-xl bg-surface border border-default text-xs text-subtle font-mono overflow-auto max-h-[32rem] whitespace-pre-wrap break-all">
+                            {json}
+                          </pre>
+                        );
+                      })()}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Card>
+          </PageSection>
+        )}
+
+        {/* Resources Section */}
+        <PageSection delay={0.2} className="mb-8">
+          <Card padding="lg">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-purple-500/20">
+                  <CubeIcon className="w-5 h-5 text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-default">Resources</h3>
+                  <p className="text-sm text-muted">Choose which resources this addon exposes</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 h-9 flex-shrink-0">
+                {isSavingResources && (
+                  <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin text-muted" />
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const manifest = originalManifestData || manifestData;
+                    const manifestResources = manifest?.resources || [];
+                    const resourceNames = manifestResources.map((r: any) =>
+                      typeof r === 'string' ? r : r.name
+                    ).filter(Boolean);
+
+                    const hasSearch = (manifest?.catalogs || []).some((c: any) =>
+                      c.extra?.some((e: any) => e.name === 'search')
+                    );
+                    if (hasSearch && !resourceNames.includes('search')) {
+                      resourceNames.push('search');
+                    }
+
+                    const newSet = new Set<string>(resourceNames);
+                    setSelectedResources(newSet);
+                    autoSaveResources(newSet);
+                    showToast.info('Resources reset to manifest defaults');
+                  }}
+                  leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />}
+                >
+                  Reset
+                </Button>
+              </div>
+            </div>
+
+            {allResources.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {allResources.map((resource: any, index: number) => {
+                  const name = typeof resource === 'string' ? resource : resource.name;
+                  const isSelected = selectedResources.has(name);
+
+                  return (
+                    <motion.button
+                      key={`${name}-${index}`}
+                      onClick={() => handleResourceToggle(name)}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.03 }}
+                      className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all duration-200 bg-surface-hover hover:bg-surface border border-default hover:border-primary whitespace-nowrap`}
+                    >
+                      {/* Content */}
+                      <span className={`font-medium ${isSelected ? 'text-default' : 'text-subtle group-hover:text-default'}`}>
+                        {name}
+                      </span>
+
+                      {/* Selection indicator circle */}
+                      <div
+                        className={`flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${
+                          isSelected 
+                            ? 'bg-primary border-primary' 
+                            : 'border-default group-hover:border-primary/50'
+                        }`}
+                      >
+                        {isSelected && (
+                          <motion.div 
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="w-1.5 h-1.5 rounded-full bg-white"
+                          />
+                        )}
+                      </div>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-subtle">No resources available</p>
+            )}
+          </Card>
+        </PageSection>
+
+        {/* Catalogs Section */}
+        <PageSection delay={0.3} className="mb-8">
+          <Card padding="lg">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-green-500/20">
+                  <BookOpenIcon className="w-5 h-5 text-green-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-default">Catalogs</h3>
+                  <p className="text-sm text-muted">Select and reorder catalogs</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 h-9 flex-shrink-0">
+                {isSavingCatalogs && (
+                  <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin text-muted" />
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const manifest = originalManifestData || manifestData;
+                    const catalogs = manifest?.catalogs || [];
+
+                    const regularCatalogs = catalogs.filter((c: any) => {
+                      if (!c || typeof c !== 'object') return true;
+                      return !catalogHasSearch(c);
+                    });
+                    const searchCatalogs = catalogs.filter((c: any) => {
+                      if (!c || typeof c !== 'object') return false;
+                      return catalogHasSearch(c);
+                    });
+
+                    setOrderedRegularCatalogs(regularCatalogs);
+                    setOrderedSearchCatalogs(searchCatalogs);
+
+                    const allKeys = new Set<string>(catalogs.map((c: any) => getCatalogKey(c)).filter(Boolean));
+                    setSelectedCatalogs(allKeys);
+                    autoSaveCatalogs(allKeys, regularCatalogs, searchCatalogs);
+                    showToast.info('Catalogs reset to manifest defaults');
+                  }}
+                  leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />}
+                >
+                  Reset
+                </Button>
+              </div>
+            </div>
+
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6" style={{ userSelect: 'none' }}>
+                {/* Regular Catalogs */}
+                {orderedRegularCatalogs.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                        <p className="text-xs font-semibold text-default uppercase tracking-wider">
+                          Catalogs
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleToggleAllRegular}
+                        className="text-xs font-medium text-primary hover:text-primary-hover transition-colors px-2 py-1 rounded-lg hover:bg-primary/10"
+                      >
+                        {allRegularSelected ? 'Deselect All' : 'Select All'}
+                      </button>
+                    </div>
+                    <SortableContext
+                      items={orderedRegularCatalogs.map((c: any) => getCatalogKey(c) || '')}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2">
+                        {orderedRegularCatalogs.map((catalog: any) => (
+                          <SortableCatalogItem
+                            key={getCatalogKey(catalog)}
+                            catalog={catalog}
+                            isSelected={selectedCatalogs.has(getCatalogKey(catalog) || '')}
+                            onToggle={() => handleCatalogToggle(getCatalogKey(catalog) || '')}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </div>
+                )}
+
+                {/* Search Catalogs */}
+                {orderedSearchCatalogs.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        <p className="text-xs font-semibold text-default uppercase tracking-wider">
+                          Search Catalogs
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleToggleAllSearch}
+                        className="text-xs font-medium text-primary hover:text-primary-hover transition-colors px-2 py-1 rounded-lg hover:bg-primary/10"
+                      >
+                        {allSearchSelected ? 'Deselect All' : 'Select All'}
+                      </button>
+                    </div>
+                    <SortableContext
+                      items={orderedSearchCatalogs.map((c: any) => getCatalogKey(c) || '')}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2">
+                        {orderedSearchCatalogs.map((catalog: any) => (
+                          <SortableCatalogItem
+                            key={getCatalogKey(catalog)}
+                            catalog={catalog}
+                            isSelected={selectedCatalogs.has(getCatalogKey(catalog) || '')}
+                            onToggle={() => handleCatalogToggle(getCatalogKey(catalog) || '')}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </div>
+                )}
+
+                {orderedRegularCatalogs.length === 0 && orderedSearchCatalogs.length === 0 && (
+                  <p className="text-sm text-subtle col-span-2">No catalogs available</p>
+                )}
+              </div>
+              <DragOverlay>
+                {(() => {
+                  if (!activeCatalogId) return null;
+                  const allCatalogs = [...orderedRegularCatalogs, ...orderedSearchCatalogs];
+                  const activeCatalog = allCatalogs.find((c: any) => getCatalogKey(c) === activeCatalogId);
+                  if (!activeCatalog) return null;
+                  return (
+                    <SortableCatalogItem
+                      catalog={activeCatalog}
+                      isSelected={selectedCatalogs.has(getCatalogKey(activeCatalog) || '')}
+                      onToggle={() => handleCatalogToggle(getCatalogKey(activeCatalog) || '')}
+                    />
+                  );
+                })()}
+              </DragOverlay>
+            </DndContext>
+          </Card>
+        </PageSection>
+
+        {/* Groups Section */}
+        <PageSection delay={0.4} className="mb-8">
+          <Card padding="lg">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-500/20">
+                  <UsersIcon className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-default">Groups</h3>
+                  <p className="text-sm text-muted">
+                    {addon.groups?.length || 0} group{addon.groups?.length !== 1 ? 's' : ''} using this addon
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<PlusIcon className="w-4 h-4" />}
+                onClick={() => setIsAddToGroupModalOpen(true)}
+              >
+                Add to Group
+              </Button>
+            </div>
+
+            <StaggerContainer className="space-y-3">
+              {addon.groups && addon.groups.length > 0 ? (
+                addon.groups.map((group) => (
+                  <StaggerItem key={group.id}>
+                     <Link href={`/groups/${group.id}`}>
+                       <motion.div
+                         whileHover={{ x: 4 }}
+                         className="flex items-center gap-4 p-4 rounded-xl bg-surface-hover hover:bg-surface border border-default hover:border-primary transition-all group cursor-pointer overflow-hidden"
+                       >
+                         {/* Group colored avatar with first letter */}
+                         <div
+                           className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0"
+                           style={{ backgroundColor: (group as any).color || '#7c3aed' }}
+                         >
+                           {group.name?.[0] || 'G'}
+                         </div>
+
+                         <div className="flex-1 min-w-0">
+                           <div className="flex items-center gap-2">
+                             <span className="font-medium text-default group-hover:text-primary transition-colors truncate">
+                               {group.name}
+                             </span>
+                           </div>
+                           <p className="text-sm text-muted">
+                             {group.users || 0} users • {(group as any).addons || 0} addons
+                           </p>
+                         </div>
+
+                         {/* Sync Status Badge */}
+                         <SyncBadge groupId={group.id} size="sm" />
+
+                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.preventDefault()}>
+                           <Button
+                             variant="ghost"
+                             size="sm"
+                             onClick={async (e) => {
+                               e.preventDefault();
+                               try {
+                                 await api.syncGroup(group.id);
+                                 toast.success(`Synced ${group.name} successfully`);
+                               } catch (err: any) {
+                                 toast.error(err.message || `Failed to sync ${group.name}`);
+                               }
+                             }}
+                           >
+                             <ArrowPathIcon className="w-4 h-4" />
+                           </Button>
+                           <Button
+                             variant="ghost"
+                             size="sm"
+                             onClick={(e) => {
+                               e.preventDefault();
+                               handleRemoveFromGroup(group.id, group.name);
+                             }}
+                             className="text-error hover:bg-error-muted"
+                           >
+                             <XMarkIcon className="w-4 h-4" />
+                           </Button>
+                         </div>
+                       </motion.div>
+                     </Link>
+                  </StaggerItem>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <FolderIcon className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
+                  <p className="text-muted mb-4">Not assigned to any groups</p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<PlusIcon className="w-4 h-4" />}
+                    onClick={() => setIsAddToGroupModalOpen(true)}
+                  >
+                    Add to First Group
+                  </Button>
+                </div>
+              )}
+            </StaggerContainer>
+          </Card>
+        </PageSection>
+
+        {/* Health History Section */}
+        <PageSection delay={0.5} className="mb-8">
+          <AddonHealthHistorySection addonId={params.id as string} />
+        </PageSection>
+
+        {/* Backup Section */}
+        <AddonBackupSection addonId={params.id as string} addon={addon as any} onUpdate={fetchAddon} />
+
+        {/* Proxy Section */}
+        <PageSection delay={0.55} className="mb-8">
+          <Card padding="lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-indigo-500/20">
+                  <ShieldCheckIcon className="w-5 h-5 text-indigo-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-default">Proxy</h3>
+                  <p className="text-sm text-muted">
+                    Hide the original addon URL with a proxied endpoint
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted">
+                  {anyAddon?.proxyEnabled ? 'Enabled' : 'Disabled'}
+                </span>
+                <ToggleSwitch
+                  checked={anyAddon?.proxyEnabled || false}
+                  onChange={handleToggleProxy}
+                  disabled={isTogglingProxy}
+                />
+              </div>
+            </div>
+
+            {anyAddon?.proxyEnabled && (
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-surface border border-default">
+                  <div className="flex items-center gap-3 mb-3">
+                    <ShieldCheckIcon className="w-5 h-5 text-success" />
+                    <span className="text-sm font-medium text-default">Proxy URL</span>
+                  </div>
+                  
+                  {anyAddon?.proxyManifestUrl ? (
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 p-2 bg-surface-hover rounded-lg text-xs text-subtle break-all font-mono">
+                        {anyAddon.proxyManifestUrl}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(anyAddon.proxyManifestUrl);
+                          toast.success('Copied to clipboard');
+                        }}
+                      >
+                        <DocumentDuplicateIcon className="w-4 h-4" />
+                      </Button>
                     </div>
                   ) : (
-                    <Button
-                      variant="glass"
-                      size="lg"
-                      onClick={loadMore}
-                    >
-                      Load more activity
-                    </Button>
+                    <p className="text-sm text-subtle">Proxy URL will be generated when enabled</p>
                   )}
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-lg bg-surface-hover">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted">UUID:</span>
+                    <code className="text-xs text-subtle font-mono">{anyAddon?.proxyUuid || 'Not generated'}</code>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRegenerateProxyUuid}
+                    isLoading={isRegeneratingProxy}
+                    disabled={!anyAddon?.proxyEnabled}
+                  >
+                    <ArrowPathIcon className="w-4 h-4 mr-1" />
+                    Regenerate
+                  </Button>
+                </div>
+
+                <div className="text-xs text-subtle">
+                  <p className="mb-1">
+                    When enabled, users access this addon through a proxy URL that hides the original addon URL.
+                  </p>
+                  <p>
+                    The proxy provides an additional layer of security by preventing users from seeing or accessing the original manifest URL directly.
+                  </p>
                 </div>
               </div>
             )}
-          </>
-        ) : viewMode === 'invites' ? (
-          <>
-            {/* Invitation History Stats */}
-            <PageSection delay={0.05} className="mb-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  { label: 'Total Invites', value: isLoading ? '...' : inviteHistory.length, icon: <EnvelopeIcon className="w-6 h-6" /> },
-                  { label: 'Created', value: isLoading ? '...' : inviteHistory.filter(i => i.action === 'created').length, icon: <EnvelopeIcon className="w-6 h-6" /> },
-                  { label: 'Used', value: isLoading ? '...' : inviteHistory.filter(i => i.action === 'used').length, icon: <CheckCircleIcon className="w-6 h-6" /> },
-                  { label: 'Expired', value: isLoading ? '...' : inviteHistory.filter(i => i.action === 'expired').length, icon: <ClockIcon className="w-6 h-6" /> },
-                ].map((stat, index) =>
-                  layoutMode === 'nebula' ? (
-                    <NebulaStatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} colorIndex={index} />
-                  ) : (
-                    <StatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} delay={index * 0.05} />
-                  )
-                )}
-              </div>
-            </PageSection>
+          </Card>
+        </PageSection>
+      </div>
 
-            {/* Invitation History Feed */}
-            <div className="space-y-6">
-              {isLoading ? (
-                <PageSection delay={0.1}>
-                  <Card padding="lg" className="text-center py-16">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-hover flex items-center justify-center">
-                      <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-default mb-2">Loading...</h3>
-                  </Card>
-                </PageSection>
-              ) : error ? (
-                <PageSection delay={0.1}>
-                  <Card padding="lg" className="text-center py-16">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-hover flex items-center justify-center">
-                      <XMarkIcon className="w-8 h-8 text-error" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-default mb-2">Error Loading Data</h3>
-                    <p className="text-muted">{error.message}</p>
-                  </Card>
-                </PageSection>
-              ) : inviteHistory.length === 0 ? (
-                <PageSection delay={0.1}>
-                  <Card padding="lg" className="text-center py-16">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-hover flex items-center justify-center">
-                      <EnvelopeIcon className="w-8 h-8 text-subtle" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-default mb-2">No Invitation History</h3>
-                    <p className="text-muted max-w-md mx-auto">
-                      Invitation history will appear here when invitations are created, used, or expire.
-                    </p>
-                  </Card>
-                </PageSection>
-              ) : (
-                <>
-                  {[
-                    { key: 'today', label: 'Today', icon: 'text-primary', badge: 'primary' as const, delay: 0.1, items: inviteHistory.filter(i => new Date(i.timestamp) >= todayStart) },
-                    { key: 'yesterday', label: 'Yesterday', icon: 'text-muted', badge: 'muted' as const, delay: 0.15, items: inviteHistory.filter(i => { const d = new Date(i.timestamp); return d >= yesterdayStart && d < todayStart; }) },
-                    { key: 'earlier', label: 'Earlier', icon: 'text-subtle', badge: 'muted' as const, delay: 0.2, items: inviteHistory.filter(i => new Date(i.timestamp) < yesterdayStart) },
-                  ].map((group) => group.items.length === 0 ? null : (
-                    <PageSection key={group.key} delay={group.delay}>
-                      {/* Nebula wraps each date group in its own glass panel,
-                          same as the Watch tab - the rows inside
-                          (InviteHistoryRow) are identical either way. */}
-                      <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
-                      {layoutMode === 'nebula' && <NebulaGlassStripe />}
-                      <div className="flex items-center gap-3 mb-4">
-                        <CalendarIcon className={`w-5 h-5 ${group.icon}`} />
-                        <h2 className="text-lg font-semibold text-default font-display">{group.label}</h2>
-                        <Badge variant={group.badge} size="sm">{group.items.length}</Badge>
-                      </div>
-                      <StaggerContainer className="space-y-3">
-                        {group.items.map((invite) => (
-                          <StaggerItem key={invite.id}>
-                            <InviteHistoryRow invite={invite} />
-                          </StaggerItem>
-                        ))}
-                      </StaggerContainer>
-                      </div>
-                    </PageSection>
-                  ))}
-                </>
-              )}
-            </div>
-          </>
-        ) : viewMode === 'proxy' ? (
-          <ProxyHistoryView />
-        ) : (
-          <>
-            {/* Task History Stats */}
-            <PageSection delay={0.05} className="mb-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  { label: 'Successful', value: taskHistory.filter(t => t.status === 'success').length, icon: <CheckCircleIcon className="w-6 h-6" /> },
-                  { label: 'Partial', value: taskHistory.filter(t => t.status === 'partial').length, icon: <ExclamationTriangleIcon className="w-6 h-6" /> },
-                  { label: 'Failed', value: taskHistory.filter(t => t.status === 'failed').length, icon: <ExclamationTriangleIcon className="w-6 h-6" /> },
-                  { label: 'Total Tasks', value: taskHistory.length, icon: <ClockIcon className="w-6 h-6" /> },
-                ].map((stat, index) =>
-                  layoutMode === 'nebula' ? (
-                    <NebulaStatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} colorIndex={index} />
-                  ) : (
-                    <StatCard key={stat.label} label={stat.label} value={stat.value} icon={stat.icon} delay={index * 0.05} />
-                  )
-                )}
-              </div>
-            </PageSection>
+      {/* Edit Modal */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title="Edit Addon"
+        description="Update addon details"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-default mb-1">Name</label>
+            <Input
+              value={editForm.name}
+              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              placeholder="Addon name"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-default mb-1">Description</label>
+            <textarea
+              value={editForm.description}
+              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              placeholder="Addon description"
+              className="w-full px-3 py-2 bg-surface border border-default rounded-lg text-default placeholder:text-subtle focus:border-theme-secondary focus:outline-none min-h-[80px]"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-default mb-1">Custom Logo URL</label>
+            <Input
+              value={editForm.customLogo}
+              onChange={(e) => setEditForm({ ...editForm, customLogo: e.target.value })}
+              placeholder="https://example.com/logo.png"
+            />
+            <p className="text-xs text-subtle mt-1">
+              Leave empty to use the default logo from the manifest.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="secondary" onClick={() => setIsEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit}>
+              Save Changes
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
-            {/* Task History Feed */}
-            <div className="space-y-6">
-              {[
-                { key: 'today', label: 'Today', icon: 'text-primary', badge: 'primary' as const, delay: 0.1, items: todayTasks },
-                { key: 'yesterday', label: 'Yesterday', icon: 'text-muted', badge: 'muted' as const, delay: 0.15, items: yesterdayTasks },
-                { key: 'earlier', label: 'Earlier', icon: 'text-subtle', badge: 'muted' as const, delay: 0.2, items: olderTasks },
-              ].map((group) => group.items.length === 0 ? null : (
-                <PageSection key={group.key} delay={group.delay}>
-                  {/* Same glass-panel-per-date-group treatment as Watch and
-                      Invites - TaskHistoryCard itself is unchanged either way. */}
-                  <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
-                  {layoutMode === 'nebula' && <NebulaGlassStripe />}
-                  <div className="flex items-center gap-3 mb-4">
-                    <CalendarIcon className={`w-5 h-5 ${group.icon}`} />
-                    <h2 className="text-lg font-semibold text-default font-display">{group.label}</h2>
-                    <Badge variant={group.badge} size="sm">{group.items.length}</Badge>
+      {/* Delete Confirmation */}
+      <ConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleDelete}
+        title="Delete Addon"
+        description={`Are you sure you want to delete "${addon.name}"? This action cannot be undone.`}
+        confirmText={isDeleting ? 'Deleting...' : 'Delete'}
+        variant="danger"
+        isLoading={isDeleting}
+      />
+
+      {/* Add to Group Modal */}
+      <Modal
+        isOpen={isAddToGroupModalOpen}
+        onClose={() => setIsAddToGroupModalOpen(false)}
+        title="Add to Group"
+        description="Select a group to add this addon to"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="space-y-2 max-h-64 overflow-auto">
+            {allGroups
+              .filter(g => !addon.groups?.some(ag => ag.id === g.id))
+              .map(group => (
+                <motion.button
+                  key={group.id}
+                  whileHover={{ x: 4 }}
+                  onClick={async () => {
+                    try {
+                      await api.addAddonToGroup(group.id, addon.id);
+                      toast.success(`Added to ${group.name}`);
+                      await fetchAddon();
+                      setIsAddToGroupModalOpen(false);
+                    } catch (err: any) {
+                      toast.error(err.message || 'Failed to add to group');
+                    }
+                  }}
+                  className="w-full text-left p-3 rounded-xl border border-default hover:border-primary hover:bg-surface-hover transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-surface border border-default flex items-center justify-center">
+                      <FolderIcon className="w-5 h-5 text-muted" />
+                    </div>
+                    <div>
+                      <p className="text-default font-medium">{group.name}</p>
+                      <p className="text-xs text-subtle">
+                        {group.users || 0} users • {group.addons || 0} addons
+                      </p>
+                    </div>
+                    <PlusIcon className="w-5 h-5 text-primary ml-auto" />
                   </div>
-                  <StaggerContainer className="space-y-3">
-                    {group.items.map((task) => (
-                      <StaggerItem key={task.id}>
-                        <TaskHistoryCard task={task} />
-                      </StaggerItem>
-                    ))}
-                  </StaggerContainer>
-                  </div>
-                </PageSection>
+                </motion.button>
               ))}
-
-              {/* Empty state */}
-              {taskHistory.length === 0 ? (
-                <PageSection delay={0.1}>
-                  <Card padding="lg" className="text-center py-16">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-hover flex items-center justify-center">
-                      <ClockIcon className="w-8 h-8 text-subtle" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-default mb-2">No Task History</h3>
-                    <p className="text-muted max-w-md mx-auto">
-                      Task history will appear here after running sync operations, backups, or imports.
-                    </p>
-                  </Card>
-                </PageSection>
-              ) : null}
+          </div>
+          {allGroups.filter(g => !addon.groups?.some(ag => ag.id === g.id)).length === 0 && (
+            <div className="text-center py-8">
+              <FolderIcon className="w-8 h-8 mx-auto mb-2 text-muted opacity-50" />
+              <p className="text-sm text-subtle">
+                No available groups. This addon is already in all groups.
+              </p>
             </div>
-
-            {/* Load More */}
-            {taskHistory.length > 0 ? (
-              <PageSection delay={0.25} className="mt-8">
-                <div className="text-center">
-                  <Button variant="glass" size="lg">
-                    Load More History
-                  </Button>
-                </div>
-              </PageSection>
-            ) : null}
-          </>
-        )}
-      </div>
-      </div>
-
-      {detailModalItem && (
-        <MediaDetailModal
-          isOpen={!!detailModalItem}
-          onClose={() => setDetailModalItem(null)}
-          itemId={detailModalItem.contentId}
-          itemType={detailModalItem.contentType}
-          videoId={
-            detailModalItem.contentType === 'series' && detailModalItem.season != null && detailModalItem.episode != null
-              ? `${detailModalItem.contentId}:${detailModalItem.season}:${detailModalItem.episode}`
-              : undefined
-          }
-          fallbackTitle={detailModalItem.contentName}
-          fallbackPoster={detailModalItem.poster}
-        />
-      )}
+          )}
+          <div className="flex justify-end pt-4">
+            <Button variant="secondary" onClick={() => setIsAddToGroupModalOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }
 
-export default function ActivityPage() {
+// Addon Backup Section Component
+function BackupAddonPickerModal({ isOpen, onClose, onSelect, currentAddonId, excludeIds = [] }: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelect: (addonId: string) => void;
+  currentAddonId: string;
+  excludeIds?: string[];
+}) {
+  const [addons, setAddons] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setLoading(true);
+    setSearch('');
+    api.getAddons().then((data) => {
+      // Exclude current addon and all addons in the backup chain
+      const excluded = new Set([currentAddonId, ...excludeIds]);
+      setAddons(data.filter((a: any) => !excluded.has(a.id)));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [isOpen, currentAddonId, excludeIds]);
+
+  const filtered = addons.filter((a: any) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (a.name || '').toLowerCase().includes(q) || (a.description || '').toLowerCase().includes(q);
+  });
+
   return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    <Modal isOpen={isOpen} onClose={onClose} title="Select Backup Addon" description="Choose an existing addon to use as a fallback" size="lg">
+      <div className="mb-4">
+        <div
+          className="flex items-center gap-3 px-4 py-3 rounded-xl border transition-all"
+          style={{
+            backgroundColor: 'var(--color-surface-hover)',
+            borderColor: 'var(--color-surface-border)',
+          }}
+        >
+          <svg className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+          </svg>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search addons..."
+            autoFocus
+            className="flex-1 bg-transparent text-sm outline-none"
+            style={{ color: 'var(--color-text)' }}
+          />
+        </div>
       </div>
-    }>
-      <ActivityPageContent />
-    </Suspense>
+
+      <div className="max-h-[380px] overflow-y-auto -mx-1 px-1 space-y-1.5" style={{ scrollbarWidth: 'thin' }}>
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <motion.div
+              className="w-6 h-6 border-2 border-t-transparent rounded-full"
+              style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }}
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+            />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12">
+            <PuzzlePieceIcon className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--color-text-subtle)' }} />
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              {search ? 'No addons match your search' : 'No other addons available'}
+            </p>
+          </div>
+        ) : filtered.map((addon: any) => {
+          const logo = addon.customLogo || addon.logo || addon.iconUrl || (addon.manifest?.logo) || null;
+          return (
+            <motion.button
+              key={addon.id}
+              whileHover={{ scale: 1.005 }}
+              whileTap={{ scale: 0.995 }}
+              onClick={() => { onSelect(addon.id); onClose(); }}
+              className="w-full flex items-center gap-4 p-3.5 rounded-xl text-left transition-all group"
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--color-surface-border)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--color-surface-hover)';
+                e.currentTarget.style.borderColor = 'var(--color-text-subtle)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.borderColor = 'var(--color-surface-border)';
+              }}
+            >
+              {/* Addon icon */}
+              <div
+                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden"
+                style={{
+                  background: 'var(--color-surface-hover)',
+                  border: '1px solid var(--color-surface-border)',
+                }}
+              >
+                {logo ? (
+                  <img src={logo} alt="" className="w-full h-full object-contain p-1.5" />
+                ) : (
+                  <PuzzlePieceIcon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
+                )}
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
+                    {addon.name || 'Unnamed Addon'}
+                  </span>
+                  {addon.version && (
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0"
+                      style={{ background: 'var(--color-primaryMuted)', color: 'var(--color-primary)' }}
+                    >
+                      v{addon.version}
+                    </span>
+                  )}
+                </div>
+                {addon.description && (
+                  <p className="text-xs truncate mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                    {addon.description}
+                  </p>
+                )}
+              </div>
+
+              {/* Status dot */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: addon.isOnline ? 'var(--color-success)' : 'var(--color-error)' }}
+                />
+                <span className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
+                  {addon.isOnline ? 'Online' : 'Offline'}
+                </span>
+              </div>
+            </motion.button>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
+function AddonBackupSection({ addonId, addon, onUpdate }: { addonId: string; addon: any; onUpdate: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
+  const [targetAddonId, setTargetAddonId] = useState<string>(addonId);
+  const [activeAddonInfo, setActiveAddonInfo] = useState<{
+    chain: Array<{
+      id: string;
+      name: string;
+      isActive: boolean;
+      isOnline: boolean;
+      lastHealthCheck: string | null;
+    }>;
+    activeAddon: {
+      id: string;
+      name: string;
+      isActive: boolean;
+      isOnline: boolean;
+      lastHealthCheck: string | null;
+    };
+    isUsingBackup: boolean;
+    totalChainLength: number;
+    message: string;
+  } | null>(null);
+
+  // Fetch active addon info
+  useEffect(() => {
+    const fetchActiveInfo = async () => {
+      try {
+        const info = await api.getAddonBackupActive(addonId);
+        setActiveAddonInfo(info);
+      } catch (error) {
+        console.error('Failed to fetch active addon info:', error);
+      }
+    };
+    fetchActiveInfo();
+  }, [addonId, addon]);
+
+  // Build the backup chain from addon data - recursively traverse the chain
+  const buildChain = (startAddon: any): any[] => {
+    const chain: any[] = [];
+    
+    // Recursive function to traverse the entire chain
+    const traverse = (addon: any) => {
+      if (addon?.backupAddon) {
+        chain.push(addon.backupAddon);
+        // Continue traversing if this backup also has a backup
+        traverse(addon.backupAddon);
+      }
+    };
+    
+    traverse(startAddon);
+    return chain;
+  };
+
+  const backupChain = buildChain(addon);
+  const lastAddonInChain = backupChain.length > 0 ? backupChain[backupChain.length - 1] : addon;
+
+  const handleSelectBackup = async (backupId: string) => {
+    setLoading(true);
+    try {
+      // Add backup to the LAST addon in the chain
+      await api.setAddonBackup(targetAddonId, backupId);
+      toast.success('Backup addon linked successfully');
+      onUpdate();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to link backup');
+    } finally {
+      setLoading(false);
+      setIsPickerOpen(false);
+    }
+  };
+
+  const handleRemoveBackup = async () => {
+    setLoading(true);
+    try {
+      await api.deleteAddonBackup(addonId);
+      toast.success('Backup addon unlinked');
+      setIsRemoveModalOpen(false);
+      onUpdate();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to unlink backup');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openPickerForAddon = (targetId: string) => {
+    setTargetAddonId(targetId);
+    setIsPickerOpen(true);
+  };
+
+  // Derive logos helper - same logic as addons list page
+  const getLogo = (a: any) => {
+    if (!a) return null;
+    return a.customLogo ||
+           (a.manifest && a.manifest.logo) ||
+           a.logo ||
+           a.iconUrl ||
+           (a.manifest?.id && `https://stremio-addon.netlify.app/${a.manifest.id}/icon.png`) ||
+           null;
+  };
+
+  return (
+    <PageSection delay={0.5} className="mb-8">
+      <Card padding="lg">
+        {/* Section Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ background: 'rgba(245, 158, 11, 0.15)' }}
+            >
+              <ShieldCheckIcon className="w-5 h-5" style={{ color: '#f59e0b' }} />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>Backup Addon</h3>
+              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                Assign a fallback addon for when the primary goes offline
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Backup Chain - Vertical Layout */}
+        <div className="space-y-3">
+          {/* Primary Addon */}
+          <div
+            className="relative p-4 rounded-xl border overflow-hidden"
+            style={{
+              background: 'var(--color-surface-hover)',
+              borderColor: 'var(--color-surface-border)',
+            }}
+          >
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-primary)' }} />
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-primary)' }}>
+                Primary
+              </span>
+              {activeAddonInfo && activeAddonInfo.activeAddon.id === addon.id && (
+                <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--color-successMuted)', color: 'var(--color-success)' }}>
+                  Currently Active
+                </span>
+              )}
+            </div>
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 overflow-hidden"
+                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
+                >
+                  {getLogo(addon) ? (
+                    <img src={getLogo(addon)} alt="" className="w-full h-full object-contain p-1" />
+                  ) : (
+                    <PuzzlePieceIcon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
+                      {addon?.name || 'Current Addon'}
+                    </p>
+                    {addon?.version && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0" style={{ background: 'var(--color-primaryMuted)', color: 'var(--color-primary)' }}>
+                        v{addon.version}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: addon?.isOnline !== false ? 'var(--color-success)' : 'var(--color-error)' }} />
+                    <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                      {addon?.isOnline !== false ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+          </div>
+
+          {/* Connector - Arrow only, no lines */}
+          <div className="flex items-center justify-center py-1">
+            <div
+              className="w-6 h-6 rounded-full flex items-center justify-center"
+              style={{
+                background: backupChain.length > 0 ? 'rgba(245, 158, 11, 0.15)' : 'var(--color-surface-hover)',
+                border: `1.5px solid ${backupChain.length > 0 ? 'rgba(245, 158, 11, 0.4)' : 'var(--color-surface-border)'}`,
+              }}
+            >
+              <svg className="w-3 h-3" style={{ color: backupChain.length > 0 ? '#f59e0b' : 'var(--color-text-subtle)' }} fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Backup Chain - flattened structure for consistent spacing */}
+          {backupChain.flatMap((backup: any, index: number) => [
+            // Card
+            <motion.div
+              key={backup.id}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: index * 0.1 }}
+              className="relative p-4 rounded-xl border overflow-hidden group"
+              style={{
+                background: 'var(--color-surface-hover)',
+                borderColor: 'var(--color-surface-border)',
+              }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-primary)' }} />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-primary)' }}>
+                    Backup {index + 1}
+                  </span>
+                  {activeAddonInfo && activeAddonInfo.activeAddon.id === backup.id && (
+                    <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ background: 'var(--color-successMuted)', color: 'var(--color-success)' }}>
+                      Currently Active
+                    </span>
+                  )}
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setIsRemoveModalOpen(true)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg"
+                  style={{ color: 'var(--color-error)' }}
+                  title="Remove backup chain"
+                >
+                  <XMarkIcon className="w-4 h-4" />
+                </motion.button>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 overflow-hidden"
+                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
+                >
+                  {getLogo(backup) ? (
+                    <img src={getLogo(backup)} alt="" className="w-full h-full object-contain p-1" />
+                  ) : (
+                    <PuzzlePieceIcon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/addons/${backup.id}`}
+                      className="text-sm font-medium truncate hover:underline"
+                      style={{ color: 'var(--color-text)' }}
+                    >
+                      {backup.name || 'Unnamed Addon'}
+                    </Link>
+                    {backup.version && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0" style={{ background: 'var(--color-primaryMuted)', color: 'var(--color-primary)' }}>
+                        v{backup.version}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <div className={`w-1.5 h-1.5 rounded-full ${backup.isOnline ? 'animate-pulse' : ''}`} style={{ background: backup.isOnline ? 'var(--color-success)' : 'var(--color-error)' }} />
+                    <span className="text-[11px]" style={{ color: 'var(--color-text-subtle)' }}>
+                      {backup.isOnline ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </motion.div>,
+            // Arrow after each backup
+            <div key={`arrow-${backup.id}`} className="flex items-center justify-center py-1">
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center"
+                style={{
+                  background: 'rgba(245, 158, 11, 0.15)',
+                  border: '1.5px solid rgba(245, 158, 11, 0.4)',
+                }}
+              >
+                <svg className="w-3 h-3" style={{ color: '#f59e0b' }} fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                </svg>
+              </div>
+            </div>
+          ])}
+
+          {/* Add Backup Button - Always at the end */}
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
+            onClick={() => openPickerForAddon(lastAddonInChain.id)}
+            disabled={loading}
+            className="w-full p-4 rounded-xl border-2 border-dashed transition-all flex items-center justify-center gap-3 group"
+            style={{
+              borderColor: 'var(--color-surface-border)',
+              background: 'transparent',
+              minHeight: backupChain.length === 0 ? '96px' : '64px',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+              e.currentTarget.style.background = 'rgba(245, 158, 11, 0.04)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'var(--color-surface-border)';
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
+              style={{ background: 'var(--color-surface-hover)' }}
+            >
+              <PlusIcon className="w-5 h-5" style={{ color: 'var(--color-text-subtle)' }} />
+            </div>
+            <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+              {backupChain.length === 0 ? 'Add Backup' : 'Add Another Backup'}
+            </span>
+          </motion.button>
+        </div>
+
+        {/* Info text */}
+        <p className="text-[11px] text-center pt-2" style={{ color: 'var(--color-text-subtle)' }}>
+          {backupChain.length === 0 
+            ? 'Add a backup addon that will be used when the primary is offline'
+            : activeAddonInfo 
+              ? `${activeAddonInfo.message} • Chain depth: ${activeAddonInfo.totalChainLength} addons`
+              : `Chain depth: ${backupChain.length + 1} addons. If one fails, the next will be used.`}
+        </p>
+      </Card>
+
+      {/* Addon Picker Modal */}
+      <BackupAddonPickerModal
+        isOpen={isPickerOpen}
+        onClose={() => setIsPickerOpen(false)}
+        onSelect={handleSelectBackup}
+        currentAddonId={addonId}
+        excludeIds={backupChain.map((b: any) => b.id)}
+      />
+
+      {/* Remove Confirmation */}
+      <ConfirmModal
+        isOpen={isRemoveModalOpen}
+        onClose={() => setIsRemoveModalOpen(false)}
+        onConfirm={handleRemoveBackup}
+        title="Remove Backup Chain"
+        description="This will unlink the entire backup chain. The backup addons themselves won't be deleted."
+        confirmText="Remove"
+        variant="danger"
+        isLoading={loading}
+      />
+    </PageSection>
+  );
+}
+
+// Addon Health History Section Component
+function AddonHealthHistorySection({ addonId }: { addonId: string }) {
+  const [history, setHistory] = useState<Array<{
+    id: string;
+    isOnline: boolean;
+    error: string | null;
+    checkedAt: string;
+    responseTimeMs: number | null;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [isChecking, setIsChecking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await api.getAddonHealthHistory(addonId, 50);
+      setHistory(data.history);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load health history');
+    } finally {
+      setLoading(false);
+    }
+  }, [addonId]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
+  const handleCheckNow = async () => {
+    setIsChecking(true);
+    try {
+      await api.runAddonHealthCheckNow();
+      // Give the server a moment to complete the check then refresh
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      await fetchHistory();
+      toast.success('Health check complete');
+    } catch (err: any) {
+      toast.error(err.message || 'Health check failed');
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card padding="lg">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-500/20">
+              <HeartIcon className="w-5 h-5 text-rose-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-default">Health History</h3>
+              <p className="text-sm text-muted">Loading...</p>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-3 max-h-[340px] overflow-y-auto">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-surface-hover border border-default animate-pulse overflow-hidden">
+              <div className="w-10 h-10 rounded-lg bg-muted shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 bg-muted rounded w-24" />
+                <div className="h-3 bg-muted rounded w-48" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    );
+  }
+
+  // Group consecutive same-status entries
+  const groupedHistory: Array<{
+    status: boolean;
+    startTime: Date;
+    endTime: Date;
+    count: number;
+    errors: string[];
+  }> = [];
+
+  for (const entry of history) {
+    const entryTime = new Date(entry.checkedAt);
+    const lastGroup = groupedHistory[groupedHistory.length - 1];
+
+    if (lastGroup && lastGroup.status === entry.isOnline) {
+      lastGroup.endTime = entryTime;
+      lastGroup.count++;
+      if (entry.error && !lastGroup.errors.includes(entry.error)) {
+        lastGroup.errors.push(entry.error);
+      }
+    } else {
+      groupedHistory.push({
+        status: entry.isOnline,
+        startTime: entryTime,
+        endTime: entryTime,
+        count: 1,
+        errors: entry.error ? [entry.error] : [],
+      });
+    }
+  }
+
+  return (
+    <Card padding="lg">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-rose-500/20">
+            <HeartIcon className="w-5 h-5 text-rose-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-default">Health History</h3>
+            <p className="text-sm text-muted">
+              {history.length > 0 ? `Last ${history.length} checks` : 'No checks yet'}
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="glass"
+          size="sm"
+          onClick={handleCheckNow}
+          isLoading={isChecking}
+          leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isChecking ? 'animate-spin' : ''}`} />}
+        >
+          Check Now
+        </Button>
+      </div>
+
+      {(error || history.length === 0) ? (
+        <div className="flex flex-col items-center justify-center py-8 text-center">
+          <HeartIcon className="w-10 h-10 text-muted opacity-30 mb-3" />
+          <p className="text-sm text-subtle">
+            {error ? error : 'No health checks recorded yet. Click "Check Now" to run one.'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3 max-h-[340px] overflow-y-auto">
+          {groupedHistory.map((group, index) => (
+            <motion.div
+              key={index}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.05 }}
+              className="flex items-center gap-4 p-4 rounded-xl bg-surface-hover hover:bg-surface-hover/80 border border-default hover:border-primary transition-all overflow-hidden"
+            >
+              <div
+                className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                  group.status ? 'bg-success/20' : 'bg-error/20'
+                }`}
+              >
+                <div
+                  className={`w-3 h-3 rounded-full ${
+                    group.status ? 'bg-success' : 'bg-error'
+                  }`}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={`font-medium ${group.status ? 'text-success' : 'text-error'}`}>
+                    {group.status ? 'Online' : 'Offline'}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {group.count > 1 ? `(${group.count} checks)` : ''}
+                  </span>
+                </div>
+                <div className="text-xs text-muted">
+                  {group.startTime.toLocaleString()}
+                  {group.count > 1 && group.startTime.getTime() !== group.endTime.getTime() && (
+                    <span> - {group.endTime.toLocaleString()}</span>
+                  )}
+                </div>
+                {!group.status && group.errors.length > 0 && (
+                  <div className="text-xs text-error mt-1 truncate" title={group.errors.join(', ')}>
+                    {group.errors[0].length > 50 ? group.errors[0].substring(0, 50) + '...' : group.errors[0]}
+                    {group.errors.length > 1 && ` (+${group.errors.length - 1} more)`}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
