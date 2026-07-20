@@ -5,12 +5,11 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
-import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal, RatingBadges } from '@/components/ui';
+import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { NebulaTopbar, NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { api, MetricsData, Invitation, RatingsBatchEntry } from '@/lib/api';
-import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
+import { api, MetricsData, Invitation } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import {
   ClockIcon,
@@ -466,8 +465,8 @@ const ActivityCard = memo(function ActivityCard({
           {activity.debridService && (
             <>
               <span className="mx-1">•</span>
-              <span title="Detected via AIOStreams proxy">
-                {DEBRID_SERVICE_LABELS[activity.debridService] || activity.debridService}
+              <span title="Detected via the AIOStreams proxy">
+                Proxied · {DEBRID_SERVICE_LABELS[activity.debridService] || activity.debridService}
               </span>
             </>
           )}
@@ -485,12 +484,10 @@ const ActivityCard = memo(function ActivityCard({
 // Grid view activity card component - Cinematic poster design
 const ActivityCardGrid = memo(function ActivityCardGrid({
   activity,
-  ratings,
   onFilterByContent,
   onOpenDetails,
 }: {
   activity: ActivityItem;
-  ratings?: RatingsBatchEntry;
   onFilterByContent?: (name: string) => void;
   onOpenDetails?: (activity: ActivityItem) => void;
 }) {
@@ -564,10 +561,10 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           <div className="absolute bottom-2 right-2">
             <div
               className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm"
-              title={activity.debridService ? 'Detected via AIOStreams proxy' : undefined}
+              title={activity.debridService ? 'Detected via the AIOStreams proxy' : undefined}
             >
               {[
-                activity.debridService ? (DEBRID_SERVICE_LABELS[activity.debridService] || activity.debridService) : null,
+                activity.debridService ? `Proxied · ${DEBRID_SERVICE_LABELS[activity.debridService] || activity.debridService}` : null,
                 activity.requestCount !== undefined && activity.requestCount > 0
                   ? `${activity.requestCount} ${activity.requestCount === 1 ? 'req' : 'reqs'}`
                   : null,
@@ -577,7 +574,10 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
         )}
       </div>
 
-      {/* Content Info - Below the poster */}
+      {/* Content Info - Below the poster. Ratings deliberately not shown
+          here anymore - already in the detail modal this card opens
+          (onOpenDetails), which has room for cast/trailer/IMDb-TMDb links
+          alongside them; redundant and cramped repeated on every card. */}
       <div className="mt-2 space-y-0.5 text-center">
         {/* Content title */}
         <button
@@ -589,16 +589,6 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             {activity.contentName}
           </h4>
         </button>
-
-        {ratings && (ratings.imdbRating || ratings.rottenTomatoes || ratings.metacritic) && (
-          <div className="flex justify-center">
-            <RatingBadges
-              imdbRating={ratings.imdbRating}
-              rottenTomatoes={ratings.rottenTomatoes}
-              metacritic={ratings.metacritic}
-            />
-          </div>
-        )}
 
         {/* Episode info for series */}
         {activity.contentType === 'series' && activity.episode !== undefined && activity.episode > 0 && (
@@ -1439,10 +1429,6 @@ function ActivityPageContent() {
   });
   // Apply lazy-load window
   const visibleActivities = filteredActivities.slice(0, visibleCount);
-  // Only the currently-rendered window's ratings are fetched, not the whole
-  // filtered history (which can run to thousands of rows) - grows
-  // incrementally as visibleCount does via infinite scroll.
-  const ratingsById = useRatingsBatch(visibleActivities.map((a) => a.contentId));
 
   // Get date keys for today and yesterday (stable for render)
   const todayKey = getDateKey(todayStart);
@@ -1507,7 +1493,17 @@ function ActivityPageContent() {
     }
   }
 
-  const activeUsersCount = metricsData?.summary?.activeUsers ?? 0;
+  // Same fix as Dashboard's "Active Now" ring: metricsData.summary.activeUsers
+  // counts anyone with watch activity anywhere in the metrics period ("watched
+  // something recently"), which reads as permanently active on a small
+  // instance - it disagreed with this exact page's own "Currently Watching"
+  // stat sitting at 0 right above it. Derived from the same live nowPlaying
+  // feed instead, deduped by user id (one user can have more than one
+  // nowPlaying entry, e.g. the same title under both their Stremio and Nuvio
+  // profiles).
+  const activeUsersCount = metricsData?.nowPlaying
+    ? new Set(metricsData.nowPlaying.map((np) => np.user.id)).size
+    : 0;
 
   // Group task history by time periods (TODO: fetch from API)
   const todayTasks: TaskHistoryItem[] = [];
@@ -1714,7 +1710,6 @@ function ActivityPageContent() {
                         <ActivityCardGrid
                           key={activity.id}
                           activity={activity}
-                          ratings={ratingsById[activity.contentId]}
                           onFilterByContent={(name) => {
                             setEpisodeFilter(null);
                             setSearchQuery(name);
