@@ -643,10 +643,14 @@ export default function VaultPage() {
         <>
           <div className="flex items-center justify-end mb-2">
             <label className="text-xs text-muted mr-2">Currency</label>
+            {/* Explicit narrow width - the shared input-base class forces
+                width:100%, which stretched this three-letter selector across
+                the whole page. */}
             <select
               value={currency}
               onChange={(e) => handleCurrencyChange(e.target.value)}
               className="input-base px-2 py-1 text-xs rounded-lg"
+              style={{ width: '6rem' }}
               title="Currency for all cost figures"
             >
               {CURRENCY_OPTIONS.map((c) => (

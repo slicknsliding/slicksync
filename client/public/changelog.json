@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.19.0",
+    "date": "2026-07-21",
+    "title": "Build-your-own theme, addon detail page keeps Nebula, compact currency picker",
+    "features": [
+      "New \"Build your own theme\" section in Settings: pick any of the ten themes as a base (for background/surfaces/text), then choose your own primary and secondary accent colors with live preview, and save it. Your custom theme sits alongside the built-in ten and recolors the whole app - the -hover and translucent shades are derived automatically so everything stays consistent from two color picks. Preview updates instantly while you drag the pickers and reverts if you leave without saving."
+    ],
+    "bugFixes": [
+      "Clicking into an addon's detail page dropped back to the Original sidebar layout even with Nebula selected - the addon detail route was never registered as Nebula-eligible (same gap fixed earlier for user/group detail pages). It now keeps Nebula's top-nav chrome like everywhere else.",
+      "The Vault currency selector was stretching across the full page width (the shared input style forces full width); constrained it to a compact fixed size on the right."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.18.3",
     "date": "2026-07-21",
     "title": "Continue Watching: movie cards no longer harshly cropped",
