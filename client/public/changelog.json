@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.22.0",
+    "date": "2026-07-21",
+    "title": "\"Coming up\" episode calendar + your Trakt watchlist in Discover",
+    "features": [
+      "New \"Coming up\" panel on the Dashboard: the next upcoming episode for every show anyone here is mid-season on, with air dates (Today / Tomorrow / weekday / date). It turns the new-episode tracker into a forward-looking calendar - instead of only pinging you after an episode drops, you can see what's coming this week. The air dates are computed by the same 6-hourly poller that already fetches episode lists, so the Dashboard reads them straight from the database with no extra lookups on load. Tap any row to open the show's details. The panel only appears when something's actually upcoming.",
+      "Discover now has a \"★ Your Watchlist\" source (shown once Trakt is connected): your Trakt watchlist, rendered as the same poster grid, with the Movies/Series tabs and search filtering it. Open any title straight into Nuvio or Stremio just like the rest of Discover - your watchlist becomes a launch pad instead of a static list you have to go to trakt.tv for. Posters are matched from Cinemeta and cached."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "The show-tracking table gained a few nullable columns to store each show's next upcoming episode, applied automatically on deploy (no data loss - additive only)."
+    ]
+  },
+  {
     "version": "1.21.0",
     "date": "2026-07-21",
     "title": "Trakt integration - auto-scrobble everything you watch",

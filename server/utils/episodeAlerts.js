@@ -43,6 +43,47 @@ function latestReleasedEpisode(allEpisodes) {
   return latest
 }
 
+/** Soonest episode whose released date is still in the future (by air date). */
+function nextUpcomingEpisode(allEpisodes) {
+  const now = Date.now()
+  let next = null
+  let nextTs = Infinity
+  for (const ep of allEpisodes) {
+    if (!ep.released) continue
+    const ts = new Date(ep.released).getTime()
+    if (!Number.isFinite(ts) || ts <= now) continue
+    if (ts < nextTs) { next = ep; nextTs = ts }
+  }
+  return next
+}
+
+/**
+ * The Dashboard "Coming up" calendar: the next upcoming episode for every show
+ * someone here is mid-season on. Reads the fields the poller stores on
+ * ShowEpisodeAlertState — no Cinemeta call on page load. Keeps rows whose air
+ * date is today or later (a small back-buffer so "airs today" stays visible
+ * between the 6h polls that would otherwise roll it forward).
+ */
+async function getUpcomingEpisodes(prisma, accountId, limit = 24) {
+  const cutoff = new Date(Date.now() - 12 * 60 * 60 * 1000)
+  const rows = await prisma.showEpisodeAlertState.findMany({
+    where: { accountId, nextAirDate: { gte: cutoff } },
+    orderBy: { nextAirDate: 'asc' },
+    take: limit,
+  })
+  return rows
+    .filter((r) => r.nextSeason != null && r.nextEpisode != null && r.nextAirDate)
+    .map((r) => ({
+      showId: r.showId,
+      showName: r.showName || null,
+      poster: r.poster || null,
+      season: r.nextSeason,
+      episode: r.nextEpisode,
+      title: r.nextTitle || null,
+      airDate: r.nextAirDate,
+    }))
+}
+
 async function getNotifyTarget(prisma, accountId) {
   try {
     const account = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
@@ -95,6 +136,18 @@ async function checkForNewEpisodes(prisma) {
       const latest = latestReleasedEpisode(metadata.allEpisodes)
       if (!latest) continue
 
+      // Upcoming-episode + display fields for the "Coming up" calendar, kept
+      // fresh on every poll independently of the alert baseline below.
+      const next = nextUpcomingEpisode(metadata.allEpisodes)
+      const nextFields = {
+        showName: metadata.title || show.showName || null,
+        poster: metadata.poster || show.poster || null,
+        nextSeason: next ? next.season : null,
+        nextEpisode: next ? next.episode : null,
+        nextTitle: next ? (next.title || null) : null,
+        nextAirDate: next ? new Date(next.released) : null,
+      }
+
       const state = await prisma.showEpisodeAlertState.findUnique({
         where: { accountId_showId: { accountId: show.accountId, showId: show.showId } },
       })
@@ -102,10 +155,17 @@ async function checkForNewEpisodes(prisma) {
       if (!state) {
         // First sighting: record the baseline, never alert - see module comment.
         await prisma.showEpisodeAlertState.create({
-          data: { accountId: show.accountId, showId: show.showId, lastSeason: latest.season, lastEpisode: latest.episode },
+          data: { accountId: show.accountId, showId: show.showId, lastSeason: latest.season, lastEpisode: latest.episode, ...nextFields },
         })
         continue
       }
+
+      // Refresh the upcoming/display fields every poll (air dates approach; a
+      // show can gain or lose an announced next episode). Baseline untouched.
+      await prisma.showEpisodeAlertState.update({
+        where: { accountId_showId: { accountId: show.accountId, showId: show.showId } },
+        data: nextFields,
+      }).catch(() => {})
 
       if (episodeOrder(latest.season, latest.episode) <= episodeOrder(state.lastSeason, state.lastEpisode)) {
         continue // nothing new
@@ -194,4 +254,4 @@ function scheduleEpisodeAlerts(prisma) {
   setInterval(run, POLL_INTERVAL_MS)
 }
 
-module.exports = { scheduleEpisodeAlerts, checkForNewEpisodes }
+module.exports = { scheduleEpisodeAlerts, checkForNewEpisodes, getUpcomingEpisodes }
