@@ -908,6 +908,35 @@ class ApiClient {
     });
   }
 
+  // Trakt integration — scrobble SlickSync's own watch record to Trakt.
+  async getTraktStatus() {
+    return this.fetch<TraktStatus>('/trakt/status');
+  }
+  async saveTraktCredentials(clientId: string, clientSecret: string) {
+    return this.fetch<TraktStatus>('/trakt/credentials', {
+      method: 'POST',
+      body: JSON.stringify({ clientId, clientSecret }),
+    });
+  }
+  async connectTrakt() {
+    return this.fetch<{ userCode: string; verificationUrl: string; expiresAt: number }>('/trakt/connect', {
+      method: 'POST',
+    });
+  }
+  async pollTraktConnect() {
+    return this.fetch<{ phase: 'authorized' | 'pending' | 'expired' | 'denied' | 'none'; status: TraktStatus }>('/trakt/connect/poll', {
+      method: 'POST',
+    });
+  }
+  async disconnectTrakt() {
+    return this.fetch<TraktStatus>('/trakt/disconnect', { method: 'POST' });
+  }
+  async syncTraktNow() {
+    return this.fetch<{ success: boolean; synced: number; movies: number; episodes: number }>('/trakt/sync-now', {
+      method: 'POST',
+    });
+  }
+
   async repairAddons() {
     return this.fetch<{ inspected: number; updated: number }>('/settings/repair-addons', {
       method: 'POST',
@@ -1732,6 +1761,14 @@ export interface SyncSettings {
   notifyOnVault?: boolean;
   accountTimezone?: string;
   vaultCurrency?: string;
+}
+
+export interface TraktStatus {
+  configured: boolean;
+  connected: boolean;
+  username: string | null;
+  lastSyncAt: string | null;
+  pending: { userCode: string; verificationUrl: string; expiresAt: number } | null;
 }
 
 export interface ExportedConfig {

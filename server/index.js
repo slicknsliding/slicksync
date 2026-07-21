@@ -36,6 +36,7 @@ const streamProxyRouter = require('./routes/streamProxy');
 const nuvioRouter = require('./routes/nuvio');
 const snapshotsRouter = require('./routes/snapshots');
 const pushRouter = require('./routes/push');
+const traktRouter = require('./routes/trakt');
 const avatarsRouter = require('./routes/avatars');
 const vaultRouter = require('./routes/vault');
 const discoverRouter = require('./routes/discover');
@@ -243,6 +244,7 @@ app.use('/api/avatars', avatarsRouter({ imageUpload }));
 app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/settings', settingsRouter({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }));
 app.use('/api/push', pushRouter({ prisma, getAccountId }));
+app.use('/api/trakt', traktRouter({ prisma, getAccountId }));
 app.use('/api/discover', discoverRouter());
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({
@@ -372,6 +374,15 @@ async function bootstrap() {
       scheduleEpisodeAlerts(prisma)
     } catch (err) {
       console.error('⚠️ Failed to initialize episode alerts:', err)
+    }
+
+    // Schedule Trakt scrobble sweep (mirrors new watch-history rows to any
+    // connected Trakt account, every 10m). No-op when no account is connected.
+    try {
+      const { scheduleTraktSync } = require('./utils/trakt')
+      scheduleTraktSync(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize Trakt sync:', err)
     }
 
     // Schedule vault backup export (decrypted JSON snapshot to data/backup/vault/,
