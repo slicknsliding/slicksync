@@ -208,7 +208,8 @@ model VaultEntry {
   testType         String    @default("manual")
   testConfig       String?   @db.Text
   dashboardUrl     String?
-  monthlyCost      Float? // see schema.sqlite.prisma comment
+  cost             Float? // see schema.sqlite.prisma comment
+  costCycle        String    @default("monthly")
   expiresAt        DateTime?
   notifyDaysBefore Int       @default(3)
   lastCheckedAt    DateTime?

@@ -208,7 +208,8 @@ model VaultEntry {
   testType         String    @default("manual")    // manual | generic_http | real_debrid | torbox | newznab_caps | tcp_reachability
   testConfig       String?                         // JSON: { url, method, host, port, headerName, expectStatus, bodyContains }
   dashboardUrl     String?                         // optional link to the provider's own dashboard
-  monthlyCost      Float?                          // what this service costs per month (user-entered, any currency) - feeds the Vault page's cost/spend summary; null = untracked
+  cost             Float?                          // what this service costs per `costCycle` (user-entered, in the account's configured currency) - feeds the Vault page's cost/spend summary; null = untracked
+  costCycle        String    @default("monthly")   // "monthly" | "yearly" - the billing period `cost` is for; the summary normalizes yearly to monthly (÷12) before totaling
   expiresAt        DateTime?
   notifyDaysBefore Int       @default(3)
   lastCheckedAt    DateTime?
