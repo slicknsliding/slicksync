@@ -1,5 +1,21 @@
 [
   {
+    "version": "1.24.0",
+    "date": "2026-07-22",
+    "title": "Cross-device theme sync, more theme customization, Coming Up dismiss + tighter layout",
+    "features": [
+      "Themes now sync across devices. Pick a theme (or build a custom one) on your PC and it shows up on your phone the next time you open it, and vice versa. The preference is stored account-wide on the server (localStorage stays as a hydration cache to avoid flash-of-wrong-theme on load). The device-local privacy toggle stays device-local — that's a per-device choice.",
+      "\"Build your own theme\" gained two new knobs on top of primary/secondary accent colors: (1) a text-color override (leave blank to inherit the base theme's own text color), and (2) a display-font picker with six choices — Space Grotesk (default), Outfit, Inter, Roboto, Poppins, Playfair Display. All fonts are preloaded so switching is instant with no visual flicker. The font swap applies to both headings and body text so the whole UI feels consistent.",
+      "\"Coming up\" (Dashboard): right-click on desktop or long-press on mobile any row to hide that specific upcoming episode. Dismissals are per-episode and persisted server-side, so a hide from one device carries across devices AND automatically clears itself when the show advances to a new next episode (no manual reset needed)."
+    ],
+    "bugFixes": [
+      "\"Coming up\" desktop layout was rendering as a very long single vertical column — it now uses a 2-column grid on desktop, single column on mobile, so a healthy watchlist stays a clean panel instead of a tall rail."
+    ],
+    "miscChores": [
+      "New dismissed_upcoming_episode table (applied on deploy, additive only, no data loss). New GET/PUT /api/settings/theme-pref endpoints. Four extra Google Fonts loaded on every page — trivial CDN cost, and it removes the FOUT you'd otherwise get from a font-swap."
+    ]
+  },
+  {
     "version": "1.23.0",
     "date": "2026-07-21",
     "title": "Push notifications for all four notification types + mobile bell fixes",
