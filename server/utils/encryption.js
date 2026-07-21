@@ -4,40 +4,11 @@ const crypto = require('crypto')
 const accountDekStore = new Map()
 const DEFAULT_TTL_MS = 8 * 60 * 60 * 1000 // 8 hours
 
-function getServerKey() {
-  const key = process.env.ENCRYPTION_KEY || ''
-  if (!key) throw new Error('ENCRYPTION_KEY is required')
-  // Normalize to 32 bytes key using SHA-256
-  return crypto.createHash('sha256').update(key, 'utf8').digest()
-}
-
-function aesGcmEncrypt(rawKey, plaintext) {
-  const key = Buffer.isBuffer(rawKey) ? rawKey : Buffer.from(rawKey)
-  const iv = crypto.randomBytes(12)
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
-  const ciphertext = Buffer.concat([cipher.update(String(plaintext), 'utf8'), cipher.final()])
-  const tag = cipher.getAuthTag()
-  return Buffer.from(iv).toString('base64') + ':' + ciphertext.toString('base64') + ':' + tag.toString('base64')
-}
-
-function aesGcmDecrypt(rawKey, payload) {
-  const key = Buffer.isBuffer(rawKey) ? rawKey : Buffer.from(rawKey)
-  const parts = String(payload).split(':')
-  if (parts.length !== 3) {
-    // Backward compatibility: return as-is if not our format
-    return String(payload)
-  }
-  const [ivB64, ctB64, tagB64] = parts
-  const iv = Buffer.from(ivB64, 'base64')
-  const ciphertext = Buffer.from(ctB64, 'base64')
-  const tag = Buffer.from(tagB64, 'base64')
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
-  decipher.setAuthTag(tag)
-  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()])
-  return plaintext.toString('utf8')
-}
-
-module.exports = { getServerKey, aesGcmEncrypt, aesGcmDecrypt }
+// NOTE: `getServerKey`, `aesGcmEncrypt`, `aesGcmDecrypt` were previously each
+// defined TWICE in this file — a throw-if-unset stub at the top, then the real
+// implementations below that shadowed and were what actually ran. The stubs
+// have been deleted; keep this comment as a reminder for anyone tempted to
+// re-add "convenience" copies at the top.
 
 // -------------------- Envelope/Public helpers --------------------
 function scryptKey(password, salt, keyLen = 32) {
@@ -99,15 +70,23 @@ module.exports.clearAccountDek = clearAccountDek
 // Stored format (base64): iv|ct|tag
 
 function getServerKey() {
-  const raw = process.env.ENCRYPTION_KEY || ''
-  // Accept base64 or utf8; prefer base64 when it looks like it
-  try {
-    if (/^[A-Za-z0-9+/=]+$/.test(raw) && raw.length >= 44) {
-      const b = Buffer.from(raw, 'base64')
-      if (b.length >= 32) return b.subarray(0, 32)
-    }
-  } catch {}
-  return Buffer.from((raw || 'syncio-default-key-32chars-please-change!!').padEnd(32, '0').slice(0, 32), 'utf8')
+  // Delegate to keyManager, which is the single source of truth for the
+  // encryption key: it uses ENCRYPTION_KEY when set, else auto-generates and
+  // persists a random 32-byte key to disk (mode 0o600) on first boot.
+  //
+  // Reading process.env.ENCRYPTION_KEY directly here — the old behavior —
+  // silently bypassed that safety net and fell back to a HARDCODED default
+  // key when the env was unset. On a public fork of this repo, that meant
+  // anyone could decrypt vault data from any deployment that hadn't set the
+  // env var, since the default key was visible in the source. keyManager
+  // eliminates that class of bug by construction.
+  //
+  // require()'d lazily rather than at module top: encryption.js is required
+  // by config.js's dependency chain, and keyManager sits alongside it — a
+  // top-level require here would be fine today but risks a circular-import
+  // trap if config's shape changes later.
+  const { ENCRYPTION_KEY } = require('./keyManager')
+  return ENCRYPTION_KEY
 }
 
 function aesGcmEncrypt(key, plaintext, aad) {
