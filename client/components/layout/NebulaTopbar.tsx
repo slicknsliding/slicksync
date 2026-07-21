@@ -320,8 +320,10 @@ export function NebulaPageHeading({
 // colorIndex convention. First version of this was bare numbers with thin
 // dividers and no card/icon at all - functionally smaller than a full
 // NebulaStatCard grid like it needed to be, but read as a plain, undressed
-// afterthought next to the rest of Nebula's glass-panel look. This keeps
-// the same compact footprint while actually looking designed.
+// afterthought next to the rest of Nebula's glass-panel look. Scales up
+// from md, matching NebulaCompactStatCard's breakpoints, to sit at
+// Dashboard-stat-card size on desktop per explicit request - stays compact
+// below md since it has to share a row with the title on mobile.
 export function NebulaHeaderStats({
   stats,
 }: {
@@ -335,10 +337,10 @@ export function NebulaHeaderStats({
       {stats.map((s, i) => {
         const isPrimary = i % 2 === 0;
         return (
-          <div key={s.label} className="flex items-center gap-2.5 px-3 sm:px-4 py-2">
+          <div key={s.label} className="flex items-center gap-2.5 md:gap-4 px-3 sm:px-4 md:px-6 py-2 md:py-4">
             {s.icon && (
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                className="w-8 h-8 md:w-11 md:h-11 rounded-lg md:rounded-xl flex items-center justify-center shrink-0"
                 style={{
                   background: isPrimary ? 'var(--color-primary-muted)' : 'var(--color-secondary-muted)',
                   color: isPrimary ? 'var(--color-primary)' : 'var(--color-secondary)',
@@ -348,8 +350,8 @@ export function NebulaHeaderStats({
               </div>
             )}
             <div className="text-left">
-              <div className="text-base font-bold font-display text-default leading-none">{s.value}</div>
-              <div className="text-[10px] text-muted mt-0.5 whitespace-nowrap">{s.label}</div>
+              <div className="text-base md:text-3xl font-bold font-display text-default leading-none">{s.value}</div>
+              <div className="text-[10px] md:text-sm text-muted mt-0.5 md:mt-1 whitespace-nowrap">{s.label}</div>
             </div>
           </div>
         );
@@ -429,13 +431,16 @@ export function NebulaStatCard({
 }
 
 // Smaller variant of NebulaStatCard - same glass card + icon-badge
-// language, scaled down so 3-4 of them fit comfortably in one row on a
-// phone instead of stacking full-width/full-height one per row. The
-// full-size NebulaStatCard's p-5 padding and 44px icon badge only really
-// work at 1-2 per row on mobile; forcing that same card into 3 columns
-// crams the icon and padding into most of a card's width, leaving barely
-// anything for the number. Built for Groups/Users/Metrics, whose stat rows
-// were reported as unnecessarily tall/long on both mobile and desktop.
+// language, scaled down on mobile so 3-4 of them fit comfortably in one row
+// instead of stacking full-width/full-height one per row (the full-size
+// NebulaStatCard's p-5 padding and 44px icon badge only really work at 1-2
+// per row on a phone; forcing that into 3 columns crammed the icon and
+// padding into most of a card's width, leaving barely anything for the
+// number). From md up, scales to match Dashboard's own Groups/Addons stat
+// cards exactly (p-5, 44px icon, text-3xl value) per explicit request -
+// "smaller" was specifically about mobile and the previous full-width-per-
+// card layout, not about reading small on desktop too. Built for
+// Groups/Users/Metrics.
 export function NebulaCompactStatCard({
   label,
   value,
@@ -449,10 +454,11 @@ export function NebulaCompactStatCard({
 }) {
   const isPrimary = colorIndex % 2 === 0;
   return (
-    <div className="rounded-xl p-2.5 sm:p-3 flex items-center gap-2 min-w-0" style={nebulaGlassStyle}>
+    <div className={`${NEBULA_GLASS_CLASS} p-2.5 sm:p-3 md:p-5 flex items-center gap-2 md:gap-4 min-w-0`} style={nebulaGlassStyle}>
+      <NebulaGlassStripe />
       {icon && (
         <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+          className="w-8 h-8 md:w-11 md:h-11 rounded-lg md:rounded-xl flex items-center justify-center shrink-0"
           style={{
             background: isPrimary ? 'var(--color-primary-muted)' : 'var(--color-secondary-muted)',
             color: isPrimary ? 'var(--color-primary)' : 'var(--color-secondary)',
@@ -462,8 +468,8 @@ export function NebulaCompactStatCard({
         </div>
       )}
       <div className="min-w-0">
-        <p className="text-base sm:text-lg font-bold font-display text-default leading-none truncate">{value}</p>
-        <p className="text-[10px] text-muted mt-1 truncate">{label}</p>
+        <p className="text-base sm:text-lg md:text-3xl font-bold font-display text-default leading-none truncate">{value}</p>
+        <p className="text-[10px] md:text-sm text-muted mt-1 truncate">{label}</p>
       </div>
     </div>
   );
