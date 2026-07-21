@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.16.12",
+    "date": "2026-07-21",
+    "title": "Groups/Users/Addons stat cards sized up to match Dashboard on desktop",
+    "features": [
+      "The compact stat cards added for Groups/Users/Addons (Total Groups/Members/Addons Assigned, Total Users/Active/Expired, Total Addons/Protected/Assignments) read too small on desktop - now scale up from md to match Dashboard's own Active Now/Groups/Addons cards exactly (same padding, 44px icon badges, text-3xl values). Still compact below md, where the earlier fix (fitting 3 across one line on mobile) still applies - this was specifically about desktop looking undersized, not about undoing the mobile fit."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.16.11",
     "date": "2026-07-21",
     "title": "Notifications panel gets a caret pointing at the bell",
