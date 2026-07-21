@@ -400,6 +400,24 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
               transition={{ duration: 0.15 }}
               className="absolute right-0 top-full mt-2 z-50 w-80 max-w-[calc(100vw-2rem)]"
             >
+              {/* Small caret pointing up at the bell that opened this, so
+                  the panel reads unambiguously as "a popup from that
+                  button" rather than something else on the page having
+                  changed. It can't avoid overlapping nearby page content on
+                  some pages (e.g. Activity's centered Watch/Tasks/Invites/
+                  Proxy tab row sits right where this needs to drop, and a
+                  320px-wide panel has nowhere to go that dodges it) - same
+                  transient-overlay behavior most notification bells have
+                  (closes on outside click, nothing underneath is altered),
+                  but making the connection to its trigger obvious matters
+                  more here than it would if there were room to avoid the
+                  overlap entirely. Rendered before the panel div (not
+                  after) so the panel's own background naturally covers its
+                  bottom half, same trick as any CSS speech-bubble tail. */}
+              <div
+                className="absolute -top-1 right-4 w-3 h-3 rotate-45 border-l border-t border-default"
+                style={{ background: 'var(--color-surface)' }}
+              />
               {/* Plain div, not <Card> - Card's Nebula mode auto-applies a
                   55%-opacity translucent background meant for content
                   sitting on the page's own background. That reads fine
