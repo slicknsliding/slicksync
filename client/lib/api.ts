@@ -1788,6 +1788,19 @@ export interface SyncSettings {
 
 export interface ThemePref {
   themeId: string;
+  // New list shape (v1.25+): multiple saved custom themes, each with its own
+  // id + display name. Server accepts either this OR the legacy `custom`
+  // single-slot shape below, which is auto-migrated on load.
+  customThemes?: Array<{
+    id: string;
+    name: string;
+    base: string;
+    primary: string;
+    secondary: string;
+    text?: string | null;
+    fontDisplay?: string | null;
+  }>;
+  // Legacy pre-v1.25 single-slot shape (kept for one-way read compat).
   custom?: {
     base: string;
     primary: string;
