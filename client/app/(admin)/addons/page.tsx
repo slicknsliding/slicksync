@@ -413,9 +413,9 @@ export default function AddonsPage() {
           stats={
             <NebulaHeaderStats
               stats={[
-                { label: 'Total Addons', value: isLoading ? '...' : addons.length },
-                { label: 'Protected', value: isLoading ? '...' : protectedCount },
-                { label: 'Assignments', value: isLoading ? '...' : totalAddonAssignments },
+                { label: 'Total Addons', value: isLoading ? '...' : addons.length, icon: <PuzzlePieceIcon className="w-4 h-4" /> },
+                { label: 'Protected', value: isLoading ? '...' : protectedCount, icon: <ShieldCheckIcon className="w-4 h-4" /> },
+                { label: 'Assignments', value: isLoading ? '...' : totalAddonAssignments, icon: <UsersIcon className="w-4 h-4" /> },
               ]}
             />
           }
