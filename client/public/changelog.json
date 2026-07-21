@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.16.8",
+    "date": "2026-07-20",
+    "title": "Notifications bell no longer double-fetches on desktop",
+    "bugFixes": [
+      "1.16.7's mobile-only bell fix used CSS (hidden md:block / md:hidden) to pick which of two NotificationsDropdown instances shows - but a CSS-hidden element still fully mounts and runs its own effects, so both instances independently polled api.getInvitations() and api.getMetrics('30d') on every page load and every 30s interval, silently doubling those requests on desktop. New useIsMobile() hook (client/lib/hooks/useIsMobile.ts) gates which location actually renders the component via a real conditional instead, so only one instance ever exists in the DOM at a time."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.16.7",
     "date": "2026-07-20",
     "title": "Notifications bell: mobile-only fix; Addons header stats look designed again",

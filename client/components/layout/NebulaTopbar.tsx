@@ -18,6 +18,7 @@ import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { PanelSwitcher } from './PanelSwitcher';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { api } from '@/lib/api';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 // Replaces the sidebar for pages rendering Nebula layout mode (see
 // lib/layout-mode.tsx's NEBULA_ELIGIBLE_PATHS) - brand sits on its own row
@@ -58,6 +59,15 @@ const NEBULA_NAV_SECTIONS = [
 
 export function NebulaTopbar() {
   const pathname = usePathname();
+  // Gates which of the two possible NotificationsDropdown locations (fixed
+  // top-right here vs inline in NebulaPageHeading's actions row) actually
+  // mounts the component - see the comment on that div below for why a
+  // second location exists at all. Deliberately a real conditional render,
+  // not a CSS hidden/block toggle: a CSS-hidden instance still fully mounts
+  // and runs its own polling effects (api.getInvitations, api.getMetrics),
+  // so two CSS-toggled copies meant every page silently doubled those
+  // requests. Only one instance actually exists in the DOM at a time now.
+  const isMobile = useIsMobile();
   // Mirrors Sidebar.tsx's own account-info fetch - Nebula's topbar had no
   // equivalent of the sidebar's bottom "Administrator" panel switcher at
   // all, so there was no way to see who's logged in, switch to the User
@@ -117,32 +127,34 @@ export function NebulaTopbar() {
           />
         </div>
       </div>
-      {/* Notifications, fixed top-right, mobile only (md:hidden - the
-          desktop copy lives in NebulaPageHeading's actions row as before,
-          which never had this problem). Used to live inside each page's own
-          title row on every screen size, but that row wraps onto its own
-          line on a narrow phone whenever it doesn't fit next to the title,
-          and a wrapped line with only one flex item lands at the line's
-          start (left edge) rather than the right - stranding the bell near
-          the left edge while its dropdown panel (anchored `right-0` off
-          itself) shot off past the left edge of the screen, effectively
-          invisible. Fixed to a real screen corner on mobile instead of
-          page-content flow, so its position can't depend on what else a
-          given page's action row happens to wrap around. */}
-      <div className="fixed top-4 right-4 z-40 md:hidden">
-        <div
-          className="rounded-2xl p-1.5"
-          style={{
-            background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
-            backdropFilter: 'blur(18px)',
-            WebkitBackdropFilter: 'blur(18px)',
-            border: '1px solid var(--color-surface-border)',
-            boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
-          }}
-        >
-          <NotificationsDropdown />
+      {/* Notifications, fixed top-right, mobile only - the desktop copy
+          lives in NebulaPageHeading's actions row as before, which never
+          had this problem. Used to live inside each page's own title row on
+          every screen size, but that row wraps onto its own line on a
+          narrow phone whenever it doesn't fit next to the title, and a
+          wrapped line with only one flex item lands at the line's start
+          (left edge) rather than the right - stranding the bell near the
+          left edge while its dropdown panel (anchored `right-0` off itself)
+          shot off past the left edge of the screen, effectively invisible.
+          Fixed to a real screen corner on mobile instead of page-content
+          flow, so its position can't depend on what else a given page's
+          action row happens to wrap around. */}
+      {isMobile && (
+        <div className="fixed top-4 right-4 z-40">
+          <div
+            className="rounded-2xl p-1.5"
+            style={{
+              background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
+              backdropFilter: 'blur(18px)',
+              WebkitBackdropFilter: 'blur(18px)',
+              border: '1px solid var(--color-surface-border)',
+              boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
+            }}
+          >
+            <NotificationsDropdown />
+          </div>
         </div>
-      </div>
+      )}
     <div className="px-4 pt-4 md:px-6 md:pt-6">
       {/* Caps the bar at 72rem so it reads as a floating island on wide
           desktop viewports instead of stretching edge-to-edge into empty
@@ -255,9 +267,12 @@ export function NebulaTopbar() {
 // undone by the fact that content was living in the wrong place to begin
 // with. flex-wrap so actions drop to their own line below the title on a
 // narrow screen rather than fighting it for space. Notifications stays here
-// on desktop (hidden md:block below), but is hidden here on mobile in favor
-// of a fixed top-right copy in NebulaTopbar above - see that component for
-// why; desktop never had that problem so it keeps its original spot.
+// on desktop (gated by the same useIsMobile() check as NebulaTopbar's fixed
+// copy, so exactly one of the two ever actually mounts - not a CSS
+// hidden/block toggle, which would mount both and double their polling),
+// but not on mobile, in favor of a fixed top-right copy in NebulaTopbar
+// above - see that component for why; desktop never had that problem so it
+// keeps its original spot.
 export function NebulaPageHeading({
   title,
   subtitle,
@@ -276,6 +291,7 @@ export function NebulaPageHeading({
       the page's main content (see the Addons page for the first use). */
   stats?: ReactNode;
 }) {
+  const isMobile = useIsMobile();
   return (
     <div className="mb-6 flex items-start justify-between gap-x-4 gap-y-3 flex-wrap">
       <div className="order-1">
@@ -285,9 +301,7 @@ export function NebulaPageHeading({
       <div className="flex items-center gap-2 flex-wrap order-2 md:order-3">
         {/* Desktop only - mobile gets a fixed top-right copy in NebulaTopbar
             instead (see above for why). */}
-        <div className="hidden md:block">
-          <NotificationsDropdown />
-        </div>
+        {!isMobile && <NotificationsDropdown />}
         {actions}
       </div>
       {stats && (
