@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.20.0",
+    "date": "2026-07-21",
+    "title": "Install SlickSync as an app + native push notifications",
+    "features": [
+      "SlickSync is now an installable PWA - add it to your phone's home screen or desktop and it launches fullscreen like a native app (the manifest was half-set-up before but referenced icons that didn't exist; generated those and wired it in).",
+      "Native push notifications: enable them per-device in Settings → Notifications, and new-episode alerts arrive as real phone/desktop notifications even when SlickSync is closed - lock-screen buzz, tap to jump to Activity. Built on the browser Push API with a minimal service worker (push only, no offline caching - a live dashboard shouldn't serve stale data). The required VAPID keys are generated automatically on the server and stored on the data volume, so there's zero setup: no env vars, no keys to paste. iPhone note: you must add SlickSync to the Home Screen first, then enable, since iOS only allows push for installed web apps."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "New push_subscriptions table and the web-push dependency, applied on deploy. Push degrades to a no-op if web-push is ever unavailable, leaving the bell and Discord alerts untouched."
+    ]
+  },
+  {
     "version": "1.19.0",
     "date": "2026-07-21",
     "title": "Build-your-own theme, addon detail page keeps Nebula, compact currency picker",

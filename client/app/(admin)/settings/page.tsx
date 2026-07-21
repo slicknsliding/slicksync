@@ -13,6 +13,7 @@ import { toast } from '@/components/ui/Toast';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
+import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
 import {
   PaintBrushIcon,
   SwatchIcon,
@@ -918,6 +919,17 @@ export default function SettingsPage() {
                     label="Toggle vault notifications"
                   />
                 </SettingRow>
+              </div>
+
+              {/* Phone / desktop push - separate from Discord: install
+                  SlickSync as an app and get new-episode alerts as native
+                  notifications, even when it's closed. Per-device. */}
+              <div className="pt-4 border-t border-default">
+                <label className="block text-sm font-medium text-default mb-1">Phone notifications (PWA)</label>
+                <p className="text-xs text-muted mb-3">
+                  Install SlickSync to your home screen, then enable native new-episode notifications on this device.
+                </p>
+                <PushNotificationToggle />
               </div>
             </div>
           </Card>
