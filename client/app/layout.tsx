@@ -10,6 +10,16 @@ export const metadata: Metadata = {
   description: "SlickSync - Stremio & Nuvio Addon and User Management System",
   applicationName: "SlickSync",
   manifest: "/site.webmanifest",
+  // iOS only exposes the Push API to web apps launched in STANDALONE mode from
+  // the Home Screen (iOS 16.4+). `apple-mobile-web-app-capable: yes` is what
+  // makes iOS open the Home Screen icon as a standalone app rather than a
+  // Safari-chrome tab — without it, `PushManager` never appears and the toggle
+  // reports "not supported" no matter how many times it's re-added.
+  appleWebApp: {
+    capable: true,
+    title: "SlickSync",
+    statusBarStyle: "black-translucent",
+  },
   icons: {
     icon: [
       { url: '/logo-black.png', media: '(prefers-color-scheme: light)' },

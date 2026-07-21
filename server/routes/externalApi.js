@@ -259,6 +259,16 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
             sourceLogo: sourceLogo
           })
         }
+        // Mirror to phone push (self-gates on notifyOnSync; no webhook needed).
+        if (groupIds.length > 0 || diffsByAddon.length > 0) {
+          const { notifyPushForType } = require('../utils/pushNotifications')
+          await notifyPushForType(prisma, req.appAccountId, 'notifyOnSync', {
+            title: 'Sync complete',
+            body: `${groups.length} group${groups.length !== 1 ? 's' : ''}, ${totalUsers} user${totalUsers !== 1 ? 's' : ''} synced`,
+            icon: '/android-chrome-192x192.png',
+            url: '/activity',
+          })
+        }
       } catch {}
 
       return res.json({ message: 'Reload and sync completed', reloaded, groupsSynced, totalUsersSynced, diffs: diffsByAddon })
@@ -350,6 +360,16 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
             diffs: allReloadDiffs,
             sourceLabel: sourceLabel,
             sourceLogo: sourceLogo
+          })
+        }
+        // Mirror to phone push (self-gates on notifyOnSync; no webhook needed).
+        if (groups.length > 0) {
+          const { notifyPushForType } = require('../utils/pushNotifications')
+          await notifyPushForType(prisma, req.appAccountId, 'notifyOnSync', {
+            title: 'Sync complete',
+            body: `${groups.length} group${groups.length !== 1 ? 's' : ''}, ${totalUsers} user${totalUsers !== 1 ? 's' : ''} synced`,
+            icon: '/android-chrome-192x192.png',
+            url: '/activity',
           })
         }
       } catch {}

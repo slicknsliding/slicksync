@@ -89,24 +89,28 @@ export function Header({
           </div>
         </div>
 
-        {/* Right section */}
+        {/* Right section. Actions render BEFORE the bell so on mobile the
+            bell sits flush to the screen's right edge — its dropdown anchors
+            `right-0` off the bell, and if the bell isn't at the true right
+            edge the dropdown extends left off-screen (dropdown is ~320px wide,
+            so even a small offset shoves its left edge past 0). */}
         <div className="flex items-center gap-2 md:gap-3">
-          {/* Notifications */}
+          {/* Actions */}
+          {actions ? (
+            <div
+              className="flex items-center gap-2 pr-3"
+              style={{ borderRight: '1px solid var(--color-surface-border)' }}
+            >
+              {actions}
+            </div>
+          ) : null}
+
+          {/* Notifications — always last so its dropdown fits within the screen */}
           <NotificationsDropdown
             activities={activities}
             inviteHistory={inviteHistory}
             taskHistory={taskHistory}
           />
-
-          {/* Actions */}
-          {actions ? (
-            <div 
-              className="flex items-center gap-2 pl-3"
-              style={{ borderLeft: '1px solid var(--color-surface-border)' }}
-            >
-              {actions}
-            </div>
-          ) : null}
         </div>
       </div>
     </motion.header>
