@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
-import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu, MediaDetailModal, RatingBadges } from '@/components/ui';
+import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu, MediaDetailModal } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -236,22 +236,25 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
           >
             <PlayIcon className="w-8 h-8 text-white" />
           </div>
-          <div className="absolute bottom-1 left-1 right-1 pointer-events-none">
-            <RatingBadges
-              imdbRating={item.imdbRating}
-              rottenTomatoes={item.rottenTomatoes}
-              metacritic={item.metacritic}
-            />
-          </div>
           {/* Netflix-style progress bar for partway-through items - only on
-              resume entries, where progressPercent is real position data
-              from WatchSession (not shown for next-episode cards, which by
-              definition start from 0). */}
+              resume entries, where progressPercent is real position data from
+              WatchSession (not shown for next-episode cards, which by
+              definition start from 0). Ratings deliberately not shown on this
+              card - they're in the detail modal the info button opens.
+              Fill is the theme's primary→secondary accent gradient (so it
+              re-colors with every theme, not just one) plus a matching glow,
+              over a dark track, so it stays clearly visible against any
+              poster art. Sits in its own thin strip below the thumbnail
+              rather than overlaid on it, so nothing covers it. */}
           {item.resume && item.progressPercent != null && (
-            <div className="absolute bottom-0 left-0 right-0 h-1 pointer-events-none" style={{ background: 'rgba(255,255,255,0.25)' }}>
+            <div className="absolute bottom-0 left-0 right-0 h-1.5 pointer-events-none" style={{ background: 'rgba(0,0,0,0.55)' }}>
               <div
-                className="h-full"
-                style={{ width: `${Math.min(100, Math.max(2, item.progressPercent))}%`, background: 'var(--color-primary)' }}
+                className="h-full rounded-r-full"
+                style={{
+                  width: `${Math.min(100, Math.max(3, item.progressPercent))}%`,
+                  background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))',
+                  boxShadow: '0 0 6px var(--color-primary)',
+                }}
               />
             </div>
           )}

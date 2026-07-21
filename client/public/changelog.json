@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.18.2",
+    "date": "2026-07-21",
+    "title": "Continue Watching: ratings off the cards, progress bar far more visible",
+    "bugFixes": [
+      "The rating badges on Dashboard's Continue Watching cards were sitting right on top of the progress bar and hiding it (both were pinned to the bottom of the thumbnail). Removed the ratings from these cards - same as was already done on the Activity poster grid; they're still in the detail modal the info button opens - which clears the space for the bar.",
+      "The resume progress bar is now much more visible: taller, over a dark track, filled with the theme's primary→secondary accent gradient plus a matching glow instead of a single flat color. Because it uses both theme accent variables, it recolors correctly with every one of the ten themes (violet/teal on Slick & Nebula, amber on Midnight, orange on Ember, icy blue on Nord, green on Verdant, pink on Rose, and so on), not just the default."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.18.1",
     "date": "2026-07-21",
     "title": "Vault cost: pick your currency, and enter monthly or yearly billing",
