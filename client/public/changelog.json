@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.16.11",
+    "date": "2026-07-21",
+    "title": "Notifications panel gets a caret pointing at the bell",
+    "bugFixes": [
+      "\"Clicking notifications extends the All Groups pill/dropdown\" (reported on Activity) turned out to be the notification panel itself, opening and dropping down far enough to overlap the centered Watch/Tasks/Invites/Proxy tab row and part of the stat cards underneath - confirmed via screen recording, not an actual interaction with the group filter. Activity's tab row sits centered across the full page width right where a 320px-wide panel from the bell has to drop, with no position that avoids it entirely. Added a small caret pointing up at the bell so the panel reads unambiguously as a popup from that button rather than something else on the page changing - the same transient-overlay-while-open behavior most notification bells have, now visually clear about what it's connected to."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.16.10",
     "date": "2026-07-21",
     "title": "User/Group profile pages get Nebula chrome, notification panel visibility fixed",
