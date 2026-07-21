@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.16.7",
+    "date": "2026-07-20",
+    "title": "Notifications bell: mobile-only fix; Addons header stats look designed again",
+    "bugFixes": [
+      "The 1.16.6 fix (fixed top-right notifications bell) applied to every screen size, but desktop never had the stranding bug it was fixing - only mobile did, when the page's own action row wraps onto its own line. Scoped the fixed-position copy to mobile only (md:hidden); desktop keeps the bell in its original spot inside each page's title row, unchanged from before 1.16.6."
+    ],
+    "features": [
+      "Addons' compact header stats (Total Addons/Protected/Assignments) were bare numbers with thin dividers and no card or icons at all - functionally smaller than the old full-width stat-card row like intended, but read as an undressed afterthought next to the rest of Nebula's glass-panel look. Now a single small glass pill with the same background/border/icon-badge treatment as the full-size stat cards, just condensed - same compact footprint, actually looks designed."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.16.6",
     "date": "2026-07-20",
     "title": "Nebula: notifications bell fixed top-right, no longer stranded on mobile",

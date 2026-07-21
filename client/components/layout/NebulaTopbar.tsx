@@ -117,18 +117,19 @@ export function NebulaTopbar() {
           />
         </div>
       </div>
-      {/* Notifications, fixed top-right, on every viewport size - mirrors
-          the account button's fixed bottom-left treatment above. Used to
-          live inside each page's own title row (NebulaPageHeading), but
-          that row wraps onto its own line on a narrow phone whenever it
-          doesn't fit next to the title, and a wrapped line with only one
-          flex item lands at the line's start (left edge) rather than the
-          right - stranding the bell near the left edge while its dropdown
-          panel (anchored `right-0` off itself) shot off past the left edge
-          of the screen, effectively invisible. Fixed to a real screen
-          corner instead of page-content flow, so its position can't depend
-          on what else a given page's action row happens to wrap around. */}
-      <div className="fixed top-4 right-4 md:top-6 md:right-6 z-40">
+      {/* Notifications, fixed top-right, mobile only (md:hidden - the
+          desktop copy lives in NebulaPageHeading's actions row as before,
+          which never had this problem). Used to live inside each page's own
+          title row on every screen size, but that row wraps onto its own
+          line on a narrow phone whenever it doesn't fit next to the title,
+          and a wrapped line with only one flex item lands at the line's
+          start (left edge) rather than the right - stranding the bell near
+          the left edge while its dropdown panel (anchored `right-0` off
+          itself) shot off past the left edge of the screen, effectively
+          invisible. Fixed to a real screen corner on mobile instead of
+          page-content flow, so its position can't depend on what else a
+          given page's action row happens to wrap around. */}
+      <div className="fixed top-4 right-4 z-40 md:hidden">
         <div
           className="rounded-2xl p-1.5"
           style={{
@@ -253,9 +254,10 @@ export function NebulaTopbar() {
 // page's differing actions, and whose own crowding fixes kept getting
 // undone by the fact that content was living in the wrong place to begin
 // with. flex-wrap so actions drop to their own line below the title on a
-// narrow screen rather than fighting it for space. Notifications used to
-// live here too, but moved to a fixed top-right spot in NebulaTopbar above
-// - see that component for why.
+// narrow screen rather than fighting it for space. Notifications stays here
+// on desktop (hidden md:block below), but is hidden here on mobile in favor
+// of a fixed top-right copy in NebulaTopbar above - see that component for
+// why; desktop never had that problem so it keeps its original spot.
 export function NebulaPageHeading({
   title,
   subtitle,
@@ -281,8 +283,11 @@ export function NebulaPageHeading({
         {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-2 flex-wrap order-2 md:order-3">
-        {/* Notifications bell is fixed top-right now (see NebulaTopbar
-            above), not rendered per-page here anymore. */}
+        {/* Desktop only - mobile gets a fixed top-right copy in NebulaTopbar
+            instead (see above for why). */}
+        <div className="hidden md:block">
+          <NotificationsDropdown />
+        </div>
         {actions}
       </div>
       {stats && (
@@ -294,24 +299,47 @@ export function NebulaPageHeading({
   );
 }
 
-// Compact inline KPI strip for NebulaPageHeading's `stats` slot - numbers
-// over labels, thin dividers between them, no cards/icons/backgrounds. Much
-// smaller than NebulaStatCard by design: for a page whose stats are useful
-// context but not the point (e.g. Addons), a full stat-card grid was
-// disproportionately large relative to how often anyone looks at it.
+// Compact inline KPI strip for NebulaPageHeading's `stats` slot - one small
+// glass pill (same background/border language as NebulaStatCard, just
+// condensed) holding all the stats side by side, each with its own small
+// icon badge alternating primary/secondary same as NebulaStatCard's own
+// colorIndex convention. First version of this was bare numbers with thin
+// dividers and no card/icon at all - functionally smaller than a full
+// NebulaStatCard grid like it needed to be, but read as a plain, undressed
+// afterthought next to the rest of Nebula's glass-panel look. This keeps
+// the same compact footprint while actually looking designed.
 export function NebulaHeaderStats({
   stats,
 }: {
-  stats: Array<{ label: string; value: string | number }>;
+  stats: Array<{ label: string; value: string | number; icon?: ReactNode }>;
 }) {
   return (
-    <div className="flex items-center divide-x divide-default/30">
-      {stats.map((s) => (
-        <div key={s.label} className="px-3 sm:px-4 first:pl-0 last:pr-0 text-center">
-          <div className="text-lg font-bold font-display text-default leading-none">{s.value}</div>
-          <div className="text-[11px] text-muted mt-1 whitespace-nowrap">{s.label}</div>
-        </div>
-      ))}
+    <div
+      className="flex items-center divide-x divide-default/30 rounded-2xl"
+      style={nebulaGlassStyle}
+    >
+      {stats.map((s, i) => {
+        const isPrimary = i % 2 === 0;
+        return (
+          <div key={s.label} className="flex items-center gap-2.5 px-3 sm:px-4 py-2">
+            {s.icon && (
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                style={{
+                  background: isPrimary ? 'var(--color-primary-muted)' : 'var(--color-secondary-muted)',
+                  color: isPrimary ? 'var(--color-primary)' : 'var(--color-secondary)',
+                }}
+              >
+                {s.icon}
+              </div>
+            )}
+            <div className="text-left">
+              <div className="text-base font-bold font-display text-default leading-none">{s.value}</div>
+              <div className="text-[10px] text-muted mt-0.5 whitespace-nowrap">{s.label}</div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
