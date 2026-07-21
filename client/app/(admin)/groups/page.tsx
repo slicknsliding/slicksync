@@ -8,7 +8,7 @@ import { Header } from '@/components/layout/Header';
 import { Button, Card, Avatar, UserAvatar, AvatarGroup, Badge, SearchInput, Input, ConfirmModal, SyncBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, Group, User } from '@/lib/api';
@@ -314,10 +314,10 @@ export default function GroupsPage() {
         />
       )}
       {layoutMode === 'nebula' && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-          <NebulaStatCard label="Total Groups" value={isLoading ? '...' : groups.length} icon={<UsersIcon className="w-6 h-6" />} colorIndex={0} />
-          <NebulaStatCard label="Total Members" value={isLoading ? '...' : totalMembers} icon={<UsersIcon className="w-6 h-6" />} colorIndex={1} />
-          <NebulaStatCard label="Addons Assigned" value={isLoading ? '...' : totalGroupAddons} icon={<PuzzlePieceIcon className="w-6 h-6" />} colorIndex={0} />
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-5">
+          <NebulaCompactStatCard label="Total Groups" value={isLoading ? '...' : groups.length} icon={<UsersIcon className="w-4 h-4" />} colorIndex={0} />
+          <NebulaCompactStatCard label="Total Members" value={isLoading ? '...' : totalMembers} icon={<UsersIcon className="w-4 h-4" />} colorIndex={1} />
+          <NebulaCompactStatCard label="Addons Assigned" value={isLoading ? '...' : totalGroupAddons} icon={<PuzzlePieceIcon className="w-4 h-4" />} colorIndex={0} />
         </div>
       )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>

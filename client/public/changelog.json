@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.16.9",
+    "date": "2026-07-20",
+    "title": "Active Users fixed on Metrics/Users, mobile drag-reorder fixed, Groups/Users/Metrics stat rows shrunk",
+    "bugFixes": [
+      "Metrics' and Users' \"Active Users\"/\"Active\" stats read metricsData.summary.activeUsers (or account status), not who's watching right now - now derived from the live nowPlaying feed, same as Dashboard and Activity already show. Users' \"Active\" previously meant account-not-expired (paired with \"Expired\" next to it); that pairing is intentionally broken by this change per explicit request - \"Expired\" and each user's own status badge still show account status, only the \"Active\" number's meaning changed.",
+      "Drag-to-reorder on mobile (Addons grid, Vault categories) grabbed the card almost every time someone tried to scroll the page instead. Root cause: the touch sensor's activation constraint was delay:0/distance:0, so a drag engaged on the very first touchmove event with nothing to tell it apart from the start of a scroll swipe. Added a 200ms hold delay (dnd-kit's own documented fix for this exact tension) - a normal swipe now passes straight through to native scroll, only a deliberate press-and-hold engages the drag."
+    ],
+    "features": [
+      "Groups' and Users' stat rows (Total Groups/Total Members/Addons Assigned, Total Users/Active/Expired) were a full-width card per stat, stacking tall on both mobile and desktop. New compact stat card (smaller padding/icon/text, same glass-card look) now fits all 3 in one row on every screen size. Metrics' four stat rows (Users/Content/Admin tabs) moved from 1-per-row to 2-per-row on mobile, matching Activity's existing size/arrangement - this one also affects Original layout, not just Nebula, since Metrics' stat cards aren't currently layout-specific."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.16.8",
     "date": "2026-07-20",
     "title": "Notifications bell no longer double-fetches on desktop",

@@ -427,3 +427,44 @@ export function NebulaStatCard({
     </div>
   );
 }
+
+// Smaller variant of NebulaStatCard - same glass card + icon-badge
+// language, scaled down so 3-4 of them fit comfortably in one row on a
+// phone instead of stacking full-width/full-height one per row. The
+// full-size NebulaStatCard's p-5 padding and 44px icon badge only really
+// work at 1-2 per row on mobile; forcing that same card into 3 columns
+// crams the icon and padding into most of a card's width, leaving barely
+// anything for the number. Built for Groups/Users/Metrics, whose stat rows
+// were reported as unnecessarily tall/long on both mobile and desktop.
+export function NebulaCompactStatCard({
+  label,
+  value,
+  icon,
+  colorIndex = 0,
+}: {
+  label: string;
+  value: string | number;
+  icon?: ReactNode;
+  colorIndex?: number;
+}) {
+  const isPrimary = colorIndex % 2 === 0;
+  return (
+    <div className="rounded-xl p-2.5 sm:p-3 flex items-center gap-2 min-w-0" style={nebulaGlassStyle}>
+      {icon && (
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+          style={{
+            background: isPrimary ? 'var(--color-primary-muted)' : 'var(--color-secondary-muted)',
+            color: isPrimary ? 'var(--color-primary)' : 'var(--color-secondary)',
+          }}
+        >
+          {icon}
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="text-base sm:text-lg font-bold font-display text-default leading-none truncate">{value}</p>
+        <p className="text-[10px] text-muted mt-1 truncate">{label}</p>
+      </div>
+    </div>
+  );
+}

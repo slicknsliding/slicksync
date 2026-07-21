@@ -196,6 +196,17 @@ export default function MetricsPage() {
       });
   }, [period]);
 
+  // Same fix as Dashboard/Activity's "Active Users" stat:
+  // metricsData.summary.activeUsers counts anyone with watch activity
+  // anywhere in the selected period, not who's watching right now - per
+  // explicit request, this stat should read the same live count Dashboard
+  // and Activity show (0 when nobody's actually streaming), not a
+  // period-wide "was active at some point" count. Derived from the same
+  // live nowPlaying feed, deduped by user id.
+  const liveActiveUsersCount = metricsData?.nowPlaying
+    ? new Set(metricsData.nowPlaying.map((np) => np.user.id)).size
+    : 0;
+
   // Transform watch time data for chart
   const watchTimeChartData = useMemo(() => {
     if (!metricsData?.watchTime?.byDay) return [];
@@ -320,10 +331,10 @@ export default function MetricsPage() {
           <div className="space-y-6">
             {/* Stats Grid for Users Tab */}
             <PageSection className="mb-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard
                   label="Active Users"
-                  value={isLoading ? '...' : (metricsData?.summary?.activeUsers || 0)}
+                  value={isLoading ? '...' : liveActiveUsersCount}
                   icon={<UsersIcon className="w-6 h-6" />}
                   delay={0}
                 />
@@ -502,7 +513,7 @@ export default function MetricsPage() {
           <div className="space-y-6">
             {/* Stats Grid for Content Tab */}
             <PageSection className="mb-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard
                   label="Movies Watched"
                   value={isLoading ? '...' : (metricsData?.summary?.totalMovies || 0)}
@@ -650,7 +661,7 @@ export default function MetricsPage() {
           <div className="space-y-6">
             {/* Stats Grid for Admin Tab */}
             <PageSection className="mb-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard
                   label="Most Active Hour"
                   value={isLoading ? '...' : `${metricsData?.admin?.interestingMetrics?.mostActiveHour || 0}:00`}
