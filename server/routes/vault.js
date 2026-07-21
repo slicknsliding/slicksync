@@ -69,8 +69,10 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
     }
   });
 
-  // GET /api/vault/:id/reveal - decrypt and return the real secret value
-  router.get('/:id/reveal', async (req, res) => {
+  // POST /api/vault/:id/reveal - decrypt and return the real secret value.
+  // POST (not GET) so it goes through the CSRF guard, isn't cached, and never
+  // appears in browser history / referer headers / intermediate proxy logs.
+  router.post('/:id/reveal', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';
       const entry = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });

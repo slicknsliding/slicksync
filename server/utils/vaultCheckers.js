@@ -156,11 +156,22 @@ async function checkStremioAuth(secret, config = {}) {
   // may not route through the glibc buffered-stdio calls stdbuf intercepts,
   // so a direct synchronous file write is the more reliable diagnostic path
   // until that's confirmed one way or the other.
+  // Owner-read-write only — this log can carry auth-adjacent Stremio API
+  // details, so it should never be world-readable even on lax deploys.
+  // appendFileSync doesn't accept a mode, so we ensure the file exists with
+  // 0o600 the first time we're about to write to it.
+  const LOG_PATH = '/app/data/vault-debug.log'
   function logDebug(entry) {
     try {
       const fs = require('fs')
-      const line = `[${new Date().toISOString()}] ${JSON.stringify(entry)}\n`
-      fs.appendFileSync('/app/data/vault-debug.log', line)
+      if (!fs.existsSync(LOG_PATH)) fs.writeFileSync(LOG_PATH, '', { mode: 0o600 })
+      // Redact `authKey` from any nested Stremio API response before writing.
+      // Stremio's successful-login response includes a live authKey which,
+      // if this log ever leaked, would grant full account access — we don't
+      // need it for the "did login succeed" question the diagnostic answers.
+      const redacted = JSON.parse(JSON.stringify(entry, (k, v) => k === 'authKey' && v ? '[redacted]' : v))
+      const line = `[${new Date().toISOString()}] ${JSON.stringify(redacted)}\n`
+      fs.appendFileSync(LOG_PATH, line)
     } catch (e) {
       console.warn('[VaultCheck] Failed to write debug log:', e?.message)
     }

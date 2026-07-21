@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.25.1",
+    "date": "2026-07-22",
+    "title": "Defensive-coding hardening for public-repo safety",
+    "features": [],
+    "bugFixes": [
+      "Encryption key: encryption.js had a duplicate getServerKey definition where the one that actually ran silently fell back to a hardcoded default key when ENCRYPTION_KEY env was unset — bypassing keyManager.js's whole point (which auto-generates and persists a random key). This deployment always has ENCRYPTION_KEY set, so no data risk here, but a fork of this now-hardening-for-public repo wouldn't know that. getServerKey now delegates to keyManager, so the hardcoded default is gone.",
+      "Stremio vault-check debug log: was writing the full raw Stremio login response to /app/data/vault-debug.log on every vault-test, including live authKey on successful logins — with default file perms. Now creates the log file with 0o600 (owner-only) and redacts authKey from anything nested it writes. The diagnostic still works for its original 'did login succeed at the API level' purpose.",
+      "POST /api/vault/:id/reveal (was GET): revealing a plaintext secret was going through GET, which is CSRF-exempt by design and would show up in browser history / referer / proxy logs. Now POST — goes through the CSRF guard, isn't cacheable, doesn't leak into referers."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.25.0",
     "date": "2026-07-22",
     "title": "Multiple saved custom themes + centered page titles + profile-pic click-through",

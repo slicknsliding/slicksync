@@ -1392,7 +1392,8 @@ class ApiClient {
   }
 
   async revealVaultSecret(id: string) {
-    return this.fetch<{ secret: string }>(`/vault/${id}/reveal`);
+    // POST (not GET): reveal is CSRF-gated + not cacheable + never in referer.
+    return this.fetch<{ secret: string }>(`/vault/${id}/reveal`, { method: 'POST' });
   }
 
   async createVaultEntry(data: VaultEntryInput) {
