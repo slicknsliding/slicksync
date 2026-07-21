@@ -334,6 +334,28 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // POST /users/upcoming-episodes/dismiss - hide a specific upcoming episode
+  // (keyed by (showId, season, episode)) from the "Coming up" panel. Reappears
+  // automatically when the poller advances the show to a new next episode.
+  router.post('/upcoming-episodes/dismiss', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const { showId, season, episode } = req.body || {}
+      if (!showId || !Number.isFinite(season) || !Number.isFinite(episode)) {
+        return res.status(400).json({ error: 'showId, season and episode are required' })
+      }
+      const { dismissUpcomingEpisode } = require('../utils/episodeAlerts')
+      await dismissUpcomingEpisode(prisma, accountId, showId, season, episode)
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error dismissing upcoming episode:', error)
+      res.status(500).json({ error: 'Failed to dismiss upcoming episode' })
+    }
+  })
+
   // GET /users/episode-alerts - recent new-episode alerts (fired by
   // utils/episodeAlerts.js's poller) for the notification bell. Must be
   // before /:id route.

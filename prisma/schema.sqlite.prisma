@@ -379,6 +379,23 @@ model DismissedContinueWatching {
   @@map("dismissed_continue_watching")
 }
 
+// Per-episode dismissals for the Dashboard "Coming up" panel. Keyed by the
+// exact (season, episode) tuple so that when the poller advances a show's
+// next-upcoming episode to a different one, the new one is NOT filtered out —
+// dismiss-this-episode naturally becomes "hide until the next episode is
+// announced," which matches how users think about the panel.
+model DismissedUpcomingEpisode {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  showId    String
+  season    Int
+  episode   Int
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, showId, season, episode])
+  @@map("dismissed_upcoming_episode")
+}
+
 // New-episode alerts: per-show baseline of the latest RELEASED episode we
 // last saw in Cinemeta's episode list. The episodeAlerts poller compares
 // against this on each run - anything newer means a new episode dropped for

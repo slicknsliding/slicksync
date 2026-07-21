@@ -6,7 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { Button, Card, Badge, Modal, ConfirmModal, Avatar } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
-import { useTheme, themeMeta, themeIds, ThemeId } from '@/lib/theme';
+import { useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, FontId, CustomTheme } from '@/lib/theme';
 import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -322,6 +322,28 @@ export default function SettingsPage() {
   const [builderBase, setBuilderBase] = useState<ThemeId>(customTheme.base);
   const [builderPrimary, setBuilderPrimary] = useState(customTheme.primary);
   const [builderSecondary, setBuilderSecondary] = useState(customTheme.secondary);
+  // Text and font are optional: null/'default' means "use the base theme's own
+  // text color / display font". A concrete value overrides on top.
+  const [builderText, setBuilderText] = useState<string>(customTheme.text || '');
+  const [builderFont, setBuilderFont] = useState<FontId>((customTheme.fontDisplay as FontId) || 'default');
+  // Assemble the current builder state into a CustomTheme so every change site
+  // can call `previewCustom(buildDraft())` without repeating five fields.
+  const buildDraft = (): CustomTheme => ({
+    base: builderBase,
+    primary: builderPrimary,
+    secondary: builderSecondary,
+    text: builderText.trim() ? builderText.trim() : null,
+    fontDisplay: builderFont,
+  });
+  // Re-seed the builder when the saved custom theme changes out from under it
+  // (e.g. cross-device sync arrived after mount, or another tab saved a change).
+  useEffect(() => {
+    setBuilderBase(customTheme.base);
+    setBuilderPrimary(customTheme.primary);
+    setBuilderSecondary(customTheme.secondary);
+    setBuilderText(customTheme.text || '');
+    setBuilderFont((customTheme.fontDisplay as FontId) || 'default');
+  }, [customTheme]);
   // Revert any unsaved live preview when leaving Settings (a saved theme is a
   // no-op here since cancelPreview just re-applies whatever's active). Kept
   // in a ref so the unmount cleanup uses the latest active-theme state, not a
@@ -594,7 +616,7 @@ export default function SettingsPage() {
                 <label className="block text-xs font-medium mb-2 text-muted">Base (background, surfaces, text)</label>
                 <select
                   value={builderBase}
-                  onChange={(e) => { const v = e.target.value as ThemeId; setBuilderBase(v); previewCustom({ base: v, primary: builderPrimary, secondary: builderSecondary }); }}
+                  onChange={(e) => { const v = e.target.value as ThemeId; setBuilderBase(v); previewCustom({ ...buildDraft(), base: v }); }}
                   className="input-base px-3 py-2 text-sm w-full max-w-xs"
                 >
                   {themeIds.map((id) => (
@@ -610,7 +632,7 @@ export default function SettingsPage() {
                     <input
                       type="color"
                       value={builderPrimary}
-                      onChange={(e) => { setBuilderPrimary(e.target.value); previewCustom({ base: builderBase, primary: e.target.value, secondary: builderSecondary }); }}
+                      onChange={(e) => { setBuilderPrimary(e.target.value); previewCustom({ ...buildDraft(), primary: e.target.value }); }}
                       className="w-12 h-10 rounded-lg cursor-pointer border border-default bg-transparent p-0.5"
                     />
                     <span className="text-xs font-mono text-muted uppercase">{builderPrimary}</span>
@@ -622,22 +644,79 @@ export default function SettingsPage() {
                     <input
                       type="color"
                       value={builderSecondary}
-                      onChange={(e) => { setBuilderSecondary(e.target.value); previewCustom({ base: builderBase, primary: builderPrimary, secondary: e.target.value }); }}
+                      onChange={(e) => { setBuilderSecondary(e.target.value); previewCustom({ ...buildDraft(), secondary: e.target.value }); }}
                       className="w-12 h-10 rounded-lg cursor-pointer border border-default bg-transparent p-0.5"
                     />
                     <span className="text-xs font-mono text-muted uppercase">{builderSecondary}</span>
                   </div>
                 </div>
+                <div>
+                  <label className="block text-xs font-medium mb-2 text-muted">Text color (optional)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      // Color inputs need SOME value; when there's no override,
+                      // seed the picker with the base theme's default text.
+                      value={builderText || '#e2e8f0'}
+                      onChange={(e) => { setBuilderText(e.target.value); previewCustom({ ...buildDraft(), text: e.target.value }); }}
+                      className="w-12 h-10 rounded-lg cursor-pointer border border-default bg-transparent p-0.5"
+                    />
+                    {builderText ? (
+                      <>
+                        <span className="text-xs font-mono text-muted uppercase">{builderText}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setBuilderText(''); previewCustom({ ...buildDraft(), text: null }); }}
+                          className="text-[11px] text-muted hover:text-default transition-colors"
+                          title="Clear override — use the base theme's text color"
+                        >
+                          reset
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-[11px] text-muted italic">using base</span>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              {/* Live preview swatch - the same primary→secondary gradient the
-                  app's accents use, so this is exactly what you'll get. */}
+              <div>
+                <label className="block text-xs font-medium mb-2 text-muted">Font</label>
+                <div className="flex flex-wrap gap-2">
+                  {FONT_OPTIONS.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => { setBuilderFont(f.id); previewCustom({ ...buildDraft(), fontDisplay: f.id }); }}
+                      style={f.family ? { fontFamily: f.family } : undefined}
+                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                        builderFont === f.id
+                          ? 'bg-primary text-white'
+                          : 'bg-surface-hover text-muted hover:text-default'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live preview swatch — accents + the current font override. */}
               <div>
                 <label className="block text-xs font-medium mb-2 text-muted">Preview</label>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <div className="h-8 w-40 rounded-lg" style={{ background: `linear-gradient(90deg, ${builderPrimary}, ${builderSecondary})` }} />
                   <div className="h-8 w-8 rounded-lg" style={{ background: builderPrimary }} />
                   <div className="h-8 w-8 rounded-lg" style={{ background: builderSecondary }} />
+                  <span
+                    className="text-sm font-semibold"
+                    style={{
+                      color: builderText || undefined,
+                      fontFamily: FONT_OPTIONS.find((f) => f.id === builderFont)?.family || undefined,
+                    }}
+                  >
+                    The quick brown fox
+                  </span>
                 </div>
               </div>
 
@@ -645,7 +724,7 @@ export default function SettingsPage() {
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={() => applyCustom({ base: builderBase, primary: builderPrimary, secondary: builderSecondary })}
+                  onClick={() => applyCustom(buildDraft())}
                 >
                   {isCustom ? 'Save changes' : 'Use this theme'}
                 </Button>
@@ -658,6 +737,8 @@ export default function SettingsPage() {
                     setBuilderBase(customTheme.base);
                     setBuilderPrimary(customTheme.primary);
                     setBuilderSecondary(customTheme.secondary);
+                    setBuilderText(customTheme.text || '');
+                    setBuilderFont((customTheme.fontDisplay as FontId) || 'default');
                   }}
                   className="text-xs text-muted hover:text-default transition-colors"
                 >
