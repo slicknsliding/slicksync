@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.18.3",
+    "date": "2026-07-21",
+    "title": "Continue Watching: movie cards no longer harshly cropped",
+    "bugFixes": [
+      "Continue Watching cards render in a landscape (16:9) frame, but movies had no landscape image to show - they fell back to their portrait poster, which object-cover then cropped hard into a zoomed-in center slice. The cards now prefer a landscape image: the episode still for shows, or the title's landscape backdrop (from Cinemeta) for movies and any episode without a still, only falling back to the portrait poster when neither exists. Movie cards now show a proper wide still instead of a tight crop."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.18.2",
     "date": "2026-07-21",
     "title": "Continue Watching: ratings off the cards, progress bar far more visible",
