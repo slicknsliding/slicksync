@@ -1526,7 +1526,8 @@ export interface VaultEntry {
   provider?: string | null;
   secretLabel: string;
   dashboardUrl?: string | null;
-  monthlyCost?: number | null;
+  cost?: number | null;
+  costCycle?: 'monthly' | 'yearly';
   expiresAt?: string | null;
   notifyDaysBefore: number;
   lastCheckedAt?: string | null;
@@ -1542,6 +1543,7 @@ export interface VaultEntry {
 export interface VaultListResponse {
   total: number;
   categories: Record<string, number>;
+  currency?: string;
   entries: VaultEntry[];
 }
 
@@ -1554,7 +1556,8 @@ export interface VaultEntryInput {
   testType?: VaultTestType;
   testConfig?: Record<string, any>;
   dashboardUrl?: string;
-  monthlyCost?: number;
+  cost?: number;
+  costCycle?: 'monthly' | 'yearly';
   expiresAt?: string;
   notifyDaysBefore?: number;
 }
@@ -1709,6 +1712,7 @@ export interface SyncSettings {
   notifyOnInvite?: boolean;
   notifyOnVault?: boolean;
   accountTimezone?: string;
+  vaultCurrency?: string;
 }
 
 export interface ExportedConfig {
