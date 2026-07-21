@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, memo } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
@@ -15,6 +15,7 @@ import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import {
   PaintBrushIcon,
+  SwatchIcon,
   Squares2X2Icon,
   CloudArrowUpIcon,
   TrashIcon,
@@ -313,8 +314,19 @@ function SettingRow({
 }
 
 export default function SettingsPage() {
-  const { themeId, setTheme, hideSensitive, toggleHideSensitive } = useTheme();
+  const { themeId, setTheme, hideSensitive, toggleHideSensitive, isCustom, customTheme, applyCustom, previewCustom, cancelPreview } = useTheme();
   const { layoutMode, setLayoutMode } = useLayoutMode();
+  // Custom-theme builder working state, seeded from the saved custom theme.
+  const [builderBase, setBuilderBase] = useState<ThemeId>(customTheme.base);
+  const [builderPrimary, setBuilderPrimary] = useState(customTheme.primary);
+  const [builderSecondary, setBuilderSecondary] = useState(customTheme.secondary);
+  // Revert any unsaved live preview when leaving Settings (a saved theme is a
+  // no-op here since cancelPreview just re-applies whatever's active). Kept
+  // in a ref so the unmount cleanup uses the latest active-theme state, not a
+  // stale closure from first render.
+  const cancelPreviewRef = useRef(cancelPreview);
+  cancelPreviewRef.current = cancelPreview;
+  useEffect(() => () => cancelPreviewRef.current(), []);
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -552,10 +564,104 @@ export default function SettingsPage() {
                   key={id}
                   themeId={id}
                   meta={themeMeta[id]}
-                  isSelected={themeId === id}
+                  isSelected={themeId === id && !isCustom}
                   onSelect={() => setTheme(id)}
                 />
               ))}
+            </div>
+          </Card>
+        </PageSection>
+
+        {/* Custom Theme builder - pick your own accent colors on top of any
+            base theme's structure, live-preview, and save. */}
+        <PageSection className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-secondary-muted">
+                <SwatchIcon className="w-5 h-5 text-secondary" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold font-display text-default">Build your own theme</h3>
+                <p className="text-xs text-muted">Pick a base for the background &amp; text, then your own accent colors. Preview updates live.</p>
+              </div>
+              {isCustom && <Badge variant="success" size="sm">Active</Badge>}
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium mb-2 text-muted">Base (background, surfaces, text)</label>
+                <select
+                  value={builderBase}
+                  onChange={(e) => { const v = e.target.value as ThemeId; setBuilderBase(v); previewCustom({ base: v, primary: builderPrimary, secondary: builderSecondary }); }}
+                  className="input-base px-3 py-2 text-sm w-full max-w-xs"
+                >
+                  {themeIds.map((id) => (
+                    <option key={id} value={id}>{themeMeta[id].name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-wrap gap-6">
+                <div>
+                  <label className="block text-xs font-medium mb-2 text-muted">Primary accent</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={builderPrimary}
+                      onChange={(e) => { setBuilderPrimary(e.target.value); previewCustom({ base: builderBase, primary: e.target.value, secondary: builderSecondary }); }}
+                      className="w-12 h-10 rounded-lg cursor-pointer border border-default bg-transparent p-0.5"
+                    />
+                    <span className="text-xs font-mono text-muted uppercase">{builderPrimary}</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-2 text-muted">Secondary accent</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={builderSecondary}
+                      onChange={(e) => { setBuilderSecondary(e.target.value); previewCustom({ base: builderBase, primary: builderPrimary, secondary: e.target.value }); }}
+                      className="w-12 h-10 rounded-lg cursor-pointer border border-default bg-transparent p-0.5"
+                    />
+                    <span className="text-xs font-mono text-muted uppercase">{builderSecondary}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Live preview swatch - the same primary→secondary gradient the
+                  app's accents use, so this is exactly what you'll get. */}
+              <div>
+                <label className="block text-xs font-medium mb-2 text-muted">Preview</label>
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-40 rounded-lg" style={{ background: `linear-gradient(90deg, ${builderPrimary}, ${builderSecondary})` }} />
+                  <div className="h-8 w-8 rounded-lg" style={{ background: builderPrimary }} />
+                  <div className="h-8 w-8 rounded-lg" style={{ background: builderSecondary }} />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-1">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => applyCustom({ base: builderBase, primary: builderPrimary, secondary: builderSecondary })}
+                >
+                  {isCustom ? 'Save changes' : 'Use this theme'}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Discard the live preview, re-applying the active theme,
+                    // and reset the builder inputs to the saved custom values.
+                    cancelPreview();
+                    setBuilderBase(customTheme.base);
+                    setBuilderPrimary(customTheme.primary);
+                    setBuilderSecondary(customTheme.secondary);
+                  }}
+                  className="text-xs text-muted hover:text-default transition-colors"
+                >
+                  Reset preview
+                </button>
+              </div>
             </div>
           </Card>
         </PageSection>

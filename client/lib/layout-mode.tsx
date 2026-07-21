@@ -87,7 +87,7 @@ const NEBULA_ELIGIBLE_PATHS = [
 // their existing interior content unchanged for now (same "chrome swap
 // first, content styling later" approach Activity's Tasks/Invites/Proxy
 // tabs used) - not the reset it looked like, just previously scoped out.
-const NEBULA_ELIGIBLE_PREFIXES = ['/users/', '/groups/'];
+const NEBULA_ELIGIBLE_PREFIXES = ['/users/', '/groups/', '/addons/'];
 
 export function isNebulaEligiblePath(pathname: string): boolean {
   return NEBULA_ELIGIBLE_PATHS.includes(pathname)

@@ -6,6 +6,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, Addon, Group } from '@/lib/api';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
+import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
 import { Button, Card, Badge, ResourceBadge, Modal, ConfirmModal, Input, ToggleSwitch, VersionBadge, InlineEdit, SyncBadge } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast, showToast } from '@/components/ui/Toast';
@@ -403,6 +405,7 @@ function SortableCatalogItem({ catalog, isSelected, onToggle }: { catalog: any; 
 }
 
 export default function AddonDetailPage() {
+  const { layoutMode } = useLayoutMode();
   const params = useParams();
   const router = useRouter();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -1142,7 +1145,7 @@ export default function AddonDetailPage() {
   if (isLoading) {
     return (
       <>
-        <Header title="Loading..." />
+        {layoutMode === 'nebula' ? <NebulaTopbar /> : <Header title="Loading..." />}
         <div className="p-8">
           <div className="flex items-center justify-center h-40 md:h-64">
             <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
@@ -1155,7 +1158,7 @@ export default function AddonDetailPage() {
   if (error) {
     return (
       <>
-        <Header title="Error" />
+        {layoutMode === 'nebula' ? <NebulaTopbar /> : <Header title="Error" />}
         <div className="p-8">
           <div className="flex flex-col items-center justify-center h-40 md:h-64 gap-4">
             <p className="text-lg text-error">Failed to load addon</p>
@@ -1170,7 +1173,7 @@ export default function AddonDetailPage() {
   if (!addon) {
     return (
       <>
-        <Header title="Not Found" />
+        {layoutMode === 'nebula' ? <NebulaTopbar /> : <Header title="Not Found" />}
         <div className="p-8">
           <div className="flex flex-col items-center justify-center h-40 md:h-64 gap-4">
             <p className="text-lg text-default">Addon not found</p>
@@ -1185,70 +1188,80 @@ export default function AddonDetailPage() {
 
   const anyAddon = addon as any;
 
+  const detailActions = (
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted">Active</span>
+        <ToggleSwitch
+          checked={addon.isActive !== false}
+          onChange={handleToggleStatus}
+          size="sm"
+          disabled={isTogglingStatus}
+        />
+      </div>
+      <Button
+        variant="glass"
+        leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isReloading ? 'animate-spin' : ''}`} />}
+        onClick={handleReload}
+        isLoading={isReloading}
+      >
+        Reload Addon
+      </Button>
+      {getConfigureUrl(addon) && (
+        <Button
+          variant="glass"
+          leftIcon={<Cog6ToothIcon className="w-5 h-5" />}
+          onClick={() => {
+            const configUrl = getConfigureUrl(addon);
+            if (configUrl) {
+              window.open(configUrl, '_blank', 'noopener,noreferrer');
+            }
+          }}
+        >
+          Configure
+        </Button>
+      )}
+      <Button
+        variant="glass"
+        leftIcon={<ArrowUturnLeftIcon className="w-5 h-5" />}
+        onClick={handleResetToManifest}
+      >
+        Reset
+      </Button>
+      <Button
+        variant="danger"
+        leftIcon={<TrashIcon className="w-5 h-5" />}
+        onClick={() => setIsDeleteModalOpen(true)}
+      >
+        Delete
+      </Button>
+    </div>
+  );
+
   return (
     <>
-      <Header
-        title={
-          <Breadcrumbs
-            items={[
-              { label: 'Addons', href: '/addons' },
-              { label: addon.name },
-            ]}
-            className="text-xl font-semibold"
-          />
-        }
-        actions={
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted">Active</span>
-              <ToggleSwitch
-                checked={addon.isActive !== false}
-                onChange={handleToggleStatus}
-                size="sm"
-                disabled={isTogglingStatus}
-              />
-            </div>
-            <Button
-              variant="glass"
-              leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isReloading ? 'animate-spin' : ''}`} />}
-              onClick={handleReload}
-              isLoading={isReloading}
-            >
-              Reload Addon
-            </Button>
-            {getConfigureUrl(addon) && (
-              <Button
-                variant="glass"
-                leftIcon={<Cog6ToothIcon className="w-5 h-5" />}
-                onClick={() => {
-                  const configUrl = getConfigureUrl(addon);
-                  if (configUrl) {
-                    window.open(configUrl, '_blank', 'noopener,noreferrer');
-                  }
-                }}
-              >
-                Configure
-              </Button>
-            )}
-            <Button
-              variant="glass"
-              leftIcon={<ArrowUturnLeftIcon className="w-5 h-5" />}
-              onClick={handleResetToManifest}
-            >
-              Reset
-            </Button>
-            <Button
-              variant="danger"
-              leftIcon={<TrashIcon className="w-5 h-5" />}
-              onClick={() => setIsDeleteModalOpen(true)}
-            >
-              Delete
-            </Button>
-          </div>
-        }
-      />
+      {layoutMode === 'nebula' ? (
+        <NebulaTopbar />
+      ) : (
+        <Header
+          title={
+            <Breadcrumbs
+              items={[
+                { label: 'Addons', href: '/addons' },
+                { label: addon.name },
+              ]}
+              className="text-xl font-semibold"
+            />
+          }
+          actions={detailActions}
+        />
+      )}
 
-      <div className="p-8">
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <NebulaPageHeading title={addon.name} subtitle="Addons" actions={detailActions} />
+      )}
         {/* Hero Section */}
         <PageSection className="mb-8">
           <Card padding="lg">
@@ -1962,6 +1975,7 @@ export default function AddonDetailPage() {
             )}
           </Card>
         </PageSection>
+      </div>
       </div>
 
       {/* Edit Modal */}
