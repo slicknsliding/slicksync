@@ -283,7 +283,9 @@ export function MediaDetailModal({
                     href={buildNuvioAppUrl(details.imdb_id, itemType)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                     style={{
-                      background: 'linear-gradient(90deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
+                      // Blue/orange Nuvio identity split by a `/` diagonal
+                      // (see Badge.tsx's 'nuvio' variant for the same treatment).
+                      background: 'linear-gradient(115deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
                       color: 'rgb(186, 208, 240)',
                       border: '1px solid rgba(255, 152, 0, 0.18)',
                     }}

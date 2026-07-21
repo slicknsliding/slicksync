@@ -42,12 +42,14 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Space Grotesk + Outfit power the default UI type; Inter/Roboto/
-            Poppins/Playfair are the extra options exposed in Settings →
-            Build your own theme so users can pick a display font. Loaded once
-            up front so switching fonts is instant with no FOUT. */}
+        {/* Space Grotesk (headings) + Outfit (body) power the default UI type;
+            the rest are the Build-your-own-theme font choices, deliberately
+            picked to span very different aesthetics (rounded sans, classic
+            serif, monospace, condensed display, handwritten script, sci-fi
+            geometric) so no two options feel the same. Loaded once up front
+            so swapping fonts is instant with no FOUT. */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Outfit:wght@300..700&family=Inter:wght@300..700&family=Roboto:wght@300;400;500;700&family=Poppins:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Outfit:wght@300..700&family=Poppins:wght@300;400;500;600;700&family=Merriweather:wght@300;400;700;900&family=Bebas+Neue&family=Caveat:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
         {/* The media detail modal's poster/background/cast images all come
