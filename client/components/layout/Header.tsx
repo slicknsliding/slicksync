@@ -48,9 +48,13 @@ export function Header({
         borderImage: 'linear-gradient(90deg, var(--color-primary-muted), transparent 60%) 1',
       }}
     >
-      <div className="px-4 md:px-6 lg:px-8 py-3 md:py-4 flex items-center justify-between gap-4">
+      {/* Desktop uses a 3-column grid so the page title sits centered in the
+          middle column while the right section (notifications + actions) stays
+          right-aligned in the last column. Mobile keeps the flex layout so the
+          hamburger and title flow tight on the left. */}
+      <div className="px-4 md:px-6 lg:px-8 py-3 md:py-4 flex items-center justify-between gap-4 md:grid md:grid-cols-[1fr_auto_1fr]">
         {/* Mobile Menu Button & Title section */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 md:col-start-2 md:justify-self-center md:text-center">
           {/* Hamburger - only show on mobile */}
           <button
             onClick={onMenuClick}
@@ -94,7 +98,7 @@ export function Header({
             `right-0` off the bell, and if the bell isn't at the true right
             edge the dropdown extends left off-screen (dropdown is ~320px wide,
             so even a small offset shoves its left edge past 0). */}
-        <div className="flex items-center gap-2 md:gap-3">
+        <div className="flex items-center gap-2 md:gap-3 md:col-start-3 md:justify-self-end">
           {/* Actions */}
           {actions ? (
             <div

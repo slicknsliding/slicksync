@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.25.0",
+    "date": "2026-07-22",
+    "title": "Multiple saved custom themes + centered page titles + profile-pic click-through",
+    "features": [
+      "Build-your-own theme is no longer a single slot. Save as many named custom themes as you want — they show up alongside the ten built-ins in the theme picker, each with a delete button (built-ins are never deletable). \"Update\" applies changes to the active custom in place, or \"Save as new theme\" forks the current builder state into a brand-new saved theme. Auto-syncs across devices like the rest of the theme system.",
+      "Page titles (Dashboard, Discover, Activity, Metrics, Users, Groups, Addons, Vault, Invitations, Settings, etc.) are now centered on desktop — the header uses a 3-column layout so the title sits centered on the page while actions stay right-aligned. Mobile is unchanged (title stays left to give the compact bar room to wrap).",
+      "Recent Activity on the Dashboard: clicking a user's profile picture now takes you straight to their user page (both Original and Nebula layouts)."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Pre-v1.25 single-slot custom themes migrate automatically into the new list shape on first load — nothing to do, and your saved custom theme is preserved as \"My theme\" in the picker."
+    ]
+  },
+  {
     "version": "1.24.0",
     "date": "2026-07-22",
     "title": "Cross-device theme sync, more theme customization, Coming Up dismiss + tighter layout",

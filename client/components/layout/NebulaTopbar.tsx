@@ -293,19 +293,24 @@ export function NebulaPageHeading({
 }) {
   const isMobile = useIsMobile();
   return (
-    <div className="mb-6 flex items-start justify-between gap-x-4 gap-y-3 flex-wrap">
-      <div className="order-1">
+    // On desktop switch from flex to a 3-column grid so the title sits in the
+    // MIDDLE column (centered on the page) while actions stay right-aligned in
+    // the last column — an empty left column mirrors the actions width so the
+    // title is optically centered. Mobile keeps the compact flex-wrap layout
+    // (title on the left, actions can wrap).
+    <div className="mb-6 flex items-start justify-between gap-x-4 gap-y-3 flex-wrap md:grid md:grid-cols-[1fr_auto_1fr] md:items-start md:gap-4">
+      <div className="order-1 md:col-start-2 md:text-center">
         <h1 className="text-2xl font-bold font-display mb-1 text-default">{title}</h1>
         {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
       </div>
-      <div className="flex items-center gap-2 flex-wrap order-2 md:order-3">
+      <div className="flex items-center gap-2 flex-wrap order-2 md:order-3 md:col-start-3 md:justify-self-end">
         {/* Desktop only - mobile gets a fixed top-right copy in NebulaTopbar
             instead (see above for why). */}
         {!isMobile && <NotificationsDropdown />}
         {actions}
       </div>
       {stats && (
-        <div className="order-3 md:order-2 w-full md:w-auto flex justify-center">
+        <div className="order-3 md:order-4 md:col-span-3 md:row-start-2 w-full md:w-auto flex justify-center md:justify-self-center">
           {stats}
         </div>
       )}
