@@ -42,8 +42,12 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* Space Grotesk + Outfit power the default UI type; Inter/Roboto/
+            Poppins/Playfair are the extra options exposed in Settings →
+            Build your own theme so users can pick a display font. Loaded once
+            up front so switching fonts is instant with no FOUT. */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Outfit:wght@300..700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Outfit:wght@300..700&family=Inter:wght@300..700&family=Roboto:wght@300;400;500;700&family=Poppins:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
         {/* The media detail modal's poster/background/cast images all come

@@ -444,6 +444,50 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // Theme preferences (account-scoped, so a theme choice made on one device
+  // shows up on every other device signed into the same account). Stored on
+  // AppAccount.sync.themePref — no schema migration needed. The shape is
+  // deliberately loose (just JSON) so client-side additions (new fonts, extra
+  // color overrides) don't require a server update.
+  router.get('/theme-pref', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ message: 'Unauthorized' })
+      if (INSTANCE_TYPE !== 'public') await ensureDefaultAccount()
+      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let syncCfg = acc?.sync
+      if (typeof syncCfg === 'string') { try { syncCfg = JSON.parse(syncCfg) } catch { syncCfg = null } }
+      const themePref = (syncCfg && typeof syncCfg === 'object' && syncCfg.themePref && typeof syncCfg.themePref === 'object')
+        ? syncCfg.themePref
+        : null
+      return res.json({ themePref })
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to read theme preferences' })
+    }
+  })
+
+  router.put('/theme-pref', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ message: 'Unauthorized' })
+      if (INSTANCE_TYPE !== 'public') await ensureDefaultAccount()
+      const { themePref } = req.body || {}
+      if (themePref !== null && (typeof themePref !== 'object' || Array.isArray(themePref))) {
+        return res.status(400).json({ message: 'themePref must be an object or null' })
+      }
+      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let syncCfg = acc?.sync
+      if (typeof syncCfg === 'string') { try { syncCfg = JSON.parse(syncCfg) } catch { syncCfg = null } }
+      if (!syncCfg || typeof syncCfg !== 'object') syncCfg = {}
+      const nextCfg = { ...syncCfg, themePref: themePref || undefined }
+      try { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: nextCfg } }) }
+      catch { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(nextCfg) } }) }
+      return res.json({ themePref })
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to save theme preferences' })
+    }
+  })
+
   router.post('/account-sync/test-webhook', async (req, res) => {
     try {
       const providedUrl = typeof req.body?.webhookUrl === 'string' ? req.body.webhookUrl.trim() : ''

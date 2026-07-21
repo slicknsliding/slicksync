@@ -379,6 +379,19 @@ model DismissedContinueWatching {
   @@map("dismissed_continue_watching")
 }
 
+// Per-episode dismissals for the "Coming up" panel — see schema.sqlite.prisma.
+model DismissedUpcomingEpisode {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  showId    String
+  season    Int
+  episode   Int
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, showId, season, episode])
+  @@map("dismissed_upcoming_episode")
+}
+
 // New-episode alerts - see schema.sqlite.prisma for the full comments; kept
 // field-identical here (the v1.9.95 postmortem is what happens when these
 // two schemas drift).

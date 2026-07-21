@@ -71,8 +71,22 @@ async function getUpcomingEpisodes(prisma, accountId, limit = 24) {
     orderBy: { nextAirDate: 'asc' },
     take: limit,
   })
-  return rows
-    .filter((r) => r.nextSeason != null && r.nextEpisode != null && r.nextAirDate)
+  const candidates = rows.filter((r) => r.nextSeason != null && r.nextEpisode != null && r.nextAirDate)
+
+  // Filter out dismissed episodes — the (season, episode) tuple is intentional,
+  // so once the poller advances the show to a NEW next episode, that new one
+  // isn't in the dismiss list and re-appears without any manual reset.
+  let dismissed = new Set()
+  try {
+    const rowsD = await prisma.dismissedUpcomingEpisode.findMany({
+      where: { accountId, showId: { in: candidates.map((r) => r.showId) } },
+      select: { showId: true, season: true, episode: true },
+    })
+    dismissed = new Set(rowsD.map((r) => `${r.showId}::${r.season}::${r.episode}`))
+  } catch {} // Table may not exist yet on a very-first boot before db push runs.
+
+  return candidates
+    .filter((r) => !dismissed.has(`${r.showId}::${r.nextSeason}::${r.nextEpisode}`))
     .map((r) => ({
       showId: r.showId,
       showName: r.showName || null,
@@ -82,6 +96,19 @@ async function getUpcomingEpisodes(prisma, accountId, limit = 24) {
       title: r.nextTitle || null,
       airDate: r.nextAirDate,
     }))
+}
+
+/**
+ * Hide an upcoming episode from the "Coming up" panel. Persisted server-side
+ * so a dismissal from one browser/device carries across the account.
+ */
+async function dismissUpcomingEpisode(prisma, accountId, showId, season, episode) {
+  const accountIdValue = accountId || 'default'
+  await prisma.dismissedUpcomingEpisode.upsert({
+    where: { accountId_showId_season_episode: { accountId: accountIdValue, showId, season, episode } },
+    create: { accountId: accountIdValue, showId, season, episode },
+    update: {},
+  })
 }
 
 async function getNotifyTarget(prisma, accountId) {
@@ -254,4 +281,4 @@ function scheduleEpisodeAlerts(prisma) {
   setInterval(run, POLL_INTERVAL_MS)
 }
 
-module.exports = { scheduleEpisodeAlerts, checkForNewEpisodes, getUpcomingEpisodes }
+module.exports = { scheduleEpisodeAlerts, checkForNewEpisodes, getUpcomingEpisodes, dismissUpcomingEpisode }

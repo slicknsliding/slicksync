@@ -1448,8 +1448,24 @@ class ApiClient {
     });
   }
 
+  async getThemePref() {
+    return this.fetch<{ themePref: ThemePref | null }>('/settings/theme-pref');
+  }
+  async saveThemePref(themePref: ThemePref | null) {
+    return this.fetch<{ themePref: ThemePref | null }>('/settings/theme-pref', {
+      method: 'PUT',
+      body: JSON.stringify({ themePref }),
+    });
+  }
+
   async getUpcomingEpisodes() {
     return this.fetch<UpcomingEpisode[]>('/users/upcoming-episodes');
+  }
+  async dismissUpcomingEpisode(showId: string, season: number, episode: number) {
+    return this.fetch<{ success: boolean }>('/users/upcoming-episodes/dismiss', {
+      method: 'POST',
+      body: JSON.stringify({ showId, season, episode }),
+    });
   }
 
   // Rotten Tomatoes/Metacritic/IMDb ratings for a batch of IMDb IDs, for grid
@@ -1768,6 +1784,17 @@ export interface SyncSettings {
   notifyOnVault?: boolean;
   accountTimezone?: string;
   vaultCurrency?: string;
+}
+
+export interface ThemePref {
+  themeId: string;
+  custom?: {
+    base: string;
+    primary: string;
+    secondary: string;
+    text?: string | null;
+    fontDisplay?: string | null;
+  } | null;
 }
 
 export interface UpcomingEpisode {
