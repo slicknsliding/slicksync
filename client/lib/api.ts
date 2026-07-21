@@ -1771,6 +1771,7 @@ export interface ContinueWatchingItem {
   showId: string;
   showName: string;
   poster: string | null;
+  background?: string | null;
   lastWatched: { season: number; episode: number } | null;
   nextEpisode: { season: number; episode: number; title: string | null; thumbnail: string | null } | null;
   resume?: boolean;

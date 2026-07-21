@@ -162,6 +162,10 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
       showId: row.showId,
       showName: metadata.title || row.showName,
       poster: metadata.poster || row.poster,
+      // Landscape backdrop - the card renders in a 16:9 frame, so this fills
+      // it cleanly. The portrait `poster` only gets used as a last resort,
+      // where it has to crop hard (the "zoomed in" look).
+      background: metadata.background || null,
       lastWatched: { season: row.season, episode: row.episode },
       // Field name kept for client compatibility - when resume=true this is
       // the in-progress episode itself, not actually the "next" one.
@@ -240,6 +244,7 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
       showId: row.itemId,
       showName: metadata?.title || row.itemName,
       poster: metadata?.poster || row.poster,
+      background: metadata?.background || null,
       lastWatched: null,
       nextEpisode: null,
       resume: true,
