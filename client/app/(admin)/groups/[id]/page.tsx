@@ -6,6 +6,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, User, Group, Addon } from '@/lib/api';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
+import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
 import { Button, Card, Avatar, AvatarGroup, Badge, Modal, ConfirmModal, Input, ColorPicker, InlineEdit, ToggleSwitch, SyncBadge, VersionBadge, ResourceBadge, UserAvatar, SelectionCheckbox } from '@/components/ui';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
@@ -357,6 +359,7 @@ const GroupContentBreakdownChart = memo(function GroupContentBreakdownChart({
 
 // Sortable Addon Item Component with clean draggable card design
 export default function GroupDetailPage() {
+  const { layoutMode } = useLayoutMode();
   const params = useParams();
   const router = useRouter();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -859,56 +862,70 @@ export default function GroupDetailPage() {
     addon => !addons.some(groupAddon => groupAddon.id === addon.id)
   );
 
+  const detailActions = (
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted">Active</span>
+        <ToggleSwitch
+          checked={(group as any)?.isActive !== false}
+          onChange={handleToggleActive}
+          size="sm"
+        />
+      </div>
+      <Button
+        variant="glass"
+        leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
+        onClick={handleSync}
+        isLoading={isSyncing}
+      >
+        Sync Group
+      </Button>
+      <Button
+        variant="glass"
+        leftIcon={<PencilIcon className="w-5 h-5" />}
+        onClick={() => setIsEditModalOpen(true)}
+      >
+        Edit
+      </Button>
+      <Button
+        variant="danger"
+        leftIcon={<TrashIcon className="w-5 h-5" />}
+        onClick={() => setIsDeleteModalOpen(true)}
+      >
+        Delete
+      </Button>
+    </div>
+  );
+
   return (
     <>
-      <Header
-        title={
-          <Breadcrumbs
-            items={[
-              { label: 'Groups', href: '/groups' },
-              { label: isLoading ? 'Loading...' : (group?.name || 'Group') },
-            ]}
-            className="text-xl font-semibold"
-          />
-        }
-        subtitle={isLoading ? '' : (group?.description || '')}
-        actions={
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted">Active</span>
-              <ToggleSwitch
-                checked={(group as any)?.isActive !== false}
-                onChange={handleToggleActive}
-                size="sm"
-              />
-            </div>
-            <Button
-              variant="glass"
-              leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
-              onClick={handleSync}
-              isLoading={isSyncing}
-            >
-              Sync Group
-            </Button>
-            <Button
-              variant="glass"
-              leftIcon={<PencilIcon className="w-5 h-5" />}
-              onClick={() => setIsEditModalOpen(true)}
-            >
-              Edit
-            </Button>
-            <Button
-              variant="danger"
-              leftIcon={<TrashIcon className="w-5 h-5" />}
-              onClick={() => setIsDeleteModalOpen(true)}
-            >
-              Delete
-            </Button>
-          </div>
-        }
-      />
+      {layoutMode === 'nebula' ? (
+        <NebulaTopbar />
+      ) : (
+        <Header
+          title={
+            <Breadcrumbs
+              items={[
+                { label: 'Groups', href: '/groups' },
+                { label: isLoading ? 'Loading...' : (group?.name || 'Group') },
+              ]}
+              className="text-xl font-semibold"
+            />
+          }
+          subtitle={isLoading ? '' : (group?.description || '')}
+          actions={detailActions}
+        />
+      )}
 
-      <div className="p-8">
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <NebulaPageHeading
+          title={isLoading ? 'Loading...' : (group?.name || 'Group')}
+          subtitle={isLoading ? 'Groups' : (group?.description || 'Groups')}
+          actions={detailActions}
+        />
+      )}
         {/* Group Hero Section */}
         <PageSection className="mb-8">
           <Card padding="lg">
@@ -1302,6 +1319,7 @@ export default function GroupDetailPage() {
             )}
           </div>
         </PageSection>
+      </div>
       </div>
 
       {/* Delete Confirmation Modal */}

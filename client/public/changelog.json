@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.16.10",
+    "date": "2026-07-21",
+    "title": "User/Group profile pages get Nebula chrome, notification panel visibility fixed",
+    "bugFixes": [
+      "Clicking into a user's or group's profile from the Users/Groups list dropped straight back into the sidebar/Original chrome even with Nebula selected - the two detail pages ([id] routes) were never added to Nebula's eligible-paths list, so it read as the layout mode silently resetting itself. Both now get NebulaTopbar/NebulaPageHeading chrome like every other page; their interior content is unchanged for now (same chrome-first approach used for Activity's Tasks/Invites/Proxy tabs).",
+      "The notifications dropdown panel was very hard to read, worst on mobile - it used the shared Card component, which auto-applies a 55%-opacity translucent background in Nebula mode meant for content sitting on the page's own background. That's wrong for a floating overlay that can sit on top of anything (poster grids, colorful content). Now a solid, high-opacity background regardless of layout mode."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.16.9",
     "date": "2026-07-20",
     "title": "Active Users fixed on Metrics/Users, mobile drag-reorder fixed, Groups/Users/Metrics stat rows shrunk",
