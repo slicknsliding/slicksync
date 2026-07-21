@@ -884,6 +884,11 @@ class ApiClient {
     return this.fetch(`/snapshots/${id}`, { method: 'DELETE' });
   }
 
+  // New-episode alerts (fired server-side by the episodeAlerts poller)
+  async getEpisodeAlerts(days = 14) {
+    return this.fetch<EpisodeAlert[]>(`/users/episode-alerts?days=${days}`);
+  }
+
   async repairAddons() {
     return this.fetch<{ inspected: number; updated: number }>('/settings/repair-addons', {
       method: 'POST',
@@ -1521,6 +1526,7 @@ export interface VaultEntry {
   provider?: string | null;
   secretLabel: string;
   dashboardUrl?: string | null;
+  monthlyCost?: number | null;
   expiresAt?: string | null;
   notifyDaysBefore: number;
   lastCheckedAt?: string | null;
@@ -1548,6 +1554,7 @@ export interface VaultEntryInput {
   testType?: VaultTestType;
   testConfig?: Record<string, any>;
   dashboardUrl?: string;
+  monthlyCost?: number;
   expiresAt?: string;
   notifyDaysBefore?: number;
 }
@@ -1738,14 +1745,32 @@ export interface AddonSnapshotDetail extends AddonSnapshot {
   addons: Array<{ name: string; manifestUrl: string | null; stremioAddonId: string | null; version: string | null }>;
 }
 
+export interface EpisodeAlert {
+  id: string;
+  showId: string;
+  showName: string;
+  season: number;
+  episode: number;
+  title: string | null;
+  poster: string | null;
+  createdAt: string;
+}
+
 export interface ContinueWatchingItem {
   userId: string;
   username: string;
+  // 'movie' entries are in-progress movies (resume always true, nextEpisode/
+  // lastWatched always null). For 'series', nextEpisode is the episode the
+  // card opens - the in-progress one when resume=true, the next unwatched
+  // one otherwise (field name kept from when it was always the latter).
+  contentType: 'series' | 'movie';
   showId: string;
   showName: string;
   poster: string | null;
-  lastWatched: { season: number; episode: number };
-  nextEpisode: { season: number; episode: number; title: string | null; thumbnail: string | null };
+  lastWatched: { season: number; episode: number } | null;
+  nextEpisode: { season: number; episode: number; title: string | null; thumbnail: string | null } | null;
+  resume?: boolean;
+  progressPercent?: number | null;
   lastWatchedAt: string;
   appUrl?: string;
   webUrl?: string;

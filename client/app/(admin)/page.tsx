@@ -216,9 +216,9 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
         className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer"
       >
         <div className="relative aspect-video">
-          {(item.nextEpisode.thumbnail || item.poster) ? (
+          {(item.nextEpisode?.thumbnail || item.poster) ? (
             <img
-              src={item.nextEpisode.thumbnail || item.poster || ''}
+              src={item.nextEpisode?.thumbnail || item.poster || ''}
               alt={item.showName}
               draggable={false}
               loading="lazy"
@@ -243,12 +243,25 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
               metacritic={item.metacritic}
             />
           </div>
+          {/* Netflix-style progress bar for partway-through items - only on
+              resume entries, where progressPercent is real position data
+              from WatchSession (not shown for next-episode cards, which by
+              definition start from 0). */}
+          {item.resume && item.progressPercent != null && (
+            <div className="absolute bottom-0 left-0 right-0 h-1 pointer-events-none" style={{ background: 'rgba(255,255,255,0.25)' }}>
+              <div
+                className="h-full"
+                style={{ width: `${Math.min(100, Math.max(2, item.progressPercent))}%`, background: 'var(--color-primary)' }}
+              />
+            </div>
+          )}
         </div>
         <div className="p-2">
           <p className="text-xs font-medium text-default truncate">{item.showName}</p>
           <p className="text-[11px] text-muted truncate">
-            S{String(item.nextEpisode.season).padStart(2, '0')}E{String(item.nextEpisode.episode).padStart(2, '0')}
-            {item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}
+            {item.nextEpisode
+              ? `${item.resume ? 'Resume ' : ''}S${String(item.nextEpisode.season).padStart(2, '0')}E${String(item.nextEpisode.episode).padStart(2, '0')}${item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}`
+              : `Resume${item.progressPercent != null ? ` · ${item.progressPercent}% watched` : ''}`}
           </p>
           <p className="text-[10px] text-subtle truncate mt-0.5">{item.username}</p>
         </div>
@@ -930,8 +943,8 @@ export default function DashboardPage() {
             isOpen={!!detailModalItem}
             onClose={() => setDetailModalItem(null)}
             itemId={detailModalItem.showId}
-            itemType="series"
-            videoId={`${detailModalItem.showId}:${detailModalItem.nextEpisode.season}:${detailModalItem.nextEpisode.episode}`}
+            itemType={detailModalItem.contentType}
+            videoId={detailModalItem.nextEpisode ? `${detailModalItem.showId}:${detailModalItem.nextEpisode.season}:${detailModalItem.nextEpisode.episode}` : null}
             fallbackTitle={detailModalItem.showName}
             fallbackPoster={detailModalItem.poster}
           />
@@ -1285,8 +1298,8 @@ export default function DashboardPage() {
           isOpen={!!detailModalItem}
           onClose={() => setDetailModalItem(null)}
           itemId={detailModalItem.showId}
-          itemType="series"
-          videoId={`${detailModalItem.showId}:${detailModalItem.nextEpisode.season}:${detailModalItem.nextEpisode.episode}`}
+          itemType={detailModalItem.contentType}
+          videoId={detailModalItem.nextEpisode ? `${detailModalItem.showId}:${detailModalItem.nextEpisode.season}:${detailModalItem.nextEpisode.episode}` : null}
           fallbackTitle={detailModalItem.showName}
           fallbackPoster={detailModalItem.poster}
         />

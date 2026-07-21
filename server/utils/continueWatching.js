@@ -35,6 +35,48 @@ function findNextEpisode(allEpisodes, lastSeason, lastEpisode) {
   return allEpisodes[lastIndex + 1]
 }
 
+// Minimum position (2 min in) and completion ceiling (92%) for a session to
+// count as "partway through" - below the floor is a barely-started click
+// that would be noise to resume, above the ceiling is close enough to done
+// that the next episode is what the person actually wants (the same ballpark
+// thresholds streaming apps themselves use for their own resume rows).
+// lastPosition/totalDuration come from WatchSession, which records them from
+// state.timeOffset/state.duration only - the position field that's bounded
+// by the item's own runtime and safe to read at a point in time (see
+// CLAUDE.md on timeOffset vs overallTimeWatched; overallTimeWatched is
+// never used here).
+const RESUME_MIN_POSITION_MS = 2 * 60 * 1000
+const RESUME_MAX_RATIO = 0.92
+
+/**
+ * Reads how far through an item's most recent viewing the user got, from
+ * that item's WatchSession row. Returns { inProgress, progressPercent } -
+ * inProgress false when there's no session, no usable position data, or the
+ * position falls outside the resume window above. For series, the session
+ * must be for the SAME episode as `videoId` (WatchSession is one reused row
+ * per show, so its lastPosition belongs to whatever episode videoId says).
+ */
+async function getResumeState(prisma, accountId, userId, itemId, videoId) {
+  let session = null
+  try {
+    session = await prisma.watchSession.findUnique({
+      where: { accountId_userId_itemId: { accountId, userId, itemId } },
+      select: { videoId: true, lastPosition: true, totalDuration: true }
+    })
+  } catch {}
+
+  if (!session || !session.lastPosition || !session.totalDuration) {
+    return { inProgress: false, progressPercent: null }
+  }
+  if (videoId && session.videoId !== videoId) {
+    return { inProgress: false, progressPercent: null }
+  }
+
+  const ratio = session.lastPosition / session.totalDuration
+  const inProgress = session.lastPosition >= RESUME_MIN_POSITION_MS && ratio < RESUME_MAX_RATIO
+  return { inProgress, progressPercent: Math.round(ratio * 100) }
+}
+
 /**
  * Builds the Continue Watching list for an account: one entry per show with
  * a computable next episode, most-recently-watched shows first, capped to
@@ -85,22 +127,47 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
     const metadata = await fetchMetadata(row.showId, 'series', row.videoId)
     if (!metadata || !metadata.allEpisodes) continue
 
-    const next = findNextEpisode(metadata.allEpisodes, row.season, row.episode)
-    if (!next) continue
+    // If the last-watched episode itself is still partway through, resume
+    // THAT episode - jumping to the next one mid-episode was the reported
+    // bug this exists to fix. Only when it's finished (or there's no
+    // position data to judge by) does the card advance to the next episode.
+    const resumeState = await getResumeState(prisma, accountIdValue, row.userId, row.showId, row.videoId)
 
-    const entry = {
-      userId: user.id,
-      username: user.username,
-      showId: row.showId,
-      showName: metadata.title || row.showName,
-      poster: metadata.poster || row.poster,
-      lastWatched: { season: row.season, episode: row.episode },
-      nextEpisode: {
+    let target
+    let isResume = false
+    if (resumeState.inProgress && row.season != null && row.episode != null) {
+      const current = metadata.allEpisodes.find((e) => e.season === row.season && e.episode === row.episode)
+      target = {
+        season: row.season,
+        episode: row.episode,
+        title: current?.title ?? null,
+        thumbnail: current?.thumbnail ?? null
+      }
+      isResume = true
+    } else {
+      const next = findNextEpisode(metadata.allEpisodes, row.season, row.episode)
+      if (!next) continue
+      target = {
         season: next.season,
         episode: next.episode,
         title: next.title,
         thumbnail: next.thumbnail
-      },
+      }
+    }
+
+    const entry = {
+      userId: user.id,
+      username: user.username,
+      contentType: 'series',
+      showId: row.showId,
+      showName: metadata.title || row.showName,
+      poster: metadata.poster || row.poster,
+      lastWatched: { season: row.season, episode: row.episode },
+      // Field name kept for client compatibility - when resume=true this is
+      // the in-progress episode itself, not actually the "next" one.
+      nextEpisode: target,
+      resume: isResume,
+      progressPercent: isResume ? resumeState.progressPercent : null,
       lastWatchedAt: row.watchedAt,
       imdbRating: metadata.imdbRating || null,
       rottenTomatoes: metadata.rottenTomatoes || null,
@@ -117,8 +184,11 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
       // means neither link can "detect and fall back" if the app isn't
       // installed - same known tradeoff Stremio's link already had, applied
       // symmetrically now that Nuvio has a real scheme to offer too.
+      // For a resume entry the link targets the in-progress episode -
+      // Stremio itself owns the saved playback position, so opening that
+      // episode resumes from where they left off.
       if (user.providerType === 'stremio') {
-        const links = buildStremioLinks(metadata.imdb_id, 'series', next.season, next.episode)
+        const links = buildStremioLinks(metadata.imdb_id, 'series', target.season, target.episode)
         entry.appUrl = links.appUrl
         entry.webUrl = links.webUrl
       } else {
@@ -130,7 +200,76 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
     results.push(entry)
   }
 
-  return results
+  // In-progress MOVIES - previously absent entirely (only episodeWatchHistory
+  // was read, so a movie stopped halfway never appeared anywhere). A movie
+  // only qualifies while its WatchSession says it's partway through; finished
+  // movies have nothing to continue.
+  const movieRows = await prisma.movieWatchHistory.findMany({
+    where: { accountId: accountIdValue, watchedAt: { gte: since } },
+    orderBy: { watchedAt: 'desc' }
+  })
+  const latestPerMovie = new Map()
+  for (const row of movieRows) {
+    const key = `${row.userId}:${row.itemId}`
+    if (!latestPerMovie.has(key)) latestPerMovie.set(key, row)
+  }
+
+  const movieUsers = await prisma.user.findMany({
+    where: { id: { in: [...new Set(movieRows.map((r) => r.userId))] } },
+    select: { id: true, username: true, providerType: true }
+  })
+  for (const u of movieUsers) userMap.set(u.id, u)
+
+  const movieEntries = []
+  for (const row of latestPerMovie.values()) {
+    // Dismissals reuse the showId column with the movie's own id.
+    if (dismissedKeys.has(`${row.userId}:${row.itemId}`)) continue
+
+    const user = userMap.get(row.userId)
+    if (!user) continue
+
+    const resumeState = await getResumeState(prisma, accountIdValue, row.userId, row.itemId, null)
+    if (!resumeState.inProgress) continue
+
+    const metadata = await fetchMetadata(row.itemId, 'movie', null)
+
+    const entry = {
+      userId: user.id,
+      username: user.username,
+      contentType: 'movie',
+      showId: row.itemId,
+      showName: metadata?.title || row.itemName,
+      poster: metadata?.poster || row.poster,
+      lastWatched: null,
+      nextEpisode: null,
+      resume: true,
+      progressPercent: resumeState.progressPercent,
+      lastWatchedAt: row.watchedAt,
+      imdbRating: metadata?.imdbRating || null,
+      rottenTomatoes: metadata?.rottenTomatoes || null,
+      metacritic: metadata?.metacritic || null
+    }
+
+    const imdbId = metadata?.imdb_id || (row.itemId.startsWith('tt') ? row.itemId : null)
+    if (imdbId) {
+      if (user.providerType === 'stremio') {
+        const links = buildStremioLinks(imdbId, 'movie')
+        entry.appUrl = links.appUrl
+        entry.webUrl = links.webUrl
+      } else {
+        entry.appUrl = buildNuvioAppUrl('movie', imdbId)
+        entry.webUrl = `https://www.imdb.com/title/${imdbId}`
+      }
+    }
+
+    movieEntries.push(entry)
+  }
+
+  // Merge, most recently watched first, and re-cap - movies compete for the
+  // same row as shows rather than getting bolted onto the end.
+  return [...results, ...movieEntries]
+    .sort((a, b) => new Date(b.lastWatchedAt).getTime() - new Date(a.lastWatchedAt).getTime())
+    .slice(0, limit)
 }
 
 /**

@@ -208,6 +208,7 @@ model VaultEntry {
   testType         String    @default("manual")    // manual | generic_http | real_debrid | torbox | newznab_caps | tcp_reachability
   testConfig       String?                         // JSON: { url, method, host, port, headerName, expectStatus, bodyContains }
   dashboardUrl     String?                         // optional link to the provider's own dashboard
+  monthlyCost      Float?                          // what this service costs per month (user-entered, any currency) - feeds the Vault page's cost/spend summary; null = untracked
   expiresAt        DateTime?
   notifyDaysBefore Int       @default(3)
   lastCheckedAt    DateTime?
@@ -375,6 +376,44 @@ model DismissedContinueWatching {
 
   @@unique([accountId, userId, showId])
   @@map("dismissed_continue_watching")
+}
+
+// New-episode alerts: per-show baseline of the latest RELEASED episode we
+// last saw in Cinemeta's episode list. The episodeAlerts poller compares
+// against this on each run - anything newer means a new episode dropped for
+// a show someone here is actively watching. Baseline-only rows (first time a
+// show is seen) never fire an alert; without the baseline, every backlog
+// episode of a newly-tracked show would "alert" at once.
+model ShowEpisodeAlertState {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  showId      String
+  lastSeason  Int
+  lastEpisode Int
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@unique([accountId, showId])
+  @@map("show_episode_alert_state")
+}
+
+// One row per new-episode alert actually fired - both the dedupe record (the
+// unique constraint means an episode can never alert twice, even across
+// restarts) and the feed the notification bell reads.
+model EpisodeAlert {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  showId    String
+  showName  String
+  season    Int
+  episode   Int
+  title     String? // Episode title from Cinemeta, when known
+  poster    String?
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, showId, season, episode])
+  @@index([accountId, createdAt])
+  @@map("episode_alerts")
 }
 
 // Metrics: Proxy stream sessions - "Now Playing" data sourced from AIOStreams'

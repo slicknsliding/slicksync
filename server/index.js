@@ -363,6 +363,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize vault monitor:', err)
     }
 
+    // Schedule new-episode alerts (Cinemeta episode-list polling for shows
+    // with recent watch history, every 6h)
+    try {
+      const { scheduleEpisodeAlerts } = require('./utils/episodeAlerts')
+      scheduleEpisodeAlerts(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize episode alerts:', err)
+    }
+
     // Schedule vault backup export (decrypted JSON snapshot to data/backup/vault/,
     // nightly by default — set VAULT_BACKUP_INTERVAL_HOURS to change)
     try {
