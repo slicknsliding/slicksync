@@ -72,14 +72,24 @@ export function useLayoutMode() {
 // Pages that actually have a Nebula-styled render path. Everything else
 // keeps the sidebar/current chrome even when Nebula mode is selected -
 // there's no Nebula version of those pages (yet), so there's nothing to
-// switch to. Detail routes (e.g. /users/[id]) aren't listed - exact-match
-// only below, so they correctly keep the sidebar regardless. This is now
-// every top-level admin page - full Nebula coverage.
+// switch to. This is every top-level admin page - full Nebula coverage.
 const NEBULA_ELIGIBLE_PATHS = [
   '/', '/activity', '/users', '/groups', '/addons',
   '/discover', '/metrics', '/vault', '/invitations', '/tasks', '/settings', '/changelog',
 ];
 
+// Dynamic detail routes (/users/[id], /groups/[id]) - prefix match since
+// pathname includes the real id, not the literal "[id]" segment. Clicking
+// into a user/group from their list page used to drop straight back into
+// the sidebar/Current chrome even with Nebula selected, which read as the
+// layout mode silently resetting itself. Both detail pages now render
+// NebulaTopbar/NebulaPageHeading chrome the same as everywhere else, with
+// their existing interior content unchanged for now (same "chrome swap
+// first, content styling later" approach Activity's Tasks/Invites/Proxy
+// tabs used) - not the reset it looked like, just previously scoped out.
+const NEBULA_ELIGIBLE_PREFIXES = ['/users/', '/groups/'];
+
 export function isNebulaEligiblePath(pathname: string): boolean {
-  return NEBULA_ELIGIBLE_PATHS.includes(pathname);
+  return NEBULA_ELIGIBLE_PATHS.includes(pathname)
+    || NEBULA_ELIGIBLE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
