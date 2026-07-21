@@ -77,8 +77,7 @@ export const themeMeta: Record<ThemeId, {
 };
 
 // Fonts the user can pick from in "Build your own theme". All preloaded in
-// layout.tsx so switching is instant with no FOUT. `null`/'default' = use the
-// theme's built-in display font (currently Space Grotesk / Outfit).
+// layout.tsx so switching is instant with no FOUT.
 export const FONT_OPTIONS = [
   { id: 'default', label: 'Default (Space Grotesk)', family: null },
   { id: 'outfit', label: 'Outfit', family: '"Outfit", system-ui, sans-serif' },
@@ -89,12 +88,9 @@ export const FONT_OPTIONS = [
 ] as const;
 export type FontId = (typeof FONT_OPTIONS)[number]['id'];
 
-// A user-built theme: an existing theme for the structural colors (bg,
-// surface, borders, status) plus custom primary/secondary accents, and
-// optional text-color and display-font overrides. Applying it sets the base
-// theme's class (so every structural variable loads) then overrides the
-// accent/text/font pieces inline, deriving the -hover (lightened) and -muted
-// (translucent) shades so the whole app recolors consistently.
+// A user-built theme config: base id + overrides. Applying it uses the base
+// theme's className for structural vars, then overrides accent/text/font
+// pieces inline, deriving -hover (lightened) and -muted (translucent) shades.
 export interface CustomTheme {
   base: ThemeId;
   primary: string;
@@ -103,8 +99,28 @@ export interface CustomTheme {
   fontDisplay?: FontId | null;
 }
 
-const CUSTOM_THEME_STORAGE_KEY = 'slicksync-custom-theme';
-const DEFAULT_CUSTOM_THEME: CustomTheme = { base: 'nebula', primary: '#8b7ec8', secondary: '#5fd4c4', text: null, fontDisplay: 'default' };
+// A saved user-built theme, with its own id and display name so it can sit
+// alongside the built-ins in the picker AND be deleted individually.
+export interface SavedCustomTheme extends CustomTheme {
+  id: string;   // 'custom_<random>'
+  name: string; // human display name, e.g. "My purple"
+}
+
+const CUSTOM_THEMES_STORAGE_KEY = 'slicksync-custom-themes';
+const LEGACY_CUSTOM_THEME_STORAGE_KEY = 'slicksync-custom-theme'; // pre-v1.25 single-slot
+const DEFAULT_CUSTOM: CustomTheme = { base: 'nebula', primary: '#8b7ec8', secondary: '#5fd4c4', text: null, fontDisplay: 'default' };
+
+function randomId(): string {
+  return `custom_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// Every theme id currently valid (built-ins + this device's known customs).
+export function isBuiltInThemeId(id: string): id is ThemeId {
+  return (themeIds as readonly string[]).includes(id);
+}
+export function isCustomThemeId(id: string): boolean {
+  return typeof id === 'string' && id.startsWith('custom_');
+}
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
@@ -130,11 +146,10 @@ function fontFamilyFor(id: FontId | null | undefined): string | null {
   return FONT_OPTIONS.find((f) => f.id === id)?.family || null;
 }
 
-// The variables a custom theme may override on top of its base class.
-// Font vars match the ones actually consumed by the app: --font-space-grotesk
-// is what Tailwind's `font-display` class resolves to (headings), and
-// --font-outfit is what globals.css sets on <body> (running text). Changing
-// one font swaps both so the whole UI shifts to it consistently.
+// Vars a custom theme may override on top of its base class. Font vars match
+// what the app actually consumes (`--font-space-grotesk` = Tailwind's
+// `font-display`, `--font-outfit` = body's default) so swapping one font
+// changes both headings AND body text consistently.
 const OVERRIDE_VARS = [
   '--color-primary', '--color-primary-hover', '--color-primary-muted', '--color-primaryMuted',
   '--color-secondary', '--color-secondary-muted', '--color-secondaryMuted',
@@ -144,7 +159,7 @@ const OVERRIDE_VARS = [
 ];
 
 function applyCustomTheme(el: HTMLElement, custom: CustomTheme) {
-  el.className = custom.base; // structural vars come from the base theme's block
+  el.className = custom.base;
   el.style.setProperty('--color-primary', custom.primary);
   el.style.setProperty('--color-primary-hover', lighten(custom.primary));
   el.style.setProperty('--color-primary-muted', rgba(custom.primary, 0.15));
@@ -170,15 +185,74 @@ function clearCustomTheme(el: HTMLElement) {
   for (const v of OVERRIDE_VARS) el.style.removeProperty(v);
 }
 
+// Migrates the pre-v1.25 single-slot localStorage shape into the list shape.
+// Returns { savedList, migratedActiveId } — the latter is set when the user's
+// active theme was the old sentinel `'custom'` and needs to be re-pointed at
+// the migrated entry's new id.
+function migrateLegacyLocalStorage(): { savedList: SavedCustomTheme[]; migratedActiveId: string | null } {
+  try {
+    const rawList = localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY);
+    if (rawList) {
+      const parsed = JSON.parse(rawList);
+      if (Array.isArray(parsed)) return { savedList: parsed.filter(isValidSavedCustom), migratedActiveId: null };
+    }
+    const rawLegacy = localStorage.getItem(LEGACY_CUSTOM_THEME_STORAGE_KEY);
+    if (!rawLegacy) return { savedList: [], migratedActiveId: null };
+    const parsed = JSON.parse(rawLegacy);
+    if (!parsed || !themeIds.includes(parsed.base) || typeof parsed.primary !== 'string' || typeof parsed.secondary !== 'string') {
+      return { savedList: [], migratedActiveId: null };
+    }
+    const migrated: SavedCustomTheme = {
+      id: randomId(),
+      name: 'My theme',
+      base: parsed.base,
+      primary: parsed.primary,
+      secondary: parsed.secondary,
+      text: typeof parsed.text === 'string' ? parsed.text : null,
+      fontDisplay: (parsed.fontDisplay as FontId) || 'default',
+    };
+    return { savedList: [migrated], migratedActiveId: migrated.id };
+  } catch {
+    return { savedList: [], migratedActiveId: null };
+  }
+}
+
+function isValidSavedCustom(x: unknown): x is SavedCustomTheme {
+  if (!x || typeof x !== 'object') return false;
+  const t = x as SavedCustomTheme;
+  return typeof t.id === 'string' && typeof t.name === 'string'
+    && themeIds.includes(t.base) && typeof t.primary === 'string' && typeof t.secondary === 'string';
+}
+
+// Server payload shape ↔ local shape. Server accepts either the new list
+// shape { themeId, customThemes } or the legacy single-slot shape.
+type ServerThemePref = {
+  themeId?: string;
+  customThemes?: SavedCustomTheme[];
+  // legacy
+  custom?: CustomTheme;
+};
+
 interface ThemeContextValue {
-  themeId: ThemeId;
-  setTheme: (id: ThemeId) => void;
+  themeId: string; // built-in id OR 'custom_<...>'
+  setTheme: (id: string) => void;
   hideSensitive: boolean;
   toggleHideSensitive: () => void;
-  isCustom: boolean;
-  customTheme: CustomTheme;
-  applyCustom: (c: CustomTheme) => void;
+
+  savedCustomThemes: SavedCustomTheme[];
+  activeCustomTheme: SavedCustomTheme | null;
+  isCustom: boolean; // convenience: activeCustomTheme != null
+
+  /** Save a new custom theme with an auto-generated id; returns the new id. */
+  saveCustomTheme: (config: CustomTheme, name: string) => string;
+  /** Update the theme with the given id (in place). */
+  updateCustomTheme: (id: string, config: CustomTheme, name?: string) => void;
+  /** Delete a saved custom theme; if active, reverts to Nebula. */
+  deleteCustomTheme: (id: string) => void;
+
+  /** Live-preview a config without persisting (for the builder). */
   previewCustom: (c: CustomTheme) => void;
+  /** Discard the live preview and reapply whatever's actually active. */
   cancelPreview: () => void;
 }
 
@@ -187,9 +261,12 @@ const defaultContextValue: ThemeContextValue = {
   setTheme: () => {},
   hideSensitive: false,
   toggleHideSensitive: () => {},
+  savedCustomThemes: [],
+  activeCustomTheme: null,
   isCustom: false,
-  customTheme: DEFAULT_CUSTOM_THEME,
-  applyCustom: () => {},
+  saveCustomTheme: () => '',
+  updateCustomTheme: () => {},
+  deleteCustomTheme: () => {},
   previewCustom: () => {},
   cancelPreview: () => {},
 };
@@ -197,107 +274,144 @@ const defaultContextValue: ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue>(defaultContextValue);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  // 'custom' is stored in the same 'slicksync-theme' key as the built-in
-  // ids, but isn't in themeIds (so the built-in picker doesn't list it) —
-  // when active, the custom config drives the actual colors.
-  const [themeId, setThemeId] = useState<ThemeId | 'custom'>('nebula');
-  const [customTheme, setCustomTheme] = useState<CustomTheme>(DEFAULT_CUSTOM_THEME);
+  const [themeId, setThemeIdState] = useState<string>('nebula');
+  const [savedCustomThemes, setSavedCustomThemes] = useState<SavedCustomTheme[]>([]);
   const [hideSensitive, setHideSensitive] = useState(false);
   const [mounted, setMounted] = useState(false);
-  // Suppress the sync-to-server effect when hydrating from server response
-  // (or from the first localStorage load), otherwise we'd echo the server's
-  // own value back to it on every mount.
+  // Suppress the sync-to-server effect on the initial hydrate and after every
+  // server load — otherwise we'd echo the server's own value back to it.
   const skipNextSaveRef = useRef(true);
 
-  // Initial load: 1) hydrate from localStorage synchronously (avoids
-  // flash-of-wrong-theme), 2) fetch the account-scoped preference from the
-  // server and reconcile. Cross-device sync comes from step 2 winning.
+  const activeCustomTheme = savedCustomThemes.find((t) => t.id === themeId) || null;
+
+  // Initial load: hydrate from localStorage synchronously (no FOUT), then
+  // fetch the account-scoped preference from the server and reconcile.
   useEffect(() => {
+    const { savedList, migratedActiveId } = migrateLegacyLocalStorage();
+    setSavedCustomThemes(savedList);
+
     const savedTheme = localStorage.getItem('slicksync-theme');
-    let savedCustom = DEFAULT_CUSTOM_THEME;
-    try {
-      const raw = localStorage.getItem(CUSTOM_THEME_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && themeIds.includes(parsed.base) && typeof parsed.primary === 'string' && typeof parsed.secondary === 'string') {
-          savedCustom = { ...DEFAULT_CUSTOM_THEME, ...parsed };
-        }
-      }
-    } catch {}
+    let initial: string = 'nebula';
+    if (savedTheme === 'custom' && migratedActiveId) {
+      initial = migratedActiveId; // legacy hydration
+    } else if (savedTheme && (isBuiltInThemeId(savedTheme) || savedList.some((t) => t.id === savedTheme))) {
+      initial = savedTheme;
+    }
+    setThemeIdState(initial);
 
     const savedHideSensitive = localStorage.getItem('slicksync-hide-sensitive') === 'true';
-    const initialTheme: ThemeId | 'custom' = savedTheme === 'custom' ? 'custom' : (savedTheme && themeIds.includes(savedTheme as ThemeId) ? (savedTheme as ThemeId) : 'nebula');
-    setCustomTheme(savedCustom);
-    setThemeId(initialTheme);
     setHideSensitive(savedHideSensitive);
-    if (initialTheme === 'custom') applyCustomTheme(document.documentElement, savedCustom);
-    else document.documentElement.className = initialTheme;
+
+    const active = savedList.find((t) => t.id === initial);
+    if (active) applyCustomTheme(document.documentElement, active);
+    else if (isBuiltInThemeId(initial)) document.documentElement.className = initial;
     setMounted(true);
 
-    // Reconcile with the server-stored account preference. This is what makes
-    // a change on one device show up on another — the server value wins on
-    // mount, then any local change round-trips back through PUT.
+    // Reconcile with the server pref — this is what makes a change on one
+    // device show up on another.
     api.getThemePref()
       .then((r) => {
-        const pref = r?.themePref;
-        if (!pref || typeof pref !== 'object') return;
-        if (pref.themeId === 'custom' && pref.custom && themeIds.includes(pref.custom.base as ThemeId)) {
-          const merged: CustomTheme = {
-            base: pref.custom.base as ThemeId,
-            primary: pref.custom.primary,
-            secondary: pref.custom.secondary,
+        const pref = (r?.themePref || null) as ServerThemePref | null;
+        if (!pref) return;
+        let list: SavedCustomTheme[] = [];
+        let nextActive: string | null = null;
+        if (Array.isArray(pref.customThemes)) {
+          list = pref.customThemes.filter(isValidSavedCustom);
+        } else if (pref.custom && typeof pref.custom === 'object') {
+          // Legacy server shape — migrate on the fly, same as localStorage.
+          const migrated: SavedCustomTheme = {
+            id: randomId(), name: 'My theme',
+            base: pref.custom.base, primary: pref.custom.primary, secondary: pref.custom.secondary,
             text: pref.custom.text || null,
             fontDisplay: (pref.custom.fontDisplay as FontId) || 'default',
           };
+          if (isValidSavedCustom(migrated)) { list = [migrated]; if (pref.themeId === 'custom') nextActive = migrated.id; }
+        }
+        if (nextActive === null && typeof pref.themeId === 'string' && (isBuiltInThemeId(pref.themeId) || list.some((t) => t.id === pref.themeId))) {
+          nextActive = pref.themeId;
+        }
+        if (list.length > 0 || nextActive) {
           skipNextSaveRef.current = true;
-          setCustomTheme(merged);
-          setThemeId('custom');
-        } else if (typeof pref.themeId === 'string' && themeIds.includes(pref.themeId as ThemeId)) {
-          skipNextSaveRef.current = true;
-          setThemeId(pref.themeId as ThemeId);
+          setSavedCustomThemes(list);
+          if (nextActive) setThemeIdState(nextActive);
         }
       })
-      .catch(() => {}); // offline / not signed in — keep local value
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Apply theme when changed (local mirror still in localStorage for fast
-  // hydration on the next page load).
+  // Apply theme + persist locally + sync to server whenever the effective
+  // theme (id or the active custom's config) changes.
   useEffect(() => {
     if (!mounted) return;
-    if (themeId === 'custom') {
-      applyCustomTheme(document.documentElement, customTheme);
-    } else {
+    const active = savedCustomThemes.find((t) => t.id === themeId);
+    if (active) {
+      applyCustomTheme(document.documentElement, active);
+    } else if (isBuiltInThemeId(themeId)) {
       clearCustomTheme(document.documentElement);
       document.documentElement.className = themeId;
+    } else {
+      // themeId points to a custom that no longer exists (e.g. deleted on
+      // another device); fall back to Nebula.
+      clearCustomTheme(document.documentElement);
+      document.documentElement.className = 'nebula';
+      setThemeIdState('nebula');
+      return;
     }
+
     localStorage.setItem('slicksync-theme', themeId);
+    localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(savedCustomThemes));
 
-    // Push to server so other devices pick this up on their next mount.
-    // Skip the first echo after a server load / initial mount so we don't
-    // uselessly re-write the same value.
     if (skipNextSaveRef.current) { skipNextSaveRef.current = false; return; }
-    const pref = themeId === 'custom'
-      ? { themeId: 'custom', custom: customTheme }
-      : { themeId };
-    api.saveThemePref(pref).catch(() => {}); // best-effort; local UI already reflects the change
-  }, [themeId, customTheme, mounted]);
+    api.saveThemePref({ themeId, customThemes: savedCustomThemes }).catch(() => {});
+  }, [themeId, savedCustomThemes, mounted]);
 
-  // Save hideSensitive preference (device-local; not synced — a per-device
-  // privacy toggle shouldn't cross to a shared account view).
   useEffect(() => {
     if (!mounted) return;
     localStorage.setItem('slicksync-hide-sensitive', String(hideSensitive));
   }, [hideSensitive, mounted]);
 
-  const setTheme = (id: ThemeId) => {
-    if (themeIds.includes(id)) setThemeId(id);
+  const setTheme = (id: string) => {
+    if (isBuiltInThemeId(id) || savedCustomThemes.some((t) => t.id === id)) {
+      setThemeIdState(id);
+    }
   };
 
-  const applyCustom = (c: CustomTheme) => {
-    setCustomTheme(c);
-    localStorage.setItem(CUSTOM_THEME_STORAGE_KEY, JSON.stringify(c));
-    setThemeId('custom');
+  const saveCustomTheme = (config: CustomTheme, name: string): string => {
+    const trimmed = name.trim() || `Custom theme ${savedCustomThemes.length + 1}`;
+    const id = randomId();
+    const entry: SavedCustomTheme = {
+      id, name: trimmed,
+      base: config.base, primary: config.primary, secondary: config.secondary,
+      text: config.text || null,
+      fontDisplay: config.fontDisplay || 'default',
+    };
+    setSavedCustomThemes((prev) => [...prev, entry]);
+    setThemeIdState(id); // auto-switch to the newly-created theme
+    return id;
+  };
+
+  const updateCustomTheme = (id: string, config: CustomTheme, name?: string) => {
+    setSavedCustomThemes((prev) => prev.map((t) => t.id === id ? {
+      ...t,
+      base: config.base,
+      primary: config.primary,
+      secondary: config.secondary,
+      text: config.text || null,
+      fontDisplay: config.fontDisplay || 'default',
+      name: name?.trim() || t.name,
+    } : t));
+    // If it's the active theme, re-apply immediately so the change shows
+    // without waiting for the next effect tick (the effect will still fire).
+    if (themeId === id) {
+      const merged: CustomTheme = { ...config, text: config.text || null, fontDisplay: config.fontDisplay || 'default' };
+      applyCustomTheme(document.documentElement, merged);
+    }
+  };
+
+  const deleteCustomTheme = (id: string) => {
+    setSavedCustomThemes((prev) => prev.filter((t) => t.id !== id));
+    if (themeId === id) setThemeIdState('nebula');
   };
 
   const previewCustom = (c: CustomTheme) => {
@@ -305,9 +419,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   };
 
   const cancelPreview = () => {
-    if (themeId === 'custom') {
-      applyCustomTheme(document.documentElement, customTheme);
-    } else {
+    const active = savedCustomThemes.find((t) => t.id === themeId);
+    if (active) applyCustomTheme(document.documentElement, active);
+    else if (isBuiltInThemeId(themeId)) {
       clearCustomTheme(document.documentElement);
       document.documentElement.className = themeId;
     }
@@ -317,13 +431,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   return (
     <ThemeContext.Provider value={{
-      themeId: themeId as ThemeId,
+      themeId,
       setTheme,
       hideSensitive,
       toggleHideSensitive,
-      isCustom: themeId === 'custom',
-      customTheme,
-      applyCustom,
+      savedCustomThemes,
+      activeCustomTheme,
+      isCustom: activeCustomTheme != null,
+      saveCustomTheme,
+      updateCustomTheme,
+      deleteCustomTheme,
       previewCustom,
       cancelPreview,
     }}>

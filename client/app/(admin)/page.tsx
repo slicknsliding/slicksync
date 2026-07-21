@@ -809,7 +809,14 @@ export default function DashboardPage() {
                           className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full opacity-70"
                           style={{ background: 'linear-gradient(180deg, var(--color-primary), var(--color-secondary))' }}
                         />
+                        <Link
+                        href={`/users/${np.user.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`Open ${np.user.username}'s profile`}
+                        className="shrink-0 rounded-full transition-transform hover:scale-105"
+                      >
                         <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
+                      </Link>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm truncate text-muted">
                             <span className="font-medium" style={{ color: 'var(--color-secondary)' }}>
@@ -1120,7 +1127,14 @@ export default function DashboardPage() {
                       whileHover={{ x: 4 }}
                       className="flex items-center gap-3 p-2.5 rounded-lg transition-colors cursor-pointer bg-surface-hover hover:bg-surface"
                     >
-                      <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
+                      <Link
+                        href={`/users/${np.user.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`Open ${np.user.username}'s profile`}
+                        className="shrink-0 rounded-full transition-transform hover:scale-105"
+                      >
+                        <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
+                      </Link>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm truncate text-muted">
                           <span className="font-medium text-default">
