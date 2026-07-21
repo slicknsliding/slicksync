@@ -9,6 +9,7 @@ import { DndContext, DragOverlay, closestCenter } from "@/components/ui/DragSort
 import { useSortableSensors } from "@/components/ui/DragSortable";
 import { pointerWithin } from "@dnd-kit/core";
 import { VaultDragProvider, useVaultDrag } from "@/components/providers/VaultDragContext";
+import { NotificationsDataProvider } from "@/components/providers/NotificationsDataProvider";
 import type { DragStartEvent, DragEndEvent, CollisionDetection } from "@dnd-kit/core";
 
 interface MobileMenuContextType {
@@ -116,21 +117,23 @@ export default function AdminClientLayout({
 
   return (
     <MobileMenuContext.Provider value={{ isOpen: isMobileMenuOpen, onOpen: handleOpen, onClose: handleClose }}>
-      <VaultDragProvider>
-        <LayoutDndWrapper>
-          <div className="relative min-h-screen">
-            {!useNebulaChrome && (
-              <Sidebar
-                isOpen={isMobileMenuOpen}
-                onClose={handleClose}
-              />
-            )}
-            <PageContainer noSidebarOffset={useNebulaChrome}>
-              {children}
-            </PageContainer>
-          </div>
-        </LayoutDndWrapper>
-      </VaultDragProvider>
+      <NotificationsDataProvider>
+        <VaultDragProvider>
+          <LayoutDndWrapper>
+            <div className="relative min-h-screen">
+              {!useNebulaChrome && (
+                <Sidebar
+                  isOpen={isMobileMenuOpen}
+                  onClose={handleClose}
+                />
+              )}
+              <PageContainer noSidebarOffset={useNebulaChrome}>
+                {children}
+              </PageContainer>
+            </div>
+          </LayoutDndWrapper>
+        </VaultDragProvider>
+      </NotificationsDataProvider>
     </MobileMenuContext.Provider>
   );
 }

@@ -6,6 +6,7 @@ import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePi
 import { Card, Badge, Button, Avatar } from '@/components/ui';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
+import { useNotificationsData } from '@/components/providers/NotificationsDataProvider';
 
 interface NotificationItem {
   id: string;
@@ -68,92 +69,28 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     persistDismissedIds(new Set(dismissedIds).add(id));
   };
 
-  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
-  // Accepted invite requests, from the same fetch as pendingRequests below -
-  // this IS "real" inviteHistory, no separate endpoint needed. Merged with
-  // any inviteHistory passed in via props.
-  const [acceptedRequests, setAcceptedRequests] = useState<any[]>([]);
-  // Recent watch activity, from the same cached metrics endpoint the
-  // Activity/Dashboard pages use (server-side cache refreshed every 5
-  // minutes by activityMonitor.js, so polling this here is cheap). Merged
-  // with any activities passed in via props.
-  const [recentWatchActivity, setRecentWatchActivity] = useState<any[]>([]);
-  // Live "now playing" sessions, from the same metrics response. Discord
-  // gets an instant "started watching" ping from the proxy pipeline (see
-  // CLAUDE.md), but nothing ever fed that event into this bell - it only
-  // ever showed completed watches. Each entry keeps a stable id/timestamp
-  // (session start) across polls, so it surfaces once and sticks until
-  // marked read/dismissed rather than re-notifying every 30s.
-  const [recentNowPlaying, setRecentNowPlaying] = useState<any[]>([]);
-
-  // Fetch pending + accepted invite requests
-  useEffect(() => {
-    const fetchRequests = async () => {
-      try {
-        const invitations = await api.getInvitations();
-        const allRequests: any[] = [];
-
-        for (const inv of invitations) {
-          const invName = inv.name || inv.code || inv.inviteCode || 'Invitation';
-          const groupName = (inv as any).groupName || 'a group';
-          if (inv.requests && Array.isArray(inv.requests)) {
-            allRequests.push(...inv.requests.map((req: any) => ({
-              ...req,
-              invitationName: invName,
-              groupName,
-            })));
-          } else {
-            try {
-              const reqs = await api.getInvitationRequests(inv.id);
-              if (Array.isArray(reqs)) {
-                allRequests.push(...reqs.map((req: any) => ({
-                  ...req,
-                  invitationName: invName,
-                  groupName,
-                })));
-              }
-            } catch {
-              // Ignore errors
-            }
-          }
-        }
-
-        setPendingRequests(allRequests.filter((r: any) => r.status === 'pending'));
-        setAcceptedRequests(allRequests.filter((r: any) => r.status === 'accepted'));
-      } catch (e) {
-        console.error('Failed to fetch pending requests', e);
-      }
-    };
-
-    fetchRequests();
-    // Poll every 30 seconds
-    const interval = setInterval(fetchRequests, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Fetch recent watch activity for the "activity" notification type
-  useEffect(() => {
-    const fetchActivity = async () => {
-      try {
-        const metrics = await api.getMetrics('30d');
-        setRecentWatchActivity(metrics.recentActivity || []);
-        setRecentNowPlaying(metrics.nowPlaying || []);
-      } catch (e) {
-        console.error('Failed to fetch recent activity for notifications', e);
-      }
-    };
-
-    fetchActivity();
-    const interval = setInterval(fetchActivity, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  // Pending/accepted invite requests and recent watch activity all come from
+  // NotificationsDataProvider (mounted once in AdminClientLayout), not a
+  // fetch owned by this component - see that provider for why: this bell
+  // has multiple possible render locations that resolve which one actually
+  // mounts only after a post-hydration effect, so this component itself
+  // mounts/unmounts more than once per page load, and fetching from here
+  // used to mean each of those transient mounts fired its own copy of the
+  // same requests.
+  const {
+    pendingRequests,
+    acceptedRequests,
+    recentWatchActivity,
+    recentNowPlaying,
+    removePendingRequest,
+  } = useNotificationsData();
 
   const handleAcceptRequest = async (e: React.MouseEvent, reqId: string) => {
     e.stopPropagation();
     try {
       await api.acceptInviteRequest(reqId);
       toast.success('Request accepted');
-      setPendingRequests(prev => prev.filter(r => r.id !== reqId));
+      removePendingRequest(reqId);
     } catch (err: any) {
       toast.error(err.message || 'Failed to accept request');
     }
@@ -164,7 +101,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     try {
       await api.rejectInviteRequest(reqId);
       toast.success('Request rejected');
-      setPendingRequests(prev => prev.filter(r => r.id !== reqId));
+      removePendingRequest(reqId);
     } catch (err: any) {
       toast.error(err.message || 'Failed to reject request');
     }
