@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.16.6",
+    "date": "2026-07-20",
+    "title": "Nebula: notifications bell fixed top-right, no longer stranded on mobile",
+    "bugFixes": [
+      "The bell lived inside each page's own title row (NebulaPageHeading), which wraps onto its own line on a narrow phone whenever it doesn't fit next to the title - and a wrapped line with a single flex item lands at that line's start (left edge), not the right, since justify-between has nothing to space between with only one item on the line. That stranded the bell near the left edge of the screen while its dropdown panel (anchored right-0 off itself) shot off past the left edge, making it look like the notifications dropdown simply didn't open. Moved to a fixed top-right position instead (mirroring the account button's existing fixed bottom-left spot), so its position can no longer depend on how a given page's action row happens to wrap."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.16.5",
     "date": "2026-07-20",
     "title": "Now Playing freshness window widened from 15min to 18min",

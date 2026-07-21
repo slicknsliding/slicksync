@@ -117,6 +117,31 @@ export function NebulaTopbar() {
           />
         </div>
       </div>
+      {/* Notifications, fixed top-right, on every viewport size - mirrors
+          the account button's fixed bottom-left treatment above. Used to
+          live inside each page's own title row (NebulaPageHeading), but
+          that row wraps onto its own line on a narrow phone whenever it
+          doesn't fit next to the title, and a wrapped line with only one
+          flex item lands at the line's start (left edge) rather than the
+          right - stranding the bell near the left edge while its dropdown
+          panel (anchored `right-0` off itself) shot off past the left edge
+          of the screen, effectively invisible. Fixed to a real screen
+          corner instead of page-content flow, so its position can't depend
+          on what else a given page's action row happens to wrap around. */}
+      <div className="fixed top-4 right-4 md:top-6 md:right-6 z-40">
+        <div
+          className="rounded-2xl p-1.5"
+          style={{
+            background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
+            border: '1px solid var(--color-surface-border)',
+            boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
+          }}
+        >
+          <NotificationsDropdown />
+        </div>
+      </div>
     <div className="px-4 pt-4 md:px-6 md:pt-6">
       {/* Caps the bar at 72rem so it reads as a floating island on wide
           desktop viewports instead of stretching edge-to-edge into empty
@@ -221,14 +246,16 @@ export function NebulaTopbar() {
   );
 }
 
-// Each page's title row - notifications and any page-specific controls
-// (Sync All, a period picker, a group filter, etc.) live here now, to the
-// right of the title, the same spot Current's own <Header> puts its actions
-// - not in the shared topbar above, which has no room to spare once you
-// account for every page's differing actions, and whose own crowding fixes
-// kept getting undone by the fact that content was living in the wrong
-// place to begin with. flex-wrap so actions drop to their own line below
-// the title on a narrow screen rather than fighting it for space.
+// Each page's title row - page-specific controls (Sync All, a period
+// picker, a group filter, etc.) live here now, to the right of the title,
+// the same spot Current's own <Header> puts its actions - not in the shared
+// topbar above, which has no room to spare once you account for every
+// page's differing actions, and whose own crowding fixes kept getting
+// undone by the fact that content was living in the wrong place to begin
+// with. flex-wrap so actions drop to their own line below the title on a
+// narrow screen rather than fighting it for space. Notifications used to
+// live here too, but moved to a fixed top-right spot in NebulaTopbar above
+// - see that component for why.
 export function NebulaPageHeading({
   title,
   subtitle,
@@ -254,9 +281,8 @@ export function NebulaPageHeading({
         {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-2 flex-wrap order-2 md:order-3">
-        {/* No props needed - it self-fetches real recent activity and
-            invite history now (see NotificationsDropdown.tsx). */}
-        <NotificationsDropdown />
+        {/* Notifications bell is fixed top-right now (see NebulaTopbar
+            above), not rendered per-page here anymore. */}
         {actions}
       </div>
       {stats && (
