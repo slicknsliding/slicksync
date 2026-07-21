@@ -936,6 +936,9 @@ class ApiClient {
       method: 'POST',
     });
   }
+  async getTraktWatchlist() {
+    return this.fetch<DiscoverItem[]>('/trakt/watchlist');
+  }
 
   async repairAddons() {
     return this.fetch<{ inspected: number; updated: number }>('/settings/repair-addons', {
@@ -1445,6 +1448,10 @@ class ApiClient {
     });
   }
 
+  async getUpcomingEpisodes() {
+    return this.fetch<UpcomingEpisode[]>('/users/upcoming-episodes');
+  }
+
   // Rotten Tomatoes/Metacritic/IMDb ratings for a batch of IMDb IDs, for grid
   // views (Discover, Activity) that render many poster cards at once. Pass
   // only the deduplicated IDs actually on screen - server caps the batch size.
@@ -1761,6 +1768,16 @@ export interface SyncSettings {
   notifyOnVault?: boolean;
   accountTimezone?: string;
   vaultCurrency?: string;
+}
+
+export interface UpcomingEpisode {
+  showId: string;
+  showName: string | null;
+  poster: string | null;
+  season: number;
+  episode: number;
+  title: string | null;
+  airDate: string;
 }
 
 export interface TraktStatus {

@@ -388,10 +388,21 @@ model ShowEpisodeAlertState {
   showId      String
   lastSeason  Int
   lastEpisode Int
+  // Next UPCOMING (future-dated) episode from Cinemeta, refreshed every poll —
+  // powers the Dashboard "Coming up" calendar. Null when the show has no
+  // announced future episode (caught up / ended). Display fields are stored
+  // here too so the calendar endpoint needs no extra Cinemeta lookup.
+  showName    String?
+  poster      String?
+  nextSeason  Int?
+  nextEpisode Int?
+  nextTitle   String?
+  nextAirDate DateTime?
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())
 
   @@unique([accountId, showId])
+  @@index([accountId, nextAirDate])
   @@map("show_episode_alert_state")
 }
 

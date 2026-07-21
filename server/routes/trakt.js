@@ -73,6 +73,18 @@ module.exports = ({ prisma, getAccountId }) => {
     }
   });
 
+  // GET /api/trakt/watchlist — the connected account's Trakt watchlist,
+  // shaped like DiscoverItem[] for the Discover grid. 409 if not connected.
+  router.get('/watchlist', async (req, res) => {
+    try {
+      const items = await trakt.getTraktWatchlist(prisma, acct(req));
+      if (items === null) return res.status(409).json({ error: 'Trakt is not connected' });
+      res.json(items);
+    } catch (e) {
+      res.status(502).json({ error: e?.message || 'Failed to fetch Trakt watchlist' });
+    }
+  });
+
   // POST /api/trakt/sync-now — run a scrobble sweep immediately.
   router.post('/sync-now', async (req, res) => {
     try {

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu, MediaDetailModal } from '@/components/ui';
+import { UpcomingEpisodesPanel } from '@/components/ui/UpcomingEpisodesPanel';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -773,6 +774,9 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* Coming up - upcoming episodes for shows being watched */}
+            <UpcomingEpisodesPanel />
+
             {/* Recent Activity (left, spans both rows) + Top Viewers / Recent
                 Addons stacked on the right - desktop only (lg:). Recent
                 Addons used to be its own full-width panel below this grid,
@@ -1062,6 +1066,9 @@ export default function DashboardPage() {
             </Card>
           </PageSection>
         )}
+
+        {/* Coming up - upcoming episodes for shows being watched */}
+        <UpcomingEpisodesPanel />
 
         {/* Main content grid - Matched heights */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">

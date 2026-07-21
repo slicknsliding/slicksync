@@ -317,6 +317,23 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // GET /users/upcoming-episodes - next upcoming episode per mid-season show,
+  // for the Dashboard "Coming up" calendar. Must be before /:id route.
+  router.get('/upcoming-episodes', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const { getUpcomingEpisodes } = require('../utils/episodeAlerts')
+      const items = await getUpcomingEpisodes(prisma, accountId)
+      res.json(items)
+    } catch (error) {
+      console.error('Error fetching upcoming episodes:', error)
+      res.status(500).json({ error: 'Failed to fetch upcoming episodes' })
+    }
+  })
+
   // GET /users/episode-alerts - recent new-episode alerts (fired by
   // utils/episodeAlerts.js's poller) for the notification bell. Must be
   // before /:id route.
