@@ -7,6 +7,8 @@ import { api, Addon, StremioAddon } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
+import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { useLayoutMode } from '@/lib/layout-mode';
 import { Button, Card, StatCard, Avatar, Badge, StatusBadge, Modal, ConfirmModal, ColorPicker, DateTimePicker, InlineEdit, ToggleSwitch, Select, SyncBadge, Input, VersionBadge, ResourceBadge, UserAvatar } from '@/components/ui';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
@@ -191,6 +193,7 @@ const ContentBreakdownChart = memo(function ContentBreakdownChart({ data }: { da
 });
 
 export default function UserDetailPage() {
+  const { layoutMode } = useLayoutMode();
   const { hideSensitive } = useTheme();
   const params = useParams();
   const router = useRouter();
@@ -739,55 +742,69 @@ export default function UserDetailPage() {
     }
   }, [params.id, stremioAddons]);
 
+  const detailActions = (
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted">Active</span>
+        <ToggleSwitch
+          checked={user?.isActive !== false}
+          onChange={handleToggleActive}
+          size="sm"
+        />
+      </div>
+      <Button
+        variant="glass"
+        leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
+        onClick={handleSync}
+        isLoading={isSyncing}
+      >
+        Sync
+      </Button>
+      <Button
+        variant="glass"
+        leftIcon={<ArrowDownTrayIcon className="w-5 h-5" />}
+        onClick={handleImport}
+      >
+        Import
+      </Button>
+      <Button
+        variant="danger"
+        leftIcon={<TrashIcon className="w-5 h-5" />}
+        onClick={() => setIsDeleteModalOpen(true)}
+      >
+        Delete
+      </Button>
+    </div>
+  );
+
   return (
     <>
-      <Header
-        title={
-          <Breadcrumbs
-            items={[
-              { label: 'Users', href: '/users' },
-              { label: isLoading ? 'Loading...' : (user?.username || user?.name || 'User') },
-            ]}
-            className="text-xl font-semibold"
-          />
-        }
-        actions={
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted">Active</span>
-              <ToggleSwitch
-                checked={user?.isActive !== false}
-                onChange={handleToggleActive}
-                size="sm"
-              />
-            </div>
-            <Button
-              variant="glass"
-              leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
-              onClick={handleSync}
-              isLoading={isSyncing}
-            >
-              Sync
-            </Button>
-            <Button
-              variant="glass"
-              leftIcon={<ArrowDownTrayIcon className="w-5 h-5" />}
-              onClick={handleImport}
-            >
-              Import
-            </Button>
-            <Button
-              variant="danger"
-              leftIcon={<TrashIcon className="w-5 h-5" />}
-              onClick={() => setIsDeleteModalOpen(true)}
-            >
-              Delete
-            </Button>
-          </div>
-        }
-      />
+      {layoutMode === 'nebula' ? (
+        <NebulaTopbar />
+      ) : (
+        <Header
+          title={
+            <Breadcrumbs
+              items={[
+                { label: 'Users', href: '/users' },
+                { label: isLoading ? 'Loading...' : (user?.username || user?.name || 'User') },
+              ]}
+              className="text-xl font-semibold"
+            />
+          }
+          actions={detailActions}
+        />
+      )}
 
-      <div className="p-8">
+      <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {layoutMode === 'nebula' && (
+        <NebulaPageHeading
+          title={isLoading ? 'Loading...' : (user?.username || user?.name || 'User')}
+          subtitle="Users"
+          actions={detailActions}
+        />
+      )}
         {/* Loading state */}
         {isLoading ? (
           <div className="text-center py-16">
@@ -1494,6 +1511,7 @@ export default function UserDetailPage() {
             )}
           </>
         )}
+      </div>
       </div>
 
       {/* Delete Confirmation */}

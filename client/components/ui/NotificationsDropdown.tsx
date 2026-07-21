@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon } from '@heroicons/react/24/outline';
-import { Card, Badge, Button, Avatar } from '@/components/ui';
+import { Badge, Button, Avatar } from '@/components/ui';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 
@@ -400,7 +400,20 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
               transition={{ duration: 0.15 }}
               className="absolute right-0 top-full mt-2 z-50 w-80 max-w-[calc(100vw-2rem)]"
             >
-              <Card padding="none" className="shadow-xl border border-default max-h-[500px] flex flex-col">
+              {/* Plain div, not <Card> - Card's Nebula mode auto-applies a
+                  55%-opacity translucent background meant for content
+                  sitting on the page's own background. That reads fine
+                  embedded in page content, but this panel is a floating
+                  overlay that can sit on top of anything (poster grids,
+                  colorful content) - 55% opacity there was hard to read,
+                  worst on mobile where it's now fixed over live page
+                  content. Solid, high-opacity background regardless of
+                  layout mode - a floating overlay always needs strong
+                  contrast, that's not a Nebula-vs-Current distinction. */}
+              <div
+                className="shadow-xl border border-default max-h-[500px] flex flex-col rounded-2xl overflow-hidden"
+                style={{ background: 'var(--color-surface)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+              >
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-default">
                   <h3 className="text-sm font-semibold text-default">Notifications</h3>
@@ -518,7 +531,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                     </div>
                   )}
                 </div>
-              </Card>
+              </div>
             </motion.div>
           </>
         )}
