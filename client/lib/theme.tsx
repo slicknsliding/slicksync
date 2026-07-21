@@ -77,16 +77,36 @@ export const themeMeta: Record<ThemeId, {
 };
 
 // Fonts the user can pick from in "Build your own theme". All preloaded in
-// layout.tsx so switching is instant with no FOUT.
+// layout.tsx so switching is instant with no FOUT. Deliberately spans very
+// different aesthetics so no two picks read as "basically the same font."
 export const FONT_OPTIONS = [
   { id: 'default', label: 'Default (Space Grotesk)', family: null },
-  { id: 'outfit', label: 'Outfit', family: '"Outfit", system-ui, sans-serif' },
-  { id: 'inter', label: 'Inter', family: '"Inter", system-ui, sans-serif' },
-  { id: 'roboto', label: 'Roboto', family: '"Roboto", system-ui, sans-serif' },
-  { id: 'poppins', label: 'Poppins', family: '"Poppins", system-ui, sans-serif' },
-  { id: 'playfair', label: 'Playfair Display', family: '"Playfair Display", Georgia, serif' },
+  { id: 'poppins', label: 'Poppins — rounded sans', family: '"Poppins", system-ui, sans-serif' },
+  { id: 'merriweather', label: 'Merriweather — classic serif', family: '"Merriweather", Georgia, serif' },
+  { id: 'jetbrains-mono', label: 'JetBrains Mono — monospace', family: '"JetBrains Mono", ui-monospace, monospace' },
+  { id: 'bebas-neue', label: 'Bebas Neue — condensed display', family: '"Bebas Neue", Impact, sans-serif' },
+  { id: 'caveat', label: 'Caveat — handwritten', family: '"Caveat", cursive' },
+  { id: 'orbitron', label: 'Orbitron — sci-fi', family: '"Orbitron", "Space Grotesk", sans-serif' },
 ] as const;
 export type FontId = (typeof FONT_OPTIONS)[number]['id'];
+
+// Border-radius scale presets. Each maps to the four --radius-* CSS vars the
+// app's Tailwind config resolves against, so picking a preset globally scales
+// how "rounded" every card, input, and container reads. `default` clears the
+// override so the base theme's own scale wins.
+export const RADIUS_PRESETS = {
+  default: null, // no override — use base theme's scale (sm=6, md=10, lg=14, xl=20)
+  square: { sm: '0px', md: '2px', lg: '4px', xl: '6px' },
+  rounded: { sm: '10px', md: '14px', lg: '20px', xl: '28px' },
+  extra: { sm: '14px', md: '20px', lg: '28px', xl: '36px' },
+} as const;
+export type RadiusId = keyof typeof RADIUS_PRESETS;
+export const RADIUS_LABELS: Record<RadiusId, string> = {
+  default: 'Standard',
+  square: 'Square',
+  rounded: 'Rounded',
+  extra: 'Extra rounded',
+};
 
 // A user-built theme config: base id + overrides. Applying it uses the base
 // theme's className for structural vars, then overrides accent/text/font
@@ -95,8 +115,16 @@ export interface CustomTheme {
   base: ThemeId;
   primary: string;
   secondary: string;
-  text?: string | null;
-  fontDisplay?: FontId | null;
+  // Optional overrides on top of the base theme. All fall back to the base's
+  // own values when null/undefined — the builder writes null explicitly when
+  // the user clears a picker so we know to remove the override rather than
+  // just leave a stale value applied.
+  text?: string | null;         // --color-text (main body/heading text)
+  textMuted?: string | null;    // --color-text-muted (secondary text, labels)
+  background?: string | null;   // --color-bg (page background)
+  surface?: string | null;      // --color-surface (cards, panels)
+  fontDisplay?: FontId | null;  // display + body font
+  radius?: RadiusId | null;     // global "roundness" preset
 }
 
 // A saved user-built theme, with its own id and display name so it can sit
@@ -154,8 +182,10 @@ const OVERRIDE_VARS = [
   '--color-primary', '--color-primary-hover', '--color-primary-muted', '--color-primaryMuted',
   '--color-secondary', '--color-secondary-muted', '--color-secondaryMuted',
   '--color-chart-1', '--color-chart-2',
-  '--color-text',
+  '--color-text', '--color-text-muted',
+  '--color-bg', '--color-surface',
   '--font-space-grotesk', '--font-outfit',
+  '--radius-sm', '--radius-md', '--radius-lg', '--radius-xl',
 ];
 
 function applyCustomTheme(el: HTMLElement, custom: CustomTheme) {
@@ -171,6 +201,13 @@ function applyCustomTheme(el: HTMLElement, custom: CustomTheme) {
   el.style.setProperty('--color-chart-2', custom.secondary);
   if (custom.text) el.style.setProperty('--color-text', custom.text);
   else el.style.removeProperty('--color-text');
+  if (custom.textMuted) el.style.setProperty('--color-text-muted', custom.textMuted);
+  else el.style.removeProperty('--color-text-muted');
+  if (custom.background) el.style.setProperty('--color-bg', custom.background);
+  else el.style.removeProperty('--color-bg');
+  if (custom.surface) el.style.setProperty('--color-surface', custom.surface);
+  else el.style.removeProperty('--color-surface');
+
   const family = fontFamilyFor(custom.fontDisplay);
   if (family) {
     el.style.setProperty('--font-space-grotesk', family);
@@ -178,6 +215,21 @@ function applyCustomTheme(el: HTMLElement, custom: CustomTheme) {
   } else {
     el.style.removeProperty('--font-space-grotesk');
     el.style.removeProperty('--font-outfit');
+  }
+
+  // Radius preset — scales the whole --radius-* var family. `default` leaves
+  // the base theme's scale untouched (which uses sm=6/md=10/lg=14/xl=20).
+  const radiusScale = custom.radius ? RADIUS_PRESETS[custom.radius] : null;
+  if (radiusScale) {
+    el.style.setProperty('--radius-sm', radiusScale.sm);
+    el.style.setProperty('--radius-md', radiusScale.md);
+    el.style.setProperty('--radius-lg', radiusScale.lg);
+    el.style.setProperty('--radius-xl', radiusScale.xl);
+  } else {
+    el.style.removeProperty('--radius-sm');
+    el.style.removeProperty('--radius-md');
+    el.style.removeProperty('--radius-lg');
+    el.style.removeProperty('--radius-xl');
   }
 }
 
@@ -209,7 +261,11 @@ function migrateLegacyLocalStorage(): { savedList: SavedCustomTheme[]; migratedA
       primary: parsed.primary,
       secondary: parsed.secondary,
       text: typeof parsed.text === 'string' ? parsed.text : null,
+      textMuted: null,
+      background: null,
+      surface: null,
       fontDisplay: (parsed.fontDisplay as FontId) || 'default',
+      radius: 'default',
     };
     return { savedList: [migrated], migratedActiveId: migrated.id };
   } catch {
@@ -323,7 +379,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             id: randomId(), name: 'My theme',
             base: pref.custom.base, primary: pref.custom.primary, secondary: pref.custom.secondary,
             text: pref.custom.text || null,
+            textMuted: null,
+            background: null,
+            surface: null,
             fontDisplay: (pref.custom.fontDisplay as FontId) || 'default',
+            radius: 'default',
           };
           if (isValidSavedCustom(migrated)) { list = [migrated]; if (pref.themeId === 'custom') nextActive = migrated.id; }
         }
@@ -384,7 +444,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       id, name: trimmed,
       base: config.base, primary: config.primary, secondary: config.secondary,
       text: config.text || null,
+      textMuted: config.textMuted || null,
+      background: config.background || null,
+      surface: config.surface || null,
       fontDisplay: config.fontDisplay || 'default',
+      radius: config.radius || 'default',
     };
     setSavedCustomThemes((prev) => [...prev, entry]);
     setThemeIdState(id); // auto-switch to the newly-created theme
@@ -398,13 +462,25 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       primary: config.primary,
       secondary: config.secondary,
       text: config.text || null,
+      textMuted: config.textMuted || null,
+      background: config.background || null,
+      surface: config.surface || null,
       fontDisplay: config.fontDisplay || 'default',
+      radius: config.radius || 'default',
       name: name?.trim() || t.name,
     } : t));
     // If it's the active theme, re-apply immediately so the change shows
     // without waiting for the next effect tick (the effect will still fire).
     if (themeId === id) {
-      const merged: CustomTheme = { ...config, text: config.text || null, fontDisplay: config.fontDisplay || 'default' };
+      const merged: CustomTheme = {
+        ...config,
+        text: config.text || null,
+        textMuted: config.textMuted || null,
+        background: config.background || null,
+        surface: config.surface || null,
+        fontDisplay: config.fontDisplay || 'default',
+        radius: config.radius || 'default',
+      };
       applyCustomTheme(document.documentElement, merged);
     }
   };

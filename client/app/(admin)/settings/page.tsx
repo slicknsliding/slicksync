@@ -6,7 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { Button, Card, Badge, Modal, ConfirmModal, Avatar } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
-import { useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, FontId, CustomTheme, SavedCustomTheme } from '@/lib/theme';
+import { useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, FontId, CustomTheme, SavedCustomTheme, RADIUS_PRESETS, RADIUS_LABELS, RadiusId } from '@/lib/theme';
 import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -259,6 +259,53 @@ const CustomThemeCard = memo(function CustomThemeCard({
   );
 });
 
+// The Build-your-own theme's color-override inputs all follow the same shape:
+// a color picker seeded with a fallback when there's no override, a hex label,
+// and a "reset" affordance to clear the override back to the base theme's own
+// value. Extracted so adding a new override is one JSX line, not thirty.
+const ColorOverride = memo(function ColorOverride({
+  label,
+  value,
+  seed,
+  onSet,
+  onClear,
+}: {
+  label: string;
+  value: string;
+  seed: string;
+  onSet: (v: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium mb-2 text-muted">{label}</label>
+      <div className="flex items-center gap-2">
+        <input
+          type="color"
+          value={value || seed}
+          onChange={(e) => onSet(e.target.value)}
+          className="w-12 h-10 rounded-lg cursor-pointer border border-default bg-transparent p-0.5"
+        />
+        {value ? (
+          <>
+            <span className="text-xs font-mono text-muted uppercase">{value}</span>
+            <button
+              type="button"
+              onClick={onClear}
+              className="text-[11px] text-muted hover:text-default transition-colors"
+              title="Clear override — use the base theme's own value"
+            >
+              reset
+            </button>
+          </>
+        ) : (
+          <span className="text-[11px] text-muted italic">using base</span>
+        )}
+      </div>
+    </div>
+  );
+});
+
 // Layout mode card - structure preview only (sidebar-vs-topbar), not colors,
 // since layout mode is orthogonal to the Theme setting above and should read
 // as "shape," not "another color choice."
@@ -408,23 +455,30 @@ export default function SettingsPage() {
   const { layoutMode, setLayoutMode } = useLayoutMode();
   // Custom-theme builder working state. When a custom is active, seed from it
   // (so the builder shows what you're currently using); otherwise fresh defaults.
-  const seedFrom: CustomTheme = activeCustomTheme || { base: 'nebula', primary: '#8b7ec8', secondary: '#5fd4c4', text: null, fontDisplay: 'default' };
   const [builderName, setBuilderName] = useState<string>(activeCustomTheme?.name || '');
-  const [builderBase, setBuilderBase] = useState<ThemeId>(seedFrom.base);
-  const [builderPrimary, setBuilderPrimary] = useState(seedFrom.primary);
-  const [builderSecondary, setBuilderSecondary] = useState(seedFrom.secondary);
-  // Text and font are optional: null/'default' means "use the base theme's own
-  // text color / display font". A concrete value overrides on top.
-  const [builderText, setBuilderText] = useState<string>(seedFrom.text || '');
-  const [builderFont, setBuilderFont] = useState<FontId>((seedFrom.fontDisplay as FontId) || 'default');
+  const [builderBase, setBuilderBase] = useState<ThemeId>(activeCustomTheme?.base || 'nebula');
+  const [builderPrimary, setBuilderPrimary] = useState(activeCustomTheme?.primary || '#8b7ec8');
+  const [builderSecondary, setBuilderSecondary] = useState(activeCustomTheme?.secondary || '#5fd4c4');
+  // All below are optional: null/'default' means "use the base theme's own
+  // value". A concrete value overrides on top.
+  const [builderText, setBuilderText] = useState<string>(activeCustomTheme?.text || '');
+  const [builderTextMuted, setBuilderTextMuted] = useState<string>(activeCustomTheme?.textMuted || '');
+  const [builderBackground, setBuilderBackground] = useState<string>(activeCustomTheme?.background || '');
+  const [builderSurface, setBuilderSurface] = useState<string>(activeCustomTheme?.surface || '');
+  const [builderFont, setBuilderFont] = useState<FontId>((activeCustomTheme?.fontDisplay as FontId) || 'default');
+  const [builderRadius, setBuilderRadius] = useState<RadiusId>((activeCustomTheme?.radius as RadiusId) || 'default');
   // Assemble the current builder state into a CustomTheme so every change site
-  // can call `previewCustom(buildDraft())` without repeating five fields.
+  // can call `previewCustom(buildDraft())` without repeating every field.
   const buildDraft = (): CustomTheme => ({
     base: builderBase,
     primary: builderPrimary,
     secondary: builderSecondary,
     text: builderText.trim() ? builderText.trim() : null,
+    textMuted: builderTextMuted.trim() ? builderTextMuted.trim() : null,
+    background: builderBackground.trim() ? builderBackground.trim() : null,
+    surface: builderSurface.trim() ? builderSurface.trim() : null,
     fontDisplay: builderFont,
+    radius: builderRadius,
   });
   // Re-seed the builder when the active custom theme changes out from under
   // it (cross-device sync, or the user selects a different custom to edit).
@@ -434,7 +488,11 @@ export default function SettingsPage() {
     setBuilderPrimary(activeCustomTheme?.primary || '#8b7ec8');
     setBuilderSecondary(activeCustomTheme?.secondary || '#5fd4c4');
     setBuilderText(activeCustomTheme?.text || '');
+    setBuilderTextMuted(activeCustomTheme?.textMuted || '');
+    setBuilderBackground(activeCustomTheme?.background || '');
+    setBuilderSurface(activeCustomTheme?.surface || '');
     setBuilderFont((activeCustomTheme?.fontDisplay as FontId) || 'default');
+    setBuilderRadius((activeCustomTheme?.radius as RadiusId) || 'default');
   }, [activeCustomTheme]);
   // Revert any unsaved live preview when leaving Settings (a saved theme is a
   // no-op here since cancelPreview just re-applies whatever's active). Kept
@@ -767,33 +825,63 @@ export default function SettingsPage() {
                     <span className="text-xs font-mono text-muted uppercase">{builderSecondary}</span>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium mb-2 text-muted">Text color (optional)</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      // Color inputs need SOME value; when there's no override,
-                      // seed the picker with the base theme's default text.
-                      value={builderText || '#e2e8f0'}
-                      onChange={(e) => { setBuilderText(e.target.value); previewCustom({ ...buildDraft(), text: e.target.value }); }}
-                      className="w-12 h-10 rounded-lg cursor-pointer border border-default bg-transparent p-0.5"
-                    />
-                    {builderText ? (
-                      <>
-                        <span className="text-xs font-mono text-muted uppercase">{builderText}</span>
-                        <button
-                          type="button"
-                          onClick={() => { setBuilderText(''); previewCustom({ ...buildDraft(), text: null }); }}
-                          className="text-[11px] text-muted hover:text-default transition-colors"
-                          title="Clear override — use the base theme's text color"
-                        >
-                          reset
-                        </button>
-                      </>
-                    ) : (
-                      <span className="text-[11px] text-muted italic">using base</span>
-                    )}
-                  </div>
+                <ColorOverride
+                  label="Text color (optional)"
+                  value={builderText}
+                  seed="#e2e8f0"
+                  onSet={(v) => { setBuilderText(v); previewCustom({ ...buildDraft(), text: v }); }}
+                  onClear={() => { setBuilderText(''); previewCustom({ ...buildDraft(), text: null }); }}
+                />
+                <ColorOverride
+                  label="Muted text (optional)"
+                  value={builderTextMuted}
+                  seed="#8b949e"
+                  onSet={(v) => { setBuilderTextMuted(v); previewCustom({ ...buildDraft(), textMuted: v }); }}
+                  onClear={() => { setBuilderTextMuted(''); previewCustom({ ...buildDraft(), textMuted: null }); }}
+                />
+                <ColorOverride
+                  label="Background (optional)"
+                  value={builderBackground}
+                  seed="#0d1117"
+                  onSet={(v) => { setBuilderBackground(v); previewCustom({ ...buildDraft(), background: v }); }}
+                  onClear={() => { setBuilderBackground(''); previewCustom({ ...buildDraft(), background: null }); }}
+                />
+                <ColorOverride
+                  label="Surface / cards (optional)"
+                  value={builderSurface}
+                  seed="#1c2128"
+                  onSet={(v) => { setBuilderSurface(v); previewCustom({ ...buildDraft(), surface: v }); }}
+                  onClear={() => { setBuilderSurface(''); previewCustom({ ...buildDraft(), surface: null }); }}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-2 text-muted">Corner roundness</label>
+                <div className="flex flex-wrap gap-2">
+                  {(Object.keys(RADIUS_PRESETS) as RadiusId[]).map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => { setBuilderRadius(id); previewCustom({ ...buildDraft(), radius: id }); }}
+                      className={`px-3 py-1.5 text-sm transition-colors ${
+                        builderRadius === id
+                          ? 'bg-primary text-white'
+                          : 'bg-surface-hover text-muted hover:text-default'
+                      }`}
+                      style={{
+                        // Preview each preset's own corner style ON the button
+                        // itself — square button for "Square", pill-ish for
+                        // "Extra rounded", etc. Reads as a live legend.
+                        borderRadius:
+                          id === 'square' ? '2px'
+                          : id === 'rounded' ? '14px'
+                          : id === 'extra' ? '20px'
+                          : '10px',
+                      }}
+                    >
+                      {RADIUS_LABELS[id]}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -884,16 +972,19 @@ export default function SettingsPage() {
                   type="button"
                   onClick={() => {
                     // Discard the live preview, re-applying the active theme,
-                    // and reset the builder inputs to the active custom's values
-                    // (or defaults, if no custom is active).
+                    // and reset every builder input to the active custom's
+                    // values (or defaults, if no custom is active).
                     cancelPreview();
-                    const seed = activeCustomTheme || { base: 'nebula' as ThemeId, primary: '#8b7ec8', secondary: '#5fd4c4', text: null, fontDisplay: 'default' as FontId };
                     setBuilderName(activeCustomTheme?.name || '');
-                    setBuilderBase(seed.base);
-                    setBuilderPrimary(seed.primary);
-                    setBuilderSecondary(seed.secondary);
-                    setBuilderText(seed.text || '');
-                    setBuilderFont((seed.fontDisplay as FontId) || 'default');
+                    setBuilderBase(activeCustomTheme?.base || 'nebula');
+                    setBuilderPrimary(activeCustomTheme?.primary || '#8b7ec8');
+                    setBuilderSecondary(activeCustomTheme?.secondary || '#5fd4c4');
+                    setBuilderText(activeCustomTheme?.text || '');
+                    setBuilderTextMuted(activeCustomTheme?.textMuted || '');
+                    setBuilderBackground(activeCustomTheme?.background || '');
+                    setBuilderSurface(activeCustomTheme?.surface || '');
+                    setBuilderFont((activeCustomTheme?.fontDisplay as FontId) || 'default');
+                    setBuilderRadius((activeCustomTheme?.radius as RadiusId) || 'default');
                   }}
                   className="text-xs text-muted hover:text-default transition-colors"
                 >
