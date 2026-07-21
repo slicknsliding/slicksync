@@ -189,8 +189,8 @@ export function TraktIntegrationCard() {
           <div className="text-xs text-muted space-y-1">
             <p>
               Create a free Trakt API app at{' '}
-              <a href="https://trakt.tv/oauth/applications/new" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">trakt.tv/oauth/applications</a>,
-              then paste its Client ID and Secret here.
+              <a href="https://trakt.tv/oauth/applications" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">trakt.tv/oauth/applications</a>
+              {' '}(click <span className="font-medium">New Application</span>), then paste its Client ID and Secret here.
             </p>
             <p>For the app&apos;s <span className="font-medium">Redirect URI</span> field, enter <code className="px-1 rounded bg-surface-hover">urn:ietf:wg:oauth:2.0:oob</code>.</p>
           </div>

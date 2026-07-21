@@ -108,4 +108,27 @@ async function sendPushToAccount(prisma, accountId, payload) {
   return { sent, pruned }
 }
 
-module.exports = { isPushEnabled, getPublicKey, sendPushToAccount }
+/**
+ * Toggle-aware push: sends `payload` to an account's devices only when that
+ * account has the matching notification type enabled (the same
+ * `notifyOnActivity` / `notifyOnSync` / `notifyOnInvite` / `notifyOnVault`
+ * flags that gate the Discord notifications). Self-gating and fully
+ * best-effort so notification call sites can fire it with a single line
+ * without caring whether push is configured, the toggle is on, or the account
+ * has any subscribed devices. Deliberately independent of whether a Discord
+ * webhook is set, so phone notifications work even without Discord.
+ */
+async function notifyPushForType(prisma, accountId, typeKey, payload) {
+  try {
+    if (!accountId || !isPushEnabled()) return
+    const account = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+    let cfg = account?.sync
+    if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
+    if (!cfg || typeof cfg !== 'object' || cfg[typeKey] !== true) return
+    await sendPushToAccount(prisma, accountId, payload)
+  } catch {
+    // Never let a push failure disturb the Discord/bell path it rides alongside.
+  }
+}
+
+module.exports = { isPushEnabled, getPublicKey, sendPushToAccount, notifyPushForType }

@@ -280,6 +280,18 @@ function scheduleSyncs(frequency, prisma, getAccountId, scopedWhere, decrypt, re
             })
           } catch {}
         }
+        // Mirror to phone push (self-gates on notifyOnSync; no webhook needed).
+        if (syncCfg?.notifyOnSync === true && groups.length > 0) {
+          try {
+            const { notifyPushForType } = require('./pushNotifications')
+            await notifyPushForType(prisma, accountIdOrNull, 'notifyOnSync', {
+              title: 'Sync complete',
+              body: `${groups.length} group${groups.length !== 1 ? 's' : ''}, ${totalUsers} user${totalUsers !== 1 ? 's' : ''} synced`,
+              icon: '/android-chrome-192x192.png',
+              url: '/activity',
+            })
+          } catch {}
+        }
       } else {
         const mode = (req?.headers?.['x-sync-mode'] === 'advanced') ? 'advanced' : 'normal'
         const unsafe = req?.body?.unsafe === true || req?.body?.safe === false

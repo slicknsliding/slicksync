@@ -18,6 +18,7 @@
 
 const { searchCinemetaPosterByTitle } = require('./libraryHelpers')
 const { sendSessionStartNotification } = require('./sessionTracker')
+const { notifyPushForType } = require('./pushNotifications')
 
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
@@ -249,16 +250,26 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
       where: { id: rowId },
       select: { posterUrl: true, metadataItemId: true, metadataItemType: true, startTime: true },
     })
-    await sendSessionStartNotification(webhookUrl, {
-      itemName: displayName,
-      itemType: fresh?.metadataItemType === 'series' ? 'series' : 'movie',
-      itemId: fresh?.metadataItemId || null,
-      videoId: null,
-      season: null,
-      episode: null,
-      startTime: fresh?.startTime || new Date(),
-      poster: fresh?.posterUrl || null,
-    }, user)
+    if (webhookUrl) {
+      await sendSessionStartNotification(webhookUrl, {
+        itemName: displayName,
+        itemType: fresh?.metadataItemType === 'series' ? 'series' : 'movie',
+        itemId: fresh?.metadataItemId || null,
+        videoId: null,
+        season: null,
+        episode: null,
+        startTime: fresh?.startTime || new Date(),
+        poster: fresh?.posterUrl || null,
+      }, user)
+    }
+    // Mirror to phone push (self-gates on the same notifyOnActivity toggle).
+    const whoName = user.username || user.email || 'Someone'
+    await notifyPushForType(prisma, accountId, 'notifyOnActivity', {
+      title: `${whoName} started watching`,
+      body: displayName,
+      icon: fresh?.posterUrl || '/android-chrome-192x192.png',
+      url: '/activity',
+    })
   } catch (error) {
     heartbeat('pollOnce:start_notify_error', { message: error.message, rowId })
   }
@@ -285,6 +296,9 @@ async function pollOnce(prisma, accountId, config) {
 
     // Load "start watching" notification config once per poll. Only fetch
     // the user list (needed to attribute the notification) when it's on.
+    // Gated on the notifyOnActivity toggle alone, NOT on a webhook being set,
+    // so phone push can fire even for accounts that never configured Discord.
+    let notifyActivity = false
     let notifyWebhook = null
     let notifyUsers = []
     try {
@@ -292,8 +306,9 @@ async function pollOnce(prisma, accountId, config) {
       let cfg = account?.sync
       if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
       cfg = cfg || {}
-      if (cfg.notifyOnActivity === true && cfg.webhookUrl) {
-        notifyWebhook = cfg.webhookUrl
+      if (cfg.notifyOnActivity === true) {
+        notifyActivity = true
+        notifyWebhook = cfg.webhookUrl || null
         notifyUsers = await prisma.user.findMany({
           where: { accountId },
           select: { id: true, username: true, email: true, colorIndex: true },
@@ -362,7 +377,7 @@ async function pollOnce(prisma, accountId, config) {
 
         // Instant "started watching" notification for a genuinely new watch
         // (runs after the poster lookup so the embed can include it).
-        if (notifyWebhook && !existingRow) {
+        if (notifyActivity && !existingRow) {
           await maybeNotifyStart(prisma, accountId, notifyWebhook, notifyUsers, user.username, row.id, displayName)
         }
       }
