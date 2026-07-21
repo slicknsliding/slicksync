@@ -1,6 +1,7 @@
 const express = require('express')
 const crypto = require('crypto')
 const { postDiscord } = require('../utils/notify')
+const { notifyPushForType } = require('../utils/pushNotifications')
 const { validateStremioAuthKey } = require('../utils/stremio')
 const { formatCodeBlock, formatRelativeTime, parseSyncConfig, getAppVersion } = require('../utils/webhookHelpers')
 const { getUserAvatarUrl } = require('../utils/avatarUtils')
@@ -141,6 +142,13 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
             avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
           })
         }
+        // Push mirror (self-gates on notifyOnInvite; independent of webhook).
+        await notifyPushForType(prisma, accountId, 'notifyOnInvite', {
+          title: 'New invitation created',
+          body: `Code ${invitation.inviteCode}${invitation.groupName ? ` · ${invitation.groupName}` : ''}`,
+          icon: '/android-chrome-192x192.png',
+          url: '/invitations',
+        })
       } catch (webhookError) {
         console.error('Failed to send invitation webhook:', webhookError)
       }
@@ -507,6 +515,13 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
               avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
             })
           }
+          // Push mirror (self-gates on notifyOnInvite; independent of webhook).
+          await notifyPushForType(prisma, request.invitation.accountId, 'notifyOnInvite', {
+            title: `${newUser.username} joined`,
+            body: `Accepted invite${finalGroupName ? ` · ${finalGroupName}` : ''}`,
+            icon: '/android-chrome-192x192.png',
+            url: '/invitations',
+          })
         } catch (webhookError) {
           console.error('Failed to send user accepted webhook:', webhookError)
         }
@@ -1339,6 +1354,13 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
               avatar_url: avatarUrl || 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
             })
           }
+          // Push mirror (self-gates on notifyOnInvite; independent of webhook).
+          await notifyPushForType(prisma, invitation.accountId, 'notifyOnInvite', {
+            title: `${request.username} used different emails`,
+            body: `Request ${request.email} · Stremio ${stremioEmail}`,
+            icon: '/android-chrome-192x192.png',
+            url: '/invitations',
+          })
         } catch (webhookError) {
           console.error('Failed to send email mismatch webhook:', webhookError)
         }
@@ -1552,6 +1574,13 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
             avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
           })
         }
+        // Push mirror (self-gates on notifyOnInvite; independent of webhook).
+        await notifyPushForType(prisma, invitation.accountId, 'notifyOnInvite', {
+          title: `${newUser.username} joined`,
+          body: `Via invite${finalGroupName ? ` · ${finalGroupName}` : ''}`,
+          icon: '/android-chrome-192x192.png',
+          url: '/users',
+        })
       } catch (webhookError) {
         console.error('Failed to send user joined webhook:', webhookError)
       }

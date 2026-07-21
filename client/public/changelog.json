@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.23.0",
+    "date": "2026-07-21",
+    "title": "Push notifications for all four notification types + mobile bell fixes",
+    "features": [
+      "The Activity, Sync, Invite, and Vault toggles in Settings → Notifications now also fire native phone push (previously only new-episode alerts did). Each toggle still gates its Discord webhook exactly like before AND fires the corresponding push to any device that enabled it - so an installed PWA can start watching, sync-complete, invitation, and vault alerts land on your lock screen even when SlickSync is closed. Push and Discord are independent: you can enable push without ever configuring a webhook.",
+      "iOS PWA install: added the `apple-mobile-web-app-capable` meta tag. iOS only exposes the Push API to web apps launched in real standalone mode from the Home Screen (iOS 16.4+) - without that tag, iOS opens the icon inside Safari-chrome and PushManager never appears (which is why the toggle showed \"not supported\"). If you already added SlickSync to your Home Screen before this update, remove and re-add the icon so iOS re-reads the tag."
+    ],
+    "bugFixes": [
+      "Mobile notifications bell dropdown was getting cut off past the left edge of the screen on the Original layout: the bell rendered before page actions on the right side, so it wasn't flush to the true screen edge, and the dropdown (anchored `right-0` off the bell, ~320px wide) shot off-screen. Bell is now rendered LAST in the header's right section so it sits flush against the screen edge and its dropdown fits within the viewport.",
+      "Trakt setup link was hitting a Trakt 404 (\"Nothingness. The void.\") - Trakt redirects `/oauth/applications/new` into a broken portal path. Link now points to the plain `trakt.tv/oauth/applications` page with a hint to click \"New Application\" from there."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.22.0",
     "date": "2026-07-21",
     "title": "\"Coming up\" episode calendar + your Trakt watchlist in Discover",

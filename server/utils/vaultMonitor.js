@@ -4,6 +4,7 @@
 
 const { runCheck } = require('./vaultCheckers')
 const { postDiscord } = require('./notify')
+const { notifyPushForType } = require('./pushNotifications')
 
 let vaultTimer = null
 const DEFAULT_INTERVAL_HOURS = 6
@@ -22,9 +23,19 @@ function getNotifyConfig(cfg) {
   }
 }
 
-async function notify({ discordWebhookUrl }, { title, message }) {
+async function notify({ discordWebhookUrl }, { title, message }, ctx) {
   if (discordWebhookUrl) {
     await postDiscord(discordWebhookUrl, `**${title}**\n${message}`)
+  }
+  // Mirror to phone push (self-gates on notifyOnVault). Independent of Discord,
+  // so vault alerts reach an installed PWA even with no webhook configured.
+  if (ctx?.prisma && ctx?.accountId) {
+    await notifyPushForType(ctx.prisma, ctx.accountId, 'notifyOnVault', {
+      title,
+      body: message,
+      icon: '/android-chrome-192x192.png',
+      url: '/vault',
+    })
   }
 }
 
@@ -44,7 +55,9 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
       if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
       cfg = cfg || {}
       const notifyCfg = getNotifyConfig(cfg)
-      const hasNotifyChannel = notifyCfg.enabled && !!notifyCfg.discordWebhookUrl
+      // Toggle alone is enough — Discord is skipped downstream when there's no
+      // webhook, but phone push can still fire.
+      const hasNotifyChannel = notifyCfg.enabled
 
       const entries = await prisma.vaultEntry.findMany({
         where: { accountId: account.id, isActive: true },
@@ -80,7 +93,7 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
                 title: `⚠️ ${entry.name} check failed`,
                 message: `${entry.provider || entry.category}: ${result.message || 'Check failed'}`,
                 tags: ['warning'],
-              })
+              }, { prisma, accountId: account.id })
               await prisma.vaultEntry.update({ where: { id: entry.id }, data: { lastNotifiedAt: new Date() } })
             }
           } catch (err) {
@@ -102,7 +115,7 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
               title: `⏰ ${entry.name} ${daysUntilExpiry < 0 ? 'has expired' : 'expiring soon'}`,
               message: `${entry.provider || entry.category}: ${daysText}`,
               tags: ['hourglass'],
-            })
+            }, { prisma, accountId: account.id })
             await prisma.vaultEntry.update({ where: { id: entry.id }, data: { lastNotifiedAt: new Date() } })
           }
         }
