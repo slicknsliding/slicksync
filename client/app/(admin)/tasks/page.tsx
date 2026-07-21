@@ -3,11 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
-import { Button, Card, Badge, UserAvatar, ConfirmModal } from '@/components/ui';
+import { Button, Card, Badge, UserAvatar, ConfirmModal, Modal, Input } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { api, User } from '@/lib/api';
+import { api, User, Group, AddonSnapshot, BackupFile } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import {
   ArrowPathIcon,
@@ -28,6 +28,9 @@ import {
   CalendarDaysIcon,
   UserIcon,
   HeartIcon,
+  DocumentDuplicateIcon,
+  PaperAirplaneIcon,
+  ArrowUturnLeftIcon,
 } from '@heroicons/react/24/outline';
 
 // Task action card component
@@ -141,7 +144,55 @@ export default function TasksPage() {
         console.error('Failed to load users for Tasks selectors:', e);
       });
   }, []);
-  
+
+  // Addon Templates (Snapshots) - save a user's/group's current addon set,
+  // deploy it to any user later. Backend (/api/snapshots) already existed
+  // fully built but had no UI anywhere referencing it.
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [snapshots, setSnapshots] = useState<AddonSnapshot[]>([]);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+  const [isCreateSnapshotOpen, setIsCreateSnapshotOpen] = useState(false);
+  const [newSnapshotName, setNewSnapshotName] = useState('');
+  const [newSnapshotDescription, setNewSnapshotDescription] = useState('');
+  const [newSnapshotSourceType, setNewSnapshotSourceType] = useState<'user' | 'group'>('user');
+  const [newSnapshotSourceId, setNewSnapshotSourceId] = useState('');
+  const [creatingSnapshot, setCreatingSnapshot] = useState(false);
+  const [deployingSnapshot, setDeployingSnapshot] = useState<AddonSnapshot | null>(null);
+  const [deployTargetUserId, setDeployTargetUserId] = useState('');
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deletingSnapshotId, setDeletingSnapshotId] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getGroups().then(setGroups).catch(() => {});
+  }, []);
+
+  const fetchSnapshots = () => {
+    setLoadingSnapshots(true);
+    api.getSnapshots()
+      .then(setSnapshots)
+      .catch((e: any) => toast.error(e.message || 'Failed to load addon templates'))
+      .finally(() => setLoadingSnapshots(false));
+  };
+  useEffect(fetchSnapshots, []);
+
+  // Restore from Backup - Automatic Backups already wrote timestamped
+  // config-backup-*.json files to data/backup/, but nothing in the UI ever
+  // listed, downloaded, or restored from them - only a manual "Backup Now"
+  // trigger and a frequency picker existed.
+  const [backups, setBackups] = useState<BackupFile[]>([]);
+  const [loadingBackups, setLoadingBackups] = useState(false);
+  const [restoringBackup, setRestoringBackup] = useState<string | null>(null);
+  const [deletingBackup, setDeletingBackup] = useState<string | null>(null);
+
+  const fetchBackups = () => {
+    setLoadingBackups(true);
+    api.listBackups()
+      .then(setBackups)
+      .catch((e: any) => toast.error(e.message || 'Failed to load backups'))
+      .finally(() => setLoadingBackups(false));
+  };
+  useEffect(fetchBackups, []);
+
   // Scheduling settings
   const [syncFrequency, setSyncFrequency] = useState('0');
   const [backupDays, setBackupDays] = useState(0);
@@ -553,6 +604,7 @@ export default function TasksPage() {
     try {
       await api.runBackupNow();
       toast.success('Backup started');
+      fetchBackups();
     } catch (e: any) {
       toast.error(e.message || 'Failed to start backup');
     } finally {
@@ -568,6 +620,120 @@ export default function TasksPage() {
     } catch (e: any) {
       toast.error(e.message || 'Failed to update backup schedule');
     }
+  };
+
+  const formatBackupDate = (iso: string) => new Date(iso).toLocaleString();
+
+  const handleDownloadBackup = async (filename: string) => {
+    try {
+      await api.downloadBackup(filename);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to download backup');
+    }
+  };
+
+  // DESTRUCTIVE - replaces all current users/groups/addons. Reload after a
+  // successful restore so every part of the app (this page included) picks
+  // up the new data instead of continuing to show now-stale state.
+  const handleRestoreBackup = (backup: BackupFile) => {
+    openConfirm({
+      title: 'Restore Backup',
+      description: `This replaces ALL current users, groups, and addons with the contents of this backup (${formatBackupDate(backup.createdAt)}). Anything created or changed since then will be lost. This cannot be undone.`,
+      variant: 'danger',
+      onConfirm: async () => {
+        setRestoringBackup(backup.filename);
+        try {
+          const result = await api.restoreBackup(backup.filename);
+          toast.success(`Restored ${result.users.created + result.users.reused} users, ${result.groups.created + result.groups.reused} groups, ${result.addons.created + result.addons.reused} addons`);
+          setTimeout(() => window.location.reload(), 1500);
+        } catch (e: any) {
+          toast.error(e.message || 'Failed to restore backup');
+          setRestoringBackup(null);
+        }
+      },
+    });
+  };
+
+  const handleDeleteBackup = (backup: BackupFile) => {
+    openConfirm({
+      title: 'Delete Backup',
+      description: `Delete the backup from ${formatBackupDate(backup.createdAt)}? This cannot be undone.`,
+      variant: 'danger',
+      onConfirm: async () => {
+        setDeletingBackup(backup.filename);
+        try {
+          await api.deleteBackup(backup.filename);
+          toast.success('Backup deleted');
+          fetchBackups();
+        } catch (e: any) {
+          toast.error(e.message || 'Failed to delete backup');
+        } finally {
+          setDeletingBackup(null);
+        }
+      },
+    });
+  };
+
+  // Addon Template actions
+  const handleCreateSnapshot = async () => {
+    if (!newSnapshotName.trim() || !newSnapshotSourceId) {
+      toast.error('Name and source are required');
+      return;
+    }
+    setCreatingSnapshot(true);
+    try {
+      await api.createSnapshot({
+        name: newSnapshotName.trim(),
+        description: newSnapshotDescription.trim() || undefined,
+        sourceType: newSnapshotSourceType,
+        sourceId: newSnapshotSourceId,
+      });
+      toast.success('Template saved');
+      setIsCreateSnapshotOpen(false);
+      setNewSnapshotName('');
+      setNewSnapshotDescription('');
+      setNewSnapshotSourceId('');
+      fetchSnapshots();
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to save template');
+    } finally {
+      setCreatingSnapshot(false);
+    }
+  };
+
+  const handleDeploySnapshot = async () => {
+    if (!deployingSnapshot || !deployTargetUserId) return;
+    setIsDeploying(true);
+    try {
+      const result = await api.deploySnapshot(deployingSnapshot.id, deployTargetUserId);
+      toast.success(`Deployed ${result.deployed} addon${result.deployed !== 1 ? 's' : ''}${result.failed ? `, ${result.failed} failed` : ''}`);
+      setDeployingSnapshot(null);
+      setDeployTargetUserId('');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to deploy template');
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  const handleDeleteSnapshot = (snapshot: AddonSnapshot) => {
+    openConfirm({
+      title: 'Delete Template',
+      description: `Delete the "${snapshot.name}" template? This cannot be undone.`,
+      variant: 'danger',
+      onConfirm: async () => {
+        setDeletingSnapshotId(snapshot.id);
+        try {
+          await api.deleteSnapshot(snapshot.id);
+          toast.success('Template deleted');
+          fetchSnapshots();
+        } catch (e: any) {
+          toast.error(e.message || 'Failed to delete template');
+        } finally {
+          setDeletingSnapshotId(null);
+        }
+      },
+    });
   };
 
   // Sync actions
@@ -795,6 +961,68 @@ export default function TasksPage() {
             onChange={handleAddonFileChange}
             className="hidden"
           />
+        </PageSection>
+
+        {/* Addon Templates - the backend (/api/snapshots) already existed
+            fully built (save a user's/group's current addon set, deploy it
+            to any user later) but had no UI anywhere calling it. */}
+        <PageSection delay={0.12}>
+          <TaskCard
+            icon={<DocumentDuplicateIcon className="w-5 h-5 text-secondary" />}
+            iconBg="bg-secondary-muted"
+            title="Addon Templates"
+            description="Save a user's or group's addon set, deploy it to anyone"
+          >
+            <ActionButton
+              onClick={() => setIsCreateSnapshotOpen(true)}
+              icon={<DocumentDuplicateIcon className="w-4 h-4" />}
+              label="Save New Template"
+            />
+          </TaskCard>
+          {!loadingSnapshots && snapshots.length === 0 && (
+            <p className="text-xs text-muted mb-6 -mt-3">No templates saved yet.</p>
+          )}
+          {snapshots.length > 0 && (
+            <Card padding="lg" className="mb-6">
+              <div className="space-y-2">
+                {snapshots.map((snap) => {
+                  const sourceName = snap.sourceType === 'user'
+                    ? (users.find(u => u.id === snap.sourceId)?.name || users.find(u => u.id === snap.sourceId)?.email || 'Unknown user')
+                    : (groups.find(g => g.id === snap.sourceId)?.name || 'Unknown group');
+                  return (
+                    <div key={snap.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-default bg-subtle">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-default truncate">{snap.name}</p>
+                        <p className="text-xs text-muted truncate">
+                          {snap.addonCount} addon{snap.addonCount !== 1 ? 's' : ''} &middot; {snap.sourceType === 'user' ? 'User' : 'Group'}: {sourceName} &middot; {new Date(snap.createdAt).toLocaleDateString()}
+                        </p>
+                        {snap.description && <p className="text-xs text-subtle truncate mt-0.5">{snap.description}</p>}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => { setDeployingSnapshot(snap); setDeployTargetUserId(''); }}
+                          leftIcon={<PaperAirplaneIcon className="w-4 h-4" />}
+                        >
+                          Deploy
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDeleteSnapshot(snap)}
+                          isLoading={deletingSnapshotId === snap.id}
+                          leftIcon={deletingSnapshotId !== snap.id ? <TrashIcon className="w-4 h-4" /> : undefined}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
         </PageSection>
 
         {/* Library */}
@@ -1045,9 +1273,33 @@ export default function TasksPage() {
                 Backup Now
               </Button>
             </div>
-            <p className="text-xs text-muted mt-2">
-              Files are saved under server folder: data/backup/
-            </p>
+            {backups.length > 0 ? (
+              <div className="mt-4 pt-4 border-t border-default space-y-2 max-h-64 overflow-y-auto">
+                {backups.map((backup) => (
+                  <div key={backup.filename} className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-default bg-subtle">
+                    <div className="min-w-0">
+                      <p className="text-sm text-default truncate">{formatBackupDate(backup.createdAt)}</p>
+                      <p className="text-xs text-muted">{(backup.size / 1024).toFixed(1)} KB</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button variant="ghost" size="sm" onClick={() => handleDownloadBackup(backup.filename)} title="Download">
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleRestoreBackup(backup)} isLoading={restoringBackup === backup.filename} title="Restore this backup">
+                        {restoringBackup !== backup.filename && <ArrowUturnLeftIcon className="w-4 h-4" />}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteBackup(backup)} isLoading={deletingBackup === backup.filename} title="Delete">
+                        {deletingBackup !== backup.filename && <TrashIcon className="w-4 h-4 text-error" />}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted mt-2">
+                {loadingBackups ? 'Loading backups...' : 'No backups yet - click "Backup Now" or wait for the schedule. Files are saved under server folder: data/backup/'}
+              </p>
+            )}
           </Card>
         </PageSection>
 
@@ -1264,6 +1516,109 @@ export default function TasksPage() {
         variant={confirmConfig.variant}
         confirmText="Confirm"
       />
+
+      {/* Save Addon Template */}
+      <Modal
+        isOpen={isCreateSnapshotOpen}
+        onClose={() => setIsCreateSnapshotOpen(false)}
+        title="Save Addon Template"
+        description="Capture a user's or group's current addon set as a reusable template"
+        size="md"
+      >
+        <div className="space-y-4">
+          <Input
+            label="Template Name"
+            value={newSnapshotName}
+            onChange={(e) => setNewSnapshotName(e.target.value)}
+            placeholder="e.g. Standard Streaming Set"
+            size="sm"
+          />
+          <Input
+            label="Description (optional)"
+            value={newSnapshotDescription}
+            onChange={(e) => setNewSnapshotDescription(e.target.value)}
+            placeholder="What's in this template?"
+            size="sm"
+          />
+          <div>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Source</label>
+            <div className="flex gap-2 mb-2">
+              <Button
+                variant={newSnapshotSourceType === 'user' ? 'primary' : 'secondary'}
+                size="sm"
+                onClick={() => { setNewSnapshotSourceType('user'); setNewSnapshotSourceId(''); }}
+              >
+                User
+              </Button>
+              <Button
+                variant={newSnapshotSourceType === 'group' ? 'primary' : 'secondary'}
+                size="sm"
+                onClick={() => { setNewSnapshotSourceType('group'); setNewSnapshotSourceId(''); }}
+              >
+                Group
+              </Button>
+            </div>
+            <select
+              value={newSnapshotSourceId}
+              onChange={(e) => setNewSnapshotSourceId(e.target.value)}
+              className="input-base px-3 py-2 w-full text-sm"
+            >
+              <option value="">Select a {newSnapshotSourceType}...</option>
+              {(newSnapshotSourceType === 'user' ? users : groups).map((item: any) => (
+                <option key={item.id} value={item.id}>
+                  {item.name || item.email || item.id}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" size="sm" onClick={() => setIsCreateSnapshotOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" onClick={handleCreateSnapshot} isLoading={creatingSnapshot}>
+              Save Template
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Deploy Addon Template */}
+      <Modal
+        isOpen={!!deployingSnapshot}
+        onClose={() => setDeployingSnapshot(null)}
+        title={deployingSnapshot ? `Deploy "${deployingSnapshot.name}"` : 'Deploy Template'}
+        description={deployingSnapshot ? `Push this template's ${deployingSnapshot.addonCount} addon${deployingSnapshot.addonCount !== 1 ? 's' : ''} onto a user's account` : undefined}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Target User</label>
+            <select
+              value={deployTargetUserId}
+              onChange={(e) => setDeployTargetUserId(e.target.value)}
+              className="input-base px-3 py-2 w-full text-sm"
+            >
+              <option value="">Select a user...</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name || user.email || user.id} ({user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'})
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-warning">
+            This replaces the target user&apos;s current addon set.
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" size="sm" onClick={() => setDeployingSnapshot(null)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" onClick={handleDeploySnapshot} isLoading={isDeploying} disabled={!deployTargetUserId}>
+              Deploy
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }
