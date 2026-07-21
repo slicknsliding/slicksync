@@ -313,49 +313,23 @@ export function NebulaPageHeading({
   );
 }
 
-// Compact inline KPI strip for NebulaPageHeading's `stats` slot - one small
-// glass pill (same background/border language as NebulaStatCard, just
-// condensed) holding all the stats side by side, each with its own small
-// icon badge alternating primary/secondary same as NebulaStatCard's own
-// colorIndex convention. First version of this was bare numbers with thin
-// dividers and no card/icon at all - functionally smaller than a full
-// NebulaStatCard grid like it needed to be, but read as a plain, undressed
-// afterthought next to the rest of Nebula's glass-panel look. Scales up
-// from md, matching NebulaCompactStatCard's breakpoints, to sit at
-// Dashboard-stat-card size on desktop per explicit request - stays compact
-// below md since it has to share a row with the title on mobile.
+// Compact inline KPI strip for NebulaPageHeading's `stats` slot - a row of
+// separate NebulaCompactStatCards with a gap between them (same individual-
+// card look Groups/Users use in their own stat row), not one shared pill.
+// An earlier version used one continuous box with divide-x border lines
+// between segments, which read as visually different from - and less
+// polished than - the separate-card look everywhere else Nebula's compact
+// stats show up.
 export function NebulaHeaderStats({
   stats,
 }: {
   stats: Array<{ label: string; value: string | number; icon?: ReactNode }>;
 }) {
   return (
-    <div
-      className="flex items-center divide-x divide-default/30 rounded-2xl"
-      style={nebulaGlassStyle}
-    >
-      {stats.map((s, i) => {
-        const isPrimary = i % 2 === 0;
-        return (
-          <div key={s.label} className="flex items-center gap-2.5 md:gap-4 px-3 sm:px-4 md:px-6 py-2 md:py-4">
-            {s.icon && (
-              <div
-                className="w-8 h-8 md:w-11 md:h-11 rounded-lg md:rounded-xl flex items-center justify-center shrink-0"
-                style={{
-                  background: isPrimary ? 'var(--color-primary-muted)' : 'var(--color-secondary-muted)',
-                  color: isPrimary ? 'var(--color-primary)' : 'var(--color-secondary)',
-                }}
-              >
-                {s.icon}
-              </div>
-            )}
-            <div className="text-left">
-              <div className="text-base md:text-3xl font-bold font-display text-default leading-none">{s.value}</div>
-              <div className="text-[10px] md:text-sm text-muted mt-0.5 md:mt-1 whitespace-nowrap">{s.label}</div>
-            </div>
-          </div>
-        );
-      })}
+    <div className="flex items-center gap-2 md:gap-4">
+      {stats.map((s, i) => (
+        <NebulaCompactStatCard key={s.label} label={s.label} value={s.value} icon={s.icon} colorIndex={i} />
+      ))}
     </div>
   );
 }

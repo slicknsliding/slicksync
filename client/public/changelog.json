@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.16.13",
+    "date": "2026-07-21",
+    "title": "Addons' header stats: gaps between cards instead of divider lines",
+    "features": [
+      "Addons' header stat strip used one continuous box with vertical divider lines between Total Addons/Protected/Assignments - now three separate cards with a gap between them, matching the individual-card look Groups/Users already use in their own stat row. NebulaHeaderStats now just renders NebulaCompactStatCard per stat instead of its own separate divide-x styling."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.16.12",
     "date": "2026-07-21",
     "title": "Groups/Users/Addons stat cards sized up to match Dashboard on desktop",
