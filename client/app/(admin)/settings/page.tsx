@@ -14,6 +14,7 @@ import { useDefaultViewMode } from '@/lib/viewMode';
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
+import { TraktIntegrationCard } from '@/components/ui/TraktIntegrationCard';
 import {
   PaintBrushIcon,
   SwatchIcon,
@@ -933,6 +934,11 @@ export default function SettingsPage() {
               </div>
             </div>
           </Card>
+        </PageSection>
+
+        {/* Trakt integration */}
+        <PageSection delay={0.175} className="mb-6">
+          <TraktIntegrationCard />
         </PageSection>
 
         {/* API Key */}

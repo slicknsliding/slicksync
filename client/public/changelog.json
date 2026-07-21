@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.21.0",
+    "date": "2026-07-21",
+    "title": "Trakt integration - auto-scrobble everything you watch",
+    "features": [
+      "New Trakt integration in Settings: connect your Trakt account and SlickSync automatically scrobbles everything you watch to your Trakt profile. It works for BOTH Nuvio and Stremio because SlickSync scrobbles from its own unified watch record (the same history that powers Metrics and Continue Watching) - Trakt never talks to either provider, so it doesn't matter which one played the title, and even usenet watches get logged.",
+      "Simple, secure setup: create a free Trakt API app (one-time), paste the Client ID and Secret into Settings, click Connect, and enter the short code Trakt shows you - the classic device-code flow, no redirect URLs to wrangle. Your secrets and tokens stay server-side and never leave the box; tokens refresh themselves.",
+      "Only watches from the moment you connect onward are sent, so linking Trakt never floods your existing profile with years of back-catalogue. A background sweep syncs new watches every few minutes; a \"Sync now\" button forces it immediately, and \"Last scrobble sweep\" shows when it last ran."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Fixed the previous release's app/push build not compiling on deploy (a strict-TypeScript type mismatch in the push-subscription key handling)."
+    ]
+  },
+  {
     "version": "1.20.0",
     "date": "2026-07-21",
     "title": "Install SlickSync as an app + native push notifications",
