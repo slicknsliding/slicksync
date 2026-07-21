@@ -6,7 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { Button, Card, Badge, Modal, ConfirmModal, Avatar } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
-import { useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, FontId, CustomTheme } from '@/lib/theme';
+import { useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, FontId, CustomTheme, SavedCustomTheme } from '@/lib/theme';
 import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -178,6 +178,87 @@ const ThemeCard = memo(function ThemeCard({
   );
 });
 
+// Same visual card shape as ThemeCard, but takes a user-created SavedCustomTheme
+// (which has no themeMeta entry) and adds a delete affordance in the corner —
+// built-in themes shouldn't ever be deletable, so this is a separate component
+// rather than a `deletable?` prop on ThemeCard.
+const CustomThemeCard = memo(function CustomThemeCard({
+  theme,
+  isSelected,
+  onSelect,
+  onDelete,
+}: {
+  theme: SavedCustomTheme;
+  isSelected: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+}) {
+  // Derive the base theme's structural colors for the mini-mockup preview so
+  // the card visually resembles the built-in one it's based on.
+  const base = themeMeta[theme.base];
+  return (
+    <motion.button
+      whileHover={{ scale: 1.02, y: -2 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onSelect}
+      className={`relative p-3 rounded-xl border-2 transition-all text-left w-full card ${
+        isSelected ? 'border-primary bg-primary-muted' : 'border-default'
+      }`}
+    >
+      {isSelected && (
+        <div className="absolute top-2 right-8 w-5 h-5 rounded-full flex items-center justify-center bg-primary">
+          <CheckIcon className="w-3 h-3" style={{ color: 'var(--color-bg)' }} />
+        </div>
+      )}
+      {/* Delete — stopPropagation so a delete-click doesn't ALSO select the
+          theme on its way to being removed. */}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        aria-label={`Delete ${theme.name}`}
+        title={`Delete ${theme.name}`}
+        className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center bg-surface-hover hover:bg-red-500/70 hover:text-white text-muted transition-colors"
+      >
+        <TrashIcon className="w-3 h-3" />
+      </button>
+
+      {/* Mini mockup — reuses the base theme's structural colors but paints
+          the accents from the custom's own primary/secondary. */}
+      <div
+        className="w-full h-20 rounded-lg mb-2 overflow-hidden border border-default"
+        style={{ backgroundColor: base.colors.bg }}
+      >
+        <div className="flex h-full">
+          <div className="w-8 h-full flex flex-col gap-1 p-1.5" style={{ backgroundColor: base.colors.surface }}>
+            <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: theme.primary }} />
+            <div className="w-full h-1 rounded-full opacity-30" style={{ backgroundColor: '#fff' }} />
+            <div className="w-full h-1 rounded-full opacity-30" style={{ backgroundColor: '#fff' }} />
+          </div>
+          <div className="flex-1 p-2 flex flex-col gap-1.5">
+            <div className="w-12 h-1.5 rounded-full opacity-40" style={{ backgroundColor: '#fff' }} />
+            <div className="flex gap-1 mt-1">
+              <div className="w-6 h-6 rounded" style={{ backgroundColor: base.colors.surface }} />
+              <div className="w-6 h-6 rounded" style={{ backgroundColor: base.colors.surface }} />
+              <div className="w-6 h-6 rounded" style={{ backgroundColor: theme.primary, opacity: 0.3 }} />
+            </div>
+            <div className="w-8 h-2 rounded mt-auto" style={{ background: `linear-gradient(90deg, ${theme.primary}, ${theme.secondary})` }} />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-1 mb-2">
+        <div className="w-4 h-4 rounded-full border border-white/10" style={{ backgroundColor: base.colors.bg }} title="Background (from base)" />
+        <div className="w-4 h-4 rounded-full border border-white/10" style={{ backgroundColor: base.colors.surface }} title="Surface (from base)" />
+        <div className="w-4 h-4 rounded-full border border-white/10" style={{ backgroundColor: theme.primary }} title="Primary" />
+        <div className="w-4 h-4 rounded-full border border-white/10" style={{ backgroundColor: theme.secondary }} title="Secondary" />
+      </div>
+
+      <p className="font-medium text-sm text-default truncate">{theme.name}</p>
+      <p className="text-xs text-muted">Custom · based on {base.name}</p>
+    </motion.button>
+  );
+});
+
 // Layout mode card - structure preview only (sidebar-vs-topbar), not colors,
 // since layout mode is orthogonal to the Theme setting above and should read
 // as "shape," not "another color choice."
@@ -316,16 +397,26 @@ function SettingRow({
 }
 
 export default function SettingsPage() {
-  const { themeId, setTheme, hideSensitive, toggleHideSensitive, isCustom, customTheme, applyCustom, previewCustom, cancelPreview } = useTheme();
+  const {
+    themeId, setTheme, hideSensitive, toggleHideSensitive,
+    isCustom, activeCustomTheme, savedCustomThemes,
+    saveCustomTheme, updateCustomTheme, deleteCustomTheme,
+    previewCustom, cancelPreview,
+  } = useTheme();
+  // Confirmation modal for deleting a saved custom theme.
+  const [pendingDelete, setPendingDelete] = useState<SavedCustomTheme | null>(null);
   const { layoutMode, setLayoutMode } = useLayoutMode();
-  // Custom-theme builder working state, seeded from the saved custom theme.
-  const [builderBase, setBuilderBase] = useState<ThemeId>(customTheme.base);
-  const [builderPrimary, setBuilderPrimary] = useState(customTheme.primary);
-  const [builderSecondary, setBuilderSecondary] = useState(customTheme.secondary);
+  // Custom-theme builder working state. When a custom is active, seed from it
+  // (so the builder shows what you're currently using); otherwise fresh defaults.
+  const seedFrom: CustomTheme = activeCustomTheme || { base: 'nebula', primary: '#8b7ec8', secondary: '#5fd4c4', text: null, fontDisplay: 'default' };
+  const [builderName, setBuilderName] = useState<string>(activeCustomTheme?.name || '');
+  const [builderBase, setBuilderBase] = useState<ThemeId>(seedFrom.base);
+  const [builderPrimary, setBuilderPrimary] = useState(seedFrom.primary);
+  const [builderSecondary, setBuilderSecondary] = useState(seedFrom.secondary);
   // Text and font are optional: null/'default' means "use the base theme's own
   // text color / display font". A concrete value overrides on top.
-  const [builderText, setBuilderText] = useState<string>(customTheme.text || '');
-  const [builderFont, setBuilderFont] = useState<FontId>((customTheme.fontDisplay as FontId) || 'default');
+  const [builderText, setBuilderText] = useState<string>(seedFrom.text || '');
+  const [builderFont, setBuilderFont] = useState<FontId>((seedFrom.fontDisplay as FontId) || 'default');
   // Assemble the current builder state into a CustomTheme so every change site
   // can call `previewCustom(buildDraft())` without repeating five fields.
   const buildDraft = (): CustomTheme => ({
@@ -335,15 +426,16 @@ export default function SettingsPage() {
     text: builderText.trim() ? builderText.trim() : null,
     fontDisplay: builderFont,
   });
-  // Re-seed the builder when the saved custom theme changes out from under it
-  // (e.g. cross-device sync arrived after mount, or another tab saved a change).
+  // Re-seed the builder when the active custom theme changes out from under
+  // it (cross-device sync, or the user selects a different custom to edit).
   useEffect(() => {
-    setBuilderBase(customTheme.base);
-    setBuilderPrimary(customTheme.primary);
-    setBuilderSecondary(customTheme.secondary);
-    setBuilderText(customTheme.text || '');
-    setBuilderFont((customTheme.fontDisplay as FontId) || 'default');
-  }, [customTheme]);
+    setBuilderName(activeCustomTheme?.name || '');
+    setBuilderBase(activeCustomTheme?.base || 'nebula');
+    setBuilderPrimary(activeCustomTheme?.primary || '#8b7ec8');
+    setBuilderSecondary(activeCustomTheme?.secondary || '#5fd4c4');
+    setBuilderText(activeCustomTheme?.text || '');
+    setBuilderFont((activeCustomTheme?.fontDisplay as FontId) || 'default');
+  }, [activeCustomTheme]);
   // Revert any unsaved live preview when leaving Settings (a saved theme is a
   // no-op here since cancelPreview just re-applies whatever's active). Kept
   // in a ref so the unmount cleanup uses the latest active-theme state, not a
@@ -588,8 +680,19 @@ export default function SettingsPage() {
                   key={id}
                   themeId={id}
                   meta={themeMeta[id]}
-                  isSelected={themeId === id && !isCustom}
+                  isSelected={themeId === id}
                   onSelect={() => setTheme(id)}
+                />
+              ))}
+              {/* User-created themes rendered alongside the built-ins, with a
+                  delete button. Built-ins are never deletable. */}
+              {savedCustomThemes.map((t) => (
+                <CustomThemeCard
+                  key={t.id}
+                  theme={t}
+                  isSelected={themeId === t.id}
+                  onSelect={() => setTheme(t.id)}
+                  onDelete={() => setPendingDelete(t)}
                 />
               ))}
             </div>
@@ -612,6 +715,20 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium mb-2 text-muted">Theme name</label>
+                <input
+                  type="text"
+                  value={builderName}
+                  onChange={(e) => setBuilderName(e.target.value)}
+                  placeholder={`Custom theme ${savedCustomThemes.length + 1}`}
+                  className="input-base px-3 py-2 text-sm w-full max-w-xs"
+                />
+                <p className="text-[11px] text-muted mt-1">
+                  Saved themes appear alongside the built-in ones above.
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium mb-2 text-muted">Base (background, surfaces, text)</label>
                 <select
@@ -720,25 +837,63 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 pt-1">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => applyCustom(buildDraft())}
-                >
-                  {isCustom ? 'Save changes' : 'Use this theme'}
-                </Button>
+              <div className="flex items-center gap-3 pt-1 flex-wrap">
+                {/* When a custom is currently active, offer BOTH: update it in
+                    place OR fork the current builder state into a brand new
+                    saved theme. When nothing custom is active, only "Save as
+                    new" makes sense. */}
+                {activeCustomTheme ? (
+                  <>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => {
+                        updateCustomTheme(activeCustomTheme.id, buildDraft(), builderName);
+                        toast.success(`Updated "${(builderName.trim() || activeCustomTheme.name)}"`);
+                      }}
+                    >
+                      Update &quot;{activeCustomTheme.name}&quot;
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        const id = saveCustomTheme(buildDraft(), builderName);
+                        const created = builderName.trim() || `Custom theme ${savedCustomThemes.length + 1}`;
+                        toast.success(`Saved "${created}" as a new theme`);
+                        void id;
+                      }}
+                    >
+                      Save as new theme
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      saveCustomTheme(buildDraft(), builderName);
+                      const created = builderName.trim() || `Custom theme ${savedCustomThemes.length + 1}`;
+                      toast.success(`Saved "${created}" as a new theme`);
+                    }}
+                  >
+                    Save as new theme
+                  </Button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
                     // Discard the live preview, re-applying the active theme,
-                    // and reset the builder inputs to the saved custom values.
+                    // and reset the builder inputs to the active custom's values
+                    // (or defaults, if no custom is active).
                     cancelPreview();
-                    setBuilderBase(customTheme.base);
-                    setBuilderPrimary(customTheme.primary);
-                    setBuilderSecondary(customTheme.secondary);
-                    setBuilderText(customTheme.text || '');
-                    setBuilderFont((customTheme.fontDisplay as FontId) || 'default');
+                    const seed = activeCustomTheme || { base: 'nebula' as ThemeId, primary: '#8b7ec8', secondary: '#5fd4c4', text: null, fontDisplay: 'default' as FontId };
+                    setBuilderName(activeCustomTheme?.name || '');
+                    setBuilderBase(seed.base);
+                    setBuilderPrimary(seed.primary);
+                    setBuilderSecondary(seed.secondary);
+                    setBuilderText(seed.text || '');
+                    setBuilderFont((seed.fontDisplay as FontId) || 'default');
                   }}
                   className="text-xs text-muted hover:text-default transition-colors"
                 >
@@ -1132,6 +1287,24 @@ export default function SettingsPage() {
         name={isPublicInstance ? (accountInfo?.uuid || accountInfo?.email || 'Admin') : 'Administrator'}
         currentAvatarUrl={accountInfo?.avatarUrl}
         onSave={handleAvatarSave}
+      />
+
+      {/* Confirm delete for a saved custom theme. Deleting reverts to Nebula
+          if it was the active theme (handled inside deleteCustomTheme). */}
+      <ConfirmModal
+        isOpen={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          const name = pendingDelete.name;
+          deleteCustomTheme(pendingDelete.id);
+          setPendingDelete(null);
+          toast.success(`Deleted "${name}"`);
+        }}
+        title="Delete custom theme"
+        description={pendingDelete ? `Delete "${pendingDelete.name}"? This can't be undone.` : ''}
+        confirmText="Delete"
+        variant="danger"
       />
     </>
   );
