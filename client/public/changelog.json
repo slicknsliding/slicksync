@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.26.0",
+    "date": "2026-07-22",
+    "title": "Wildly different fonts, deeper theme customization, Nuvio badge gets a diagonal slash",
+    "features": [
+      "Font picker in Build-your-own-theme: replaced Outfit / Inter / Roboto / Playfair Display (which all felt like variations of the same modern sans) with six genuinely different aesthetics. New lineup is Default (Space Grotesk), Poppins (rounded sans), Merriweather (classic serif), JetBrains Mono (monospace), Bebas Neue (condensed display), Caveat (handwritten script), and Orbitron (sci-fi geometric). Each label describes the style so you know what you're picking without previewing every one.",
+      "Four more things to customize when building a theme: (1) muted text color for secondary labels and captions, (2) background color, (3) surface / card color, and (4) a corner-roundness preset (Square, Standard, Rounded, Extra rounded). Each color override is optional — leave blank to inherit the base theme's own value. The roundness buttons preview their own preset ON the button itself so you can see what you're picking.",
+      "Nuvio identity badge: the blue-and-orange split is now a diagonal `/` slash instead of a straight vertical line, everywhere the badge appears (user cards, group details, Media Detail modal's \"Open in Nuvio\" button). Angle tuned for the wide-thin pill aspect ratio so the divider reads as a proper slash, not a near-horizontal streak."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Old saved custom themes that used one of the removed fonts (Outfit/Inter/Roboto/Playfair) silently fall back to Default on next load — no data loss, just an unknown font id ignored."
+    ]
+  },
+  {
     "version": "1.25.1",
     "date": "2026-07-22",
     "title": "Defensive-coding hardening for public-repo safety",

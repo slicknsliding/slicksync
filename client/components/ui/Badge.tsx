@@ -80,8 +80,13 @@ function getBadgeStyles(variant: BadgeVariant) {
         borderColor: 'rgba(167, 139, 250, 0.25)',
       };
     case 'nuvio':
+      // Two-tone Nuvio identity: blue and orange, split by a diagonal `/`
+      // instead of a straight vertical line. Angle steepened from 90deg to
+      // 115deg so the boundary reads as a slash on the pill's wide-thin
+      // aspect ratio (a mathematical 45deg gradient would look near-flat
+      // horizontal on a pill this shape).
       return {
-        background: 'linear-gradient(90deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
+        background: 'linear-gradient(115deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
         color: 'rgb(186, 208, 240)',
         borderColor: 'rgba(255, 152, 0, 0.18)',
       };

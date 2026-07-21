@@ -1799,7 +1799,11 @@ export interface ThemePref {
     primary: string;
     secondary: string;
     text?: string | null;
+    textMuted?: string | null;
+    background?: string | null;
+    surface?: string | null;
     fontDisplay?: string | null;
+    radius?: string | null;
   }>;
   // Legacy pre-v1.25 single-slot shape (kept for one-way read compat).
   custom?: {
