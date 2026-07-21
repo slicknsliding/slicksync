@@ -8,10 +8,10 @@ import { Header } from '@/components/layout/Header';
 import { Button, Card, Avatar, Badge, StatusBadge, SearchInput, ConfirmModal, SyncBadge, ToggleSwitch, Modal, Input, UserAvatar, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaTopbar, NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
-import { api, User, Group } from '@/lib/api';
+import { api, User, Group, MetricsData } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
@@ -70,6 +70,9 @@ export default function UsersPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  // Live nowPlaying feed, for the "Active" stat below - see its own comment
+  // for why this is a separate fetch from users/groups.
+  const [nowPlaying, setNowPlaying] = useState<MetricsData['nowPlaying']>([]);
 
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -105,6 +108,17 @@ export default function UsersPage() {
     };
 
     fetchData();
+  }, []);
+
+  // Live nowPlaying, for the "Active" stat below - separate from the
+  // users/groups fetch above so a metrics-endpoint hiccup can't block the
+  // page's main data from loading. Period value doesn't matter (nowPlaying
+  // is live, not period-filtered), 30d just matches what the rest of the
+  // app already requests so responses share the server-side cache.
+  useEffect(() => {
+    api.getMetrics('30d')
+      .then((data) => setNowPlaying(data.nowPlaying || []))
+      .catch(() => {});
   }, []);
 
   // Transform users for display
@@ -172,7 +186,15 @@ export default function UsersPage() {
 
   // Nebula's stat row - real counts from the same usersDisplay data the
   // grid/table already render, not a new fetch.
-  const activeCount = usersDisplay.filter(u => u.status === 'active').length;
+  // "Active" here is who's watching right now (live nowPlaying, deduped by
+  // user id) - same fix as Dashboard/Activity/Metrics' "Active Users",
+  // applied here per explicit request despite this stat previously meaning
+  // account status (not expired) paired with the "Expired" stat next to it.
+  // That account-status breakdown is deliberately NOT removed - "Expired"
+  // stays as-is, and each user row's own status badge still shows it - only
+  // this one stat's own meaning changed. The two no longer sum to Total
+  // Users as a result (they measure different things now); that's expected.
+  const activeCount = new Set(nowPlaying.map((np) => np.user.id)).size;
   const expiredCount = usersDisplay.filter(u => u.status === 'expired').length;
 
   const toggleSelect = useCallback((id: string) => {
@@ -368,10 +390,10 @@ export default function UsersPage() {
         />
       )}
       {layoutMode === 'nebula' && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-          <NebulaStatCard label="Total Users" value={isLoading ? '...' : users.length} icon={<UsersIcon className="w-6 h-6" />} colorIndex={0} />
-          <NebulaStatCard label="Active" value={isLoading ? '...' : activeCount} icon={<CheckIcon className="w-6 h-6" />} colorIndex={1} />
-          <NebulaStatCard label="Expired" value={isLoading ? '...' : expiredCount} icon={<XMarkIcon className="w-6 h-6" />} colorIndex={0} />
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-5">
+          <NebulaCompactStatCard label="Total Users" value={isLoading ? '...' : users.length} icon={<UsersIcon className="w-4 h-4" />} colorIndex={0} />
+          <NebulaCompactStatCard label="Active" value={isLoading ? '...' : activeCount} icon={<CheckIcon className="w-4 h-4" />} colorIndex={1} />
+          <NebulaCompactStatCard label="Expired" value={isLoading ? '...' : expiredCount} icon={<XMarkIcon className="w-4 h-4" />} colorIndex={0} />
         </div>
       )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
