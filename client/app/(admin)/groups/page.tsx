@@ -315,9 +315,9 @@ export default function GroupsPage() {
       )}
       {layoutMode === 'nebula' && (
         <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-5">
-          <NebulaCompactStatCard label="Total Groups" value={isLoading ? '...' : groups.length} icon={<UsersIcon className="w-4 h-4" />} colorIndex={0} />
-          <NebulaCompactStatCard label="Total Members" value={isLoading ? '...' : totalMembers} icon={<UsersIcon className="w-4 h-4" />} colorIndex={1} />
-          <NebulaCompactStatCard label="Addons Assigned" value={isLoading ? '...' : totalGroupAddons} icon={<PuzzlePieceIcon className="w-4 h-4" />} colorIndex={0} />
+          <NebulaCompactStatCard label="Total Groups" value={isLoading ? '...' : groups.length} icon={<UsersIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
+          <NebulaCompactStatCard label="Total Members" value={isLoading ? '...' : totalMembers} icon={<UsersIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={1} />
+          <NebulaCompactStatCard label="Addons Assigned" value={isLoading ? '...' : totalGroupAddons} icon={<PuzzlePieceIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
         </div>
       )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
