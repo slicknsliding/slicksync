@@ -301,6 +301,66 @@ async function scrobbleNewWatches(prisma, accountId) {
   return { synced: moviesPayload.length + episodeCount, movies: moviesPayload.length, episodes: episodeCount }
 }
 
+// ---- watchlist ------------------------------------------------------------
+
+// Trakt gives no poster URLs (it uses TMDB images), so watchlist items are
+// enriched with posters from Cinemeta — the same source the rest of SlickSync
+// uses. Cache the assembled, enriched list briefly so opening Discover
+// repeatedly doesn't re-hit Trakt + Cinemeta each time.
+const WATCHLIST_CACHE_MS = 10 * 60 * 1000
+const watchlistCache = new Map() // accountId -> { at, items }
+const MAX_WATCHLIST_ITEMS = 80
+
+/**
+ * The connected account's Trakt watchlist, shaped like a DiscoverItem so the
+ * Discover grid/modal can render it directly. Movies and series combined,
+ * newest-added first. Returns null if Trakt isn't connected.
+ */
+async function getTraktWatchlist(prisma, accountId) {
+  const token = await ensureValidToken(prisma, accountId)
+  if (!token) return null
+
+  const cached = watchlistCache.get(accountId)
+  if (cached && Date.now() - cached.at < WATCHLIST_CACHE_MS) return cached.items
+
+  const trakt = await getTraktConfig(prisma, accountId)
+  const res = await fetch(`${TRAKT_BASE}/sync/watchlist?extended=full`, { headers: authHeaders(trakt.clientId, token) })
+  if (!res.ok) throw new Error(`Trakt watchlist fetch failed (${res.status})`)
+  const raw = await res.json()
+
+  // Newest-added first (Trakt returns rank order by default).
+  const entries = (Array.isArray(raw) ? raw : [])
+    .filter((e) => e && (e.type === 'movie' || e.type === 'show'))
+    .sort((a, b) => new Date(b.listed_at || 0) - new Date(a.listed_at || 0))
+    .map((e) => {
+      const node = e.type === 'movie' ? e.movie : e.show
+      const imdb = node?.ids?.imdb
+      if (!imdb || !isImdb(imdb)) return null
+      return {
+        id: imdb,
+        type: e.type === 'movie' ? 'movie' : 'series',
+        name: node.title || 'Unknown',
+        releaseInfo: node.year ? String(node.year) : null,
+      }
+    })
+    .filter(Boolean)
+    .slice(0, MAX_WATCHLIST_ITEMS)
+
+  // Enrich each with a Cinemeta poster (fetchMetadata is itself cached).
+  const { fetchMetadata } = require('./notify')
+  const enriched = await Promise.all(entries.map(async (item) => {
+    try {
+      const meta = await fetchMetadata(item.id, item.type === 'series' ? 'series' : 'movie')
+      return { ...item, poster: meta?.poster || null, imdbRating: null, genres: [] }
+    } catch {
+      return { ...item, poster: null, imdbRating: null, genres: [] }
+    }
+  }))
+
+  watchlistCache.set(accountId, { at: Date.now(), items: enriched })
+  return enriched
+}
+
 // ---- scheduler ------------------------------------------------------------
 
 async function sweepAllAccounts(prisma) {
@@ -334,5 +394,6 @@ module.exports = {
   ensureValidToken,
   disconnect,
   scrobbleNewWatches,
+  getTraktWatchlist,
   scheduleTraktSync,
 }

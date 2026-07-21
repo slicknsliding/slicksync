@@ -85,7 +85,23 @@ export default function DiscoverPage() {
   const [items, setItems] = useState<DiscoverItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [detailItem, setDetailItem] = useState<DiscoverItem | null>(null);
-  const ratingsById = useRatingsBatch(items.map((i) => i.id));
+
+  // "Your Watchlist" source, powered by Trakt (only offered when connected).
+  const [source, setSource] = useState<'discover' | 'watchlist'>('discover');
+  const [traktConnected, setTraktConnected] = useState(false);
+  const [watchlistItems, setWatchlistItems] = useState<DiscoverItem[]>([]);
+  const [watchlistLoaded, setWatchlistLoaded] = useState(false);
+  const [watchlistError, setWatchlistError] = useState(false);
+
+  // What's actually on screen: the browse/search results, or the Trakt
+  // watchlist filtered by the movie/series tab + search box (client-side).
+  const displayedItems = source === 'watchlist'
+    ? watchlistItems.filter((i) =>
+        i.type === type &&
+        (!debouncedQuery || i.name.toLowerCase().includes(debouncedQuery.toLowerCase())))
+    : items;
+  const loading = source === 'watchlist' ? !watchlistLoaded : isLoading;
+  const ratingsById = useRatingsBatch(displayedItems.map((i) => i.id));
 
   // Debounce typing so search isn't firing a request per keystroke.
   useEffect(() => {
@@ -93,7 +109,24 @@ export default function DiscoverPage() {
     return () => clearTimeout(id);
   }, [searchQuery]);
 
+  // Is Trakt connected? Gates whether the Watchlist source is offered at all.
   useEffect(() => {
+    api.getTraktStatus().then((s) => setTraktConnected(s.connected)).catch(() => setTraktConnected(false));
+  }, []);
+
+  // Load the Trakt watchlist once, the first time the user switches to it.
+  useEffect(() => {
+    if (source !== 'watchlist' || watchlistLoaded) return;
+    let cancelled = false;
+    api.getTraktWatchlist()
+      .then((r) => { if (!cancelled) { setWatchlistItems(Array.isArray(r) ? r : []); setWatchlistError(false); } })
+      .catch(() => { if (!cancelled) { setWatchlistItems([]); setWatchlistError(true); } })
+      .finally(() => { if (!cancelled) setWatchlistLoaded(true); });
+    return () => { cancelled = true; };
+  }, [source, watchlistLoaded]);
+
+  useEffect(() => {
+    if (source !== 'discover') return;
     let cancelled = false;
     setIsLoading(true);
 
@@ -110,7 +143,7 @@ export default function DiscoverPage() {
     return () => {
       cancelled = true;
     };
-  }, [type, catalog, debouncedQuery]);
+  }, [type, catalog, debouncedQuery, source]);
 
   const searchConfig: PageToolbarProps['searchConfig'] = {
     value: searchQuery,
@@ -155,7 +188,30 @@ export default function DiscoverPage() {
           />
         </PageSection>
 
-        {!debouncedQuery && (
+        {/* Source: Cinemeta catalogs vs. your own Trakt watchlist (only shown
+            once Trakt is connected). */}
+        {traktConnected && (
+          <PageSection delay={0.07} className="mb-4">
+            <div className="flex gap-2">
+              {([['discover', 'Discover'], ['watchlist', '★ Your Watchlist']] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSource(key)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    source === key
+                      ? 'bg-primary text-white'
+                      : 'bg-surface-hover text-muted hover:text-default'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </PageSection>
+        )}
+
+        {source === 'discover' && !debouncedQuery && (
           <PageSection delay={0.08} className="mb-6">
             <div className="flex gap-2">
               {CATALOGS.map((c) => (
@@ -177,18 +233,24 @@ export default function DiscoverPage() {
         )}
 
         <PageSection delay={0.1}>
-          {isLoading ? (
+          {loading ? (
             <div className="flex items-center justify-center py-24 text-muted">
               <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
             </div>
-          ) : items.length === 0 ? (
+          ) : displayedItems.length === 0 ? (
             <div className="text-center py-24 text-muted">
               <MagnifyingGlassIcon className="w-10 h-10 mx-auto mb-3 text-subtle" />
-              <p>No results found.</p>
+              <p>
+                {source === 'watchlist'
+                  ? (watchlistError
+                      ? 'Couldn’t load your Trakt watchlist.'
+                      : `Nothing in your watchlist${debouncedQuery ? ' matches your search' : type === 'movie' ? ' under Movies' : ' under Series'}.`)
+                  : 'No results found.'}
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
-              {items.map((item) => (
+              {displayedItems.map((item) => (
                 <PosterCard key={item.id} item={item} ratings={ratingsById[item.id]} onOpenDetails={setDetailItem} />
               ))}
             </div>
