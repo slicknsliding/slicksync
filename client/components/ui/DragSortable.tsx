@@ -36,8 +36,18 @@ export function useSortableSensors() {
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
     }),
+    // delay:0/distance:0 meant a drag engaged on the very first touchmove
+    // event, with nothing to tell it apart from the start of a vertical
+    // scroll swipe - on a phone, that made reordering (Addons grid, Vault
+    // categories) grab the card instead of scrolling the page almost every
+    // time. A short delay is dnd-kit's own documented fix for exactly this
+    // tension (see their docs on touch vs scroll): a deliberate press-and-
+    // hold engages the drag, a normal swipe (which moves immediately, not
+    // held still) passes through to native scroll untouched. tolerance
+    // allows a little finger drift during the hold before it's cancelled as
+    // an accidental touch.
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 0, distance: 0 },
+      activationConstraint: { delay: 200, tolerance: 8 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
