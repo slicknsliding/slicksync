@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.27.0",
+    "date": "2026-07-22",
+    "title": "Fix duplicate watch entries under wrong provider, plus Discover infinite scroll + genres",
+    "features": [
+      "Discover now infinite-scrolls: pages beyond the first 100 items load automatically as you approach the bottom, so a catalog full of thousands of titles is finally reachable instead of stopping at page one. An in-flight indicator shows while more is loading, and an end-of-catalog message appears when you've reached the actual end.",
+      "Discover gained a genre filter: 18 genre pills (Action, Adventure, Animation, Comedy, Crime, Documentary, Drama, Family, Fantasy, History, Horror, Music, Mystery, Romance, Sci-Fi, Thriller, War, Western) sit under the catalog picker in browse mode. \"All genres\" is the default. Genre stacks with the catalog choice — e.g. Top Rated + Horror gives you the highest-rated horror titles."
+    ],
+    "bugFixes": [
+      "Activity feed was showing the SAME watch under two different provider badges (e.g. Men in Black showing under both NuvioSLICK and SLICK STREMIO) whenever the two accounts share a Stremio email — Stremio's cloud library was replicating watch state to both accounts to the millisecond, and every poller pass wrote a MovieWatchHistory row per user. The Activity feed and Dashboard Recent Activity now dedupe cross-user rows with identical (itemId, videoId, watchedAt-to-the-second), keeping the one with real durationSeconds (the actual watch) over any phantom with dur=null. Confirmed against live production data on Men in Black, Backrooms, Little Brother, The Bear S05E07, Cape Fear S01E08. Two household members legitimately watching the same movie on their respective accounts produce different-second timestamps (poll jitter) and aren't affected."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.26.0",
     "date": "2026-07-22",
     "title": "Wildly different fonts, deeper theme customization, Nuvio badge gets a diagonal slash",
