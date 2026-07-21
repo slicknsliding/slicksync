@@ -9,6 +9,7 @@ export const metadata: Metadata = {
   title: "SlickSync - Users, Groups & Addons",
   description: "SlickSync - Stremio & Nuvio Addon and User Management System",
   applicationName: "SlickSync",
+  manifest: "/site.webmanifest",
   icons: {
     icon: [
       { url: '/logo-black.png', media: '(prefers-color-scheme: light)' },

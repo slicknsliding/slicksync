@@ -889,6 +889,25 @@ class ApiClient {
     return this.fetch<EpisodeAlert[]>(`/users/episode-alerts?days=${days}`);
   }
 
+  // PWA web-push
+  async getPushVapidKey() {
+    return this.fetch<{ enabled: boolean; publicKey: string | null }>('/push/vapid-key');
+  }
+
+  async savePushSubscription(sub: PushSubscriptionJSON, userAgent?: string) {
+    return this.fetch('/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ ...sub, userAgent }),
+    });
+  }
+
+  async removePushSubscription(endpoint: string) {
+    return this.fetch('/push/unsubscribe', {
+      method: 'POST',
+      body: JSON.stringify({ endpoint }),
+    });
+  }
+
   async repairAddons() {
     return this.fetch<{ inspected: number; updated: number }>('/settings/repair-addons', {
       method: 'POST',

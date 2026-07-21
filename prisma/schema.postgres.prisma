@@ -411,6 +411,19 @@ model EpisodeAlert {
   @@map("episode_alerts")
 }
 
+model PushSubscription {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+  @@map("push_subscriptions")
+}
+
 // Metrics: Proxy stream sessions - "Now Playing" data sourced from AIOStreams'
 // built-in proxy (which sees every stream request passing through it in real
 // time, regardless of provider - Stremio, Nuvio, anything using the proxy).
