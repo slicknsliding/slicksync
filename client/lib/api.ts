@@ -821,6 +821,69 @@ class ApiClient {
     return this.fetch('/settings/backup-now', { method: 'POST' });
   }
 
+  async listBackups() {
+    return this.fetch<BackupFile[]>('/settings/backups');
+  }
+
+  async downloadBackup(filename: string) {
+    const response = await fetch(`${API_BASE}/settings/backups/${encodeURIComponent(filename)}/download`, {
+      credentials: 'include',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Download failed' }));
+      throw new Error(error.message || `HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // DESTRUCTIVE - replaces all current users/groups/addons with the
+  // backup's contents. Caller is responsible for confirming with the user
+  // first; this just performs the restore.
+  async restoreBackup(filename: string) {
+    return this.fetch<ImportConfigResult>(`/settings/backups/${encodeURIComponent(filename)}/restore`, {
+      method: 'POST',
+    });
+  }
+
+  async deleteBackup(filename: string) {
+    return this.fetch(`/settings/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  }
+
+  // Addon Snapshots ("Templates") - save a user's/group's current addon
+  // set as a named, reusable template; deploy it onto any user later.
+  async getSnapshots() {
+    return this.fetch<AddonSnapshot[]>('/snapshots');
+  }
+
+  async getSnapshot(id: string) {
+    return this.fetch<AddonSnapshotDetail>(`/snapshots/${id}`);
+  }
+
+  async createSnapshot(data: { name: string; description?: string; sourceType: 'user' | 'group'; sourceId: string }) {
+    return this.fetch<{ id: string; name: string; addonCount: number }>('/snapshots', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deploySnapshot(id: string, targetUserId: string) {
+    return this.fetch<{ deployed: number; failed: number; targetUserId: string }>(`/snapshots/${id}/deploy`, {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId }),
+    });
+  }
+
+  async deleteSnapshot(id: string) {
+    return this.fetch(`/snapshots/${id}`, { method: 'DELETE' });
+  }
+
   async repairAddons() {
     return this.fetch<{ inspected: number; updated: number }>('/settings/repair-addons', {
       method: 'POST',
@@ -1652,6 +1715,27 @@ export interface ImportConfigResult {
   users: { created: number; reused: number };
   groups: { created: number; reused: number };
   addons: { created: number; reused: number };
+}
+
+export interface BackupFile {
+  filename: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface AddonSnapshot {
+  id: string;
+  name: string;
+  description: string | null;
+  sourceType: 'user' | 'group';
+  sourceId: string;
+  addonCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AddonSnapshotDetail extends AddonSnapshot {
+  addons: Array<{ name: string; manifestUrl: string | null; stremioAddonId: string | null; version: string | null }>;
 }
 
 export interface ContinueWatchingItem {

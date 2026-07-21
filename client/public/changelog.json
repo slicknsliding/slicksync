@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.17.0",
+    "date": "2026-07-21",
+    "title": "Addon Templates and Backup Restore, both new pages on Tasks",
+    "features": [
+      "Addon Templates: save any user's or group's current addon set as a named, reusable template, then deploy it onto any user later. The backend for this (/api/snapshots) has existed since early in this fork's history but never had a UI - it was a genuine save/browse/deploy/delete feature sitting completely unused. Lives on the Tasks page, next to the existing Addons import/export tools.",
+      "Backup Restore: Automatic Backups has written timestamped config-backup-*.json files to disk on a schedule for a long time, but there was no way to see, download, or restore from them without server filesystem access - only a frequency picker and a manual \"Backup Now\" trigger existed. The same Automatic Backups card now lists every backup on disk with Download/Restore/Delete actions. Restore is destructive (replaces all current users, groups, and addons with the backup's contents) and requires confirmation before running."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.16.13",
     "date": "2026-07-21",
     "title": "Addons' header stats: gaps between cards instead of divider lines",

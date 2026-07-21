@@ -131,6 +131,7 @@ function scheduleBackups(days) {
 }
 
 module.exports = {
+  BACKUP_DIR,
   ensureBackupDir,
   readBackupFrequencyDays,
   writeBackupFrequencyDays,
