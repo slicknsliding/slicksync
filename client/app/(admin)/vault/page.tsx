@@ -53,6 +53,11 @@ const TEST_TYPE_LABELS: Record<VaultTestType, string> = {
   nuvio_auth: 'Nuvio login',
 };
 
+// Common currency codes for the Vault cost selector. Intl.NumberFormat
+// renders the correct symbol/placement for each, so only the ISO code is
+// stored - no hardcoded "$".
+const CURRENCY_OPTIONS = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'CNY', 'INR', 'BRL', 'MXN', 'SEK', 'NOK', 'DKK', 'PLN', 'NZD', 'ZAR'];
+
 function daysUntil(dateStr?: string | null): number | null {
   if (!dateStr) return null;
   return Math.round((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -89,7 +94,8 @@ interface EntryFormState {
   testSsl: boolean;
   testDataCap: string;
   dashboardUrl: string;
-  monthlyCost: string;
+  cost: string;
+  costCycle: 'monthly' | 'yearly';
   expiresAt: string;
   notifyDaysBefore: string;
 }
@@ -97,7 +103,7 @@ interface EntryFormState {
 const EMPTY_FORM: EntryFormState = {
   name: '', category: 'custom', provider: '', secretLabel: 'API Key', secret: '', secretUsername: '',
   testType: 'manual', testUrl: '', testHost: '', testPort: '', testSsl: true, testDataCap: '',
-  dashboardUrl: '', monthlyCost: '', expiresAt: '', notifyDaysBefore: '3',
+  dashboardUrl: '', cost: '', costCycle: 'monthly', expiresAt: '', notifyDaysBefore: '3',
 };
 
 // Which specialized form to show for a given category
@@ -218,9 +224,13 @@ export default function VaultPage() {
   // summary stays in sync with edits.
   const [allCostEntries, setAllCostEntries] = useState<VaultEntry[]>([]);
   const [hoursLast30, setHoursLast30] = useState<number | null>(null);
+  const [currency, setCurrency] = useState('USD');
   const [costRefreshKey, setCostRefreshKey] = useState(0);
   useEffect(() => {
-    api.getVaultEntries().then((d) => setAllCostEntries(d.entries)).catch(() => {});
+    api.getVaultEntries().then((d) => {
+      setAllCostEntries(d.entries);
+      if (d.currency) setCurrency(d.currency);
+    }).catch(() => {});
     // Sum hours from the last 30 days of watchTime.byDay - a monthly spend
     // figure divided by ~a month of hours keeps cost/hour dimensionally
     // honest (a monthly $ over all-time hours would keep shrinking as history
@@ -233,8 +243,32 @@ export default function VaultPage() {
     }).catch(() => {});
   }, [costRefreshKey]);
 
-  const monthlyTotal = allCostEntries.reduce((sum, e) => sum + (e.monthlyCost || 0), 0);
-  const trackedCount = allCostEntries.filter((e) => e.monthlyCost != null && e.monthlyCost > 0).length;
+  // Format any amount in the account's chosen currency - Intl handles the
+  // symbol, placement, and decimal conventions for whatever code is set, so
+  // there's no hardcoded "$". Falls back to a plain prefix if the code is
+  // somehow invalid.
+  const fmtMoney = useCallback((amount: number) => {
+    try {
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
+    } catch {
+      return `${currency} ${amount.toFixed(2)}`;
+    }
+  }, [currency]);
+
+  const handleCurrencyChange = async (next: string) => {
+    setCurrency(next);
+    try {
+      await api.updateSyncSettings({ vaultCurrency: next });
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update currency');
+    }
+  };
+
+  // Normalize each entry to a monthly figure (yearly ÷ 12) before totaling, so
+  // monthly and yearly-billed services sum correctly together.
+  const toMonthly = (e: VaultEntry) => (e.cost || 0) / (e.costCycle === 'yearly' ? 12 : 1);
+  const monthlyTotal = allCostEntries.reduce((sum, e) => sum + toMonthly(e), 0);
+  const trackedCount = allCostEntries.filter((e) => e.cost != null && e.cost > 0).length;
   const costPerHour = hoursLast30 && hoursLast30 > 0 ? monthlyTotal / hoursLast30 : null;
 
   const load = useCallback(async () => {
@@ -278,7 +312,8 @@ export default function VaultPage() {
       testSsl: cfg.ssl ?? true,
       testDataCap: cfg.dataCapGB ? String(cfg.dataCapGB) : '',
       dashboardUrl: entry.dashboardUrl || '',
-      monthlyCost: entry.monthlyCost != null ? String(entry.monthlyCost) : '',
+      cost: entry.cost != null ? String(entry.cost) : '',
+      costCycle: entry.costCycle === 'yearly' ? 'yearly' : 'monthly',
       expiresAt: entry.expiresAt ? entry.expiresAt.split('T')[0] : '',
       notifyDaysBefore: String(entry.notifyDaysBefore ?? 3),
     });
@@ -343,7 +378,8 @@ export default function VaultPage() {
         testType: form.testType,
         testConfig: buildTestConfig(form),
         dashboardUrl: form.dashboardUrl.trim() || undefined,
-        monthlyCost: form.monthlyCost.trim() !== '' && Number(form.monthlyCost) >= 0 ? Number(form.monthlyCost) : undefined,
+        cost: form.cost.trim() !== '' && Number(form.cost) >= 0 ? Number(form.cost) : undefined,
+        costCycle: form.costCycle,
         expiresAt: form.expiresAt || undefined,
         notifyDaysBefore: form.notifyDaysBefore ? Number(form.notifyDaysBefore) : 3,
       };
@@ -599,31 +635,47 @@ export default function VaultPage() {
           }
         />
       )}
-      {/* Cost summary - only once at least one entry has a monthly cost set.
-          Debrid, usenet, and every other category count equally; whatever
-          you tagged with a cost is in the total. */}
+      {/* Cost summary - only once at least one entry has a cost set. Debrid,
+          usenet, and every other category count equally; whatever you tagged
+          with a cost is in the total. Monthly and yearly-billed entries are
+          normalized before summing. */}
       {trackedCount > 0 && (
-        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
-          {[
-            { label: `Monthly Spend${trackedCount ? ` · ${trackedCount} service${trackedCount !== 1 ? 's' : ''}` : ''}`, value: `$${monthlyTotal.toFixed(2)}`, icon: <BanknotesIcon className="w-4 h-4 md:w-6 md:h-6" /> },
-            { label: 'Yearly', value: `$${(monthlyTotal * 12).toFixed(2)}`, icon: <CreditCardIcon className="w-4 h-4 md:w-6 md:h-6" /> },
-            { label: costPerHour != null ? 'Per Hour Watched (30d)' : 'Per Hour Watched', value: costPerHour != null ? `$${costPerHour.toFixed(2)}` : '—', icon: <ClockIcon className="w-4 h-4 md:w-6 md:h-6" /> },
-          ].map((s, i) => {
-            const isPrimary = i % 2 === 0;
-            return (
-              <div key={s.label} className={`${NEBULA_GLASS_CLASS} p-2.5 sm:p-3 md:p-5 flex items-center gap-2 md:gap-4 min-w-0`} style={nebulaGlassStyle}>
-                <NebulaGlassStripe />
-                <div className="w-8 h-8 md:w-11 md:h-11 rounded-lg md:rounded-xl flex items-center justify-center shrink-0" style={{ background: isPrimary ? 'var(--color-primary-muted)' : 'var(--color-secondary-muted)', color: isPrimary ? 'var(--color-primary)' : 'var(--color-secondary)' }}>
-                  {s.icon}
+        <>
+          <div className="flex items-center justify-end mb-2">
+            <label className="text-xs text-muted mr-2">Currency</label>
+            <select
+              value={currency}
+              onChange={(e) => handleCurrencyChange(e.target.value)}
+              className="input-base px-2 py-1 text-xs rounded-lg"
+              title="Currency for all cost figures"
+            >
+              {CURRENCY_OPTIONS.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
+            {[
+              { label: `Monthly Spend · ${trackedCount} service${trackedCount !== 1 ? 's' : ''}`, value: fmtMoney(monthlyTotal), icon: <BanknotesIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+              { label: 'Yearly', value: fmtMoney(monthlyTotal * 12), icon: <CreditCardIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+              { label: costPerHour != null ? 'Per Hour Watched (30d)' : 'Per Hour Watched', value: costPerHour != null ? fmtMoney(costPerHour) : '—', icon: <ClockIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+            ].map((s, i) => {
+              const isPrimary = i % 2 === 0;
+              return (
+                <div key={s.label} className={`${NEBULA_GLASS_CLASS} p-2.5 sm:p-3 md:p-5 flex items-center gap-2 md:gap-4 min-w-0`} style={nebulaGlassStyle}>
+                  <NebulaGlassStripe />
+                  <div className="w-8 h-8 md:w-11 md:h-11 rounded-lg md:rounded-xl flex items-center justify-center shrink-0" style={{ background: isPrimary ? 'var(--color-primary-muted)' : 'var(--color-secondary-muted)', color: isPrimary ? 'var(--color-primary)' : 'var(--color-secondary)' }}>
+                    {s.icon}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-base sm:text-lg md:text-3xl font-bold font-display text-default leading-none truncate">{s.value}</p>
+                    <p className="text-[10px] md:text-sm text-muted mt-1 truncate">{s.label}</p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-base sm:text-lg md:text-3xl font-bold font-display text-default leading-none truncate">{s.value}</p>
-                  <p className="text-[10px] md:text-sm text-muted mt-1 truncate">{s.label}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}
@@ -779,7 +831,19 @@ export default function VaultPage() {
 
           <Input label={form.category === 'aiostreams' ? 'UUID (optional)' : 'Dashboard URL (optional)'} placeholder={form.category === 'aiostreams' ? 'e.g. e2849659-fdcb-4ed8-9eb0-6cfd76324e15' : 'https://provider.com/dashboard'} value={form.dashboardUrl} onChange={e => setForm(f => ({ ...f, dashboardUrl: e.target.value }))} />
 
-          <Input label="Monthly cost (optional)" type="number" placeholder="e.g. 5.00" value={form.monthlyCost} onChange={e => setForm(f => ({ ...f, monthlyCost: e.target.value }))} hint="Feeds the cost/hour summary at the top of the Vault" />
+          <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input label="Cost (optional)" type="number" placeholder="e.g. 5.00" value={form.cost} onChange={e => setForm(f => ({ ...f, cost: e.target.value }))} />
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Billed</label>
+                <div className="flex gap-2">
+                  <Button type="button" variant={form.costCycle === 'monthly' ? 'primary' : 'secondary'} size="sm" onClick={() => setForm(f => ({ ...f, costCycle: 'monthly' }))}>Monthly</Button>
+                  <Button type="button" variant={form.costCycle === 'yearly' ? 'primary' : 'secondary'} size="sm" onClick={() => setForm(f => ({ ...f, costCycle: 'yearly' }))}>Yearly</Button>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-muted)' }}>Feeds the cost/hour summary at the top of the Vault. Set the currency there.</p>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Expires on (optional)" type="date" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} />

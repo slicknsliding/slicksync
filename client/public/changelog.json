@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.18.1",
+    "date": "2026-07-21",
+    "title": "Vault cost: pick your currency, and enter monthly or yearly billing",
+    "features": [
+      "The Vault cost figures are no longer hardcoded to USD - a currency selector at the top of the cost summary lets you pick from 17 common currencies (EUR, GBP, CAD, AUD, JPY, etc.), and every amount reformats with the right symbol and placement via the browser's own Intl formatting. The choice is saved account-wide (alongside the timezone setting).",
+      "Each Vault entry's cost can now be entered as monthly OR yearly billing, not just monthly - a Monthly/Yearly toggle sits next to the cost field. Yearly-billed services are divided by 12 before being added to the monthly total, so a mix of monthly and yearly subscriptions sums correctly."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.18.0",
     "date": "2026-07-21",
     "title": "Continue Watching resumes in-progress items, new-episode alerts, Vault cost tracking",
@@ -10,7 +21,7 @@
     ],
     "bugFixes": [],
     "miscChores": [
-      "Two new tables (ShowEpisodeAlertState, EpisodeAlert) and a VaultEntry.monthlyCost column, applied automatically on deploy via the existing db-push startup step; added to both the SQLite and Postgres schemas to keep them from drifting."
+      "Two new tables (ShowEpisodeAlertState, EpisodeAlert) and a Vault cost column, applied automatically on deploy via the existing db-push startup step; added to both the SQLite and Postgres schemas to keep them from drifting."
     ]
   },
   {

@@ -24,12 +24,26 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       for (const c of CATEGORIES) counts[c] = 0;
       for (const e of all) counts[e.category] = (counts[e.category] || 0) + 1;
 
+      // Currency is an account-level display preference (stored in the same
+      // AppAccount.sync blob as accountTimezone), returned here so the Vault's
+      // cost summary can format without a second round-trip.
+      let currency = 'USD';
+      try {
+        const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } });
+        let cfg = acc?.sync;
+        if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = null; } }
+        if (cfg && typeof cfg === 'object' && typeof cfg.vaultCurrency === 'string' && cfg.vaultCurrency.trim()) {
+          currency = cfg.vaultCurrency.trim().toUpperCase();
+        }
+      } catch {}
+
       res.json({
         total: all.length,
         categories: counts,
+        currency,
         entries: entries.map(e => ({
           id: e.id, name: e.name, category: e.category, provider: e.provider,
-          dashboardUrl: e.dashboardUrl, monthlyCost: e.monthlyCost, expiresAt: e.expiresAt, notifyDaysBefore: e.notifyDaysBefore,
+          dashboardUrl: e.dashboardUrl, cost: e.cost, costCycle: e.costCycle, expiresAt: e.expiresAt, notifyDaysBefore: e.notifyDaysBefore,
           lastCheckedAt: e.lastCheckedAt, lastCheckStatus: e.lastCheckStatus, lastCheckMessage: e.lastCheckMessage,
           isActive: e.isActive, testType: e.testType, secretLabel: e.secretLabel, updatedAt: e.updatedAt,
           position: e.position,
@@ -76,7 +90,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       const accountId = getAccountId(req) || 'default';
       const {
         name, category, provider, secretLabel, secret,
-        testType, testConfig, dashboardUrl, monthlyCost, expiresAt, notifyDaysBefore,
+        testType, testConfig, dashboardUrl, cost, costCycle, expiresAt, notifyDaysBefore,
       } = req.body || {};
 
       if (!name || !category || !secret) {
@@ -104,7 +118,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
           testType: testType || 'manual',
           testConfig: testConfig ? JSON.stringify(testConfig) : null,
           dashboardUrl: dashboardUrl || null,
-          monthlyCost: typeof monthlyCost === 'number' && monthlyCost >= 0 ? monthlyCost : null,
+          cost: typeof cost === 'number' && cost >= 0 ? cost : null,
+          costCycle: costCycle === 'yearly' ? 'yearly' : 'monthly',
           expiresAt: expiresAt ? new Date(expiresAt) : null,
           notifyDaysBefore: typeof notifyDaysBefore === 'number' ? notifyDaysBefore : 3,
           position: nextPosition,
@@ -162,7 +177,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
 
       const {
         name, category, provider, secretLabel, secret,
-        testType, testConfig, dashboardUrl, monthlyCost, expiresAt, notifyDaysBefore, isActive,
+        testType, testConfig, dashboardUrl, cost, costCycle, expiresAt, notifyDaysBefore, isActive,
       } = req.body || {};
 
       if (category && !CATEGORIES.includes(category)) {
@@ -178,7 +193,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (testType !== undefined) data.testType = testType;
       if (testConfig !== undefined) data.testConfig = testConfig ? JSON.stringify(testConfig) : null;
       if (dashboardUrl !== undefined) data.dashboardUrl = dashboardUrl;
-      if (monthlyCost !== undefined) data.monthlyCost = typeof monthlyCost === 'number' && monthlyCost >= 0 ? monthlyCost : null;
+      if (cost !== undefined) data.cost = typeof cost === 'number' && cost >= 0 ? cost : null;
+      if (costCycle !== undefined) data.costCycle = costCycle === 'yearly' ? 'yearly' : 'monthly';
       if (expiresAt !== undefined) data.expiresAt = expiresAt ? new Date(expiresAt) : null;
       if (notifyDaysBefore !== undefined) data.notifyDaysBefore = notifyDaysBefore;
       if (isActive !== undefined) data.isActive = isActive;
