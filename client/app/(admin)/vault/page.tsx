@@ -24,6 +24,9 @@ import {
   ArrowTopRightOnSquareIcon,
   Bars3Icon,
   PuzzlePieceIcon,
+  BanknotesIcon,
+  ClockIcon,
+  CreditCardIcon,
 } from '@heroicons/react/24/outline';
 
 const CATEGORY_LABELS: Record<VaultCategory, string> = {
@@ -86,6 +89,7 @@ interface EntryFormState {
   testSsl: boolean;
   testDataCap: string;
   dashboardUrl: string;
+  monthlyCost: string;
   expiresAt: string;
   notifyDaysBefore: string;
 }
@@ -93,7 +97,7 @@ interface EntryFormState {
 const EMPTY_FORM: EntryFormState = {
   name: '', category: 'custom', provider: '', secretLabel: 'API Key', secret: '', secretUsername: '',
   testType: 'manual', testUrl: '', testHost: '', testPort: '', testSsl: true, testDataCap: '',
-  dashboardUrl: '', expiresAt: '', notifyDaysBefore: '3',
+  dashboardUrl: '', monthlyCost: '', expiresAt: '', notifyDaysBefore: '3',
 };
 
 // Which specialized form to show for a given category
@@ -208,12 +212,40 @@ export default function VaultPage() {
   const [form, setForm] = useState<EntryFormState>(EMPTY_FORM);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Cost summary - needs ALL entries (not just the active category tab's) plus
+  // recent watch hours, so it's a separate fetch from the tab-scoped `load()`.
+  // Re-fetched via `costRefreshKey` whenever an entry is saved/deleted so the
+  // summary stays in sync with edits.
+  const [allCostEntries, setAllCostEntries] = useState<VaultEntry[]>([]);
+  const [hoursLast30, setHoursLast30] = useState<number | null>(null);
+  const [costRefreshKey, setCostRefreshKey] = useState(0);
+  useEffect(() => {
+    api.getVaultEntries().then((d) => setAllCostEntries(d.entries)).catch(() => {});
+    // Sum hours from the last 30 days of watchTime.byDay - a monthly spend
+    // figure divided by ~a month of hours keeps cost/hour dimensionally
+    // honest (a monthly $ over all-time hours would keep shrinking as history
+    // piles up, which reads as "getting cheaper" when nothing changed).
+    api.getMetrics('all').then((m) => {
+      const byDay = m.watchTime?.byDay || [];
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const sum = byDay.filter((d) => d.date >= cutoff).reduce((acc, d) => acc + (d.hours || 0), 0);
+      setHoursLast30(sum);
+    }).catch(() => {});
+  }, [costRefreshKey]);
+
+  const monthlyTotal = allCostEntries.reduce((sum, e) => sum + (e.monthlyCost || 0), 0);
+  const trackedCount = allCostEntries.filter((e) => e.monthlyCost != null && e.monthlyCost > 0).length;
+  const costPerHour = hoursLast30 && hoursLast30 > 0 ? monthlyTotal / hoursLast30 : null;
+
   const load = useCallback(async () => {
     try {
       const data = await api.getVaultEntries(activeCategory);
       setEntries(data.entries);
       setCategoryCounts(data.categories);
       setTotal(data.total);
+      // Keep the (all-category) cost summary in sync with any edit that
+      // triggered this reload.
+      setCostRefreshKey((k) => k + 1);
     } catch (err: any) {
       toast.error(err.message || 'Failed to load vault entries');
     } finally {
@@ -246,6 +278,7 @@ export default function VaultPage() {
       testSsl: cfg.ssl ?? true,
       testDataCap: cfg.dataCapGB ? String(cfg.dataCapGB) : '',
       dashboardUrl: entry.dashboardUrl || '',
+      monthlyCost: entry.monthlyCost != null ? String(entry.monthlyCost) : '',
       expiresAt: entry.expiresAt ? entry.expiresAt.split('T')[0] : '',
       notifyDaysBefore: String(entry.notifyDaysBefore ?? 3),
     });
@@ -310,6 +343,7 @@ export default function VaultPage() {
         testType: form.testType,
         testConfig: buildTestConfig(form),
         dashboardUrl: form.dashboardUrl.trim() || undefined,
+        monthlyCost: form.monthlyCost.trim() !== '' && Number(form.monthlyCost) >= 0 ? Number(form.monthlyCost) : undefined,
         expiresAt: form.expiresAt || undefined,
         notifyDaysBefore: form.notifyDaysBefore ? Number(form.notifyDaysBefore) : 3,
       };
@@ -565,6 +599,32 @@ export default function VaultPage() {
           }
         />
       )}
+      {/* Cost summary - only once at least one entry has a monthly cost set.
+          Debrid, usenet, and every other category count equally; whatever
+          you tagged with a cost is in the total. */}
+      {trackedCount > 0 && (
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
+          {[
+            { label: `Monthly Spend${trackedCount ? ` · ${trackedCount} service${trackedCount !== 1 ? 's' : ''}` : ''}`, value: `$${monthlyTotal.toFixed(2)}`, icon: <BanknotesIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+            { label: 'Yearly', value: `$${(monthlyTotal * 12).toFixed(2)}`, icon: <CreditCardIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+            { label: costPerHour != null ? 'Per Hour Watched (30d)' : 'Per Hour Watched', value: costPerHour != null ? `$${costPerHour.toFixed(2)}` : '—', icon: <ClockIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+          ].map((s, i) => {
+            const isPrimary = i % 2 === 0;
+            return (
+              <div key={s.label} className={`${NEBULA_GLASS_CLASS} p-2.5 sm:p-3 md:p-5 flex items-center gap-2 md:gap-4 min-w-0`} style={nebulaGlassStyle}>
+                <NebulaGlassStripe />
+                <div className="w-8 h-8 md:w-11 md:h-11 rounded-lg md:rounded-xl flex items-center justify-center shrink-0" style={{ background: isPrimary ? 'var(--color-primary-muted)' : 'var(--color-secondary-muted)', color: isPrimary ? 'var(--color-primary)' : 'var(--color-secondary)' }}>
+                  {s.icon}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-base sm:text-lg md:text-3xl font-bold font-display text-default leading-none truncate">{s.value}</p>
+                  <p className="text-[10px] md:text-sm text-muted mt-1 truncate">{s.label}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}
         <div className="mb-5">
@@ -718,6 +778,8 @@ export default function VaultPage() {
           )}
 
           <Input label={form.category === 'aiostreams' ? 'UUID (optional)' : 'Dashboard URL (optional)'} placeholder={form.category === 'aiostreams' ? 'e.g. e2849659-fdcb-4ed8-9eb0-6cfd76324e15' : 'https://provider.com/dashboard'} value={form.dashboardUrl} onChange={e => setForm(f => ({ ...f, dashboardUrl: e.target.value }))} />
+
+          <Input label="Monthly cost (optional)" type="number" placeholder="e.g. 5.00" value={form.monthlyCost} onChange={e => setForm(f => ({ ...f, monthlyCost: e.target.value }))} hint="Feeds the cost/hour summary at the top of the Vault" />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input label="Expires on (optional)" type="date" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} />

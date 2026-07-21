@@ -317,6 +317,30 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // GET /users/episode-alerts - recent new-episode alerts (fired by
+  // utils/episodeAlerts.js's poller) for the notification bell. Must be
+  // before /:id route.
+  router.get('/episode-alerts', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+
+      const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 14))
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+      const alerts = await prisma.episodeAlert.findMany({
+        where: { accountId, createdAt: { gte: since } },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      })
+      res.json(alerts)
+    } catch (error) {
+      console.error('Error fetching episode alerts:', error)
+      res.status(500).json({ error: 'Failed to fetch episode alerts' })
+    }
+  })
+
   // GET /users/metrics - Get metrics data for dashboard (must be before /:id route)
   router.get('/metrics', async (req, res) => {
     try {

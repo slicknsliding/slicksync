@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.18.0",
+    "date": "2026-07-21",
+    "title": "Continue Watching resumes in-progress items, new-episode alerts, Vault cost tracking",
+    "features": [
+      "Continue Watching now resumes the episode (or movie) you're partway through instead of always jumping to the next episode. If the last thing you watched is still mid-playback (between 2 minutes in and 92% done, judged from the WatchSession position data), the card opens THAT item - Stremio/Nuvio owns the saved position, so it picks up where you left off. Only once it's actually finished does the card advance to the next episode. In-progress movies now appear in the row too (they were never shown before - only episodes were), and a thin progress bar shows how far through each resume item is.",
+      "New-episode alerts: a background poller checks Cinemeta's episode lists every 6 hours for shows anyone here is actively watching (has recent history for), and when a newly-RELEASED episode appears, fires a notification-bell entry plus a Discord ping (\"New episode: The Bear S05E09 is out\" - with who's still behind). Only counts episodes whose release date has actually passed, so an announced-but-unaired season doesn't alert. Rides the existing Notifications webhook + the Activity toggle, no new settings to configure. The first time a show is seen only records a baseline, so you don't get spammed with a backlog when it first starts tracking.",
+      "Vault cost tracking: each Vault entry (debrid, usenet provider/indexer, VPN, anything) can now have a monthly cost. A summary strip at the top of the Vault shows total monthly spend, yearly projection, and cost-per-hour-watched (monthly spend ÷ hours watched in the last 30 days, so the figure stays dimensionally honest rather than drifting as history piles up). Usenet counts exactly the same as debrid - whatever you tag with a cost is in the total."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Two new tables (ShowEpisodeAlertState, EpisodeAlert) and a VaultEntry.monthlyCost column, applied automatically on deploy via the existing db-push startup step; added to both the SQLite and Postgres schemas to keep them from drifting."
+    ]
+  },
+  {
     "version": "1.17.0",
     "date": "2026-07-21",
     "title": "Addon Templates and Backup Restore, both new pages on Tasks",

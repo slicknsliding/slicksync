@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { Badge, Button, Avatar } from '@/components/ui';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 
 interface NotificationItem {
   id: string;
-  type: 'activity' | 'invite' | 'task' | 'user' | 'request';
+  type: 'activity' | 'invite' | 'task' | 'user' | 'request' | 'episode';
   title: string;
   message: string;
   timestamp: Date;
@@ -148,6 +148,23 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     return () => clearInterval(interval);
   }, []);
 
+  // New-episode alerts (fired server-side by the episodeAlerts poller when a
+  // show someone here watches gets a newly-released episode). Server polls
+  // Cinemeta every 6h, so a 5min client refresh is plenty.
+  const [episodeAlerts, setEpisodeAlerts] = useState<any[]>([]);
+  useEffect(() => {
+    const fetchAlerts = async () => {
+      try {
+        setEpisodeAlerts(await api.getEpisodeAlerts());
+      } catch {
+        // Endpoint may not exist yet on an older backend - stay silent.
+      }
+    };
+    fetchAlerts();
+    const interval = setInterval(fetchAlerts, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleAcceptRequest = async (e: React.MouseEvent, reqId: string) => {
     e.stopPropagation();
     try {
@@ -269,12 +286,29 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         });
       });
 
+    // New-episode alerts - a show someone here watches got a new episode
+    episodeAlerts
+      .filter((alert) => new Date(alert.createdAt) > lastChecked)
+      .slice(0, 5)
+      .forEach((alert) => {
+        const epLabel = `S${String(alert.season).padStart(2, '0')}E${String(alert.episode).padStart(2, '0')}`;
+        items.push({
+          id: `episode-${alert.id}`,
+          type: 'episode',
+          title: `New episode: ${alert.showName}`,
+          message: `${epLabel}${alert.title ? ` · ${alert.title}` : ''} is out`,
+          timestamp: new Date(alert.createdAt),
+          read: false,
+          poster: alert.poster || undefined,
+        });
+      });
+
     // Sort by timestamp, most recent first, then drop anything individually
     // dismissed via the per-row X button.
     return items
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .filter((item) => !dismissedIds.has(item.id));
-  }, [combinedActivities, combinedInviteHistory, taskHistory, lastChecked, pendingRequests, dismissedIds]);
+  }, [combinedActivities, combinedInviteHistory, taskHistory, episodeAlerts, lastChecked, pendingRequests, dismissedIds]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -312,6 +346,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         return <UsersIcon className="w-4 h-4" />;
       case 'request':
         return <UserPlusIcon className="w-4 h-4" />;
+      case 'episode':
+        return <SparklesIcon className="w-4 h-4" />;
     }
   };
 
