@@ -216,9 +216,14 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
         className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer"
       >
         <div className="relative aspect-video">
-          {(item.nextEpisode?.thumbnail || item.poster) ? (
+          {/* Image priority for this landscape (16:9) frame: episode still
+              first (already 16:9), then the show/movie's landscape backdrop,
+              and only then the portrait poster as a last resort - a portrait
+              poster forced into a 16:9 frame is what caused the "too zoomed
+              in" hard crop. */}
+          {(item.nextEpisode?.thumbnail || item.background || item.poster) ? (
             <img
-              src={item.nextEpisode?.thumbnail || item.poster || ''}
+              src={item.nextEpisode?.thumbnail || item.background || item.poster || ''}
               alt={item.showName}
               draggable={false}
               loading="lazy"
