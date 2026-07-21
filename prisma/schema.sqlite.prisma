@@ -417,6 +417,23 @@ model EpisodeAlert {
   @@map("episode_alerts")
 }
 
+// PWA web-push subscriptions - one row per browser/device that opted in to
+// native push notifications. endpoint is the push service URL; p256dh/auth
+// are the browser-provided encryption keys web-push needs. Unique on
+// endpoint so re-subscribing the same device updates rather than duplicates.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+  @@map("push_subscriptions")
+}
+
 // Metrics: Proxy stream sessions - "Now Playing" data sourced from AIOStreams'
 // built-in proxy (which sees every stream request passing through it in real
 // time, regardless of provider - Stremio, Nuvio, anything using the proxy).

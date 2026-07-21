@@ -141,9 +141,22 @@ async function checkForNewEpisodes(prisma) {
       }
       alertsFired++
 
+      const epLabel = `S${String(latest.season).padStart(2, '0')}E${String(latest.episode).padStart(2, '0')}`
+
+      // Native web-push to any PWA-installed device that opted in - fires even
+      // when SlickSync isn't open. Best-effort; failures never block the rest.
+      try {
+        const { sendPushToAccount } = require('./pushNotifications')
+        await sendPushToAccount(prisma, show.accountId, {
+          title: `New episode: ${metadata.title || show.showName}`,
+          body: `${epLabel}${latest.title ? ` · ${latest.title}` : ''} is out`,
+          icon: metadata.poster || show.poster || '/android-chrome-192x192.png',
+          url: '/activity',
+        })
+      } catch {}
+
       const target = await getNotifyTarget(prisma, show.accountId)
       if (target.enabled && target.webhookUrl) {
-        const epLabel = `S${String(latest.season).padStart(2, '0')}E${String(latest.episode).padStart(2, '0')}`
         // "Who's behind" flavor - a watcher already past the new episode
         // (rewatch scenarios) is skipped.
         const behind = [...show.watchers.entries()]
