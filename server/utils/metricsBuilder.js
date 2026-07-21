@@ -936,9 +936,50 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   // visibly change between two 5-minute polls to register at all — that
   // heuristic was built for Stremio's data shape and, per investigation,
   // doesn't reliably work for either provider at this poll interval.
+  // Cross-user library-sync dedup: when two users on the same account share a
+  // Stremio identity (same email, both signed into Stremio cloud even if one
+  // is used only as a Nuvio account), Stremio's server-side library
+  // replicates lastWatched timestamps to BOTH accounts to the millisecond.
+  // Each poller pass then writes a MovieWatchHistory / EpisodeWatchHistory
+  // row for every user whose library shows the item as watched — so a single
+  // play under one account shows up twice in the Activity feed under two
+  // different provider badges (confirmed 2026-07-22 with live production
+  // data: Men in Black had two rows dated 2026-07-21T09:18:09.106Z, the
+  // Nuvio one carrying real durationSeconds=1610 and the Stremio one
+  // carrying dur=null — a classic phantom from library sync).
+  //
+  // Keep only the "real watch" per item: same-second watchedAt on the same
+  // itemId (and same videoId, so a series-episode dedup doesn't collapse
+  // different episodes of the same show) → highest durationSeconds wins;
+  // ties break on any-non-null durationSeconds vs null. Different-second
+  // watches are left alone — two household members ACTUALLY watching the
+  // same movie separately produce different-second timestamps by way of
+  // independent poll cycles + network jitter, and shouldn't be deduped.
+  function dedupCrossUserSameSecond(rows, kind /* 'movie' | 'episode' */) {
+    // Group by (itemId, videoId, watchedAt truncated to the second).
+    const key = (r) => {
+      const id = kind === 'movie' ? r.itemId : r.showId
+      const vid = kind === 'episode' ? (r.videoId || '') : ''
+      const ts = Math.floor(new Date(r.watchedAt).getTime() / 1000)
+      return `${id}::${vid}::${ts}`
+    }
+    const byKey = new Map()
+    for (const r of rows) {
+      const k = key(r)
+      const existing = byKey.get(k)
+      if (!existing) { byKey.set(k, r); continue }
+      // Prefer the row with any real durationSeconds over one with null; if
+      // both have real values, keep the higher one.
+      const rDur = Number(r.durationSeconds || 0)
+      const eDur = Number(existing.durationSeconds || 0)
+      if (rDur > eDur) byKey.set(k, r)
+    }
+    return [...byKey.values()]
+  }
+
   let recentActivity = []
   try {
-    const [episodeHistory, movieHistory] = await Promise.all([
+    const [episodeHistoryRaw, movieHistoryRaw] = await Promise.all([
       prisma.episodeWatchHistory.findMany({
         where: { accountId: accountIdValue, watchedAt: { gte: startDate } },
         orderBy: { watchedAt: 'desc' },
@@ -950,6 +991,11 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         take: 5000
       })
     ])
+
+    // Apply the cross-user library-sync dedup BEFORE user lookup / mapping
+    // so we never build activity entries for phantom rows in the first place.
+    const episodeHistory = dedupCrossUserSameSecond(episodeHistoryRaw, 'episode')
+    const movieHistory = dedupCrossUserSameSecond(movieHistoryRaw, 'movie')
 
     // Build user lookup and skip entries for users that no longer exist
     // (deleted/recreated connection) instead of falling back to showing
