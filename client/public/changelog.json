@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.28.0",
+    "date": "2026-07-22",
+    "title": "Trakt integration removed",
+    "features": [],
+    "bugFixes": [],
+    "miscChores": [
+      "Removed the Trakt scrobble integration and the Trakt-powered \"★ Your Watchlist\" source in Discover — Trakt's free tier only allows a single app connection at a time, which made the setup impractical to keep. Deleted server/utils/trakt.js, server/routes/trakt.js, and the client TraktIntegrationCard. Any stored Trakt tokens on AppAccount.sync.trakt are now orphaned JSON (never read); they'll be silently overwritten when the sync blob next updates, no migration needed. Discover keeps the exact same shape (catalogs + genres + infinite scroll) — just without the extra source toggle that only appeared when Trakt was connected."
+    ]
+  },
+  {
     "version": "1.27.1",
     "date": "2026-07-22",
     "title": "Per-user Watch Time cleaned of library-sync phantoms; Discover genre as dropdown",
