@@ -123,6 +123,8 @@ export interface CustomTheme {
   textMuted?: string | null;    // --color-text-muted (secondary text, labels)
   background?: string | null;   // --color-bg (page background)
   surface?: string | null;      // --color-surface (cards, panels)
+  bgMuted?: string | null;      // --color-bg-muted (subtle-section fill)
+  border?: string | null;       // --color-surface-border (card edges)
   fontDisplay?: FontId | null;  // display + body font
   radius?: RadiusId | null;     // global "roundness" preset
 }
@@ -183,7 +185,8 @@ const OVERRIDE_VARS = [
   '--color-secondary', '--color-secondary-muted', '--color-secondaryMuted',
   '--color-chart-1', '--color-chart-2',
   '--color-text', '--color-text-muted',
-  '--color-bg', '--color-surface',
+  '--color-bg', '--color-bg-muted',
+  '--color-surface', '--color-surface-border',
   '--font-space-grotesk', '--font-outfit',
   '--radius-sm', '--radius-md', '--radius-lg', '--radius-xl',
 ];
@@ -205,8 +208,12 @@ function applyCustomTheme(el: HTMLElement, custom: CustomTheme) {
   else el.style.removeProperty('--color-text-muted');
   if (custom.background) el.style.setProperty('--color-bg', custom.background);
   else el.style.removeProperty('--color-bg');
+  if (custom.bgMuted) el.style.setProperty('--color-bg-muted', custom.bgMuted);
+  else el.style.removeProperty('--color-bg-muted');
   if (custom.surface) el.style.setProperty('--color-surface', custom.surface);
   else el.style.removeProperty('--color-surface');
+  if (custom.border) el.style.setProperty('--color-surface-border', custom.border);
+  else el.style.removeProperty('--color-surface-border');
 
   const family = fontFamilyFor(custom.fontDisplay);
   if (family) {
@@ -264,6 +271,8 @@ function migrateLegacyLocalStorage(): { savedList: SavedCustomTheme[]; migratedA
       textMuted: null,
       background: null,
       surface: null,
+      bgMuted: null,
+      border: null,
       fontDisplay: (parsed.fontDisplay as FontId) || 'default',
       radius: 'default',
     };
@@ -382,6 +391,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             textMuted: null,
             background: null,
             surface: null,
+            bgMuted: null,
+            border: null,
             fontDisplay: (pref.custom.fontDisplay as FontId) || 'default',
             radius: 'default',
           };
@@ -447,6 +458,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       textMuted: config.textMuted || null,
       background: config.background || null,
       surface: config.surface || null,
+      bgMuted: config.bgMuted || null,
+      border: config.border || null,
       fontDisplay: config.fontDisplay || 'default',
       radius: config.radius || 'default',
     };
@@ -465,6 +478,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       textMuted: config.textMuted || null,
       background: config.background || null,
       surface: config.surface || null,
+      bgMuted: config.bgMuted || null,
+      border: config.border || null,
       fontDisplay: config.fontDisplay || 'default',
       radius: config.radius || 'default',
       name: name?.trim() || t.name,
@@ -478,6 +493,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         textMuted: config.textMuted || null,
         background: config.background || null,
         surface: config.surface || null,
+        bgMuted: config.bgMuted || null,
+        border: config.border || null,
         fontDisplay: config.fontDisplay || 'default',
         radius: config.radius || 'default',
       };
