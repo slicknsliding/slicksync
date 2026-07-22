@@ -155,6 +155,7 @@ export interface CustomTheme {
   fontDisplay?: FontId | null;  // display + body font
   radius?: RadiusId | null;     // global "roundness" preset
   textScale?: TextScaleId | null; // global text-size preset
+  progressBar?: string | null;  // Continue Watching's resume progress bar fill — overrides the default primary→secondary gradient with a flat color
 }
 
 // A saved user-built theme, with its own id and display name so it can sit
@@ -212,6 +213,7 @@ const OVERRIDE_VARS = [
   '--color-primary', '--color-primary-hover', '--color-primary-muted', '--color-primaryMuted',
   '--color-secondary', '--color-secondary-muted', '--color-secondaryMuted',
   '--color-chart-1', '--color-chart-2',
+  '--color-progress',
   '--color-text', '--color-text-muted',
   '--color-bg', '--color-bg-muted',
   '--color-surface', '--color-surface-border',
@@ -231,6 +233,8 @@ function applyCustomTheme(el: HTMLElement, custom: CustomTheme) {
   el.style.setProperty('--color-secondaryMuted', rgba(custom.secondary, 0.15));
   el.style.setProperty('--color-chart-1', custom.primary);
   el.style.setProperty('--color-chart-2', custom.secondary);
+  if (custom.progressBar) el.style.setProperty('--color-progress', custom.progressBar);
+  else el.style.removeProperty('--color-progress');
   if (custom.text) el.style.setProperty('--color-text', custom.text);
   else el.style.removeProperty('--color-text');
   if (custom.textMuted) el.style.setProperty('--color-text-muted', custom.textMuted);
@@ -309,6 +313,7 @@ function migrateLegacyLocalStorage(): { savedList: SavedCustomTheme[]; migratedA
       surface: null,
       bgMuted: null,
       border: null,
+      progressBar: null,
       fontDisplay: (parsed.fontDisplay as FontId) || 'default',
       radius: 'default',
       textScale: 'default',
@@ -430,6 +435,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             surface: null,
             bgMuted: null,
             border: null,
+            progressBar: null,
             fontDisplay: (pref.custom.fontDisplay as FontId) || 'default',
             radius: 'default',
             textScale: 'default',
@@ -498,6 +504,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       surface: config.surface || null,
       bgMuted: config.bgMuted || null,
       border: config.border || null,
+      progressBar: config.progressBar || null,
       fontDisplay: config.fontDisplay || 'default',
       radius: config.radius || 'default',
       textScale: config.textScale || 'default',
@@ -519,6 +526,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       surface: config.surface || null,
       bgMuted: config.bgMuted || null,
       border: config.border || null,
+      progressBar: config.progressBar || null,
       fontDisplay: config.fontDisplay || 'default',
       radius: config.radius || 'default',
       textScale: config.textScale || 'default',
@@ -535,6 +543,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         surface: config.surface || null,
         bgMuted: config.bgMuted || null,
         border: config.border || null,
+        progressBar: config.progressBar || null,
         fontDisplay: config.fontDisplay || 'default',
         radius: config.radius || 'default',
         textScale: config.textScale || 'default',

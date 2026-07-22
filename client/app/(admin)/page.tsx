@@ -247,9 +247,11 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
               WatchSession (not shown for next-episode cards, which by
               definition start from 0). Ratings deliberately not shown on this
               card - they're in the detail modal the info button opens.
-              Fill is the theme's primary→secondary accent gradient (so it
-              re-colors with every theme, not just one) plus a matching glow,
-              over a dark track, so it stays clearly visible against any
+              Fill defaults to the theme's primary→secondary accent gradient
+              (so it re-colors with every theme, not just one) plus a matching
+              glow, but --color-progress (Settings → Themes → Build your own
+              theme → "Progress bar") overrides both with a flat color when
+              set. Over a dark track, so it stays clearly visible against any
               poster art. Sits in its own thin strip below the thumbnail
               rather than overlaid on it, so nothing covers it. */}
           {item.resume && item.progressPercent != null && (
@@ -258,8 +260,8 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
                 className="h-full rounded-r-full"
                 style={{
                   width: `${Math.min(100, Math.max(3, item.progressPercent))}%`,
-                  background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))',
-                  boxShadow: '0 0 6px var(--color-primary)',
+                  background: 'var(--color-progress, linear-gradient(90deg, var(--color-primary), var(--color-secondary)))',
+                  boxShadow: '0 0 6px var(--color-progress, var(--color-primary))',
                 }}
               />
             </div>
