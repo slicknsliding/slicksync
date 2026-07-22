@@ -6,7 +6,7 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextMenu, useContextMenu } from '@/components/ui';
-import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem } from '@/lib/api';
+import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem, RecommendationRow } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
@@ -51,6 +51,8 @@ const PosterCard = memo(function PosterCard({
   showWatchedMenu = true,
   showWatchedBadge = true,
   showWatchlistBadge = true,
+  isMenuOpen,
+  onMenuOpenChange,
 }: {
   item: DiscoverItem;
   ratings?: RatingsBatchEntry;
@@ -68,16 +70,28 @@ const PosterCard = memo(function PosterCard({
   showWatchedMenu?: boolean;
   showWatchedBadge?: boolean;
   showWatchlistBadge?: boolean;
+  /** Only-one-menu-open-at-a-time state, lifted to the parent so opening
+   *  a second card's menu closes the previous card's. Same pattern the
+   *  Dashboard Continue Watching row uses. */
+  isMenuOpen?: boolean;
+  onMenuOpenChange?: (open: boolean) => void;
 }) {
   const [imageError, setImageError] = useState(false);
-  // Right-click context menu — add or remove watchlist depending on state.
-  const { isOpen, position, handleContextMenu, close } = useContextMenu();
+  // useContextMenu still owns the position calc + preventDefault, but the
+  // OPEN state is driven by the parent's isMenuOpen prop so only one card's
+  // menu is visible at a time across the whole grid.
+  const { position, handleContextMenu, close: closeInternal } = useContextMenu();
+  const controlledOpen = isMenuOpen === true;
+  const close = () => { closeInternal(); onMenuOpenChange?.(false); };
 
   return (
     <div
       className="group relative cursor-pointer"
       onClick={() => onOpenDetails(item)}
-      onContextMenu={handleContextMenu}
+      onContextMenu={(e) => {
+        handleContextMenu(e);
+        onMenuOpenChange?.(true);
+      }}
     >
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl">
         {item.poster && !imageError ? (
@@ -147,7 +161,7 @@ const PosterCard = memo(function PosterCard({
       </div>
 
       {(showWatchlistMenu || showWatchedMenu) && (
-        <ContextMenu isOpen={isOpen} position={position} onClose={close}>
+        <ContextMenu isOpen={controlledOpen} position={position} onClose={close}>
           {showWatchlistMenu && (
             <button
               type="button"
@@ -178,7 +192,7 @@ const PosterCard = memo(function PosterCard({
 
 export default function DiscoverPage() {
   const { layoutMode } = useLayoutMode();
-  const { enableWatchlist, enableWatchedIndicators } = usePersonalFeatures();
+  const { enableWatchlist, enableWatchedIndicators, enableRecommendations } = usePersonalFeatures();
   const [type, setType] = useState<'movie' | 'series'>('movie');
   const [catalog, setCatalog] = useState('top');
   // '' = all genres (no filter). Cinemeta's genre param is optional; sending
@@ -190,6 +204,10 @@ export default function DiscoverPage() {
   const [items, setItems] = useState<DiscoverItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [detailItem, setDetailItem] = useState<DiscoverItem | null>(null);
+  // Which poster's right-click menu is open — shared across the whole page
+  // (both the main grid and the For You rows) so opening a second card's
+  // menu closes whichever one was open before, same as Continue Watching.
+  const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
 
   // Pagination state — Cinemeta returns 100 items per page; ask for more via
   // ?skip=N. hasMore flips false when a page returned <PAGE_SIZE (end of
@@ -200,14 +218,28 @@ export default function DiscoverPage() {
   // Guards against the sentinel firing repeatedly while a fetch is in flight.
   const loadMoreLock = useRef(false);
 
-  // "Your Watchlist" is a native SlickSync source. Available in the source
-  // toggle unless the user disabled the Watchlist feature in Settings.
-  const [source, setSource] = useState<'discover' | 'watchlist'>('discover');
-  // If the feature gets turned off while the user is viewing Watchlist,
-  // snap back to Discover so they aren't stuck on a hidden source.
+  // Discover source toggle: Cinemeta browse, personal Watchlist, or the
+  // "For You" rec rows (moved off the Dashboard so it's opt-in rather
+  // than always-in-your-face). Each source has its own Personal Features
+  // gate — if the user disables the corresponding feature while viewing
+  // it, we snap back to plain Discover.
+  const [source, setSource] = useState<'discover' | 'watchlist' | 'foryou'>('discover');
   useEffect(() => {
     if (!enableWatchlist && source === 'watchlist') setSource('discover');
-  }, [enableWatchlist, source]);
+    if (!enableRecommendations && source === 'foryou') setSource('discover');
+  }, [enableWatchlist, enableRecommendations, source]);
+
+  // For You state — fetched once when the user picks the source (and the
+  // feature is enabled).
+  const [recRows, setRecRows] = useState<RecommendationRow[]>([]);
+  const [recsLoaded, setRecsLoaded] = useState(false);
+  useEffect(() => {
+    if (source !== 'foryou' || !enableRecommendations || recsLoaded) return;
+    api.getRecommendations()
+      .then((r) => setRecRows(Array.isArray(r?.rows) ? r.rows : []))
+      .catch(() => setRecRows([]))
+      .finally(() => setRecsLoaded(true));
+  }, [source, enableRecommendations, recsLoaded]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [watchlistLoaded, setWatchlistLoaded] = useState(false);
   // Watched-status filter for the Discover grid — hide things you've seen,
@@ -433,26 +465,54 @@ export default function DiscoverPage() {
             watched filter. Each half is independently gated by the
             personal-features settings — if BOTH are disabled the whole
             row disappears (no visual weight from an empty control bar). */}
-        {(enableWatchlist || enableWatchedIndicators) && (
+        {(enableWatchlist || enableWatchedIndicators || enableRecommendations) && (
           <PageSection delay={0.07} className="mb-4">
             <div className="flex gap-2 flex-wrap items-center">
-              {enableWatchlist && ([['discover', 'Discover'], ['watchlist', '★ Watchlist']] as const).map(([key, label]) => (
+              {/* Discover source is always shown when any personal feature is
+                  on — otherwise the toggle row disappears entirely. Watchlist
+                  and For You each appear only when their feature is enabled. */}
+              {(enableWatchlist || enableRecommendations) && (
                 <button
-                  key={key}
                   type="button"
-                  onClick={() => setSource(key)}
+                  onClick={() => setSource('discover')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    source === key
+                    source === 'discover'
                       ? 'bg-primary text-white'
                       : 'bg-surface-hover text-muted hover:text-default'
                   }`}
                 >
-                  {label}
-                  {key === 'watchlist' && watchlist.length > 0 && (
+                  Discover
+                </button>
+              )}
+              {enableWatchlist && (
+                <button
+                  type="button"
+                  onClick={() => setSource('watchlist')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    source === 'watchlist'
+                      ? 'bg-primary text-white'
+                      : 'bg-surface-hover text-muted hover:text-default'
+                  }`}
+                >
+                  ★ Watchlist
+                  {watchlist.length > 0 && (
                     <span className={`ml-1.5 text-xs ${source === 'watchlist' ? 'opacity-80' : 'opacity-60'}`}>({watchlist.length})</span>
                   )}
                 </button>
-              ))}
+              )}
+              {enableRecommendations && (
+                <button
+                  type="button"
+                  onClick={() => setSource('foryou')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    source === 'foryou'
+                      ? 'bg-primary text-white'
+                      : 'bg-surface-hover text-muted hover:text-default'
+                  }`}
+                >
+                  ✨ For You
+                </button>
+              )}
 
               {/* Watched filter — right side of the same row, subtle. */}
               {enableWatchedIndicators && (
@@ -489,15 +549,7 @@ export default function DiscoverPage() {
                 <button
                   key={c.key}
                   type="button"
-                  onClick={() => {
-                    setCatalog(c.key);
-                    // Cinemeta's "year" (New) catalog returns EMPTY for every
-                    // specific genre (probed against all 18) — their data,
-                    // not our code. Auto-clear any picked genre when the user
-                    // switches to New so they aren't stuck on a permanently-
-                    // empty grid.
-                    if (c.key === 'year') setGenre('');
-                  }}
+                  onClick={() => setCatalog(c.key)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     catalog === c.key
                       ? 'bg-primary text-white'
@@ -508,21 +560,18 @@ export default function DiscoverPage() {
                 </button>
               ))}
 
-              {/* Genre picker — dropdown, not pills. Stacks with catalog
-                  (Top Rated + Horror = top-rated horror). Disabled on New
-                  since Cinemeta doesn't populate that combo (see above). */}
+              {/* Genre picker — always enabled. Server-side, catalog+genre
+                  combos that return empty from Cinemeta (New+anything,
+                  imdbRating+Documentary, etc.) transparently fall back to
+                  Popular in that genre so the grid isn't stuck empty. */}
               <select
                 value={genre}
                 onChange={(e) => setGenre(e.target.value)}
-                disabled={catalog === 'year'}
-                title={catalog === 'year' ? 'Cinemeta doesn’t provide genre-filtered results for the New catalog' : 'Filter by genre'}
                 aria-label="Filter by genre"
-                className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                  catalog === 'year'
-                    ? 'bg-surface-hover text-subtle border-default cursor-not-allowed opacity-60'
-                    : genre
-                      ? 'bg-primary text-white border-transparent cursor-pointer'
-                      : 'bg-surface-hover text-muted hover:text-default border-default cursor-pointer'
+                className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
+                  genre
+                    ? 'bg-primary text-white border-transparent'
+                    : 'bg-surface-hover text-muted hover:text-default border-default'
                 }`}
               >
                 <option value="">All genres</option>
@@ -534,6 +583,53 @@ export default function DiscoverPage() {
           </PageSection>
         )}
 
+        {source === 'foryou' ? (
+          <PageSection delay={0.1}>
+            {!recsLoaded ? (
+              <div className="flex items-center justify-center py-24 text-muted">
+                <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : recRows.length === 0 ? (
+              <div className="text-center py-24 text-muted">
+                <p>No recommendations yet — watch a few things first, and we&apos;ll suggest more.</p>
+              </div>
+            ) : (
+              <div className="space-y-8">
+                {recRows.map((row) => (
+                  <div key={row.seedId}>
+                    <div className="flex items-baseline gap-2 mb-3">
+                      <h3 className="text-base font-semibold font-display text-default">{row.reason}</h3>
+                      <span className="text-xs text-muted">· Top Rated {row.genre}</span>
+                    </div>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
+                      {row.items.map((item) => (
+                        <PosterCard
+                          key={item.id}
+                          item={item}
+                          ratings={ratingsById[item.id]}
+                          watched={watchedStatus[item.id]}
+                          inWatchlist={inWatchlistIds.has(item.id)}
+                          showWatchlistMenu={enableWatchlist}
+                          showWatchlistBadge={enableWatchlist}
+                          showWatchedMenu={enableWatchedIndicators}
+                          showWatchedBadge={enableWatchedIndicators}
+                          onOpenDetails={setDetailItem}
+                          onToggleWatchlist={handleToggleWatchlist}
+                          onToggleWatched={handleToggleWatched}
+                          isMenuOpen={openMenuKey === item.id}
+                          onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <p className="text-xs text-muted italic text-center pt-2">
+                  Rows are based on your most recent watches with distinct genres — up to three at a time. They shift as you watch new things.
+                </p>
+              </div>
+            )}
+          </PageSection>
+        ) : (
         <PageSection delay={0.1}>
           {loading ? (
             <div className="flex items-center justify-center py-24 text-muted">
@@ -569,6 +665,8 @@ export default function DiscoverPage() {
                     onOpenDetails={setDetailItem}
                     onToggleWatchlist={handleToggleWatchlist}
                     onToggleWatched={handleToggleWatched}
+                    isMenuOpen={openMenuKey === item.id}
+                    onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
                   />
                 ))}
               </div>
@@ -595,6 +693,7 @@ export default function DiscoverPage() {
             </>
           )}
         </PageSection>
+        )}
       </div>
       </div>
       </div>
@@ -607,6 +706,8 @@ export default function DiscoverPage() {
           itemType={detailItem.type}
           fallbackTitle={detailItem.name}
           fallbackPoster={detailItem.poster}
+          fallbackRating={detailItem.imdbRating}
+          fallbackReleaseInfo={detailItem.releaseInfo}
         />
       )}
     </>

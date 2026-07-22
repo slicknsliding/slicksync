@@ -1394,6 +1394,34 @@ class ApiClient {
       body: JSON.stringify({ orderedIds }),
     });
   }
+  // Custom addon tags — drag-to-recategorize, parallel to Vault's categories.
+  async getAddonTags() {
+    return this.fetch<{ tags: string[] }>('/addons/tags');
+  }
+  async createAddonTag(name: string) {
+    return this.fetch<{ tags: string[] }>('/addons/tags', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+  async deleteAddonTag(name: string) {
+    return this.fetch<{ tags: string[] }>(`/addons/tags/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    });
+  }
+  async setAddonTag(addonId: string, tag: string | null) {
+    return this.fetch<{ customTag: string | null }>(`/addons/${addonId}/tag`, {
+      method: 'PUT',
+      body: JSON.stringify({ tag }),
+    });
+  }
+  async setAddonProtected(addonId: string, protectedFlag: boolean, unsafe?: boolean) {
+    const qs = unsafe ? '?unsafe=true' : '';
+    return this.fetch<{ isProtected: boolean }>(`/addons/${addonId}/protect${qs}`, {
+      method: 'POST',
+      body: JSON.stringify({ protected: protectedFlag }),
+    });
+  }
 
   async testVaultEntry(id: string) {
     return this.fetch<{ ok: boolean | null; message: string; checkedAt: string }>(`/vault/${id}/test`, {
@@ -1671,6 +1699,10 @@ export interface Addon {
   isBackup?: boolean;
   primaryAddonId?: string;
   primaryAddonName?: string;
+  // Account-wide protection (by name, across every user — see
+  // routes/addons.js's /:id/protect) and the user-defined custom tag.
+  isProtected?: boolean;
+  customTag?: string | null;
 }
 
 export interface CreateAddonData {

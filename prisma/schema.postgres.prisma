@@ -92,6 +92,9 @@ model Addon {
   // Backup fields
   backupAddonId    String?  // Reference to backup addon (another Addon record)
 
+  // User-defined single tag for drag-to-recategorize — see schema.sqlite.prisma.
+  customTag        String?
+
   // Relationships
   groupAddons GroupAddon[]
   healthHistory AddonHealthHistory[]
