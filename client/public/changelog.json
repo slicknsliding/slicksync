@@ -1,5 +1,22 @@
 [
   {
+    "version": "1.30.0",
+    "date": "2026-07-22",
+    "title": "\"Because you watched\" recommendations + manual watched toggle + Discover pagination fixes + two more theme knobs",
+    "features": [
+      "Recommendations on the Dashboard: up to three \"Because you watched X\" rows, each a horizontal poster row of Top Rated titles in that show/movie's genre, filtered to unwatched. Server-side algorithm picks distinct genres so no two rows overlap; falls back to Popular when Top Rated is thin. Panel returns nothing when there's no watch history yet or every rec is already watched, so it's a no-op on fresh accounts.",
+      "Right-click / long-press on any Discover poster now offers \"Mark as watched\" / \"Mark as unwatched\" alongside the watchlist toggle. Uses a new manual_watch_override table that WINS over the poller's history — so you can mark something watched you saw off-platform, OR clear a false-positive without touching real watch data. The underlying MovieWatchHistory / EpisodeWatchHistory rows are preserved unmodified; clearing an override falls back to whatever the poller has actually seen.",
+      "Two more theme knobs in Build-your-own theme: \"Subtle fill\" overrides the tinted background on secondary panels/pills, and \"Card borders\" overrides the outline color around cards + inputs. Both are optional (blank = base theme's own value)."
+    ],
+    "bugFixes": [
+      "Discover's \"New\" catalog + any specific genre returned an empty grid because Cinemeta doesn't populate that combo (probed against all 18 genres, all empty). The genre picker is now disabled on New, with a tooltip explaining why, and switching to New auto-clears any picked genre so you're not stuck on a permanently-empty view.",
+      "Infinite scroll was stopping prematurely for genre-filtered results with small pages (was: needed >=50 items to keep asking; smaller catalogs like Western + Top Rated legitimately return fewer). Now keeps asking as long as any items came back — only stops on a truly empty page. Cinemeta signals end-of-catalog by returning zero, so this matches how the addon protocol works."
+    ],
+    "miscChores": [
+      "New manual_watch_override table (additive on deploy, no data loss). New POST /api/watchlist/mark and DELETE /api/watchlist/mark/:itemId endpoints. Watched-status batch endpoint now checks overrides last so a manual mark of either direction wins over the poller's automatic history-exists check."
+    ]
+  },
+  {
     "version": "1.29.0",
     "date": "2026-07-22",
     "title": "SlickSync-native Watchlist + \"watched\" indicators on Discover",

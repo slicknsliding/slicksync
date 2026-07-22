@@ -398,6 +398,25 @@ model WatchlistItem {
   @@map("watchlist_item")
 }
 
+// Manual override for the "watched" indicator on Discover posters. Lets a
+// user mark something as watched even though they don't have polled watch
+// history for it (e.g. they saw it on a different service), OR mark it as
+// NOT watched to clear a false positive (e.g. accidentally opened the file).
+// Overrides win over the real MovieWatchHistory / EpisodeWatchHistory rows
+// in the watched-status endpoint but do NOT delete them — the underlying
+// history is preserved untouched, so clearing an override falls back to
+// whatever the poller has actually observed.
+model ManualWatchOverride {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String   // IMDb id (tt...)
+  watched   Boolean  // true = force watched, false = force not-watched
+  markedAt  DateTime @default(now())
+
+  @@unique([accountId, itemId])
+  @@map("manual_watch_override")
+}
+
 // Per-episode dismissals for the Dashboard "Coming up" panel. Keyed by the
 // exact (season, episode) tuple so that when the poller advances a show's
 // next-upcoming episode to a different one, the new one is NOT filtered out —
