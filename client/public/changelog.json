@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.33.0",
+    "date": "2026-07-22",
+    "title": "Theme builder: redesigned live preview mockup + app-wide text-size control",
+    "features": [
+      "Build-your-own-theme's \"Preview\" swatch strip replaced with a real mini mockup — header with icon + title + a \"Live\" badge, body copy, a nested card with a progress bar, and a primary/secondary/cancel button row — all rendered in the base theme's resolved colors, so every override you set (or leave alone) shows up somewhere in it instead of just two color dots and a line of sample text.",
+      "New \"Text size\" control (Default / Small / Large / Extra large) alongside Corner roundness and Font — scales the root font-size, so body text and most UI chrome resize app-wide, not just headings. Saved per custom theme like every other builder knob."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "New optional textScale field on CustomTheme/SavedCustomTheme (client/lib/theme.tsx), applied the same way radius already is — set as an inline override on document.documentElement, cleared back to the browser default when the preset is \"Default\"."
+    ]
+  },
+  {
     "version": "1.32.0",
     "date": "2026-07-22",
     "title": "Discover: For You tab, single-open menus, genre fallback + rating/year fix; Addons: protect & tag by drag-and-drop",
