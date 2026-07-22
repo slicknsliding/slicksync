@@ -52,6 +52,15 @@ function persistKey(buf) {
   }
 }
 
+// Historical hardcoded default. Before keyManager existed, encryption.js
+// had a `getServerKey` that fell back to this exact string when
+// ENCRYPTION_KEY was unset — which meant every deployment that never set
+// the env var was ACTUALLY encrypting every vault secret / stremioAuthKey /
+// nuvioRefreshToken with this key, silently. Kept here as a decrypt-only
+// fallback so that data stays readable after v1.25.1 rerouted the read
+// path through this module. Never used for new writes.
+const LEGACY_HARDCODED_DEFAULT = 'syncio-default-key-32chars-please-change!!';
+
 function resolveKeys() {
   const envRaw = process.env.ENCRYPTION_KEY || '';
   const persisted = readPersistedKey();
@@ -79,6 +88,13 @@ function resolveKeys() {
       KEY_FILE + '. Set ENCRYPTION_KEY in your .env to pin this key across fresh volumes ' +
       '(e.g. `openssl rand -base64 32`), or back up ' + KEY_FILE + ' alongside your database.'
     );
+  }
+
+  // Legacy fallback — ALWAYS included (deduped against current), so any
+  // data encrypted with the pre-v1.25.1 hardcoded default still decrypts.
+  const legacyKey = normalizeToBuffer(LEGACY_HARDCODED_DEFAULT);
+  if (!current.equals(legacyKey) && !fallbacks.some((f) => f.equals(legacyKey))) {
+    fallbacks.push(legacyKey);
   }
 
   return { current, fallbacks };
