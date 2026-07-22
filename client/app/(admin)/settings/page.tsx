@@ -321,6 +321,7 @@ const BASE_RADIUS_PX = { sm: '6px', md: '10px', lg: '14px', xl: '20px' };
 function resolvePreviewPalette(base: ThemeId, o: {
   primary: string; secondary: string; text: string; textMuted: string;
   background: string; surface: string; bgMuted: string; border: string;
+  progressBar: string;
 }) {
   const meta = themeMeta[base].colors;
   const isLight = base === 'daylight';
@@ -333,6 +334,9 @@ function resolvePreviewPalette(base: ThemeId, o: {
     textMuted: o.textMuted || (isLight ? '#64748b' : '#8b949e'),
     primary: o.primary || meta.primary,
     secondary: o.secondary || meta.secondary,
+    // No fallback constant here — a blank override means "keep the default
+    // primary→secondary gradient," which the caller renders itself.
+    progressBar: o.progressBar || null,
   };
 }
 
@@ -497,6 +501,7 @@ export default function SettingsPage() {
   const [builderSurface, setBuilderSurface] = useState<string>(activeCustomTheme?.surface || '');
   const [builderBgMuted, setBuilderBgMuted] = useState<string>(activeCustomTheme?.bgMuted || '');
   const [builderBorder, setBuilderBorder] = useState<string>(activeCustomTheme?.border || '');
+  const [builderProgressBar, setBuilderProgressBar] = useState<string>(activeCustomTheme?.progressBar || '');
   const [builderFont, setBuilderFont] = useState<FontId>((activeCustomTheme?.fontDisplay as FontId) || 'default');
   const [builderRadius, setBuilderRadius] = useState<RadiusId>((activeCustomTheme?.radius as RadiusId) || 'default');
   const [builderTextScale, setBuilderTextScale] = useState<TextScaleId>((activeCustomTheme?.textScale as TextScaleId) || 'default');
@@ -512,6 +517,7 @@ export default function SettingsPage() {
     surface: builderSurface.trim() ? builderSurface.trim() : null,
     bgMuted: builderBgMuted.trim() ? builderBgMuted.trim() : null,
     border: builderBorder.trim() ? builderBorder.trim() : null,
+    progressBar: builderProgressBar.trim() ? builderProgressBar.trim() : null,
     fontDisplay: builderFont,
     radius: builderRadius,
     textScale: builderTextScale,
@@ -529,6 +535,7 @@ export default function SettingsPage() {
     setBuilderSurface(activeCustomTheme?.surface || '');
     setBuilderBgMuted(activeCustomTheme?.bgMuted || '');
     setBuilderBorder(activeCustomTheme?.border || '');
+    setBuilderProgressBar(activeCustomTheme?.progressBar || '');
     setBuilderFont((activeCustomTheme?.fontDisplay as FontId) || 'default');
     setBuilderRadius((activeCustomTheme?.radius as RadiusId) || 'default');
     setBuilderTextScale((activeCustomTheme?.textScale as TextScaleId) || 'default');
@@ -906,7 +913,17 @@ export default function SettingsPage() {
                   onSet={(v) => { setBuilderBorder(v); previewCustom({ ...buildDraft(), border: v }); }}
                   onClear={() => { setBuilderBorder(''); previewCustom({ ...buildDraft(), border: null }); }}
                 />
+                <ColorOverride
+                  label="Progress bar (optional)"
+                  value={builderProgressBar}
+                  seed={builderPrimary}
+                  onSet={(v) => { setBuilderProgressBar(v); previewCustom({ ...buildDraft(), progressBar: v }); }}
+                  onClear={() => { setBuilderProgressBar(''); previewCustom({ ...buildDraft(), progressBar: null }); }}
+                />
               </div>
+              <p className="text-[11px] text-muted -mt-2">
+                Progress bar overrides the resume-progress fill on Dashboard → Continue Watching. Blank keeps the default primary→secondary gradient.
+              </p>
 
               <div>
                 <label className="block text-xs font-medium mb-2 text-muted">Corner roundness</label>
@@ -995,6 +1012,7 @@ export default function SettingsPage() {
                     text: builderText, textMuted: builderTextMuted,
                     background: builderBackground, surface: builderSurface,
                     bgMuted: builderBgMuted, border: builderBorder,
+                    progressBar: builderProgressBar,
                   });
                   const radiusScale = builderRadius !== 'default' ? RADIUS_PRESETS[builderRadius] : null;
                   const rLg = radiusScale?.lg || BASE_RADIUS_PX.lg;
@@ -1039,22 +1057,27 @@ export default function SettingsPage() {
                         Caption and muted text render like this — labels, hints, timestamps.
                       </p>
 
-                      {/* a nested card, to preview surface + bgMuted + border */}
+                      {/* a nested card, to preview surface + bgMuted + border,
+                          plus a Continue Watching-style progress bar so the
+                          "Progress bar" override shows up somewhere too. */}
                       <div
                         className="p-3 mb-4"
                         style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: rMd }}
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium" style={{ color: p.text, fontSize: `${12 * scale}px` }}>Card surface</span>
+                          <span className="font-medium" style={{ color: p.text, fontSize: `${12 * scale}px` }}>Continue Watching</span>
                           <span
                             className="flex items-center gap-1 px-1.5 py-0.5 font-medium"
                             style={{ background: p.bgMuted, color: p.textMuted, borderRadius: rSm, fontSize: `${10 * scale}px` }}
                           >
-                            <CheckIcon className="w-3 h-3" /> Done
+                            <CheckIcon className="w-3 h-3" /> 62% watched
                           </span>
                         </div>
                         <div className="h-1.5 w-full overflow-hidden" style={{ background: p.bgMuted, borderRadius: rSm }}>
-                          <div className="h-full w-2/3" style={{ background: `linear-gradient(90deg, ${p.primary}, ${p.secondary})` }} />
+                          <div
+                            className="h-full w-2/3"
+                            style={{ background: p.progressBar || `linear-gradient(90deg, ${p.primary}, ${p.secondary})` }}
+                          />
                         </div>
                       </div>
 
@@ -1144,6 +1167,7 @@ export default function SettingsPage() {
                     setBuilderSurface(activeCustomTheme?.surface || '');
                     setBuilderBgMuted(activeCustomTheme?.bgMuted || '');
                     setBuilderBorder(activeCustomTheme?.border || '');
+                    setBuilderProgressBar(activeCustomTheme?.progressBar || '');
                     setBuilderFont((activeCustomTheme?.fontDisplay as FontId) || 'default');
                     setBuilderRadius((activeCustomTheme?.radius as RadiusId) || 'default');
                     setBuilderTextScale((activeCustomTheme?.textScale as TextScaleId) || 'default');

@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.34.0",
+    "date": "2026-07-22",
+    "title": "Custom Continue Watching progress bar color",
+    "features": [
+      "New \"Progress bar\" color override in Build-your-own theme, next to Card borders. Overrides the resume-progress fill on Dashboard → Continue Watching (previously always the theme's primary→secondary gradient) with a flat color of your choice; leave it blank to keep the gradient. Shows up live in the builder's preview mockup's own Continue Watching card."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "New optional progressBar field on CustomTheme/SavedCustomTheme, applied as a --color-progress CSS var with a var()-fallback to the existing gradient, so every past saved custom theme (which never set it) keeps rendering exactly as before with zero migration."
+    ]
+  },
+  {
     "version": "1.33.0",
     "date": "2026-07-22",
     "title": "Theme builder: redesigned live preview mockup + app-wide text-size control",
