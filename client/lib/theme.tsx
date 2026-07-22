@@ -83,9 +83,12 @@ export const FONT_OPTIONS = [
   { id: 'default', label: 'Default (Space Grotesk)', family: null },
   { id: 'poppins', label: 'Poppins — rounded sans', family: '"Poppins", system-ui, sans-serif' },
   { id: 'merriweather', label: 'Merriweather — classic serif', family: '"Merriweather", Georgia, serif' },
+  { id: 'playfair', label: 'Playfair Display — elegant serif', family: '"Playfair Display", Georgia, serif' },
   { id: 'jetbrains-mono', label: 'JetBrains Mono — monospace', family: '"JetBrains Mono", ui-monospace, monospace' },
-  { id: 'bebas-neue', label: 'Bebas Neue — condensed display', family: '"Bebas Neue", Impact, sans-serif' },
-  { id: 'caveat', label: 'Caveat — handwritten', family: '"Caveat", cursive' },
+  { id: 'bungee', label: 'Bungee — poster display', family: '"Bungee", "Space Grotesk", sans-serif' },
+  { id: 'bangers', label: 'Bangers — comic display', family: '"Bangers", cursive' },
+  { id: 'press-start', label: 'Press Start 2P — retro pixel', family: '"Press Start 2P", ui-monospace, monospace' },
+  { id: 'permanent-marker', label: 'Permanent Marker — bold handwritten', family: '"Permanent Marker", cursive' },
   { id: 'orbitron', label: 'Orbitron — sci-fi', family: '"Orbitron", "Space Grotesk", sans-serif' },
 ] as const;
 export type FontId = (typeof FONT_OPTIONS)[number]['id'];
@@ -152,6 +155,8 @@ export interface CustomTheme {
   surface?: string | null;      // --color-surface (cards, panels)
   bgMuted?: string | null;      // --color-bg-muted (subtle-section fill)
   border?: string | null;       // --color-surface-border (card edges)
+  success?: string | null;      // --color-success (health-check dots, success badges/toasts)
+  error?: string | null;        // --color-error (error badges/toasts, destructive actions)
   fontDisplay?: FontId | null;  // display + body font
   radius?: RadiusId | null;     // global "roundness" preset
   textScale?: TextScaleId | null; // global text-size preset
@@ -214,6 +219,8 @@ const OVERRIDE_VARS = [
   '--color-secondary', '--color-secondary-muted', '--color-secondaryMuted',
   '--color-chart-1', '--color-chart-2',
   '--color-progress',
+  '--color-success', '--color-success-muted', '--color-successMuted',
+  '--color-error', '--color-error-muted', '--color-errorMuted',
   '--color-text', '--color-text-muted',
   '--color-bg', '--color-bg-muted',
   '--color-surface', '--color-surface-border',
@@ -235,6 +242,24 @@ function applyCustomTheme(el: HTMLElement, custom: CustomTheme) {
   el.style.setProperty('--color-chart-2', custom.secondary);
   if (custom.progressBar) el.style.setProperty('--color-progress', custom.progressBar);
   else el.style.removeProperty('--color-progress');
+  if (custom.success) {
+    el.style.setProperty('--color-success', custom.success);
+    el.style.setProperty('--color-success-muted', rgba(custom.success, 0.15));
+    el.style.setProperty('--color-successMuted', rgba(custom.success, 0.15));
+  } else {
+    el.style.removeProperty('--color-success');
+    el.style.removeProperty('--color-success-muted');
+    el.style.removeProperty('--color-successMuted');
+  }
+  if (custom.error) {
+    el.style.setProperty('--color-error', custom.error);
+    el.style.setProperty('--color-error-muted', rgba(custom.error, 0.15));
+    el.style.setProperty('--color-errorMuted', rgba(custom.error, 0.15));
+  } else {
+    el.style.removeProperty('--color-error');
+    el.style.removeProperty('--color-error-muted');
+    el.style.removeProperty('--color-errorMuted');
+  }
   if (custom.text) el.style.setProperty('--color-text', custom.text);
   else el.style.removeProperty('--color-text');
   if (custom.textMuted) el.style.setProperty('--color-text-muted', custom.textMuted);
@@ -314,6 +339,8 @@ function migrateLegacyLocalStorage(): { savedList: SavedCustomTheme[]; migratedA
       bgMuted: null,
       border: null,
       progressBar: null,
+      success: null,
+      error: null,
       fontDisplay: (parsed.fontDisplay as FontId) || 'default',
       radius: 'default',
       textScale: 'default',
@@ -436,6 +463,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             bgMuted: null,
             border: null,
             progressBar: null,
+            success: null,
+            error: null,
             fontDisplay: (pref.custom.fontDisplay as FontId) || 'default',
             radius: 'default',
             textScale: 'default',
@@ -505,6 +534,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       bgMuted: config.bgMuted || null,
       border: config.border || null,
       progressBar: config.progressBar || null,
+      success: config.success || null,
+      error: config.error || null,
       fontDisplay: config.fontDisplay || 'default',
       radius: config.radius || 'default',
       textScale: config.textScale || 'default',
@@ -527,6 +558,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       bgMuted: config.bgMuted || null,
       border: config.border || null,
       progressBar: config.progressBar || null,
+      success: config.success || null,
+      error: config.error || null,
       fontDisplay: config.fontDisplay || 'default',
       radius: config.radius || 'default',
       textScale: config.textScale || 'default',
@@ -544,6 +577,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         bgMuted: config.bgMuted || null,
         border: config.border || null,
         progressBar: config.progressBar || null,
+        success: config.success || null,
+        error: config.error || null,
         fontDisplay: config.fontDisplay || 'default',
         radius: config.radius || 'default',
         textScale: config.textScale || 'default',
