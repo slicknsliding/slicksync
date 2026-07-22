@@ -49,25 +49,38 @@ module.exports = ({ prisma, getAccountId } = {}) => {
   })
 
   // GET /api/discover/recommendations
-  // "Because you watched X" rows for the Dashboard. Algorithm:
-  //   1. Take the account's most-recent movie + episode watches (deduped by
-  //      show for series, since watching 8 episodes shouldn't crowd out
-  //      recs from other titles).
-  //   2. For each candidate, fetch its Cinemeta genres via the same cached
-  //      fetchMetadata utility notifications already use.
-  //   3. Pick up to 3 seeds whose genres haven't been used yet — one seed
-  //      per row, one genre per row, no duplicate rows.
-  //   4. For each seed, fetch Cinemeta Top Rated in that genre and filter
-  //      out anything the user has already watched or manually marked
-  //      watched. Cap items per row.
+  // "Because you watched X" rows for Discover's For You tab, built from
+  // SlickTrax's actual watch-time signal rather than just "what did you
+  // play most recently." Algorithm:
+  //   1. Score every item the account has real WatchActivity for by its
+  //      SUMMED watchTimeSeconds over the lookback window, exponentially
+  //      decayed by age (a show binged 3 months ago should fade, not sit
+  //      permanently at the top; something you're mid-binge on right now
+  //      should dominate over a single movie watched once ages ago). Items
+  //      with real watch history but no WatchActivity coverage yet (older
+  //      data) get a small flat baseline instead of being invisible.
+  //   2. Watchlist adds are folded in too, at a fraction of a real watch's
+  //      weight — "I want to see this" is a real taste signal, just a
+  //      weaker one than time actually spent watching.
+  //   3. Fetch genres (cached) for the top-scored candidates, then sum each
+  //      candidate's score into every genre it carries — genre affinity
+  //      driven by weighted watch time, not by whichever 3 titles happen to
+  //      be most recent.
+  //   4. Take the top genres by aggregate score, one row each. Each row's
+  //      seed (for the "Because you watched X" label) is the highest-scored
+  //      candidate carrying that genre.
+  //   5. For each seed, fetch Cinemeta Top Rated in that genre (falling back
+  //      to Popular if too few survive filtering), excluding anything
+  //      already watched OR already on the watchlist — no point suggesting
+  //      what you've already decided to watch.
   // Returns { rows: [{ reason, genre, seedId, seedType, items[] }] }.
   router.get('/recommendations', async (req, res) => {
     try {
       if (!prisma || !getAccountId) return res.json({ rows: [] })
       const accountId = getAccountId(req) || 'default'
 
-      // Respect the Personal Features opt-out — a disabled feature should
-      // never trigger the metadata + catalog fetches this endpoint does,
+      // Respect the SlickTrax opt-out — a disabled feature should never
+      // trigger the metadata + catalog fetches this endpoint does,
       // regardless of what the client sends.
       try {
         const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
@@ -78,40 +91,52 @@ module.exports = ({ prisma, getAccountId } = {}) => {
         }
       } catch {}
 
-      const RECENT_WATCH_LOOKBACK = 12
       const MAX_ROWS = 3
       const ITEMS_PER_ROW = 12
+      const CANDIDATE_POOL = 40 // how many top-scored items get a genre lookup
+      const ACTIVITY_LOOKBACK_DAYS = 90
+      const HALF_LIFE_DAYS = 21 // score halves every 3 weeks of age
+      const BASELINE_SECONDS = 600 // flat weight for real watches with no WatchActivity coverage (pre-dates the table, or a same-poll edge case)
+      const WATCHLIST_WEIGHT_SECONDS = 900 // an intent signal, deliberately lighter than any real viewing
 
-      const [movies, episodes, overrides] = await Promise.all([
+      const lookbackDate = new Date(Date.now() - ACTIVITY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
+
+      const [movies, episodes, overrides, activity, watchlist] = await Promise.all([
         prisma.movieWatchHistory.findMany({
           where: { accountId },
           orderBy: { watchedAt: 'desc' },
-          take: RECENT_WATCH_LOOKBACK,
+          take: 200,
           distinct: ['itemId'],
         }),
         prisma.episodeWatchHistory.findMany({
           where: { accountId },
           orderBy: { watchedAt: 'desc' },
-          take: RECENT_WATCH_LOOKBACK,
+          take: 200,
           distinct: ['showId'],
         }),
         prisma.manualWatchOverride.findMany({
           where: { accountId },
           select: { itemId: true, watched: true },
         }),
+        prisma.watchActivity.findMany({
+          where: { accountId, date: { gte: lookbackDate } },
+          select: { itemId: true, itemType: true, watchTimeSeconds: true, date: true },
+        }),
+        prisma.watchlistItem.findMany({ where: { accountId }, select: { itemId: true, itemType: true, name: true } }).catch(() => []),
       ])
 
-      // Blend movie + show candidates in reverse-chronological order.
-      const seedCandidates = [
-        ...movies.map((m) => ({ id: m.itemId, name: m.itemName, type: 'movie', at: m.watchedAt })),
-        ...episodes.map((e) => ({ id: e.showId, name: e.showName, type: 'series', at: e.watchedAt })),
-      ].sort((a, b) => new Date(b.at) - new Date(a.at))
+      // Title/type for every candidate, from whichever source names it first.
+      const itemMeta = new Map()
+      for (const m of movies) itemMeta.set(m.itemId, { name: m.itemName, type: 'movie' })
+      for (const e of episodes) itemMeta.set(e.showId, { name: e.showName, type: 'series' })
+      for (const w of watchlist) if (!itemMeta.has(w.itemId)) itemMeta.set(w.itemId, { name: w.name, type: w.itemType })
 
-      if (seedCandidates.length === 0) return res.json({ rows: [] })
+      if (itemMeta.size === 0) return res.json({ rows: [] })
 
-      // The "already watched" set powering the filter — real history +
-      // any manual overrides. Overrides set to true also count as watched;
-      // set to false REMOVES from the watched set (unwatched override).
+      // The "already watched" / "already on watchlist" sets powering the
+      // exclusion filter. Manual overrides set to true also count as
+      // watched; set to false REMOVES from the watched set (unwatched
+      // override wins over real history).
       const watchedIds = new Set([
         ...movies.map((m) => m.itemId),
         ...episodes.map((e) => e.showId),
@@ -120,46 +145,75 @@ module.exports = ({ prisma, getAccountId } = {}) => {
         if (o.watched) watchedIds.add(o.itemId)
         else watchedIds.delete(o.itemId)
       }
+      const watchlistIds = new Set(watchlist.map((w) => w.itemId))
 
-      // Pull genres for each seed candidate in parallel (fetchMetadata is
-      // cached, so repeat calls for the same id are free).
+      // Real watch-time weight, decayed by age so recent viewing still
+      // matters more than ancient history without ignoring it outright.
+      const now = Date.now()
+      const scoreByItem = new Map()
+      for (const a of activity) {
+        const ageDays = (now - new Date(a.date).getTime()) / (24 * 60 * 60 * 1000)
+        const decay = Math.pow(0.5, Math.max(0, ageDays) / HALF_LIFE_DAYS)
+        scoreByItem.set(a.itemId, (scoreByItem.get(a.itemId) || 0) + a.watchTimeSeconds * decay)
+        if (!itemMeta.has(a.itemId)) itemMeta.set(a.itemId, { name: null, type: a.itemType })
+      }
+      for (const m of movies) if (!scoreByItem.has(m.itemId)) scoreByItem.set(m.itemId, BASELINE_SECONDS)
+      for (const e of episodes) if (!scoreByItem.has(e.showId)) scoreByItem.set(e.showId, BASELINE_SECONDS)
+      for (const w of watchlist) scoreByItem.set(w.itemId, (scoreByItem.get(w.itemId) || 0) + WATCHLIST_WEIGHT_SECONDS)
+
+      const ranked = [...scoreByItem.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, CANDIDATE_POOL)
+        .map(([id, score]) => ({ id, score, ...(itemMeta.get(id) || { type: 'movie' }) }))
+        .filter((c) => c.type === 'movie' || c.type === 'series')
+
+      if (ranked.length === 0) return res.json({ rows: [] })
+
+      // Pull genres for each ranked candidate in parallel (fetchMetadata is
+      // cached, so repeat calls for the same id are free) — also backfills
+      // the name for anything that only came from WatchActivity.
       const { fetchMetadata } = require('../utils/notify')
-      const withGenres = await Promise.all(seedCandidates.map(async (s) => {
+      const withGenres = await Promise.all(ranked.map(async (c) => {
         try {
-          const meta = await fetchMetadata(s.id, s.type)
-          return { ...s, genres: Array.isArray(meta?.genres) ? meta.genres : [] }
-        } catch { return { ...s, genres: [] } }
+          const meta = await fetchMetadata(c.id, c.type)
+          return { ...c, name: c.name || meta?.name || null, genres: Array.isArray(meta?.genres) ? meta.genres : [] }
+        } catch { return { ...c, genres: [] } }
       }))
 
-      // Walk newest → oldest, picking one seed per fresh genre until we hit
-      // MAX_ROWS. Skip seeds whose genres have all already been used, and
-      // skip seeds with no genres at all.
+      // Aggregate weighted score per genre across every candidate carrying it.
+      const genreScore = new Map()
+      for (const c of withGenres) {
+        for (const g of c.genres) genreScore.set(g, (genreScore.get(g) || 0) + c.score)
+      }
+      const topGenres = [...genreScore.entries()].sort((a, b) => b[1] - a[1]).map(([g]) => g)
+
       const rows = []
-      const usedGenres = new Set()
       const usedSeedIds = new Set()
-      for (const seed of withGenres) {
+      for (const genre of topGenres) {
         if (rows.length >= MAX_ROWS) break
-        if (usedSeedIds.has(seed.id)) continue
-        const pickedGenre = seed.genres.find((g) => !usedGenres.has(g))
-        if (!pickedGenre) continue
-        usedGenres.add(pickedGenre)
+        // Seed = the highest-scored candidate carrying this genre — the
+        // strongest real reason to attribute the row to.
+        const seed = withGenres
+          .filter((c) => c.genres.includes(genre) && c.name && !usedSeedIds.has(c.id))
+          .sort((a, b) => b.score - a.score)[0]
+        if (!seed) continue
         usedSeedIds.add(seed.id)
-        // Top Rated in that genre, filtered to unwatched. Fall back to
-        // Popular if Top Rated returns too few after filtering.
-        let items = await fetchCatalog(seed.type, { catalog: 'imdbRating', genre: pickedGenre })
-        let filtered = items.filter((i) => !watchedIds.has(i.id))
+        // Top Rated in that genre, filtered to unwatched and not already on
+        // the watchlist. Fall back to Popular if too few survive filtering.
+        let items = await fetchCatalog(seed.type, { catalog: 'imdbRating', genre })
+        let filtered = items.filter((i) => !watchedIds.has(i.id) && !watchlistIds.has(i.id))
         if (filtered.length < 4) {
-          const popular = await fetchCatalog(seed.type, { catalog: 'top', genre: pickedGenre })
+          const popular = await fetchCatalog(seed.type, { catalog: 'top', genre })
           const seenIds = new Set(filtered.map((i) => i.id))
           for (const p of popular) {
-            if (!watchedIds.has(p.id) && !seenIds.has(p.id)) filtered.push(p)
+            if (!watchedIds.has(p.id) && !watchlistIds.has(p.id) && !seenIds.has(p.id)) filtered.push(p)
           }
         }
         filtered = filtered.slice(0, ITEMS_PER_ROW)
         if (filtered.length === 0) continue
         rows.push({
           reason: `Because you watched ${seed.name}`,
-          genre: pickedGenre,
+          genre,
           seedId: seed.id,
           seedType: seed.type,
           items: filtered,

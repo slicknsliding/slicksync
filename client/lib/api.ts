@@ -1396,7 +1396,7 @@ class ApiClient {
   }
   // Custom addon tags — drag-to-recategorize, parallel to Vault's categories.
   async getAddonTags() {
-    return this.fetch<{ tags: string[] }>('/addons/tags');
+    return this.fetch<{ tags: string[]; tagColors: Record<string, string> }>('/addons/tags');
   }
   async createAddonTag(name: string) {
     return this.fetch<{ tags: string[] }>('/addons/tags', {
@@ -1413,6 +1413,12 @@ class ApiClient {
     return this.fetch<{ customTag: string | null }>(`/addons/${addonId}/tag`, {
       method: 'PUT',
       body: JSON.stringify({ tag }),
+    });
+  }
+  async setAddonTagColor(name: string, color: string | null) {
+    return this.fetch<{ tagColors: Record<string, string> }>(`/addons/tags/${encodeURIComponent(name)}/color`, {
+      method: 'PUT',
+      body: JSON.stringify({ color }),
     });
   }
   async setAddonProtected(addonId: string, protectedFlag: boolean, unsafe?: boolean) {

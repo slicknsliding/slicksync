@@ -554,6 +554,150 @@ export default function ThemesPage() {
             </div>
 
             <div className="space-y-4">
+              {/* Live mockup — a small "app screenshot" rendered with the
+                  builder's own resolved colors/font/radius/text-scale: brand
+                  mark + wordmark, a stat row, the real Continue Watching
+                  progress bar, tag pills, body copy, and buttons + a toggle.
+                  Deliberately samples a bit of everything the builder
+                  controls, not just accents, so nothing is a surprise once
+                  it's applied for real. Independent of
+                  document.documentElement so it's accurate even mid-drag on a
+                  color input. */}
+              <div>
+                <label className="block text-xs font-medium mb-2 text-muted">Preview</label>
+                {(() => {
+                  const p = resolvePreviewPalette(builderBase, {
+                    primary: builderPrimary, secondary: builderSecondary,
+                    text: builderText, textMuted: builderTextMuted,
+                    background: builderBackground, surface: builderSurface,
+                    bgMuted: builderBgMuted, border: builderBorder,
+                    progressBar: builderProgressBar, success: builderSuccess, error: builderError,
+                  });
+                  const radiusScale = builderRadius !== 'default' ? RADIUS_PRESETS[builderRadius] : null;
+                  const rLg = radiusScale?.lg || BASE_RADIUS_PX.lg;
+                  const rMd = radiusScale?.md || BASE_RADIUS_PX.md;
+                  const rSm = radiusScale?.sm || BASE_RADIUS_PX.sm;
+                  const fontFamily = FONT_OPTIONS.find((f) => f.id === builderFont)?.family || undefined;
+                  const scale = TEXT_SCALE_FACTORS[builderTextScale];
+                  const progressFill = p.progressBar || `linear-gradient(90deg, ${p.primary}, ${p.secondary})`;
+                  const progressAccent = p.progressBar || p.primary;
+                  return (
+                    <>
+                      <div
+                        className="relative overflow-hidden"
+                        style={{ borderRadius: rLg, border: `1px solid ${p.border}`, boxShadow: '0 12px 28px -14px rgba(0,0,0,0.45)' }}
+                      >
+                        {/* accent strip — the accent pairing at a glance before reading anything else */}
+                        <div className="h-[3px] w-full" style={{ background: `linear-gradient(90deg, ${p.primary}, ${p.secondary})` }} />
+                        <div className="p-5" style={{ background: p.bg, fontFamily }}>
+                          {/* mini app header: brand mark + wordmark + avatar */}
+                          <div className="flex items-center gap-2.5 mb-4">
+                            <div
+                              className="w-7 h-7 flex items-center justify-center shrink-0"
+                              style={{ background: `linear-gradient(135deg, ${p.primary}, ${p.secondary})`, borderRadius: rMd }}
+                            >
+                              <SparklesIcon className="w-3.5 h-3.5" style={{ color: '#fff' }} />
+                            </div>
+                            <span className="font-bold truncate" style={{ color: p.text, fontSize: `${14.5 * scale}px` }}>
+                              {builderName.trim() || 'SlickSync'}
+                            </span>
+                            <div
+                              className="ml-auto w-6 h-6 rounded-full flex items-center justify-center shrink-0 font-semibold"
+                              style={{ background: p.bgMuted, color: p.textMuted, fontSize: `${9.5 * scale}px` }}
+                            >
+                              A
+                            </div>
+                          </div>
+
+                          {/* status dots — same green/red health-check language as the
+                              real Addons list, so Success/Error accents show up somewhere too */}
+                          <div className="flex items-center gap-3 mb-4">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.success }} />
+                              <span style={{ color: p.textMuted, fontSize: `${10 * scale}px` }}>Online</span>
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.error }} />
+                              <span style={{ color: p.textMuted, fontSize: `${10 * scale}px` }}>Offline</span>
+                            </span>
+                          </div>
+
+                          {/* stat tiles — each in a different accent so primary/secondary/text all show up somewhere */}
+                          <div className="grid grid-cols-3 gap-2 mb-4">
+                            {[
+                              { n: '1.2K', l: 'Watched', c: p.primary },
+                              { n: '42h', l: 'This week', c: p.secondary },
+                              { n: '12', l: 'Active', c: p.text },
+                            ].map((s) => (
+                              <div key={s.l} className="text-center py-2 px-1" style={{ background: p.bgMuted, borderRadius: rSm }}>
+                                <p className="font-bold leading-tight" style={{ color: s.c, fontSize: `${14 * scale}px` }}>{s.n}</p>
+                                <p className="uppercase tracking-wide leading-tight mt-0.5" style={{ color: p.textMuted, fontSize: `${8.5 * scale}px` }}>{s.l}</p>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Continue Watching card, bound to the real progress-bar override */}
+                          <div
+                            className="p-3 mb-4"
+                            style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: rMd }}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-medium" style={{ color: p.text, fontSize: `${12 * scale}px` }}>Continue Watching</span>
+                              <span
+                                className="px-1.5 py-0.5 font-semibold"
+                                style={{ background: `${progressAccent}26`, color: progressAccent, borderRadius: rSm, fontSize: `${10 * scale}px` }}
+                              >
+                                62%
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full overflow-hidden" style={{ background: p.bgMuted, borderRadius: rSm }}>
+                              <div className="h-full w-2/3" style={{ background: progressFill }} />
+                            </div>
+                          </div>
+
+                          {/* tag pills — genre/tag chips, same visual language as Discover + Addons */}
+                          <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+                            <span className="px-2 py-0.5 font-medium" style={{ background: `${p.primary}22`, color: p.primary, borderRadius: rSm, fontSize: `${10 * scale}px` }}>Action</span>
+                            <span className="px-2 py-0.5 font-medium" style={{ background: `${p.secondary}22`, color: p.secondary, borderRadius: rSm, fontSize: `${10 * scale}px` }}>4K</span>
+                            <span className="px-2 py-0.5 font-medium" style={{ background: p.bgMuted, color: p.textMuted, borderRadius: rSm, fontSize: `${10 * scale}px` }}>Kids</span>
+                          </div>
+
+                          {/* body copy, on the resolved muted color */}
+                          <p className="mb-4" style={{ color: p.textMuted, fontSize: `${11.5 * scale}px`, lineHeight: 1.5 }}>
+                            The quick brown fox jumps over the lazy dog — body text and captions render like this.
+                          </p>
+
+                          {/* buttons + a toggle switch */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className="px-3 py-1.5 font-semibold"
+                              style={{ background: p.primary, color: '#fff', borderRadius: rMd, fontSize: `${12 * scale}px` }}
+                            >
+                              Primary
+                            </span>
+                            <span
+                              className="px-3 py-1.5 font-semibold"
+                              style={{ background: 'transparent', color: p.primary, border: `1px solid ${p.primary}`, borderRadius: rMd, fontSize: `${12 * scale}px` }}
+                            >
+                              Secondary
+                            </span>
+                            <span
+                              className="ml-auto w-8 h-[18px] rounded-full flex items-center px-0.5 shrink-0"
+                              style={{ background: p.primary }}
+                            >
+                              <span className="w-3.5 h-3.5 rounded-full bg-white ml-auto block" />
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-muted mt-2">
+                        Based on {themeMeta[builderBase].name}
+                      </p>
+                    </>
+                  );
+                })()}
+              </div>
+
               <div>
                 <label className="block text-xs font-medium mb-2 text-muted">Theme name</label>
                 <input
@@ -745,150 +889,6 @@ export default function ThemesPage() {
                   ))}
                 </div>
                 <p className="text-[11px] text-muted mt-1.5">Scales body text and most UI chrome app-wide, not just this builder.</p>
-              </div>
-
-              {/* Live mockup — a small "app screenshot" rendered with the
-                  builder's own resolved colors/font/radius/text-scale: brand
-                  mark + wordmark, a stat row, the real Continue Watching
-                  progress bar, tag pills, body copy, and buttons + a toggle.
-                  Deliberately samples a bit of everything the builder
-                  controls, not just accents, so nothing is a surprise once
-                  it's applied for real. Independent of
-                  document.documentElement so it's accurate even mid-drag on a
-                  color input. */}
-              <div>
-                <label className="block text-xs font-medium mb-2 text-muted">Preview</label>
-                {(() => {
-                  const p = resolvePreviewPalette(builderBase, {
-                    primary: builderPrimary, secondary: builderSecondary,
-                    text: builderText, textMuted: builderTextMuted,
-                    background: builderBackground, surface: builderSurface,
-                    bgMuted: builderBgMuted, border: builderBorder,
-                    progressBar: builderProgressBar, success: builderSuccess, error: builderError,
-                  });
-                  const radiusScale = builderRadius !== 'default' ? RADIUS_PRESETS[builderRadius] : null;
-                  const rLg = radiusScale?.lg || BASE_RADIUS_PX.lg;
-                  const rMd = radiusScale?.md || BASE_RADIUS_PX.md;
-                  const rSm = radiusScale?.sm || BASE_RADIUS_PX.sm;
-                  const fontFamily = FONT_OPTIONS.find((f) => f.id === builderFont)?.family || undefined;
-                  const scale = TEXT_SCALE_FACTORS[builderTextScale];
-                  const progressFill = p.progressBar || `linear-gradient(90deg, ${p.primary}, ${p.secondary})`;
-                  const progressAccent = p.progressBar || p.primary;
-                  return (
-                    <>
-                      <div
-                        className="relative overflow-hidden"
-                        style={{ borderRadius: rLg, border: `1px solid ${p.border}`, boxShadow: '0 12px 28px -14px rgba(0,0,0,0.45)' }}
-                      >
-                        {/* accent strip — the accent pairing at a glance before reading anything else */}
-                        <div className="h-[3px] w-full" style={{ background: `linear-gradient(90deg, ${p.primary}, ${p.secondary})` }} />
-                        <div className="p-5" style={{ background: p.bg, fontFamily }}>
-                          {/* mini app header: brand mark + wordmark + avatar */}
-                          <div className="flex items-center gap-2.5 mb-4">
-                            <div
-                              className="w-7 h-7 flex items-center justify-center shrink-0"
-                              style={{ background: `linear-gradient(135deg, ${p.primary}, ${p.secondary})`, borderRadius: rMd }}
-                            >
-                              <SparklesIcon className="w-3.5 h-3.5" style={{ color: '#fff' }} />
-                            </div>
-                            <span className="font-bold truncate" style={{ color: p.text, fontSize: `${14.5 * scale}px` }}>
-                              {builderName.trim() || 'SlickSync'}
-                            </span>
-                            <div
-                              className="ml-auto w-6 h-6 rounded-full flex items-center justify-center shrink-0 font-semibold"
-                              style={{ background: p.bgMuted, color: p.textMuted, fontSize: `${9.5 * scale}px` }}
-                            >
-                              A
-                            </div>
-                          </div>
-
-                          {/* status dots — same green/red health-check language as the
-                              real Addons list, so Success/Error accents show up somewhere too */}
-                          <div className="flex items-center gap-3 mb-4">
-                            <span className="flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.success }} />
-                              <span style={{ color: p.textMuted, fontSize: `${10 * scale}px` }}>Online</span>
-                            </span>
-                            <span className="flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.error }} />
-                              <span style={{ color: p.textMuted, fontSize: `${10 * scale}px` }}>Offline</span>
-                            </span>
-                          </div>
-
-                          {/* stat tiles — each in a different accent so primary/secondary/text all show up somewhere */}
-                          <div className="grid grid-cols-3 gap-2 mb-4">
-                            {[
-                              { n: '1.2K', l: 'Watched', c: p.primary },
-                              { n: '42h', l: 'This week', c: p.secondary },
-                              { n: '12', l: 'Active', c: p.text },
-                            ].map((s) => (
-                              <div key={s.l} className="text-center py-2 px-1" style={{ background: p.bgMuted, borderRadius: rSm }}>
-                                <p className="font-bold leading-tight" style={{ color: s.c, fontSize: `${14 * scale}px` }}>{s.n}</p>
-                                <p className="uppercase tracking-wide leading-tight mt-0.5" style={{ color: p.textMuted, fontSize: `${8.5 * scale}px` }}>{s.l}</p>
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* Continue Watching card, bound to the real progress-bar override */}
-                          <div
-                            className="p-3 mb-4"
-                            style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: rMd }}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-medium" style={{ color: p.text, fontSize: `${12 * scale}px` }}>Continue Watching</span>
-                              <span
-                                className="px-1.5 py-0.5 font-semibold"
-                                style={{ background: `${progressAccent}26`, color: progressAccent, borderRadius: rSm, fontSize: `${10 * scale}px` }}
-                              >
-                                62%
-                              </span>
-                            </div>
-                            <div className="h-1.5 w-full overflow-hidden" style={{ background: p.bgMuted, borderRadius: rSm }}>
-                              <div className="h-full w-2/3" style={{ background: progressFill }} />
-                            </div>
-                          </div>
-
-                          {/* tag pills — genre/tag chips, same visual language as Discover + Addons */}
-                          <div className="flex items-center gap-1.5 mb-4 flex-wrap">
-                            <span className="px-2 py-0.5 font-medium" style={{ background: `${p.primary}22`, color: p.primary, borderRadius: rSm, fontSize: `${10 * scale}px` }}>Action</span>
-                            <span className="px-2 py-0.5 font-medium" style={{ background: `${p.secondary}22`, color: p.secondary, borderRadius: rSm, fontSize: `${10 * scale}px` }}>4K</span>
-                            <span className="px-2 py-0.5 font-medium" style={{ background: p.bgMuted, color: p.textMuted, borderRadius: rSm, fontSize: `${10 * scale}px` }}>Kids</span>
-                          </div>
-
-                          {/* body copy, on the resolved muted color */}
-                          <p className="mb-4" style={{ color: p.textMuted, fontSize: `${11.5 * scale}px`, lineHeight: 1.5 }}>
-                            The quick brown fox jumps over the lazy dog — body text and captions render like this.
-                          </p>
-
-                          {/* buttons + a toggle switch */}
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span
-                              className="px-3 py-1.5 font-semibold"
-                              style={{ background: p.primary, color: '#fff', borderRadius: rMd, fontSize: `${12 * scale}px` }}
-                            >
-                              Primary
-                            </span>
-                            <span
-                              className="px-3 py-1.5 font-semibold"
-                              style={{ background: 'transparent', color: p.primary, border: `1px solid ${p.primary}`, borderRadius: rMd, fontSize: `${12 * scale}px` }}
-                            >
-                              Secondary
-                            </span>
-                            <span
-                              className="ml-auto w-8 h-[18px] rounded-full flex items-center px-0.5 shrink-0"
-                              style={{ background: p.primary }}
-                            >
-                              <span className="w-3.5 h-3.5 rounded-full bg-white ml-auto block" />
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-muted mt-2">
-                        Based on {themeMeta[builderBase].name}
-                      </p>
-                    </>
-                  );
-                })()}
               </div>
 
               <div className="flex items-center gap-3 pt-1 flex-wrap">

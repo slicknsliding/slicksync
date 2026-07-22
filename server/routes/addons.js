@@ -388,14 +388,69 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
     catch { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(next) } }) }
   }
 
-  // GET /api/addons/tags — the tag catalog for this account.
+  // Per-tag colors — a separate name->hex map alongside the tag catalog
+  // rather than upgrading the catalog to objects, so the existing
+  // string-array dedupe/match logic above (and every client consumer typed
+  // against string[]) doesn't need to change at all. Keyed by the tag's
+  // canonical catalog name (case as originally created).
+  async function readAddonTagColors(accountId) {
+    const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+    let cfg = acc?.sync
+    if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+    const colors = (cfg && typeof cfg === 'object' && cfg.addonTagColors && typeof cfg.addonTagColors === 'object')
+      ? cfg.addonTagColors : {}
+    const clean = {}
+    for (const [name, color] of Object.entries(colors)) {
+      if (typeof name === 'string' && typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color)) clean[name] = color
+    }
+    return clean
+  }
+
+  async function writeAddonTagColors(accountId, colors) {
+    const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+    let cfg = acc?.sync
+    if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+    const base = (cfg && typeof cfg === 'object') ? cfg : {}
+    const next = { ...base, addonTagColors: colors }
+    try { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: next } }) }
+    catch { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(next) } }) }
+  }
+
+  // GET /api/addons/tags — the tag catalog for this account, plus each
+  // tag's color (only entries with a color set are present in tagColors).
   router.get('/tags', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default'
-      res.json({ tags: await readAddonTags(accountId) })
+      const [tags, tagColors] = await Promise.all([readAddonTags(accountId), readAddonTagColors(accountId)])
+      res.json({ tags, tagColors })
     } catch (error) {
       console.error('Error fetching addon tags:', error)
       res.status(500).json({ error: 'Failed to fetch addon tags' })
+    }
+  })
+
+  // PUT /api/addons/tags/:name/color — set (hex string) or clear (null) a
+  // tag's color. Matches the catalog case-insensitively but stores under
+  // the catalog's own canonical casing, same resolution rule /:id/tag uses.
+  router.put('/tags/:name/color', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const target = decodeURIComponent(req.params.name || '').trim()
+      const { color } = req.body || {}
+      const tags = await readAddonTags(accountId)
+      const canonical = tags.find((t) => t.toLowerCase() === target.toLowerCase())
+      if (!canonical) return res.status(404).json({ error: 'Unknown tag' })
+      if (color !== null && (typeof color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(color))) {
+        return res.status(400).json({ error: 'color must be a #rrggbb hex string or null' })
+      }
+      const colors = await readAddonTagColors(accountId)
+      if (color === null) delete colors[canonical]
+      else colors[canonical] = color
+      await writeAddonTagColors(accountId, colors)
+      res.json({ tagColors: colors })
+    } catch (error) {
+      console.error('Error setting addon tag color:', error)
+      res.status(500).json({ error: 'Failed to set addon tag color' })
     }
   })
 
@@ -429,6 +484,13 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       const tags = await readAddonTags(accountId)
       const next = tags.filter((t) => t.toLowerCase() !== target)
       await writeAddonTags(accountId, next)
+      // Drop the deleted tag's color entry too, if it had one.
+      const colors = await readAddonTagColors(accountId)
+      const colorKey = Object.keys(colors).find((k) => k.toLowerCase() === target)
+      if (colorKey) {
+        delete colors[colorKey]
+        await writeAddonTagColors(accountId, colors)
+      }
       // SQLite has no case-insensitive updateMany filter, so match in JS:
       // fetch every tagged addon and clear the ones whose tag matches (ci).
       const affected = await prisma.addon.findMany({

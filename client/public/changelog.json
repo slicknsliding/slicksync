@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.37.0",
+    "date": "2026-07-22",
+    "title": "Fixed theme switching getting stuck; SlickTrax rename; smarter For You; addon label colors",
+    "features": [
+      "Fixed a real bug where switching themes could get visually \"stuck\" until a hard refresh — re-selecting the theme you were already on (easy to do while going back and forth with an unsaved Build-your-own-theme preview open) was a no-op to React, so the DOM-reset that normally runs on a theme change never fired and the live-preview's leftover styling stayed stuck. Switching themes now always re-applies cleanly regardless.",
+      "Build-your-own-theme: added a graffiti-style font (Rubik Wet Paint, 11 fonts total), and moved Preview to the top of the card — right under the header, before Theme name — so you see the mockup first instead of having to scroll for it.",
+      "\"Personal Features\" in Settings renamed to SlickTrax — same three toggles (Watchlist, Watched indicators, Recommendations), just named after the tracking system that actually powers them.",
+      "Discover's \"For You\" recommendations rebuilt on SlickTrax's real watch-time data instead of just your 3 most recent titles: every item you have WatchActivity for gets scored by actual time spent watching (recency-decayed, so a show you're bingeing this week outweighs one binged 3 months ago), Watchlist adds count too at a lighter weight, and genre picks come from the highest-scoring titles overall rather than whatever happened to be watched last. Rows also skip anything already on your Watchlist now, not just already-watched.",
+      "Addons: the label badge on each card is no longer clickable to remove — it was too easy to bump by accident while clicking around the card. Removing (or changing) a label now goes through right-click/long-press → Label, same as setting one; clicking the label you're already on in that picker deselects it. Labels are also color-customizable now — click the dot on any label pill (in the toolbar row, or anywhere else it shows up) to pick a color; it tints the pill, the card badge, and the picker everywhere that label appears."
+    ],
+    "bugFixes": [
+      "Theme switching sticking/glitching until a hard refresh — see above."
+    ],
+    "miscChores": [
+      "New addonTagColors map on AppAccount.sync (name -> hex), same JSON-blob pattern as the tag catalog itself. New PUT /api/addons/tags/:name/color endpoint; GET /api/addons/tags now also returns tagColors."
+    ]
+  },
+  {
     "version": "1.36.0",
     "date": "2026-07-22",
     "title": "Layout joins Themes; Addons get a real Label picker; 5 new fonts + Success/Error theme colors",
