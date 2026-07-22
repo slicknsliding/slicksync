@@ -1792,6 +1792,10 @@ export interface SyncSettings {
   notifyOnVault?: boolean;
   accountTimezone?: string;
   vaultCurrency?: string;
+  // Personal-features opt-outs (v1.31+). Default true when absent.
+  enableWatchlist?: boolean;
+  enableWatchedIndicators?: boolean;
+  enableRecommendations?: boolean;
 }
 
 export interface ThemePref {

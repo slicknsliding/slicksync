@@ -14,6 +14,7 @@ import { useDefaultViewMode } from '@/lib/viewMode';
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
+import { invalidatePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import {
   PaintBrushIcon,
   SwatchIcon,
@@ -33,6 +34,7 @@ import {
   BoltIcon,
   DocumentTextIcon,
   UserCircleIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 
 // Small curated fallback for environments without Intl.supportedValuesOf
@@ -1280,6 +1282,59 @@ export default function SettingsPage() {
                 </p>
                 <PushNotificationToggle />
               </div>
+            </div>
+          </Card>
+        </PageSection>
+
+        {/* Personal Features — opt-outs for the SlickSync-native tracking
+            surfaces (Watchlist, Watched indicators, Recommendations). All
+            default ON. Turning any off hides its UI + skips its network
+            requests immediately (the hook cache invalidates on save). */}
+        <PageSection delay={0.18} className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
+                <SparklesIcon className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold font-display text-default">Personal Features</h3>
+                <p className="text-xs text-muted">Toggle SlickSync&apos;s built-in tracking surfaces on or off. Your watch history is unaffected — this only controls what you see.</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <SettingRow
+                label="Watchlist"
+                description="Bookmark items to watch later. Adds a ★ Watchlist source in Discover and an Add-to-Watchlist button on every detail page. Off: everything watchlist-related is hidden; saved items stay in the database until you re-enable."
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enableWatchlist !== false}
+                  onChange={(v) => { handleSaveSetting('enableWatchlist' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle Watchlist"
+                />
+              </SettingRow>
+
+              <SettingRow
+                label="Watched indicators"
+                description="Show ✓ checkmark badges on Discover posters for things you've already watched (from either provider), the Unwatched / Watched filter, and the Mark-as-watched menu option. Off: no badges, no filter, no menu item."
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enableWatchedIndicators !== false}
+                  onChange={(v) => { handleSaveSetting('enableWatchedIndicators' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle watched indicators"
+                />
+              </SettingRow>
+
+              <SettingRow
+                label="Recommendations"
+                description={'The "Because you watched X" rows on the Dashboard, computed from your watch-history genres. Off: no recommendations panel, no server-side genre computation.'}
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enableRecommendations !== false}
+                  onChange={(v) => { handleSaveSetting('enableRecommendations' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle recommendations"
+                />
+              </SettingRow>
             </div>
           </Card>
         </PageSection>

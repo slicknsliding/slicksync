@@ -301,7 +301,13 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnInvite: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnInvite === true : false,
           notifyOnVault: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnVault === true : false,
           accountTimezone: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE,
-          vaultCurrency: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD'
+          vaultCurrency: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD',
+          // Personal features (v1.29-v1.30). All default true so existing
+          // installs get the same behavior; a user who explicitly turns any
+          // off (Settings → Personal Features) hides the corresponding UI.
+          enableWatchlist: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchlist === 'boolean') ? syncCfg.enableWatchlist : true,
+          enableWatchedIndicators: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchedIndicators === 'boolean') ? syncCfg.enableWatchedIndicators : true,
+          enableRecommendations: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableRecommendations === 'boolean') ? syncCfg.enableRecommendations : true,
         }
 
         return res.json(response)
@@ -317,10 +323,23 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         const frequency = (typeof syncCfg.frequency === 'string' && syncCfg.frequency.trim())
           ? syncCfg.frequency.trim()
           : '0'
-        const resp = { enabled: syncCfg.enabled !== false, safe, mode, frequency, lastRunAt: syncCfg.lastRunAt, webhookUrl: syncCfg.webhookUrl || '', useCustomFields: (typeof syncCfg.useCustomFields === 'boolean') ? syncCfg.useCustomFields : ((typeof syncCfg.useCustomNames === 'boolean') ? syncCfg.useCustomNames : false), notifyOnActivity: syncCfg.notifyOnActivity === true, notifyOnSync: syncCfg.notifyOnSync === true, notifyOnInvite: syncCfg.notifyOnInvite === true, notifyOnVault: syncCfg.notifyOnVault === true, accountTimezone: (typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE, vaultCurrency: (typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD' }
+        const resp = {
+          enabled: syncCfg.enabled !== false, safe, mode, frequency, lastRunAt: syncCfg.lastRunAt,
+          webhookUrl: syncCfg.webhookUrl || '',
+          useCustomFields: (typeof syncCfg.useCustomFields === 'boolean') ? syncCfg.useCustomFields : ((typeof syncCfg.useCustomNames === 'boolean') ? syncCfg.useCustomNames : false),
+          notifyOnActivity: syncCfg.notifyOnActivity === true,
+          notifyOnSync: syncCfg.notifyOnSync === true,
+          notifyOnInvite: syncCfg.notifyOnInvite === true,
+          notifyOnVault: syncCfg.notifyOnVault === true,
+          accountTimezone: (typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE,
+          vaultCurrency: (typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD',
+          enableWatchlist: typeof syncCfg.enableWatchlist === 'boolean' ? syncCfg.enableWatchlist : true,
+          enableWatchedIndicators: typeof syncCfg.enableWatchedIndicators === 'boolean' ? syncCfg.enableWatchedIndicators : true,
+          enableRecommendations: typeof syncCfg.enableRecommendations === 'boolean' ? syncCfg.enableRecommendations : true,
+        }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, accountTimezone: DEFAULT_TIMEZONE, vaultCurrency: 'USD' })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, accountTimezone: DEFAULT_TIMEZONE, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -328,7 +347,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, accountTimezone, vaultCurrency } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -386,7 +405,10 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnInvite: notifyOnInvite !== undefined ? !!notifyOnInvite : ((baseCfg.notifyOnInvite !== undefined) ? baseCfg.notifyOnInvite : false),
           notifyOnVault: notifyOnVault !== undefined ? !!notifyOnVault : ((baseCfg.notifyOnVault !== undefined) ? baseCfg.notifyOnVault : false),
           accountTimezone: typeof accountTimezone === 'string' && accountTimezone.trim() ? accountTimezone.trim() : (baseCfg.accountTimezone || DEFAULT_TIMEZONE),
-          vaultCurrency: typeof vaultCurrency === 'string' && vaultCurrency.trim() ? vaultCurrency.trim().toUpperCase() : (baseCfg.vaultCurrency || 'USD')
+          vaultCurrency: typeof vaultCurrency === 'string' && vaultCurrency.trim() ? vaultCurrency.trim().toUpperCase() : (baseCfg.vaultCurrency || 'USD'),
+          enableWatchlist: enableWatchlist !== undefined ? !!enableWatchlist : (typeof baseCfg.enableWatchlist === 'boolean' ? baseCfg.enableWatchlist : true),
+          enableWatchedIndicators: enableWatchedIndicators !== undefined ? !!enableWatchedIndicators : (typeof baseCfg.enableWatchedIndicators === 'boolean' ? baseCfg.enableWatchedIndicators : true),
+          enableRecommendations: enableRecommendations !== undefined ? !!enableRecommendations : (typeof baseCfg.enableRecommendations === 'boolean' ? baseCfg.enableRecommendations : true),
         }
 
         try {
@@ -423,6 +445,9 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (notifyOnVault !== undefined) partial.notifyOnVault = !!notifyOnVault
       if (typeof accountTimezone === 'string' && accountTimezone.trim()) partial.accountTimezone = accountTimezone.trim()
       if (typeof vaultCurrency === 'string' && vaultCurrency.trim()) partial.vaultCurrency = vaultCurrency.trim().toUpperCase()
+      if (enableWatchlist !== undefined) partial.enableWatchlist = !!enableWatchlist
+      if (enableWatchedIndicators !== undefined) partial.enableWatchedIndicators = !!enableWatchedIndicators
+      if (enableRecommendations !== undefined) partial.enableRecommendations = !!enableRecommendations
 
       const nextCfg = { ...base, ...partial }
 

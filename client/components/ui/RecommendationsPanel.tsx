@@ -4,6 +4,7 @@ import { useEffect, useState, memo } from 'react';
 import { SparklesIcon, FilmIcon, TvIcon } from '@heroicons/react/24/outline';
 import { Card, MediaDetailModal } from '@/components/ui';
 import { api, DiscoverItem, RecommendationRow } from '@/lib/api';
+import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 
 // "Because you watched X" recommendations on the Dashboard. Server picks up
 // to 3 recent watches with distinct genres, and for each fetches Cinemeta
@@ -57,18 +58,20 @@ const RecPoster = memo(function RecPoster({
 });
 
 export const RecommendationsPanel = memo(function RecommendationsPanel() {
+  const { enableRecommendations } = usePersonalFeatures();
   const [rows, setRows] = useState<RecommendationRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [detail, setDetail] = useState<DiscoverItem | null>(null);
 
   useEffect(() => {
+    if (!enableRecommendations) { setRows([]); setLoaded(true); return; }
     api.getRecommendations()
       .then((r) => setRows(Array.isArray(r?.rows) ? r.rows : []))
       .catch(() => setRows([]))
       .finally(() => setLoaded(true));
-  }, []);
+  }, [enableRecommendations]);
 
-  if (!loaded || rows.length === 0) return null;
+  if (!enableRecommendations || !loaded || rows.length === 0) return null;
 
   return (
     <>
