@@ -1451,6 +1451,20 @@ class ApiClient {
       body: JSON.stringify({ ids }),
     });
   }
+  // Manual watched-status override — force an item to appear watched or
+  // unwatched regardless of what the poller has observed.
+  async markWatched(itemId: string, watched: boolean) {
+    return this.fetch<{ id: string; itemId: string; watched: boolean; markedAt: string }>(
+      '/watchlist/mark',
+      { method: 'POST', body: JSON.stringify({ itemId, watched }) },
+    );
+  }
+  async clearWatchedOverride(itemId: string) {
+    return this.fetch<{ success: boolean }>(`/watchlist/mark/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+  }
+  async getRecommendations() {
+    return this.fetch<{ rows: RecommendationRow[] }>('/discover/recommendations');
+  }
 
   async getUpcomingEpisodes() {
     return this.fetch<UpcomingEpisode[]>('/users/upcoming-episodes');
@@ -1795,6 +1809,8 @@ export interface ThemePref {
     textMuted?: string | null;
     background?: string | null;
     surface?: string | null;
+    bgMuted?: string | null;
+    border?: string | null;
     fontDisplay?: string | null;
     radius?: string | null;
   }>;
@@ -1806,6 +1822,14 @@ export interface ThemePref {
     text?: string | null;
     fontDisplay?: string | null;
   } | null;
+}
+
+export interface RecommendationRow {
+  reason: string;
+  genre: string;
+  seedId: string;
+  seedType: 'movie' | 'series';
+  items: DiscoverItem[];
 }
 
 export interface WatchlistItem {

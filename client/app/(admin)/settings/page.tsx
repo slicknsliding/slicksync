@@ -464,6 +464,8 @@ export default function SettingsPage() {
   const [builderTextMuted, setBuilderTextMuted] = useState<string>(activeCustomTheme?.textMuted || '');
   const [builderBackground, setBuilderBackground] = useState<string>(activeCustomTheme?.background || '');
   const [builderSurface, setBuilderSurface] = useState<string>(activeCustomTheme?.surface || '');
+  const [builderBgMuted, setBuilderBgMuted] = useState<string>(activeCustomTheme?.bgMuted || '');
+  const [builderBorder, setBuilderBorder] = useState<string>(activeCustomTheme?.border || '');
   const [builderFont, setBuilderFont] = useState<FontId>((activeCustomTheme?.fontDisplay as FontId) || 'default');
   const [builderRadius, setBuilderRadius] = useState<RadiusId>((activeCustomTheme?.radius as RadiusId) || 'default');
   // Assemble the current builder state into a CustomTheme so every change site
@@ -476,6 +478,8 @@ export default function SettingsPage() {
     textMuted: builderTextMuted.trim() ? builderTextMuted.trim() : null,
     background: builderBackground.trim() ? builderBackground.trim() : null,
     surface: builderSurface.trim() ? builderSurface.trim() : null,
+    bgMuted: builderBgMuted.trim() ? builderBgMuted.trim() : null,
+    border: builderBorder.trim() ? builderBorder.trim() : null,
     fontDisplay: builderFont,
     radius: builderRadius,
   });
@@ -490,6 +494,8 @@ export default function SettingsPage() {
     setBuilderTextMuted(activeCustomTheme?.textMuted || '');
     setBuilderBackground(activeCustomTheme?.background || '');
     setBuilderSurface(activeCustomTheme?.surface || '');
+    setBuilderBgMuted(activeCustomTheme?.bgMuted || '');
+    setBuilderBorder(activeCustomTheme?.border || '');
     setBuilderFont((activeCustomTheme?.fontDisplay as FontId) || 'default');
     setBuilderRadius((activeCustomTheme?.radius as RadiusId) || 'default');
   }, [activeCustomTheme]);
@@ -852,6 +858,20 @@ export default function SettingsPage() {
                   onSet={(v) => { setBuilderSurface(v); previewCustom({ ...buildDraft(), surface: v }); }}
                   onClear={() => { setBuilderSurface(''); previewCustom({ ...buildDraft(), surface: null }); }}
                 />
+                <ColorOverride
+                  label="Subtle fill (optional)"
+                  value={builderBgMuted}
+                  seed="#21262d"
+                  onSet={(v) => { setBuilderBgMuted(v); previewCustom({ ...buildDraft(), bgMuted: v }); }}
+                  onClear={() => { setBuilderBgMuted(''); previewCustom({ ...buildDraft(), bgMuted: null }); }}
+                />
+                <ColorOverride
+                  label="Card borders (optional)"
+                  value={builderBorder}
+                  seed="#2d333b"
+                  onSet={(v) => { setBuilderBorder(v); previewCustom({ ...buildDraft(), border: v }); }}
+                  onClear={() => { setBuilderBorder(''); previewCustom({ ...buildDraft(), border: null }); }}
+                />
               </div>
 
               <div>
@@ -982,6 +1002,8 @@ export default function SettingsPage() {
                     setBuilderTextMuted(activeCustomTheme?.textMuted || '');
                     setBuilderBackground(activeCustomTheme?.background || '');
                     setBuilderSurface(activeCustomTheme?.surface || '');
+                    setBuilderBgMuted(activeCustomTheme?.bgMuted || '');
+                    setBuilderBorder(activeCustomTheme?.border || '');
                     setBuilderFont((activeCustomTheme?.fontDisplay as FontId) || 'default');
                     setBuilderRadius((activeCustomTheme?.radius as RadiusId) || 'default');
                   }}

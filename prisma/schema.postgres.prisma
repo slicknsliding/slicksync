@@ -394,6 +394,18 @@ model WatchlistItem {
   @@map("watchlist_item")
 }
 
+// Manual "watched" override — see schema.sqlite.prisma for the full comment.
+model ManualWatchOverride {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  watched   Boolean
+  markedAt  DateTime @default(now())
+
+  @@unique([accountId, itemId])
+  @@map("manual_watch_override")
+}
+
 // Per-episode dismissals for the "Coming up" panel — see schema.sqlite.prisma.
 model DismissedUpcomingEpisode {
   id        String   @id @default(cuid())

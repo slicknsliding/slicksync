@@ -8,7 +8,7 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextMenu, useContextMenu } from '@/components/ui';
 import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
-import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { toast } from '@/components/ui/Toast';
 
@@ -32,12 +32,11 @@ const GENRES = [
 ];
 
 const PAGE_SIZE = 100; // Cinemeta serves 100 items per catalog page
-// Threshold below which we treat a page as the LAST page. Cinemeta returns
-// 100 items per page, but our server filters out non-IMDb results, so a full
-// page can shrink to ~90 after filtering — comparing exactly against
-// PAGE_SIZE would falsely stop pagination on the first page. Anything above
-// half a page = "there was more here, keep asking"; below = "at the end".
-const MORE_PAGES_THRESHOLD = 50;
+// Some catalog+genre combos have legitimately small pages (e.g. Western +
+// Top Rated has < 100 real IMDb items after our filter). A fixed high
+// threshold (was 50) prematurely stopped pagination for those. Trust
+// Cinemeta's own end-signal instead: as long as the previous page returned
+// ANYTHING, ask for more; only stop when a page comes back empty.
 
 const PosterCard = memo(function PosterCard({
   item,
@@ -46,6 +45,7 @@ const PosterCard = memo(function PosterCard({
   inWatchlist,
   onOpenDetails,
   onToggleWatchlist,
+  onToggleWatched,
 }: {
   item: DiscoverItem;
   ratings?: RatingsBatchEntry;
@@ -56,6 +56,8 @@ const PosterCard = memo(function PosterCard({
   onOpenDetails: (item: DiscoverItem) => void;
   /** Adds or removes from the watchlist based on current state. */
   onToggleWatchlist: (item: DiscoverItem, next: boolean) => void;
+  /** Flips the watched marker between true and false. */
+  onToggleWatched: (item: DiscoverItem, nextWatched: boolean) => void;
 }) {
   const [imageError, setImageError] = useState(false);
   // Right-click context menu — add or remove watchlist depending on state.
@@ -143,6 +145,15 @@ const PosterCard = memo(function PosterCard({
           {inWatchlist
             ? <><XCircleIcon className="w-4 h-4" /> Remove from Watchlist</>
             : <><BookmarkOutlineIcon className="w-4 h-4" /> Add to Watchlist</>}
+        </button>
+        <button
+          type="button"
+          onClick={() => { close(); onToggleWatched(item, !watched); }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+        >
+          {watched
+            ? <><EyeSlashIcon className="w-4 h-4" /> Mark as unwatched</>
+            : <><EyeIcon className="w-4 h-4" /> Mark as watched</>}
         </button>
       </ContextMenu>
     </div>
@@ -246,6 +257,20 @@ export default function DiscoverPage() {
     return () => { cancelled = true; };
   }, [displayedItems, watchedStatus]);
 
+  const handleToggleWatched = useCallback(async (item: DiscoverItem, nextWatched: boolean) => {
+    // Optimistic — flip the local map immediately so the ✓ badge reacts.
+    setWatchedStatus((prev) => ({ ...prev, [item.id]: nextWatched }));
+    try {
+      await api.markWatched(item.id, nextWatched);
+      toast.success(nextWatched
+        ? `Marked "${item.name}" as watched`
+        : `Marked "${item.name}" as unwatched`);
+    } catch (e: any) {
+      setWatchedStatus((prev) => ({ ...prev, [item.id]: !nextWatched }));
+      toast.error(e?.message || 'Failed to update watched status');
+    }
+  }, []);
+
   const handleToggleWatchlist = useCallback(async (item: DiscoverItem, next: boolean) => {
     // Optimistic — flip the local set immediately so the badge reacts.
     setWatchlist((prev) => next
@@ -285,7 +310,7 @@ export default function DiscoverPage() {
       setItems(results);
       setIsLoading(false);
       // Search endpoint doesn't paginate; browse pages are exactly PAGE_SIZE.
-      const gotFullPage = !debouncedQuery && results.length >= MORE_PAGES_THRESHOLD;
+      const gotFullPage = !debouncedQuery && results.length > 0;
       setHasMore(gotFullPage);
       setSkip(results.length);
     });
@@ -311,7 +336,7 @@ export default function DiscoverPage() {
         return [...prev, ...additions];
       });
       setSkip((s) => s + next.length);
-      setHasMore(next.length >= MORE_PAGES_THRESHOLD);
+      setHasMore(next.length > 0);
     } finally {
       setIsLoadingMore(false);
       loadMoreLock.current = false;
@@ -428,7 +453,15 @@ export default function DiscoverPage() {
                 <button
                   key={c.key}
                   type="button"
-                  onClick={() => setCatalog(c.key)}
+                  onClick={() => {
+                    setCatalog(c.key);
+                    // Cinemeta's "year" (New) catalog returns EMPTY for every
+                    // specific genre (probed against all 18) — their data,
+                    // not our code. Auto-clear any picked genre when the user
+                    // switches to New so they aren't stuck on a permanently-
+                    // empty grid.
+                    if (c.key === 'year') setGenre('');
+                  }}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     catalog === c.key
                       ? 'bg-primary text-white'
@@ -439,17 +472,21 @@ export default function DiscoverPage() {
                 </button>
               ))}
 
-              {/* Genre picker — dropdown, not pills. Stacks with the catalog
-                  choice (Top Rated + Horror = top-rated horror). Hidden in
-                  search mode since Cinemeta's search ignores genre extras. */}
+              {/* Genre picker — dropdown, not pills. Stacks with catalog
+                  (Top Rated + Horror = top-rated horror). Disabled on New
+                  since Cinemeta doesn't populate that combo (see above). */}
               <select
                 value={genre}
                 onChange={(e) => setGenre(e.target.value)}
+                disabled={catalog === 'year'}
+                title={catalog === 'year' ? 'Cinemeta doesn’t provide genre-filtered results for the New catalog' : 'Filter by genre'}
                 aria-label="Filter by genre"
-                className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
-                  genre
-                    ? 'bg-primary text-white border-transparent'
-                    : 'bg-surface-hover text-muted hover:text-default border-default'
+                className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  catalog === 'year'
+                    ? 'bg-surface-hover text-subtle border-default cursor-not-allowed opacity-60'
+                    : genre
+                      ? 'bg-primary text-white border-transparent cursor-pointer'
+                      : 'bg-surface-hover text-muted hover:text-default border-default cursor-pointer'
                 }`}
               >
                 <option value="">All genres</option>
@@ -491,6 +528,7 @@ export default function DiscoverPage() {
                     inWatchlist={inWatchlistIds.has(item.id)}
                     onOpenDetails={setDetailItem}
                     onToggleWatchlist={handleToggleWatchlist}
+                    onToggleWatched={handleToggleWatched}
                   />
                 ))}
               </div>
