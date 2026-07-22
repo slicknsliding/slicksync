@@ -117,21 +117,8 @@ export default function DiscoverPage() {
   // Guards against the sentinel firing repeatedly while a fetch is in flight.
   const loadMoreLock = useRef(false);
 
-  // "Your Watchlist" source, powered by Trakt (only offered when connected).
-  const [source, setSource] = useState<'discover' | 'watchlist'>('discover');
-  const [traktConnected, setTraktConnected] = useState(false);
-  const [watchlistItems, setWatchlistItems] = useState<DiscoverItem[]>([]);
-  const [watchlistLoaded, setWatchlistLoaded] = useState(false);
-  const [watchlistError, setWatchlistError] = useState(false);
-
-  // What's actually on screen: the browse/search results, or the Trakt
-  // watchlist filtered by the movie/series tab + search box (client-side).
-  const displayedItems = source === 'watchlist'
-    ? watchlistItems.filter((i) =>
-        i.type === type &&
-        (!debouncedQuery || i.name.toLowerCase().includes(debouncedQuery.toLowerCase())))
-    : items;
-  const loading = source === 'watchlist' ? !watchlistLoaded : isLoading;
+  const displayedItems = items;
+  const loading = isLoading;
   const ratingsById = useRatingsBatch(displayedItems.map((i) => i.id));
 
   // Debounce typing so search isn't firing a request per keystroke.
@@ -140,27 +127,10 @@ export default function DiscoverPage() {
     return () => clearTimeout(id);
   }, [searchQuery]);
 
-  // Is Trakt connected? Gates whether the Watchlist source is offered at all.
-  useEffect(() => {
-    api.getTraktStatus().then((s) => setTraktConnected(s.connected)).catch(() => setTraktConnected(false));
-  }, []);
-
-  // Load the Trakt watchlist once, the first time the user switches to it.
-  useEffect(() => {
-    if (source !== 'watchlist' || watchlistLoaded) return;
-    let cancelled = false;
-    api.getTraktWatchlist()
-      .then((r) => { if (!cancelled) { setWatchlistItems(Array.isArray(r) ? r : []); setWatchlistError(false); } })
-      .catch(() => { if (!cancelled) { setWatchlistItems([]); setWatchlistError(true); } })
-      .finally(() => { if (!cancelled) setWatchlistLoaded(true); });
-    return () => { cancelled = true; };
-  }, [source, watchlistLoaded]);
-
   // First-page fetch — reruns whenever type/catalog/genre/search changes.
   // Search hits a different endpoint and doesn't support pagination, so it
   // just replaces items and marks the list as complete.
   useEffect(() => {
-    if (source !== 'discover') return;
     let cancelled = false;
     setIsLoading(true);
     setSkip(0);
@@ -184,12 +154,12 @@ export default function DiscoverPage() {
     return () => {
       cancelled = true;
     };
-  }, [type, catalog, genre, debouncedQuery, source]);
+  }, [type, catalog, genre, debouncedQuery]);
 
   // Load the next page and append. No-op if already loading, search-mode
   // (no pagination on Cinemeta's search), or the last page came back short.
   const loadMore = useCallback(async () => {
-    if (source !== 'discover' || debouncedQuery || !hasMore || loadMoreLock.current) return;
+    if (debouncedQuery || !hasMore || loadMoreLock.current) return;
     loadMoreLock.current = true;
     setIsLoadingMore(true);
     try {
@@ -207,7 +177,7 @@ export default function DiscoverPage() {
       setIsLoadingMore(false);
       loadMoreLock.current = false;
     }
-  }, [source, debouncedQuery, hasMore, type, catalog, genre, skip]);
+  }, [debouncedQuery, hasMore, type, catalog, genre, skip]);
 
   // Infinite scroll — an IntersectionObserver watches a sentinel element
   // rendered just below the grid; when it enters the viewport, fire loadMore.
@@ -265,30 +235,7 @@ export default function DiscoverPage() {
           />
         </PageSection>
 
-        {/* Source: Cinemeta catalogs vs. your own Trakt watchlist (only shown
-            once Trakt is connected). */}
-        {traktConnected && (
-          <PageSection delay={0.07} className="mb-4">
-            <div className="flex gap-2">
-              {([['discover', 'Discover'], ['watchlist', '★ Your Watchlist']] as const).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setSource(key)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    source === key
-                      ? 'bg-primary text-white'
-                      : 'bg-surface-hover text-muted hover:text-default'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </PageSection>
-        )}
-
-        {source === 'discover' && !debouncedQuery && (
+        {!debouncedQuery && (
           <PageSection delay={0.08} className="mb-6">
             {/* Catalog picker + genre dropdown on the SAME row: catalog is
                 the primary filter (Popular / New / Top Rated), genre is a
@@ -340,13 +287,7 @@ export default function DiscoverPage() {
           ) : displayedItems.length === 0 ? (
             <div className="text-center py-24 text-muted">
               <MagnifyingGlassIcon className="w-10 h-10 mx-auto mb-3 text-subtle" />
-              <p>
-                {source === 'watchlist'
-                  ? (watchlistError
-                      ? 'Couldn’t load your Trakt watchlist.'
-                      : `Nothing in your watchlist${debouncedQuery ? ' matches your search' : type === 'movie' ? ' under Movies' : ' under Series'}.`)
-                  : 'No results found.'}
-              </p>
+              <p>No results found.</p>
             </div>
           ) : (
             <>
@@ -356,11 +297,11 @@ export default function DiscoverPage() {
                 ))}
               </div>
 
-              {/* Infinite-scroll sentinel + spinner. Only rendered in Discover
-                  browse mode (watchlist is fully-loaded client-side, search
-                  doesn't paginate). The sentinel sits ~400px below the grid's
-                  end so we start fetching before the user hits true bottom. */}
-              {source === 'discover' && !debouncedQuery && (
+              {/* Infinite-scroll sentinel + spinner. Skipped in search mode
+                  since Cinemeta search doesn't paginate. The sentinel sits
+                  ~400px below the grid's end so we start fetching before the
+                  user hits true bottom. */}
+              {!debouncedQuery && (
                 <div className="mt-8 flex flex-col items-center justify-center gap-3 py-6">
                   {isLoadingMore && (
                     <div className="flex items-center gap-2 text-sm text-muted">
