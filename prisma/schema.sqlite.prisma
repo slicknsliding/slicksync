@@ -91,6 +91,14 @@ model Addon {
   // Backup fields
   backupAddonId    String?  // Reference to backup addon (another Addon record)
 
+  // User-defined single tag for drag-to-recategorize on the Addons page,
+  // parallel to Vault's category field. Null = untagged. The catalog of
+  // available tag NAMES lives in AppAccount.sync.addonCustomTags (JSON, same
+  // pattern as custom themes) rather than a separate table, since a tag is
+  // just a label with no other properties. Deleting a tag from that catalog
+  // clears it (sets back to null) off every addon that had it.
+  customTag        String?
+
   // Relationships
   groupAddons GroupAddon[]
   healthHistory AddonHealthHistory[]

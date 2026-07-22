@@ -362,7 +362,166 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
     }
   });
 
+  // ---- Custom tags (drag-to-recategorize on the Addons page) --------------
+  // Freeform user-defined tags, one per addon, parallel to Vault's category
+  // field. The tag CATALOG (available names) lives in AppAccount.sync as a
+  // simple string array — same storage pattern as custom themes — rather
+  // than a dedicated table, since a tag is just a label with no other
+  // properties. Registered here, before the generic GET/DELETE /:id routes
+  // below, so "/tags" isn't swallowed as an :id.
 
+  async function readAddonTags(accountId) {
+    const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+    let cfg = acc?.sync
+    if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+    const tags = (cfg && typeof cfg === 'object' && Array.isArray(cfg.addonCustomTags)) ? cfg.addonCustomTags : []
+    return tags.filter((t) => typeof t === 'string' && t.trim())
+  }
+
+  async function writeAddonTags(accountId, tags) {
+    const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+    let cfg = acc?.sync
+    if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+    const base = (cfg && typeof cfg === 'object') ? cfg : {}
+    const next = { ...base, addonCustomTags: tags }
+    try { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: next } }) }
+    catch { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(next) } }) }
+  }
+
+  // GET /api/addons/tags — the tag catalog for this account.
+  router.get('/tags', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      res.json({ tags: await readAddonTags(accountId) })
+    } catch (error) {
+      console.error('Error fetching addon tags:', error)
+      res.status(500).json({ error: 'Failed to fetch addon tags' })
+    }
+  })
+
+  // POST /api/addons/tags — create a new tag name. Case-insensitive dedupe.
+  router.post('/tags', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const name = typeof req.body?.name === 'string' ? req.body.name.trim() : ''
+      if (!name) return res.status(400).json({ error: 'name is required' })
+      if (name.length > 40) return res.status(400).json({ error: 'Tag name is too long (max 40 characters)' })
+      const tags = await readAddonTags(accountId)
+      if (tags.some((t) => t.toLowerCase() === name.toLowerCase())) {
+        return res.status(409).json({ error: 'A tag with that name already exists' })
+      }
+      const next = [...tags, name]
+      await writeAddonTags(accountId, next)
+      res.status(201).json({ tags: next })
+    } catch (error) {
+      console.error('Error creating addon tag:', error)
+      res.status(500).json({ error: 'Failed to create addon tag' })
+    }
+  })
+
+  // DELETE /api/addons/tags/:name — remove a tag from the catalog AND clear
+  // it off any addon currently carrying it (case-insensitive match), so no
+  // addon is left pointing at a tag that no longer exists in the picker.
+  router.delete('/tags/:name', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const target = decodeURIComponent(req.params.name || '').trim().toLowerCase()
+      const tags = await readAddonTags(accountId)
+      const next = tags.filter((t) => t.toLowerCase() !== target)
+      await writeAddonTags(accountId, next)
+      // SQLite has no case-insensitive updateMany filter, so match in JS:
+      // fetch every tagged addon and clear the ones whose tag matches (ci).
+      const affected = await prisma.addon.findMany({
+        where: { accountId, customTag: { not: null } },
+        select: { id: true, customTag: true },
+      })
+      await Promise.all(
+        affected
+          .filter((a) => (a.customTag || '').toLowerCase() === target)
+          .map((a) => prisma.addon.update({ where: { id: a.id }, data: { customTag: null } }))
+      )
+      res.json({ tags: next })
+    } catch (error) {
+      console.error('Error deleting addon tag:', error)
+      res.status(500).json({ error: 'Failed to delete addon tag' })
+    }
+  })
+
+  // PUT /api/addons/:id/tag — set or clear (tag: null) an addon's tag.
+  // Accepts any non-empty string that currently exists in the catalog, or
+  // null to untag; doesn't silently auto-create so the picker (tag pills)
+  // stays the single source of truth for what tags exist.
+  router.put('/:id/tag', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const { id } = req.params
+      const { tag } = req.body || {}
+      const addon = await prisma.addon.findFirst({ where: { id, accountId } })
+      if (!addon) return res.status(404).json({ error: 'Addon not found' })
+
+      if (tag === null || tag === undefined) {
+        await prisma.addon.update({ where: { id }, data: { customTag: null } })
+        return res.json({ customTag: null })
+      }
+      if (typeof tag !== 'string' || !tag.trim()) {
+        return res.status(400).json({ error: 'tag must be a non-empty string or null' })
+      }
+      const catalog = await readAddonTags(accountId)
+      const match = catalog.find((t) => t.toLowerCase() === tag.trim().toLowerCase())
+      if (!match) return res.status(400).json({ error: 'Unknown tag — create it first' })
+      await prisma.addon.update({ where: { id }, data: { customTag: match } })
+      res.json({ customTag: match })
+    } catch (error) {
+      console.error('Error setting addon tag:', error)
+      res.status(500).json({ error: 'Failed to set addon tag' })
+    }
+  })
+
+  // ---- Protect / unprotect (drag onto the "Protected" filter tab) ---------
+  // Protection is tracked account-wide by addon NAME across every user's own
+  // `protectedAddons` list (see routes/users.js's /:id/protect-addon) — there
+  // is no single "this addon is protected" field on Addon itself. Dragging
+  // an addon onto Protected therefore protects it for EVERY user in the
+  // account (matching the default-addon behavior, which is also name-based
+  // and account-wide), not just users currently assigned to it. This also
+  // fixes GET /api/addons's isProtected field below, which was previously
+  // never populated (always false) — the Protected tab/count were dead.
+  const DEFAULT_PROTECTED_NAMES = ['Cinemeta', 'Local Files', 'Local Files (without catalog support)']
+
+  router.post('/:id/protect', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const { id } = req.params
+      const wantProtected = req.body?.protected !== false
+      const addon = await prisma.addon.findFirst({ where: { id, accountId } })
+      if (!addon) return res.status(404).json({ error: 'Addon not found' })
+
+      const isDefaultAddon = DEFAULT_PROTECTED_NAMES.some((n) => (addon.name || '').includes(n))
+      if (isDefaultAddon && !wantProtected && req.query.unsafe !== 'true') {
+        return res.status(403).json({ error: 'This addon is protected by default and cannot be unprotected in safe mode', isDefaultAddon: true })
+      }
+
+      const users = await prisma.user.findMany({ where: { accountId }, select: { id: true, protectedAddons: true } })
+      const targetNorm = (addon.name || '').trim().toLowerCase()
+      await Promise.all(users.map(async (u) => {
+        let list = []
+        try { list = u.protectedAddons ? JSON.parse(u.protectedAddons) : [] } catch { list = [] }
+        if (!Array.isArray(list)) list = []
+        const has = list.some((n) => typeof n === 'string' && n.trim().toLowerCase() === targetNorm)
+        if (wantProtected && !has) {
+          await prisma.user.update({ where: { id: u.id }, data: { protectedAddons: JSON.stringify([...list, addon.name]) } })
+        } else if (!wantProtected && has) {
+          const next = list.filter((n) => !(typeof n === 'string' && n.trim().toLowerCase() === targetNorm))
+          await prisma.user.update({ where: { id: u.id }, data: { protectedAddons: JSON.stringify(next) } })
+        }
+      }))
+
+      res.json({ isProtected: wantProtected })
+    } catch (error) {
+      console.error('Error toggling addon protection:', error)
+      res.status(500).json({ error: 'Failed to toggle addon protection' })
+    }
+  })
 
   // Get all addons
   router.get('/', async (req, res) => {
@@ -389,6 +548,22 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
         },
         orderBy: [{ position: 'asc' }, { id: 'asc' }]
       });
+
+      // isProtected is account-wide by addon NAME (see the /:id/protect
+      // handler's comment) — build the set of every protected name across
+      // every user once, rather than per-addon, to avoid N+1 queries.
+      const protectedNameSet = await (async () => {
+        try {
+          const users = await prisma.user.findMany({ where: { accountId: getAccountId(req) }, select: { protectedAddons: true } })
+          const set = new Set()
+          for (const u of users) {
+            let list = []
+            try { list = u.protectedAddons ? JSON.parse(u.protectedAddons) : [] } catch { list = [] }
+            if (Array.isArray(list)) for (const n of list) if (typeof n === 'string') set.add(n.trim().toLowerCase())
+          }
+          return set
+        } catch { return new Set() }
+      })()
 
       const transformedAddons = await Promise.all(addons.map(async addon => {
         // Filter groupAddons to only include those from the current account
@@ -447,6 +622,8 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
           stremioAddonId: addon.stremioAddonId,
           resources: (() => { try { return addon.resources ? JSON.parse(addon.resources) : [] } catch { return [] } })(),
           catalogs: (() => { try { return addon.catalogs ? JSON.parse(addon.catalogs) : [] } catch { return [] } })(),
+          isProtected: protectedNameSet.has((addon.name || '').trim().toLowerCase()),
+          customTag: addon.customTag || null,
           // Proxy info
           proxyEnabled: addon.proxyEnabled || false,
           proxyUuid: addon.proxyUuid || null,

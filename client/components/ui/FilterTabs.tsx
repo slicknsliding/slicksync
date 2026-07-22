@@ -35,8 +35,13 @@ export interface FilterTabsProps {
   className?: string;
   /** Unique ID for the sliding indicator animation (use different IDs if multiple FilterTabs on same page) */
   layoutId?: string;
-  /** When true, each tab becomes a dnd-kit droppable zone with id `vault-category-${key}` — must be rendered inside a DndContext */
+  /** When true, each tab becomes a dnd-kit droppable zone with id `${dropTargetPrefix}${key}` — must be rendered inside a DndContext */
   enableDropTargets?: boolean;
+  /** Prefix for the droppable id, so pages sharing one DndContext can tell
+   *  each other's category-tab drops apart (e.g. 'vault-category-' vs
+   *  'addon-tag-'). Defaults to 'vault-category-' for backward compat with
+   *  the original (only) consumer. */
+  dropTargetPrefix?: string;
 }
 
 /**
@@ -56,6 +61,7 @@ export function FilterTabs({
   className = '',
   layoutId,
   enableDropTargets = false,
+  dropTargetPrefix = 'vault-category-',
 }: FilterTabsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number } | null>(null);
@@ -153,7 +159,7 @@ export function FilterTabs({
         const isActive = activeKey === option.key;
         
         return (
-          <DroppableTabButton key={option.key} id={`vault-category-${option.key}`} enabled={enableDropTargets}>
+          <DroppableTabButton key={option.key} id={`${dropTargetPrefix}${option.key}`} enabled={enableDropTargets}>
             {(isOver) => (
             <button
               data-tab-key={option.key}
@@ -288,6 +294,7 @@ export function FilterTabsResponsive({
   className = '',
   layoutId,
   enableDropTargets = false,
+  dropTargetPrefix,
 }: FilterTabsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -438,6 +445,7 @@ export function FilterTabsResponsive({
           size={size}
           layoutId={layoutId}
           enableDropTargets={enableDropTargets}
+          dropTargetPrefix={dropTargetPrefix}
         />
       </div>
     </div>

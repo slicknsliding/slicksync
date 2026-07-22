@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.32.0",
+    "date": "2026-07-22",
+    "title": "Discover: For You tab, single-open menus, genre fallback + rating/year fix; Addons: protect & tag by drag-and-drop",
+    "features": [
+      "\"For You\" recommendations moved off the Dashboard into its own Discover source tab (next to Discover / ★ Watchlist), so it's there when you want it instead of always-on. Same up-to-3-rows algorithm as before, now with a note explaining it's based on your most recent watches with distinct genres and shifts as you watch more.",
+      "Discover posters now share ONE context menu across the whole page (main grid AND the For You rows) — right-clicking a second poster closes whichever menu was already open, matching how Continue Watching already worked on the Dashboard.",
+      "Addons page: drag any addon card onto the \"Protected\" filter tab to protect it, or drag onto a custom tag pill to tag it — same drag-to-recategorize interaction Vault already has. New \"+ New Tag\" control lets you create your own labels (e.g. \"Kids\", \"4K\", \"Backup\") and click a pill to filter by it; hover a pill for a × to delete it. Both actions are also available without dragging: right-click any addon card for Protect/Unprotect and Clear Tag."
+    ],
+    "bugFixes": [
+      "Fixed Discover's Top Rated + Documentary (and other catalog+genre combos Cinemeta's own two backends don't agree on) returning \"No results found\" even though results exist — the server now transparently falls back to Popular in that genre when the requested catalog comes back empty. New catalog's genre filter is fully usable again (previously disabled with a tooltip); the fallback handles it transparently instead.",
+      "Infinite scroll on Discover wasn't loading more results past the first page for smaller catalog+genre combos (e.g. Top Rated + Western) — the \"has more\" check required at least 50 items per page, which some real combos never reach. Now keeps paginating as long as any items came back, matching how Cinemeta's own end-of-catalog signal works.",
+      "Fixed the detail modal showing a different rating and year than the poster you clicked (confirmed real example: Americana showed 2023/★5.9 in the grid but 2025/★6.0 in the modal) — Cinemeta runs two separate backends that can genuinely disagree on the same title. The modal now keeps the number you already saw in the grid instead of silently overwriting it with the other backend's answer; cast/genres/runtime/trailer are unaffected since those only exist on the detail lookup.",
+      "Addons page's \"Protected\" filter tab and shield badge were silently broken (always showed 0/false) — the list endpoint never actually populated the field. Fixed as part of building the protect-by-drag feature: protection is tracked account-wide by addon name across every user (mirroring how default-addon protection already worked), not per-addon, since there was never a per-addon protected flag to read from."
+    ],
+    "miscChores": [
+      "New Addon.customTag column (additive, no data loss). Tag catalog stored on AppAccount.sync (addonCustomTags), same JSON-blob pattern as custom themes — no extra table. FilterTabs/PageToolbar's drag-drop support generalized with a caller-supplied droppable-id prefix so Addons and Vault can share the same component without their category drops colliding."
+    ]
+  },
+  {
     "version": "1.31.0",
     "date": "2026-07-22",
     "title": "Personal Features opt-out toggles in Settings",

@@ -15,6 +15,7 @@ import { api, Addon } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { useSortableDragState } from '@/components/ui/DragSortable';
 import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
+import { useDroppable } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import {
@@ -32,6 +33,8 @@ import {
   PencilIcon,
   UsersIcon,
   Cog6ToothIcon,
+  TagIcon,
+  XCircleIcon,
 } from '@heroicons/react/24/outline';
 
 const ADDON_VAULT_CATEGORIES = [
@@ -71,6 +74,7 @@ interface AddonDisplay {
   catalogs: Array<string | { type: string; id: string; search?: boolean }>;
   logo?: string | null;
   isProtected: boolean;
+  customTag: string | null;
   groupCount: number;
   userCount?: number;
   lastReload: string;
@@ -86,6 +90,47 @@ interface AddonDisplay {
 // draggable) rather than passing a separate drag-handle prop through -
 // AddonCard's internals, including its existing right-click menu, are
 // completely untouched.
+// A custom-tag pill: click to filter by it, drag an addon card onto it to
+// tag it, hover for a small × to delete the tag entirely (with confirm via
+// toast — deleting clears the tag off every addon that had it, server-side).
+function TagPill({
+  tag,
+  isActive,
+  onClick,
+  onDelete,
+}: {
+  tag: string;
+  isActive: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `addon-tag-${encodeURIComponent(tag)}` });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`group/tag flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full text-xs font-medium border transition-colors ${
+        isActive
+          ? 'bg-primary text-white border-transparent'
+          : 'bg-surface-hover text-muted hover:text-default border-default'
+      }`}
+      style={isOver ? { boxShadow: '0 0 0 2px var(--color-primary)', background: 'var(--color-primary-muted)' } : undefined}
+    >
+      <button type="button" onClick={onClick} className="flex items-center">
+        {tag}
+      </button>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        className={`p-0.5 rounded-full opacity-0 group-hover/tag:opacity-100 transition-opacity ${isActive ? 'hover:bg-white/20' : 'hover:bg-surface'}`}
+        aria-label={`Delete tag ${tag}`}
+        title={`Delete tag "${tag}"`}
+      >
+        <XCircleIcon className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
 function SortableAddonWrapper({ id, children }: { id: string; children: React.ReactNode }) {
   const { dragHandleProps, itemProps } = useSortableDragState(id);
   // dragHandleProps itself carries a style (cursor: grab) - destructure it
@@ -106,6 +151,14 @@ export default function AddonsPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedAddon, setSelectedAddon] = useState<AddonDisplay | null>(null);
   const [activeFilter, setActiveFilter] = useState('all');
+  // Custom tag catalog (account-wide list of names) + which one is active as
+  // a filter. null = no tag filter applied (shows every addon regardless of
+  // tag, same as activeFilter === 'all' does for the built-in filters).
+  const [addonTags, setAddonTags] = useState<string[]>([]);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [isAddingTag, setIsAddingTag] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [deleteTagTarget, setDeleteTagTarget] = useState<string | null>(null);
 
   // Data state
   const [addons, setAddons] = useState<Addon[]>([]);
@@ -137,12 +190,14 @@ export default function AddonsPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [addonsData, groupsData] = await Promise.all([
+        const [addonsData, groupsData, tagsData] = await Promise.all([
           api.getAddons(),
           api.getGroups(),
+          api.getAddonTags().catch(() => ({ tags: [] })),
         ]);
         setAddons(addonsData);
         setGroups(groupsData);
+        setAddonTags(tagsData.tags || []);
       } catch (err) {
         setError(err as Error);
         toast.error('Failed to load addons');
@@ -181,6 +236,7 @@ export default function AddonsPage() {
         catalogs: addon.catalogs || [],
         logo,
         isProtected: !!anyAddon.isProtected,
+        customTag: anyAddon.customTag || null,
         groupCount,
         userCount: anyAddon.users || 0, // Get from API response
         lastReload: 'Unknown', // TODO: Track reload time
@@ -199,6 +255,9 @@ export default function AddonsPage() {
       addon.description?.toLowerCase().includes(searchQuery.toLowerCase());
 
     if (!matchesSearch) return false;
+
+    // Custom-tag filter — ANDs with the built-in category filter below.
+    if (activeTag && addon.customTag !== activeTag) return false;
 
     // Category filter
     if (activeFilter === 'all') return true;
@@ -317,14 +376,89 @@ export default function AddonsPage() {
   }, [deleteTarget]);
 
   const hasSelection = selectedIds.size > 0;
+
+  // Drag an addon card onto the "Protected" filter tab to protect it (see
+  // routes/addons.js's /:id/protect for why this is account-wide, not
+  // per-user). Optimistic local flip, revert on failure.
+  const handleToggleProtect = useCallback(async (addon: AddonDisplay, next: boolean) => {
+    setAddons(prev => prev.map(a => a.id === addon.id ? ({ ...a, isProtected: next } as any) : a));
+    try {
+      await api.setAddonProtected(addon.id, next);
+      toast.success(next ? `Protected "${addon.name}"` : `Unprotected "${addon.name}"`);
+    } catch (err: any) {
+      setAddons(prev => prev.map(a => a.id === addon.id ? ({ ...a, isProtected: !next } as any) : a));
+      toast.error(err.message || 'Failed to update protection');
+    }
+  }, []);
+
+  // Drag an addon card onto a tag pill to tag it (or clear via context menu).
+  const handleSetTag = useCallback(async (addon: AddonDisplay, tag: string | null) => {
+    const previous = addon.customTag;
+    setAddons(prev => prev.map(a => a.id === addon.id ? ({ ...a, customTag: tag } as any) : a));
+    try {
+      await api.setAddonTag(addon.id, tag);
+      toast.success(tag ? `Tagged "${addon.name}" as ${tag}` : `Removed tag from "${addon.name}"`);
+    } catch (err: any) {
+      setAddons(prev => prev.map(a => a.id === addon.id ? ({ ...a, customTag: previous } as any) : a));
+      toast.error(err.message || 'Failed to update tag');
+    }
+  }, []);
+
+  const handleCreateTag = useCallback(async () => {
+    const name = newTagName.trim();
+    if (!name) return;
+    try {
+      const result = await api.createAddonTag(name);
+      setAddonTags(result.tags);
+      setNewTagName('');
+      setIsAddingTag(false);
+      toast.success(`Created tag "${name}"`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create tag');
+    }
+  }, [newTagName]);
+
+  const handleDeleteTag = useCallback(async (name: string) => {
+    try {
+      const result = await api.deleteAddonTag(name);
+      setAddonTags(result.tags);
+      // Any addon that had this tag just lost it server-side — reflect locally.
+      setAddons(prev => prev.map(a => (a as any).customTag === name ? ({ ...a, customTag: null } as any) : a));
+      if (activeTag === name) setActiveTag(null);
+      toast.success(`Deleted tag "${name}"`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete tag');
+    }
+  }, [activeTag]);
+
   // Register this page's drag-end logic with the layout-level DndContext,
-  // same shared mechanism Vault already uses - simple same-list reorder
-  // only (no cross-category/sidebar-drop logic needed for addons).
+  // same shared mechanism Vault already uses. Handles three drop kinds:
+  // onto the "Protected" filter tab, onto a custom-tag pill, or onto
+  // another addon card (same-list reorder, the original behavior).
   const { registerDragEndHandler } = useVaultDrag();
   useEffect(() => {
     const handleDragEnd = (event: DragEndEvent) => {
       const { active, over } = event;
-      if (!over || active.id === over.id) return;
+      if (!over) return;
+
+      const entry = filteredAddons.find(a => a.id === active.id);
+
+      if (typeof over.id === 'string' && over.id === 'addon-filter-protected') {
+        if (entry) handleToggleProtect(entry, true);
+        return;
+      }
+      // Every other built-in filter tab (all/stream/catalogs/subtitles/
+      // online/offline) is a computed, non-assignable property — dropping
+      // there is a deliberate no-op, same precedent as Vault's "all" tab.
+      if (typeof over.id === 'string' && over.id.startsWith('addon-filter-')) return;
+
+      if (typeof over.id === 'string' && over.id.startsWith('addon-tag-')) {
+        const tag = decodeURIComponent(over.id.replace('addon-tag-', ''));
+        if (entry) handleSetTag(entry, tag);
+        return;
+      }
+
+      if (active.id === over.id) return;
       const oldIndex = filteredAddons.findIndex(a => a.id === active.id);
       const newIndex = filteredAddons.findIndex(a => a.id === over.id);
       if (oldIndex === -1 || newIndex === -1) return;
@@ -349,7 +483,7 @@ export default function AddonsPage() {
     };
     registerDragEndHandler(handleDragEnd);
     return () => registerDragEndHandler(null);
-  }, [filteredAddons, registerDragEndHandler]);
+  }, [filteredAddons, registerDragEndHandler, handleToggleProtect, handleSetTag]);
 
 
   const handleReloadAllAddons = async () => {
@@ -449,6 +583,13 @@ export default function AddonsPage() {
             activeKey: activeFilter,
             onChange: setActiveFilter,
             layoutId: 'addons-filter-tabs',
+            // Drag a card onto "Protected" to protect it account-wide; the
+            // other tabs are computed/non-assignable and silently ignore
+            // drops (see handleDragEnd). 'all' still needs to be listed even
+            // though it's a no-op target, so dropping there doesn't fall
+            // through to reorder logic against a mismatched id.
+            enableDropTargets: true,
+            dropTargetPrefix: 'addon-filter-',
           }}
           primaryAction={
             <Button
@@ -460,6 +601,56 @@ export default function AddonsPage() {
             </Button>
           }
         />
+
+        {/* Custom tag pills — drag an addon card onto one to tag it (or click
+            to filter by it). Own row below the built-in filter tabs since
+            these are user-created, not computed properties. */}
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          <TagIcon className="w-4 h-4 text-subtle shrink-0" />
+          {addonTags.map((tag) => (
+            <TagPill
+              key={tag}
+              tag={tag}
+              isActive={activeTag === tag}
+              onClick={() => setActiveTag(prev => prev === tag ? null : tag)}
+              onDelete={() => setDeleteTagTarget(tag)}
+            />
+          ))}
+          {isAddingTag ? (
+            <div className="flex items-center gap-1">
+              <input
+                autoFocus
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateTag();
+                  if (e.key === 'Escape') { setIsAddingTag(false); setNewTagName(''); }
+                }}
+                onBlur={() => { if (!newTagName.trim()) setIsAddingTag(false); }}
+                placeholder="Tag name…"
+                maxLength={40}
+                className="input-base px-2.5 py-1 text-xs w-28"
+              />
+              <button
+                type="button"
+                onClick={handleCreateTag}
+                className="p-1 rounded-md text-success hover:bg-success-muted transition-colors"
+                aria-label="Create tag"
+              >
+                <CheckIcon className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsAddingTag(true)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-default text-muted hover:text-default hover:border-default transition-colors"
+            >
+              <PlusIcon className="w-3.5 h-3.5" />
+              New Tag
+            </button>
+          )}
+        </div>
 
         {/* Loading state */}
         {isLoading ? (
@@ -507,6 +698,8 @@ export default function AddonsPage() {
                                       : a
                                   ));
                                 }}
+                                onToggleProtect={(next) => handleToggleProtect(addon, next)}
+                                onClearTag={() => handleSetTag(addon, null)}
                               />
                             </StaggerItem>
                           </SortableAddonWrapper>
@@ -796,6 +989,17 @@ export default function AddonsPage() {
         variant="danger"
       />
 
+      {/* Delete Tag Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteTagTarget}
+        onClose={() => setDeleteTagTarget(null)}
+        onConfirm={() => { if (deleteTagTarget) { handleDeleteTag(deleteTagTarget); setDeleteTagTarget(null); } }}
+        title="Delete Tag"
+        description={`Delete the "${deleteTagTarget}" tag? Any addon currently tagged with it will become untagged.`}
+        confirmText="Delete Tag"
+        variant="danger"
+      />
+
       {/* Clone Addon Modal */}
       <Modal
         isOpen={!!cloneTarget}
@@ -933,6 +1137,8 @@ function AddonCard({
   onClone,
   onMoveToVault,
   onToggleStatus,
+  onToggleProtect,
+  onClearTag,
 }: {
   addon: AddonDisplay;
   isSelected: boolean;
@@ -942,6 +1148,8 @@ function AddonCard({
   onClone: () => void;
   onMoveToVault: () => void;
   onToggleStatus?: (addonId: string, newStatus: boolean) => void;
+  onToggleProtect?: (next: boolean) => void;
+  onClearTag?: () => void;
 }) {
   const [isReloading, setIsReloading] = useState(false);
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
@@ -1116,6 +1324,20 @@ function AddonCard({
                   <span className="hidden md:inline">{addon.groupCount} group{addon.groupCount !== 1 ? 's' : ''}</span>
                 </span>
               </div>
+              {/* Custom tag badge — only shown when set (drag onto a tag pill
+                  to set, right-click → Clear tag, or the × here, to unset). */}
+              {addon.customTag && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onClearTag?.(); }}
+                  className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary-muted text-primary hover:bg-error-muted hover:text-error transition-colors"
+                  title={`Tagged "${addon.customTag}" — click to clear`}
+                >
+                  <TagIcon className="w-3 h-3" />
+                  {addon.customTag}
+                  <XCircleIcon className="w-3 h-3" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1198,6 +1420,31 @@ function AddonCard({
             </>
           )}
         </button>
+        <div className="my-1 border-t border-default" />
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            close();
+            onToggleProtect?.(!addon.isProtected);
+          }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+        >
+          <ShieldCheckIcon className="w-4 h-4" />
+          {addon.isProtected ? 'Unprotect' : 'Protect'}
+        </button>
+        {addon.customTag && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              close();
+              onClearTag?.();
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+          >
+            <TagIcon className="w-4 h-4" />
+            Clear Tag
+          </button>
+        )}
         <div className="my-1 border-t border-default" />
         <button
           onClick={(e) => {
