@@ -580,10 +580,10 @@ export default function SettingsPage() {
           </Card>
         </PageSection>
 
-        {/* Personal Features — opt-outs for the SlickSync-native tracking
-            surfaces (Watchlist, Watched indicators, Recommendations). All
-            default ON. Turning any off hides its UI + skips its network
-            requests immediately (the hook cache invalidates on save). */}
+        {/* SlickTrax — opt-outs for SlickSync's native tracking surfaces
+            (Watchlist, Watched indicators, Recommendations). All default ON.
+            Turning any off hides its UI + skips its network requests
+            immediately (the hook cache invalidates on save). */}
         <PageSection delay={0.18} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -591,8 +591,8 @@ export default function SettingsPage() {
                 <SparklesIcon className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <h3 className="text-base font-semibold font-display text-default">Personal Features</h3>
-                <p className="text-xs text-muted">Toggle SlickSync&apos;s built-in tracking surfaces on or off. Your watch history is unaffected — this only controls what you see.</p>
+                <h3 className="text-base font-semibold font-display text-default">SlickTrax</h3>
+                <p className="text-xs text-muted">Toggle SlickSync&apos;s built-in tracking system on or off. Your watch history is unaffected — this only controls what you see.</p>
               </div>
             </div>
 

@@ -220,9 +220,9 @@ export default function DiscoverPage() {
 
   // Discover source toggle: Cinemeta browse, personal Watchlist, or the
   // "For You" rec rows (moved off the Dashboard so it's opt-in rather
-  // than always-in-your-face). Each source has its own Personal Features
-  // gate — if the user disables the corresponding feature while viewing
-  // it, we snap back to plain Discover.
+  // than always-in-your-face). Each source has its own SlickTrax gate — if
+  // the user disables the corresponding feature while viewing it, we snap
+  // back to plain Discover.
   const [source, setSource] = useState<'discover' | 'watchlist' | 'foryou'>('discover');
   useEffect(() => {
     if (!enableWatchlist && source === 'watchlist') setSource('discover');
@@ -298,7 +298,7 @@ export default function DiscoverPage() {
   // we haven't queried yet get sent, so scrolling doesn't re-ask about
   // items we already know the answer for.
   useEffect(() => {
-    // Skip when the "Watched indicators" personal feature is disabled — no
+    // Skip when the "Watched indicators" SlickTrax feature is disabled — no
     // point spending requests on data we won't render.
     if (!enableWatchedIndicators) return;
     const unknown = displayedItems
@@ -468,7 +468,7 @@ export default function DiscoverPage() {
         {(enableWatchlist || enableWatchedIndicators || enableRecommendations) && (
           <PageSection delay={0.07} className="mb-4">
             <div className="flex gap-2 flex-wrap items-center">
-              {/* Discover source is always shown when any personal feature is
+              {/* Discover source is always shown when any SlickTrax feature is
                   on — otherwise the toggle row disappears entirely. Watchlist
                   and For You each appear only when their feature is enabled. */}
               {(enableWatchlist || enableRecommendations) && (
@@ -624,7 +624,7 @@ export default function DiscoverPage() {
                   </div>
                 ))}
                 <p className="text-xs text-muted italic text-center pt-2">
-                  Rows are based on your most recent watches with distinct genres — up to three at a time. They shift as you watch new things.
+                  Powered by SlickTrax — rows are based on the genres you actually spend the most time watching (weighted toward recent viewing), plus what's on your Watchlist. Up to three at a time, and they shift as your habits do.
                 </p>
               </div>
             )}

@@ -94,28 +94,52 @@ interface AddonDisplay {
 // A custom-tag pill: click to filter by it, drag an addon card onto it to
 // tag it, hover for a small × to delete the tag entirely (with confirm via
 // toast — deleting clears the tag off every addon that had it, server-side).
+// The leading dot is a native color input styled small/circular — clicking
+// it opens the OS color picker; picking a color tints the whole pill (and
+// every place this tag shows up elsewhere) instead of the flat gray default.
 function TagPill({
   tag,
+  color,
   isActive,
   onClick,
   onDelete,
+  onColorChange,
 }: {
   tag: string;
+  color?: string;
   isActive: boolean;
   onClick: () => void;
   onDelete: () => void;
+  onColorChange: (color: string | null) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `addon-tag-${encodeURIComponent(tag)}` });
+  const tinted = !isActive && color;
   return (
     <div
       ref={setNodeRef}
-      className={`group/tag flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full text-xs font-medium border transition-colors ${
+      className={`group/tag flex items-center gap-1.5 pl-1.5 pr-1 py-1 rounded-full text-xs font-medium border transition-colors ${
         isActive
           ? 'bg-primary text-white border-transparent'
-          : 'bg-surface-hover text-muted hover:text-default border-default'
+          : tinted
+            ? 'border-transparent'
+            : 'bg-surface-hover text-muted hover:text-default border-default'
       }`}
-      style={isOver ? { boxShadow: '0 0 0 2px var(--color-primary)', background: 'var(--color-primary-muted)' } : undefined}
+      style={{
+        ...(isOver ? { boxShadow: '0 0 0 2px var(--color-primary)', background: 'var(--color-primary-muted)' } : {}),
+        ...(tinted ? { background: `${color}26`, color } : {}),
+      }}
     >
+      <span className="relative w-3.5 h-3.5 rounded-full shrink-0 overflow-hidden border border-white/20" style={{ background: color || 'var(--color-text-muted)' }}>
+        <input
+          type="color"
+          value={color || '#8b7ec8'}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => onColorChange(e.target.value)}
+          title={`Set a color for "${tag}"`}
+          aria-label={`Set a color for ${tag}`}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        />
+      </span>
       <button type="button" onClick={onClick} className="flex items-center">
         {tag}
       </button>
@@ -156,6 +180,7 @@ export default function AddonsPage() {
   // a filter. null = no tag filter applied (shows every addon regardless of
   // tag, same as activeFilter === 'all' does for the built-in filters).
   const [addonTags, setAddonTags] = useState<string[]>([]);
+  const [addonTagColors, setAddonTagColors] = useState<Record<string, string>>({});
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [isAddingTag, setIsAddingTag] = useState(false);
   const [newTagName, setNewTagName] = useState('');
@@ -194,11 +219,12 @@ export default function AddonsPage() {
         const [addonsData, groupsData, tagsData] = await Promise.all([
           api.getAddons(),
           api.getGroups(),
-          api.getAddonTags().catch(() => ({ tags: [] })),
+          api.getAddonTags().catch(() => ({ tags: [], tagColors: {} })),
         ]);
         setAddons(addonsData);
         setGroups(groupsData);
         setAddonTags(tagsData.tags || []);
+        setAddonTagColors(tagsData.tagColors || {});
       } catch (err) {
         setError(err as Error);
         toast.error('Failed to load addons');
@@ -443,6 +469,11 @@ export default function AddonsPage() {
     try {
       const result = await api.deleteAddonTag(name);
       setAddonTags(result.tags);
+      setAddonTagColors(prev => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
       // Any addon that had this tag just lost it server-side — reflect locally.
       setAddons(prev => prev.map(a => (a as any).customTag === name ? ({ ...a, customTag: null } as any) : a));
       if (activeTag === name) setActiveTag(null);
@@ -451,6 +482,27 @@ export default function AddonsPage() {
       toast.error(err.message || 'Failed to delete tag');
     }
   }, [activeTag]);
+
+  // Optimistic color update for a tag pill — cosmetic-only server call, so a
+  // failure just reverts the swatch rather than needing a toast every time.
+  const handleSetTagColor = useCallback(async (name: string, color: string | null) => {
+    const previous = addonTagColors[name];
+    setAddonTagColors(prev => {
+      const next = { ...prev };
+      if (color) next[name] = color; else delete next[name];
+      return next;
+    });
+    try {
+      await api.setAddonTagColor(name, color);
+    } catch (err: any) {
+      setAddonTagColors(prev => {
+        const next = { ...prev };
+        if (previous) next[name] = previous; else delete next[name];
+        return next;
+      });
+      toast.error(err.message || 'Failed to set label color');
+    }
+  }, [addonTagColors]);
 
   // Register this page's drag-end logic with the layout-level DndContext,
   // same shared mechanism Vault already uses. Handles three drop kinds:
@@ -632,9 +684,11 @@ export default function AddonsPage() {
             <TagPill
               key={tag}
               tag={tag}
+              color={addonTagColors[tag]}
               isActive={activeTag === tag}
               onClick={() => setActiveTag(prev => prev === tag ? null : tag)}
               onDelete={() => setDeleteTagTarget(tag)}
+              onColorChange={(color) => handleSetTagColor(tag, color)}
             />
           ))}
           {isAddingTag ? (
@@ -722,6 +776,7 @@ export default function AddonsPage() {
                                 onToggleProtect={(next) => handleToggleProtect(addon, next)}
                                 onClearTag={() => handleSetTag(addon, null)}
                                 addonTags={addonTags}
+                                addonTagColors={addonTagColors}
                                 onSetTag={(tag) => handleSetTag(addon, tag)}
                                 onCreateLabel={(name) => handleCreateAndSetTag(addon, name)}
                               />
@@ -1164,6 +1219,7 @@ function AddonCard({
   onToggleProtect,
   onClearTag,
   addonTags,
+  addonTagColors,
   onSetTag,
   onCreateLabel,
 }: {
@@ -1178,6 +1234,7 @@ function AddonCard({
   onToggleProtect?: (next: boolean) => void;
   onClearTag?: () => void;
   addonTags?: string[];
+  addonTagColors?: Record<string, string>;
   onSetTag?: (tag: string) => void;
   onCreateLabel?: (name: string) => void;
 }) {
@@ -1375,19 +1432,23 @@ function AddonCard({
                   <span className="hidden md:inline">{addon.groupCount} group{addon.groupCount !== 1 ? 's' : ''}</span>
                 </span>
               </div>
-              {/* Custom tag badge — only shown when set (drag onto a tag pill
-                  to set, right-click → Clear tag, or the × here, to unset). */}
+              {/* Custom tag badge — display-only. Deliberately NOT clickable
+                  to clear: an easy-to-hit badge sitting right on the card
+                  was getting bumped by accident. Change or remove it via
+                  right-click (or long-press) → Label instead. */}
               {addon.customTag && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onClearTag?.(); }}
-                  className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary-muted text-primary hover:bg-error-muted hover:text-error transition-colors"
-                  title={`Tagged "${addon.customTag}" — click to clear`}
+                <span
+                  className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary-muted text-primary"
+                  style={
+                    addonTagColors?.[addon.customTag]
+                      ? { background: `${addonTagColors[addon.customTag]}26`, color: addonTagColors[addon.customTag] }
+                      : undefined
+                  }
+                  title={`Labeled "${addon.customTag}" — right-click to change or remove`}
                 >
                   <TagIcon className="w-3 h-3" />
                   {addon.customTag}
-                  <XCircleIcon className="w-3 h-3" />
-                </button>
+                </span>
               )}
             </div>
           </div>
@@ -1492,11 +1553,11 @@ function AddonCard({
               }}
               className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
             >
-              <span className="flex items-center gap-2">
-                <TagIcon className="w-4 h-4" />
-                {addon.customTag ? `Label: ${addon.customTag}` : 'Label'}
+              <span className="flex items-center gap-2 truncate">
+                <TagIcon className="w-4 h-4 shrink-0" style={addon.customTag && addonTagColors?.[addon.customTag] ? { color: addonTagColors[addon.customTag] } : undefined} />
+                <span className="truncate">{addon.customTag ? `Label: ${addon.customTag}` : 'Label'}</span>
               </span>
-              <span className="text-muted">›</span>
+              <span className="text-muted shrink-0">›</span>
             </button>
             <div className="my-1 border-t border-default" />
             <button
@@ -1540,23 +1601,30 @@ function AddonCard({
               {(addonTags?.length || 0) === 0 && (
                 <p className="px-3 py-2 text-xs text-muted">No labels yet — create one below.</p>
               )}
-              {addonTags?.map((tag) => (
-                <button
-                  key={tag}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSetTag?.(tag);
-                    close();
-                  }}
-                  className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-                >
-                  <span className="flex items-center gap-2 truncate">
-                    <TagIcon className="w-4 h-4 shrink-0" />
-                    <span className="truncate">{tag}</span>
-                  </span>
-                  {addon.customTag === tag && <CheckIcon className="w-4 h-4 text-primary shrink-0" />}
-                </button>
-              ))}
+              {addonTags?.map((tag) => {
+                const isCurrent = addon.customTag === tag;
+                const swatch = addonTagColors?.[tag];
+                return (
+                  <button
+                    key={tag}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Clicking the already-applied label deselects it
+                      // (same as "Clear label" below) instead of re-setting
+                      // it — a quick way to remove without a second row.
+                      if (isCurrent) onClearTag?.(); else onSetTag?.(tag);
+                      close();
+                    }}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+                  >
+                    <span className="flex items-center gap-2 truncate">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: swatch || 'var(--color-text-muted)' }} />
+                      <span className="truncate">{tag}</span>
+                    </span>
+                    {isCurrent && <CheckIcon className="w-4 h-4 text-primary shrink-0" />}
+                  </button>
+                );
+              })}
             </div>
             {addon.customTag && (
               <button

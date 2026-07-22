@@ -89,6 +89,7 @@ export const FONT_OPTIONS = [
   { id: 'bangers', label: 'Bangers — comic display', family: '"Bangers", cursive' },
   { id: 'press-start', label: 'Press Start 2P — retro pixel', family: '"Press Start 2P", ui-monospace, monospace' },
   { id: 'permanent-marker', label: 'Permanent Marker — bold handwritten', family: '"Permanent Marker", cursive' },
+  { id: 'rubik-wet-paint', label: 'Rubik Wet Paint — graffiti', family: '"Rubik Wet Paint", cursive' },
   { id: 'orbitron', label: 'Orbitron — sci-fi', family: '"Orbitron", "Space Grotesk", sans-serif' },
 ] as const;
 export type FontId = (typeof FONT_OPTIONS)[number]['id'];
@@ -484,17 +485,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Applies whichever theme `id` resolves to (a saved custom, a built-in, or
+  // neither) straight to the DOM. Pulled out of the effect below so setTheme
+  // can call it directly and unconditionally — see setTheme's comment for
+  // why that matters. Returns false when `id` didn't resolve to anything
+  // (caller falls back to Nebula).
+  const applyThemeForId = (id: string, list: SavedCustomTheme[]): boolean => {
+    const active = list.find((t) => t.id === id);
+    if (active) {
+      applyCustomTheme(document.documentElement, active);
+      return true;
+    }
+    if (isBuiltInThemeId(id)) {
+      clearCustomTheme(document.documentElement);
+      document.documentElement.className = id;
+      return true;
+    }
+    return false;
+  };
+
   // Apply theme + persist locally + sync to server whenever the effective
   // theme (id or the active custom's config) changes.
   useEffect(() => {
     if (!mounted) return;
-    const active = savedCustomThemes.find((t) => t.id === themeId);
-    if (active) {
-      applyCustomTheme(document.documentElement, active);
-    } else if (isBuiltInThemeId(themeId)) {
-      clearCustomTheme(document.documentElement);
-      document.documentElement.className = themeId;
-    } else {
+    if (!applyThemeForId(themeId, savedCustomThemes)) {
       // themeId points to a custom that no longer exists (e.g. deleted on
       // another device); fall back to Nebula.
       clearCustomTheme(document.documentElement);
@@ -517,6 +531,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = (id: string) => {
     if (isBuiltInThemeId(id) || savedCustomThemes.some((t) => t.id === id)) {
+      // Apply straight to the DOM here, not just via setThemeIdState below.
+      // React bails out of re-rendering (and therefore skips the effect
+      // above) when the new value is identical to the current state - which
+      // matters because previewCustom() mutates the DOM directly, entirely
+      // outside this state. Re-selecting the theme you're already "on" (an
+      // easy thing to do while going back and forth between a live builder
+      // preview and a saved theme) would otherwise leave that stale preview
+      // stuck on screen until a hard refresh remounts this provider and
+      // re-derives the DOM fresh from localStorage. Applying unconditionally
+      // here makes the reset work regardless of whether themeId "changes."
+      applyThemeForId(id, savedCustomThemes);
       setThemeIdState(id);
     }
   };

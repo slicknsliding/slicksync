@@ -302,9 +302,10 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnVault: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnVault === true : false,
           accountTimezone: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE,
           vaultCurrency: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD',
-          // Personal features (v1.29-v1.30). All default true so existing
-          // installs get the same behavior; a user who explicitly turns any
-          // off (Settings → Personal Features) hides the corresponding UI.
+          // SlickTrax features (v1.29-v1.30, named "Personal Features" pre-v1.37).
+          // All default true so existing installs get the same behavior; a
+          // user who explicitly turns any off (Settings → SlickTrax) hides
+          // the corresponding UI.
           enableWatchlist: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchlist === 'boolean') ? syncCfg.enableWatchlist : true,
           enableWatchedIndicators: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchedIndicators === 'boolean') ? syncCfg.enableWatchedIndicators : true,
           enableRecommendations: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableRecommendations === 'boolean') ? syncCfg.enableRecommendations : true,
