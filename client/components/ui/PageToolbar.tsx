@@ -27,6 +27,11 @@ export interface PageToolbarFilterConfig {
   layoutId?: string;
   /** Control visibility for animated show/hide (defaults to true) */
   visible?: boolean;
+  /** When true, each tab becomes a dnd-kit drop target — must be rendered
+   *  inside a DndContext. See FilterTabs' matching prop. */
+  enableDropTargets?: boolean;
+  /** Droppable-id prefix, passed through to FilterTabs when enableDropTargets is set. */
+  dropTargetPrefix?: string;
 }
 
 export interface PageToolbarPrimaryTabsConfig {
@@ -198,6 +203,8 @@ export function PageToolbar({
             onChange={filterTabs.onChange}
             layoutId={filterTabs.layoutId}
             size="sm"
+            enableDropTargets={filterTabs.enableDropTargets}
+            dropTargetPrefix={filterTabs.dropTargetPrefix}
           />
         )}
       </div>
@@ -240,6 +247,8 @@ export function PageToolbar({
                     onChange={filterTabs.onChange}
                     layoutId={filterTabs.layoutId || 'filter-tabs'}
                     size="sm"
+                    enableDropTargets={filterTabs.enableDropTargets}
+                    dropTargetPrefix={filterTabs.dropTargetPrefix}
                   />
                 </motion.div>
               )}
@@ -253,6 +262,8 @@ export function PageToolbar({
                 onChange={filterTabs.onChange}
                 layoutId={filterTabs.layoutId}
                 size="sm"
+                enableDropTargets={filterTabs.enableDropTargets}
+                dropTargetPrefix={filterTabs.dropTargetPrefix}
               />
             )}
           </>

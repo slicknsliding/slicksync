@@ -18,6 +18,19 @@ interface MediaDetailModalProps {
   videoId?: string | null;
   fallbackTitle: string;
   fallbackPoster?: string | null;
+  // Rating/year OVERRIDES — not just fallbacks for when details is missing
+  // them. Cinemeta runs two separate backends that can genuinely disagree
+  // on the same title (confirmed real example: Americana showed 2023/★5.9
+  // in the Discover grid, sourced from v3-cinemeta.strem.io's catalog, but
+  // 2025/★6.0 in this modal, sourced from cinemeta-live.strem.io's per-item
+  // lookup — same IMDb id, two different answers). Rather than silently
+  // overwrite the number a user just saw in the grid with the OTHER
+  // backend's answer for the same field, callers that already know the
+  // grid's numbers (Discover, Recommendations, Watchlist) pass them here
+  // and they win over `details`. Cast/genres/runtime/trailer still only
+  // exist on the detail lookup, so those are unaffected either way.
+  fallbackRating?: string | null;
+  fallbackReleaseInfo?: string | null;
 }
 
 export function MediaDetailModal({
@@ -28,6 +41,8 @@ export function MediaDetailModal({
   videoId,
   fallbackTitle,
   fallbackPoster,
+  fallbackRating,
+  fallbackReleaseInfo,
 }: MediaDetailModalProps) {
   const [details, setDetails] = useState<MediaDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -249,18 +264,22 @@ export function MediaDetailModal({
 
           {!isLoading && details && (
             <div className="mt-3 space-y-4">
+              {/* releaseInfo/imdbRating prefer the grid's own values (see the
+                  fallbackRating/fallbackReleaseInfo prop comment) — Cinemeta's
+                  two backends can disagree, and showing a different number
+                  than what the user just clicked reads as a bug. */}
               <div className="flex flex-wrap items-center gap-3 text-base text-muted">
-                {details.releaseInfo && <span>{details.releaseInfo}</span>}
+                {(fallbackReleaseInfo || details.releaseInfo) && <span>{fallbackReleaseInfo || details.releaseInfo}</span>}
                 {details.runtime && (
                   <span className="flex items-center gap-1.5">
                     <ClockIcon className="w-5 h-5" />
                     {details.runtime}
                   </span>
                 )}
-                {details.imdbRating && (
+                {(fallbackRating || details.imdbRating) && (
                   <span className="flex items-center gap-1.5 text-amber-400 font-medium">
                     <StarIcon className="w-5 h-5" />
-                    {details.imdbRating}
+                    {fallbackRating || details.imdbRating}
                     <span className="text-muted font-normal">/10</span>
                   </span>
                 )}
