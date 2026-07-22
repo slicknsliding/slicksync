@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.27.1",
+    "date": "2026-07-22",
+    "title": "Per-user Watch Time cleaned of library-sync phantoms; Discover genre as dropdown",
+    "features": [
+      "Discover genre picker is now a dropdown sitting immediately after \"Top Rated\" on the same row, instead of a long strip of pills — same 18 genres, less visual noise. Catalog + genre still stack (Top Rated + Horror = top-rated horror)."
+    ],
+    "bugFixes": [
+      "v1.27.0 fixed the Activity feed duplicating cross-user library-sync watches, but per-user stats (Total Time, Watch Time chart, Content Breakdown on the user detail page, and the totalWatchTime shown on the Users list) were still counting phantom rows from a different table (WatchActivity, one row per poll delta, separate from the History rows). Same-day same-item WatchActivity rows from users who SHARE an email — the marker that indicates one Stremio identity replicated across accounts — are now collapsed to the single user with the highest summed watch seconds. Users on the same account with DIFFERENT emails (real household members with independent accounts) stay fully independent."
+    ],
+    "miscChores": [
+      "New reusable utils/watchDedup.js so the shared-email dedup logic isn't repeated across endpoints."
+    ]
+  },
+  {
     "version": "1.27.0",
     "date": "2026-07-22",
     "title": "Fix duplicate watch entries under wrong provider, plus Discover infinite scroll + genres",
