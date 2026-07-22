@@ -14,6 +14,7 @@ import {
   Cog6ToothIcon,
   NewspaperIcon,
   QueueListIcon,
+  SwatchIcon,
 } from '@heroicons/react/24/outline';
 import { Avatar } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
@@ -288,8 +289,8 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
               <ArrowsRightLeftIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
             </button>
 
-            {/* Tasks / Settings / Changelog quick links (Admin Mode only) -
-                these three are Nebula's "System" group, now dropped from the
+            {/* Tasks / Settings / Themes / Changelog quick links (Admin Mode
+                only) - these are Nebula's "System" group, now dropped from the
                 topbar's own nav row entirely and reachable only from here. */}
             {isAdmin && (
               <>
@@ -331,6 +332,25 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                     <Cog6ToothIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
                   </div>
                   <span className="text-sm font-medium">Settings</span>
+                </button>
+                <button
+                  onClick={() => { setIsOpen(false); router.push('/themes'); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
+                  style={{ color: 'var(--color-text)' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--color-surface-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ background: 'var(--color-surface-hover)' }}
+                  >
+                    <SwatchIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                  </div>
+                  <span className="text-sm font-medium">Themes</span>
                 </button>
                 <button
                   onClick={() => { setIsOpen(false); router.push('/changelog'); }}

@@ -21,6 +21,7 @@ import {
   XMarkIcon,
   ShieldCheckIcon,
   MagnifyingGlassIcon,
+  SwatchIcon,
 } from '@heroicons/react/24/outline';
 import { PanelSwitcher } from './PanelSwitcher';
 import { api } from '@/lib/api';
@@ -59,6 +60,7 @@ const navigationSections = [
     items: [
       { name: 'Tasks', href: '/tasks', icon: QueueListIcon },
       { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },
+      { name: 'Themes', href: '/themes', icon: SwatchIcon },
       { name: 'Changelog', href: '/changelog', icon: DocumentTextIcon },
     ],
   },
