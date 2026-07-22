@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.35.0",
+    "date": "2026-07-22",
+    "title": "Themes moved to its own page + a richer preview mockup",
+    "features": [
+      "Theme picking and Build-your-own-theme moved off Settings onto a new dedicated Themes page, reachable from the account menu right next to Settings and Changelog (both Nebula and the original sidebar). Settings was getting crowded with a page-and-a-half of theme controls before you even reached Notifications or the API key.",
+      "The builder's preview redesigned into a small \"app screenshot\": a brand header with wordmark + avatar, three stat tiles across primary/secondary/text colors, the real Continue Watching progress bar (bound to the Progress bar override), tag pills, body copy, and a button row with a toggle switch — one place that samples nearly everything the builder controls instead of a couple of isolated swatches."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "New /themes route added to Nebula's eligible-paths list so it gets real Nebula chrome instead of silently falling back to the classic sidebar."
+    ]
+  },
+  {
     "version": "1.34.0",
     "date": "2026-07-22",
     "title": "Custom Continue Watching progress bar color",
