@@ -120,6 +120,13 @@ the split:
 - **Top Watched / Recent Activity / Top Viewers** on the Dashboard and each
   user's detail page, built from real session duration — not just a count of
   events.
+- **Cross-user library-sync dedup** — if two accounts share a Stremio email
+  (e.g. a Nuvio-only account still signed into Stremio's cloud), Stremio's own
+  library sync can replicate a single watch to both accounts' history down to
+  the millisecond. The Activity feed and per-user stats collapse those into
+  the one real watch (keeping whichever side has an actual recorded
+  duration) instead of double-counting or misattributing it. Two people on
+  separate accounts genuinely watching the same title stay fully independent.
 
 ### 🎞️ Media Details, Continue Watching & Discover
 
@@ -131,10 +138,19 @@ the split:
 - **Trailers play inline** via an embedded YouTube player, right in the modal
   — no bouncing out to youtube.com.
 - **Discover**: browse Cinemeta's real catalogs — Popular, New, and Top
-  Rated — for movies and series, or search by title. Every result opens the
-  same detail modal, with **"Open in Stremio" / "Open in Nuvio" buttons**
-  (color-matched to each provider's own identity badge) to jump straight into
-  either app — not limited to things already in someone's watch history.
+  Rated — for movies and series, or search by title, with a **genre filter**
+  (18 genres) that stacks with the catalog choice and **infinite scroll**
+  past the first page. Every result opens the same detail modal, with
+  **"Open in Stremio" / "Open in Nuvio" buttons** (color-matched to each
+  provider's own identity badge) to jump straight into either app — not
+  limited to things already in someone's watch history. Three switchable
+  sources sit side by side: **Discover** (the catalogs above), **★
+  Watchlist** (your own saved list), and **✨ For You** (recommendations —
+  see below).
+- **Rating/year consistency**: Cinemeta actually runs two separate backends
+  that can disagree on the same title's rating or release year. The detail
+  modal keeps whichever number you already saw on the poster instead of
+  silently overwriting it with the other backend's different answer.
 - **Continue Watching** on the Dashboard: the next unwatched episode for any
   show someone's partway through, most recently watched first. Click-and-drag
   to scroll the row (works with mouse, touch, or pen — no scrollbar to grab),
@@ -155,6 +171,28 @@ the split:
     fallback link is always shown alongside the app link too, since a
     browser has no way to detect whether the target app was actually
     installed to catch it.
+
+### ⭐ Personal Watchlist, Watched Indicators & Recommendations
+
+SlickSync's own Trakt-alternative — no external service to connect, no
+tokens, no per-app connection limits:
+
+- **Watchlist**: bookmark anything from its poster (right-click on Discover,
+  or the button in the detail modal) to build a list of what to watch next.
+  Shows up as its own "★ Watchlist" source in Discover.
+- **Watched indicators**: an emerald checkmark badge on any Discover poster
+  you've already watched, sourced from your own real watch history (either
+  provider). An **Unwatched / Watched filter** lets you browse minus what
+  you've seen, or the reverse. A manual override (right-click → Mark as
+  watched/unwatched) lets you correct a false positive or mark something
+  watched off-platform, without touching the underlying watch-history record.
+- **Recommendations ("✨ For You")**: up to three rows of Top Rated titles,
+  each seeded by a recent watch's genre (distinct genres per row, no
+  overlap), filtered to things you haven't seen yet.
+- Each of the three is **independently toggleable** in Settings → Personal
+  Features — turning one off hides its UI and stops its background work
+  without touching any data, so re-enabling picks up exactly where you left
+  off.
 
 ### 🔐 Vault — credential tracking with expiry alerts and active-checks
 
@@ -186,19 +224,50 @@ secrets) in one place:
   focused on what's actually deployed, and they can be moved back out just
   as easily.
 
-### 🔔 Notifications
+### 🔔 Notifications & New-Episode Alerts
 
 One Discord webhook, configured once in Settings → Notifications, with
 per-type toggles for activity, sync, invites, and Vault alerts. The "started
 watching" notification fires from the proxy pipeline the moment a stream
 opens, rather than at stop time — which read as an end-of-watch notification
-and defeated the point.
+and defeated the point. Each of the four toggles also mirrors to **native
+phone/desktop push** (see PWA section below) — independent of whether a
+Discord webhook is even configured.
+
+- **New-episode alerts**: a background poller watches Cinemeta's episode
+  lists for every show anyone here is mid-season on, and pings Discord + the
+  notification bell + push when a genuinely new episode drops. Only
+  past-dated releases count, and the first sighting of a show only records a
+  baseline — no backlog spam for a show newly picked up.
+- **"Coming up" calendar** on the Dashboard: the same poller's data surfaced
+  as a forward-looking view of what's airing next, with friendly air-date
+  labels (Today / Tomorrow / weekday / date). Right-click (desktop) or
+  long-press (mobile) any row to hide that specific episode — it reappears on
+  its own once the show advances past it.
+
+### 📱 Progressive Web App & Push Notifications
+
+SlickSync installs like a native app — add to your phone's Home Screen
+(iOS/Android) or install from the browser on desktop, and it launches
+fullscreen with its own icon. Once installed, **Settings → Notifications**
+has a per-device toggle for native push: activity, sync, invite, Vault, and
+new-episode alerts all arrive as real lock-screen notifications, even with
+SlickSync closed. Zero setup — the required VAPID keypair generates itself
+on first boot and persists on the data volume; there's nothing to configure
+in env vars. (iOS specifically requires the Home Screen install first — Apple
+only exposes the Push API to installed web apps.)
 
 ### 🧩 Addons
 
 - **Drag-and-drop reordering** on the Addons page (grid view), matching
   Vault's pattern. Order persists server-side rather than resetting on
   refresh.
+- **Drag onto "Protected"** to protect an addon (account-wide, by name,
+  mirroring how default-addon protection already worked), or **drag onto a
+  custom tag pill** to label it with your own categories — e.g. "Kids", "4K",
+  "Backup". Create tags with "+ New Tag", click a pill to filter by it, hover
+  for a × to delete one. Both actions also work without dragging, via
+  right-click → Protect/Unprotect or Clear Tag.
 - **Order-insensitive sync comparison** — a user whose addons are the same set
   in a different order no longer reports as out of sync.
 - **Provider-agnostic live addon count**, correct for Nuvio users rather than
@@ -241,6 +310,21 @@ The app logo (a chain-link mark, representing "sync") is a theme-reactive
 inline SVG rather than a static image — it recolors automatically with
 whichever theme is active, everywhere it renders: sidebar, login page,
 invite pages, and the user-connect modal.
+
+**Build your own theme** (Settings): save as many named custom themes as you
+want, each layered on top of one of the ten built-ins. Every custom theme
+gets its own primary/secondary accent, optional overrides for text, muted
+text, background, surface, and border colors, a corner-roundness preset
+(Square / Standard / Rounded / Extra rounded), and one of seven genuinely
+distinct display fonts — Space Grotesk, Poppins, Merriweather, JetBrains
+Mono, Bebas Neue, Caveat, Orbitron. Custom themes sit alongside the built-ins
+in the picker with their own delete button. **Theme choice and your whole
+custom-theme library sync across every device** on the account — pick a
+theme on your desktop, it's there on your phone next time you open the app.
+
+**Layout**: two structurally different admin UIs, switchable per-account in
+Settings — the original sidebar layout, or **Nebula** (top nav + floating
+glass panels), with full coverage across every admin page.
 
 ### 📊 Metrics & Dashboard
 
