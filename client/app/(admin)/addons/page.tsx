@@ -35,6 +35,7 @@ import {
   Cog6ToothIcon,
   TagIcon,
   XCircleIcon,
+  ArrowLeftIcon,
 } from '@heroicons/react/24/outline';
 
 const ADDON_VAULT_CATEGORIES = [
@@ -418,6 +419,26 @@ export default function AddonsPage() {
     }
   }, [newTagName]);
 
+  // Used by the card's own right-click "Label" submenu when the label you
+  // want doesn't exist in the catalog yet — creates it AND assigns it to
+  // this addon in one step, so finishing the flow always leaves the addon
+  // labeled (rather than creating an orphan tag nobody's wearing).
+  const handleCreateAndSetTag = useCallback(async (addon: AddonDisplay, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    try {
+      const result = await api.createAddonTag(trimmed);
+      setAddonTags(result.tags);
+      // Server dedupes case-insensitively — resolve to whatever form is
+      // actually stored so re-typing an existing tag with different casing
+      // still assigns the canonical one instead of a near-duplicate.
+      const canonical = result.tags.find((t: string) => t.toLowerCase() === trimmed.toLowerCase()) || trimmed;
+      await handleSetTag(addon, canonical);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create label');
+    }
+  }, [handleSetTag]);
+
   const handleDeleteTag = useCallback(async (name: string) => {
     try {
       const result = await api.deleteAddonTag(name);
@@ -700,6 +721,9 @@ export default function AddonsPage() {
                                 }}
                                 onToggleProtect={(next) => handleToggleProtect(addon, next)}
                                 onClearTag={() => handleSetTag(addon, null)}
+                                addonTags={addonTags}
+                                onSetTag={(tag) => handleSetTag(addon, tag)}
+                                onCreateLabel={(name) => handleCreateAndSetTag(addon, name)}
                               />
                             </StaggerItem>
                           </SortableAddonWrapper>
@@ -1139,6 +1163,9 @@ function AddonCard({
   onToggleStatus,
   onToggleProtect,
   onClearTag,
+  addonTags,
+  onSetTag,
+  onCreateLabel,
 }: {
   addon: AddonDisplay;
   isSelected: boolean;
@@ -1150,11 +1177,35 @@ function AddonCard({
   onToggleStatus?: (addonId: string, newStatus: boolean) => void;
   onToggleProtect?: (next: boolean) => void;
   onClearTag?: () => void;
+  addonTags?: string[];
+  onSetTag?: (tag: string) => void;
+  onCreateLabel?: (name: string) => void;
 }) {
   const [isReloading, setIsReloading] = useState(false);
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const [showActions, setShowActions] = useState(false);
+  // Context menu's "Label" item drills into a sub-view of the same menu
+  // (existing labels to pick from + create-new) rather than opening a
+  // separate modal — reset back to the main view whenever the menu closes.
+  const [menuView, setMenuView] = useState<'main' | 'label'>('main');
+  const [isCreatingLabel, setIsCreatingLabel] = useState(false);
+  const [newLabelName, setNewLabelName] = useState('');
+  useEffect(() => {
+    if (!isOpen) {
+      setMenuView('main');
+      setIsCreatingLabel(false);
+      setNewLabelName('');
+    }
+  }, [isOpen]);
+  const submitNewLabel = () => {
+    const name = newLabelName.trim();
+    if (!name) return;
+    onCreateLabel?.(name);
+    setNewLabelName('');
+    setIsCreatingLabel(false);
+    close();
+  };
 
   const handleReload = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1355,116 +1406,208 @@ function AddonCard({
       </Card>
 
       <ContextMenu isOpen={isOpen} position={position} onClose={close}>
-        <Link
-          href={`/addons/${addon.id}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            close();
-          }}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-        >
-          <EyeIcon className="w-4 h-4" />
-          View Details
-        </Link>
-        {configUrl && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              close();
-              handleOpenConfigure(e);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-          >
-            <Cog6ToothIcon className="w-4 h-4" />
-            Open Configure
-          </button>
+        {menuView === 'main' ? (
+          <>
+            <Link
+              href={`/addons/${addon.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                close();
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              <EyeIcon className="w-4 h-4" />
+              View Details
+            </Link>
+            {configUrl && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  close();
+                  handleOpenConfigure(e);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+              >
+                <Cog6ToothIcon className="w-4 h-4" />
+                Open Configure
+              </button>
+            )}
+            <button
+              onClick={handleReload}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              <ArrowPathIcon className="w-4 h-4" />
+              Reload Addon
+            </button>
+            <button
+              onClick={handleClone}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              <DocumentDuplicateIcon className="w-4 h-4" />
+              Clone Addon
+            </button>
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                close();
+                try {
+                  const newStatus = !addon.isActive;
+                  await api.toggleAddonStatus(addon.id, newStatus);
+                  toast.success(`Addon ${newStatus ? 'activated' : 'deactivated'}`);
+                  onToggleStatus?.(addon.id, newStatus);
+                } catch (err: any) {
+                  toast.error(err.message || `Failed to toggle ${addon.name}`);
+                }
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              {addon.isActive ? (
+                <>
+                  <XMarkIcon className="w-4 h-4" />
+                  Disable
+                </>
+              ) : (
+                <>
+                  <CheckIcon className="w-4 h-4" />
+                  Enable
+                </>
+              )}
+            </button>
+            <div className="my-1 border-t border-default" />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                close();
+                onToggleProtect?.(!addon.isProtected);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              <ShieldCheckIcon className="w-4 h-4" />
+              {addon.isProtected ? 'Unprotect' : 'Protect'}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuView('label');
+              }}
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <TagIcon className="w-4 h-4" />
+                {addon.customTag ? `Label: ${addon.customTag}` : 'Label'}
+              </span>
+              <span className="text-muted">›</span>
+            </button>
+            <div className="my-1 border-t border-default" />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                close();
+                onMoveToVault();
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              <ShieldCheckIcon className="w-4 h-4" />
+              Move to Vault
+            </button>
+            <div className="my-1 border-t border-default" />
+            <button
+              onClick={handleDelete}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error-muted transition-colors"
+            >
+              <TrashIcon className="w-4 h-4" />
+              Delete
+            </button>
+          </>
+        ) : (
+          <>
+            {/* Label sub-view — pick an existing label, clear the current
+                one, or create a brand new one. Creating always assigns it
+                too (onCreateLabel does create+assign in one call), so
+                finishing this flow never leaves a label orphaned unworn. */}
+            <button
+              onClick={(e) => { e.stopPropagation(); setMenuView('main'); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              <ArrowLeftIcon className="w-4 h-4" />
+              Back
+            </button>
+            <div className="my-1 border-t border-default" />
+            <div className="px-3 pt-1 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-subtle">
+              Label
+            </div>
+            <div className="max-h-48 overflow-y-auto">
+              {(addonTags?.length || 0) === 0 && (
+                <p className="px-3 py-2 text-xs text-muted">No labels yet — create one below.</p>
+              )}
+              {addonTags?.map((tag) => (
+                <button
+                  key={tag}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSetTag?.(tag);
+                    close();
+                  }}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <TagIcon className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{tag}</span>
+                  </span>
+                  {addon.customTag === tag && <CheckIcon className="w-4 h-4 text-primary shrink-0" />}
+                </button>
+              ))}
+            </div>
+            {addon.customTag && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClearTag?.();
+                  close();
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error-muted transition-colors"
+              >
+                <XCircleIcon className="w-4 h-4" />
+                Clear label
+              </button>
+            )}
+            <div className="my-1 border-t border-default" />
+            {isCreatingLabel ? (
+              <div className="flex items-center gap-1 px-3 py-2">
+                <input
+                  autoFocus
+                  value={newLabelName}
+                  onChange={(e) => setNewLabelName(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') submitNewLabel();
+                    if (e.key === 'Escape') { setIsCreatingLabel(false); setNewLabelName(''); }
+                  }}
+                  placeholder="Label name…"
+                  maxLength={40}
+                  className="input-base px-2.5 py-1 text-xs flex-1 min-w-0"
+                />
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); submitNewLabel(); }}
+                  className="p-1.5 rounded-md text-success hover:bg-success-muted transition-colors shrink-0"
+                  aria-label="Create and apply label"
+                >
+                  <CheckIcon className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); setIsCreatingLabel(true); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+              >
+                <PlusIcon className="w-4 h-4" />
+                New label
+              </button>
+            )}
+          </>
         )}
-        <button
-          onClick={handleReload}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-        >
-          <ArrowPathIcon className="w-4 h-4" />
-          Reload Addon
-        </button>
-        <button
-          onClick={handleClone}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-        >
-          <DocumentDuplicateIcon className="w-4 h-4" />
-          Clone Addon
-        </button>
-        <button
-          onClick={async (e) => {
-            e.stopPropagation();
-            close();
-            try {
-              const newStatus = !addon.isActive;
-              await api.toggleAddonStatus(addon.id, newStatus);
-              toast.success(`Addon ${newStatus ? 'activated' : 'deactivated'}`);
-              onToggleStatus?.(addon.id, newStatus);
-            } catch (err: any) {
-              toast.error(err.message || `Failed to toggle ${addon.name}`);
-            }
-          }}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-        >
-          {addon.isActive ? (
-            <>
-              <XMarkIcon className="w-4 h-4" />
-              Disable
-            </>
-          ) : (
-            <>
-              <CheckIcon className="w-4 h-4" />
-              Enable
-            </>
-          )}
-        </button>
-        <div className="my-1 border-t border-default" />
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            close();
-            onToggleProtect?.(!addon.isProtected);
-          }}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-        >
-          <ShieldCheckIcon className="w-4 h-4" />
-          {addon.isProtected ? 'Unprotect' : 'Protect'}
-        </button>
-        {addon.customTag && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              close();
-              onClearTag?.();
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-          >
-            <TagIcon className="w-4 h-4" />
-            Clear Tag
-          </button>
-        )}
-        <div className="my-1 border-t border-default" />
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            close();
-            onMoveToVault();
-          }}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-        >
-          <ShieldCheckIcon className="w-4 h-4" />
-          Move to Vault
-        </button>
-        <div className="my-1 border-t border-default" />
-        <button
-          onClick={handleDelete}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-error-muted transition-colors"
-        >
-          <TrashIcon className="w-4 h-4" />
-          Delete
-        </button>
       </ContextMenu>
     </>
   );

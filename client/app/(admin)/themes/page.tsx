@@ -10,7 +10,7 @@ import {
   useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, FontId, CustomTheme, SavedCustomTheme,
   RADIUS_PRESETS, RADIUS_LABELS, RadiusId, TEXT_SCALE_PRESETS, TEXT_SCALE_LABELS, TEXT_SCALE_FACTORS, TextScaleId,
 } from '@/lib/theme';
-import { useLayoutMode } from '@/lib/layout-mode';
+import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import {
   PaintBrushIcon,
@@ -18,6 +18,7 @@ import {
   CheckIcon,
   TrashIcon,
   SparklesIcon,
+  Squares2X2Icon,
 } from '@heroicons/react/24/outline';
 
 // Memoized theme card component
@@ -280,7 +281,7 @@ const BASE_RADIUS_PX = { sm: '6px', md: '10px', lg: '14px', xl: '20px' };
 function resolvePreviewPalette(base: ThemeId, o: {
   primary: string; secondary: string; text: string; textMuted: string;
   background: string; surface: string; bgMuted: string; border: string;
-  progressBar: string;
+  progressBar: string; success: string; error: string;
 }) {
   const meta = themeMeta[base].colors;
   const isLight = base === 'daylight';
@@ -293,11 +294,89 @@ function resolvePreviewPalette(base: ThemeId, o: {
     textMuted: o.textMuted || (isLight ? '#64748b' : '#8b949e'),
     primary: o.primary || meta.primary,
     secondary: o.secondary || meta.secondary,
+    success: o.success || (isLight ? '#16a34a' : '#3fb950'),
+    error: o.error || (isLight ? '#dc2626' : '#f85149'),
     // No fallback constant here — a blank override means "keep the default
     // primary→secondary gradient," which the caller renders itself.
     progressBar: o.progressBar || null,
   };
 }
+
+// Layout mode card - structure preview only (sidebar-vs-topbar), not colors,
+// since layout mode is orthogonal to the Theme setting and should read as
+// "shape," not "another color choice."
+const LayoutModeCard = memo(function LayoutModeCard({
+  layoutId,
+  isSelected,
+  onSelect,
+}: {
+  layoutId: LayoutModeId;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const meta = layoutModeMeta[layoutId];
+
+  return (
+    <motion.button
+      whileHover={{ scale: 1.02, y: -2 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onSelect}
+      className={`relative p-3 rounded-xl border-2 transition-all text-left w-full card ${
+        isSelected ? 'border-primary bg-primary-muted' : 'border-default'
+      }`}
+    >
+      {isSelected && (
+        <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center bg-primary">
+          <CheckIcon className="w-3 h-3" style={{ color: 'var(--color-bg)' }} />
+        </div>
+      )}
+
+      <div
+        className="w-full h-20 rounded-lg mb-2 overflow-hidden border border-default"
+        style={{ backgroundColor: 'var(--color-bg)' }}
+      >
+        {layoutId === 'current' ? (
+          <div className="flex h-full">
+            <div className="w-8 h-full flex flex-col gap-1 p-1.5" style={{ backgroundColor: 'var(--color-surface)' }}>
+              <div className="w-full h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-primary)' }} />
+              <div className="w-full h-1 rounded-full opacity-30 bg-white" />
+              <div className="w-full h-1 rounded-full opacity-30 bg-white" />
+            </div>
+            <div className="flex-1 p-2 flex flex-col gap-1.5">
+              <div className="flex gap-1">
+                <div className="w-6 h-6 rounded" style={{ backgroundColor: 'var(--color-surface)' }} />
+                <div className="w-6 h-6 rounded" style={{ backgroundColor: 'var(--color-surface)' }} />
+              </div>
+              <div className="flex-1 rounded mt-1" style={{ backgroundColor: 'var(--color-surface)' }} />
+            </div>
+          </div>
+        ) : (
+          <div className="h-full flex flex-col p-1.5 gap-1.5">
+            <div
+              className="h-4 rounded-full flex items-center justify-center gap-0.5"
+              style={{ backgroundColor: 'var(--color-surface)' }}
+            >
+              <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))' }} />
+              <div className="w-4 h-1 rounded-full opacity-40 bg-white" />
+            </div>
+            <div className="flex-1 flex gap-1">
+              <div className="flex-1 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.8 }} />
+              <div className="w-6 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.5 }} />
+              <div className="w-6 rounded-lg" style={{ backgroundColor: 'var(--color-surface)', opacity: 0.5 }} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <p className="font-medium text-sm text-default">
+        {meta.name}
+      </p>
+      <p className="text-xs text-muted">
+        {meta.description}
+      </p>
+    </motion.button>
+  );
+});
 
 export default function ThemesPage() {
   const {
@@ -306,7 +385,7 @@ export default function ThemesPage() {
     saveCustomTheme, updateCustomTheme, deleteCustomTheme,
     previewCustom, cancelPreview,
   } = useTheme();
-  const { layoutMode } = useLayoutMode();
+  const { layoutMode, setLayoutMode } = useLayoutMode();
   // Confirmation modal for deleting a saved custom theme.
   const [pendingDelete, setPendingDelete] = useState<SavedCustomTheme | null>(null);
 
@@ -325,6 +404,8 @@ export default function ThemesPage() {
   const [builderBgMuted, setBuilderBgMuted] = useState<string>(activeCustomTheme?.bgMuted || '');
   const [builderBorder, setBuilderBorder] = useState<string>(activeCustomTheme?.border || '');
   const [builderProgressBar, setBuilderProgressBar] = useState<string>(activeCustomTheme?.progressBar || '');
+  const [builderSuccess, setBuilderSuccess] = useState<string>(activeCustomTheme?.success || '');
+  const [builderError, setBuilderError] = useState<string>(activeCustomTheme?.error || '');
   const [builderFont, setBuilderFont] = useState<FontId>((activeCustomTheme?.fontDisplay as FontId) || 'default');
   const [builderRadius, setBuilderRadius] = useState<RadiusId>((activeCustomTheme?.radius as RadiusId) || 'default');
   const [builderTextScale, setBuilderTextScale] = useState<TextScaleId>((activeCustomTheme?.textScale as TextScaleId) || 'default');
@@ -341,6 +422,8 @@ export default function ThemesPage() {
     bgMuted: builderBgMuted.trim() ? builderBgMuted.trim() : null,
     border: builderBorder.trim() ? builderBorder.trim() : null,
     progressBar: builderProgressBar.trim() ? builderProgressBar.trim() : null,
+    success: builderSuccess.trim() ? builderSuccess.trim() : null,
+    error: builderError.trim() ? builderError.trim() : null,
     fontDisplay: builderFont,
     radius: builderRadius,
     textScale: builderTextScale,
@@ -359,6 +442,8 @@ export default function ThemesPage() {
     setBuilderBgMuted(activeCustomTheme?.bgMuted || '');
     setBuilderBorder(activeCustomTheme?.border || '');
     setBuilderProgressBar(activeCustomTheme?.progressBar || '');
+    setBuilderSuccess(activeCustomTheme?.success || '');
+    setBuilderError(activeCustomTheme?.error || '');
     setBuilderFont((activeCustomTheme?.fontDisplay as FontId) || 'default');
     setBuilderRadius((activeCustomTheme?.radius as RadiusId) || 'default');
     setBuilderTextScale((activeCustomTheme?.textScale as TextScaleId) || 'default');
@@ -426,9 +511,36 @@ export default function ThemesPage() {
           </Card>
         </PageSection>
 
+        {/* Layout - structure, independent of Theme's color choice. Scoped
+            to Dashboard + Activity today; other pages are unaffected. */}
+        <PageSection delay={0.05} className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
+                <Squares2X2Icon className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold font-display text-default">Layout</h3>
+                <p className="text-xs text-muted">Choose how Dashboard and Activity are arranged</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {layoutModeIds.map((id) => (
+                <LayoutModeCard
+                  key={id}
+                  layoutId={id}
+                  isSelected={layoutMode === id}
+                  onSelect={() => setLayoutMode(id)}
+                />
+              ))}
+            </div>
+          </Card>
+        </PageSection>
+
         {/* Custom Theme builder - pick your own accent colors on top of any
             base theme's structure, live-preview, and save. */}
-        <PageSection delay={0.05} className="mb-6">
+        <PageSection delay={0.1} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-secondary-muted">
@@ -543,9 +655,23 @@ export default function ThemesPage() {
                   onSet={(v) => { setBuilderProgressBar(v); previewCustom({ ...buildDraft(), progressBar: v }); }}
                   onClear={() => { setBuilderProgressBar(''); previewCustom({ ...buildDraft(), progressBar: null }); }}
                 />
+                <ColorOverride
+                  label="Success accent (optional)"
+                  value={builderSuccess}
+                  seed="#3fb950"
+                  onSet={(v) => { setBuilderSuccess(v); previewCustom({ ...buildDraft(), success: v }); }}
+                  onClear={() => { setBuilderSuccess(''); previewCustom({ ...buildDraft(), success: null }); }}
+                />
+                <ColorOverride
+                  label="Error accent (optional)"
+                  value={builderError}
+                  seed="#f85149"
+                  onSet={(v) => { setBuilderError(v); previewCustom({ ...buildDraft(), error: v }); }}
+                  onClear={() => { setBuilderError(''); previewCustom({ ...buildDraft(), error: null }); }}
+                />
               </div>
               <p className="text-[11px] text-muted -mt-2">
-                Progress bar overrides the resume-progress fill on Dashboard → Continue Watching. Blank keeps the default primary→secondary gradient.
+                Progress bar overrides the resume-progress fill on Dashboard → Continue Watching (blank keeps the default primary→secondary gradient). Success/Error recolor health-check dots, badges, and confirmation toasts across the whole app.
               </p>
 
               <div>
@@ -638,7 +764,7 @@ export default function ThemesPage() {
                     text: builderText, textMuted: builderTextMuted,
                     background: builderBackground, surface: builderSurface,
                     bgMuted: builderBgMuted, border: builderBorder,
-                    progressBar: builderProgressBar,
+                    progressBar: builderProgressBar, success: builderSuccess, error: builderError,
                   });
                   const radiusScale = builderRadius !== 'default' ? RADIUS_PRESETS[builderRadius] : null;
                   const rLg = radiusScale?.lg || BASE_RADIUS_PX.lg;
@@ -674,6 +800,19 @@ export default function ThemesPage() {
                             >
                               A
                             </div>
+                          </div>
+
+                          {/* status dots — same green/red health-check language as the
+                              real Addons list, so Success/Error accents show up somewhere too */}
+                          <div className="flex items-center gap-3 mb-4">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.success }} />
+                              <span style={{ color: p.textMuted, fontSize: `${10 * scale}px` }}>Online</span>
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.error }} />
+                              <span style={{ color: p.textMuted, fontSize: `${10 * scale}px` }}>Offline</span>
+                            </span>
                           </div>
 
                           {/* stat tiles — each in a different accent so primary/secondary/text all show up somewhere */}
@@ -813,6 +952,8 @@ export default function ThemesPage() {
                     setBuilderBgMuted(activeCustomTheme?.bgMuted || '');
                     setBuilderBorder(activeCustomTheme?.border || '');
                     setBuilderProgressBar(activeCustomTheme?.progressBar || '');
+                    setBuilderSuccess(activeCustomTheme?.success || '');
+                    setBuilderError(activeCustomTheme?.error || '');
                     setBuilderFont((activeCustomTheme?.fontDisplay as FontId) || 'default');
                     setBuilderRadius((activeCustomTheme?.radius as RadiusId) || 'default');
                     setBuilderTextScale((activeCustomTheme?.textScale as TextScaleId) || 'default');
