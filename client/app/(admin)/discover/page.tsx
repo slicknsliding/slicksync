@@ -5,10 +5,12 @@ import { Header } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges } from '@/components/ui';
-import { api, DiscoverItem, RatingsBatchEntry } from '@/lib/api';
+import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextMenu, useContextMenu } from '@/components/ui';
+import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
-import { FilmIcon, TvIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
+import { toast } from '@/components/ui/Toast';
 
 // Only "top" (Popular) supports search per Cinemeta's own manifest - "year"
 // and "imdbRating" only support genre/skip. Browse-mode catalog picker is
@@ -40,16 +42,31 @@ const MORE_PAGES_THRESHOLD = 50;
 const PosterCard = memo(function PosterCard({
   item,
   ratings,
+  watched,
+  inWatchlist,
   onOpenDetails,
+  onToggleWatchlist,
 }: {
   item: DiscoverItem;
   ratings?: RatingsBatchEntry;
+  /** True when this account has watch history for this item's id. */
+  watched?: boolean;
+  /** True when this item is currently saved to the account's watchlist. */
+  inWatchlist?: boolean;
   onOpenDetails: (item: DiscoverItem) => void;
+  /** Adds or removes from the watchlist based on current state. */
+  onToggleWatchlist: (item: DiscoverItem, next: boolean) => void;
 }) {
   const [imageError, setImageError] = useState(false);
+  // Right-click context menu — add or remove watchlist depending on state.
+  const { isOpen, position, handleContextMenu, close } = useContextMenu();
 
   return (
-    <div className="group relative cursor-pointer" onClick={() => onOpenDetails(item)}>
+    <div
+      className="group relative cursor-pointer"
+      onClick={() => onOpenDetails(item)}
+      onContextMenu={handleContextMenu}
+    >
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl">
         {item.poster && !imageError ? (
           <>
@@ -73,6 +90,32 @@ const PosterCard = memo(function PosterCard({
           </div>
         )}
 
+        {/* Watched-status corner badge — subtle checkmark on the top-right so
+            you can see at a glance while browsing what you've already seen.
+            Layered above the poster's dark gradient so it stays visible on
+            both light and dark posters. */}
+        {watched && (
+          <div
+            className="absolute top-1.5 right-1.5 flex items-center justify-center rounded-full bg-emerald-500/90 text-white shadow-lg backdrop-blur-sm"
+            style={{ width: 24, height: 24 }}
+            title="You've watched this"
+          >
+            <CheckBadgeIcon className="w-4 h-4" />
+          </div>
+        )}
+
+        {/* Watchlist bookmark indicator — smaller than the watched badge and
+            in the opposite corner so both can coexist on the same card. */}
+        {inWatchlist && !watched && (
+          <div
+            className="absolute top-1.5 left-1.5 flex items-center justify-center rounded-full bg-primary/90 text-white shadow-lg backdrop-blur-sm"
+            style={{ width: 22, height: 22 }}
+            title="In your watchlist"
+          >
+            <BookmarkSolidIcon className="w-3.5 h-3.5" />
+          </div>
+        )}
+
         <div className="absolute bottom-1.5 left-1.5 right-1.5">
           <RatingBadges
             imdbRating={item.imdbRating}
@@ -90,6 +133,18 @@ const PosterCard = memo(function PosterCard({
           <p className="text-xs text-slate-500">{item.releaseInfo}</p>
         )}
       </div>
+
+      <ContextMenu isOpen={isOpen} position={position} onClose={close}>
+        <button
+          type="button"
+          onClick={() => { close(); onToggleWatchlist(item, !inWatchlist); }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+        >
+          {inWatchlist
+            ? <><XCircleIcon className="w-4 h-4" /> Remove from Watchlist</>
+            : <><BookmarkOutlineIcon className="w-4 h-4" /> Add to Watchlist</>}
+        </button>
+      </ContextMenu>
     </div>
   );
 });
@@ -117,8 +172,37 @@ export default function DiscoverPage() {
   // Guards against the sentinel firing repeatedly while a fetch is in flight.
   const loadMoreLock = useRef(false);
 
-  const displayedItems = items;
-  const loading = isLoading;
+  // "Your Watchlist" is a native SlickSync source (no external service, unlike
+  // the removed Trakt watchlist). Always available in the source toggle.
+  const [source, setSource] = useState<'discover' | 'watchlist'>('discover');
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [watchlistLoaded, setWatchlistLoaded] = useState(false);
+  // Watched-status filter for the Discover grid — hide things you've seen,
+  // OR flip it to only see things you have.
+  const [watchedFilter, setWatchedFilter] = useState<'all' | 'hide' | 'only'>('all');
+  const [watchedStatus, setWatchedStatus] = useState<Record<string, boolean>>({});
+
+  // Convert saved WatchlistItem[] into DiscoverItem[] so the same grid + card
+  // component renders both sources with no branching in the render tree.
+  const watchlistAsDiscover: DiscoverItem[] = watchlist.map((w) => ({
+    id: w.itemId, type: w.itemType, name: w.name, poster: w.poster,
+    releaseInfo: null, imdbRating: null, genres: [],
+  }));
+
+  const inWatchlistIds = new Set(watchlist.map((w) => w.itemId));
+
+  // Source + type + watched filter applied. Watchlist mode filters by the
+  // Movies/Series tab client-side and search box; browse mode uses items
+  // fetched from Cinemeta directly.
+  const sourceItems = source === 'watchlist'
+    ? watchlistAsDiscover.filter((i) => i.type === type && (!debouncedQuery || i.name.toLowerCase().includes(debouncedQuery.toLowerCase())))
+    : items;
+  const displayedItems = sourceItems.filter((i) => {
+    if (watchedFilter === 'all') return true;
+    const seen = !!watchedStatus[i.id];
+    return watchedFilter === 'hide' ? !seen : seen;
+  });
+  const loading = source === 'watchlist' ? !watchlistLoaded : isLoading;
   const ratingsById = useRatingsBatch(displayedItems.map((i) => i.id));
 
   // Debounce typing so search isn't firing a request per keystroke.
@@ -126,6 +210,61 @@ export default function DiscoverPage() {
     const id = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 300);
     return () => clearTimeout(id);
   }, [searchQuery]);
+
+  // Load the watchlist once on mount so the ✓ In-Watchlist badges + source
+  // toggle react without a per-source-switch fetch. Re-fetched only when
+  // toggleWatchlist mutates (below).
+  const refreshWatchlist = useCallback(async () => {
+    try {
+      const list = await api.getWatchlist();
+      setWatchlist(list);
+    } finally {
+      setWatchlistLoaded(true);
+    }
+  }, []);
+  useEffect(() => { refreshWatchlist(); }, [refreshWatchlist]);
+
+  // Batch-check watched status for whatever's currently on screen. Only IDs
+  // we haven't queried yet get sent, so scrolling doesn't re-ask about
+  // items we already know the answer for.
+  useEffect(() => {
+    const unknown = displayedItems
+      .map((i) => i.id)
+      .filter((id) => !(id in watchedStatus));
+    if (unknown.length === 0) return;
+    let cancelled = false;
+    api.getWatchedStatus(unknown).then((seen) => {
+      if (cancelled) return;
+      setWatchedStatus((prev) => {
+        // Merge — for ids that came back false, mark them false so we don't
+        // re-ask on the next render.
+        const next = { ...prev };
+        for (const id of unknown) next[id] = seen[id] === true;
+        return next;
+      });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [displayedItems, watchedStatus]);
+
+  const handleToggleWatchlist = useCallback(async (item: DiscoverItem, next: boolean) => {
+    // Optimistic — flip the local set immediately so the badge reacts.
+    setWatchlist((prev) => next
+      ? [...prev, { id: item.id, itemId: item.id, itemType: item.type, name: item.name, poster: item.poster, addedAt: new Date().toISOString() }]
+      : prev.filter((w) => w.itemId !== item.id));
+    try {
+      if (next) {
+        await api.addToWatchlist({ itemId: item.id, itemType: item.type, name: item.name, poster: item.poster });
+        toast.success(`Added "${item.name}" to Watchlist`);
+      } else {
+        await api.removeFromWatchlist(item.id);
+        toast.success(`Removed "${item.name}" from Watchlist`);
+      }
+    } catch (e: any) {
+      // Revert on failure.
+      refreshWatchlist();
+      toast.error(e?.message || 'Failed to update watchlist');
+    }
+  }, [refreshWatchlist]);
 
   // First-page fetch — reruns whenever type/catalog/genre/search changes.
   // Search hits a different endpoint and doesn't support pagination, so it
@@ -235,7 +374,50 @@ export default function DiscoverPage() {
           />
         </PageSection>
 
-        {!debouncedQuery && (
+        {/* Source: Cinemeta catalogs vs. your own Watchlist. Always shown —
+            no external service to gate on (unlike the removed Trakt version). */}
+        <PageSection delay={0.07} className="mb-4">
+          <div className="flex gap-2 flex-wrap items-center">
+            {([['discover', 'Discover'], ['watchlist', '★ Watchlist']] as const).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSource(key)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  source === key
+                    ? 'bg-primary text-white'
+                    : 'bg-surface-hover text-muted hover:text-default'
+                }`}
+              >
+                {label}
+                {key === 'watchlist' && watchlist.length > 0 && (
+                  <span className={`ml-1.5 text-xs ${source === 'watchlist' ? 'opacity-80' : 'opacity-60'}`}>({watchlist.length})</span>
+                )}
+              </button>
+            ))}
+
+            {/* Watched filter — right side of the same row, subtle. */}
+            <div className="ml-auto flex gap-1 items-center">
+              <span className="text-xs text-muted mr-1 hidden sm:inline">Show:</span>
+              {([['all', 'All'], ['hide', 'Unwatched'], ['only', 'Watched']] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setWatchedFilter(key)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    watchedFilter === key
+                      ? 'bg-primary/20 text-primary'
+                      : 'text-muted hover:text-default'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </PageSection>
+
+        {source === 'discover' && !debouncedQuery && (
           <PageSection delay={0.08} className="mb-6">
             {/* Catalog picker + genre dropdown on the SAME row: catalog is
                 the primary filter (Popular / New / Top Rated), genre is a
@@ -287,21 +469,37 @@ export default function DiscoverPage() {
           ) : displayedItems.length === 0 ? (
             <div className="text-center py-24 text-muted">
               <MagnifyingGlassIcon className="w-10 h-10 mx-auto mb-3 text-subtle" />
-              <p>No results found.</p>
+              <p>
+                {source === 'watchlist' && watchlist.length === 0
+                  ? 'Your watchlist is empty. Add items with the bookmark button on any title.'
+                  : source === 'watchlist'
+                    ? `Nothing in your watchlist matches this view.`
+                    : watchedFilter !== 'all'
+                      ? `Nothing matches the "${watchedFilter === 'hide' ? 'Unwatched' : 'Watched'}" filter here.`
+                      : 'No results found.'}
+              </p>
             </div>
           ) : (
             <>
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
                 {displayedItems.map((item) => (
-                  <PosterCard key={item.id} item={item} ratings={ratingsById[item.id]} onOpenDetails={setDetailItem} />
+                  <PosterCard
+                    key={item.id}
+                    item={item}
+                    ratings={ratingsById[item.id]}
+                    watched={watchedStatus[item.id]}
+                    inWatchlist={inWatchlistIds.has(item.id)}
+                    onOpenDetails={setDetailItem}
+                    onToggleWatchlist={handleToggleWatchlist}
+                  />
                 ))}
               </div>
 
-              {/* Infinite-scroll sentinel + spinner. Skipped in search mode
-                  since Cinemeta search doesn't paginate. The sentinel sits
-                  ~400px below the grid's end so we start fetching before the
-                  user hits true bottom. */}
-              {!debouncedQuery && (
+              {/* Infinite-scroll sentinel + spinner. Discover browse-mode only
+                  — Watchlist is fully-loaded client-side and search doesn't
+                  paginate. Sentinel sits ~400px below the grid's end so we
+                  start fetching before the user hits true bottom. */}
+              {source === 'discover' && !debouncedQuery && (
                 <div className="mt-8 flex flex-col items-center justify-center gap-3 py-6">
                   {isLoadingMore && (
                     <div className="flex items-center gap-2 text-sm text-muted">

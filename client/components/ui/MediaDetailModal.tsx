@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon } from '@heroicons/react/24/solid';
+import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
+import { BookmarkIcon as BookmarkOutlineIcon } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
@@ -31,6 +32,46 @@ export function MediaDetailModal({
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [isTrailerPlaying, setIsTrailerPlaying] = useState(false);
+
+  // Watchlist state — optimistic-toggle so the icon flips instantly on click
+  // and the request happens in the background. Reset on itemId change so the
+  // modal doesn't carry the previous title's state when reopened.
+  const [inWatchlist, setInWatchlist] = useState(false);
+  const [watchlistBusy, setWatchlistBusy] = useState(false);
+  useEffect(() => {
+    if (!isOpen || !itemId) return;
+    // Ask the watchlist for our current status. Cheap round-trip since we
+    // only care about one id — the batched watched-status endpoint isn't
+    // needed here.
+    let cancelled = false;
+    api.getWatchlist().then((list) => {
+      if (cancelled) return;
+      setInWatchlist(list.some((i) => i.itemId === itemId));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen, itemId]);
+  const toggleWatchlist = async () => {
+    if (watchlistBusy) return;
+    setWatchlistBusy(true);
+    const next = !inWatchlist;
+    setInWatchlist(next); // optimistic
+    try {
+      if (next) {
+        await api.addToWatchlist({
+          itemId,
+          itemType,
+          name: details?.title || fallbackTitle,
+          poster: details?.poster || fallbackPoster || null,
+        });
+      } else {
+        await api.removeFromWatchlist(itemId);
+      }
+    } catch {
+      setInWatchlist(!next); // revert on failure
+    } finally {
+      setWatchlistBusy(false);
+    }
+  };
 
   // Mouse-only grab-and-drag horizontal scrolling for the Cast row, matching
   // the Dashboard's Continue Watching row. Pointer capture is deliberately
@@ -266,7 +307,28 @@ export function MediaDetailModal({
                   generic accent color, so these read as "this specific
                   provider" the same way the badges already do. */}
               {details.imdb_id && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 items-center">
+                  {/* Watchlist toggle — outline bookmark = not saved,
+                      filled bookmark = saved. Works on any item, not just
+                      ones with IMDb links (the button check is inside the
+                      block, keyed to itemId which is always present). */}
+                  <button
+                    type="button"
+                    onClick={toggleWatchlist}
+                    disabled={watchlistBusy}
+                    aria-label={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+                    title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      inWatchlist
+                        ? 'bg-primary text-white'
+                        : 'bg-surface-hover text-default hover:bg-primary/20 hover:text-primary'
+                    } ${watchlistBusy ? 'opacity-60 cursor-wait' : ''}`}
+                  >
+                    {inWatchlist
+                      ? <BookmarkSolidIcon className="w-4 h-4" />
+                      : <BookmarkOutlineIcon className="w-4 h-4" />}
+                    {inWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
+                  </button>
                   <a
                     href={buildStremioAppUrl(details.imdb_id, itemType)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
