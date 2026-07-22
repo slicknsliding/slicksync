@@ -379,6 +379,25 @@ model DismissedContinueWatching {
   @@map("dismissed_continue_watching")
 }
 
+// SlickSync's own Trakt-alternative: personal watchlist. A bookmark list of
+// things the user wants to watch — no external service, keyed to the account.
+// Display fields (name, poster) are stored here rather than resolved live at
+// read time so opening the watchlist doesn't need a Cinemeta round-trip per
+// item — same pattern used for MovieWatchHistory / EpisodeWatchHistory.
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String   // IMDb-style id (tt...) matching Discover / History
+  itemType  String   // "movie" | "series"
+  name      String
+  poster    String?
+  addedAt   DateTime @default(now())
+
+  @@unique([accountId, itemId])
+  @@index([accountId, addedAt])
+  @@map("watchlist_item")
+}
+
 // Per-episode dismissals for the Dashboard "Coming up" panel. Keyed by the
 // exact (season, episode) tuple so that when the poller advances a show's
 // next-upcoming episode to a different one, the new one is NOT filtered out —

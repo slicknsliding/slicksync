@@ -1427,6 +1427,31 @@ class ApiClient {
     });
   }
 
+  // Personal watchlist — SlickSync's own bookmark list.
+  async getWatchlist() {
+    return this.fetch<WatchlistItem[]>('/watchlist');
+  }
+  async addToWatchlist(item: { itemId: string; itemType: 'movie' | 'series'; name: string; poster?: string | null }) {
+    return this.fetch<WatchlistItem>('/watchlist', {
+      method: 'POST',
+      body: JSON.stringify(item),
+    });
+  }
+  async removeFromWatchlist(itemId: string) {
+    return this.fetch<{ success: boolean }>(`/watchlist/${encodeURIComponent(itemId)}`, {
+      method: 'DELETE',
+    });
+  }
+  // Batch check whether these ids have any watch history on this account.
+  // POST (not GET) because id lists can be 100+ entries and don't belong in URLs.
+  async getWatchedStatus(ids: string[]) {
+    if (ids.length === 0) return {};
+    return this.fetch<Record<string, boolean>>('/watchlist/watched-status', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    });
+  }
+
   async getUpcomingEpisodes() {
     return this.fetch<UpcomingEpisode[]>('/users/upcoming-episodes');
   }
@@ -1781,6 +1806,15 @@ export interface ThemePref {
     text?: string | null;
     fontDisplay?: string | null;
   } | null;
+}
+
+export interface WatchlistItem {
+  id: string;
+  itemId: string;
+  itemType: 'movie' | 'series';
+  name: string;
+  poster: string | null;
+  addedAt: string;
 }
 
 export interface UpcomingEpisode {
