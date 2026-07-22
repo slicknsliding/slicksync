@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.28.1",
+    "date": "2026-07-22",
+    "title": "Fix decryption regression (Error badges on Users + Groups)",
+    "features": [],
+    "bugFixes": [
+      "Every user was showing a red \"Error\" badge (\"User not connected to a provider\") because v1.25.1's hardening rerouted the read of ENCRYPTION_KEY through keyManager — and on any deployment that never actually set the env var (including this one), the previous code had been silently encrypting everything with a hardcoded default. v1.25.1 started using a different key, so all pre-v1.25.1 encrypted data (stremioAuthKey, nuvioRefreshToken, encrypted addon manifest URLs, vault secrets) stopped decrypting. keyManager now always includes the historical hardcoded default as a decrypt-only fallback so existing data stays readable. New writes still use the auto-generated / env-provided key so the public-repo hardening from v1.25.1 stands — the hardcoded string is never used for encryption anymore, only for reading old data. No re-encryption or manual action needed."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.28.0",
     "date": "2026-07-22",
     "title": "Trakt integration removed",
