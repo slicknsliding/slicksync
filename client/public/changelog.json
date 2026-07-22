@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.36.0",
+    "date": "2026-07-22",
+    "title": "Layout joins Themes; Addons get a real Label picker; 5 new fonts + Success/Error theme colors",
+    "features": [
+      "Layout (Dashboard/Activity structure) moved from Settings onto the Themes page too, between the built-in Theme grid and Build-your-own-theme — Themes is now the one stop for every visual/structural preference instead of splitting Layout off into Settings.",
+      "Addons: right-click (or long-press) → \"Label\" now opens a proper picker inside the same context menu — every existing label to choose from, a checkmark on whichever one is currently applied, a \"Clear label\" option, and a \"New label\" row that creates AND applies a label in one step so you never end up with an unused label floating in the catalog. The old \"Clear Tag\"-only entry is gone since picking is now possible the same way.",
+      "Build-your-own-theme: swapped Bebas Neue and Caveat for five differently-flavored fonts — Playfair Display (elegant serif), Bungee (poster display), Bangers (comic display), Press Start 2P (retro pixel), and Permanent Marker (bold handwritten) — for 10 total, each meant to look nothing like its neighbors.",
+      "Two new optional color overrides, Success accent and Error accent, next to Progress bar — recolor health-check dots, success/error badges, and confirmation toasts app-wide instead of the fixed green/red every theme shipped with before. Shown live in the builder's preview mockup as a small Online/Offline status row."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "New optional success/error fields on CustomTheme/SavedCustomTheme, applied as --color-success/--color-error (+ their -muted variants) the same way every other override already works — blank keeps each base theme's own color, existing saved themes are unaffected."
+    ]
+  },
+  {
     "version": "1.35.0",
     "date": "2026-07-22",
     "title": "Themes moved to its own page + a richer preview mockup",
