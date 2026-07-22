@@ -289,8 +289,12 @@ export default function DiscoverPage() {
         )}
 
         {source === 'discover' && !debouncedQuery && (
-          <PageSection delay={0.08} className="mb-4">
-            <div className="flex gap-2 flex-wrap">
+          <PageSection delay={0.08} className="mb-6">
+            {/* Catalog picker + genre dropdown on the SAME row: catalog is
+                the primary filter (Popular / New / Top Rated), genre is a
+                secondary refinement sitting immediately after it. On a
+                narrow screen the dropdown wraps below thanks to flex-wrap. */}
+            <div className="flex gap-2 flex-wrap items-center">
               {CATALOGS.map((c) => (
                 <button
                   key={c.key}
@@ -305,41 +309,25 @@ export default function DiscoverPage() {
                   {c.label}
                 </button>
               ))}
-            </div>
-          </PageSection>
-        )}
 
-        {/* Genre pills — only meaningful in Discover browse mode. Hidden
-            during search (Cinemeta's search endpoint ignores genre extras)
-            and on the watchlist source (client-side title filter only). */}
-        {source === 'discover' && !debouncedQuery && (
-          <PageSection delay={0.09} className="mb-6">
-            <div className="flex gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setGenre('')}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  genre === ''
-                    ? 'bg-primary text-white'
-                    : 'bg-surface-hover text-muted hover:text-default'
+              {/* Genre picker — dropdown, not pills. Stacks with the catalog
+                  choice (Top Rated + Horror = top-rated horror). Hidden in
+                  search mode since Cinemeta's search ignores genre extras. */}
+              <select
+                value={genre}
+                onChange={(e) => setGenre(e.target.value)}
+                aria-label="Filter by genre"
+                className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
+                  genre
+                    ? 'bg-primary text-white border-transparent'
+                    : 'bg-surface-hover text-muted hover:text-default border-default'
                 }`}
               >
-                All genres
-              </button>
-              {GENRES.map((g) => (
-                <button
-                  key={g}
-                  type="button"
-                  onClick={() => setGenre(g)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                    genre === g
-                      ? 'bg-primary text-white'
-                      : 'bg-surface-hover text-muted hover:text-default'
-                  }`}
-                >
-                  {g}
-                </button>
-              ))}
+                <option value="">All genres</option>
+                {GENRES.map((g) => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
             </div>
           </PageSection>
         )}

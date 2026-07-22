@@ -154,18 +154,29 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         const excludedAddons = parseAddonIds(user.excludedAddons)
         const protectedAddons = parseProtectedAddons(user.protectedAddons, req)
 
-        // Calculate total watch time from watch activity (like old slicksync)
+        // Calculate total watch time from watch activity (like old slicksync).
+        // Cross-user dedup applied so library-sync phantoms from shared-email
+        // sibling accounts don't inflate this user's total — see
+        // utils/watchDedup.js for the rationale.
         let totalWatchTimeMinutes = 0
         try {
-          const activities = await prisma.watchActivity.findMany({
-            where: {
-              ...scopedWhere(req, { userId: user.id })
-            },
-            select: {
-              watchTimeSeconds: true
-            }
-          })
-          const totalSeconds = activities.reduce((sum, a) => sum + (a.watchTimeSeconds || 0), 0)
+          const accountIdForScope = user.accountId || getAccountId(req) || 'default'
+          const [activities, siblings] = await Promise.all([
+            prisma.watchActivity.findMany({
+              where: { accountId: accountIdForScope },
+              select: { userId: true, itemId: true, date: true, watchTimeSeconds: true }
+            }),
+            prisma.user.findMany({
+              where: { accountId: accountIdForScope },
+              select: { id: true, email: true }
+            })
+          ])
+          const { findSharedEmailUserIds, dedupWatchActivityBySharedEmail } = require('../utils/watchDedup')
+          const shared = findSharedEmailUserIds(siblings)
+          const cleaned = dedupWatchActivityBySharedEmail(activities, shared)
+          const totalSeconds = cleaned
+            .filter((a) => a.userId === user.id)
+            .reduce((sum, a) => sum + (a.watchTimeSeconds || 0), 0)
           totalWatchTimeMinutes = Math.round(totalSeconds / 60)
         } catch (error) {
           console.warn(`Error fetching watch time for user ${user.id}:`, error.message)
@@ -685,18 +696,25 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         where.itemType = itemType
       }
 
-      const activities = await prisma.watchActivity.findMany({
-        where,
-        select: {
-          date: true,
-          watchTimeSeconds: true,
-          itemId: true,
-          itemType: true
-        },
-        orderBy: {
-          date: 'asc'
-        }
-      })
+      // Cross-user library-sync dedup: fetch ALL account-wide activity in
+      // the date window (not just this user's), run the shared-email dedup
+      // to strip phantoms, then narrow back to this user. Same rationale as
+      // getUser's totalWatchTimeMinutes above.
+      const [allWindowActivities, siblings] = await Promise.all([
+        prisma.watchActivity.findMany({
+          where: { accountId: accountIdValue, date: { gte: start, lte: end }, ...(itemId ? { itemId } : {}), ...(itemType ? { itemType } : {}) },
+          select: { userId: true, date: true, watchTimeSeconds: true, itemId: true, itemType: true },
+          orderBy: { date: 'asc' }
+        }),
+        prisma.user.findMany({
+          where: { accountId: accountIdValue },
+          select: { id: true, email: true }
+        })
+      ])
+      const { findSharedEmailUserIds, dedupWatchActivityBySharedEmail } = require('../utils/watchDedup')
+      const shared = findSharedEmailUserIds(siblings)
+      const cleaned = dedupWatchActivityBySharedEmail(allWindowActivities, shared)
+      const activities = cleaned.filter((a) => a.userId === userId)
 
       // Group by day or week
       const grouped = {}
