@@ -31,10 +31,10 @@ import { useIsMobile } from '@/lib/hooks/useIsMobile';
 // and the other a vertical list, too different to share a single data
 // structure cleanly. No group labels ("Overview"/"Management" text) - just
 // the two rows of icon+label pills, spacing alone marks the grouping.
-// Sidebar's third group (System: Tasks/Settings/Changelog) is deliberately
-// NOT here - those three live only in the account dropdown (PanelSwitcher)
-// now, since the topbar has no room to spare and that dropdown is already
-// the natural "everything about this admin session" spot.
+// Sidebar's third group (System: Tasks/Settings/Themes/Changelog) is
+// deliberately NOT here - those live only in the account dropdown
+// (PanelSwitcher) now, since the topbar has no room to spare and that
+// dropdown is already the natural "everything about this admin session" spot.
 const NEBULA_NAV_SECTIONS = [
   {
     id: 'overview',
