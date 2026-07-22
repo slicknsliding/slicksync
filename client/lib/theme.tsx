@@ -108,6 +108,33 @@ export const RADIUS_LABELS: Record<RadiusId, string> = {
   extra: 'Extra rounded',
 };
 
+// Global text-size scale. Tailwind's type scale (and most spacing) is
+// rem-based, so scaling the root font-size scales body copy, headings, and
+// most UI chrome together in one move rather than requiring a per-element
+// override system.
+export const TEXT_SCALE_PRESETS = {
+  default: null, // 16px root — no override
+  small: '87.5%', // 14px
+  large: '112.5%', // 18px
+  xlarge: '125%', // 20px
+} as const;
+export type TextScaleId = keyof typeof TEXT_SCALE_PRESETS;
+export const TEXT_SCALE_LABELS: Record<TextScaleId, string> = {
+  default: 'Default',
+  small: 'Small',
+  large: 'Large',
+  xlarge: 'Extra large',
+};
+// Numeric form of the same scale, for callers (the theme-builder preview
+// mockup) that need to size individual elements rather than set a root
+// font-size percentage.
+export const TEXT_SCALE_FACTORS: Record<TextScaleId, number> = {
+  default: 1,
+  small: 0.875,
+  large: 1.125,
+  xlarge: 1.25,
+};
+
 // A user-built theme config: base id + overrides. Applying it uses the base
 // theme's className for structural vars, then overrides accent/text/font
 // pieces inline, deriving -hover (lightened) and -muted (translucent) shades.
@@ -127,6 +154,7 @@ export interface CustomTheme {
   border?: string | null;       // --color-surface-border (card edges)
   fontDisplay?: FontId | null;  // display + body font
   radius?: RadiusId | null;     // global "roundness" preset
+  textScale?: TextScaleId | null; // global text-size preset
 }
 
 // A saved user-built theme, with its own id and display name so it can sit
@@ -189,6 +217,7 @@ const OVERRIDE_VARS = [
   '--color-surface', '--color-surface-border',
   '--font-space-grotesk', '--font-outfit',
   '--radius-sm', '--radius-md', '--radius-lg', '--radius-xl',
+  'font-size',
 ];
 
 function applyCustomTheme(el: HTMLElement, custom: CustomTheme) {
@@ -238,6 +267,13 @@ function applyCustomTheme(el: HTMLElement, custom: CustomTheme) {
     el.style.removeProperty('--radius-lg');
     el.style.removeProperty('--radius-xl');
   }
+
+  // Text-size preset — scales the root font-size, which the app's rem-based
+  // type (and most spacing) inherits from. `default`/unset leaves the
+  // browser default (16px) in place.
+  const scale = custom.textScale ? TEXT_SCALE_PRESETS[custom.textScale] : null;
+  if (scale) el.style.setProperty('font-size', scale);
+  else el.style.removeProperty('font-size');
 }
 
 function clearCustomTheme(el: HTMLElement) {
@@ -275,6 +311,7 @@ function migrateLegacyLocalStorage(): { savedList: SavedCustomTheme[]; migratedA
       border: null,
       fontDisplay: (parsed.fontDisplay as FontId) || 'default',
       radius: 'default',
+      textScale: 'default',
     };
     return { savedList: [migrated], migratedActiveId: migrated.id };
   } catch {
@@ -395,6 +432,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             border: null,
             fontDisplay: (pref.custom.fontDisplay as FontId) || 'default',
             radius: 'default',
+            textScale: 'default',
           };
           if (isValidSavedCustom(migrated)) { list = [migrated]; if (pref.themeId === 'custom') nextActive = migrated.id; }
         }
@@ -462,6 +500,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       border: config.border || null,
       fontDisplay: config.fontDisplay || 'default',
       radius: config.radius || 'default',
+      textScale: config.textScale || 'default',
     };
     setSavedCustomThemes((prev) => [...prev, entry]);
     setThemeIdState(id); // auto-switch to the newly-created theme
@@ -482,6 +521,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       border: config.border || null,
       fontDisplay: config.fontDisplay || 'default',
       radius: config.radius || 'default',
+      textScale: config.textScale || 'default',
       name: name?.trim() || t.name,
     } : t));
     // If it's the active theme, re-apply immediately so the change shows
@@ -497,6 +537,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         border: config.border || null,
         fontDisplay: config.fontDisplay || 'default',
         radius: config.radius || 'default',
+        textScale: config.textScale || 'default',
       };
       applyCustomTheme(document.documentElement, merged);
     }

@@ -6,7 +6,7 @@ import { Header } from '@/components/layout/Header';
 import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { Button, Card, Badge, Modal, ConfirmModal, Avatar } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
-import { useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, FontId, CustomTheme, SavedCustomTheme, RADIUS_PRESETS, RADIUS_LABELS, RadiusId } from '@/lib/theme';
+import { useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, FontId, CustomTheme, SavedCustomTheme, RADIUS_PRESETS, RADIUS_LABELS, RadiusId, TEXT_SCALE_PRESETS, TEXT_SCALE_LABELS, TEXT_SCALE_FACTORS, TextScaleId } from '@/lib/theme';
 import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -307,6 +307,35 @@ const ColorOverride = memo(function ColorOverride({
   );
 });
 
+// The base theme's own corner scale, used as the preview mockup's fallback
+// when the builder's radius preset is 'default' (RADIUS_PRESETS['default']
+// is null there, meaning "don't override" — the mockup still needs a value
+// to render with).
+const BASE_RADIUS_PX = { sm: '6px', md: '10px', lg: '14px', xl: '20px' };
+
+// Resolves the builder's overrides against its base theme's own palette, so
+// the preview mockup always has something sensible to show for fields the
+// user hasn't touched yet — same fallback semantics as what applyCustomTheme
+// does to the real page, just computed locally so the mockup doesn't depend
+// on document.documentElement having already re-rendered.
+function resolvePreviewPalette(base: ThemeId, o: {
+  primary: string; secondary: string; text: string; textMuted: string;
+  background: string; surface: string; bgMuted: string; border: string;
+}) {
+  const meta = themeMeta[base].colors;
+  const isLight = base === 'daylight';
+  return {
+    bg: o.background || meta.bg,
+    surface: o.surface || meta.surface,
+    bgMuted: o.bgMuted || (isLight ? '#e2e8f0' : '#21262d'),
+    border: o.border || (isLight ? 'rgba(15,23,42,0.14)' : 'rgba(255,255,255,0.08)'),
+    text: o.text || (isLight ? '#0f172a' : '#e6edf3'),
+    textMuted: o.textMuted || (isLight ? '#64748b' : '#8b949e'),
+    primary: o.primary || meta.primary,
+    secondary: o.secondary || meta.secondary,
+  };
+}
+
 // Layout mode card - structure preview only (sidebar-vs-topbar), not colors,
 // since layout mode is orthogonal to the Theme setting above and should read
 // as "shape," not "another color choice."
@@ -470,6 +499,7 @@ export default function SettingsPage() {
   const [builderBorder, setBuilderBorder] = useState<string>(activeCustomTheme?.border || '');
   const [builderFont, setBuilderFont] = useState<FontId>((activeCustomTheme?.fontDisplay as FontId) || 'default');
   const [builderRadius, setBuilderRadius] = useState<RadiusId>((activeCustomTheme?.radius as RadiusId) || 'default');
+  const [builderTextScale, setBuilderTextScale] = useState<TextScaleId>((activeCustomTheme?.textScale as TextScaleId) || 'default');
   // Assemble the current builder state into a CustomTheme so every change site
   // can call `previewCustom(buildDraft())` without repeating every field.
   const buildDraft = (): CustomTheme => ({
@@ -484,6 +514,7 @@ export default function SettingsPage() {
     border: builderBorder.trim() ? builderBorder.trim() : null,
     fontDisplay: builderFont,
     radius: builderRadius,
+    textScale: builderTextScale,
   });
   // Re-seed the builder when the active custom theme changes out from under
   // it (cross-device sync, or the user selects a different custom to edit).
@@ -500,6 +531,7 @@ export default function SettingsPage() {
     setBuilderBorder(activeCustomTheme?.border || '');
     setBuilderFont((activeCustomTheme?.fontDisplay as FontId) || 'default');
     setBuilderRadius((activeCustomTheme?.radius as RadiusId) || 'default');
+    setBuilderTextScale((activeCustomTheme?.textScale as TextScaleId) || 'default');
   }, [activeCustomTheme]);
   // Revert any unsaved live preview when leaving Settings (a saved theme is a
   // no-op here since cancelPreview just re-applies whatever's active). Kept
@@ -927,23 +959,129 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Live preview swatch — accents + the current font override. */}
+              <div>
+                <label className="block text-xs font-medium mb-2 text-muted">Text size</label>
+                <div className="flex flex-wrap gap-2">
+                  {(Object.keys(TEXT_SCALE_PRESETS) as TextScaleId[]).map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => { setBuilderTextScale(id); previewCustom({ ...buildDraft(), textScale: id }); }}
+                      className={`px-3 py-1.5 rounded-lg transition-colors ${
+                        builderTextScale === id
+                          ? 'bg-primary text-white'
+                          : 'bg-surface-hover text-muted hover:text-default'
+                      }`}
+                      style={{ fontSize: `${13 * TEXT_SCALE_FACTORS[id]}px` }}
+                    >
+                      {TEXT_SCALE_LABELS[id]}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted mt-1.5">Scales body text and most UI chrome app-wide, not just this builder.</p>
+              </div>
+
+              {/* Live mockup — a self-contained mini "card" rendered with the
+                  builder's own resolved colors/font/radius/text-scale, rather
+                  than relying on the swatches once used here. Independent of
+                  document.documentElement so it's accurate even mid-drag on a
+                  color input, and it doubles as a legend: every dimension the
+                  builder controls shows up somewhere in it. */}
               <div>
                 <label className="block text-xs font-medium mb-2 text-muted">Preview</label>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="h-8 w-40 rounded-lg" style={{ background: `linear-gradient(90deg, ${builderPrimary}, ${builderSecondary})` }} />
-                  <div className="h-8 w-8 rounded-lg" style={{ background: builderPrimary }} />
-                  <div className="h-8 w-8 rounded-lg" style={{ background: builderSecondary }} />
-                  <span
-                    className="text-sm font-semibold"
-                    style={{
-                      color: builderText || undefined,
-                      fontFamily: FONT_OPTIONS.find((f) => f.id === builderFont)?.family || undefined,
-                    }}
-                  >
-                    The quick brown fox
-                  </span>
-                </div>
+                {(() => {
+                  const p = resolvePreviewPalette(builderBase, {
+                    primary: builderPrimary, secondary: builderSecondary,
+                    text: builderText, textMuted: builderTextMuted,
+                    background: builderBackground, surface: builderSurface,
+                    bgMuted: builderBgMuted, border: builderBorder,
+                  });
+                  const radiusScale = builderRadius !== 'default' ? RADIUS_PRESETS[builderRadius] : null;
+                  const rLg = radiusScale?.lg || BASE_RADIUS_PX.lg;
+                  const rMd = radiusScale?.md || BASE_RADIUS_PX.md;
+                  const rSm = radiusScale?.sm || BASE_RADIUS_PX.sm;
+                  const fontFamily = FONT_OPTIONS.find((f) => f.id === builderFont)?.family || undefined;
+                  const scale = TEXT_SCALE_FACTORS[builderTextScale];
+                  return (
+                    <div
+                      className="p-5"
+                      style={{ background: p.bg, borderRadius: rLg, border: `1px solid ${p.border}`, fontFamily }}
+                    >
+                      {/* header row */}
+                      <div className="flex items-center gap-2.5 mb-4">
+                        <div
+                          className="w-8 h-8 flex items-center justify-center shrink-0"
+                          style={{ background: `linear-gradient(135deg, ${p.primary}, ${p.secondary})`, borderRadius: rMd }}
+                        >
+                          <SparklesIcon className="w-4 h-4" style={{ color: '#fff' }} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold leading-tight truncate" style={{ color: p.text, fontSize: `${14 * scale}px` }}>
+                            {builderName.trim() || 'Preview theme'}
+                          </p>
+                          <p className="leading-tight truncate" style={{ color: p.textMuted, fontSize: `${11 * scale}px` }}>
+                            Based on {themeMeta[builderBase].name}
+                          </p>
+                        </div>
+                        <span
+                          className="ml-auto shrink-0 flex items-center gap-1 px-2 py-0.5 font-medium"
+                          style={{ background: `${p.secondary}26`, color: p.secondary, borderRadius: rSm, fontSize: `${10.5 * scale}px` }}
+                        >
+                          <BoltIcon className="w-3 h-3" /> Live
+                        </span>
+                      </div>
+
+                      {/* body copy, on the resolved text/muted colors */}
+                      <p className="mb-3" style={{ color: p.text, fontSize: `${13 * scale}px`, lineHeight: 1.5 }}>
+                        The quick brown fox jumps over the lazy dog.
+                      </p>
+                      <p className="mb-4" style={{ color: p.textMuted, fontSize: `${11.5 * scale}px`, lineHeight: 1.5 }}>
+                        Caption and muted text render like this — labels, hints, timestamps.
+                      </p>
+
+                      {/* a nested card, to preview surface + bgMuted + border */}
+                      <div
+                        className="p-3 mb-4"
+                        style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: rMd }}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium" style={{ color: p.text, fontSize: `${12 * scale}px` }}>Card surface</span>
+                          <span
+                            className="flex items-center gap-1 px-1.5 py-0.5 font-medium"
+                            style={{ background: p.bgMuted, color: p.textMuted, borderRadius: rSm, fontSize: `${10 * scale}px` }}
+                          >
+                            <CheckIcon className="w-3 h-3" /> Done
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden" style={{ background: p.bgMuted, borderRadius: rSm }}>
+                          <div className="h-full w-2/3" style={{ background: `linear-gradient(90deg, ${p.primary}, ${p.secondary})` }} />
+                        </div>
+                      </div>
+
+                      {/* button row */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className="px-3 py-1.5 font-semibold"
+                          style={{ background: p.primary, color: '#fff', borderRadius: rMd, fontSize: `${12 * scale}px` }}
+                        >
+                          Primary action
+                        </span>
+                        <span
+                          className="px-3 py-1.5 font-semibold"
+                          style={{ background: 'transparent', color: p.primary, border: `1px solid ${p.primary}`, borderRadius: rMd, fontSize: `${12 * scale}px` }}
+                        >
+                          Secondary
+                        </span>
+                        <span
+                          className="px-3 py-1.5 font-medium"
+                          style={{ color: p.textMuted, fontSize: `${12 * scale}px` }}
+                        >
+                          Cancel
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="flex items-center gap-3 pt-1 flex-wrap">
@@ -1008,6 +1146,7 @@ export default function SettingsPage() {
                     setBuilderBorder(activeCustomTheme?.border || '');
                     setBuilderFont((activeCustomTheme?.fontDisplay as FontId) || 'default');
                     setBuilderRadius((activeCustomTheme?.radius as RadiusId) || 'default');
+                    setBuilderTextScale((activeCustomTheme?.textScale as TextScaleId) || 'default');
                   }}
                   className="text-xs text-muted hover:text-default transition-colors"
                 >
