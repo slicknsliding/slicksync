@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.29.0",
+    "date": "2026-07-22",
+    "title": "SlickSync-native Watchlist + \"watched\" indicators on Discover",
+    "features": [
+      "Personal Watchlist — a bookmark list of things you want to watch, hosted entirely in SlickSync (no external service to connect, no per-account tokens, no rate limits). Add from the ★ Add to Watchlist button in any title's detail modal, or right-click any Discover poster and pick \"Add to Watchlist\". Discover gains a \"★ Watchlist\" source toggle next to \"Discover\" that renders your watchlist as the same poster grid, filtered by the Movies/Series tabs + search. The count of saved items shows next to the toggle. Everything persists to a new watchlist_item table (added on next deploy, additive only).",
+      "\"Watched\" corner badges on Discover posters — an emerald checkmark overlay on any title that has watch history on this account (from either provider), plus a subtle bookmark indicator on items in your watchlist. Both are shown together so you can see at a glance what you've seen and what you've saved without opening anything.",
+      "Watched filter — a compact \"All / Unwatched / Watched\" toggle on the top-right of Discover so you can browse the catalog minus everything you've seen, or the reverse. Stacks with the source toggle: \"★ Watchlist\" + \"Unwatched\" = \"things I saved but haven't watched yet\", which is basically the entire point of a watchlist."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "New watchlist_item table (additive on deploy, no data loss). New /api/watchlist endpoints plus a batched /api/watchlist/watched-status endpoint the Discover grid uses to overlay the ✓ badges without a per-poster round-trip."
+    ]
+  },
+  {
     "version": "1.28.1",
     "date": "2026-07-22",
     "title": "Fix decryption regression (Error badges on Users + Groups)",

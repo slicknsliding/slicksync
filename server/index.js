@@ -36,6 +36,7 @@ const streamProxyRouter = require('./routes/streamProxy');
 const nuvioRouter = require('./routes/nuvio');
 const snapshotsRouter = require('./routes/snapshots');
 const pushRouter = require('./routes/push');
+const watchlistRouter = require('./routes/watchlist');
 const avatarsRouter = require('./routes/avatars');
 const vaultRouter = require('./routes/vault');
 const discoverRouter = require('./routes/discover');
@@ -243,6 +244,7 @@ app.use('/api/avatars', avatarsRouter({ imageUpload }));
 app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/settings', settingsRouter({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }));
 app.use('/api/push', pushRouter({ prisma, getAccountId }));
+app.use('/api/watchlist', watchlistRouter({ prisma, getAccountId }));
 app.use('/api/discover', discoverRouter());
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({

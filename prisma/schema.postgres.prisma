@@ -379,6 +379,21 @@ model DismissedContinueWatching {
   @@map("dismissed_continue_watching")
 }
 
+// SlickSync's own personal watchlist — see schema.sqlite.prisma for the full comment.
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String
+  name      String
+  poster    String?
+  addedAt   DateTime @default(now())
+
+  @@unique([accountId, itemId])
+  @@index([accountId, addedAt])
+  @@map("watchlist_item")
+}
+
 // Per-episode dismissals for the "Coming up" panel — see schema.sqlite.prisma.
 model DismissedUpcomingEpisode {
   id        String   @id @default(cuid())
