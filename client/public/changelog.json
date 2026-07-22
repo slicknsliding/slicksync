@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.31.0",
+    "date": "2026-07-22",
+    "title": "Personal Features opt-out toggles in Settings",
+    "features": [
+      "New Settings → Personal Features card with three independent toggles for the SlickSync-native tracking surfaces added in v1.29 and v1.30: Watchlist, Watched indicators, and Recommendations. All default ON so existing installs get the same behavior; turning any off immediately hides its UI and skips its network requests (an in-module cache is invalidated on save so every open tab reacts without a refresh). Underlying data — your watch history and any saved watchlist items — is untouched, so re-enabling a feature restores everything you had. The Watchlist toggle hides the ★ Watchlist source in Discover + the Add-to-Watchlist button in every detail modal + the right-click Add-to-Watchlist menu item. Watched indicators hides the ✓ checkmark badges + the Unwatched / Watched filter + the Mark-as-watched menu item. Recommendations hides the Dashboard \"Because you watched\" panel + short-circuits the /api/discover/recommendations endpoint server-side so a disabled feature never triggers Cinemeta lookups."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Three new boolean fields on AppAccount.sync (enableWatchlist / enableWatchedIndicators / enableRecommendations). All optional and default true when absent — no migration needed."
+    ]
+  },
+  {
     "version": "1.30.0",
     "date": "2026-07-22",
     "title": "\"Because you watched\" recommendations + manual watched toggle + Discover pagination fixes + two more theme knobs",

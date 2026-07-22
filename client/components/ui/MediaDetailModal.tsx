@@ -8,6 +8,7 @@ import { Badge } from './Badge';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
 import { api, MediaDetails } from '@/lib/api';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
+import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 
 interface MediaDetailModalProps {
   isOpen: boolean;
@@ -33,13 +34,16 @@ export function MediaDetailModal({
   const [hasFetched, setHasFetched] = useState(false);
   const [isTrailerPlaying, setIsTrailerPlaying] = useState(false);
 
+  const { enableWatchlist } = usePersonalFeatures();
+
   // Watchlist state — optimistic-toggle so the icon flips instantly on click
   // and the request happens in the background. Reset on itemId change so the
-  // modal doesn't carry the previous title's state when reopened.
+  // modal doesn't carry the previous title's state when reopened. Skipped
+  // entirely when the Watchlist personal feature is disabled.
   const [inWatchlist, setInWatchlist] = useState(false);
   const [watchlistBusy, setWatchlistBusy] = useState(false);
   useEffect(() => {
-    if (!isOpen || !itemId) return;
+    if (!isOpen || !itemId || !enableWatchlist) return;
     // Ask the watchlist for our current status. Cheap round-trip since we
     // only care about one id — the batched watched-status endpoint isn't
     // needed here.
@@ -49,7 +53,7 @@ export function MediaDetailModal({
       setInWatchlist(list.some((i) => i.itemId === itemId));
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [isOpen, itemId]);
+  }, [isOpen, itemId, enableWatchlist]);
   const toggleWatchlist = async () => {
     if (watchlistBusy) return;
     setWatchlistBusy(true);
@@ -309,9 +313,9 @@ export function MediaDetailModal({
               {details.imdb_id && (
                 <div className="flex flex-wrap gap-2 items-center">
                   {/* Watchlist toggle — outline bookmark = not saved,
-                      filled bookmark = saved. Works on any item, not just
-                      ones with IMDb links (the button check is inside the
-                      block, keyed to itemId which is always present). */}
+                      filled = saved. Hidden when the Watchlist feature is
+                      disabled in Settings. */}
+                  {enableWatchlist && (
                   <button
                     type="button"
                     onClick={toggleWatchlist}
@@ -329,6 +333,7 @@ export function MediaDetailModal({
                       : <BookmarkOutlineIcon className="w-4 h-4" />}
                     {inWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
                   </button>
+                  )}
                   <a
                     href={buildStremioAppUrl(details.imdb_id, itemType)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
