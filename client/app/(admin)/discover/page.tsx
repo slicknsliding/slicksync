@@ -8,6 +8,7 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextMenu, useContextMenu } from '@/components/ui';
 import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
+import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { toast } from '@/components/ui/Toast';
@@ -46,6 +47,10 @@ const PosterCard = memo(function PosterCard({
   onOpenDetails,
   onToggleWatchlist,
   onToggleWatched,
+  showWatchlistMenu = true,
+  showWatchedMenu = true,
+  showWatchedBadge = true,
+  showWatchlistBadge = true,
 }: {
   item: DiscoverItem;
   ratings?: RatingsBatchEntry;
@@ -58,6 +63,11 @@ const PosterCard = memo(function PosterCard({
   onToggleWatchlist: (item: DiscoverItem, next: boolean) => void;
   /** Flips the watched marker between true and false. */
   onToggleWatched: (item: DiscoverItem, nextWatched: boolean) => void;
+  /** When false, hides the corresponding context-menu item + card badge. */
+  showWatchlistMenu?: boolean;
+  showWatchedMenu?: boolean;
+  showWatchedBadge?: boolean;
+  showWatchlistBadge?: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
   // Right-click context menu — add or remove watchlist depending on state.
@@ -96,7 +106,7 @@ const PosterCard = memo(function PosterCard({
             you can see at a glance while browsing what you've already seen.
             Layered above the poster's dark gradient so it stays visible on
             both light and dark posters. */}
-        {watched && (
+        {watched && showWatchedBadge && (
           <div
             className="absolute top-1.5 right-1.5 flex items-center justify-center rounded-full bg-emerald-500/90 text-white shadow-lg backdrop-blur-sm"
             style={{ width: 24, height: 24 }}
@@ -108,7 +118,7 @@ const PosterCard = memo(function PosterCard({
 
         {/* Watchlist bookmark indicator — smaller than the watched badge and
             in the opposite corner so both can coexist on the same card. */}
-        {inWatchlist && !watched && (
+        {inWatchlist && showWatchlistBadge && !(watched && showWatchedBadge) && (
           <div
             className="absolute top-1.5 left-1.5 flex items-center justify-center rounded-full bg-primary/90 text-white shadow-lg backdrop-blur-sm"
             style={{ width: 22, height: 22 }}
@@ -136,32 +146,39 @@ const PosterCard = memo(function PosterCard({
         )}
       </div>
 
-      <ContextMenu isOpen={isOpen} position={position} onClose={close}>
-        <button
-          type="button"
-          onClick={() => { close(); onToggleWatchlist(item, !inWatchlist); }}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-        >
-          {inWatchlist
-            ? <><XCircleIcon className="w-4 h-4" /> Remove from Watchlist</>
-            : <><BookmarkOutlineIcon className="w-4 h-4" /> Add to Watchlist</>}
-        </button>
-        <button
-          type="button"
-          onClick={() => { close(); onToggleWatched(item, !watched); }}
-          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-        >
-          {watched
-            ? <><EyeSlashIcon className="w-4 h-4" /> Mark as unwatched</>
-            : <><EyeIcon className="w-4 h-4" /> Mark as watched</>}
-        </button>
-      </ContextMenu>
+      {(showWatchlistMenu || showWatchedMenu) && (
+        <ContextMenu isOpen={isOpen} position={position} onClose={close}>
+          {showWatchlistMenu && (
+            <button
+              type="button"
+              onClick={() => { close(); onToggleWatchlist(item, !inWatchlist); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              {inWatchlist
+                ? <><XCircleIcon className="w-4 h-4" /> Remove from Watchlist</>
+                : <><BookmarkOutlineIcon className="w-4 h-4" /> Add to Watchlist</>}
+            </button>
+          )}
+          {showWatchedMenu && (
+            <button
+              type="button"
+              onClick={() => { close(); onToggleWatched(item, !watched); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              {watched
+                ? <><EyeSlashIcon className="w-4 h-4" /> Mark as unwatched</>
+                : <><EyeIcon className="w-4 h-4" /> Mark as watched</>}
+            </button>
+          )}
+        </ContextMenu>
+      )}
     </div>
   );
 });
 
 export default function DiscoverPage() {
   const { layoutMode } = useLayoutMode();
+  const { enableWatchlist, enableWatchedIndicators } = usePersonalFeatures();
   const [type, setType] = useState<'movie' | 'series'>('movie');
   const [catalog, setCatalog] = useState('top');
   // '' = all genres (no filter). Cinemeta's genre param is optional; sending
@@ -183,14 +200,24 @@ export default function DiscoverPage() {
   // Guards against the sentinel firing repeatedly while a fetch is in flight.
   const loadMoreLock = useRef(false);
 
-  // "Your Watchlist" is a native SlickSync source (no external service, unlike
-  // the removed Trakt watchlist). Always available in the source toggle.
+  // "Your Watchlist" is a native SlickSync source. Available in the source
+  // toggle unless the user disabled the Watchlist feature in Settings.
   const [source, setSource] = useState<'discover' | 'watchlist'>('discover');
+  // If the feature gets turned off while the user is viewing Watchlist,
+  // snap back to Discover so they aren't stuck on a hidden source.
+  useEffect(() => {
+    if (!enableWatchlist && source === 'watchlist') setSource('discover');
+  }, [enableWatchlist, source]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [watchlistLoaded, setWatchlistLoaded] = useState(false);
   // Watched-status filter for the Discover grid — hide things you've seen,
-  // OR flip it to only see things you have.
+  // OR flip it to only see things you have. Snap back to 'all' if the
+  // indicator feature is turned off (a hidden filter that still applied
+  // would be a nasty confusion).
   const [watchedFilter, setWatchedFilter] = useState<'all' | 'hide' | 'only'>('all');
+  useEffect(() => {
+    if (!enableWatchedIndicators && watchedFilter !== 'all') setWatchedFilter('all');
+  }, [enableWatchedIndicators, watchedFilter]);
   const [watchedStatus, setWatchedStatus] = useState<Record<string, boolean>>({});
 
   // Convert saved WatchlistItem[] into DiscoverItem[] so the same grid + card
@@ -239,6 +266,9 @@ export default function DiscoverPage() {
   // we haven't queried yet get sent, so scrolling doesn't re-ask about
   // items we already know the answer for.
   useEffect(() => {
+    // Skip when the "Watched indicators" personal feature is disabled — no
+    // point spending requests on data we won't render.
+    if (!enableWatchedIndicators) return;
     const unknown = displayedItems
       .map((i) => i.id)
       .filter((id) => !(id in watchedStatus));
@@ -255,7 +285,7 @@ export default function DiscoverPage() {
       });
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [displayedItems, watchedStatus]);
+  }, [displayedItems, watchedStatus, enableWatchedIndicators]);
 
   const handleToggleWatched = useCallback(async (item: DiscoverItem, nextWatched: boolean) => {
     // Optimistic — flip the local map immediately so the ✓ badge reacts.
@@ -399,48 +429,54 @@ export default function DiscoverPage() {
           />
         </PageSection>
 
-        {/* Source: Cinemeta catalogs vs. your own Watchlist. Always shown —
-            no external service to gate on (unlike the removed Trakt version). */}
-        <PageSection delay={0.07} className="mb-4">
-          <div className="flex gap-2 flex-wrap items-center">
-            {([['discover', 'Discover'], ['watchlist', '★ Watchlist']] as const).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setSource(key)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  source === key
-                    ? 'bg-primary text-white'
-                    : 'bg-surface-hover text-muted hover:text-default'
-                }`}
-              >
-                {label}
-                {key === 'watchlist' && watchlist.length > 0 && (
-                  <span className={`ml-1.5 text-xs ${source === 'watchlist' ? 'opacity-80' : 'opacity-60'}`}>({watchlist.length})</span>
-                )}
-              </button>
-            ))}
-
-            {/* Watched filter — right side of the same row, subtle. */}
-            <div className="ml-auto flex gap-1 items-center">
-              <span className="text-xs text-muted mr-1 hidden sm:inline">Show:</span>
-              {([['all', 'All'], ['hide', 'Unwatched'], ['only', 'Watched']] as const).map(([key, label]) => (
+        {/* Source: Cinemeta catalogs vs. your own Watchlist + optional
+            watched filter. Each half is independently gated by the
+            personal-features settings — if BOTH are disabled the whole
+            row disappears (no visual weight from an empty control bar). */}
+        {(enableWatchlist || enableWatchedIndicators) && (
+          <PageSection delay={0.07} className="mb-4">
+            <div className="flex gap-2 flex-wrap items-center">
+              {enableWatchlist && ([['discover', 'Discover'], ['watchlist', '★ Watchlist']] as const).map(([key, label]) => (
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setWatchedFilter(key)}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                    watchedFilter === key
-                      ? 'bg-primary/20 text-primary'
-                      : 'text-muted hover:text-default'
+                  onClick={() => setSource(key)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    source === key
+                      ? 'bg-primary text-white'
+                      : 'bg-surface-hover text-muted hover:text-default'
                   }`}
                 >
                   {label}
+                  {key === 'watchlist' && watchlist.length > 0 && (
+                    <span className={`ml-1.5 text-xs ${source === 'watchlist' ? 'opacity-80' : 'opacity-60'}`}>({watchlist.length})</span>
+                  )}
                 </button>
               ))}
+
+              {/* Watched filter — right side of the same row, subtle. */}
+              {enableWatchedIndicators && (
+                <div className="ml-auto flex gap-1 items-center">
+                  <span className="text-xs text-muted mr-1 hidden sm:inline">Show:</span>
+                  {([['all', 'All'], ['hide', 'Unwatched'], ['only', 'Watched']] as const).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setWatchedFilter(key)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                        watchedFilter === key
+                          ? 'bg-primary/20 text-primary'
+                          : 'text-muted hover:text-default'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        </PageSection>
+          </PageSection>
+        )}
 
         {source === 'discover' && !debouncedQuery && (
           <PageSection delay={0.08} className="mb-6">
@@ -526,6 +562,10 @@ export default function DiscoverPage() {
                     ratings={ratingsById[item.id]}
                     watched={watchedStatus[item.id]}
                     inWatchlist={inWatchlistIds.has(item.id)}
+                    showWatchlistMenu={enableWatchlist}
+                    showWatchlistBadge={enableWatchlist}
+                    showWatchedMenu={enableWatchedIndicators}
+                    showWatchedBadge={enableWatchedIndicators}
                     onOpenDetails={setDetailItem}
                     onToggleWatchlist={handleToggleWatchlist}
                     onToggleWatched={handleToggleWatched}

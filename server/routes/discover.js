@@ -65,6 +65,19 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     try {
       if (!prisma || !getAccountId) return res.json({ rows: [] })
       const accountId = getAccountId(req) || 'default'
+
+      // Respect the Personal Features opt-out — a disabled feature should
+      // never trigger the metadata + catalog fetches this endpoint does,
+      // regardless of what the client sends.
+      try {
+        const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+        let cfg = acc?.sync
+        if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+        if (cfg && typeof cfg === 'object' && cfg.enableRecommendations === false) {
+          return res.json({ rows: [] })
+        }
+      } catch {}
+
       const RECENT_WATCH_LOOKBACK = 12
       const MAX_ROWS = 3
       const ITEMS_PER_ROW = 12
