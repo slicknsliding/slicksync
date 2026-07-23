@@ -310,7 +310,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           className="p-3 flex flex-col items-start gap-2"
           style={{ borderTop: '1px solid var(--color-surface-border)' }}
         >
-          <TorBoxBadge size={36} />
+          <TorBoxBadge size={24} />
           <div className="w-full min-w-0">
             <PanelSwitcher
               mode="admin"
