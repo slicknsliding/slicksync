@@ -103,12 +103,21 @@ async function notifyNativeWatchDetected(prisma, accountId, { title, poster, ite
     if (!cfg || typeof cfg !== 'object' || cfg.notifyOnActivity !== true) return
 
     const user = users.find((u) => u.id === userId)
+    // Per-user opt-out: this specific user's watch activity doesn't notify
+    // at all, regardless of the account-level toggle above.
+    if (user && user.notifyOnWatch === false) return
+
     const whoName = user?.username || user?.email || 'Someone'
     const epLabel = (itemType === 'series' && season != null && episode != null)
       ? ` S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
       : ''
 
-    if (cfg.webhookUrl) {
+    // A user's own personal webhook (Settings, in their self-service panel)
+    // takes over from the shared account webhook for their own activity —
+    // lets each household member route their own pings to their own
+    // channel/DM instead of (or as well as) the shared family one.
+    const targetWebhookUrl = user?.discordWebhookUrl || cfg.webhookUrl
+    if (targetWebhookUrl) {
       const avatarUrl = user ? await getUserAvatarUrl(user.username, user.email, user.colorIndex) : null
       const embed = {
         title: `${title}${epLabel}`,
@@ -120,7 +129,7 @@ async function notifyNativeWatchDetected(prisma, accountId, { title, poster, ite
       let appVersion = process.env.NEXT_PUBLIC_APP_VERSION || process.env.APP_VERSION || ''
       if (!appVersion) { try { appVersion = require('../../package.json')?.version || '' } catch {} }
       if (appVersion) embed.footer = { text: `SlickSync v${appVersion}` }
-      await postDiscord(cfg.webhookUrl, null, {
+      await postDiscord(targetWebhookUrl, null, {
         embeds: [embed],
         avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png',
       })

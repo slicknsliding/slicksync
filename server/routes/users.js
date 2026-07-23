@@ -1399,6 +1399,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         inviteCode: user.inviteCode,
         createdAt: user.createdAt,
         discordWebhookUrl: user.discordWebhookUrl || null,
+        notifyOnWatch: user.notifyOnWatch !== false,
         watchTime: totalWatchTimeMinutes
       }
 
@@ -1478,6 +1479,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
       if (req.body.discordUserId !== undefined) {
         updateData.discordUserId = req.body.discordUserId || null
+      }
+      if (req.body.notifyOnWatch !== undefined) {
+        updateData.notifyOnWatch = req.body.notifyOnWatch !== false
       }
 
       // Update user

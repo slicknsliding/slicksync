@@ -446,7 +446,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
             activityVisibility: true,
             colorIndex: true,
             createdAt: true,
-            expiresAt: true
+            expiresAt: true,
+            discordWebhookUrl: true,
+            notifyOnWatch: true
           }
         });
         if (!fullUser) {
@@ -467,7 +469,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
             activityVisibility: true,
             colorIndex: true,
             createdAt: true,
-            expiresAt: true
+            expiresAt: true,
+            discordWebhookUrl: true,
+            notifyOnWatch: true
           }
         });
 
@@ -496,7 +500,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         activityVisibility: user.activityVisibility || 'private',
         colorIndex: user.colorIndex || 0,
         createdAt: user.createdAt,
-        expiresAt: user.expiresAt
+        expiresAt: user.expiresAt,
+        discordWebhookUrl: user.discordWebhookUrl || null,
+        notifyOnWatch: user.notifyOnWatch !== false
       });
     } catch (error) {
       console.error('Error getting user info:', error);

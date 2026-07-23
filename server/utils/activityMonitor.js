@@ -105,7 +105,9 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
         providerType: true,
         nuvioRefreshToken: true,
         nuvioUserId: true,
-        colorIndex: true
+        colorIndex: true,
+        notifyOnWatch: true,
+        discordWebhookUrl: true
       }
     })
 
