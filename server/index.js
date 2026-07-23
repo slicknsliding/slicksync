@@ -300,7 +300,7 @@ async function bootstrap() {
     if (INSTANCE_TYPE !== 'public') {
       try {
         ensureBackupDir()
-        scheduleBackups(readBackupFrequencyDays())
+        scheduleBackups(readBackupFrequencyDays(), prisma)
       } catch (err) {
         console.error('⚠️ Failed to initialize backup scheduler:', err)
       }

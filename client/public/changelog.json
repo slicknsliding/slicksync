@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.44.0",
+    "date": "2026-07-23",
+    "title": "Backup restorability check",
+    "features": [
+      "Every automatic (and manual) backup is now validated right after it's written, checking the same thing a real restore would actually need — not just \"is this valid JSON,\" but whether every addon has a usable manifest, every group's addon references actually exist in the backup, and users/addons are present at all (the one thing restore itself hard-rejects on). A good backup gets a quiet green badge on Tasks (\"14u/3g/22a\"); a bad one gets flagged there AND — if you turn on the new \"Backup notifications\" toggle in Settings — a Discord/push alert naming exactly what's wrong, the moment it happens instead of mid-emergency."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "New server/utils/backupValidation.js, called from performBackupOnce(). Validation result is written as a small sidecar file next to each backup (config-backup-*.validation.json), so Tasks doesn't need to re-parse the (potentially large) backup itself to show its status."
+    ]
+  },
+  {
     "version": "1.43.0",
     "date": "2026-07-23",
     "title": "Devices list in Settings, plus Vault copy-to-clipboard and snooze",
