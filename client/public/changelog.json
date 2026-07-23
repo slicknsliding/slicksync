@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.39.0",
+    "date": "2026-07-23",
+    "title": "Per-user watch notifications, with your own Discord channel if you want one",
+    "features": [
+      "New \"Notifications\" card in the user self-service Settings panel: a \"Watch notifications\" toggle lets each managed user opt out of getting pinged for their own watch activity (started/watched), independent of the account-wide notification settings — other users' notifications are unaffected.",
+      "If a user sets their own personal Discord webhook (same field as before, now also covering watch pings, not just share notifications), their watch-started and watch-finished notifications route THERE instead of the shared family channel. Leave it blank to keep using the shared one — nothing changes for anyone who doesn't touch this."
+    ],
+    "bugFixes": [
+      "The personal Discord webhook field on the user settings page never actually loaded the saved value on page open (always showed blank even when one was set) — fixed as part of this work."
+    ],
+    "miscChores": [
+      "New notifyOnWatch column on User (default true, so nothing changes for existing installs). GET /api/public-library/user-info now also returns discordWebhookUrl and notifyOnWatch; PATCH /api/users/:id accepts notifyOnWatch."
+    ]
+  },
+  {
     "version": "1.38.0",
     "date": "2026-07-23",
     "title": "Native watches now notify too; card overlap fix; Base cascades in theme builder; Nebula default",

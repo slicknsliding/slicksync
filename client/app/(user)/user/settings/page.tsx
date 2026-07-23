@@ -162,6 +162,11 @@ export default function UserSettingsPage() {
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState('');
   const [isSavingWebhook, setIsSavingWebhook] = useState(false);
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+  // Whether MY watch activity (started/watched) notifies at all — account-wide
+  // notifications stay on for everyone else regardless of what I pick here.
+  const [notifyOnWatch, setNotifyOnWatch] = useState(true);
+  const [notifyOnWatchLoaded, setNotifyOnWatchLoaded] = useState(false);
+  const [isSavingNotifyOnWatch, setIsSavingNotifyOnWatch] = useState(false);
   
   // API Key
   const [apiKeyStatus, setApiKeyStatus] = useState<{ hasKey: boolean }>({ hasKey: false });
@@ -180,7 +185,10 @@ export default function UserSettingsPage() {
         const info = await userAuth.getUserInfo(userId, authKey);
         setActivityVisibility(info?.activityVisibility ?? 'private');
         setActivityVisibilityLoaded(true);
-        
+        setDiscordWebhookUrl(info?.discordWebhookUrl || '');
+        setNotifyOnWatch(info?.notifyOnWatch !== false);
+        setNotifyOnWatchLoaded(true);
+
         // Fetch API key
         try {
           const response = await fetch(`${API_BASE}/public-library/user-api-key?userId=${userId}&authKey=${encodeURIComponent(authKey)}`);
@@ -260,6 +268,27 @@ export default function UserSettingsPage() {
       toast.error(e.message || 'Failed to save webhook');
     } finally {
       setIsSavingWebhook(false);
+    }
+  };
+
+  // Toggle whether MY watch activity notifies at all
+  const handleToggleNotifyOnWatch = async () => {
+    if (!userId || isSavingNotifyOnWatch) return;
+    const next = !notifyOnWatch;
+    setNotifyOnWatch(next);
+    setIsSavingNotifyOnWatch(true);
+    try {
+      await fetch(`${API_BASE}/users/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifyOnWatch: next }),
+      });
+      toast.success(next ? 'Watch notifications enabled' : 'Watch notifications disabled');
+    } catch (e: any) {
+      setNotifyOnWatch(!next);
+      toast.error(e.message || 'Failed to update notification preference');
+    } finally {
+      setIsSavingNotifyOnWatch(false);
     }
   };
 
@@ -564,17 +593,49 @@ export default function UserSettingsPage() {
             </div>
             <div>
               <h2 className="font-semibold" style={{ color: 'var(--color-text)' }}>
-                Discord Webhook
+                Notifications
               </h2>
               <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                Receive notifications when someone shares content with you
+                Shared content, plus your own watch activity
               </p>
             </div>
           </div>
 
           <div className="p-6">
+            {/* Watch notifications toggle - independent of the shared account
+                notification settings; opting out here only affects pings
+                about MY OWN watch activity, nobody else's. */}
+            {notifyOnWatchLoaded && (
+              <div
+                className="flex items-center justify-between p-4 rounded-lg mb-4"
+                style={{ background: 'var(--color-surface-elevated)' }}
+              >
+                <div className="flex-1">
+                  <h3 className="font-medium mb-1" style={{ color: 'var(--color-text)' }}>
+                    Watch notifications
+                  </h3>
+                  <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                    Notify (Discord + push) when I start or finish watching something
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: notifyOnWatch ? 'var(--color-success)' : 'var(--color-text-muted)' }}
+                  >
+                    {notifyOnWatch ? 'On' : 'Off'}
+                  </span>
+                  <ToggleSwitch
+                    checked={notifyOnWatch}
+                    onChange={handleToggleNotifyOnWatch}
+                    disabled={isSavingNotifyOnWatch}
+                  />
+                </div>
+              </div>
+            )}
+
             <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
-              Webhook URL
+              Personal Discord Webhook (optional)
             </label>
             <div className="flex gap-2">
               <input
@@ -615,7 +676,7 @@ export default function UserSettingsPage() {
               </button>
             </div>
             <p className="text-xs mt-2" style={{ color: 'var(--color-text-subtle)' }}>
-              Create a webhook in your Discord server settings to receive share notifications
+              Always used for share notifications. Set this and your watch notifications route here too, instead of the shared family channel — leave it blank to keep using that.
             </p>
           </div>
         </motion.div>
