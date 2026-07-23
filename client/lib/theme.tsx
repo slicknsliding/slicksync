@@ -332,23 +332,34 @@ function clearCustomTheme(el: HTMLElement) {
   for (const v of OVERRIDE_VARS) el.style.removeProperty(v);
 }
 
-// A previous attempt at this file forced a synchronous reflow (reading
-// offsetHeight) after every theme mutation, on the theory that the
-// background glow blobs (PageContainer.tsx, blurred + transform-animated)
-// sit on their own compositor layer that doesn't always repaint in step
-// with a plain CSS-variable change. That turned out to be the wrong fix:
-// offsetHeight forces LAYOUT, and a background-color driven purely by a
-// CSS custom property never touches layout at all, so it was dead weight -
-// worse, doing it TWICE per click (once here, once when the reactive
-// effect below re-ran and called applyThemeForId again) added real
-// synchronous main-thread cost on every single click. Confirmed via a
-// second screen recording that the glow lag is worst specifically when
-// clicking through themes RAPIDLY and clears up when clicks are spaced
-// out - the signature of the main thread falling behind under repeated
-// forced layout work, not a paint-timing issue that forcing paint would
-// fix. Removed here; see setTheme's skipNextApplyRef for the other half
-// of this fix (deduping the redundant second apply that caused the rest
-// of the extra work).
+// History on this one, because it's been fixed twice already and both
+// times missed something:
+//   v1.41.4 added a forced reflow (reading offsetHeight) after every theme
+//   mutation, on the theory that elements driven by a changed CSS custom
+//   property (the background glow blobs in PageContainer.tsx, badges
+//   elsewhere) don't always repaint in step with the change on their own.
+//   v1.42.1 removed it again, reasoning offsetHeight forces LAYOUT and a
+//   background-color change never touches layout - and confirmed via a
+//   screen recording that the *previous* symptom (glow lag under rapid
+//   clicking) was actually a separate bug: applyThemeForId was firing
+//   TWICE per click (once here, once when the reactive effect below
+//   re-ran), and removing the forced reflow made that double-work cheaper
+//   without proving the reflow itself was useless.
+// A THIRD report (screenshots, Firefox specifically, un-reproducible in
+// Chromium-based testing) showed built-in-theme picker cards - the
+// isSelected checkmark badge, which reads var(--color-primary) - still
+// stuck on a stale color after switching, even though direct inspection
+// confirmed the underlying CSS variable and React state were both already
+// correct. That's consistent with genuine Firefox paint-scheduling
+// behavior that a forced synchronous style/layout flush is a known,
+// if not spec-guaranteed, way to unstick - the v1.41.4 reflow may well
+// have been doing real work despite the layout/paint distinction; only
+// the double-call ever got proven as a problem. Restored here, now
+// correctly deduped (skipNextApplyRef below still prevents this from
+// firing twice per click).
+function forceRepaint() {
+  void document.documentElement.offsetHeight;
+}
 
 // Migrates the pre-v1.25 single-slot localStorage shape into the list shape.
 // Returns { savedList, migratedActiveId } — the latter is set when the user's
@@ -459,10 +470,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // setTheme() already applies the DOM mutation directly and synchronously
   // (see its own comment) before setting themeId - without this flag, the
   // effect below re-runs applyThemeForId a second time for the exact same
-  // state on every single click, which used to also mean a second forced
-  // reflow. Doubling the synchronous work per click is what made rapid
-  // clicking through several themes visibly fall behind (confirmed via
-  // screen recording - see forceRepaint's removal note above).
+  // state on every single click, doubling the forced-reflow cost too.
+  // Doubling the synchronous work per click is what made rapid clicking
+  // through several themes visibly fall behind (confirmed via screen
+  // recording - see forceRepaint's own comment above for the fuller history).
   const skipNextApplyRef = useRef(false);
 
   const activeCustomTheme = savedCustomThemes.find((t) => t.id === themeId) || null;
@@ -542,11 +553,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const active = list.find((t) => t.id === id);
     if (active) {
       applyCustomTheme(document.documentElement, active);
+      forceRepaint();
       return true;
     }
     if (isBuiltInThemeId(id)) {
       clearCustomTheme(document.documentElement);
       document.documentElement.className = id;
+      forceRepaint();
       return true;
     }
     return false;
@@ -667,6 +680,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         textScale: config.textScale || 'default',
       };
       applyCustomTheme(document.documentElement, merged);
+      forceRepaint();
     }
   };
 
@@ -677,15 +691,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const previewCustom = (c: CustomTheme) => {
     applyCustomTheme(document.documentElement, c);
+    forceRepaint();
   };
 
   const cancelPreview = () => {
     const active = savedCustomThemes.find((t) => t.id === themeId);
     if (active) {
       applyCustomTheme(document.documentElement, active);
+      forceRepaint();
     } else if (isBuiltInThemeId(themeId)) {
       clearCustomTheme(document.documentElement);
       document.documentElement.className = themeId;
+      forceRepaint();
     }
   };
 
