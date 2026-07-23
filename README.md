@@ -53,6 +53,7 @@ summary. The original Syncio project, unmodified, is here:
 - [Profiles](#-profiles)
 - [Themes](#-themes)
 - [Metrics & Dashboard](#-metrics--dashboard)
+- [Backup & Disaster Recovery](#-backup--disaster-recovery)
 - [Security Hardening](#-security-hardening)
 - [Installation](#-installation)
 - [License](#license)
@@ -245,6 +246,14 @@ AI services, or your own Stremio/Nuvio-specific secrets) in one place:
   nightly (`VAULT_BACKUP_INTERVAL_HOURS` to change the interval), so Vault
   data can be pulled off-server for backup or synced into an external
   password manager. On-demand backup via `POST /api/vault/backup-now`.
+- **"Fix now" links on alerts** — the Discord message and push notification
+  for an expiring or failing credential link straight to that entry, open
+  and ready to edit, instead of leaving you to go find it in a long list.
+- **Quick actions on every entry** — copy the secret to your clipboard
+  without opening the edit form, or snooze a credential's expiry warning for
+  7 days when you already know about it and don't need reminding daily (a
+  check-failure alert isn't snoozable the same way — that's a live problem,
+  not a heads-up).
 - **Drag-and-drop reordering** within the Vault.
 - **Move addons directly from the Addons page into the Vault** to store ones
   you're not actively using without deleting them — keeps the Addons page
@@ -280,6 +289,11 @@ whether a Discord webhook is even configured.
   labels (Today / Tomorrow / weekday / date). Right-click (desktop) or
   long-press (mobile) any row to hide that specific episode — it reappears on
   its own once the show advances past it.
+- **Addon failover alerts**: a background health check polls every addon's
+  manifest URL and, on its own separate toggle (Settings → Notifications),
+  fires Discord + push + the notification bell the moment one goes down —
+  and again when it comes back — instead of only finding out when someone's
+  stream fails to load.
 
 ### 📱 Progressive Web App & Push Notifications
 
@@ -292,6 +306,11 @@ SlickSync closed. Zero setup — the required VAPID keypair generates itself
 on first boot and persists on the data volume; there's nothing to configure
 in env vars. (iOS specifically requires the Home Screen install first — Apple
 only exposes the Push API to installed web apps.)
+
+**Devices** (Settings → Devices): every browser/phone currently subscribed
+to push, in one shelf — rename one to something recognizable ("Living room
+TV" instead of a raw user-agent string), or revoke a device you no longer
+use remotely, without needing physical access to it.
 
 ### 🧩 Addons
 
@@ -406,6 +425,29 @@ the default), with full coverage across every admin page.
   `?live=true`) live addon count.
 - **Group activity dashboard** — `GET /api/groups/:id/dashboard?period=30d` —
   member roster with sync status, addon count, and per-member watch time.
+
+### 💾 Backup & Disaster Recovery
+
+Two different exports, for two different failure modes:
+
+- **Config backups** (Tasks page): Users/Groups/Addons, written on a
+  schedule and on-demand via **Backup Now**. Every backup is checked for
+  restorability the moment it's written — not just "is this valid JSON," but
+  whether a real restore would actually succeed against it (an addon with no
+  manifest URL, a group referencing an addon that isn't in the file, a user
+  with neither username nor email) — so a bad backup shows up as bad
+  immediately, not the next time you actually need it. Download, restore, or
+  delete any backup straight from the list.
+- **Disaster Recovery Kit** (Tasks page, its own card below the regular
+  backup list): config backups deliberately don't include the Vault, since Vault secrets are encrypted
+  under this instance's own key — a backup file sitting next to a lost
+  server is useless without it. The Recovery Kit is the actual answer: the
+  same config export plus every Vault secret, re-encrypted under a
+  passphrase you choose at export time instead of this instance's key, so
+  the resulting file is self-contained and portable to a brand-new instance
+  with its own fresh key. Manual/on-demand only, by design — this is real
+  access to every credential in Vault, so it isn't generated on a timer and
+  left lying around the way a routine backup is.
 
 ### 🛡️ Security hardening
 
