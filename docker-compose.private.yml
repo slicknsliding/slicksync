@@ -9,10 +9,15 @@ services:
     environment:
       JWT_SECRET: 'temp-jwt-secret-key'
       ENCRYPTION_KEY: 'temp-encryption-key-32-chars-long'
-      
+
       # To enable private instance authentication, uncomment the following variables
       # SLICKSYNC_PRIVATE_USERNAME: ''
       # SLICKSYNC_PRIVATE_PASSWORD: ''
+
+      # Public URL this instance is reachable at, used to build clickable
+      # links (e.g. Vault alert "Fix now" links) in Discord notifications.
+      # Leave unset to skip those links rather than post a broken one.
+      # PUBLIC_APP_URL: 'https://example.com'
     user: "1001:1001"
     # volumes:
       # - ./data:/app/data

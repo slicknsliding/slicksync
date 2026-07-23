@@ -23,9 +23,21 @@ function getNotifyConfig(cfg) {
   }
 }
 
-async function notify({ discordWebhookUrl }, { title, message }, ctx) {
+// Discord needs an absolute URL to render a clickable link; the push payload's
+// `url` is just consumed by the service worker so a relative path is fine
+// there. PUBLIC_APP_URL is optional - without it we still send the alert,
+// just without the "Fix now" line, rather than posting a broken link.
+function getFixNowUrl(entryId) {
+  const base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/$/, '')
+  if (!base) return null
+  return `${base}/vault?edit=${entryId}`
+}
+
+async function notify({ discordWebhookUrl }, { title, message, entryId }, ctx) {
   if (discordWebhookUrl) {
-    await postDiscord(discordWebhookUrl, `**${title}**\n${message}`)
+    const fixNowUrl = entryId ? getFixNowUrl(entryId) : null
+    const text = fixNowUrl ? `**${title}**\n${message}\n\nFix now: ${fixNowUrl}` : `**${title}**\n${message}`
+    await postDiscord(discordWebhookUrl, text)
   }
   // Mirror to phone push (self-gates on notifyOnVault). Independent of Discord,
   // so vault alerts reach an installed PWA even with no webhook configured.
@@ -34,7 +46,7 @@ async function notify({ discordWebhookUrl }, { title, message }, ctx) {
       title,
       body: message,
       icon: '/android-chrome-192x192.png',
-      url: '/vault',
+      url: entryId ? `/vault?edit=${entryId}` : '/vault',
     })
   }
 }
@@ -93,6 +105,7 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
                 title: `⚠️ ${entry.name} check failed`,
                 message: `${entry.provider || entry.category}: ${result.message || 'Check failed'}`,
                 tags: ['warning'],
+                entryId: entry.id,
               }, { prisma, accountId: account.id })
               await prisma.vaultEntry.update({ where: { id: entry.id }, data: { lastNotifiedAt: new Date() } })
             }
@@ -115,6 +128,7 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
               title: `⏰ ${entry.name} ${daysUntilExpiry < 0 ? 'has expired' : 'expiring soon'}`,
               message: `${entry.provider || entry.category}: ${daysText}`,
               tags: ['hourglass'],
+              entryId: entry.id,
             }, { prisma, accountId: account.id })
             await prisma.vaultEntry.update({ where: { id: entry.id }, data: { lastNotifiedAt: new Date() } })
           }

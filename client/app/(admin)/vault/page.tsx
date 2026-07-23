@@ -1,7 +1,8 @@
 'use client';
 
 import Head from 'next/head';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -202,8 +203,13 @@ function SortableEntryCard({
   );
 }
 
-export default function VaultPage() {
+// useSearchParams (for the ?edit= deep link below) requires a Suspense
+// boundary above it in the App Router - same pattern Activity's page
+// already uses for its own search-param-driven state.
+function VaultPageContent() {
   const { layoutMode } = useLayoutMode();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [entries, setEntries] = useState<VaultEntry[]>([]);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
@@ -319,6 +325,27 @@ export default function VaultPage() {
     });
     setIsAddOpen(true);
   };
+
+  // Deep link from a Vault alert's "Fix now" button (?edit=<entryId>) - jump
+  // straight into that entry's edit form instead of leaving someone to hunt
+  // through categories for whichever one just failed. Fetches the entry
+  // directly by id rather than relying on `entries` (which is filtered by
+  // activeCategory and may not include it), and switches the active category
+  // tab to match so the page behind the modal isn't left showing an
+  // unrelated filter. Strips the param once handled so a refresh or closing
+  // and reopening the modal manually doesn't reopen it again.
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId) return;
+    api.getVaultEntry(editId)
+      .then((entry) => {
+        setActiveCategory(entry.category);
+        openEditModal(entry);
+      })
+      .catch(() => toast.error('Could not find that Vault entry'))
+      .finally(() => router.replace('/vault'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const handleCategoryChange = (category: VaultCategory) => {
     setForm(f => ({ ...f, category, ...categoryDefaults(category) }));
@@ -870,5 +897,17 @@ export default function VaultPage() {
         </div>
       </Modal>
     </>
+  );
+}
+
+export default function VaultPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <VaultPageContent />
+    </Suspense>
   );
 }
