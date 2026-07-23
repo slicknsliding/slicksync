@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.41.0",
+    "date": "2026-07-22",
+    "title": "\"Fix now\" links on Vault alerts",
+    "features": [
+      "A Vault check-failure or expiry alert now links straight into that entry's edit form instead of just naming it — click through from Discord or a phone push and you land directly on the credential that needs attention, category tab already switched to match, no hunting through Vault for which entry it was."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "New optional PUBLIC_APP_URL env var (docker-compose.private.yml) builds the absolute link Discord needs to render it clickable; without it set, alerts still send, just without that line, rather than posting a broken link. The phone push link works either way since it's resolved relative to the PWA's own origin."
+    ]
+  },
+  {
     "version": "1.40.1",
     "date": "2026-07-23",
     "title": "Fix: long-press to remove a Continue Watching card didn't work on mobile",
