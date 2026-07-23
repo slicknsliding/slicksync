@@ -12,6 +12,96 @@ let healthCheckTimer = null;
 let isRunning = false;
 
 /**
+ * Whether this account wants addon-health alerts, and where the Discord
+ * side should go — same `AppAccount.sync` shape as Vault's notifyOnVault.
+ */
+async function getAddonHealthNotifyTarget(prisma, accountId) {
+  try {
+    const account = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } });
+    let cfg = account?.sync;
+    if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
+    return {
+      enabled: cfg?.notifyOnAddonHealth === true,
+      webhookUrl: cfg?.webhookUrl || null,
+    };
+  } catch {
+    return { enabled: false, webhookUrl: null };
+  }
+}
+
+/**
+ * Fires on every online<->offline transition: writes an AddonHealthAlert row
+ * (the notification bell's source), plus Discord + push through the same
+ * notifyOnAddonHealth-gated pattern Vault alerts use. getGroupAddons()
+ * (helpers/database.js) already silently diverts any group with this addon
+ * assigned to its configured backup the moment isOnline flips false - this
+ * is the first thing that actually tells anyone it happened, instead of
+ * someone noticing playback stopped working or checking the Addons page.
+ * Best-effort throughout; a notify failure must never break the health
+ * check loop it's called from.
+ */
+async function notifyAddonStatusChange(prisma, addon, isOnline, errorMessage) {
+  try {
+    let backupAddon = null;
+    if (addon.backupAddonId) {
+      backupAddon = await prisma.addon.findUnique({
+        where: { id: addon.backupAddonId },
+        select: { id: true, name: true, isActive: true },
+      });
+    }
+    const groupCount = await prisma.groupAddon.count({ where: { addonId: addon.id } });
+    const hasActiveBackup = !!(backupAddon && backupAddon.isActive);
+    const groupsLabel = `${groupCount} group${groupCount === 1 ? '' : 's'}`;
+
+    const title = isOnline ? `✅ ${addon.name} is back online` : `⚠️ ${addon.name} went offline`;
+    let message;
+    if (isOnline) {
+      message = hasActiveBackup && groupCount > 0
+        ? `Switched ${groupsLabel} back to ${addon.name}.`
+        : `${addon.name} is reachable again.`;
+    } else {
+      const reason = errorMessage ? ` (${errorMessage})` : '';
+      if (hasActiveBackup && groupCount > 0) {
+        message = `Switched ${groupsLabel} to backup ${backupAddon.name}${reason}.`;
+      } else if (groupCount > 0) {
+        message = `${groupsLabel} affected, no backup configured${reason}.`;
+      } else {
+        message = `Not assigned to any group${reason}.`;
+      }
+    }
+
+    await prisma.addonHealthAlert.create({
+      data: {
+        accountId: addon.accountId,
+        addonId: addon.id,
+        addonName: addon.name,
+        event: isOnline ? 'online' : 'offline',
+        backupAddonId: backupAddon?.id || null,
+        backupAddonName: backupAddon?.name || null,
+        groupCount,
+        errorMessage: isOnline ? null : (errorMessage || null),
+      },
+    });
+
+    const { notifyPushForType } = require('./pushNotifications');
+    await notifyPushForType(prisma, addon.accountId, 'notifyOnAddonHealth', {
+      title,
+      body: message,
+      icon: '/android-chrome-192x192.png',
+      url: '/addons',
+    });
+
+    const target = await getAddonHealthNotifyTarget(prisma, addon.accountId);
+    if (target.enabled && target.webhookUrl) {
+      const { postDiscord } = require('./notify');
+      await postDiscord(target.webhookUrl, `**${title}**\n${message}`).catch(() => {});
+    }
+  } catch (e) {
+    console.warn(`[AddonHealthCheck] Failed to notify status change for ${addon.name}:`, e?.message);
+  }
+}
+
+/**
  * Get decrypted manifest URL from addon
  * @param {Object} addon - The addon object
  * @returns {string|null} - Decrypted URL or null
@@ -178,6 +268,8 @@ async function performHealthChecks(prisma, accountId = null) {
           } else {
             console.log(`[AddonHealthCheck] ${addon.name} is now OFFLINE: ${result.error}`);
           }
+
+          await notifyAddonStatusChange(prisma, addon, result.isOnline, result.error);
         }
 
         // Count for summary

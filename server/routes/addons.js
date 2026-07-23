@@ -416,6 +416,29 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
     catch { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(next) } }) }
   }
 
+  // GET /api/addons/health-alerts — recent online<->offline transitions
+  // (fired by utils/addonHealthCheck.js's poller) for the notification bell.
+  // Must be before /:id.
+  router.get('/health-alerts', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 14))
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+      const alerts = await prisma.addonHealthAlert.findMany({
+        where: { accountId, createdAt: { gte: since } },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      })
+      res.json(alerts)
+    } catch (error) {
+      console.error('Error fetching addon health alerts:', error)
+      res.status(500).json({ error: 'Failed to fetch addon health alerts' })
+    }
+  })
+
   // GET /api/addons/tags — the tag catalog for this account, plus each
   // tag's color (only entries with a color set are present in tagColors).
   router.get('/tags', async (req, res) => {

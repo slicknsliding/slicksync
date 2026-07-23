@@ -9,7 +9,7 @@ import { toast } from '@/components/ui/Toast';
 
 interface NotificationItem {
   id: string;
-  type: 'activity' | 'invite' | 'task' | 'user' | 'request' | 'episode';
+  type: 'activity' | 'invite' | 'task' | 'user' | 'request' | 'episode' | 'addon';
   title: string;
   message: string;
   timestamp: Date;
@@ -165,6 +165,23 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     return () => clearInterval(interval);
   }, []);
 
+  // Addon online<->offline alerts (fired server-side by addonHealthCheck.js
+  // when a primary addon goes down - and getGroupAddons silently diverts
+  // groups to its backup - or comes back). Same cadence as episode alerts.
+  const [addonHealthAlerts, setAddonHealthAlerts] = useState<any[]>([]);
+  useEffect(() => {
+    const fetchAddonAlerts = async () => {
+      try {
+        setAddonHealthAlerts(await api.getAddonHealthAlerts());
+      } catch {
+        // Endpoint may not exist yet on an older backend - stay silent.
+      }
+    };
+    fetchAddonAlerts();
+    const interval = setInterval(fetchAddonAlerts, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleAcceptRequest = async (e: React.MouseEvent, reqId: string) => {
     e.stopPropagation();
     try {
@@ -303,12 +320,32 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         });
       });
 
+    // Addon health alerts - a primary addon went offline (backup took over)
+    // or came back.
+    addonHealthAlerts
+      .filter((alert) => new Date(alert.createdAt) > lastChecked)
+      .slice(0, 5)
+      .forEach((alert) => {
+        const groupsLabel = `${alert.groupCount} group${alert.groupCount === 1 ? '' : 's'}`;
+        const message = alert.event === 'online'
+          ? (alert.backupAddonName && alert.groupCount > 0 ? `Switched ${groupsLabel} back to ${alert.addonName}` : `${alert.addonName} is reachable again`)
+          : (alert.backupAddonName && alert.groupCount > 0 ? `Switched ${groupsLabel} to backup ${alert.backupAddonName}` : `${alert.groupCount > 0 ? `${groupsLabel} affected` : 'Not assigned to any group'}, no backup configured`);
+        items.push({
+          id: `addon-health-${alert.id}`,
+          type: 'addon',
+          title: alert.event === 'online' ? `✅ ${alert.addonName} is back online` : `⚠️ ${alert.addonName} went offline`,
+          message,
+          timestamp: new Date(alert.createdAt),
+          read: false,
+        });
+      });
+
     // Sort by timestamp, most recent first, then drop anything individually
     // dismissed via the per-row X button.
     return items
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .filter((item) => !dismissedIds.has(item.id));
-  }, [combinedActivities, combinedInviteHistory, taskHistory, episodeAlerts, lastChecked, pendingRequests, dismissedIds]);
+  }, [combinedActivities, combinedInviteHistory, taskHistory, episodeAlerts, addonHealthAlerts, lastChecked, pendingRequests, dismissedIds]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -348,6 +385,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         return <UserPlusIcon className="w-4 h-4" />;
       case 'episode':
         return <SparklesIcon className="w-4 h-4" />;
+      case 'addon':
+        return <PuzzlePieceIcon className="w-4 h-4" />;
     }
   };
 

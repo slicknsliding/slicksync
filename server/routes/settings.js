@@ -300,6 +300,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnSync: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnSync === true : false,
           notifyOnInvite: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnInvite === true : false,
           notifyOnVault: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnVault === true : false,
+          notifyOnAddonHealth: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnAddonHealth === true : false,
           accountTimezone: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE,
           vaultCurrency: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD',
           // SlickTrax features (v1.29-v1.30, named "Personal Features" pre-v1.37).
@@ -332,6 +333,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnSync: syncCfg.notifyOnSync === true,
           notifyOnInvite: syncCfg.notifyOnInvite === true,
           notifyOnVault: syncCfg.notifyOnVault === true,
+          notifyOnAddonHealth: syncCfg.notifyOnAddonHealth === true,
           accountTimezone: (typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE,
           vaultCurrency: (typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD',
           enableWatchlist: typeof syncCfg.enableWatchlist === 'boolean' ? syncCfg.enableWatchlist : true,
@@ -340,7 +342,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, accountTimezone: DEFAULT_TIMEZONE, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, accountTimezone: DEFAULT_TIMEZONE, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -348,7 +350,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -405,6 +407,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnSync: notifyOnSync !== undefined ? !!notifyOnSync : ((baseCfg.notifyOnSync !== undefined) ? baseCfg.notifyOnSync : false),
           notifyOnInvite: notifyOnInvite !== undefined ? !!notifyOnInvite : ((baseCfg.notifyOnInvite !== undefined) ? baseCfg.notifyOnInvite : false),
           notifyOnVault: notifyOnVault !== undefined ? !!notifyOnVault : ((baseCfg.notifyOnVault !== undefined) ? baseCfg.notifyOnVault : false),
+          notifyOnAddonHealth: notifyOnAddonHealth !== undefined ? !!notifyOnAddonHealth : ((baseCfg.notifyOnAddonHealth !== undefined) ? baseCfg.notifyOnAddonHealth : false),
           accountTimezone: typeof accountTimezone === 'string' && accountTimezone.trim() ? accountTimezone.trim() : (baseCfg.accountTimezone || DEFAULT_TIMEZONE),
           vaultCurrency: typeof vaultCurrency === 'string' && vaultCurrency.trim() ? vaultCurrency.trim().toUpperCase() : (baseCfg.vaultCurrency || 'USD'),
           enableWatchlist: enableWatchlist !== undefined ? !!enableWatchlist : (typeof baseCfg.enableWatchlist === 'boolean' ? baseCfg.enableWatchlist : true),
@@ -444,6 +447,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (notifyOnSync !== undefined) partial.notifyOnSync = !!notifyOnSync
       if (notifyOnInvite !== undefined) partial.notifyOnInvite = !!notifyOnInvite
       if (notifyOnVault !== undefined) partial.notifyOnVault = !!notifyOnVault
+      if (notifyOnAddonHealth !== undefined) partial.notifyOnAddonHealth = !!notifyOnAddonHealth
       if (typeof accountTimezone === 'string' && accountTimezone.trim()) partial.accountTimezone = accountTimezone.trim()
       if (typeof vaultCurrency === 'string' && vaultCurrency.trim()) partial.vaultCurrency = vaultCurrency.trim().toUpperCase()
       if (enableWatchlist !== undefined) partial.enableWatchlist = !!enableWatchlist

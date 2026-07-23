@@ -466,6 +466,22 @@ model EpisodeAlert {
   @@map("episode_alerts")
 }
 
+model AddonHealthAlert {
+  id              String   @id @default(cuid())
+  accountId       String   @default("default")
+  addonId         String
+  addonName       String
+  event           String
+  backupAddonId   String?
+  backupAddonName String?
+  groupCount      Int      @default(0)
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@map("addon_health_alerts")
+}
+
 model PushSubscription {
   id        String   @id @default(cuid())
   accountId String   @default("default")
