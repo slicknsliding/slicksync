@@ -289,6 +289,12 @@ whether a Discord webhook is even configured.
   labels (Today / Tomorrow / weekday / date). Right-click (desktop) or
   long-press (mobile) any row to hide that specific episode — it reappears on
   its own once the show advances past it.
+- **Monthly poster mosaic**: on the 1st of each month, a real generated
+  collage image — every distinct title (movie or show) watched the month
+  before, deduped per title and capped at 24 posters — posts to Discord as
+  an actual picture, not a stat block. Its own toggle in Settings →
+  Notifications, plus a "Generate now" button to post immediately instead of
+  waiting for the 1st.
 - **Addon failover alerts**: a background health check polls every addon's
   manifest URL and, on its own separate toggle (Settings → Notifications),
   fires Discord + push + the notification bell the moment one goes down —

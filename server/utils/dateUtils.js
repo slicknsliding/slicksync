@@ -79,4 +79,96 @@ async function resolveAccountTimezone(prisma, accountId) {
   return value
 }
 
-module.exports = { getAccountDateString, resolveAccountTimezone, DEFAULT_TIMEZONE }
+const monthFormatterCache = new Map()
+
+function monthFormatterFor(timeZone) {
+  let formatter = monthFormatterCache.get(timeZone)
+  if (!formatter) {
+    try {
+      formatter = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit' })
+    } catch {
+      formatter = new Intl.DateTimeFormat('en-CA', { timeZone: DEFAULT_TIMEZONE, year: 'numeric', month: '2-digit' })
+    }
+    monthFormatterCache.set(timeZone, formatter)
+  }
+  return formatter
+}
+
+/**
+ * Returns the YYYY-MM calendar-month string for `date` in `timeZone` - the
+ * month equivalent of getAccountDateString, for the poster-mosaic monthly
+ * digest ("has this account already gotten this month's recap"). Built from
+ * formatToParts rather than trusting the formatter's own string ordering,
+ * since Intl's locale-formatted output isn't guaranteed YYYY-MM shaped even
+ * with 'en-CA'.
+ * @param {Date} [date]
+ * @param {string} [timeZone]
+ * @returns {string}
+ */
+function getAccountMonthString(date = new Date(), timeZone = DEFAULT_TIMEZONE) {
+  const parts = monthFormatterFor(timeZone).formatToParts(date).reduce((acc, p) => { acc[p.type] = p.value; return acc }, {})
+  return `${parts.year}-${parts.month}`
+}
+
+/**
+ * Converts a wall-clock date/time as experienced in `timeZone` into the
+ * actual UTC instant it represents. Standard "guess, then correct by the
+ * observed offset" double-conversion - there's no timezone-database library
+ * in this project's server dependencies, and this needs no more precision
+ * than "which side of midnight" for a monthly digest.
+ */
+function zonedWallTimeToUtc(year, month, day, hour, minute, second, timeZone) {
+  const guess = Date.UTC(year, month - 1, day, hour, minute, second)
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+  const parts = dtf.formatToParts(new Date(guess)).reduce((acc, p) => { acc[p.type] = p.value; return acc }, {})
+  const asIfUtc = Date.UTC(
+    Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+    parts.hour === '24' ? 0 : Number(parts.hour), Number(parts.minute), Number(parts.second)
+  )
+  return new Date(guess + (guess - asIfUtc))
+}
+
+/**
+ * Start (inclusive) and end (exclusive) UTC instants for calendar month
+ * `yearMonth` ("YYYY-MM") as experienced in `timeZone` - for querying
+ * MovieWatchHistory/EpisodeWatchHistory.watchedAt by "which account-local
+ * month did this happen in", the same account-timezone rule day-bucketing
+ * already follows.
+ * @param {string} yearMonth
+ * @param {string} [timeZone]
+ * @returns {{ start: Date, end: Date }}
+ */
+function monthBoundsInTimezone(yearMonth, timeZone = DEFAULT_TIMEZONE) {
+  const [y, m] = yearMonth.split('-').map(Number)
+  const start = zonedWallTimeToUtc(y, m, 1, 0, 0, 0, timeZone)
+  const nextYear = m === 12 ? y + 1 : y
+  const nextMonth = m === 12 ? 1 : m + 1
+  const end = zonedWallTimeToUtc(nextYear, nextMonth, 1, 0, 0, 0, timeZone)
+  return { start, end }
+}
+
+/**
+ * The "YYYY-MM" immediately before `yearMonth` - used to find "the month
+ * that just finished" relative to the account's current month.
+ * @param {string} yearMonth
+ * @returns {string}
+ */
+function previousMonthString(yearMonth) {
+  const [y, m] = yearMonth.split('-').map(Number)
+  const prevYear = m === 1 ? y - 1 : y
+  const prevMonth = m === 1 ? 12 : m - 1
+  return `${prevYear}-${String(prevMonth).padStart(2, '0')}`
+}
+
+module.exports = {
+  getAccountDateString,
+  resolveAccountTimezone,
+  DEFAULT_TIMEZONE,
+  getAccountMonthString,
+  monthBoundsInTimezone,
+  previousMonthString,
+}
