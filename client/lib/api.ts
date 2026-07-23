@@ -1861,6 +1861,7 @@ export interface SyncSettings {
   notifyOnInvite?: boolean;
   notifyOnVault?: boolean;
   notifyOnAddonHealth?: boolean;
+  notifyOnBackup?: boolean;
   accountTimezone?: string;
   vaultCurrency?: string;
   // Personal-features opt-outs (v1.31+). Default true when absent.
@@ -1939,10 +1940,17 @@ export interface ImportConfigResult {
   addons: { created: number; reused: number };
 }
 
+export interface BackupValidation {
+  valid: boolean;
+  issues: string[];
+  counts: { users: number; groups: number; addons: number } | null;
+}
+
 export interface BackupFile {
   filename: string;
   size: number;
   createdAt: string;
+  validation?: BackupValidation | null;
 }
 
 export interface AddonSnapshot {

@@ -181,6 +181,7 @@ export default function SettingsPage() {
     notifyOnInvite: false,
     notifyOnVault: false,
     notifyOnAddonHealth: false,
+    notifyOnBackup: false,
     accountTimezone: '',
   });
 
@@ -296,6 +297,7 @@ export default function SettingsPage() {
           notifyOnInvite: settings.notifyOnInvite || false,
           notifyOnVault: settings.notifyOnVault || false,
           notifyOnAddonHealth: settings.notifyOnAddonHealth || false,
+          notifyOnBackup: settings.notifyOnBackup || false,
           accountTimezone: settings.accountTimezone || '',
         });
       } catch (e) {
@@ -392,6 +394,7 @@ export default function SettingsPage() {
       notifyOnInvite: false,
       notifyOnVault: false,
       notifyOnAddonHealth: false,
+      notifyOnBackup: false,
     });
     try {
       await api.updateSyncSettings({
@@ -404,6 +407,7 @@ export default function SettingsPage() {
         notifyOnInvite: false,
         notifyOnVault: false,
         notifyOnAddonHealth: false,
+        notifyOnBackup: false,
       });
       toast.success('Settings reset to defaults');
     } catch (e: any) {
@@ -701,6 +705,18 @@ export default function SettingsPage() {
                     enabled={syncSettings.notifyOnAddonHealth || false}
                     onChange={(v) => handleSaveSetting('notifyOnAddonHealth', v)}
                     label="Toggle addon health notifications"
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  label="Backup notifications"
+                  description="Notify only if an automatic backup fails validation (a good backup stays silent - see its badge on Tasks)"
+                  disabled={!syncSettings.webhookUrl?.trim()}
+                >
+                  <ToggleSwitch
+                    enabled={syncSettings.notifyOnBackup || false}
+                    onChange={(v) => handleSaveSetting('notifyOnBackup', v)}
+                    label="Toggle backup notifications"
                   />
                 </SettingRow>
               </div>

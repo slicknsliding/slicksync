@@ -109,14 +109,22 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       /^config-backup-[0-9T-]+\.json$/.test(name) &&
       path.basename(name) === name;
 
-    // GET /settings/backups - list backups on disk, newest first
+    // GET /settings/backups - list backups on disk, newest first. Each
+    // entry's `validation` comes from the sidecar file backupValidation.js
+    // writes right after the backup itself - absent (not re-computed here)
+    // for backups written before that existed.
     router.get('/backups', async (req, res) => {
       try {
         ensureBackupDir()
         const files = fs.readdirSync(BACKUP_DIR).filter(isValidBackupFilename)
         const backups = files.map((filename) => {
           const stat = fs.statSync(path.join(BACKUP_DIR, filename))
-          return { filename, size: stat.size, createdAt: stat.mtime.toISOString() }
+          let validation = null
+          try {
+            const validationFile = path.join(BACKUP_DIR, filename.replace(/\.json$/, '.validation.json'))
+            if (fs.existsSync(validationFile)) validation = JSON.parse(fs.readFileSync(validationFile, 'utf8'))
+          } catch {}
+          return { filename, size: stat.size, createdAt: stat.mtime.toISOString(), validation }
         }).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         return res.json(backups)
       } catch (e) {
@@ -178,16 +186,20 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         const filePath = path.join(BACKUP_DIR, req.params.filename)
         if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'Backup not found' })
         fs.unlinkSync(filePath)
+        try {
+          const validationFile = filePath.replace(/\.json$/, '.validation.json')
+          if (fs.existsSync(validationFile)) fs.unlinkSync(validationFile)
+        } catch {}
         return res.json({ success: true })
       } catch (e) {
         return res.status(500).json({ message: 'Failed to delete backup', error: e?.message })
       }
     })
-    
+
     let backupTimer = null
 
     // Initialize backup schedule on startup
-    scheduleBackups(readBackupFrequencyDays())
+    scheduleBackups(readBackupFrequencyDays(), prisma)
 
     // Get backup frequency setting
     router.get('/backup-frequency', async (req, res) => {
@@ -204,7 +216,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         const days = Number(req.body?.days || 0)
         if (!Number.isFinite(days) || days < 0) return res.status(400).json({ message: 'Invalid days' })
         writeBackupFrequencyDays(days)
-        scheduleBackups(days)
+        scheduleBackups(days, prisma)
         return res.json({ message: 'Backup frequency updated', days })
       } catch {
         return res.status(500).json({ message: 'Failed to update backup frequency' })
@@ -214,7 +226,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     // Manual backup trigger
     router.post('/backup-now', async (req, res) => {
       try {
-        await performBackupOnce()
+        await performBackupOnce(prisma)
         return res.json({ message: 'Backup started' })
       } catch {
         return res.status(500).json({ message: 'Failed to start backup' })
@@ -245,7 +257,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       const days = Number(req.body?.days || 0)
       if (!Number.isFinite(days) || days < 0) return res.status(400).json({ message: 'Invalid days' })
       writeBackupFrequencyDays(days)
-      scheduleBackups(days)
+      scheduleBackups(days, prisma)
       return res.json({ message: 'Backup frequency updated', days })
     } catch {
       return res.status(500).json({ message: 'Failed to update backup frequency' })
@@ -258,7 +270,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         return res.status(403).json({ message: 'Backups are not available in public mode' })
       }
       const { performBackupOnce } = require('../utils/backup')
-      await performBackupOnce()
+      await performBackupOnce(prisma)
       return res.json({ message: 'Backup started' })
     } catch {
       return res.status(500).json({ message: 'Failed to start backup' })
@@ -301,6 +313,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnInvite: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnInvite === true : false,
           notifyOnVault: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnVault === true : false,
           notifyOnAddonHealth: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnAddonHealth === true : false,
+          notifyOnBackup: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnBackup === true : false,
           accountTimezone: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE,
           vaultCurrency: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD',
           // SlickTrax features (v1.29-v1.30, named "Personal Features" pre-v1.37).
@@ -334,6 +347,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnInvite: syncCfg.notifyOnInvite === true,
           notifyOnVault: syncCfg.notifyOnVault === true,
           notifyOnAddonHealth: syncCfg.notifyOnAddonHealth === true,
+          notifyOnBackup: syncCfg.notifyOnBackup === true,
           accountTimezone: (typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE,
           vaultCurrency: (typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD',
           enableWatchlist: typeof syncCfg.enableWatchlist === 'boolean' ? syncCfg.enableWatchlist : true,
@@ -342,7 +356,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, accountTimezone: DEFAULT_TIMEZONE, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, accountTimezone: DEFAULT_TIMEZONE, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -350,7 +364,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -408,6 +422,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnInvite: notifyOnInvite !== undefined ? !!notifyOnInvite : ((baseCfg.notifyOnInvite !== undefined) ? baseCfg.notifyOnInvite : false),
           notifyOnVault: notifyOnVault !== undefined ? !!notifyOnVault : ((baseCfg.notifyOnVault !== undefined) ? baseCfg.notifyOnVault : false),
           notifyOnAddonHealth: notifyOnAddonHealth !== undefined ? !!notifyOnAddonHealth : ((baseCfg.notifyOnAddonHealth !== undefined) ? baseCfg.notifyOnAddonHealth : false),
+          notifyOnBackup: notifyOnBackup !== undefined ? !!notifyOnBackup : ((baseCfg.notifyOnBackup !== undefined) ? baseCfg.notifyOnBackup : false),
           accountTimezone: typeof accountTimezone === 'string' && accountTimezone.trim() ? accountTimezone.trim() : (baseCfg.accountTimezone || DEFAULT_TIMEZONE),
           vaultCurrency: typeof vaultCurrency === 'string' && vaultCurrency.trim() ? vaultCurrency.trim().toUpperCase() : (baseCfg.vaultCurrency || 'USD'),
           enableWatchlist: enableWatchlist !== undefined ? !!enableWatchlist : (typeof baseCfg.enableWatchlist === 'boolean' ? baseCfg.enableWatchlist : true),
@@ -448,6 +463,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (notifyOnInvite !== undefined) partial.notifyOnInvite = !!notifyOnInvite
       if (notifyOnVault !== undefined) partial.notifyOnVault = !!notifyOnVault
       if (notifyOnAddonHealth !== undefined) partial.notifyOnAddonHealth = !!notifyOnAddonHealth
+      if (notifyOnBackup !== undefined) partial.notifyOnBackup = !!notifyOnBackup
       if (typeof accountTimezone === 'string' && accountTimezone.trim()) partial.accountTimezone = accountTimezone.trim()
       if (typeof vaultCurrency === 'string' && vaultCurrency.trim()) partial.vaultCurrency = vaultCurrency.trim().toUpperCase()
       if (enableWatchlist !== undefined) partial.enableWatchlist = !!enableWatchlist
