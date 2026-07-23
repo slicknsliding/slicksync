@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.48.2",
+    "date": "2026-07-23",
+    "title": "Fix: v1.48.1's own fix failed to build",
+    "features": [],
+    "bugFixes": [
+      "v1.48.1 itself failed to deploy - getCurrentFocusKey, used to avoid re-focusing on every retry, turned out to not actually exist on norigin-spatial-navigation's published TypeScript types (it's listed in the library's own demo source, but not in what v3.2.1 actually ships - a real mismatch, not something that should have been assumed). The build failure was caught immediately and never reached production - Docker Compose correctly left the previous working container running rather than swapping in a broken one, confirmed via the live site before treating this as fixed. Switched to hasFocusedChild, which the same demo actually uses live rather than only mentioning in a comment."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.48.1",
     "date": "2026-07-23",
     "title": "Fix: TV mode arrow keys did nothing on page load",

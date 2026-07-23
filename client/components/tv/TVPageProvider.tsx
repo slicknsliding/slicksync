@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useRef } from 'react';
 import { FocusContext, useFocusable, init } from '@noriginmedia/norigin-spatial-navigation';
 
 // init() wires up the library's own global keydown listener (arrow keys +
@@ -33,13 +33,21 @@ export function TVPageProvider({ children }: { children: ReactNode }) {
     init({ debug: false, visualDebug: false, distanceCalculationMethod: 'center' });
   }, []);
 
-  const { ref, focusKey, focusSelf, getCurrentFocusKey } = useFocusable<object, HTMLDivElement>({ focusable: false, trackChildren: true });
+  const { ref, focusKey, focusSelf, hasFocusedChild } = useFocusable<object, HTMLDivElement>({ focusable: false, trackChildren: true });
+
+  // hasFocusedChild is reactive (triggers a re-render), but the retry
+  // timers below are scheduled once on mount and read this via a ref so
+  // each attempt sees the LIVE value, not whatever it was at schedule time.
+  const hasFocusedChildRef = useRef(false);
+  useEffect(() => {
+    hasFocusedChildRef.current = hasFocusedChild;
+  }, [hasFocusedChild]);
 
   useEffect(() => {
     const timers = RETRY_DELAYS_MS.map((delay) => setTimeout(() => {
       // Stop once something already has focus - either an earlier retry
       // succeeded, or the user already moved focus themselves.
-      if (getCurrentFocusKey() === focusKey) focusSelf();
+      if (!hasFocusedChildRef.current) focusSelf();
     }, delay));
     return () => timers.forEach(clearTimeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
