@@ -849,7 +849,11 @@ function UserCard({
       <Card
         variant="interactive"
         padding="md"
-        className={`group cursor-pointer select-none ${isSelected ? 'ring-2 ring-primary' : ''}`}
+        // md:pr-24 reserves clearance for the absolutely-positioned toggle
+        // below (top-4 right-4) — without it, the name/status row's content
+        // can run under the toggle and overlap it at full-width (narrower
+        // per-card width in a multi-column grid than a half-screen window).
+        className={`group cursor-pointer select-none md:pr-24 ${isSelected ? 'ring-2 ring-primary' : ''}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onTouchStart={handleTouchStart}

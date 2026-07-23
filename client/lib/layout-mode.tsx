@@ -25,24 +25,25 @@ interface LayoutModeContextValue {
   setLayoutMode: (id: LayoutModeId) => void;
 }
 
-// Back to defaulting to 'current' (Original) - Nebula is still actively
-// being remastered page by page (only Dashboard and part of Activity are
-// done so far), so it's not ready to be what people land on by default.
-// Nebula stays fully available as an opt-in toggle in the meantime.
+// Nebula now has full coverage across every admin page (Dashboard, Activity,
+// Users, Groups, Addons, Discover, Metrics, Vault, Invitations, Tasks,
+// Settings, Themes, Changelog, plus the dynamic detail routes), so the
+// earlier caution about defaulting to it before it was ready no longer
+// applies. Original ('current') stays fully available as an opt-out.
 const defaultContextValue: LayoutModeContextValue = {
-  layoutMode: 'current',
+  layoutMode: 'nebula',
   setLayoutMode: () => {},
 };
 
 const LayoutModeContext = createContext<LayoutModeContextValue>(defaultContextValue);
 
 export function LayoutModeProvider({ children }: { children: ReactNode }) {
-  const [layoutMode, setLayoutModeState] = useState<LayoutModeId>('current');
+  const [layoutMode, setLayoutModeState] = useState<LayoutModeId>('nebula');
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('slicksync-layout-mode') as LayoutModeId | null;
-    const initial = saved && layoutModeIds.includes(saved) ? saved : 'current';
+    const initial = saved && layoutModeIds.includes(saved) ? saved : 'nebula';
     setLayoutModeState(initial);
     setMounted(true);
   }, []);

@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, ReactNode, useRef } fro
 import { api } from '@/lib/api';
 
 // Theme IDs
-export const themeIds = ['slick', 'velvet', 'nebula', 'midnight', 'ember', 'nord', 'verdant', 'slate', 'rose', 'daylight'] as const;
+export const themeIds = ['nebula', 'slick', 'velvet', 'midnight', 'ember', 'nord', 'verdant', 'slate', 'rose', 'daylight'] as const;
 export type ThemeId = (typeof themeIds)[number];
 
 // Theme metadata for UI (settings page, etc.)
@@ -76,6 +76,28 @@ export const themeMeta: Record<ThemeId, {
   },
 };
 
+// Each built-in theme's own text/textMuted/bgMuted/border/success/error
+// values, mirroring globals.css (border's real value is translucent rgba —
+// approximated here as an opaque hex since <input type="color"> can't
+// represent alpha; it's just a starting point for the picker, not what
+// actually renders when left unset). Used by Build-your-own-theme so
+// picking a different Base updates every optional override's seed color to
+// match THAT theme, instead of one generic seed regardless of base.
+export const THEME_REAL_COLORS: Record<ThemeId, {
+  text: string; textMuted: string; bgMuted: string; border: string; success: string; error: string;
+}> = {
+  slick: { text: '#f0edf7', textMuted: '#ab9dc4', bgMuted: '#100b1a', border: '#c4b5d8', success: '#34d399', error: '#fb7185' },
+  velvet: { text: '#f5eef0', textMuted: '#c3a3ae', bgMuted: '#2a1e2a', border: '#d4a574', success: '#34d399', error: '#fb7185' },
+  nebula: { text: '#f0f6fc', textMuted: '#8b949e', bgMuted: '#21262d', border: '#f0f6fc', success: '#3fb950', error: '#f85149' },
+  midnight: { text: '#f0f6fc', textMuted: '#8b949e', bgMuted: '#21262d', border: '#f0f6fc', success: '#3fb950', error: '#f85149' },
+  ember: { text: '#ffeee3', textMuted: '#a69b94', bgMuted: '#2d2825', border: '#ffede3', success: '#66bb6a', error: '#ef5350' },
+  nord: { text: '#eceff4', textMuted: '#d8dee9', bgMuted: '#434c5e', border: '#eceff4', success: '#a3be8c', error: '#bf616a' },
+  verdant: { text: '#e8f5e9', textMuted: '#a5c4ac', bgMuted: '#1e2e22', border: '#c8e6d2', success: '#4caf50', error: '#e57373' },
+  slate: { text: '#fafafa', textMuted: '#a1a1aa', bgMuted: '#2d2d31', border: '#fafafa', success: '#22c55e', error: '#ef4444' },
+  rose: { text: '#fce7ed', textMuted: '#c4a3ab', bgMuted: '#302528', border: '#ffe6eb', success: '#4ade80', error: '#fb7185' },
+  daylight: { text: '#111827', textMuted: '#4b5563', bgMuted: '#e2e8f0', border: '#0f172a', success: '#16a34a', error: '#dc2626' },
+};
+
 // Fonts the user can pick from in "Build your own theme". All preloaded in
 // layout.tsx so switching is instant with no FOUT. Deliberately spans very
 // different aesthetics so no two picks read as "basically the same font."
@@ -89,7 +111,7 @@ export const FONT_OPTIONS = [
   { id: 'bangers', label: 'Bangers — comic display', family: '"Bangers", cursive' },
   { id: 'press-start', label: 'Press Start 2P — retro pixel', family: '"Press Start 2P", ui-monospace, monospace' },
   { id: 'permanent-marker', label: 'Permanent Marker — bold handwritten', family: '"Permanent Marker", cursive' },
-  { id: 'rubik-wet-paint', label: 'Rubik Wet Paint — graffiti', family: '"Rubik Wet Paint", cursive' },
+  { id: 'rampart-one', label: 'Rampart One — graffiti', family: '"Rampart One", "Bungee", cursive' },
   { id: 'orbitron', label: 'Orbitron — sci-fi', family: '"Orbitron", "Space Grotesk", sans-serif' },
 ] as const;
 export type FontId = (typeof FONT_OPTIONS)[number]['id'];

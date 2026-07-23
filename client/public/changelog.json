@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.38.0",
+    "date": "2026-07-23",
+    "title": "Native watches now notify too; card overlap fix; Base cascades in theme builder; Nebula default",
+    "features": [
+      "New: watches that never route through the AIOStreams proxy (confirmed real case: usenet via newznab) now get their own Discord + push notification once the native poller records them, instead of never notifying at all. The proxy's instant \"started watching\" ping still owns everything it actually sees; this only fires for a brand-new watch history row with zero proxy session — so nothing proxy-tracked gets double-notified.",
+      "Build-your-own-theme: changing \"Base\" now updates every optional color override's starting swatch (Text, Muted text, Background, Surface, Subtle fill, Card borders, Success, Error) to that theme's own real colors, instead of one generic seed regardless of which base is selected.",
+      "Nebula is now the default layout AND sits first in the Theme picker grid (previously Slick was first) — it has full coverage across every admin page at this point, so the earlier reason for defaulting to Original no longer applies.",
+      "Swapped the graffiti font from Rubik Wet Paint (a color-font that doesn't render reliably everywhere) to Rampart One, a bold graffiti/street-style face using regular glyphs."
+    ],
+    "bugFixes": [
+      "Fixed the toggle switch overlapping the name/version/status row on Addons, Groups, and Users cards at full-width desktop screens (narrower per-card width in a multi-column grid) — content now reserves clearance for the toggle instead of running underneath it."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.37.0",
     "date": "2026-07-22",
     "title": "Fixed theme switching getting stuck; SlickTrax rename; smarter For You; addon label colors",
