@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
@@ -8,7 +8,7 @@ import { Button, Card, Badge, Modal, ConfirmModal, Avatar } from '@/components/u
 import { PageSection } from '@/components/layout/PageContainer';
 import { useTheme } from '@/lib/theme';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { api, SyncSettings, AccountStats } from '@/lib/api';
+import { api, SyncSettings, AccountStats, PushDevice } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
@@ -29,6 +29,12 @@ import {
   DocumentTextIcon,
   UserCircleIcon,
   SparklesIcon,
+  DevicePhoneMobileIcon,
+  ComputerDesktopIcon,
+  PencilIcon,
+  TrashIcon,
+  CheckIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 // Small curated fallback for environments without Intl.supportedValuesOf
@@ -54,6 +60,44 @@ function getSupportedTimezones(): string[] {
 }
 
 const TIMEZONES = getSupportedTimezones();
+
+// Best-effort friendly guess from a stored User-Agent string, for a device
+// that's never been given a custom label. Rough on purpose - this is a
+// fallback shown alongside a rename control, not a full UA parser.
+function guessDeviceName(userAgent: string | null): string {
+  if (!userAgent) return 'Unknown device';
+  const ua = userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  const isAndroid = /Android/.test(ua);
+  const isMac = /Macintosh/.test(ua);
+  const isWindows = /Windows/.test(ua);
+  const browser = /Firefox/.test(ua) ? 'Firefox'
+    : /Edg\//.test(ua) ? 'Edge'
+    : /Chrome/.test(ua) ? 'Chrome'
+    : /Safari/.test(ua) ? 'Safari'
+    : 'Browser';
+  if (isIOS) return `${/iPad/.test(ua) ? 'iPad' : 'iPhone'} - ${browser}`;
+  if (isAndroid) return `Android - ${browser}`;
+  if (isMac) return `Mac - ${browser}`;
+  if (isWindows) return `Windows - ${browser}`;
+  return browser;
+}
+
+function isMobileDevice(userAgent: string | null): boolean {
+  return !!userAgent && /iPhone|iPad|iPod|Android/.test(userAgent);
+}
+
+function formatLastSeen(dateStr: string | null): string {
+  if (!dateStr) return 'Never notified';
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffMins < 1) return 'Active just now';
+  if (diffMins < 60) return `Active ${diffMins}m ago`;
+  if (diffHours < 24) return `Active ${diffHours}h ago`;
+  return `Active ${diffDays}d ago`;
+}
 
 // Toggle switch component
 function ToggleSwitch({
@@ -140,6 +184,84 @@ export default function SettingsPage() {
     accountTimezone: '',
   });
 
+  // Push-subscribed devices (Settings > Notifications > Devices) - every
+  // browser/phone currently subscribed to push on this account, with zero
+  // UI over it until now.
+  const [pushDevices, setPushDevices] = useState<PushDevice[]>([]);
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [editingLabel, setEditingLabel] = useState('');
+
+  const loadPushDevices = async () => {
+    try {
+      setPushDevices(await api.getPushDevices());
+    } catch {
+      // Endpoint may not exist yet on an older backend - stay silent.
+    }
+  };
+
+  const handleRenameDevice = async (id: string) => {
+    const label = editingLabel.trim();
+    setEditingDeviceId(null);
+    try {
+      const updated = await api.renamePushDevice(id, label || null);
+      setPushDevices(prev => prev.map(d => d.id === id ? updated : d));
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to rename device');
+    }
+  };
+
+  const handleRevokeDevice = async (id: string) => {
+    setPushDevices(prev => prev.filter(d => d.id !== id));
+    try {
+      await api.revokePushDevice(id);
+      toast.success('Device revoked');
+    } catch (e: any) {
+      loadPushDevices(); // revert on failure
+      toast.error(e.message || 'Failed to revoke device');
+    }
+  };
+
+  // Mouse-only grab-and-drag horizontal scrolling, same pattern as the
+  // Continue Watching row and MediaDetailModal's Cast row - deferred pointer
+  // capture until an actual drag crosses the 5px threshold, so a plain click
+  // on rename/revoke isn't swallowed as a drag.
+  const devicesRowRef = useRef<HTMLDivElement>(null);
+  const isDevicesPointerDownRef = useRef(false);
+  const devicesDragStartXRef = useRef(0);
+  const devicesDragStartScrollLeftRef = useRef(0);
+  const hasCapturedDevicesPointerRef = useRef(false);
+
+  const handleDevicesPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || !devicesRowRef.current) return;
+    isDevicesPointerDownRef.current = true;
+    hasCapturedDevicesPointerRef.current = false;
+    devicesDragStartXRef.current = e.clientX;
+    devicesDragStartScrollLeftRef.current = devicesRowRef.current.scrollLeft;
+  }, []);
+
+  const handleDevicesPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || !isDevicesPointerDownRef.current || !devicesRowRef.current) return;
+    if ((e.buttons & 1) === 0) {
+      isDevicesPointerDownRef.current = false;
+      return;
+    }
+    const dx = e.clientX - devicesDragStartXRef.current;
+    if (Math.abs(dx) > 5 && !hasCapturedDevicesPointerRef.current) {
+      devicesRowRef.current.setPointerCapture(e.pointerId);
+      hasCapturedDevicesPointerRef.current = true;
+    }
+    devicesRowRef.current.scrollLeft = devicesDragStartScrollLeftRef.current - dx;
+  }, []);
+
+  const handleDevicesPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse') return;
+    isDevicesPointerDownRef.current = false;
+    if (hasCapturedDevicesPointerRef.current) {
+      devicesRowRef.current?.releasePointerCapture(e.pointerId);
+      hasCapturedDevicesPointerRef.current = false;
+    }
+  }, []);
+
   // API Key state
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
@@ -196,6 +318,7 @@ export default function SettingsPage() {
     };
     
     loadSettings();
+    loadPushDevices();
   }, []);
 
   const handleSaveSetting = async (key: keyof SyncSettings, value: any) => {
@@ -592,6 +715,91 @@ export default function SettingsPage() {
                 </p>
                 <PushNotificationToggle />
               </div>
+
+              {/* Devices - every push-subscribed browser/phone, with zero
+                  visibility anywhere else in the app until now. Grab-and-drag
+                  horizontal scroller, same interaction as Continue Watching's
+                  row, rather than a plain list - reads as its own little
+                  shelf instead of another settings list. */}
+              {pushDevices.length > 0 && (
+                <div className="pt-4 border-t border-default">
+                  <label className="block text-sm font-medium text-default mb-1">Devices</label>
+                  <p className="text-xs text-muted mb-3">
+                    Every browser or phone currently subscribed to push notifications on this account.
+                  </p>
+                  <div
+                    ref={devicesRowRef}
+                    onPointerDown={handleDevicesPointerDown}
+                    onPointerMove={handleDevicesPointerMove}
+                    onPointerUp={handleDevicesPointerUp}
+                    onPointerLeave={handleDevicesPointerUp}
+                    className="flex gap-3 overflow-x-auto pb-1 no-scrollbar cursor-grab active:cursor-grabbing select-none"
+                  >
+                    {pushDevices.map((device) => {
+                      const mobile = isMobileDevice(device.userAgent);
+                      const displayName = device.label || guessDeviceName(device.userAgent);
+                      const isEditing = editingDeviceId === device.id;
+                      return (
+                        <div
+                          key={device.id}
+                          className="shrink-0 w-44 p-3 rounded-xl border border-default flex flex-col gap-2"
+                          style={{ background: 'var(--color-subtle)' }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div
+                              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                              style={{ background: 'var(--color-primary-muted)' }}
+                            >
+                              {mobile
+                                ? <DevicePhoneMobileIcon className="w-4 h-4 text-primary" />
+                                : <ComputerDesktopIcon className="w-4 h-4 text-primary" />}
+                            </div>
+                            <button
+                              onClick={() => handleRevokeDevice(device.id)}
+                              title="Revoke this device"
+                              className="p-1 rounded-md text-subtle hover:text-error hover:bg-surface transition-colors"
+                            >
+                              <TrashIcon className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {isEditing ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                autoFocus
+                                value={editingLabel}
+                                onChange={(e) => setEditingLabel(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleRenameDevice(device.id);
+                                  if (e.key === 'Escape') setEditingDeviceId(null);
+                                }}
+                                placeholder={guessDeviceName(device.userAgent)}
+                                className="input-base px-2 py-1 text-xs w-full"
+                              />
+                              <button onClick={() => handleRenameDevice(device.id)} className="shrink-0 text-success">
+                                <CheckIcon className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => setEditingDeviceId(null)} className="shrink-0 text-subtle">
+                                <XMarkIcon className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setEditingDeviceId(device.id); setEditingLabel(device.label || ''); }}
+                              className="flex items-center gap-1 text-left group"
+                            >
+                              <p className="text-sm font-medium text-default truncate">{displayName}</p>
+                              <PencilIcon className="w-3 h-3 text-subtle opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                            </button>
+                          )}
+
+                          <p className="text-xs text-subtle">{formatLastSeen(device.lastSeenAt)}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
         </PageSection>
