@@ -332,18 +332,23 @@ function clearCustomTheme(el: HTMLElement) {
   for (const v of OVERRIDE_VARS) el.style.removeProperty(v);
 }
 
-// The theme-picker's background glow blobs (PageContainer.tsx) are heavily
-// blurred + transform-animated, which Firefox puts on their own GPU
-// compositor layer. Custom-property-only changes on documentElement don't
-// reliably repaint that layer in the same frame as the rest of the page -
-// switching themes quickly could leave the glow showing a stale color (or
-// briefly nothing) indefinitely, until something else forced a full
-// repaint (a resize, or a hard refresh - which is exactly the workaround
-// users found). Reading offsetHeight forces the browser to synchronously
-// flush layout/paint right here, so no layer can be left stale.
-function forceRepaint() {
-  void document.documentElement.offsetHeight;
-}
+// A previous attempt at this file forced a synchronous reflow (reading
+// offsetHeight) after every theme mutation, on the theory that the
+// background glow blobs (PageContainer.tsx, blurred + transform-animated)
+// sit on their own compositor layer that doesn't always repaint in step
+// with a plain CSS-variable change. That turned out to be the wrong fix:
+// offsetHeight forces LAYOUT, and a background-color driven purely by a
+// CSS custom property never touches layout at all, so it was dead weight -
+// worse, doing it TWICE per click (once here, once when the reactive
+// effect below re-ran and called applyThemeForId again) added real
+// synchronous main-thread cost on every single click. Confirmed via a
+// second screen recording that the glow lag is worst specifically when
+// clicking through themes RAPIDLY and clears up when clicks are spaced
+// out - the signature of the main thread falling behind under repeated
+// forced layout work, not a paint-timing issue that forcing paint would
+// fix. Removed here; see setTheme's skipNextApplyRef for the other half
+// of this fix (deduping the redundant second apply that caused the rest
+// of the extra work).
 
 // Migrates the pre-v1.25 single-slot localStorage shape into the list shape.
 // Returns { savedList, migratedActiveId } — the latter is set when the user's
@@ -451,6 +456,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Suppress the sync-to-server effect on the initial hydrate and after every
   // server load — otherwise we'd echo the server's own value back to it.
   const skipNextSaveRef = useRef(true);
+  // setTheme() already applies the DOM mutation directly and synchronously
+  // (see its own comment) before setting themeId - without this flag, the
+  // effect below re-runs applyThemeForId a second time for the exact same
+  // state on every single click, which used to also mean a second forced
+  // reflow. Doubling the synchronous work per click is what made rapid
+  // clicking through several themes visibly fall behind (confirmed via
+  // screen recording - see forceRepaint's removal note above).
+  const skipNextApplyRef = useRef(false);
 
   const activeCustomTheme = savedCustomThemes.find((t) => t.id === themeId) || null;
 
@@ -529,13 +542,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const active = list.find((t) => t.id === id);
     if (active) {
       applyCustomTheme(document.documentElement, active);
-      forceRepaint();
       return true;
     }
     if (isBuiltInThemeId(id)) {
       clearCustomTheme(document.documentElement);
       document.documentElement.className = id;
-      forceRepaint();
       return true;
     }
     return false;
@@ -545,7 +556,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // theme (id or the active custom's config) changes.
   useEffect(() => {
     if (!mounted) return;
-    if (!applyThemeForId(themeId, savedCustomThemes)) {
+    if (skipNextApplyRef.current) {
+      // setTheme() already applied this exact state to the DOM - see its
+      // own comment and skipNextApplyRef's declaration above.
+      skipNextApplyRef.current = false;
+    } else if (!applyThemeForId(themeId, savedCustomThemes)) {
       // themeId points to a custom that no longer exists (e.g. deleted on
       // another device); fall back to Nebula.
       clearCustomTheme(document.documentElement);
@@ -579,6 +594,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       // re-derives the DOM fresh from localStorage. Applying unconditionally
       // here makes the reset work regardless of whether themeId "changes."
       applyThemeForId(id, savedCustomThemes);
+      // Only worth flagging "skip the effect's re-apply" when themeId is
+      // actually about to change - when it's not (the re-click-same-theme
+      // case just above), setThemeIdState is a no-op React bails out of, so
+      // the effect never runs to clear the flag and it would wrongly still
+      // be set the next time something ELSE changes themeId later.
+      if (id !== themeId) skipNextApplyRef.current = true;
       setThemeIdState(id);
     }
   };
@@ -646,7 +667,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         textScale: config.textScale || 'default',
       };
       applyCustomTheme(document.documentElement, merged);
-      forceRepaint();
     }
   };
 
@@ -657,18 +677,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const previewCustom = (c: CustomTheme) => {
     applyCustomTheme(document.documentElement, c);
-    forceRepaint();
   };
 
   const cancelPreview = () => {
     const active = savedCustomThemes.find((t) => t.id === themeId);
     if (active) {
       applyCustomTheme(document.documentElement, active);
-      forceRepaint();
     } else if (isBuiltInThemeId(themeId)) {
       clearCustomTheme(document.documentElement);
       document.documentElement.className = themeId;
-      forceRepaint();
     }
   };
 

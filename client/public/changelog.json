@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.42.1",
+    "date": "2026-07-22",
+    "title": "Fix: theme background glow still lagged when switching themes quickly",
+    "features": [],
+    "bugFixes": [
+      "The previous fix for this (forcing a synchronous repaint after every theme change) turned out to be the wrong diagnosis, confirmed by pulling frames from a second screen recording: the glow lag was worst specifically when clicking through several themes quickly, and cleared up almost immediately when clicks were spaced out — the signature of the browser's main thread falling behind under repeated forced-layout work, not a paint-timing issue. That forced reflow read layout geometry, which a pure background-color change never touches, so it wasn't fixing anything — and it was firing TWICE per click (the theme-apply code was calling itself redundantly a second time on every single click, doubling the wasted work). Removed the forced reflow and the redundant double-apply; each theme switch now does half the work it used to; the background glow should track the rest of the page even when clicking through themes rapidly."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.42.0",
     "date": "2026-07-22",
     "title": "Addon failover now notifies you (Discord, PWA push, and the bell)",
