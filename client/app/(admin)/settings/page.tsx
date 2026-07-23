@@ -136,6 +136,7 @@ export default function SettingsPage() {
     notifyOnSync: false,
     notifyOnInvite: false,
     notifyOnVault: false,
+    notifyOnAddonHealth: false,
     accountTimezone: '',
   });
 
@@ -172,6 +173,7 @@ export default function SettingsPage() {
           notifyOnSync: settings.notifyOnSync || false,
           notifyOnInvite: settings.notifyOnInvite || false,
           notifyOnVault: settings.notifyOnVault || false,
+          notifyOnAddonHealth: settings.notifyOnAddonHealth || false,
           accountTimezone: settings.accountTimezone || '',
         });
       } catch (e) {
@@ -266,6 +268,7 @@ export default function SettingsPage() {
       notifyOnSync: false,
       notifyOnInvite: false,
       notifyOnVault: false,
+      notifyOnAddonHealth: false,
     });
     try {
       await api.updateSyncSettings({
@@ -277,6 +280,7 @@ export default function SettingsPage() {
         notifyOnSync: false,
         notifyOnInvite: false,
         notifyOnVault: false,
+        notifyOnAddonHealth: false,
       });
       toast.success('Settings reset to defaults');
     } catch (e: any) {
@@ -562,6 +566,18 @@ export default function SettingsPage() {
                     enabled={syncSettings.notifyOnVault || false}
                     onChange={(v) => handleSaveSetting('notifyOnVault', v)}
                     label="Toggle vault notifications"
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  label="Addon health notifications"
+                  description="Notify when a primary addon goes offline (and switches to its backup) or comes back"
+                  disabled={!syncSettings.webhookUrl?.trim()}
+                >
+                  <ToggleSwitch
+                    enabled={syncSettings.notifyOnAddonHealth || false}
+                    onChange={(v) => handleSaveSetting('notifyOnAddonHealth', v)}
+                    label="Toggle addon health notifications"
                   />
                 </SettingRow>
               </div>

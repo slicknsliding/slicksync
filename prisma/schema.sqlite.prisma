@@ -492,6 +492,28 @@ model EpisodeAlert {
   @@map("episode_alerts")
 }
 
+// addonHealthCheck.js's periodic check already flips Addon.isOnline and
+// (via getGroupAddons) silently diverts groups to their configured backup
+// addon - nothing ever told anyone that happened. One row per transition
+// (offline or back online), read by the notification bell the same way
+// EpisodeAlert is; Discord/push fire from the same event, gated on the
+// notifyOnAddonHealth toggle (server/routes/settings.js).
+model AddonHealthAlert {
+  id              String   @id @default(cuid())
+  accountId       String   @default("default")
+  addonId         String
+  addonName       String
+  event           String // 'offline' | 'online'
+  backupAddonId   String?
+  backupAddonName String?
+  groupCount      Int      @default(0) // groups with this addon assigned, i.e. groups actually affected by the swap
+  errorMessage    String? // health-check error, set on 'offline' events only
+  createdAt       DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@map("addon_health_alerts")
+}
+
 // PWA web-push subscriptions - one row per browser/device that opted in to
 // native push notifications. endpoint is the push service URL; p256dh/auth
 // are the browser-provided encryption keys web-push needs. Unique on

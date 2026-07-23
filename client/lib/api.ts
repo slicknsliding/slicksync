@@ -889,6 +889,11 @@ class ApiClient {
     return this.fetch<EpisodeAlert[]>(`/users/episode-alerts?days=${days}`);
   }
 
+  // Addon online<->offline transitions (fired server-side by addonHealthCheck.js)
+  async getAddonHealthAlerts(days = 14) {
+    return this.fetch<AddonHealthAlert[]>(`/addons/health-alerts?days=${days}`);
+  }
+
   // PWA web-push
   async getPushVapidKey() {
     return this.fetch<{ enabled: boolean; publicKey: string | null }>('/push/vapid-key');
@@ -1828,6 +1833,7 @@ export interface SyncSettings {
   notifyOnSync?: boolean;
   notifyOnInvite?: boolean;
   notifyOnVault?: boolean;
+  notifyOnAddonHealth?: boolean;
   accountTimezone?: string;
   vaultCurrency?: string;
   // Personal-features opt-outs (v1.31+). Default true when absent.
@@ -1935,6 +1941,18 @@ export interface EpisodeAlert {
   episode: number;
   title: string | null;
   poster: string | null;
+  createdAt: string;
+}
+
+export interface AddonHealthAlert {
+  id: string;
+  addonId: string;
+  addonName: string;
+  event: 'offline' | 'online';
+  backupAddonId: string | null;
+  backupAddonName: string | null;
+  groupCount: number;
+  errorMessage: string | null;
   createdAt: string;
 }
 
