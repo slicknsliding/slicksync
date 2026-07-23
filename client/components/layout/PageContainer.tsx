@@ -38,12 +38,24 @@ export function PageContainer({ children, className, noSidebarOffset }: PageCont
       <div className={`fixed inset-0 ${offsetClass} pointer-events-none overflow-hidden`}>
         {noSidebarOffset ? (
           <>
+            {/* opacity-55/50 against the full-strength (non-muted) accent
+                color looked fine for Nebula's own cool violet, but a
+                screen-recording pass found it reads as a genuine blinding
+                flare for warm/saturated themes (Midnight's amber, Ember's
+                red-orange) - confirmed frame-by-frame that this is NOT the
+                sync/lag bug fixed earlier (logo, divider, and glow all
+                change in perfect lockstep, no stale color) - the same
+                opacity just doesn't scale the same way across hues this
+                different. Dropped well below Current layout's already-safe
+                30/20 (which also uses the *muted* variant, not full
+                strength) since Nebula's blobs are 500-560px vs Current's
+                400-500px and this is the more visually dominant layout. */}
             <div
-              className="absolute -top-32 -left-32 w-[560px] h-[560px] rounded-full blur-[110px] opacity-55 animate-float-slow"
+              className="absolute -top-32 -left-32 w-[560px] h-[560px] rounded-full blur-[110px] opacity-20 animate-float-slow"
               style={{ background: 'var(--color-primary)' }}
             />
             <div
-              className="absolute -bottom-32 -right-32 w-[520px] h-[520px] rounded-full blur-[110px] opacity-50 animate-float-slow-reverse"
+              className="absolute -bottom-32 -right-32 w-[520px] h-[520px] rounded-full blur-[110px] opacity-15 animate-float-slow-reverse"
               style={{ background: 'var(--color-secondary)' }}
             />
           </>

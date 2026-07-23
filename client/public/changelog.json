@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.45.2",
+    "date": "2026-07-23",
+    "title": "Fix: Nebula theme glow reads as a blinding flare on warm themes",
+    "features": [],
+    "bugFixes": [
+      "Confirmed via a third screen recording, frame by frame, that the theme-switching sync bug fixed twice already is genuinely gone — logo, nav divider, and background glow all change in perfect lockstep now, no stale color in any frame. What's still visible is a different, real issue: Nebula's glow blobs use the full-strength (non-muted) accent color at 55%/50% opacity, unlike Current layout's equivalent (already-muted color at 30%/20%). That combination looks fine for Nebula's own cool violet, but for warm/saturated themes like Midnight's amber or Ember's red-orange, it genuinely renders as a blinding full-screen flare — every time that theme is active, not just when switching. Dropped Nebula's blob opacity to 20%/15% so it stays a soft ambient glow across every theme instead of overwhelming the page on the brighter ones."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.45.1",
     "date": "2026-07-23",
     "title": "Two bugs found during a full live pass: SlickTrax mojibake, TorBox badge covering content on mobile",
