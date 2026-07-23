@@ -9,6 +9,9 @@ import { metacriticColor as metacriticTextColor } from './RatingBadges';
 import { api, MediaDetails } from '@/lib/api';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { useFocusable, FocusContext } from '@noriginmedia/norigin-spatial-navigation';
 
 interface MediaDetailModalProps {
   isOpen: boolean;
@@ -59,6 +62,20 @@ export function MediaDetailModal({
   const [isTrailerPlaying, setIsTrailerPlaying] = useState(false);
 
   const { enableWatchlist } = usePersonalFeatures();
+  const isTV = useIsTV();
+
+  // TV mode: the action row (Watchlist / Open in Stremio / Open in Nuvio)
+  // is its own focus group so D-pad left/right moves between them, and
+  // gets focus automatically the moment details finish loading - this is
+  // the actual payoff moment ("read it, watch the trailer, pick an app")
+  // the TV app exists for, so it shouldn't require hunting for it with the
+  // remote first.
+  const { ref: actionsRef, focusKey: actionsFocusKey, focusSelf: focusActions } = useFocusable<object, HTMLDivElement>({ trackChildren: true });
+  useEffect(() => {
+    if (!isTV || !isOpen || !details) return;
+    const id = setTimeout(() => focusActions(), 50);
+    return () => clearTimeout(id);
+  }, [isTV, isOpen, details, focusActions]);
 
   // Watchlist state — optimistic-toggle so the icon flips instantly on click
   // and the request happens in the background. Reset on itemId change so the
@@ -340,12 +357,8 @@ export function MediaDetailModal({
                   purple for Stremio, blue/orange for Nuvio - rather than the
                   generic accent color, so these read as "this specific
                   provider" the same way the badges already do. */}
-              {details.imdb_id && (
-                <div className="flex flex-wrap gap-2 items-center">
-                  {/* Watchlist toggle — outline bookmark = not saved,
-                      filled = saved. Hidden when the Watchlist feature is
-                      disabled in Settings. */}
-                  {enableWatchlist && (
+              {details.imdb_id && (() => {
+                const watchlistBtn = enableWatchlist && (
                   <button
                     type="button"
                     onClick={toggleWatchlist}
@@ -363,9 +376,11 @@ export function MediaDetailModal({
                       : <BookmarkOutlineIcon className="w-4 h-4" />}
                     {inWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
                   </button>
-                  )}
+                );
+                const stremioBtn = (
                   <a
                     href={buildStremioAppUrl(details.imdb_id, itemType)}
+                    tabIndex={isTV ? -1 : undefined}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                     style={{
                       background: 'rgba(167, 139, 250, 0.15)',
@@ -376,8 +391,11 @@ export function MediaDetailModal({
                     <PlayIcon className="w-4 h-4" />
                     Open in Stremio
                   </a>
+                );
+                const nuvioBtn = (
                   <a
                     href={buildNuvioAppUrl(details.imdb_id, itemType)}
+                    tabIndex={isTV ? -1 : undefined}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                     style={{
                       // Blue/orange Nuvio identity split by a `/` diagonal
@@ -390,8 +408,41 @@ export function MediaDetailModal({
                     <PlayIcon className="w-4 h-4" />
                     Open in Nuvio
                   </a>
-                </div>
-              )}
+                );
+
+                // TV mode: Norigin owns keyboard focus/activation itself
+                // (it doesn't ride native DOM Tab order or native Enter-on-
+                // link behavior) - so each control needs an explicit
+                // onEnterPress that does what the click/native nav would
+                // have done. tabIndex={-1} above keeps a stray native Tab
+                // press from also landing on the underlying <a> and
+                // double-handling the same keystroke.
+                if (isTV) {
+                  return (
+                    <FocusContext.Provider value={actionsFocusKey}>
+                      <div ref={actionsRef} className="flex flex-wrap gap-2 items-center">
+                        {enableWatchlist && (
+                          <TVFocusable onEnterPress={toggleWatchlist}>{watchlistBtn}</TVFocusable>
+                        )}
+                        <TVFocusable onEnterPress={() => { window.location.href = buildStremioAppUrl(details.imdb_id!, itemType); }}>
+                          {stremioBtn}
+                        </TVFocusable>
+                        <TVFocusable onEnterPress={() => { window.location.href = buildNuvioAppUrl(details.imdb_id!, itemType); }}>
+                          {nuvioBtn}
+                        </TVFocusable>
+                      </div>
+                    </FocusContext.Provider>
+                  );
+                }
+
+                return (
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {watchlistBtn}
+                    {stremioBtn}
+                    {nuvioBtn}
+                  </div>
+                );
+              })()}
 
               {details.genres && details.genres.length > 0 && (
                 <div className="flex flex-wrap gap-2">

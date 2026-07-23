@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.48.0",
+    "date": "2026-07-23",
+    "title": "feat: TV mode (Phase 1) — D-pad navigation on Discover, auto-detected",
+    "features": [
+      "First piece of Android TV/Fire TV support: a third auto-detected layout mode alongside mobile/desktop (no toggle - same as how mobile vs desktop already just responds to the device, not a Settings choice). Detects via a hard flag a future native TV app will set, TV WebView user-agent markers (Fire TV's AFT* prefix, Android TV, Google TV), or a `?tv=1` query param for testing today on any device. When active, Discover's poster grid and the detail modal's Watchlist/Open in Stremio/Open in Nuvio buttons become D-pad-navigable with a visible focus ring, using @noriginmedia/norigin-spatial-navigation for real spatial (up/down/left/right) navigation rather than plain browser tab order.",
+      "Scope note: this covers the core browse -> read details -> watch trailer -> open Stremio/Nuvio loop specifically. Search, genre filters, and the trailer play button aren't D-pad-navigable yet - fast-follow, not forgotten. The actual installable Android TV/Fire TV app (native shell wrapping this) is a separate, not-yet-started phase."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.47.1",
     "date": "2026-07-23",
     "title": "Fix: taste overlap returned zero pairs on real data",

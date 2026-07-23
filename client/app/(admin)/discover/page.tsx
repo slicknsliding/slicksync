@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, memo, useRef, useCallback } from 'react';
+import { useState, useEffect, memo, useRef, useCallback, Fragment } from 'react';
 import { Header } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
@@ -12,6 +12,9 @@ import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { toast } from '@/components/ui/Toast';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 // Only "top" (Popular) supports search per Cinemeta's own manifest - "year"
 // and "imdbRating" only support genre/skip. Browse-mode catalog picker is
@@ -53,6 +56,7 @@ const PosterCard = memo(function PosterCard({
   showWatchlistBadge = true,
   isMenuOpen,
   onMenuOpenChange,
+  focusable = false,
 }: {
   item: DiscoverItem;
   ratings?: RatingsBatchEntry;
@@ -75,6 +79,9 @@ const PosterCard = memo(function PosterCard({
    *  Dashboard Continue Watching row uses. */
   isMenuOpen?: boolean;
   onMenuOpenChange?: (open: boolean) => void;
+  /** TV mode: wraps the card in a D-pad-focusable container with a visible
+   *  focus ring, Enter/OK opens details the same way a click does. */
+  focusable?: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
   // useContextMenu still owns the position calc + preventDefault, but the
@@ -84,7 +91,7 @@ const PosterCard = memo(function PosterCard({
   const controlledOpen = isMenuOpen === true;
   const close = () => { closeInternal(); onMenuOpenChange?.(false); };
 
-  return (
+  const card = (
     <div
       className="group relative cursor-pointer"
       onClick={() => onOpenDetails(item)}
@@ -188,10 +195,14 @@ const PosterCard = memo(function PosterCard({
       )}
     </div>
   );
+
+  if (!focusable) return card;
+  return <TVFocusable onEnterPress={() => onOpenDetails(item)}>{card}</TVFocusable>;
 });
 
 export default function DiscoverPage() {
   const { layoutMode } = useLayoutMode();
+  const isTV = useIsTV();
   const { enableWatchlist, enableWatchedIndicators, enableRecommendations } = usePersonalFeatures();
   const [type, setType] = useState<'movie' | 'series'>('movie');
   const [catalog, setCatalog] = useState('top');
@@ -424,8 +435,12 @@ export default function DiscoverPage() {
     placeholder: `Search ${type === 'movie' ? 'movies' : 'series'}...`,
   };
 
+  // TV mode wraps the whole page in the D-pad focus root; PC/mobile get a
+  // plain Fragment, same tree either way with no separate render path.
+  const Wrapper = isTV ? TVPageProvider : Fragment;
+
   return (
-    <>
+    <Wrapper>
       {layoutMode === 'nebula' ? (
         <NebulaTopbar />
       ) : (
@@ -618,6 +633,7 @@ export default function DiscoverPage() {
                           onToggleWatched={handleToggleWatched}
                           isMenuOpen={openMenuKey === item.id}
                           onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                          focusable={isTV}
                         />
                       ))}
                     </div>
@@ -667,6 +683,7 @@ export default function DiscoverPage() {
                     onToggleWatched={handleToggleWatched}
                     isMenuOpen={openMenuKey === item.id}
                     onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                    focusable={isTV}
                   />
                 ))}
               </div>
@@ -716,6 +733,6 @@ export default function DiscoverPage() {
           }}
         />
       )}
-    </>
+    </Wrapper>
   );
 }
