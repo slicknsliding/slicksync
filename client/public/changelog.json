@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.47.0",
+    "date": "2026-07-23",
+    "title": "feat: Real taste-overlap recommendations, from actual watch data",
+    "features": [
+      "New \"Taste overlap\" card on Metrics: real behavioral overlap between household members, computed from actual watch-time on shared titles (cosine similarity across each pair's weighted watch vectors) - not genre matching. Shows each pair's overlap percentage and their top 5 actually-shared favorites, ranked so a title only counts as shared if both people genuinely spent real time on it.",
+      "Discover's \"For You\" row-seeding now also factors in a collaborative signal - titles other household members also spent real time on get a modest boost when picking which title seeds a genre row, on top of that title's own score. Kept as a boost rather than a full replacement of genre/Cinemeta-backed discovery: pure item-based similarity can only ever recommend among titles someone here has already watched, which would kill \"discover something nobody's seen yet\" for a household whose watch history is still small."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.46.3",
     "date": "2026-07-23",
     "title": "TorBox badge sized down on desktop too",
