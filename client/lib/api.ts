@@ -1547,6 +1547,9 @@ class ApiClient {
   async getRecommendations() {
     return this.fetch<{ rows: RecommendationRow[] }>('/discover/recommendations');
   }
+  async getTasteOverlap() {
+    return this.fetch<{ pairs: TasteOverlapPair[] }>('/discover/taste-overlap');
+  }
 
   async getUpcomingEpisodes() {
     return this.fetch<UpcomingEpisode[]>('/users/upcoming-episodes');
@@ -1932,6 +1935,30 @@ export interface RecommendationRow {
   seedId: string;
   seedType: 'movie' | 'series';
   items: DiscoverItem[];
+}
+
+export interface TasteOverlapUser {
+  id: string;
+  username: string;
+  avatarUrl?: string | null;
+  useGravatar?: boolean;
+  colorIndex?: number | null;
+  email?: string;
+}
+
+export interface TasteOverlapSharedItem {
+  key: string;
+  name: string | null;
+  poster: string | null;
+  type: 'movie' | 'series';
+}
+
+export interface TasteOverlapPair {
+  userA: TasteOverlapUser;
+  userB: TasteOverlapUser;
+  similarity: number;
+  sharedCount: number;
+  shared: TasteOverlapSharedItem[];
 }
 
 export interface WatchlistItem {
