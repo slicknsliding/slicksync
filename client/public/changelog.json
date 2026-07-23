@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.46.2",
+    "date": "2026-07-23",
+    "title": "TorBox badge stacked above the panel switcher instead of beside it",
+    "features": [],
+    "bugFixes": [],
+    "miscChores": [
+      "The TorBox referral badge sat side by side with the account panel switcher pill (both Nebula's floating bottom-left pills and the Original sidebar's bottom bar) - moved it above instead, on desktop and mobile, for a single cleaner column instead of two things competing for width."
+    ]
+  },
+  {
     "version": "1.46.1",
     "date": "2026-07-23",
     "title": "Fix: Mark all read cleared notifications instead of just marking them read",
