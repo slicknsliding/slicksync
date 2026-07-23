@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.45.5",
+    "date": "2026-07-23",
+    "title": "Fix: theme colors stuck on the previous theme after navigating to a new page",
+    "features": [],
+    "bugFixes": [
+      "A fifth report on this saga: switching themes, then navigating to Dashboard/Discover/etc. (not just clicking around the Themes page) left the new page's own content rendering the previous theme's colors, until a hard refresh. Traced this live: className, every --color-* variable, and localStorage were all already correct immediately after both the switch and the navigation - not a state bug. The forced-reflow fix from two versions ago only ever ran once, at the moment of the click, never again when a new page's content actually mounts afterward. Now re-asserts the current theme (and forces another reflow) on every navigation, closing that gap."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.45.4",
     "date": "2026-07-23",
     "title": "Fix: theme switching flashed a jarring color 'conflict' in the background glow",

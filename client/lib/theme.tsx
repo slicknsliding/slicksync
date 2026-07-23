@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { api } from '@/lib/api';
 
 // Theme IDs
@@ -593,6 +594,29 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (!mounted) return;
     localStorage.setItem('slicksync-hide-sensitive', String(hideSensitive));
   }, [hideSensitive, mounted]);
+
+  // A fifth report on this saga: switching themes then navigating to a
+  // DIFFERENT page (Dashboard, Discover, ...) - not just re-clicking around
+  // the Themes page itself - left the new page's freshly-mounted content
+  // rendering the *previous* theme's colors, on Firefox, until a hard
+  // refresh. Live inspection during that report confirmed className,
+  // every --color-* custom property, and localStorage were ALL already
+  // correct immediately after the switch and after the navigation - this
+  // isn't a state bug, it's the same Firefox paint-scheduling gap that
+  // forceRepaint() was restored for above, just showing up on a wider
+  // surface than realized: that reflow only ever ran once, at the moment
+  // of the click, never again when a new route's content actually mounts
+  // afterward. Re-asserting the current theme (cheap - just rewrites the
+  // same values - and forces another reflow) on every client-side route
+  // change closes that gap without touching state or the save/sync logic.
+  const pathname = usePathname();
+  const pathMounted = useRef(false);
+  useEffect(() => {
+    if (!mounted) return;
+    if (!pathMounted.current) { pathMounted.current = true; return; }
+    applyThemeForId(themeId, savedCustomThemes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const setTheme = (id: string) => {
     if (isBuiltInThemeId(id) || savedCustomThemes.some((t) => t.id === id)) {
