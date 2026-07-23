@@ -734,12 +734,12 @@ body {
    off-screen depending on the animation frame. */
 @keyframes float-slow {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(30px, 24px) scale(1.06); }
+  50% { transform: translate(10px, 8px) scale(1.015); }
 }
 
 @keyframes float-slow-reverse {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(-30px, -24px) scale(1.06); }
+  50% { transform: translate(-10px, -8px) scale(1.015); }
 }
 
 .animate-float-slow {

@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.41.1",
+    "date": "2026-07-22",
+    "title": "Fix: Dashboard/Activity background glow randomly flaring bright",
+    "features": [],
+    "bugFixes": [
+      "Nebula layout's corner glow blobs on Dashboard and Activity both drifted toward the center of the screen on the same 18s cycle with no offset between them, so twice a minute they'd swell 6% and slide together, doubling up into a much brighter wash across the middle of the page before easing back. Landing on the page at that point in the cycle (it resets every time you navigate away and back) made the glow look like it randomly spiked. Shrunk the drift and growth to a small fraction of what it was so the glow stays close to its resting look at all times."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.41.0",
     "date": "2026-07-22",
     "title": "\"Fix now\" links on Vault alerts",
