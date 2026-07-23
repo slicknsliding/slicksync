@@ -303,19 +303,21 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </span>
         </div>
 
-        {/* Panel Switcher + TorBox referral badge */}
+        {/* TorBox referral badge + Panel Switcher - stacked (was side by
+            side) to match Nebula's layout and read as a cleaner single
+            column instead of two things competing for width. */}
         <div
-          className="p-3 flex items-center gap-2"
+          className="p-3 flex flex-col items-start gap-2"
           style={{ borderTop: '1px solid var(--color-surface-border)' }}
         >
-          <div className="flex-1 min-w-0">
+          <TorBoxBadge size={36} />
+          <div className="w-full min-w-0">
             <PanelSwitcher
               mode="admin"
               userInfo={accountInfo}
               onLogout={handleLogout}
             />
           </div>
-          <TorBoxBadge size={36} />
         </div>
       </motion.aside>
     </>

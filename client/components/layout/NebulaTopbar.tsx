@@ -108,33 +108,14 @@ export function NebulaTopbar() {
           on short pages, but that traded away the "always there" behavior
           this is for - reverted. dropdownPosition="up" (the default) is
           correct since this sits at the BOTTOM of the screen. */}
-      <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40 flex items-end gap-2">
-        <div
-          className="rounded-2xl p-1.5"
-          style={{
-            background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
-            backdropFilter: 'blur(18px)',
-            WebkitBackdropFilter: 'blur(18px)',
-            border: '1px solid var(--color-surface-border)',
-            boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
-          }}
-        >
-          <PanelSwitcher
-            mode="admin"
-            userInfo={accountInfo}
-            onLogout={handleLogout}
-            variant="compact"
-            align="left"
-          />
-        </div>
-        {/* This pill is unconditionally fixed (no menu state gates it,
-            unlike Sidebar's TorBox placement, which is off-screen until the
-            mobile menu opens) - on a narrow phone the two pills side by side
-            at full size doubled the fixed footprint and started covering
-            real page content underneath (confirmed: a Settings toggle's
-            description text was getting cut off behind it). Rather than
-            hide it below md entirely, render it at half size there instead -
-            small enough to stay out of the way, still visible/tappable. */}
+      <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40 flex flex-col items-start gap-2">
+        {/* Stacked above the panel switcher (was beside it) - a cleaner
+            single column instead of two pills competing for width. This
+            pill is unconditionally fixed (no menu state gates it, unlike
+            Sidebar's TorBox placement, which is off-screen until the mobile
+            menu opens) - on a narrow phone it's rendered at half size, small
+            enough to stay out of the way of page content while still being
+            visible/tappable. */}
         <div
           className="md:hidden rounded-xl p-1"
           style={{
@@ -158,6 +139,24 @@ export function NebulaTopbar() {
           }}
         >
           <TorBoxBadge size={36} />
+        </div>
+        <div
+          className="rounded-2xl p-1.5"
+          style={{
+            background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
+            border: '1px solid var(--color-surface-border)',
+            boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
+          }}
+        >
+          <PanelSwitcher
+            mode="admin"
+            userInfo={accountInfo}
+            onLogout={handleLogout}
+            variant="compact"
+            align="left"
+          />
         </div>
       </div>
       {/* Notifications, fixed top-right, mobile only - the desktop copy
