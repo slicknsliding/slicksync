@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.46.3",
+    "date": "2026-07-23",
+    "title": "TorBox badge sized down on desktop too",
+    "features": [],
+    "bugFixes": [],
+    "miscChores": [
+      "36px was too big for a pill that's just sitting above the panel switcher, not competing with it for width anymore - down to 24px on desktop (both Nebula and Original layouts)."
+    ]
+  },
+  {
     "version": "1.46.2",
     "date": "2026-07-23",
     "title": "TorBox badge stacked above the panel switcher instead of beside it",
