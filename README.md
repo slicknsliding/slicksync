@@ -39,6 +39,26 @@ summary. The original Syncio project, unmodified, is here:
 
 ---
 
+## Contents
+
+- [Multi-Provider Sync](#-multi-provider-sync)
+- [Activity Tracking & Now Playing](#-activity-tracking--now-playing)
+- [Media Details, Continue Watching & Discover](#-media-details-continue-watching--discover)
+- [SlickTrax: Watchlist, Watched Indicators & Recommendations](#-slicktrax-watchlist-watched-indicators--recommendations)
+- [Vault](#-vault)
+- [Notifications & New-Episode Alerts](#-notifications--new-episode-alerts)
+- [Progressive Web App & Push Notifications](#-progressive-web-app--push-notifications)
+- [Addons](#-addons)
+- [Addon Snapshots](#-addon-snapshots)
+- [Profiles](#-profiles)
+- [Themes](#-themes)
+- [Metrics & Dashboard](#-metrics--dashboard)
+- [Security Hardening](#-security-hardening)
+- [Installation](#-installation)
+- [License](#license)
+
+---
+
 ## ⚡ Features
 
 ### 🔗 Multi-Provider Sync
@@ -86,7 +106,7 @@ side-by-side with Stremio, rather than bolting it on:
 The proxy sees streams open and close in real time, but is blind to anything
 routed outside it (usenet via newznab, for instance). The provider only
 checkpoints at pause/stop, so it learns of a session late and then holds it
-"active" for ~15 minutes — accurate for history, useless for liveness. Hence
+"active" for ~18 minutes — accurate for history, useless for liveness. Hence
 the split:
 
 - **The proxy is a presence signal only** — it never writes watch history or
@@ -94,7 +114,7 @@ the split:
   (AIOStreams holds stale connections open for hours), so all duration comes
   from the provider's own counters.
 - **Now Playing is never based on native alone**, which would leave an
-  already-exited stream showing as playing for ~15 minutes.
+  already-exited stream showing as playing for ~18 minutes.
 - **Reconciliation is per-title, not per-user** — the proxy is authoritative
   only for content it actually carries, so usenet playback it never saw is
   left to native and shows up correctly.
@@ -153,8 +173,8 @@ the split:
   silently overwriting it with the other backend's different answer.
 - **Continue Watching** on the Dashboard: the next unwatched episode for any
   show someone's partway through, most recently watched first. Click-and-drag
-  to scroll the row (works with mouse, touch, or pen — no scrollbar to grab),
-  right-click a card to remove it.
+  to scroll the row (works with mouse, touch, or pen — no scrollbar to grab).
+  Right-click (desktop) or long-press (mobile) a card to remove it.
 - **Deep links open straight into the app**, with each provider's real
   format used correctly rather than assumed:
   - **Stremio**: `stremio:///detail/{type}/{imdbId}/{videoId}` — documented
@@ -172,10 +192,10 @@ the split:
     browser has no way to detect whether the target app was actually
     installed to catch it.
 
-### ⭐ Personal Watchlist, Watched Indicators & Recommendations
+### ✨ SlickTrax: Watchlist, Watched Indicators & Recommendations
 
-SlickSync's own Trakt-alternative — no external service to connect, no
-tokens, no per-app connection limits:
+SlickTrax is SlickSync's own built-in tracking system — a Trakt-alternative
+with no external service to connect, no tokens, no per-app connection limits:
 
 - **Watchlist**: bookmark anything from its poster (right-click on Discover,
   or the button in the detail modal) to build a list of what to watch next.
@@ -186,22 +206,29 @@ tokens, no per-app connection limits:
   you've seen, or the reverse. A manual override (right-click → Mark as
   watched/unwatched) lets you correct a false positive or mark something
   watched off-platform, without touching the underlying watch-history record.
-- **Recommendations ("✨ For You")**: up to three rows of Top Rated titles,
-  each seeded by a recent watch's genre (distinct genres per row, no
-  overlap), filtered to things you haven't seen yet.
-- Each of the three is **independently toggleable** in Settings → Personal
-  Features — turning one off hides its UI and stops its background work
-  without touching any data, so re-enabling picks up exactly where you left
-  off.
+- **Recommendations ("✨ For You")**: up to three genre rows on Discover,
+  built from real weighted watch-time — every title with recorded activity is
+  scored by how much time you actually spent on it (recency-decayed, so a
+  show you're bingeing this week outweighs a movie watched once months ago),
+  Watchlist adds count too at a lighter weight, and each row's genre is
+  whichever scored highest overall rather than just your 3 most recent
+  titles. Filtered to exclude anything already watched or already on the
+  Watchlist.
+- Each of the three is **independently toggleable** in Settings → SlickTrax —
+  turning one off hides its UI and stops its background work without
+  touching any data, so re-enabling picks up exactly where you left off.
 
-### 🔐 Vault — credential tracking with expiry alerts and active-checks
+### 🔐 Vault
 
-Track API keys, accounts, and credentials (debrid services, Usenet
-providers/indexers, VPN, AI services, or your own Stremio/Nuvio-specific
-secrets) in one place:
+Credential tracking with expiry alerts and active-checks. Track API keys,
+accounts, and credentials (debrid services, Usenet providers/indexers, VPN,
+AI services, or your own Stremio/Nuvio-specific secrets) in one place:
 
 - **Encrypted at rest**, same AES-GCM scheme as the rest of the app.
-- **Expiry tracking** with configurable days-before-expiry alerts.
+- **Expiry / renewal tracking** with a configurable days-before alert —
+  works equally for a credential's real expiry date or a subscription's next
+  billing/renewal date, alongside the optional cost + billing-cycle fields
+  used for the Vault page's spend summary.
 - **Real active-checks**, not just "is the server up":
   - Real-Debrid, TorBox, and Newznab indexers validate the actual key against
     the provider's own API.
@@ -230,10 +257,19 @@ One Discord webhook, configured once in Settings → Notifications, with
 per-type toggles for activity, sync, invites, and Vault alerts. The "started
 watching" notification fires from the proxy pipeline the moment a stream
 opens, rather than at stop time — which read as an end-of-watch notification
-and defeated the point. Each of the four toggles also mirrors to **native
-phone/desktop push** (see PWA section below) — independent of whether a
-Discord webhook is even configured.
+and defeated the point. Watch activity that never reaches the proxy at all
+(usenet via newznab is the confirmed real case) still gets a "watched"
+notification once the native poller records it — delayed by a poll cycle
+instead of instant, but no longer silent. Each toggle also mirrors to
+**native phone/desktop push** (see PWA section below) — independent of
+whether a Discord webhook is even configured.
 
+- **Per-user watch notification control**: each managed user can opt out of
+  notifications for their own watch activity from their self-service Settings
+  page, independent of everyone else's. If they set their own personal
+  Discord webhook there too, their watch pings route to it instead of the
+  shared account webhook — useful for keeping one household member's activity
+  off a shared channel, or giving them their own.
 - **New-episode alerts**: a background poller watches Cinemeta's episode
   lists for every show anyone here is mid-season on, and pings Discord + the
   notification bell + push when a genuinely new episode drops. Only
@@ -264,20 +300,27 @@ only exposes the Push API to installed web apps.)
   refresh.
 - **Drag onto "Protected"** to protect an addon (account-wide, by name,
   mirroring how default-addon protection already worked), or **drag onto a
-  custom tag pill** to label it with your own categories — e.g. "Kids", "4K",
-  "Backup". Create tags with "+ New Tag", click a pill to filter by it, hover
-  for a × to delete one. Both actions also work without dragging, via
-  right-click → Protect/Unprotect or Clear Tag.
+  custom label pill** to tag it with your own categories — e.g. "Kids", "4K",
+  "Backup". Create labels with "+ New Tag", click a pill to filter by it,
+  hover for a × to delete one. Both actions also work without dragging: an
+  addon card's right-click menu has a **Label** entry that opens a picker —
+  every existing label to choose from, a checkmark on the current one
+  (clicking it again deselects), and a "New label" row that creates and
+  applies a label in one step.
+- **Color-code your labels** — click the swatch dot on any label pill to pick
+  a color; it tints that label everywhere it shows up (the pill, the card
+  badge, the picker), so labels stay visually distinct at a glance.
 - **Order-insensitive sync comparison** — a user whose addons are the same set
   in a different order no longer reports as out of sync.
 - **Provider-agnostic live addon count**, correct for Nuvio users rather than
   Stremio-only.
 
-### 📦 Addon Snapshots (template library)
+### 📦 Addon Snapshots
 
-Save any user's or group's current addon set as a named template, then
-deploy it to any user with one call. Manifest URLs are encrypted at rest;
-deploys re-fetch fresh manifests rather than reusing a stale copy.
+A template library: save any user's or group's current addon set as a named
+template, then deploy it to any user with one call. Manifest URLs are
+encrypted at rest; deploys re-fetch fresh manifests rather than reusing a
+stale copy.
 
 - `GET/POST /api/snapshots`, `GET/DELETE /api/snapshots/:id`,
   `POST /api/snapshots/:id/deploy`
@@ -311,20 +354,44 @@ inline SVG rather than a static image — it recolors automatically with
 whichever theme is active, everywhere it renders: sidebar, login page,
 invite pages, and the user-connect modal.
 
-**Build your own theme** (Settings): save as many named custom themes as you
-want, each layered on top of one of the ten built-ins. Every custom theme
-gets its own primary/secondary accent, optional overrides for text, muted
-text, background, surface, and border colors, a corner-roundness preset
-(Square / Standard / Rounded / Extra rounded), and one of seven genuinely
-distinct display fonts — Space Grotesk, Poppins, Merriweather, JetBrains
-Mono, Bebas Neue, Caveat, Orbitron. Custom themes sit alongside the built-ins
-in the picker with their own delete button. **Theme choice and your whole
-custom-theme library sync across every device** on the account — pick a
-theme on your desktop, it's there on your phone next time you open the app.
+Theme picking and the theme builder live on their own dedicated **Themes**
+page (account menu, next to Settings and Changelog) rather than buried in
+Settings — reachable from both the Original sidebar and Nebula's account
+dropdown.
 
-**Layout**: two structurally different admin UIs, switchable per-account in
-Settings — the original sidebar layout, or **Nebula** (top nav + floating
-glass panels), with full coverage across every admin page.
+**Build your own theme**: save as many named custom themes as you want, each
+layered on top of one of the ten built-ins. Picking a different base updates
+every optional override's starting color to match that base's real palette,
+so customizing "from" a theme actually starts from what it really looks
+like. Every custom theme gets:
+
+- Primary/secondary accent, plus optional overrides for text, muted text,
+  background, surface, subtle-fill, and card-border colors.
+- **Success/Error accent overrides** — recolors health-check dots, badges,
+  and confirmation toasts app-wide instead of each theme's fixed green/red.
+- **A Continue Watching progress-bar color override**, independent of the
+  primary→secondary gradient it uses by default.
+- A corner-roundness preset (Square / Standard / Rounded / Extra rounded)
+  and a text-size preset (Default / Small / Large / Extra large) that scales
+  body text and most UI chrome app-wide.
+- One of **eleven** genuinely distinct display fonts — Space Grotesk,
+  Poppins, Merriweather, Playfair Display, JetBrains Mono, Bungee, Bangers,
+  Press Start 2P, Permanent Marker, Luckiest Guy, Orbitron — spanning
+  rounded sans, classic and elegant serif, monospace, poster/comic/graffiti
+  display, retro pixel, handwritten, and sci-fi.
+- A live preview mockup (brand header, stat tiles, an actual Continue
+  Watching progress bar, tag pills, buttons, a toggle) that samples nearly
+  everything the builder controls in one place, instead of a couple of
+  isolated color swatches.
+
+Custom themes sit alongside the built-ins in the picker with their own
+delete button. **Theme choice and your whole custom-theme library sync
+across every device** on the account — pick a theme on your desktop, it's
+there on your phone next time you open the app.
+
+**Layout** (same Themes page): two structurally different admin UIs — the
+original sidebar layout, or **Nebula** (top nav + floating glass panels,
+the default), with full coverage across every admin page.
 
 ### 📊 Metrics & Dashboard
 
