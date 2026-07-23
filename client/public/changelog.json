@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.45.1",
+    "date": "2026-07-23",
+    "title": "Two bugs found during a full live pass: SlickTrax mojibake, TorBox badge covering content on mobile",
+    "features": [],
+    "bugFixes": [
+      "SlickTrax's Watchlist and Watched indicators descriptions in Settings were showing mojibake (â˜…/âœ\" instead of ★/✓) - stale UTF-8 corruption from an old encoding mishap that had gone unnoticed since it was in body copy, not something the usual pre-deploy mojibake scan flagged (it only checks for em-dash corruption specifically).",
+      "The TorBox badge next to the panel switcher (Nebula layout) is unconditionally fixed on screen with no menu state gating it - doubling that pill's width on a narrow phone started covering real content underneath (confirmed: a Settings toggle's description text was getting cut off behind it). Hidden below the md: breakpoint now; desktop/tablet has room to spare."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.45.0",
     "date": "2026-07-23",
     "title": "Disaster Recovery Kit, TorBox badge",
