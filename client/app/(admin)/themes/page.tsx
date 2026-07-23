@@ -9,6 +9,7 @@ import { PageSection } from '@/components/layout/PageContainer';
 import {
   useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, FontId, CustomTheme, SavedCustomTheme,
   RADIUS_PRESETS, RADIUS_LABELS, RadiusId, TEXT_SCALE_PRESETS, TEXT_SCALE_LABELS, TEXT_SCALE_FACTORS, TextScaleId,
+  THEME_REAL_COLORS,
 } from '@/lib/theme';
 import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
@@ -284,18 +285,18 @@ function resolvePreviewPalette(base: ThemeId, o: {
   progressBar: string; success: string; error: string;
 }) {
   const meta = themeMeta[base].colors;
-  const isLight = base === 'daylight';
+  const real = THEME_REAL_COLORS[base];
   return {
     bg: o.background || meta.bg,
     surface: o.surface || meta.surface,
-    bgMuted: o.bgMuted || (isLight ? '#e2e8f0' : '#21262d'),
-    border: o.border || (isLight ? 'rgba(15,23,42,0.14)' : 'rgba(255,255,255,0.08)'),
-    text: o.text || (isLight ? '#0f172a' : '#e6edf3'),
-    textMuted: o.textMuted || (isLight ? '#64748b' : '#8b949e'),
+    bgMuted: o.bgMuted || real.bgMuted,
+    border: o.border || real.border,
+    text: o.text || real.text,
+    textMuted: o.textMuted || real.textMuted,
     primary: o.primary || meta.primary,
     secondary: o.secondary || meta.secondary,
-    success: o.success || (isLight ? '#16a34a' : '#3fb950'),
-    error: o.error || (isLight ? '#dc2626' : '#f85149'),
+    success: o.success || real.success,
+    error: o.error || real.error,
     // No fallback constant here — a blank override means "keep the default
     // primary→secondary gradient," which the caller renders itself.
     progressBar: o.progressBar || null,
@@ -753,42 +754,42 @@ export default function ThemesPage() {
                 <ColorOverride
                   label="Text color (optional)"
                   value={builderText}
-                  seed="#e2e8f0"
+                  seed={THEME_REAL_COLORS[builderBase].text}
                   onSet={(v) => { setBuilderText(v); previewCustom({ ...buildDraft(), text: v }); }}
                   onClear={() => { setBuilderText(''); previewCustom({ ...buildDraft(), text: null }); }}
                 />
                 <ColorOverride
                   label="Muted text (optional)"
                   value={builderTextMuted}
-                  seed="#8b949e"
+                  seed={THEME_REAL_COLORS[builderBase].textMuted}
                   onSet={(v) => { setBuilderTextMuted(v); previewCustom({ ...buildDraft(), textMuted: v }); }}
                   onClear={() => { setBuilderTextMuted(''); previewCustom({ ...buildDraft(), textMuted: null }); }}
                 />
                 <ColorOverride
                   label="Background (optional)"
                   value={builderBackground}
-                  seed="#0d1117"
+                  seed={themeMeta[builderBase].colors.bg}
                   onSet={(v) => { setBuilderBackground(v); previewCustom({ ...buildDraft(), background: v }); }}
                   onClear={() => { setBuilderBackground(''); previewCustom({ ...buildDraft(), background: null }); }}
                 />
                 <ColorOverride
                   label="Surface / cards (optional)"
                   value={builderSurface}
-                  seed="#1c2128"
+                  seed={themeMeta[builderBase].colors.surface}
                   onSet={(v) => { setBuilderSurface(v); previewCustom({ ...buildDraft(), surface: v }); }}
                   onClear={() => { setBuilderSurface(''); previewCustom({ ...buildDraft(), surface: null }); }}
                 />
                 <ColorOverride
                   label="Subtle fill (optional)"
                   value={builderBgMuted}
-                  seed="#21262d"
+                  seed={THEME_REAL_COLORS[builderBase].bgMuted}
                   onSet={(v) => { setBuilderBgMuted(v); previewCustom({ ...buildDraft(), bgMuted: v }); }}
                   onClear={() => { setBuilderBgMuted(''); previewCustom({ ...buildDraft(), bgMuted: null }); }}
                 />
                 <ColorOverride
                   label="Card borders (optional)"
                   value={builderBorder}
-                  seed="#2d333b"
+                  seed={THEME_REAL_COLORS[builderBase].border}
                   onSet={(v) => { setBuilderBorder(v); previewCustom({ ...buildDraft(), border: v }); }}
                   onClear={() => { setBuilderBorder(''); previewCustom({ ...buildDraft(), border: null }); }}
                 />
@@ -802,14 +803,14 @@ export default function ThemesPage() {
                 <ColorOverride
                   label="Success accent (optional)"
                   value={builderSuccess}
-                  seed="#3fb950"
+                  seed={THEME_REAL_COLORS[builderBase].success}
                   onSet={(v) => { setBuilderSuccess(v); previewCustom({ ...buildDraft(), success: v }); }}
                   onClear={() => { setBuilderSuccess(''); previewCustom({ ...buildDraft(), success: null }); }}
                 />
                 <ColorOverride
                   label="Error accent (optional)"
                   value={builderError}
-                  seed="#f85149"
+                  seed={THEME_REAL_COLORS[builderBase].error}
                   onSet={(v) => { setBuilderError(v); previewCustom({ ...buildDraft(), error: v }); }}
                   onClear={() => { setBuilderError(''); previewCustom({ ...buildDraft(), error: null }); }}
                 />

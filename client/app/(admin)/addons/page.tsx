@@ -1365,8 +1365,11 @@ function AddonCard({
           </div>
         </div>
 
-        {/* Header */}
-        <div className="relative p-6 pb-4">
+        {/* Header. md:pr-24 reserves clearance for the absolutely-positioned
+            toggle/checkbox above (top-4 right-4) — without it, a narrow card
+            (3-column grid on a wide screen) lets the name/version/health-dot
+            row's content run right up under the toggle and overlap it. */}
+        <div className="relative p-6 pb-4 md:pr-24">
           <div className="flex items-start gap-4">
             {/* Icon */}
             <div

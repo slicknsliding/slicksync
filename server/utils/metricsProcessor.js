@@ -11,6 +11,9 @@
 const { resolveSinglePoster } = require('./libraryHelpers')
 const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
 const { findDebridServiceForWatch } = require('./debridDetection')
+const { postDiscord } = require('./notify')
+const { getUserAvatarUrl } = require('./avatarUtils')
+const { notifyPushForType } = require('./pushNotifications')
 
 /**
  * Extract season/episode from video_id
@@ -75,6 +78,63 @@ function isActuallyWatched(item) {
   }
 
   return !!(state.video_id && state.video_id.trim() !== '')
+}
+
+// Fires a "watched X" notification (Discord + push) for a brand-new
+// watch-history row that the proxy pipeline never had a chance to notify
+// about — content that never routed through the monitored AIOStreams proxy
+// at all (usenet via newznab is the confirmed real case; see this repo's
+// CLAUDE.md on the two watch-tracking pipelines). The proxy's own instant
+// "started watching" ping (proxyStreamMonitor.js -> sessionTracker.js's
+// sendSessionStartNotification) already covers everything that DOES route
+// through it, so callers only invoke this when there's no WatchSession row
+// for the item at all — otherwise proxy-tracked watches would get notified
+// twice: once live, and again once native catches up ~1min later.
+// Deliberately worded "watched," not "started watching" - by the time
+// native's poll notices a new row, playback may already be well underway or
+// finished, so "started" would be misleading here in a way it isn't for the
+// proxy's real-time signal.
+async function notifyNativeWatchDetected(prisma, accountId, { title, poster, itemType, season, episode, userId, users = [] }) {
+  try {
+    const accountIdValue = accountId || 'default'
+    const account = await prisma.appAccount.findUnique({ where: { id: accountIdValue }, select: { sync: true } })
+    let cfg = account?.sync
+    if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+    if (!cfg || typeof cfg !== 'object' || cfg.notifyOnActivity !== true) return
+
+    const user = users.find((u) => u.id === userId)
+    const whoName = user?.username || user?.email || 'Someone'
+    const epLabel = (itemType === 'series' && season != null && episode != null)
+      ? ` S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
+      : ''
+
+    if (cfg.webhookUrl) {
+      const avatarUrl = user ? await getUserAvatarUrl(user.username, user.email, user.colorIndex) : null
+      const embed = {
+        title: `${title}${epLabel}`,
+        author: { name: `${whoName} watched`, icon_url: avatarUrl || undefined },
+        color: 0x8b7ec8,
+        timestamp: new Date().toISOString(),
+      }
+      if (poster) embed.thumbnail = { url: poster }
+      let appVersion = process.env.NEXT_PUBLIC_APP_VERSION || process.env.APP_VERSION || ''
+      if (!appVersion) { try { appVersion = require('../../package.json')?.version || '' } catch {} }
+      if (appVersion) embed.footer = { text: `SlickSync v${appVersion}` }
+      await postDiscord(cfg.webhookUrl, null, {
+        embeds: [embed],
+        avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png',
+      })
+    }
+
+    await notifyPushForType(prisma, accountIdValue, 'notifyOnActivity', {
+      title: `${whoName} watched`,
+      body: `${title}${epLabel}`,
+      icon: poster || '/android-chrome-192x192.png',
+      url: '/activity',
+    })
+  } catch (error) {
+    console.warn('[MetricsProcessor] Failed to send native watch-detected notification:', error.message)
+  }
 }
 
 /**
@@ -171,6 +231,16 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
       }
     })
 
+    // Brand-new row (never seen this episode before) with no WatchSession
+    // at all for the show - the proxy never had a chance to notify. See
+    // notifyNativeWatchDetected's comment for why session (not
+    // sessionDuration/videoId-matched) is the right check here.
+    if (!existing && !session) {
+      notifyNativeWatchDetected(prisma, accountIdValue, {
+        title: showName, poster, itemType: 'series', season, episode, userId, users,
+      })
+    }
+
     return true
   } catch (error) {
     // Silently fail - episode history is optional
@@ -265,6 +335,14 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
         ...(debridService ? { debridService } : {})
       }
     })
+
+    // Brand-new row with no WatchSession at all for this item - the proxy
+    // never had a chance to notify. See notifyNativeWatchDetected's comment.
+    if (!existing && !session) {
+      notifyNativeWatchDetected(prisma, accountIdValue, {
+        title: itemName, poster, itemType: 'movie', season: null, episode: null, userId, users,
+      })
+    }
 
     return true
   } catch (error) {
