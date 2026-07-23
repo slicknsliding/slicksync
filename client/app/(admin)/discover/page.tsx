@@ -708,6 +708,12 @@ export default function DiscoverPage() {
           fallbackPoster={detailItem.poster}
           fallbackRating={detailItem.imdbRating}
           fallbackReleaseInfo={detailItem.releaseInfo}
+          onWatchlistChange={(id, next) => {
+            const item = detailItem;
+            setWatchlist((prev) => next
+              ? (prev.some((w) => w.itemId === id) ? prev : [...prev, { id, itemId: id, itemType: item.type, name: item.name, poster: item.poster, addedAt: new Date().toISOString() }])
+              : prev.filter((w) => w.itemId !== id));
+          }}
         />
       )}
     </>

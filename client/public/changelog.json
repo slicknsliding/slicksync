@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.41.3",
+    "date": "2026-07-22",
+    "title": "Fix: Discover's \"Add to Watchlist\" button (poster detail popup) didn't actually save",
+    "features": [],
+    "bugFixes": [
+      "Tapping a poster to open its detail popup, then clicking \"Add to Watchlist\" there, flipped the button to \"In Watchlist\" and DID save to the account's watchlist — but the Discover page itself never found out, since that popup keeps its own separate watchlist state instead of sharing the page's. So the poster's badge in the grid and the Watchlist tab both kept showing the old (empty) list until a full page reload. Right-click → Add to Watchlist worked all along, since that path always updated the page's list directly. The popup now reports back when you add or remove, so both paths stay in sync."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.41.2",
     "date": "2026-07-22",
     "title": "Fix: Theme builder's Primary/Secondary accent didn't update when switching Base",
