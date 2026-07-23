@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.40.0",
+    "date": "2026-07-23",
+    "title": "Fixed: iOS push notifications were silently failing account-wide",
+    "features": [],
+    "bugFixes": [
+      "Found and fixed a real bug affecting every push notification type (new episodes, watch activity, vault, everything) on iOS/Safari installs: Apple's push service (web.push.apple.com) was rejecting every single push with 403 BadJwtToken because the VAPID subject's default domain (a .local address) doesn't pass Apple's stricter validation — Chrome and Firefox never had this problem, which is why it looked like \"works on web, never on the phone.\" Confirmed live against real subscriptions: both previously-failing iPhone subscriptions succeeded immediately once switched to a properly-formatted domain. No need to reinstall or resubscribe — existing subscriptions start working on the next push.",
+      "Card toggle overlap fix from the last release only covered desktop widths (md: and up) for Groups and Users — their toggle switches have no mobile hiding (unlike Addons), so the same overlap was still happening on phones. Now fixed at every width.",
+      "The Coming Up date badge sat pushed far off to the right when there was only one item in the list (or on a wide screen) — the title/episode text was stretching to fill the whole row width first. Now sits right next to the text instead."
+    ],
+    "miscChores": [
+      "Push send failures that aren't a dead subscription (404/410) are now logged instead of disappearing silently, so a systemic failure like this one is visible in the logs instead of just \"notifications don't seem to arrive.\"",
+      "Swapped the graffiti font again (Rampart One out, Luckiest Guy in) per feedback on the previous pick."
+    ]
+  },
+  {
     "version": "1.39.0",
     "date": "2026-07-23",
     "title": "Per-user watch notifications, with your own Discord channel if you want one",

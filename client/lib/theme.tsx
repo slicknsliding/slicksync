@@ -111,7 +111,7 @@ export const FONT_OPTIONS = [
   { id: 'bangers', label: 'Bangers — comic display', family: '"Bangers", cursive' },
   { id: 'press-start', label: 'Press Start 2P — retro pixel', family: '"Press Start 2P", ui-monospace, monospace' },
   { id: 'permanent-marker', label: 'Permanent Marker — bold handwritten', family: '"Permanent Marker", cursive' },
-  { id: 'rampart-one', label: 'Rampart One — graffiti', family: '"Rampart One", "Bungee", cursive' },
+  { id: 'luckiest-guy', label: 'Luckiest Guy — graffiti', family: '"Luckiest Guy", "Bungee", cursive' },
   { id: 'orbitron', label: 'Orbitron — sci-fi', family: '"Orbitron", "Space Grotesk", sans-serif' },
 ] as const;
 export type FontId = (typeof FONT_OPTIONS)[number]['id'];
