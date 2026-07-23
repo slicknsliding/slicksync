@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.41.4",
+    "date": "2026-07-22",
+    "title": "Fix: theme switching left the background glow stuck on the wrong color",
+    "features": [],
+    "bugFixes": [
+      "Switching between themes (especially clicking through several quickly) could leave the Nebula layout's background glow blobs showing a stale color from the previous theme, or briefly no color at all, while the rest of the page (logo, nav, cards) had already updated correctly — confirmed by pulling frames from a screen recording. The theme-apply code itself was already correct and synchronous; the glow blobs sit on their own heavily-blurred, animated compositor layer that the browser doesn't always repaint in the same frame as a plain CSS-variable change, and it could stay stale until something forced a full repaint — which is exactly why a hard refresh always \"fixed\" it. Every theme change now forces a synchronous repaint immediately after applying, so no layer can be left showing the old theme."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.41.3",
     "date": "2026-07-22",
     "title": "Fix: Discover's \"Add to Watchlist\" button (poster detail popup) didn't actually save",
