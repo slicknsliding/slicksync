@@ -61,6 +61,8 @@ export interface UserInfo {
   groupId?: string;
   createdAt: string;
   expiresAt?: string;
+  discordWebhookUrl?: string | null;
+  notifyOnWatch?: boolean;
 }
 
 export interface LibraryItem {

@@ -27,6 +27,7 @@ model User {
   inviteCode         String? // Invite code used to create this user (null if created manually)
   discordWebhookUrl  String? // Discord webhook URL for notifications
   discordUserId      String? // Discord user ID for personalized notifications
+  notifyOnWatch      Boolean   @default(true) // Whether THIS user's watch activity (started/watched) triggers a notification at all. When discordWebhookUrl is set, their watch pings route there instead of the account's shared webhook.
   apiKey             String? // User-specific API key for accessing own metrics
   activityVisibility String    @default("private") // "public" or "private" - when public, group members can see this user's library/history
   lastSyncedAt       DateTime? // When user addons were last successfully synced

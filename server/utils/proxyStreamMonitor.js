@@ -245,13 +245,21 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
 
     const user = resolveUserForActiveConnection(users, aiostreamsUser)
     if (!user) return
+    // Per-user opt-out: this specific user's watch activity doesn't notify
+    // at all, regardless of the account-level toggle that got us here.
+    if (user.notifyOnWatch === false) return
 
     const fresh = await prisma.proxyStreamSession.findUnique({
       where: { id: rowId },
       select: { posterUrl: true, metadataItemId: true, metadataItemType: true, startTime: true },
     })
-    if (webhookUrl) {
-      await sendSessionStartNotification(webhookUrl, {
+    // A user's own personal webhook (set in their self-service Settings)
+    // takes over from the shared account webhook for their own activity —
+    // lets each household member route their own pings to their own
+    // channel/DM instead of (or as well as) the shared family one.
+    const targetWebhookUrl = user.discordWebhookUrl || webhookUrl
+    if (targetWebhookUrl) {
+      await sendSessionStartNotification(targetWebhookUrl, {
         itemName: displayName,
         itemType: fresh?.metadataItemType === 'series' ? 'series' : 'movie',
         itemId: fresh?.metadataItemId || null,
@@ -311,7 +319,7 @@ async function pollOnce(prisma, accountId, config) {
         notifyWebhook = cfg.webhookUrl || null
         notifyUsers = await prisma.user.findMany({
           where: { accountId },
-          select: { id: true, username: true, email: true, colorIndex: true },
+          select: { id: true, username: true, email: true, colorIndex: true, notifyOnWatch: true, discordWebhookUrl: true },
         })
       }
     } catch {}
