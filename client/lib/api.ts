@@ -790,6 +790,13 @@ class ApiClient {
     });
   }
 
+  async generateMosaicNow(month?: string) {
+    return this.fetch<{ posted: boolean; reason?: string | null; count: number; month?: string }>('/settings/mosaic/generate-now', {
+      method: 'POST',
+      body: JSON.stringify(month ? { month } : {}),
+    });
+  }
+
   async getApiKeyStatus() {
     return this.fetch<{ hasKey: boolean; apiKey?: string }>('/settings/account-api');
   }
@@ -1880,6 +1887,7 @@ export interface SyncSettings {
   notifyOnVault?: boolean;
   notifyOnAddonHealth?: boolean;
   notifyOnBackup?: boolean;
+  notifyOnMosaic?: boolean;
   accountTimezone?: string;
   vaultCurrency?: string;
   // Personal-features opt-outs (v1.31+). Default true when absent.

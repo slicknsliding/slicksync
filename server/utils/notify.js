@@ -666,6 +666,25 @@ async function sendSyncNotification(webhookUrl, options) {
   })
 }
 
+// Posts an actual file attachment (not just an embed image URL) to a
+// Discord webhook - needed for the poster mosaic, which is a real generated
+// image (not something already hosted at a public URL Discord could just
+// hotlink). Discord webhooks accept multipart/form-data with a payload_json
+// part alongside the file part; Node/Bun's global FormData + Blob make that
+// a native fetch call instead of hand-rolling multipart boundaries.
+async function postDiscordFile(webhookUrl, buffer, filename, content) {
+  try {
+    if (!webhookUrl || !buffer) return false
+    const form = new FormData()
+    if (content) form.append('payload_json', JSON.stringify({ content }))
+    form.append('files[0]', new Blob([buffer], { type: 'image/png' }), filename)
+    const res = await fetch(webhookUrl, { method: 'POST', body: form })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 async function postNtfy(ntfyUrl, topic, { title, message, priority = 'default', tags = [] } = {}) {
   try {
     if (!ntfyUrl || !topic) return
@@ -681,6 +700,7 @@ async function postNtfy(ntfyUrl, topic, { title, message, priority = 'default', 
 
 module.exports = {
   postDiscord,
+  postDiscordFile,
   postNtfy,
   createSyncEmbed,
   sendSyncNotification,
