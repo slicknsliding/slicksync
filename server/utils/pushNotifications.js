@@ -15,7 +15,17 @@ const fs = require('fs')
 const path = require('path')
 
 const VAPID_FILE = path.join(process.cwd(), 'data', 'vapid.json')
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@slicksync.local'
+// Apple's web.push.apple.com validates the VAPID JWT's `sub` claim more
+// strictly than Chrome/Firefox's push services do, and rejects a `.local`
+// subject outright (403 BadJwtToken) — `.local` is a reserved,
+// non-registrable TLD (RFC 6762), and Apple's validator apparently checks
+// for a plausible domain shape rather than just "looks like an email."
+// Confirmed live: iOS/Safari PWA subscriptions failed 100% of the time with
+// the old default and succeeded immediately once switched to a real-shaped
+// domain, while Firefox/Chrome never had a problem either way. example.com
+// is IANA-reserved for documentation (RFC 2606), so it's a safe placeholder
+// that still satisfies Apple's stricter check.
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@example.com'
 
 let webpush = null
 try {
@@ -102,6 +112,13 @@ async function sendPushToAccount(prisma, accountId, payload) {
       const status = err?.statusCode
       if (status === 404 || status === 410) {
         try { await prisma.pushSubscription.delete({ where: { id: sub.id } }); pruned++ } catch {}
+      } else {
+        // Anything else (e.g. the BadJwtToken failure that motivated this
+        // log line - see VAPID_SUBJECT's comment above) used to disappear
+        // silently. A subscription isn't gone here, so it's not pruned; log
+        // it so a systemic failure (wrong subject, revoked VAPID keys, etc.)
+        // is actually visible instead of just "push never seems to arrive."
+        console.warn(`[Push] Send failed for subscription ${sub.id} (${new URL(sub.endpoint).host}): status=${status} ${err?.body || err?.message || ''}`)
       }
     }
   }

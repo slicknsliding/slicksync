@@ -104,7 +104,12 @@ const UpcomingRow = memo(function UpcomingRow({
             <TvIcon className="w-5 h-5 text-subtle" />
           )}
         </div>
-        <div className="min-w-0 flex-1">
+        {/* No flex-1 here — this used to stretch to fill the row (which can
+            be very wide with only one item, e.g. a single-column Coming Up
+            list), shoving the air-date badge all the way to the far right
+            with a huge empty gap. min-w-0 alone still lets a long show name
+            truncate correctly; the date now just sits right after it. */}
+        <div className="min-w-0 max-w-[60%]">
           <p className="text-sm font-medium text-default truncate">{item.showName || 'Unknown show'}</p>
           <p className="text-xs text-muted truncate">
             {epLabel(item.season, item.episode)}{item.title ? ` · ${item.title}` : ''}
