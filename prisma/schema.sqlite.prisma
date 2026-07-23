@@ -225,6 +225,7 @@ model VaultEntry {
   lastCheckStatus  String?                         // ok | error | unknown
   lastCheckMessage String?
   lastNotifiedAt   DateTime?
+  snoozedUntil     DateTime?                       // expiry-warning alerts suppressed until this date ("Snooze 7 days"); check-failure alerts are unaffected
   isActive         Boolean   @default(true)
   position         Int       @default(0)             // manual ordering within a category (drag-and-drop)
   createdAt        DateTime  @default(now())
@@ -519,13 +520,15 @@ model AddonHealthAlert {
 // are the browser-provided encryption keys web-push needs. Unique on
 // endpoint so re-subscribing the same device updates rather than duplicates.
 model PushSubscription {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
-  userAgent String?
-  createdAt DateTime @default(now())
+  id         String    @id @default(cuid())
+  accountId  String    @default("default")
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  label      String? // user-set friendly name ("Living room TV") shown in Settings -> Devices; falls back to a parsed userAgent guess when unset
+  lastSeenAt DateTime? // last successful push send to this device, so a stale/dead subscription is visible at a glance
+  createdAt  DateTime  @default(now())
 
   @@index([accountId])
   @@map("push_subscriptions")

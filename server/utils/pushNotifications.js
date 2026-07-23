@@ -108,6 +108,9 @@ async function sendPushToAccount(prisma, accountId, payload) {
     try {
       await webpush.sendNotification(subscription, body)
       sent++
+      // Best-effort - a device's Settings > Devices "last active" reading
+      // shouldn't be able to fail the actual push send.
+      prisma.pushSubscription.update({ where: { id: sub.id }, data: { lastSeenAt: new Date() } }).catch(() => {})
     } catch (err) {
       const status = err?.statusCode
       if (status === 404 || status === 410) {

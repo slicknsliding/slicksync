@@ -28,6 +28,8 @@ import {
   BanknotesIcon,
   ClockIcon,
   CreditCardIcon,
+  DocumentDuplicateIcon,
+  BellSlashIcon,
 } from '@heroicons/react/24/outline';
 
 const CATEGORY_LABELS: Record<VaultCategory, string> = {
@@ -73,9 +75,16 @@ function StatusBadge({ entry }: { entry: VaultEntry }) {
   return <Badge variant="neutral" size="sm">Unknown</Badge>;
 }
 
+// Whether this entry's expiry-warning alert is currently snoozed (7-day
+// window set via the Snooze button - see handleSnooze).
+function isSnoozed(entry: VaultEntry): boolean {
+  return !!entry.snoozedUntil && new Date(entry.snoozedUntil) > new Date();
+}
+
 function ExpiryBadge({ entry }: { entry: VaultEntry }) {
   const days = daysUntil(entry.expiresAt);
   if (days === null) return null;
+  if (isSnoozed(entry)) return <Badge variant="neutral" size="sm">Snoozed</Badge>;
   if (days < 0) return <Badge variant="error" size="sm">Expired</Badge>;
   if (days <= entry.notifyDaysBefore) return <Badge variant="warning" size="sm">{days}d left</Badge>;
   return <Badge variant="outline" size="sm">{days}d left</Badge>;
@@ -555,6 +564,33 @@ function VaultPageContent() {
     }
   };
 
+  // Copies the secret without requiring "Reveal" first - reuses whatever's
+  // already revealed on screen if present, otherwise fetches it quietly
+  // (never stores it into `revealed`, so the card stays masked).
+  const handleCopy = async (entry: VaultEntry) => {
+    try {
+      const value = revealed[entry.id] ?? (await api.revealVaultSecret(entry.id)).secret;
+      await navigator.clipboard.writeText(value);
+      toast.success('Copied to clipboard');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to copy');
+    }
+  };
+
+  // Silences the expiry-warning alert for 7 days without dismissing the
+  // entry or touching its notifyDaysBefore setting - a check-failure alert
+  // (something's actually broken right now) is a different signal and still
+  // fires normally.
+  const handleSnooze = async (entry: VaultEntry) => {
+    try {
+      const updated = await api.snoozeVaultEntry(entry.id);
+      setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, snoozedUntil: updated.snoozedUntil } : e));
+      toast.success(`Snoozed "${entry.name}" for 7 days`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to snooze');
+    }
+  };
+
   const filterOptions = [
     ...Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
       key, label, count: categoryCounts[key] || 0,
@@ -577,9 +613,27 @@ function VaultPageContent() {
             </p>
           </div>
         </div>
-        <div className="flex gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <StatusBadge entry={entry} />
           <ExpiryBadge entry={entry} />
+          {/* Only worth offering once the badge is actually alert-worthy
+              (expired, or inside the warning window) and not already
+              snoozed - a plain "12d left" badge has nothing to snooze. */}
+          {(() => {
+            const days = daysUntil(entry.expiresAt);
+            const alertWorthy = days !== null && (days < 0 || days <= entry.notifyDaysBefore);
+            if (!alertWorthy || isSnoozed(entry)) return null;
+            return (
+              <button
+                onClick={() => handleSnooze(entry)}
+                title="Snooze this expiry alert for 7 days"
+                className="shrink-0"
+                style={{ color: 'var(--color-textMuted)' }}
+              >
+                <BellSlashIcon className="w-3.5 h-3.5" />
+              </button>
+            );
+          })()}
         </div>
       </div>
 
@@ -587,9 +641,14 @@ function VaultPageContent() {
         <code className="text-xs truncate" style={{ color: 'var(--color-text)' }}>
           {revealed[entry.id] || '••••••••••••••••'}
         </code>
-        <button onClick={() => handleReveal(entry)} className="shrink-0" style={{ color: 'var(--color-textMuted)' }}>
-          {revealed[entry.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => handleCopy(entry)} title="Copy to clipboard" style={{ color: 'var(--color-textMuted)' }}>
+            <DocumentDuplicateIcon className="w-4 h-4" />
+          </button>
+          <button onClick={() => handleReveal(entry)} style={{ color: 'var(--color-textMuted)' }}>
+            {revealed[entry.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+          </button>
+        </div>
       </div>
 
       {entry.lastCheckMessage && (

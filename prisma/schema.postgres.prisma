@@ -220,6 +220,7 @@ model VaultEntry {
   lastCheckStatus  String?
   lastCheckMessage String?
   lastNotifiedAt   DateTime?
+  snoozedUntil     DateTime?
   isActive         Boolean   @default(true)
   position         Int       @default(0)
   createdAt        DateTime  @default(now())
@@ -483,13 +484,15 @@ model AddonHealthAlert {
 }
 
 model PushSubscription {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
-  userAgent String?
-  createdAt DateTime @default(now())
+  id         String    @id @default(cuid())
+  accountId  String    @default("default")
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  label      String?
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
 
   @@index([accountId])
   @@map("push_subscriptions")
