@@ -7,7 +7,7 @@ import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopba
 import { useLayoutMode } from '@/lib/layout-mode';
 import { Card, StatCard, Badge, UserAvatar, PageToolbar } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { api, MetricsData, AtRiskUser } from '@/lib/api';
+import { api, MetricsData, AtRiskUser, TasteOverlapPair } from '@/lib/api';
 import {
   UserLifecycleCard,
   HourlyHeatmap,
@@ -33,6 +33,7 @@ import {
   ExclamationTriangleIcon,
   ServerIcon,
   PuzzlePieceIcon,
+  HeartIcon,
 } from '@heroicons/react/24/outline';
 import {
   AreaChart,
@@ -177,6 +178,7 @@ export default function MetricsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [selectedUser, setSelectedUser] = useState<AtRiskUser | null>(null);
+  const [tasteOverlap, setTasteOverlap] = useState<TasteOverlapPair[]>([]);
 
   // Fetch metrics data
   useEffect(() => {
@@ -195,6 +197,14 @@ export default function MetricsPage() {
         setIsLoading(false);
       });
   }, [period]);
+
+  // Taste overlap is all-time real watch-time comparison, not windowed by
+  // the period filter above - fetched once, independently.
+  useEffect(() => {
+    api.getTasteOverlap()
+      .then((data) => setTasteOverlap(data.pairs || []))
+      .catch(() => setTasteOverlap([]));
+  }, []);
 
   // Same fix as Dashboard/Activity's "Active Users" stat:
   // metricsData.summary.activeUsers counts anyone with watch activity
@@ -505,6 +515,48 @@ export default function MetricsPage() {
                 </div>
               </Card>
             </PageSection>
+
+            {/* Taste Overlap - real behavioral overlap (actual watch-time
+                on shared titles), not genre-tag matching. Hidden entirely
+                for a single-user household, where a "pair" can't exist. */}
+            {tasteOverlap.length > 0 && (
+              <PageSection delay={0.35}>
+                <Card padding="lg">
+                  <div className="flex items-center gap-3 mb-6">
+                    <HeartIcon className="w-6 h-6" />
+                    <div>
+                      <h3 className="text-lg font-semibold font-display text-default">Taste overlap</h3>
+                      <p className="text-sm text-muted">Real shared watch-time between household members, not genre matching</p>
+                    </div>
+                  </div>
+                  <div className="space-y-5">
+                    {tasteOverlap.map((pair) => (
+                      <div key={`${pair.userA.id}-${pair.userB.id}`} className="p-4 rounded-xl bg-surface-hover">
+                        <div className="flex items-center gap-3 mb-3">
+                          <UserAvatar userId={pair.userA.id} name={pair.userA.username} email={pair.userA.email} src={pair.userA.useGravatar ? undefined : (pair.userA.avatarUrl ?? undefined)} size="sm" />
+                          <span className="text-sm font-medium text-default truncate">{pair.userA.username}</span>
+                          <Badge variant="primary">{pair.similarity}% overlap</Badge>
+                          <span className="text-sm font-medium text-default truncate">{pair.userB.username}</span>
+                          <UserAvatar userId={pair.userB.id} name={pair.userB.username} email={pair.userB.email} src={pair.userB.useGravatar ? undefined : (pair.userB.avatarUrl ?? undefined)} size="sm" />
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {pair.shared.map((item) => (
+                            <div key={item.key} title={item.name || undefined} className="w-16 shrink-0">
+                              <div className="w-16 h-24 rounded-lg overflow-hidden bg-surface border border-default">
+                                {item.poster && (
+                                  <img src={item.poster} alt={item.name || ''} className="w-full h-full object-cover" />
+                                )}
+                              </div>
+                              <p className="text-xs text-muted mt-1 truncate">{item.name}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </PageSection>
+            )}
           </div>
         )}
 

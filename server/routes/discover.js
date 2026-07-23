@@ -161,6 +161,30 @@ module.exports = ({ prisma, getAccountId } = {}) => {
       for (const e of episodes) if (!scoreByItem.has(e.showId)) scoreByItem.set(e.showId, BASELINE_SECONDS)
       for (const w of watchlist) scoreByItem.set(w.itemId, (scoreByItem.get(w.itemId) || 0) + WATCHLIST_WEIGHT_SECONDS)
 
+      // Collaborative signal: a modest boost for titles OTHER household
+      // members also spent real time on, so the seed picked for a genre row
+      // reflects actual shared taste rather than just whichever single
+      // viewer's score happens to be highest. See recommendationEngine.js's
+      // own header for why this is a boost on top of genre/Cinemeta
+      // discovery rather than a full replacement.
+      try {
+        const { buildUserVectors, computeItemSimilarity, collaborativeBoost } = require('../utils/recommendationEngine')
+        const { vectors } = await buildUserVectors(prisma, accountId)
+        if (vectors.size > 1) {
+          const affinity = computeItemSimilarity(vectors)
+          const COLLAB_BOOST_WEIGHT = 0.5
+          for (const [id, score] of scoreByItem) {
+            const meta = itemMeta.get(id)
+            if (!meta) continue
+            const key = `${meta.type === 'series' ? 'series' : 'movie'}:${id}`
+            const boost = collaborativeBoost(affinity, key)
+            if (boost > 0) scoreByItem.set(id, score + boost * COLLAB_BOOST_WEIGHT)
+          }
+        }
+      } catch (e) {
+        console.warn('Collaborative boost skipped:', e?.message)
+      }
+
       const ranked = [...scoreByItem.entries()]
         .sort((a, b) => b[1] - a[1])
         .slice(0, CANDIDATE_POOL)
@@ -224,6 +248,46 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     } catch (error) {
       console.error('Error building recommendations:', error)
       res.status(500).json({ error: 'Failed to build recommendations' })
+    }
+  })
+
+  // GET /api/discover/taste-overlap
+  // "You and X" - real behavioral overlap between every pair of managed
+  // users on this account, from actual watch-time (MovieWatchHistory /
+  // EpisodeWatchHistory), not genre tags. Similarity is cosine similarity
+  // across each pair's full weighted watch vectors; "shared favorites" is
+  // capped per pair (top 5) by min(timeA, timeB) per title, so a title only
+  // one side actually spent real time on doesn't count as shared. See
+  // recommendationEngine.js for the actual math.
+  router.get('/taste-overlap', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.json({ pairs: [] })
+      const accountId = getAccountId(req) || 'default'
+
+      const { buildUserVectors, computePairwiseOverlap } = require('../utils/recommendationEngine')
+      const { vectors, itemMeta } = await buildUserVectors(prisma, accountId)
+      if (vectors.size < 2) return res.json({ pairs: [] })
+
+      const users = await prisma.user.findMany({
+        where: { id: { in: [...vectors.keys()] } },
+        select: { id: true, username: true, avatarUrl: true, useGravatar: true, colorIndex: true, email: true },
+      })
+      const userById = new Map(users.map((u) => [u.id, u]))
+
+      const pairs = computePairwiseOverlap(vectors, itemMeta)
+        .filter((p) => userById.has(p.userA) && userById.has(p.userB) && p.sharedCount > 0)
+        .map((p) => ({
+          userA: userById.get(p.userA),
+          userB: userById.get(p.userB),
+          similarity: Math.round(p.similarity * 100),
+          sharedCount: p.sharedCount,
+          shared: p.shared,
+        }))
+
+      res.json({ pairs })
+    } catch (error) {
+      console.error('Error computing taste overlap:', error)
+      res.status(500).json({ error: 'Failed to compute taste overlap' })
     }
   })
 
