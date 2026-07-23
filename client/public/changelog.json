@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.42.0",
+    "date": "2026-07-22",
+    "title": "Addon failover now notifies you (Discord, PWA push, and the bell)",
+    "features": [
+      "When a primary addon goes offline, SlickSync already silently diverted every group using it to its configured backup addon (and switched back once it recovered) — but nothing ever told anyone that happened. Now it does, on all three channels at once: a Discord message (\"⚠️ X went offline\" / \"✅ X is back online\", naming the backup and how many groups were affected), a native push notification to any installed PWA device, and an entry in the notification bell. New \"Addon health notifications\" toggle in Settings → Notifications, same on/off pattern as Activity/Sync/Invite/Vault."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "New AddonHealthAlert table logs every online/offline transition (which addon, which backup took over, how many groups were affected) — GET /api/addons/health-alerts serves the last 14 days to the bell, same shape as the existing episode-alerts endpoint."
+    ]
+  },
+  {
     "version": "1.41.4",
     "date": "2026-07-22",
     "title": "Fix: theme switching left the background glow stuck on the wrong color",
