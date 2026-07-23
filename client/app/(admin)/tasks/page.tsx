@@ -31,6 +31,7 @@ import {
   DocumentDuplicateIcon,
   PaperAirplaneIcon,
   ArrowUturnLeftIcon,
+  CheckCircleIcon,
 } from '@heroicons/react/24/outline';
 
 // Task action card component
@@ -1279,7 +1280,35 @@ export default function TasksPage() {
                   <div key={backup.filename} className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-default bg-subtle">
                     <div className="min-w-0">
                       <p className="text-sm text-default truncate">{formatBackupDate(backup.createdAt)}</p>
-                      <p className="text-xs text-muted">{(backup.size / 1024).toFixed(1)} KB</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs text-muted">{(backup.size / 1024).toFixed(1)} KB</p>
+                        {/* Confirms this backup would actually restore (or
+                            says exactly why not), instead of only finding
+                            out mid-emergency - see backupValidation.js.
+                            Absent (no badge) for backups written before
+                            this existed. */}
+                        {backup.validation && (
+                          backup.validation.valid ? (
+                            <span
+                              className="flex items-center gap-1 text-xs text-success"
+                              title="This backup would restore cleanly"
+                            >
+                              <CheckCircleIcon className="w-3.5 h-3.5" />
+                              {backup.validation.counts
+                                ? `${backup.validation.counts.users}u/${backup.validation.counts.groups}g/${backup.validation.counts.addons}a`
+                                : 'Valid'}
+                            </span>
+                          ) : (
+                            <span
+                              className="flex items-center gap-1 text-xs text-error"
+                              title={backup.validation.issues.join('\n')}
+                            >
+                              <ExclamationTriangleIcon className="w-3.5 h-3.5" />
+                              {backup.validation.issues.length} issue{backup.validation.issues.length === 1 ? '' : 's'}
+                            </span>
+                          )
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <Button variant="ghost" size="sm" onClick={() => handleDownloadBackup(backup.filename)} title="Download">
