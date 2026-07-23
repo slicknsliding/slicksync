@@ -332,6 +332,19 @@ function clearCustomTheme(el: HTMLElement) {
   for (const v of OVERRIDE_VARS) el.style.removeProperty(v);
 }
 
+// The theme-picker's background glow blobs (PageContainer.tsx) are heavily
+// blurred + transform-animated, which Firefox puts on their own GPU
+// compositor layer. Custom-property-only changes on documentElement don't
+// reliably repaint that layer in the same frame as the rest of the page -
+// switching themes quickly could leave the glow showing a stale color (or
+// briefly nothing) indefinitely, until something else forced a full
+// repaint (a resize, or a hard refresh - which is exactly the workaround
+// users found). Reading offsetHeight forces the browser to synchronously
+// flush layout/paint right here, so no layer can be left stale.
+function forceRepaint() {
+  void document.documentElement.offsetHeight;
+}
+
 // Migrates the pre-v1.25 single-slot localStorage shape into the list shape.
 // Returns { savedList, migratedActiveId } — the latter is set when the user's
 // active theme was the old sentinel `'custom'` and needs to be re-pointed at
@@ -516,11 +529,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const active = list.find((t) => t.id === id);
     if (active) {
       applyCustomTheme(document.documentElement, active);
+      forceRepaint();
       return true;
     }
     if (isBuiltInThemeId(id)) {
       clearCustomTheme(document.documentElement);
       document.documentElement.className = id;
+      forceRepaint();
       return true;
     }
     return false;
@@ -631,6 +646,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         textScale: config.textScale || 'default',
       };
       applyCustomTheme(document.documentElement, merged);
+      forceRepaint();
     }
   };
 
@@ -641,14 +657,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const previewCustom = (c: CustomTheme) => {
     applyCustomTheme(document.documentElement, c);
+    forceRepaint();
   };
 
   const cancelPreview = () => {
     const active = savedCustomThemes.find((t) => t.id === themeId);
-    if (active) applyCustomTheme(document.documentElement, active);
-    else if (isBuiltInThemeId(themeId)) {
+    if (active) {
+      applyCustomTheme(document.documentElement, active);
+      forceRepaint();
+    } else if (isBuiltInThemeId(themeId)) {
       clearCustomTheme(document.documentElement);
       document.documentElement.className = themeId;
+      forceRepaint();
     }
   };
 
