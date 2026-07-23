@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.46.1",
+    "date": "2026-07-23",
+    "title": "Fix: Mark all read cleared notifications instead of just marking them read",
+    "features": [],
+    "bugFixes": [
+      "\"Mark all read\" and \"Clear\" did the exact same thing - both just fast-forwarded the same internal timestamp that controls which notifications exist in the list at all, so \"mark all read\" made everything disappear instead of staying visible but un-highlighted. There was no actual per-notification read state anywhere. Added one (persisted, same pattern as the existing per-row dismiss), gave unread rows a visible highlight + dot that read ones lose, and pointed \"Mark all read\" at that new state instead of the list-membership timestamp. \"Clear\" (and each row's own X) still remove notifications outright - only \"Mark all read\" changed.",
+      "The TorBox referral badge next to the panel switcher was hidden entirely on mobile (added a few versions ago to fix it covering page content) - now shown at half size instead of hidden, small enough to stay out of the way."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.46.0",
     "date": "2026-07-23",
     "title": "feat: Monthly poster mosaic",

@@ -127,14 +127,26 @@ export function NebulaTopbar() {
             align="left"
           />
         </div>
-        {/* Hidden below md: this pill is unconditionally fixed (no menu
-            state gates it, unlike Sidebar's TorBox placement, which is
-            off-screen until the mobile menu opens) - on a narrow phone the
-            two pills side by side doubled the fixed footprint and started
-            covering real page content underneath (confirmed: a Settings
-            toggle's description text was getting cut off behind it). Not
-            worth the referral badge on a screen that tight; desktop/tablet
-            has room to spare. */}
+        {/* This pill is unconditionally fixed (no menu state gates it,
+            unlike Sidebar's TorBox placement, which is off-screen until the
+            mobile menu opens) - on a narrow phone the two pills side by side
+            at full size doubled the fixed footprint and started covering
+            real page content underneath (confirmed: a Settings toggle's
+            description text was getting cut off behind it). Rather than
+            hide it below md entirely, render it at half size there instead -
+            small enough to stay out of the way, still visible/tappable. */}
+        <div
+          className="md:hidden rounded-xl p-1"
+          style={{
+            background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
+            border: '1px solid var(--color-surface-border)',
+            boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
+          }}
+        >
+          <TorBoxBadge size={18} />
+        </div>
         <div
           className="hidden md:block rounded-2xl p-1.5"
           style={{
