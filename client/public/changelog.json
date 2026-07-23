@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.41.2",
+    "date": "2026-07-22",
+    "title": "Fix: Theme builder's Primary/Secondary accent didn't update when switching Base",
+    "features": [],
+    "bugFixes": [
+      "Every optional color override in Build-your-own-theme (text, background, surface, success, error, etc.) already re-seeded from the newly-selected Base's real colors, but Primary accent and Secondary accent — the two swatches right under \"Based on …\" — were never wired into that cascade, so they stayed stuck on whatever the previous Base's colors were (or the very first default) no matter which theme you picked. Selecting Midnight, for example, kept showing Nebula's purple/teal instead of Midnight's amber/gold. Switching Base now updates both swatches to that theme's actual accent colors, same as everything else in the builder."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.41.1",
     "date": "2026-07-22",
     "title": "Fix: Dashboard/Activity background glow randomly flaring bright",

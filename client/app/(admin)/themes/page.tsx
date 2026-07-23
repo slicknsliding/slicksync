@@ -717,7 +717,15 @@ export default function ThemesPage() {
                 <label className="block text-xs font-medium mb-2 text-muted">Base (background, surfaces, text)</label>
                 <select
                   value={builderBase}
-                  onChange={(e) => { const v = e.target.value as ThemeId; setBuilderBase(v); previewCustom({ ...buildDraft(), base: v }); }}
+                  onChange={(e) => {
+                    const v = e.target.value as ThemeId;
+                    const nextPrimary = themeMeta[v].colors.primary;
+                    const nextSecondary = themeMeta[v].colors.secondary;
+                    setBuilderBase(v);
+                    setBuilderPrimary(nextPrimary);
+                    setBuilderSecondary(nextSecondary);
+                    previewCustom({ ...buildDraft(), base: v, primary: nextPrimary, secondary: nextSecondary });
+                  }}
                   className="input-base px-3 py-2 text-sm w-full max-w-xs"
                 >
                   {themeIds.map((id) => (
