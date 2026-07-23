@@ -24,6 +24,7 @@ import {
   SwatchIcon,
 } from '@heroicons/react/24/outline';
 import { PanelSwitcher } from './PanelSwitcher';
+import { TorBoxBadge } from './TorBoxBadge';
 import { api } from '@/lib/api';
 
 interface SidebarProps {
@@ -302,16 +303,19 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </span>
         </div>
 
-        {/* Panel Switcher */}
+        {/* Panel Switcher + TorBox referral badge */}
         <div
-          className="p-3"
+          className="p-3 flex items-center gap-2"
           style={{ borderTop: '1px solid var(--color-surface-border)' }}
         >
-          <PanelSwitcher
-            mode="admin"
-            userInfo={accountInfo}
-            onLogout={handleLogout}
-          />
+          <div className="flex-1 min-w-0">
+            <PanelSwitcher
+              mode="admin"
+              userInfo={accountInfo}
+              onLogout={handleLogout}
+            />
+          </div>
+          <TorBoxBadge size={36} />
         </div>
       </motion.aside>
     </>
