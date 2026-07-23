@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.45.3",
+    "date": "2026-07-23",
+    "title": "Fix: theme picker still showed a stale color on Firefox after switching",
+    "features": [],
+    "bugFixes": [
+      "Reproduced this live and confirmed the underlying state was already correct (React state, CSS variables, and the rendered checkmark badge's own computed color all matched immediately) - but that reproduction was on a Chromium-based browser, and every report of this has been on Firefox specifically. Two releases ago, a forced-reflow call was removed on the theory that it forced layout (not paint) and couldn't be helping - true in theory, but that removal got bundled together with a separate, definitely-real fix (a redundant duplicate apply on every click), and the two were never tested independently of each other. Restored the forced reflow, now correctly firing only once per click instead of twice."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.45.2",
     "date": "2026-07-23",
     "title": "Fix: Nebula theme glow reads as a blinding flare on warm themes",
