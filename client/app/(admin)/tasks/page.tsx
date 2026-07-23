@@ -7,7 +7,7 @@ import { Button, Card, Badge, UserAvatar, ConfirmModal, Modal, Input } from '@/c
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { api, User, Group, AddonSnapshot, BackupFile } from '@/lib/api';
+import { api, User, Group, AddonSnapshot, BackupFile, DisasterRecoveryKit } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import {
   ArrowPathIcon,
@@ -32,6 +32,9 @@ import {
   PaperAirplaneIcon,
   ArrowUturnLeftIcon,
   CheckCircleIcon,
+  LockClosedIcon,
+  EyeIcon,
+  EyeSlashIcon,
 } from '@heroicons/react/24/outline';
 
 // Task action card component
@@ -193,6 +196,70 @@ export default function TasksPage() {
       .finally(() => setLoadingBackups(false));
   };
   useEffect(fetchBackups, []);
+
+  // Disaster Recovery Kit - unlike the regular config backup above (Users/
+  // Groups/Addons only), this also bundles every Vault secret, re-encrypted
+  // under a passphrase chosen here instead of this instance's own
+  // ENCRYPTION_KEY - so the file is portable to a brand-new instance if
+  // this one and its key are both lost. Manual/on-demand only.
+  const [drkExportPassphrase, setDrkExportPassphrase] = useState('');
+  const [drkExportPassphraseVisible, setDrkExportPassphraseVisible] = useState(false);
+  const [isExportingDrk, setIsExportingDrk] = useState(false);
+  const [drkImportPassphrase, setDrkImportPassphrase] = useState('');
+  const [drkImportPassphraseVisible, setDrkImportPassphraseVisible] = useState(false);
+  const [isImportingDrk, setIsImportingDrk] = useState(false);
+  const drkFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportDrk = async () => {
+    if (drkExportPassphrase.trim().length < 12) {
+      toast.error('Passphrase must be at least 12 characters');
+      return;
+    }
+    setIsExportingDrk(true);
+    try {
+      const kit = await api.exportDisasterRecoveryKit(drkExportPassphrase.trim());
+      const blob = new Blob([JSON.stringify(kit, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const date = new Date().toISOString().split('T')[0];
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `slicksync-recovery-kit-${date}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Kit downloaded: ${kit.counts.users} users, ${kit.counts.groups} groups, ${kit.counts.addons} addons, ${kit.counts.vaultEntries} Vault entries`);
+      setDrkExportPassphrase('');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to build recovery kit');
+    } finally {
+      setIsExportingDrk(false);
+    }
+  };
+
+  const handleImportDrkFile = (file: File) => {
+    if (drkImportPassphrase.trim().length === 0) {
+      toast.error('Enter the passphrase this kit was exported with first');
+      return;
+    }
+    openConfirm({
+      title: 'Restore Disaster Recovery Kit',
+      description: 'This replaces all current Users, Groups, and Addons with the kit\'s contents, and adds every Vault entry from the kit. This cannot be undone.',
+      variant: 'danger',
+      onConfirm: async () => {
+        setIsImportingDrk(true);
+        try {
+          const text = await file.text();
+          const kit: DisasterRecoveryKit = JSON.parse(text);
+          const result = await api.importDisasterRecoveryKit(drkImportPassphrase.trim(), kit);
+          toast.success(`Restored: ${result.counts.users} users, ${result.counts.groups} groups, ${result.counts.addons} addons, ${result.restoredVaultCount} Vault entries`);
+          setDrkImportPassphrase('');
+        } catch (e: any) {
+          toast.error(e.message || 'Failed to restore recovery kit');
+        } finally {
+          setIsImportingDrk(false);
+        }
+      },
+    });
+  };
 
   // Scheduling settings
   const [syncFrequency, setSyncFrequency] = useState('0');
@@ -1330,6 +1397,107 @@ export default function TasksPage() {
               </p>
             )}
           </Card>
+        </PageSection>
+
+        {/* Disaster Recovery Kit - the regular backup above never touches
+            Vault (its secrets are encrypted under THIS instance's own
+            ENCRYPTION_KEY, so a backup file sitting next to a lost VPS is
+            useless without it). This bundles the same config export plus
+            every Vault secret, re-encrypted under a passphrase chosen here
+            instead - portable to a brand-new instance. Manual only, never
+            scheduled - it's real, usable credential access protected only
+            as strongly as the passphrase, not something to generate on a
+            timer and forget about. */}
+        <PageSection delay={0.32}>
+          <Card padding="lg" className="mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-amber-500/20">
+                <LockClosedIcon className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold font-display text-default">Disaster Recovery Kit</h3>
+                <p className="text-xs text-muted">Users, Groups, Addons AND Vault, in one passphrase-protected file - portable to a brand-new instance</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1.5">Export</label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={drkExportPassphraseVisible ? 'text' : 'password'}
+                      value={drkExportPassphrase}
+                      onChange={(e) => setDrkExportPassphrase(e.target.value)}
+                      placeholder="Choose a passphrase (12+ characters)"
+                      className="input-base px-3 py-2 text-sm w-full pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setDrkExportPassphraseVisible((v) => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-subtle hover:text-default"
+                    >
+                      {drkExportPassphraseVisible ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleExportDrk}
+                    isLoading={isExportingDrk}
+                    leftIcon={!isExportingDrk ? <ArrowDownTrayIcon className="w-4 h-4" /> : undefined}
+                  >
+                    Download Kit
+                  </Button>
+                </div>
+                <p className="text-[11px] text-subtle mt-1">
+                  Write this passphrase down somewhere safe - it's the only thing standing between this file and every credential in Vault, and it can't be recovered if lost.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-default">
+                <label className="block text-xs font-medium text-muted mb-1.5">Restore</label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={drkImportPassphraseVisible ? 'text' : 'password'}
+                      value={drkImportPassphrase}
+                      onChange={(e) => setDrkImportPassphrase(e.target.value)}
+                      placeholder="Passphrase this kit was exported with"
+                      className="input-base px-3 py-2 text-sm w-full pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setDrkImportPassphraseVisible((v) => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-subtle hover:text-default"
+                    >
+                      {drkImportPassphraseVisible ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => drkFileInputRef.current?.click()}
+                    isLoading={isImportingDrk}
+                    leftIcon={!isImportingDrk ? <ArrowUpTrayIcon className="w-4 h-4" /> : undefined}
+                  >
+                    Choose Kit File
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Card>
+          <input
+            ref={drkFileInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImportDrkFile(file);
+              e.target.value = '';
+            }}
+          />
         </PageSection>
 
         {/* Automatic Sync */}

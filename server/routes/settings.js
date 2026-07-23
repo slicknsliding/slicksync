@@ -177,6 +177,41 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       }
     })
 
+    // POST /settings/disaster-recovery-kit/export - unlike the regular
+    // config backup above (Users/Groups/Addons only), this also bundles
+    // every Vault secret, decrypted and re-encrypted under the passphrase
+    // supplied here instead of this instance's own ENCRYPTION_KEY - so the
+    // resulting file is portable to a brand-new instance if this one and
+    // its key are both lost. Manual/on-demand only, never scheduled.
+    router.post('/disaster-recovery-kit/export', async (req, res) => {
+      try {
+        const accountId = getAccountId(req) || 'default'
+        const { passphrase } = req.body || {}
+        const { buildKit } = require('../utils/disasterRecoveryKit')
+        const kit = await buildKit(prisma, accountId, passphrase, req, { decrypt })
+        res.setHeader('Content-Disposition', `attachment; filename="slicksync-recovery-kit-${new Date().toISOString().split('T')[0]}.json"`)
+        return res.json(kit)
+      } catch (e) {
+        return res.status(400).json({ message: e?.message || 'Failed to build recovery kit' })
+      }
+    })
+
+    // POST /settings/disaster-recovery-kit/import - DESTRUCTIVE, same as
+    // restore-from-backup (replaces current Users/Groups/Addons), PLUS
+    // creates a new Vault entry for every secret in the kit, re-encrypted
+    // under THIS instance's own current ENCRYPTION_KEY.
+    router.post('/disaster-recovery-kit/import', async (req, res) => {
+      try {
+        const accountId = getAccountId(req) || 'default'
+        const { passphrase, kit } = req.body || {}
+        const { restoreKit } = require('../utils/disasterRecoveryKit')
+        const result = await restoreKit(prisma, accountId, passphrase, kit, req, { encrypt })
+        return res.json(result)
+      } catch (e) {
+        return res.status(400).json({ message: e?.message || 'Failed to restore recovery kit' })
+      }
+    })
+
     // DELETE /settings/backups/:filename
     router.delete('/backups/:filename', async (req, res) => {
       try {

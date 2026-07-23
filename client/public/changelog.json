@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.45.0",
+    "date": "2026-07-23",
+    "title": "Disaster Recovery Kit, TorBox badge",
+    "features": [
+      "Disaster Recovery Kit (Tasks): the regular config backup only ever covered Users/Groups/Addons, never Vault - its secrets are encrypted under this instance's own ENCRYPTION_KEY, so a backup sitting next to a lost VPS is useless without it. The kit bundles the same config export plus every Vault secret, re-encrypted under a passphrase you choose at export time instead - a self-contained, portable file that can rebuild a brand-new instance (config + credentials) even if this one and its key are both gone. Manual/on-demand only, never scheduled.",
+      "TorBox badge next to the admin panel switcher (bottom-left in Nebula, sidebar footer in Current), linking out to a TorBox referral."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.44.0",
     "date": "2026-07-23",
     "title": "Backup restorability check",
