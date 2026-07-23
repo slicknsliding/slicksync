@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.40.1",
+    "date": "2026-07-23",
+    "title": "Fix: long-press to remove a Continue Watching card didn't work on mobile",
+    "bugFixes": [
+      "Dashboard → Continue Watching cards only listened for the native right-click (contextmenu) event, which mobile browsers don't reliably synthesize from a long-press on an arbitrary card the way they do for plain text or images — long-pressing a card to remove it from watch history silently did nothing on phones. Added the same explicit long-press handling (500ms hold, cancelled if your finger moves — so it doesn't fight the row's horizontal scroll) that Addons and Coming Up already use."
+    ],
+    "features": [],
+    "miscChores": []
+  },
+  {
     "version": "1.40.0",
     "date": "2026-07-23",
     "title": "Fixed: iOS push notifications were silently failing account-wide",
