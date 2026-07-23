@@ -16,6 +16,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { PanelSwitcher } from './PanelSwitcher';
+import { TorBoxBadge } from './TorBoxBadge';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { api } from '@/lib/api';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -107,7 +108,7 @@ export function NebulaTopbar() {
           on short pages, but that traded away the "always there" behavior
           this is for - reverted. dropdownPosition="up" (the default) is
           correct since this sits at the BOTTOM of the screen. */}
-      <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40">
+      <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40 flex items-end gap-2">
         <div
           className="rounded-2xl p-1.5"
           style={{
@@ -125,6 +126,18 @@ export function NebulaTopbar() {
             variant="compact"
             align="left"
           />
+        </div>
+        <div
+          className="rounded-2xl p-1.5"
+          style={{
+            background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
+            border: '1px solid var(--color-surface-border)',
+            boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
+          }}
+        >
+          <TorBoxBadge size={36} />
         </div>
       </div>
       {/* Notifications, fixed top-right, mobile only - the desktop copy

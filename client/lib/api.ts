@@ -856,6 +856,24 @@ class ApiClient {
     return this.fetch(`/settings/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' });
   }
 
+  // Disaster Recovery Kit - unlike the regular config backup above (Users/
+  // Groups/Addons only), this also bundles every Vault secret, re-encrypted
+  // under the passphrase supplied here instead of this instance's own
+  // ENCRYPTION_KEY, so the file is portable to a brand-new instance.
+  async exportDisasterRecoveryKit(passphrase: string) {
+    return this.fetch<DisasterRecoveryKit>('/settings/disaster-recovery-kit/export', {
+      method: 'POST',
+      body: JSON.stringify({ passphrase }),
+    });
+  }
+
+  async importDisasterRecoveryKit(passphrase: string, kit: DisasterRecoveryKit) {
+    return this.fetch<{ restoredVaultCount: number; counts: { users: number; groups: number; addons: number } }>(
+      '/settings/disaster-recovery-kit/import',
+      { method: 'POST', body: JSON.stringify({ passphrase, kit }) },
+    );
+  }
+
   // Addon Snapshots ("Templates") - save a user's/group's current addon
   // set as a named, reusable template; deploy it onto any user later.
   async getSnapshots() {
@@ -1951,6 +1969,13 @@ export interface BackupFile {
   size: number;
   createdAt: string;
   validation?: BackupValidation | null;
+}
+
+export interface DisasterRecoveryKit {
+  salt: string;
+  payload: string;
+  exportedAt: string;
+  counts: { users: number; groups: number; addons: number; vaultEntries: number };
 }
 
 export interface AddonSnapshot {
