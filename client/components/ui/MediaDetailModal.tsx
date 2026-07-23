@@ -31,6 +31,14 @@ interface MediaDetailModalProps {
   // exist on the detail lookup, so those are unaffected either way.
   fallbackRating?: string | null;
   fallbackReleaseInfo?: string | null;
+  // Fires after the modal's own watchlist toggle succeeds (or fails and
+  // reverts), so a caller with its own watchlist list/grid — Discover, in
+  // practice — can stay in sync. Without this the modal's add/remove was a
+  // dead end: it really did persist to the account's watchlist, but nothing
+  // told the page that opened the modal, so its poster-card badges and its
+  // Watchlist tab (both reading from the page's own already-fetched list,
+  // not a fresh request) kept showing the old state until a full reload.
+  onWatchlistChange?: (itemId: string, inWatchlist: boolean) => void;
 }
 
 export function MediaDetailModal({
@@ -43,6 +51,7 @@ export function MediaDetailModal({
   fallbackPoster,
   fallbackRating,
   fallbackReleaseInfo,
+  onWatchlistChange,
 }: MediaDetailModalProps) {
   const [details, setDetails] = useState<MediaDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -74,6 +83,7 @@ export function MediaDetailModal({
     setWatchlistBusy(true);
     const next = !inWatchlist;
     setInWatchlist(next); // optimistic
+    onWatchlistChange?.(itemId, next);
     try {
       if (next) {
         await api.addToWatchlist({
@@ -87,6 +97,7 @@ export function MediaDetailModal({
       }
     } catch {
       setInWatchlist(!next); // revert on failure
+      onWatchlistChange?.(itemId, !next);
     } finally {
       setWatchlistBusy(false);
     }
