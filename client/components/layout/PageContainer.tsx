@@ -49,25 +49,37 @@ export function PageContainer({ children, className, noSidebarOffset }: PageCont
                 different. Dropped well below Current layout's already-safe
                 30/20 (which also uses the *muted* variant, not full
                 strength) since Nebula's blobs are 500-560px vs Current's
-                400-500px and this is the more visually dominant layout. */}
+                400-500px and this is the more visually dominant layout.
+
+                A 4th report (switching quickly through several themes, esp.
+                custom -> built-in) showed the glow hard-cutting to the new
+                hue the instant --color-primary changes, while everything
+                else (checkmark, cards) updates in step - not a lag, a real
+                jarring flash, worse the further apart two themes' hues are.
+                The `transition: background-color` below (added to all four
+                blobs, both layouts) is the fix: eases the swap instead of
+                snapping it, and as a side effect smooths over any leftover
+                one-frame Firefox compositor lag on this blurred, animated
+                layer specifically (blur filters get their own compositor
+                path) without another forceRepaint()-style hack. */}
             <div
               className="absolute -top-32 -left-32 w-[560px] h-[560px] rounded-full blur-[110px] opacity-20 animate-float-slow"
-              style={{ background: 'var(--color-primary)' }}
+              style={{ background: 'var(--color-primary)', transition: 'background-color 0.6s ease-out' }}
             />
             <div
               className="absolute -bottom-32 -right-32 w-[520px] h-[520px] rounded-full blur-[110px] opacity-15 animate-float-slow-reverse"
-              style={{ background: 'var(--color-secondary)' }}
+              style={{ background: 'var(--color-secondary)', transition: 'background-color 0.6s ease-out' }}
             />
           </>
         ) : (
           <>
             <div
               className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full blur-[120px] opacity-30"
-              style={{ background: 'var(--color-primaryMuted)' }}
+              style={{ background: 'var(--color-primaryMuted)', transition: 'background-color 0.6s ease-out' }}
             />
             <div
               className="absolute -bottom-40 -left-40 w-[400px] h-[400px] rounded-full blur-[100px] opacity-20"
-              style={{ background: 'var(--color-secondaryMuted)' }}
+              style={{ background: 'var(--color-secondaryMuted)', transition: 'background-color 0.6s ease-out' }}
             />
           </>
         )}
