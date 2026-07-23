@@ -30,6 +30,7 @@ interface NotificationsDropdownProps {
 }
 
 const DISMISSED_STORAGE_KEY = 'notifications-dismissed-ids';
+const READ_STORAGE_KEY = 'notifications-read-ids';
 
 export function NotificationsDropdown({ activities = [], inviteHistory = [], taskHistory = [] }: NotificationsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -66,6 +67,28 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   const handleDismiss = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     persistDismissedIds(new Set(dismissedIds).add(id));
+  };
+
+  // Which notifications have been marked read - separate from dismissedIds
+  // (which removes a row entirely) and from lastChecked (which controls
+  // what's in the window at all, not whether something already in it has
+  // been seen). "Mark all read" should un-highlight everything currently
+  // visible without making it disappear - that needs its own persisted set.
+  const [readIds, setReadIds] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const stored = localStorage.getItem(READ_STORAGE_KEY);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const persistReadIds = (next: Set<string>) => {
+    setReadIds(next);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(READ_STORAGE_KEY, JSON.stringify(Array.from(next)));
+    }
   };
 
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
@@ -262,13 +285,14 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       .filter((activity) => new Date(activity.timestamp) > lastChecked)
       .slice(0, 5)
       .forEach((activity) => {
+        const id = `activity-${activity.id}`;
         items.push({
-          id: `activity-${activity.id}`,
+          id,
           type: 'activity',
           title: `${activity.userName} ${activity.type === 'watch' ? 'is watching' : activity.type === 'complete' ? 'completed' : 'synced'}`,
           message: activity.contentName,
           timestamp: new Date(activity.timestamp),
-          read: false,
+          read: readIds.has(id),
           poster: activity.poster,
         });
       });
@@ -278,13 +302,14 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       .filter((invite) => invite.action === 'used' && new Date(invite.timestamp) > lastChecked)
       .slice(0, 3)
       .forEach((invite) => {
+        const id = `invite-${invite.id}`;
         items.push({
-          id: `invite-${invite.id}`,
+          id,
           type: 'invite',
           title: 'Invite used',
           message: `${invite.userName || 'Someone'} joined ${invite.groupName}`,
           timestamp: new Date(invite.timestamp),
-          read: false,
+          read: readIds.has(id),
         });
       });
 
@@ -293,13 +318,14 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       .filter((task) => new Date(task.timestamp) > lastChecked && task.status === 'success')
       .slice(0, 3)
       .forEach((task) => {
+        const id = `task-${task.id}`;
         items.push({
-          id: `task-${task.id}`,
+          id,
           type: 'task',
           title: 'Task completed',
           message: `${task.type.replace('_', ' ')} completed successfully`,
           timestamp: new Date(task.timestamp),
-          read: false,
+          read: readIds.has(id),
         });
       });
 
@@ -309,13 +335,14 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       .slice(0, 5)
       .forEach((alert) => {
         const epLabel = `S${String(alert.season).padStart(2, '0')}E${String(alert.episode).padStart(2, '0')}`;
+        const id = `episode-${alert.id}`;
         items.push({
-          id: `episode-${alert.id}`,
+          id,
           type: 'episode',
           title: `New episode: ${alert.showName}`,
           message: `${epLabel}${alert.title ? ` · ${alert.title}` : ''} is out`,
           timestamp: new Date(alert.createdAt),
-          read: false,
+          read: readIds.has(id),
           poster: alert.poster || undefined,
         });
       });
@@ -330,13 +357,14 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         const message = alert.event === 'online'
           ? (alert.backupAddonName && alert.groupCount > 0 ? `Switched ${groupsLabel} back to ${alert.addonName}` : `${alert.addonName} is reachable again`)
           : (alert.backupAddonName && alert.groupCount > 0 ? `Switched ${groupsLabel} to backup ${alert.backupAddonName}` : `${alert.groupCount > 0 ? `${groupsLabel} affected` : 'Not assigned to any group'}, no backup configured`);
+        const id = `addon-health-${alert.id}`;
         items.push({
-          id: `addon-health-${alert.id}`,
+          id,
           type: 'addon',
           title: alert.event === 'online' ? `✅ ${alert.addonName} is back online` : `⚠️ ${alert.addonName} went offline`,
           message,
           timestamp: new Date(alert.createdAt),
-          read: false,
+          read: readIds.has(id),
         });
       });
 
@@ -345,17 +373,18 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     return items
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .filter((item) => !dismissedIds.has(item.id));
-  }, [combinedActivities, combinedInviteHistory, taskHistory, episodeAlerts, addonHealthAlerts, lastChecked, pendingRequests, dismissedIds]);
+  }, [combinedActivities, combinedInviteHistory, taskHistory, episodeAlerts, addonHealthAlerts, lastChecked, pendingRequests, dismissedIds, readIds]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Un-highlights every currently-visible notification without removing it -
+  // rows stay in the list (still scrollable/readable), just lose the unread
+  // styling and no longer count toward the bell's dot. Distinct from Clear,
+  // which actually empties the list.
   const handleMarkAllRead = () => {
-    const now = new Date();
-    setLastChecked(now);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('notifications-last-checked', now.toISOString());
-    }
-    setIsOpen(false);
+    const next = new Set(readIds);
+    notifications.forEach((n) => next.add(n.id));
+    persistReadIds(next);
   };
 
   const handleClearAll = () => {
@@ -365,9 +394,11 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       localStorage.setItem('notifications-last-checked', now.toISOString());
     }
     // Nothing before `now` will ever be shown again anyway (see the
-    // lastChecked filter above), so the individually-dismissed set can be
-    // reset too instead of accumulating indefinitely.
+    // lastChecked filter above), so the individually-dismissed and
+    // marked-read sets can both be reset too instead of accumulating
+    // indefinitely.
     persistDismissedIds(new Set());
+    persistReadIds(new Set());
     setIsOpen(false);
   };
 
@@ -547,9 +578,15 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           className="p-4 hover:bg-surface-hover transition-colors cursor-pointer"
+                          style={notification.read ? undefined : { background: 'var(--color-primary-muted)' }}
                         >
                           <div className="flex flex-col gap-3">
                             <div className="flex items-start gap-3">
+                              <span
+                                className="w-1.5 h-1.5 rounded-full shrink-0 mt-2"
+                                style={{ background: notification.read ? 'transparent' : 'var(--color-primary)' }}
+                                aria-hidden="true"
+                              />
                               {notification.poster ? (
                                 <div className="w-10 h-14 rounded-lg overflow-hidden shrink-0 bg-surface border border-default">
                                   <img
