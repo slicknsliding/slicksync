@@ -197,12 +197,50 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   // shared "which card owns the open menu" value fixes that by construction.
   const { position, handleContextMenu } = useContextMenu();
 
+  // Long-press → context menu for touch devices. onContextMenu alone (below)
+  // only reliably fires from an actual right-click; mobile browsers don't
+  // consistently synthesize it from a long-press on an arbitrary div/anchor
+  // the way they sometimes do for plain text/images, so it was silently
+  // never opening on phones. Same pattern AddonCard and UpcomingRow already
+  // use: a 500ms timer, cancelled on move/scroll (parent row's drag-to-scroll
+  // shouldn't also trigger this) so a scroll gesture isn't hijacked into a
+  // menu open. Cleared with a longer than typical 10px threshold makes sense
+  // here since this row scrolls horizontally right where you'd press.
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startPos = useRef<{ x: number; y: number } | null>(null);
+  const clearPress = () => {
+    if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; }
+    startPos.current = null;
+  };
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    if (!t) return;
+    startPos.current = { x: t.clientX, y: t.clientY };
+    pressTimer.current = setTimeout(() => {
+      handleContextMenu(e as unknown as Event, t.clientX, t.clientY);
+      onMenuOpenChange(true);
+      pressTimer.current = null;
+    }, 500);
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!startPos.current || !pressTimer.current) return;
+    const t = e.touches[0];
+    if (!t) return;
+    const dx = Math.abs(t.clientX - startPos.current.x);
+    const dy = Math.abs(t.clientY - startPos.current.y);
+    if (dx > 10 || dy > 10) clearPress();
+  };
+
   return (
     <div
       onContextMenu={(e) => {
         handleContextMenu(e);
         onMenuOpenChange(true);
       }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={clearPress}
+      onTouchCancel={clearPress}
+      onTouchMove={handleTouchMove}
       className="shrink-0 relative"
     >
       <a
@@ -212,7 +250,10 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
         draggable={false}
         onDragStart={(e) => e.preventDefault()}
         onClick={(e) => {
-          if (wasDraggedRef.current) e.preventDefault();
+          // Suppress the click that fires immediately after a long-press
+          // opens the menu - otherwise a long-press both opens the menu AND
+          // navigates away as soon as the finger lifts.
+          if (wasDraggedRef.current || isMenuOpen) e.preventDefault();
         }}
         className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer"
       >
