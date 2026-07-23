@@ -913,6 +913,21 @@ class ApiClient {
     });
   }
 
+  async getPushDevices() {
+    return this.fetch<PushDevice[]>('/push/devices');
+  }
+
+  async renamePushDevice(id: string, label: string | null) {
+    return this.fetch<PushDevice>(`/push/devices/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ label }),
+    });
+  }
+
+  async revokePushDevice(id: string) {
+    return this.fetch<{ success: boolean }>(`/push/devices/${id}`, { method: 'DELETE' });
+  }
+
   async repairAddons() {
     return this.fetch<{ inspected: number; updated: number }>('/settings/repair-addons', {
       method: 'POST',
@@ -1368,6 +1383,9 @@ class ApiClient {
     // POST (not GET): reveal is CSRF-gated + not cacheable + never in referer.
     return this.fetch<{ secret: string }>(`/vault/${id}/reveal`, { method: 'POST' });
   }
+  async snoozeVaultEntry(id: string) {
+    return this.fetch<VaultEntry>(`/vault/${id}/snooze`, { method: 'POST' });
+  }
 
   async createVaultEntry(data: VaultEntryInput) {
     return this.fetch<{ id: string; name: string }>('/vault', {
@@ -1651,11 +1669,20 @@ export interface VaultEntry {
   lastCheckedAt?: string | null;
   lastCheckStatus?: 'ok' | 'error' | 'unknown' | null;
   lastCheckMessage?: string | null;
+  snoozedUntil?: string | null;
   isActive: boolean;
   testType: VaultTestType;
   testConfig?: Record<string, any> | null;
   updatedAt: string;
   position?: number;
+}
+
+export interface PushDevice {
+  id: string;
+  userAgent: string | null;
+  label: string | null;
+  lastSeenAt: string | null;
+  createdAt: string;
 }
 
 export interface VaultListResponse {

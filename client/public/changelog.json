@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.43.0",
+    "date": "2026-07-23",
+    "title": "Devices list in Settings, plus Vault copy-to-clipboard and snooze",
+    "features": [
+      "New \"Devices\" shelf in Settings → Notifications: every browser/phone currently subscribed to push, in a grab-and-drag scrollable row (same interaction as Continue Watching). Rename any device (\"Living room TV\" instead of a raw user-agent string), see how recently it was actually pushed to, and revoke a stale one — none of that had any UI anywhere before.",
+      "Vault entries: a copy-to-clipboard button next to each secret that works without clicking Reveal first, and a \"Snooze\" button on an expiring/expired entry's badge that silences just that expiry warning for 7 days without dismissing the entry or touching its notify-days setting. A check-failure alert (something's actually broken) is unaffected either way."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "New PushSubscription.label / .lastSeenAt columns and AddonHealthAlert-style GET/PATCH/DELETE /api/push/devices endpoints. New VaultEntry.snoozedUntil column and POST /api/vault/:id/snooze."
+    ]
+  },
+  {
     "version": "1.42.1",
     "date": "2026-07-22",
     "title": "Fix: theme background glow still lagged when switching themes quickly",

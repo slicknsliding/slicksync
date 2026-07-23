@@ -119,8 +119,9 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
           const msUntilExpiry = new Date(entry.expiresAt).getTime() - Date.now()
           const daysUntilExpiry = msUntilExpiry / (1000 * 60 * 60 * 24)
           const withinWindow = daysUntilExpiry <= (entry.notifyDaysBefore ?? 3)
+          const isSnoozed = entry.snoozedUntil && new Date(entry.snoozedUntil) > new Date()
 
-          if (withinWindow && !wasNotifiedToday(entry.lastNotifiedAt)) {
+          if (withinWindow && !isSnoozed && !wasNotifiedToday(entry.lastNotifiedAt)) {
             const daysText = daysUntilExpiry < 0
               ? `expired ${Math.abs(Math.round(daysUntilExpiry))} day(s) ago`
               : `expires in ${Math.round(daysUntilExpiry)} day(s)`

@@ -86,6 +86,24 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
     }
   });
 
+  // POST /api/vault/:id/snooze - silence the expiry-warning alert for this
+  // entry for 7 days without dismissing it or touching notifyDaysBefore.
+  // Only the expiry warning is snoozed - a check-failure alert (a different
+  // signal - something is actually broken right now) still fires normally.
+  router.post('/:id/snooze', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const entry = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });
+      if (!entry) return res.status(404).json({ error: 'Vault entry not found' });
+      const snoozedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const updated = await prisma.vaultEntry.update({ where: { id: entry.id }, data: { snoozedUntil } });
+      res.json(updated);
+    } catch (error) {
+      console.error('Error snoozing vault entry:', error);
+      res.status(500).json({ error: 'Failed to snooze vault entry' });
+    }
+  });
+
   // POST /api/vault - create entry
   router.post('/', async (req, res) => {
     try {
