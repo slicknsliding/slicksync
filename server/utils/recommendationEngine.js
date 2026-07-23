@@ -16,47 +16,69 @@
 // instance has. The boost approach gets the real behavioral-overlap signal
 // without losing Cinemeta as the actual candidate source.
 //
-// A title only enters these vectors with real, non-zero durationSeconds -
-// a few-second blip isn't a taste signal.
-
-const MIN_SECONDS = 60
+// Weight source: verified live against real production data before this
+// shipped, and the obvious first choice (MovieWatchHistory/EpisodeWatchHistory's
+// own durationSeconds) turned out unusable - it's a proxy-correlation
+// artifact only backfilled when a native watch merges with a matching
+// AIOStreams-proxy session (see that field's own comment in
+// schema.sqlite.prisma), and on this account it was null for 96-100% of
+// real watch history. WatchActivity.watchTimeSeconds (deltas from native
+// polling, no proxy dependency) covers more, but is STILL sparse for
+// anything predating its own tracking - one real account had 558 real
+// watch-history rows but WatchActivity coverage for only 2 distinct titles.
+// So: every real watch (a MovieWatchHistory/EpisodeWatchHistory row exists
+// at all) gets a flat BASELINE_SECONDS floor - same fallback amount
+// /recommendations already uses for the same reason - with real
+// WatchActivity seconds added on top when available, so a title watched a
+// lot still outranks a watched-once one instead of tying at the baseline.
+// For a show, baseline accrues per episode watched, so a full binge still
+// meaningfully outweighs a one-episode drop even with zero WatchActivity
+// coverage for either.
+const BASELINE_SECONDS = 600
 
 /**
  * Per-user "how much real time did they spend on each title" vectors, from
  * MovieWatchHistory + EpisodeWatchHistory (episodes summed per show - same
- * "one entry per title" shape the poster mosaic uses, not per-episode).
+ * "one entry per title" shape the poster mosaic uses, not per-episode),
+ * weighted per the BASELINE_SECONDS + WatchActivity scheme above.
  * @returns {Promise<{ vectors: Map<string, Map<string, number>>, itemMeta: Map<string, {name: string, poster: string|null, type: 'movie'|'series'}> }>}
  */
 async function buildUserVectors(prisma, accountId) {
-  const [movies, episodes] = await Promise.all([
+  const [movies, episodes, activity] = await Promise.all([
     prisma.movieWatchHistory.findMany({
       where: { accountId },
-      select: { userId: true, itemId: true, itemName: true, poster: true, durationSeconds: true },
+      select: { userId: true, itemId: true, itemName: true, poster: true },
     }),
     prisma.episodeWatchHistory.findMany({
       where: { accountId },
-      select: { userId: true, showId: true, showName: true, poster: true, durationSeconds: true },
+      select: { userId: true, showId: true, showName: true, poster: true },
+    }),
+    prisma.watchActivity.findMany({
+      where: { accountId },
+      select: { userId: true, itemId: true, itemType: true, watchTimeSeconds: true },
     }),
   ])
 
   const vectors = new Map()
   const itemMeta = new Map()
 
-  const add = (userId, key, seconds, name, poster, type) => {
-    if (!seconds || seconds < 0) return
+  const bump = (userId, key, seconds, name, poster, type) => {
     if (!vectors.has(userId)) vectors.set(userId, new Map())
     const v = vectors.get(userId)
     v.set(key, (v.get(key) || 0) + seconds)
-    if (!itemMeta.has(key) || !itemMeta.get(key).poster) itemMeta.set(key, { name, poster: poster || null, type })
+    if (name && (!itemMeta.has(key) || !itemMeta.get(key).poster)) itemMeta.set(key, { name, poster: poster || null, type })
   }
 
-  for (const m of movies) add(m.userId, `movie:${m.itemId}`, m.durationSeconds, m.itemName, m.poster, 'movie')
-  for (const e of episodes) add(e.userId, `series:${e.showId}`, e.durationSeconds, e.showName, e.poster, 'series')
+  for (const m of movies) bump(m.userId, `movie:${m.itemId}`, BASELINE_SECONDS, m.itemName, m.poster, 'movie')
+  for (const e of episodes) bump(e.userId, `series:${e.showId}`, BASELINE_SECONDS, e.showName, e.poster, 'series')
 
-  // Drop anything under the noise floor so a channel-surf blip can't count
-  // as a shared favorite.
-  for (const v of vectors.values()) {
-    for (const [key, seconds] of v) if (seconds < MIN_SECONDS) v.delete(key)
+  // Real signal layered on top, only for titles we already have a real
+  // watch-history row for (a WatchActivity row with no matching history
+  // row would mean an id-format mismatch, not a real title to weight).
+  for (const a of activity) {
+    const key = `${a.itemType === 'series' ? 'series' : 'movie'}:${a.itemId}`
+    if (!itemMeta.has(key)) continue
+    bump(a.userId, key, a.watchTimeSeconds, null, null, null)
   }
 
   return { vectors, itemMeta }

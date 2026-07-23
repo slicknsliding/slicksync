@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.47.1",
+    "date": "2026-07-23",
+    "title": "Fix: taste overlap returned zero pairs on real data",
+    "features": [],
+    "bugFixes": [
+      "Live-tested v1.47.0 immediately after deploying it against real production data - /taste-overlap came back empty. Root cause: it weighted titles purely by durationSeconds, which turned out null for 96-100% of real watch history on the account it was tested against (that field only backfills when a watch correlates with a matching proxy session - see its own comment in schema.sqlite.prisma). WatchActivity covers more but is still sparse for anything predating its own tracking (one user had 558 real watch-history rows but WatchActivity coverage for only 2 of them). Now every real watch gets the same flat baseline /recommendations already falls back to for exactly this reason, with real WatchActivity seconds layered on top when available."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.47.0",
     "date": "2026-07-23",
     "title": "feat: Real taste-overlap recommendations, from actual watch data",
