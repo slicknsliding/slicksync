@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.48.1",
+    "date": "2026-07-23",
+    "title": "Fix: TV mode arrow keys did nothing on page load",
+    "features": [],
+    "bugFixes": [
+      "Live-tested v1.48.0 immediately after deploying - pressing an arrow key on a fresh Discover page in TV mode did nothing at all. Nothing has focus by default, and arrow keys move focus FROM something, so the very first key press had nowhere to move from. TVPageProvider now retries an initial focusSelf() on a short backoff (the poster grid it needs to land on loads asynchronously, so a single fixed-delay attempt could fire before anything existed to focus)."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.48.0",
     "date": "2026-07-23",
     "title": "feat: TV mode (Phase 1) — D-pad navigation on Discover, auto-detected",
