@@ -839,7 +839,7 @@ export default function SettingsPage() {
             <div className="space-y-3">
               <SettingRow
                 label="Watchlist"
-                description="Bookmark items to watch later. Adds a â˜… Watchlist source in Discover and an Add-to-Watchlist button on every detail page. Off: everything watchlist-related is hidden; saved items stay in the database until you re-enable."
+                description="Bookmark items to watch later. Adds a ★ Watchlist source in Discover and an Add-to-Watchlist button on every detail page. Off: everything watchlist-related is hidden; saved items stay in the database until you re-enable."
               >
                 <ToggleSwitch
                   enabled={syncSettings.enableWatchlist !== false}
@@ -850,7 +850,7 @@ export default function SettingsPage() {
 
               <SettingRow
                 label="Watched indicators"
-                description="Show âœ“ checkmark badges on Discover posters for things you've already watched (from either provider), the Unwatched / Watched filter, and the Mark-as-watched menu option. Off: no badges, no filter, no menu item."
+                description="Show ✓ checkmark badges on Discover posters for things you've already watched (from either provider), the Unwatched / Watched filter, and the Mark-as-watched menu option. Off: no badges, no filter, no menu item."
               >
                 <ToggleSwitch
                   enabled={syncSettings.enableWatchedIndicators !== false}

@@ -127,8 +127,16 @@ export function NebulaTopbar() {
             align="left"
           />
         </div>
+        {/* Hidden below md: this pill is unconditionally fixed (no menu
+            state gates it, unlike Sidebar's TorBox placement, which is
+            off-screen until the mobile menu opens) - on a narrow phone the
+            two pills side by side doubled the fixed footprint and started
+            covering real page content underneath (confirmed: a Settings
+            toggle's description text was getting cut off behind it). Not
+            worth the referral badge on a screen that tight; desktop/tablet
+            has room to spare. */}
         <div
-          className="rounded-2xl p-1.5"
+          className="hidden md:block rounded-2xl p-1.5"
           style={{
             background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
             backdropFilter: 'blur(18px)',
