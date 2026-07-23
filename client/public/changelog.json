@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.46.0",
+    "date": "2026-07-23",
+    "title": "feat: Monthly poster mosaic",
+    "features": [
+      "A new monthly Discord post: a real generated collage image of every distinct title (movie or show) watched that month, posted automatically on the 1st - a picture, not a stat block. Deduped per title (a show watched across a dozen episodes gets one tile, not twelve), newest-watched first, capped at 24 posters. Toggle it on in Settings → Notifications (needs the same Discord webhook every other notification type uses), or hit \"Generate now\" there to post last month's recap immediately instead of waiting for the 1st."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.45.5",
     "date": "2026-07-23",
     "title": "Fix: theme colors stuck on the previous theme after navigating to a new page",

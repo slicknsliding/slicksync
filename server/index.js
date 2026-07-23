@@ -394,6 +394,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize addon health checker:', err)
     }
 
+    // Schedule monthly poster mosaic (checks every 6h whether the account
+    // has crossed into a new month and hasn't posted last month's recap yet)
+    try {
+      const { scheduleMosaicMonitor } = require('./utils/posterMosaic')
+      scheduleMosaicMonitor(prisma, schedulerReq.appAccountId)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize poster mosaic scheduler:', err)
+    }
+
     // Startup repair: reload addons with uninitialized resources/catalogs across all accounts
     try {
       const { reloadAddon } = require('./routes/addons')

@@ -182,6 +182,7 @@ export default function SettingsPage() {
     notifyOnVault: false,
     notifyOnAddonHealth: false,
     notifyOnBackup: false,
+    notifyOnMosaic: false,
     accountTimezone: '',
   });
 
@@ -270,6 +271,7 @@ export default function SettingsPage() {
 
   // Webhook testing
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+  const [isGeneratingMosaic, setIsGeneratingMosaic] = useState(false);
 
   // Account/avatar state
   const [accountInfo, setAccountInfo] = useState<AccountStats | null>(null);
@@ -298,6 +300,7 @@ export default function SettingsPage() {
           notifyOnVault: settings.notifyOnVault || false,
           notifyOnAddonHealth: settings.notifyOnAddonHealth || false,
           notifyOnBackup: settings.notifyOnBackup || false,
+          notifyOnMosaic: settings.notifyOnMosaic || false,
           accountTimezone: settings.accountTimezone || '',
         });
       } catch (e) {
@@ -360,6 +363,29 @@ export default function SettingsPage() {
     }
   };
 
+  const handleGenerateMosaic = async () => {
+    if (!syncSettings.webhookUrl?.trim()) {
+      toast.error('Enter a webhook URL first');
+      return;
+    }
+
+    setIsGeneratingMosaic(true);
+    try {
+      const result = await api.generateMosaicNow();
+      if (result.posted) {
+        toast.success(`Posted ${result.month} — ${result.count} title${result.count === 1 ? '' : 's'} to Discord`);
+      } else if (result.reason === 'nothing watched') {
+        toast.error('Nothing watched last month - nothing to post');
+      } else {
+        toast.error(result.reason || 'Failed to generate mosaic');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to generate mosaic');
+    } finally {
+      setIsGeneratingMosaic(false);
+    }
+  };
+
   const handleGenerateApiKey = async () => {
     setIsGeneratingKey(true);
     try {
@@ -395,6 +421,7 @@ export default function SettingsPage() {
       notifyOnVault: false,
       notifyOnAddonHealth: false,
       notifyOnBackup: false,
+      notifyOnMosaic: false,
     });
     try {
       await api.updateSyncSettings({
@@ -408,6 +435,7 @@ export default function SettingsPage() {
         notifyOnVault: false,
         notifyOnAddonHealth: false,
         notifyOnBackup: false,
+        notifyOnMosaic: false,
       });
       toast.success('Settings reset to defaults');
     } catch (e: any) {
@@ -718,6 +746,29 @@ export default function SettingsPage() {
                     onChange={(v) => handleSaveSetting('notifyOnBackup', v)}
                     label="Toggle backup notifications"
                   />
+                </SettingRow>
+
+                <SettingRow
+                  label="Monthly poster mosaic"
+                  description="Post a poster collage of everything watched last month to Discord, on the 1st"
+                  disabled={!syncSettings.webhookUrl?.trim()}
+                >
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleGenerateMosaic}
+                      isLoading={isGeneratingMosaic}
+                      disabled={!syncSettings.webhookUrl?.trim()}
+                    >
+                      Generate now
+                    </Button>
+                    <ToggleSwitch
+                      enabled={syncSettings.notifyOnMosaic || false}
+                      onChange={(v) => handleSaveSetting('notifyOnMosaic', v)}
+                      label="Toggle monthly poster mosaic"
+                    />
+                  </div>
                 </SettingRow>
               </div>
 
