@@ -161,6 +161,63 @@ async function sendSessionStartNotification(webhookUrl, session, user) {
 }
 
 /**
+ * Send Discord notification when a proxied watch session ends (the
+ * counterpart to sendSessionStartNotification, above). Deliberately lighter
+ * than the start notification - no metadata/overview/links re-fetch, just
+ * enough to confirm what stopped and roughly how long it ran. The elapsed
+ * time shown here is display-only, never written to any duration/history
+ * field - the proxy connection's wall-clock lifetime is not real watch
+ * time (see this repo's CLAUDE.md on why durations come from native only).
+ */
+async function sendSessionStopNotification(webhookUrl, session, user) {
+  try {
+    if (!webhookUrl) return
+
+    let itemTitle = session.itemName || 'Unknown'
+    if (session.itemType === 'series' && session.episode !== null && session.episode !== undefined) {
+      itemTitle += ` (${formatEpisodeInfo(session.season, session.episode)})`
+    }
+
+    const fields = []
+    if (session.startTime) {
+      const elapsedMs = Date.now() - new Date(session.startTime).getTime()
+      const mins = Math.max(1, Math.round(elapsedMs / 60000))
+      fields.push({ name: 'Watched for', value: mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`, inline: true })
+    }
+
+    const avatarUrl = await getUserAvatarUrl(user.username, user.email, user.colorIndex)
+
+    const embed = {
+      title: itemTitle,
+      author: {
+        name: `${user.username} finished watching`,
+        icon_url: avatarUrl || undefined
+      },
+      description: '',
+      color: 0x808080, // gray - distinct from the green "started" embed
+      fields,
+      timestamp: new Date().toISOString()
+    }
+    if (session.poster) embed.thumbnail = { url: session.poster }
+
+    let appVersion = process.env.NEXT_PUBLIC_APP_VERSION || process.env.APP_VERSION || ''
+    if (!appVersion) {
+      try { appVersion = require('../../package.json')?.version || '' } catch { }
+    }
+    if (appVersion) embed.footer = { text: `SlickSync v${appVersion}` }
+
+    await postDiscord(webhookUrl, null, {
+      embeds: [embed],
+      avatar_url: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png'
+    })
+
+    console.log(`[SessionTracker] Sent stopped-watching notification for user ${user.username}, item: ${session.itemName}`)
+  } catch (error) {
+    console.warn(`[SessionTracker] Failed to send session stop notification:`, error.message)
+  }
+}
+
+/**
  * Get watch date from library item
  * IMPORTANT: Only use state.lastWatched - this is the actual watch timestamp
  * Do NOT use _mtime - that's just when the library item was modified (e.g., added to library)
@@ -675,5 +732,6 @@ module.exports = {
   getRecentSessions,
   getActiveSessions,
   extractSeasonEpisode,
-  sendSessionStartNotification
+  sendSessionStartNotification,
+  sendSessionStopNotification
 }
