@@ -19,7 +19,21 @@ interface TVFocusableProps {
 // Enter/OK on the remote fires onEnterPress, same handler the onClick
 // would've called on PC/mobile - no separate TV-only logic to keep in sync.
 export function TVFocusable({ onEnterPress, onFocus, className = '', style, focusKey, children }: TVFocusableProps) {
-  const { ref, focused } = useFocusable<object, HTMLDivElement>({ onEnterPress, onFocus, focusKey });
+  // Norigin moves the focus KEY, not the viewport - nothing scrolls on its
+  // own. A poster a few rows down gains focus exactly like one on-screen,
+  // just invisibly, which reads as "the remote stopped working" (confirmed:
+  // this is why Down out of the catalog/genre row looked like a dead end -
+  // focus was almost certainly landing in the grid below the fold every
+  // time, just never scrolled into view). block/inline: 'nearest' so an
+  // already-visible element doesn't get yanked to an edge unnecessarily.
+  const { ref, focused } = useFocusable<object, HTMLDivElement>({
+    onEnterPress,
+    onFocus: () => {
+      ref.current?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      onFocus?.();
+    },
+    focusKey,
+  });
 
   return (
     <div
