@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.50.0",
+    "date": "2026-07-23",
+    "title": "feat: Resume-on-another-device quick launch on Now Playing",
+    "features": [
+      "Now Playing entries with a known position (\"Paused at 14:20 of 42:00 (34%)\") get Resume in Stremio / Resume in Nuvio buttons - one tap opens the exact right title/episode on whatever device you're on. Honest scope: neither app's deep-link scheme can carry a playback position at all (confirmed reading both formats), so this can't auto-seek - the exact position is shown so you know where to scrub to, instead of guessing or hunting through Continue Watching. Uses the same episode-aware deep-link builder (imdbId:season:episode) Continue Watching already relies on, and the same native-only position source (WatchSession.lastPosition/totalDuration) CLAUDE.md documents as safe to read at a point in time - the proxy has no concept of playback position at all, only connection activity."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.49.0",
     "date": "2026-07-23",
     "title": "feat: \"Finished watching\" notification - proxy sessions ending was completely silent before",
