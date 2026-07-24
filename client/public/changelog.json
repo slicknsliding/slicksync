@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.49.0",
+    "date": "2026-07-23",
+    "title": "feat: \"Finished watching\" notification - proxy sessions ending was completely silent before",
+    "features": [
+      "A proxied watch session ending (the connection AIOStreams' proxy was tracking just closed) only ever silently flipped a DB flag - there was a \"started watching\" ping but nothing ever told you playback actually stopped. Added the counterpart: Discord + push \"X finished watching Y\" the moment a session closes, same per-user opt-out and personal-webhook override as the start notification. Verified live: the existing test-push pipeline already confirmed push delivery works end to end (isPushEnabled, VAPID, web-push all healthy) - this just gives the stop event something to actually send."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.48.3",
     "date": "2026-07-23",
     "title": "feat: TV mode — genre chips, catalog tabs, and the trailer button are now D-pad navigable",
