@@ -183,6 +183,17 @@ function formatDuration(seconds: number): string {
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
 }
 
+// Clock-style H:MM:SS / M:SS - for the "resume here" position display, where
+// the whole point is showing the exact spot to seek to, not a rounded estimate.
+function formatClock(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
 // Format fractional hours in a human-readable way (Xh Xm)
 function formatHours(hours: number): string {
   if (hours === 0) return '0h';
@@ -1110,6 +1121,46 @@ function NowPlayingItemBody({
             </p>
           );
         })()}
+        {/* "Resume here" - jumps to the right title/episode on whatever
+            device you tap this from, with the exact position shown so you
+            know where to seek to. Neither Stremio's nor Nuvio's deep-link
+            scheme can carry a playback position (confirmed reading both -
+            see appLinks.ts/appLinks.js), so this can't auto-seek - showing
+            the real number beats leaving you to guess. Position comes from
+            native tracking (WatchSession.lastPosition/totalDuration), not
+            the proxy - the proxy has no concept of playback position, only
+            connection/byte-range activity. */}
+        {typeof np.lastPosition === 'number' && typeof np.totalDuration === 'number' && np.totalDuration > 0 && (np.stremioAppUrl || np.nuvioAppUrl) && (
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className="text-xs text-subtle">
+              Paused at {formatClock(np.lastPosition / 1000)} of {formatClock(np.totalDuration / 1000)}
+              {' '}({Math.round((np.lastPosition / np.totalDuration) * 100)}%)
+            </span>
+            {np.stremioAppUrl && (
+              <a
+                href={np.stremioAppUrl}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium transition-colors"
+                style={{ background: 'rgba(167, 139, 250, 0.15)', color: 'rgb(196, 181, 253)', border: '1px solid rgba(167, 139, 250, 0.25)' }}
+              >
+                <PlayIcon className="w-3 h-3" />
+                Resume in Stremio
+              </a>
+            )}
+            {np.nuvioAppUrl && (
+              <a
+                href={np.nuvioAppUrl}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium transition-colors"
+                style={{
+                  background: 'linear-gradient(115deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
+                  color: 'rgb(186, 208, 240)', border: '1px solid rgba(255, 152, 0, 0.18)',
+                }}
+              >
+                <PlayIcon className="w-3 h-3" />
+                Resume in Nuvio
+              </a>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

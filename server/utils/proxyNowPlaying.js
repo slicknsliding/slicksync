@@ -256,6 +256,13 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
         episode: null,
       },
       videoId: existingTitleMatches ? existing.videoId : null,
+      // Same borrow-if-same-title rule as item/videoId above - the proxy
+      // itself has no semantic playback position (it only sees byte-range
+      // requests), so this is native's data riding along on the proxy's
+      // liveness signal, not something the proxy actually knows.
+      lastPosition: existingTitleMatches ? (existing.lastPosition ?? null) : null,
+      totalDuration: existingTitleMatches ? (existing.totalDuration ?? null) : null,
+      ...(existingTitleMatches && existing.stremioAppUrl ? { stremioAppUrl: existing.stremioAppUrl, nuvioAppUrl: existing.nuvioAppUrl } : {}),
       // Proxy startTime/liveness is the authoritative signal here, not
       // whatever the WatchSession entry (if any) happened to record.
       watchedAt: earliestStartTime.toISOString(),

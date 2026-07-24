@@ -9,6 +9,7 @@ const { enrichPostersFromCinemeta } = require('./libraryHelpers')
 const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
 const { calculateAddonAnalytics, calculateServerHealth, generateOperationalAlerts } = require('./adminAnalytics')
 const { calculateTopItemsWithUsers, calculateWatchVelocity, calculateInterestingMetrics } = require('./enhancedMetrics')
+const { buildStremioLinks, buildNuvioAppUrl } = require('./appLinks')
 
 // Helper function to extract base item ID (for series, strip season/episode info)
 function getBaseItemId(itemId, itemType) {
@@ -867,7 +868,21 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       },
       videoId: session.videoId ?? null,
       watchedAt: session.startTime.toISOString(),
-      watchedAtTimestamp: session.startTime.getTime()
+      watchedAtTimestamp: session.startTime.getTime(),
+      // Position for the "resume here" quick-launch (Now Playing panel) -
+      // lastPosition is a direct snapshot value per WatchSession's own field
+      // comment ("always accurate the instant new data arrives"), safe to
+      // surface as-is, unlike overallTimeWatched which needs two
+      // observations to diff (see this repo's CLAUDE.md).
+      lastPosition: session.lastPosition ?? null,
+      totalDuration: session.totalDuration ?? null,
+      // Same episode-aware deep-link builder Continue Watching already uses
+      // (server/utils/appLinks.js) - not the plain client-side one, which
+      // has no season/episode parameter at all for series.
+      ...(session.itemId ? {
+        stremioAppUrl: buildStremioLinks(session.itemId, session.itemType === 'series' ? 'series' : 'movie', session.season, session.episode).appUrl,
+        nuvioAppUrl: buildNuvioAppUrl(session.itemType === 'series' ? 'series' : 'movie', session.itemId),
+      } : {}),
     })
   }
 

@@ -2166,6 +2166,17 @@ export interface MetricsData {
     watchedAt: string;
     watchedAtTimestamp?: number; // Stable session startTime in ms (used for duration calculation)
     source?: string; // 'aiostreams-proxy' for proxy-detected live entries; absent for native
+    // Playback position (ms), for the "resume here" quick-launch - native
+    // only, a direct snapshot (see server/utils/metricsBuilder.js's comment).
+    // Absent/null when unknown, e.g. a title the native pipeline hasn't
+    // checkpointed yet.
+    lastPosition?: number | null;
+    totalDuration?: number | null;
+    // Pre-built episode-aware deep links (server/utils/appLinks.js, same
+    // builder Continue Watching uses) - absent when we don't have a real
+    // item id to link to (e.g. an unmatched proxy-only entry).
+    stremioAppUrl?: string;
+    nuvioAppUrl?: string;
   }>;
   startedPlaying: Array<{
     user: { id: string; username: string; email: string; colorIndex: number };
