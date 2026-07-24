@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { BookmarkIcon as BookmarkOutlineIcon } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
@@ -64,18 +64,27 @@ export function MediaDetailModal({
   const { enableWatchlist } = usePersonalFeatures();
   const isTV = useIsTV();
 
-  // TV mode: the action row (Watchlist / Open in Stremio / Open in Nuvio)
-  // is its own focus group so D-pad left/right moves between them, and
-  // gets focus automatically the moment details finish loading - this is
-  // the actual payoff moment ("read it, watch the trailer, pick an app")
-  // the TV app exists for, so it shouldn't require hunting for it with the
-  // remote first.
-  const { ref: actionsRef, focusKey: actionsFocusKey, focusSelf: focusActions } = useFocusable<object, HTMLDivElement>({ trackChildren: true });
+  // TV mode: the whole modal body (trailer button, Watchlist / Open in
+  // Stremio / Open in Nuvio) is one focus group, so D-pad up/down/left/
+  // right moves naturally between them by actual on-screen position - this
+  // is the actual payoff moment ("read it, watch the trailer, pick an
+  // app") the TV app exists for, so it shouldn't require hunting for it
+  // with the remote first. Retries on a backoff for the same reason
+  // TVPageProvider does - details load asynchronously, so a single
+  // fixed-delay focusSelf() could fire before any button exists yet.
+  const { ref: modalRef, focusKey: modalFocusKey, focusSelf: focusModal, hasFocusedChild } = useFocusable<object, HTMLDivElement>({ trackChildren: true });
+  const hasFocusedChildRef = useRef(false);
+  useEffect(() => {
+    hasFocusedChildRef.current = hasFocusedChild;
+  }, [hasFocusedChild]);
   useEffect(() => {
     if (!isTV || !isOpen || !details) return;
-    const id = setTimeout(() => focusActions(), 50);
-    return () => clearTimeout(id);
-  }, [isTV, isOpen, details, focusActions]);
+    const delays = [50, 200, 500, 1000];
+    const timers = delays.map((delay) => setTimeout(() => {
+      if (!hasFocusedChildRef.current) focusModal();
+    }, delay));
+    return () => timers.forEach(clearTimeout);
+  }, [isTV, isOpen, details, focusModal]);
 
   // Watchlist state — optimistic-toggle so the icon flips instantly on click
   // and the request happens in the background. Reset on itemId change so the
@@ -200,9 +209,16 @@ export function MediaDetailModal({
   const overview = details?.episode?.overview || details?.description;
   const trailerId = details?.trailers?.[0];
 
+  // TV mode: one focus group for the whole modal body, so D-pad navigation
+  // moves between the trailer button and the action row by actual on-
+  // screen position instead of needing separate scopes stitched together.
+  const TVScope = isTV ? FocusContext.Provider : Fragment;
+  const tvScopeProps = isTV ? { value: modalFocusKey } : {};
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="full" hideCloseButton={isTrailerPlaying}>
-      <div className="-mx-6 -mt-6">
+      <TVScope {...(tvScopeProps as any)}>
+      <div className="-mx-6 -mt-6" ref={isTV ? modalRef : undefined}>
         {isTrailerPlaying && trailerId ? (
           // aspect-video (not a fixed height like the static hero below) -
           // YouTube's player always keeps its actual video content at 16:9
@@ -255,7 +271,17 @@ export function MediaDetailModal({
               className="absolute inset-0"
               style={{ background: 'linear-gradient(180deg, transparent 40%, var(--color-surface) 100%)' }}
             />
-            {trailerId && (
+            {trailerId && (isTV ? (
+              <TVFocusable onEnterPress={() => setIsTrailerPlaying(true)} className="absolute inset-0 flex items-center justify-center">
+                <span
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-full font-medium text-sm"
+                  style={{ background: 'color-mix(in srgb, var(--color-surface) 60%, transparent)', color: 'white', backdropFilter: 'blur(4px)' }}
+                >
+                  <PlayIcon className="w-5 h-5" />
+                  Play Trailer
+                </span>
+              </TVFocusable>
+            ) : (
               <button
                 type="button"
                 onClick={() => setIsTrailerPlaying(true)}
@@ -270,7 +296,7 @@ export function MediaDetailModal({
                   Play Trailer
                 </span>
               </button>
-            )}
+            ))}
           </div>
         )}
 
@@ -419,19 +445,17 @@ export function MediaDetailModal({
                 // double-handling the same keystroke.
                 if (isTV) {
                   return (
-                    <FocusContext.Provider value={actionsFocusKey}>
-                      <div ref={actionsRef} className="flex flex-wrap gap-2 items-center">
-                        {enableWatchlist && (
-                          <TVFocusable onEnterPress={toggleWatchlist}>{watchlistBtn}</TVFocusable>
-                        )}
-                        <TVFocusable onEnterPress={() => { window.location.href = buildStremioAppUrl(details.imdb_id!, itemType); }}>
-                          {stremioBtn}
-                        </TVFocusable>
-                        <TVFocusable onEnterPress={() => { window.location.href = buildNuvioAppUrl(details.imdb_id!, itemType); }}>
-                          {nuvioBtn}
-                        </TVFocusable>
-                      </div>
-                    </FocusContext.Provider>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      {enableWatchlist && (
+                        <TVFocusable onEnterPress={toggleWatchlist}>{watchlistBtn}</TVFocusable>
+                      )}
+                      <TVFocusable onEnterPress={() => { window.location.href = buildStremioAppUrl(details.imdb_id!, itemType); }}>
+                        {stremioBtn}
+                      </TVFocusable>
+                      <TVFocusable onEnterPress={() => { window.location.href = buildNuvioAppUrl(details.imdb_id!, itemType); }}>
+                        {nuvioBtn}
+                      </TVFocusable>
+                    </div>
                   );
                 }
 
@@ -522,6 +546,7 @@ export function MediaDetailModal({
           )}
         </div>
       </div>
+      </TVScope>
     </Modal>
   );
 }
