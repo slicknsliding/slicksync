@@ -17,7 +17,7 @@
 // here is (accountId, aiostreamsUser, clientIp, url).
 
 const { searchCinemetaPosterByTitle } = require('./libraryHelpers')
-const { sendSessionStartNotification } = require('./sessionTracker')
+const { sendSessionStartNotification, sendSessionStopNotification } = require('./sessionTracker')
 const { notifyPushForType } = require('./pushNotifications')
 
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
@@ -283,6 +283,41 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
   }
 }
 
+// Sends the "finished watching" Discord + push notification for a proxy
+// connection that just closed - the counterpart to maybeNotifyStart. This
+// never existed before: a session closing only ever silently flipped
+// isActive to false (see the toClose block below), so there was a
+// "started" ping but nothing ever told you playback actually stopped.
+async function maybeNotifyStop(prisma, accountId, webhookUrl, users, row) {
+  try {
+    const user = resolveUserForActiveConnection(users, row.aiostreamsUser)
+    if (!user) return
+    // Same per-user opt-out as the start notification.
+    if (user.notifyOnWatch === false) return
+
+    const targetWebhookUrl = user.discordWebhookUrl || webhookUrl
+    if (targetWebhookUrl) {
+      await sendSessionStopNotification(targetWebhookUrl, {
+        itemName: row.displayName,
+        itemType: row.metadataItemType === 'series' ? 'series' : 'movie',
+        season: null,
+        episode: null,
+        startTime: row.startTime,
+        poster: row.posterUrl || null,
+      }, user)
+    }
+    const whoName = user.username || user.email || 'Someone'
+    await notifyPushForType(prisma, accountId, 'notifyOnActivity', {
+      title: `${whoName} finished watching`,
+      body: row.displayName,
+      icon: row.posterUrl || '/android-chrome-192x192.png',
+      url: '/activity',
+    })
+  } catch (error) {
+    heartbeat('pollOnce:stop_notify_error', { message: error.message, rowId: row.id })
+  }
+}
+
 // NOTE: the proxy writes NO watch history. History is owned entirely by the
 // native provider pipeline, which records every source this deployment uses -
 // including usenet (confirmed: a newznab usenet watch lands in History via
@@ -402,7 +437,10 @@ async function pollOnce(prisma, accountId, config) {
     const GRACE_MS = CHECK_INTERVAL_MS * 2
     const staleActive = await prisma.proxyStreamSession.findMany({
       where: { accountId, isActive: true },
-      select: { id: true, aiostreamsUser: true, clientIp: true, url: true, lastSeenAt: true },
+      select: {
+        id: true, aiostreamsUser: true, clientIp: true, url: true, lastSeenAt: true,
+        displayName: true, posterUrl: true, metadataItemType: true, startTime: true,
+      },
     })
 
     const toClose = staleActive.filter(
@@ -411,14 +449,20 @@ async function pollOnce(prisma, accountId, config) {
         (now.getTime() - row.lastSeenAt.getTime()) > GRACE_MS
     )
     if (toClose.length > 0) {
-      // Just mark the connection ended - no history is written here (see the
-      // note above pollOnce). Closing the row is what lets the Now Playing
-      // merge know this stream really stopped, so it can drop the native
+      // Mark the connection ended - no history is written here (see the note
+      // above pollOnce). Closing the row is what lets the Now Playing merge
+      // know this stream really stopped, so it can drop the native
       // pipeline's stale "still watching" echo of it.
       await prisma.proxyStreamSession.updateMany({
         where: { id: { in: toClose.map((r) => r.id) } },
         data: { isActive: false, endTime: now },
       })
+      // "Finished watching" notification - was previously entirely silent.
+      if (notifyActivity) {
+        for (const row of toClose) {
+          await maybeNotifyStop(prisma, accountId, notifyWebhook, notifyUsers, row)
+        }
+      }
     }
 
     heartbeat('pollOnce:done', {
