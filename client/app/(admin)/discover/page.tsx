@@ -560,40 +560,76 @@ export default function DiscoverPage() {
                 secondary refinement sitting immediately after it. On a
                 narrow screen the dropdown wraps below thanks to flex-wrap. */}
             <div className="flex gap-2 flex-wrap items-center">
-              {CATALOGS.map((c) => (
-                <button
-                  key={c.key}
-                  type="button"
-                  onClick={() => setCatalog(c.key)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    catalog === c.key
-                      ? 'bg-primary text-white'
-                      : 'bg-surface-hover text-muted hover:text-default'
-                  }`}
-                >
-                  {c.label}
-                </button>
-              ))}
+              {CATALOGS.map((c) => {
+                const btn = (
+                  <button
+                    type="button"
+                    onClick={() => setCatalog(c.key)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      catalog === c.key
+                        ? 'bg-primary text-white'
+                        : 'bg-surface-hover text-muted hover:text-default'
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                );
+                return isTV ? (
+                  <TVFocusable key={c.key} onEnterPress={() => setCatalog(c.key)}>{btn}</TVFocusable>
+                ) : (
+                  <Fragment key={c.key}>{btn}</Fragment>
+                );
+              })}
 
               {/* Genre picker — always enabled. Server-side, catalog+genre
                   combos that return empty from Cinemeta (New+anything,
                   imdbRating+Documentary, etc.) transparently fall back to
-                  Popular in that genre so the grid isn't stuck empty. */}
-              <select
-                value={genre}
-                onChange={(e) => setGenre(e.target.value)}
-                aria-label="Filter by genre"
-                className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
-                  genre
-                    ? 'bg-primary text-white border-transparent'
-                    : 'bg-surface-hover text-muted hover:text-default border-default'
-                }`}
-              >
-                <option value="">All genres</option>
-                {GENRES.map((g) => (
-                  <option key={g} value={g}>{g}</option>
-                ))}
-              </select>
+                  Popular in that genre so the grid isn't stuck empty.
+                  TV mode swaps the native <select> for a focusable chip
+                  row — Norigin's spatial nav has no way to reach into (or
+                  drive) an OS-native dropdown popup, same reason the
+                  catalog tabs above are plain buttons rather than a select
+                  in the first place. */}
+              {isTV ? (
+                <div className="flex gap-2 flex-wrap items-center">
+                  {[{ key: '', label: 'All genres' }, ...GENRES.map((g) => ({ key: g, label: g }))].map((g) => {
+                    const chip = (
+                      <button
+                        type="button"
+                        onClick={() => setGenre(g.key)}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                          genre === g.key
+                            ? 'bg-primary text-white border-transparent'
+                            : 'bg-surface-hover text-muted hover:text-default border-default'
+                        }`}
+                      >
+                        {g.label}
+                      </button>
+                    );
+                    return (
+                      <TVFocusable key={g.key || 'all'} onEnterPress={() => setGenre(g.key)}>
+                        {chip}
+                      </TVFocusable>
+                    );
+                  })}
+                </div>
+              ) : (
+                <select
+                  value={genre}
+                  onChange={(e) => setGenre(e.target.value)}
+                  aria-label="Filter by genre"
+                  className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
+                    genre
+                      ? 'bg-primary text-white border-transparent'
+                      : 'bg-surface-hover text-muted hover:text-default border-default'
+                  }`}
+                >
+                  <option value="">All genres</option>
+                  {GENRES.map((g) => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </PageSection>
         )}

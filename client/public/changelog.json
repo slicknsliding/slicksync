@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.48.3",
+    "date": "2026-07-23",
+    "title": "feat: TV mode — genre chips, catalog tabs, and the trailer button are now D-pad navigable",
+    "features": [
+      "Extends Phase 1's TV mode: the Popular/New/Top Rated catalog tabs are now D-pad-focusable, the genre filter swaps its native dropdown for a focusable chip row in TV mode (Norigin's spatial nav has no way to reach into an OS-native <select> popup), and the detail modal's Play Trailer button joined the same focus group as Watchlist/Open in Stremio/Open in Nuvio - one scope for the whole modal now, so up/down/left/right move by actual on-screen position instead of two separate stitched-together areas."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Still not D-pad navigable: the search box and the Movies/Series tabs (the latter live in the shared PageToolbar/FilterTabs component used across most of the app - retrofitting it is separate, larger-blast-radius work, not done here)."
+    ]
+  },
+  {
     "version": "1.48.2",
     "date": "2026-07-23",
     "title": "Fix: v1.48.1's own fix failed to build",
