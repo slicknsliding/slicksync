@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.51.1",
+    "date": "2026-07-24",
+    "title": "fix: TV mode D-pad focus never scrolled the viewport",
+    "features": [],
+    "bugFixes": [
+      "Confirmed live on an actual TV: pressing Down out of the catalog/genre row looked completely dead. Norigin moves the focus key between DOM nodes but never touches scroll position, so a poster a few rows down gained focus exactly like an on-screen one - just invisibly. TVFocusable now scrolls the focused element into view on every focus change, fixed once for catalog tabs, genre chips, the poster grid, and modal buttons alike."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.51.0",
     "date": "2026-07-24",
     "title": "feat: self-service data export for managed users",
