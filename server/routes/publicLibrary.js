@@ -2149,6 +2149,74 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     }
   });
 
+  // Self-service data export - lets a managed user download their own watch
+  // history and household watchlist as JSON, without asking an admin to run
+  // the Disaster Recovery Kit (which is account-wide, not scoped to one user,
+  // and admin-only). Same auth pattern as /activity and /library above.
+  router.get('/export', async (req, res) => {
+    try {
+      const { userId } = req.query;
+      const authKey = getAuthKey(req);
+
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+      }
+      if (!authKey) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, username: true, email: true, accountId: true, isActive: true }
+      });
+
+      if (!user || !user.isActive) {
+        return res.status(404).json({ error: 'User not found or inactive' });
+      }
+
+      try {
+        await getPublicUser(authKey, req);
+      } catch (e) {
+        return res.status(401).json({ error: 'Invalid auth key' });
+      }
+
+      const accountId = user.accountId || DEFAULT_ACCOUNT_ID;
+
+      const [movieHistory, episodeHistory, watchlist] = await Promise.all([
+        prisma.movieWatchHistory.findMany({
+          where: { userId, accountId },
+          orderBy: { watchedAt: 'desc' },
+          select: { itemId: true, itemName: true, poster: true, watchedAt: true }
+        }),
+        prisma.episodeWatchHistory.findMany({
+          where: { userId, accountId },
+          orderBy: { watchedAt: 'desc' },
+          select: { showId: true, showName: true, videoId: true, season: true, episode: true, poster: true, watchedAt: true }
+        }),
+        // Household-wide, not per-user - Watchlist has no userId column (it's
+        // a shared account list, same one Discover's "Add to Watchlist" and
+        // the physical-button "surprise me" pick draw from) - included as-is
+        // since it's still part of what this account's data consists of.
+        prisma.watchlistItem.findMany({
+          where: { accountId },
+          orderBy: { addedAt: 'desc' },
+          select: { itemId: true, itemType: true, name: true, poster: true, addedAt: true }
+        })
+      ]);
+
+      res.json({
+        exportedAt: new Date().toISOString(),
+        user: { username: user.username, email: user.email },
+        movieHistory,
+        episodeHistory,
+        watchlist
+      });
+    } catch (error) {
+      console.error('Error exporting user data:', error);
+      res.status(500).json({ error: 'Failed to export data', message: error?.message });
+    }
+  });
+
   // Delete user API key
   router.delete('/user-api-key', async (req, res) => {
     try {
