@@ -376,6 +376,33 @@ export const userActivity = {
   },
 };
 
+// Data export
+export interface UserExportData {
+  exportedAt: string;
+  user: { username: string; email: string };
+  movieHistory: { itemId: string; itemName: string; poster: string | null; watchedAt: string }[];
+  episodeHistory: {
+    showId: string;
+    showName: string;
+    videoId: string;
+    season: number | null;
+    episode: number | null;
+    poster: string | null;
+    watchedAt: string;
+  }[];
+  watchlist: { itemId: string; itemType: string; name: string; poster: string | null; addedAt: string }[];
+}
+
+export const userExport = {
+  /**
+   * Download this user's own watch history + household watchlist as JSON
+   */
+  async getExport(userId: string, authKey?: string): Promise<UserExportData> {
+    const params = new URLSearchParams({ userId });
+    return request(`/public-library/export?${params.toString()}`, { authKey });
+  },
+};
+
 // Sync API
 export interface AtRiskStatus {
   userId: string;
@@ -571,4 +598,5 @@ export const userApi = {
   addons: userAddons,
   shares: userShares,
   sync: userSync,
+  export: userExport,
 };
