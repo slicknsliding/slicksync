@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.51.0",
+    "date": "2026-07-24",
+    "title": "feat: self-service data export for managed users",
+    "features": [
+      "Settings -> Privacy now has a Download button that exports your own movie/episode watch history plus the household watchlist as JSON - no need to ask an admin to run the (account-wide, admin-only) Disaster Recovery Kit just to see your own history. New GET /api/public-library/export endpoint, scoped to the requesting user's own userId, same OAuth authKey check as /activity and /library."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.50.0",
     "date": "2026-07-23",
     "title": "feat: Resume-on-another-device quick launch on Now Playing",

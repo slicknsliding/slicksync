@@ -17,7 +17,7 @@ import {
   BeakerIcon,
 } from '@heroicons/react/24/outline';
 import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
-import { userAuth } from '@/lib/user-api';
+import { userAuth, userExport } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { ToggleSwitch, Avatar } from '@/components/ui';
 import { useTheme, themeMeta, themeIds, ThemeId } from '@/lib/theme';
@@ -250,6 +250,29 @@ export default function UserSettingsPage() {
       toast.error(err.message || 'Failed to update visibility');
     } finally {
       setUpdating(false);
+    }
+  };
+
+  // Download own history + watchlist as JSON
+  const [isExportingMyData, setIsExportingMyData] = useState(false);
+  const handleExportMyData = async () => {
+    if (!userId || !authKey || isExportingMyData) return;
+    setIsExportingMyData(true);
+    try {
+      const data = await userExport.getExport(userId, authKey);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const date = new Date().toISOString().split('T')[0];
+      a.download = `${date}-slicksync-my-data.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Your data was exported');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to export your data');
+    } finally {
+      setIsExportingMyData(false);
     }
   };
 
@@ -566,6 +589,29 @@ export default function UserSettingsPage() {
                   />
                 </div>
               )}
+            </div>
+
+            {/* Data export */}
+            <div
+              className="flex items-center justify-between p-4 rounded-lg mt-3"
+              style={{ background: 'var(--color-surface-elevated)' }}
+            >
+              <div className="flex-1">
+                <h3 className="font-medium mb-1" style={{ color: 'var(--color-text)' }}>
+                  Your Data
+                </h3>
+                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  Download your watch history and the household watchlist as a JSON file
+                </p>
+              </div>
+              <button
+                onClick={handleExportMyData}
+                disabled={isExportingMyData}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity disabled:opacity-50"
+                style={{ background: 'var(--color-primary)', color: 'var(--color-bg)' }}
+              >
+                {isExportingMyData ? 'Exporting...' : 'Download'}
+              </button>
             </div>
           </div>
         </motion.div>
