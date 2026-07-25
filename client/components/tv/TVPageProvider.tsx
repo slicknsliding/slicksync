@@ -26,7 +26,36 @@ let initialized = false;
 // its own bespoke "focus once loaded" wiring.
 const RETRY_DELAYS_MS = [50, 200, 500, 1000, 2000];
 
+// Confirmed live on an actual TV: everything rendered oversized, only 5
+// posters fit per row instead of a proper dense grid. The WebView was
+// reporting a much narrower CSS viewport than the TV's real resolution
+// (default `width=device-width` isn't reliable on every Android TV WebView),
+// so the responsive breakpoints fell to a small-screen layout and got
+// stretched across the whole panel. Locking the viewport to a fixed TV-scale
+// width once in TV mode fixes this the same way for every screen size
+// without needing to detect the panel's actual resolution - 1920 clears
+// Tailwind's 2xl breakpoint (1536px), which is what the grid needs to show
+// its full 8-column density instead of falling back to a sparser one.
+function useTVViewport(active: boolean) {
+  useEffect(() => {
+    if (!active || typeof document === 'undefined') return;
+    let meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'viewport');
+      document.head.appendChild(meta);
+    }
+    const previous = meta.getAttribute('content');
+    meta.setAttribute('content', 'width=1920, initial-scale=1');
+    return () => {
+      if (previous !== null) meta!.setAttribute('content', previous);
+    };
+  }, [active]);
+}
+
 export function TVPageProvider({ children }: { children: ReactNode }) {
+  useTVViewport(true);
+
   useEffect(() => {
     if (initialized) return;
     initialized = true;
