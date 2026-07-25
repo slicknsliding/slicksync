@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.51.3",
+    "date": "2026-07-24",
+    "title": "fix: TV oversized layout, and D-pad couldn't reach the page nav",
+    "features": [],
+    "bugFixes": [
+      "Confirmed live on an actual TV: the layout rendered oversized, only 5 posters fit per row instead of a proper dense grid. The WebView was reporting a narrower CSS viewport than the TV's real resolution, so the responsive breakpoints fell to a small-screen layout stretched across the whole panel. TV mode now locks the viewport to a fixed 1920px-wide layout, clearing the same breakpoint a real desktop screen would.",
+      "The top nav bar (Dashboard/Discover/Activity/Metrics/Users/Groups/Addons/Vault/Invitations) had no D-pad wiring at all - Up out of a page's own content had nowhere to go. Wired for TV focus the same way as everything else."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.51.2",
     "date": "2026-07-24",
     "title": "fix: TV D-pad couldn't reach the type toggle or source row, and scrolling was choppy",

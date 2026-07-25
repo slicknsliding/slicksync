@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { ReactNode, useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Fragment, ReactNode, useEffect, useState } from 'react';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import {
   HomeIcon,
   MagnifyingGlassIcon,
@@ -60,6 +62,8 @@ const NEBULA_NAV_SECTIONS = [
 
 export function NebulaTopbar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const isTV = useIsTV();
   // Gates which of the two possible NotificationsDropdown locations (fixed
   // top-right here vs inline in NebulaPageHeading's actions row) actually
   // mounts the component - see the comment on that div below for why a
@@ -261,10 +265,10 @@ export function NebulaTopbar() {
               {section.items.map((link) => {
                 const isActive = pathname === link.href;
                 const Icon = link.icon;
-                return (
+                const navLink = (
                   <Link
-                    key={link.href}
                     href={link.href}
+                    tabIndex={isTV ? -1 : undefined}
                     className="nav-item-hover-pill flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap"
                     style={
                       isActive
@@ -280,6 +284,19 @@ export function NebulaTopbar() {
                     <Icon className="w-4 h-4 shrink-0" />
                     {link.label}
                   </Link>
+                );
+                // This row previously had no D-pad wiring at all - Up out of
+                // a page's own TV content had nowhere to go, which is why
+                // switching pages (or getting back to one) was impossible on
+                // an actual TV. onEnterPress navigates imperatively since
+                // Norigin fires a synthetic "press", not a real click the
+                // anchor's own href would otherwise handle.
+                return isTV ? (
+                  <TVFocusable key={link.href} onEnterPress={() => router.push(link.href)}>
+                    {navLink}
+                  </TVFocusable>
+                ) : (
+                  <Fragment key={link.href}>{navLink}</Fragment>
                 );
               })}
             </div>
