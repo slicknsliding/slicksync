@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.51.2",
+    "date": "2026-07-24",
+    "title": "fix: TV D-pad couldn't reach the type toggle or source row, and scrolling was choppy",
+    "features": [],
+    "bugFixes": [
+      "Confirmed live on an actual TV: the Movies/Series toggle and the Discover/Watchlist/For You + Watched-filter row were never wired for D-pad at all (they went through PageToolbar's plain FilterTabs, same gap the genre <select> swap already worked around elsewhere) - pressing Up out of the catalog row had nowhere further to go, reading as \"this is the top of the page\" when it wasn't. Both rows now get the same TVFocusable treatment as the catalog tabs.",
+      "scrollIntoView's 'smooth' behavior looked fine for one press but D-pad repeat-fires faster than the animation finishes, so each new keypress interrupted the last mid-scroll - the \"choppy/glitchy\" scrolling. Switched to instant scrolling, which is also just how TV UIs normally behave (Netflix/YouTube TV snap, they don't ease)."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.51.1",
     "date": "2026-07-24",
     "title": "fix: TV mode D-pad focus never scrolled the viewport",

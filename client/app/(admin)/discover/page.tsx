@@ -461,19 +461,43 @@ export default function DiscoverPage() {
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}
         <PageSection delay={0.05} className="mb-6">
-          <PageToolbar
-            animate={false}
-            searchConfig={searchConfig}
-            filterTabs={{
-              options: [
-                { key: 'movie', label: 'Movies', icon: <FilmIcon className="w-4 h-4" /> },
-                { key: 'series', label: 'Series', icon: <TvIcon className="w-4 h-4" /> },
-              ],
-              activeKey: type,
-              onChange: (key) => setType(key as 'movie' | 'series'),
-              layoutId: 'discover-type-tabs',
-            }}
-          />
+          {isTV ? (
+            // PageToolbar's filterTabs render through FilterTabs, which has
+            // no D-pad wiring - same reason the genre <select> gets swapped
+            // out below. Search is skipped entirely on TV (typing on a
+            // remote isn't worth building for yet), so this is just the
+            // Movies/Series toggle, D-pad reachable.
+            <div className="flex gap-2">
+              {([['movie', 'Movies', FilmIcon], ['series', 'Series', TvIcon]] as const).map(([key, label, Icon]) => (
+                <TVFocusable key={key} onEnterPress={() => setType(key)}>
+                  <button
+                    type="button"
+                    onClick={() => setType(key)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
+                      type === key ? 'bg-primary text-white' : 'bg-surface-hover text-muted hover:text-default'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {label}
+                  </button>
+                </TVFocusable>
+              ))}
+            </div>
+          ) : (
+            <PageToolbar
+              animate={false}
+              searchConfig={searchConfig}
+              filterTabs={{
+                options: [
+                  { key: 'movie', label: 'Movies', icon: <FilmIcon className="w-4 h-4" /> },
+                  { key: 'series', label: 'Series', icon: <TvIcon className="w-4 h-4" /> },
+                ],
+                activeKey: type,
+                onChange: (key) => setType(key as 'movie' | 'series'),
+                layoutId: 'discover-type-tabs',
+              }}
+            />
+          )}
         </PageSection>
 
         {/* Source: Cinemeta catalogs vs. your own Watchlist + optional
@@ -486,67 +510,82 @@ export default function DiscoverPage() {
               {/* Discover source is always shown when any SlickTrax feature is
                   on — otherwise the toggle row disappears entirely. Watchlist
                   and For You each appear only when their feature is enabled. */}
-              {(enableWatchlist || enableRecommendations) && (
-                <button
-                  type="button"
-                  onClick={() => setSource('discover')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    source === 'discover'
-                      ? 'bg-primary text-white'
-                      : 'bg-surface-hover text-muted hover:text-default'
-                  }`}
-                >
-                  Discover
-                </button>
-              )}
-              {enableWatchlist && (
-                <button
-                  type="button"
-                  onClick={() => setSource('watchlist')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    source === 'watchlist'
-                      ? 'bg-primary text-white'
-                      : 'bg-surface-hover text-muted hover:text-default'
-                  }`}
-                >
-                  ★ Watchlist
-                  {watchlist.length > 0 && (
-                    <span className={`ml-1.5 text-xs ${source === 'watchlist' ? 'opacity-80' : 'opacity-60'}`}>({watchlist.length})</span>
-                  )}
-                </button>
-              )}
-              {enableRecommendations && (
-                <button
-                  type="button"
-                  onClick={() => setSource('foryou')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    source === 'foryou'
-                      ? 'bg-primary text-white'
-                      : 'bg-surface-hover text-muted hover:text-default'
-                  }`}
-                >
-                  ✨ For You
-                </button>
-              )}
+              {(enableWatchlist || enableRecommendations) && (() => {
+                const btn = (
+                  <button
+                    type="button"
+                    onClick={() => setSource('discover')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      source === 'discover'
+                        ? 'bg-primary text-white'
+                        : 'bg-surface-hover text-muted hover:text-default'
+                    }`}
+                  >
+                    Discover
+                  </button>
+                );
+                return isTV ? <TVFocusable onEnterPress={() => setSource('discover')}>{btn}</TVFocusable> : btn;
+              })()}
+              {enableWatchlist && (() => {
+                const btn = (
+                  <button
+                    type="button"
+                    onClick={() => setSource('watchlist')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      source === 'watchlist'
+                        ? 'bg-primary text-white'
+                        : 'bg-surface-hover text-muted hover:text-default'
+                    }`}
+                  >
+                    ★ Watchlist
+                    {watchlist.length > 0 && (
+                      <span className={`ml-1.5 text-xs ${source === 'watchlist' ? 'opacity-80' : 'opacity-60'}`}>({watchlist.length})</span>
+                    )}
+                  </button>
+                );
+                return isTV ? <TVFocusable onEnterPress={() => setSource('watchlist')}>{btn}</TVFocusable> : btn;
+              })()}
+              {enableRecommendations && (() => {
+                const btn = (
+                  <button
+                    type="button"
+                    onClick={() => setSource('foryou')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      source === 'foryou'
+                        ? 'bg-primary text-white'
+                        : 'bg-surface-hover text-muted hover:text-default'
+                    }`}
+                  >
+                    ✨ For You
+                  </button>
+                );
+                return isTV ? <TVFocusable onEnterPress={() => setSource('foryou')}>{btn}</TVFocusable> : btn;
+              })()}
 
               {/* Watched filter — right side of the same row, subtle. */}
               {enableWatchedIndicators && (
                 <div className="ml-auto flex gap-1 items-center">
                   <span className="text-xs text-muted mr-1 hidden sm:inline">Show:</span>
-                  {([['all', 'All'], ['hide', 'Unwatched'], ['only', 'Watched']] as const).map(([key, label]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setWatchedFilter(key)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                        watchedFilter === key
-                          ? 'bg-primary/20 text-primary'
-                          : 'text-muted hover:text-default'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                  {([['all', 'All'], ['hide', 'Unwatched'], ['only', 'Watched']] as const).map(([key, label]) => {
+                    const btn = (
+                      <button
+                        type="button"
+                        onClick={() => setWatchedFilter(key)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                          watchedFilter === key
+                            ? 'bg-primary/20 text-primary'
+                            : 'text-muted hover:text-default'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                    return isTV ? (
+                      <TVFocusable key={key} onEnterPress={() => setWatchedFilter(key)}>{btn}</TVFocusable>
+                    ) : (
+                      <Fragment key={key}>{btn}</Fragment>
+                    );
+                  })}
                 </div>
               )}
             </div>
