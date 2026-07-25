@@ -29,7 +29,13 @@ export function TVFocusable({ onEnterPress, onFocus, className = '', style, focu
   const { ref, focused } = useFocusable<object, HTMLDivElement>({
     onEnterPress,
     onFocus: () => {
-      ref.current?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      // 'smooth' looked buttery for a single press, but D-pad repeat-fires
+      // much faster than that animation can finish - each new keypress
+      // interrupts the last one mid-scroll, which is the "choppy/glitchy"
+      // motion confirmed live on an actual TV. 'auto' (instant) is also
+      // just how TV UIs normally behave - Netflix/YouTube TV snap, they
+      // don't ease - so this isn't a downgrade, it's the correct behavior.
+      ref.current?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
       onFocus?.();
     },
     focusKey,
