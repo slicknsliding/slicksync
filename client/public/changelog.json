@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.55.0",
+    "date": "2026-07-27",
+    "title": "feat: TV mode expands to Dashboard (page 1 of the full rollout)",
+    "features": [
+      "Dashboard's Nebula view is now D-pad navigable on TV: Sync All/Retry, the Groups/Addons stat cards, Continue Watching, Recent Activity, Top Viewers, and Recent Addons all reachable. Added a reusable TVLink component (a drop-in for next/link that's auto-focusable on TV) to make wiring the rest of the app's pages faster and more consistent going forward. Known gaps on this page for now: the \"Coming Up\" panel and the per-addon reload button (hover-only, no TV equivalent yet). Remaining pages (Activity, Metrics, Users, Groups, Addons, Vault, Invitations) are still not yet wired - this is the first of several planned passes, not the finish line."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.54.0",
     "date": "2026-07-27",
     "title": "feat: Nebula mobile nav collapses behind a hamburger, dropdown reorder",

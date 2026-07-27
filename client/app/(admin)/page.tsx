@@ -1,10 +1,14 @@
 'use client';
 
-import { memo, useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { memo, useEffect, useState, useMemo, useCallback, useRef, Fragment } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { TVLink } from '@/components/tv/TVLink';
 import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu, MediaDetailModal } from '@/components/ui';
 import { UpcomingEpisodesPanel } from '@/components/ui/UpcomingEpisodesPanel';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
@@ -97,7 +101,7 @@ const RecentAddonItem = memo(function RecentAddonItem({
   const logo = addon.logo;
 
   return (
-    <Link href={`/addons/${addon.id}`} className="block">
+    <TVLink href={`/addons/${addon.id}`} className="block" focusWrapperClassName="block">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -154,7 +158,7 @@ const RecentAddonItem = memo(function RecentAddonItem({
           <ArrowPathIcon className={`w-4 h-4 ${isReloading ? 'animate-spin' : ''}`} />
         </Button>
       </motion.div>
-    </Link>
+    </TVLink>
   );
 });
 
@@ -368,6 +372,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
 
 export default function DashboardPage() {
   const { layoutMode } = useLayoutMode();
+  const isTV = useIsTV();
   const [accountStats, setAccountStats] = useState<AccountStats | null>(null);
   const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
   const [recentAddonsData, setRecentAddons] = useState<Addon[]>([]);
@@ -693,8 +698,9 @@ export default function DashboardPage() {
   // carefully-debugged pointer-capture/context-menu/app-link logic isn't
   // duplicated.
   if (layoutMode === 'nebula') {
+    const Wrapper = isTV ? TVPageProvider : Fragment;
     return (
-      <>
+      <Wrapper>
         <NebulaTopbar />
 
         <div className="px-4 md:px-6 pb-8 pt-6">
@@ -706,17 +712,20 @@ export default function DashboardPage() {
             <NebulaPageHeading
               title="Dashboard"
               subtitle="Welcome back! Here's what's happening with SlickSync."
-              actions={
-                <Button
-                  variant="primary"
-                  size="sm"
-                  leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
-                  onClick={handleSyncAll}
-                  isLoading={isSyncing}
-                >
-                  Sync All
-                </Button>
-              }
+              actions={(() => {
+                const syncBtn = (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<ArrowPathIcon className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />}
+                    onClick={handleSyncAll}
+                    isLoading={isSyncing}
+                  >
+                    Sync All
+                  </Button>
+                );
+                return isTV ? <TVFocusable onEnterPress={handleSyncAll}>{syncBtn}</TVFocusable> : syncBtn;
+              })()}
             />
 
             {error && (
@@ -726,9 +735,16 @@ export default function DashboardPage() {
                   <p className="font-semibold">Failed to load dashboard data</p>
                   <p className="opacity-90">{error.message}</p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => refreshData()} className="ml-auto">
-                  Retry
-                </Button>
+                {(() => {
+                  const retryBtn = (
+                    <Button variant="ghost" size="sm" onClick={() => refreshData()} className={isTV ? undefined : 'ml-auto'}>
+                      Retry
+                    </Button>
+                  );
+                  return isTV ? (
+                    <TVFocusable className="ml-auto" onEnterPress={() => refreshData()}>{retryBtn}</TVFocusable>
+                  ) : retryBtn;
+                })()}
               </div>
             )}
 
@@ -759,7 +775,7 @@ export default function DashboardPage() {
                   </p>
                 </div>
               </div>
-              <Link href="/groups" className={`${NEBULA_GLASS_CLASS} p-5 flex items-center justify-between`} style={nebulaGlassStyle}>
+              <TVLink href="/groups" className={`${NEBULA_GLASS_CLASS} p-5 flex items-center justify-between`} style={nebulaGlassStyle} focusWrapperClassName="block">
                 <NebulaGlassStripe />
                 <div>
                   <p className="text-sm text-muted mb-1">Groups</p>
@@ -771,8 +787,8 @@ export default function DashboardPage() {
                 >
                   <UserGroupIcon className="w-6 h-6" />
                 </div>
-              </Link>
-              <Link href="/addons" className={`${NEBULA_GLASS_CLASS} p-5 flex items-center justify-between`} style={nebulaGlassStyle}>
+              </TVLink>
+              <TVLink href="/addons" className={`${NEBULA_GLASS_CLASS} p-5 flex items-center justify-between`} style={nebulaGlassStyle} focusWrapperClassName="block">
                 <NebulaGlassStripe />
                 <div>
                   <p className="text-sm text-muted mb-1">Addons</p>
@@ -784,7 +800,7 @@ export default function DashboardPage() {
                 >
                   <PuzzlePieceIcon className="w-6 h-6" />
                 </div>
-              </Link>
+              </TVLink>
             </div>
 
             {/* Continue Watching - identical cards/drag logic to Current mode */}
@@ -800,19 +816,27 @@ export default function DashboardPage() {
                   onPointerLeave={handleRowPointerUp}
                   className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar"
                 >
-                  {continueWatching.map((item) => (
-                    <ContinueWatchingCard
-                      key={`${item.userId}-${item.showId}`}
-                      item={item}
-                      wasDraggedRef={wasDraggedRef}
-                      onRemove={handleDismissContinueWatching}
-                      onOpenDetails={setDetailModalItem}
-                      isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
-                      onMenuOpenChange={(open) =>
-                        setOpenMenuKey(open ? `${item.userId}-${item.showId}` : null)
-                      }
-                    />
-                  ))}
+                  {continueWatching.map((item) => {
+                    const card = (
+                      <ContinueWatchingCard
+                        item={item}
+                        wasDraggedRef={wasDraggedRef}
+                        onRemove={handleDismissContinueWatching}
+                        onOpenDetails={setDetailModalItem}
+                        isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
+                        onMenuOpenChange={(open) =>
+                          setOpenMenuKey(open ? `${item.userId}-${item.showId}` : null)
+                        }
+                      />
+                    );
+                    return isTV ? (
+                      <TVFocusable key={`${item.userId}-${item.showId}`} onEnterPress={() => setDetailModalItem(item)}>
+                        {card}
+                      </TVFocusable>
+                    ) : (
+                      <Fragment key={`${item.userId}-${item.showId}`}>{card}</Fragment>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -835,9 +859,9 @@ export default function DashboardPage() {
                 <NebulaGlassStripe />
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-base font-semibold font-display text-default">Recent Activity</h3>
-                  <Link href="/activity" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
+                  <TVLink href="/activity" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
                     View All →
-                  </Link>
+                  </TVLink>
                 </div>
                 <div className="flex flex-col gap-1">
                   {isLoading ? (
@@ -852,14 +876,14 @@ export default function DashboardPage() {
                           className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full opacity-70"
                           style={{ background: 'linear-gradient(180deg, var(--color-primary), var(--color-secondary))' }}
                         />
-                        <Link
+                        <TVLink
                         href={`/users/${np.user.id}`}
                         onClick={(e) => e.stopPropagation()}
                         aria-label={`Open ${np.user.username}'s profile`}
                         className="shrink-0 rounded-full transition-transform hover:scale-105"
                       >
                         <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
-                      </Link>
+                      </TVLink>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm truncate text-muted">
                             <span className="font-medium" style={{ color: 'var(--color-secondary)' }}>
@@ -897,16 +921,16 @@ export default function DashboardPage() {
                 <NebulaGlassStripe />
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-base font-semibold font-display text-default">Top Viewers</h3>
-                  <Link href="/users" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
+                  <TVLink href="/users" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
                     See All →
-                  </Link>
+                  </TVLink>
                 </div>
                 <div className="flex flex-col gap-1">
                   {isLoading ? (
                     <div className="text-center py-8 text-sm text-muted">Loading...</div>
                   ) : topUsers.length > 0 ? (
                     topUsers.map((user, index) => (
-                      <Link key={user.id || user.name} href={`/users/${user.id}`} className="flex items-center gap-3 p-2.5 rounded-xl relative pl-4">
+                      <TVLink key={user.id || user.name} href={`/users/${user.id}`} className="flex items-center gap-3 p-2.5 rounded-xl relative pl-4" focusWrapperClassName="block">
                         <span
                           className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full opacity-70"
                           style={{ background: 'linear-gradient(180deg, var(--color-primary), var(--color-secondary))' }}
@@ -938,7 +962,7 @@ export default function DashboardPage() {
                             )}
                           </div>
                         </div>
-                      </Link>
+                      </TVLink>
                     ))
                   ) : (
                     <div className="text-center py-8 text-sm text-muted">No user data</div>
@@ -957,9 +981,9 @@ export default function DashboardPage() {
                 <NebulaGlassStripe />
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-base font-semibold font-display text-default">Recent Addons</h3>
-                  <Link href="/addons" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
+                  <TVLink href="/addons" className="text-sm font-medium" style={{ color: 'var(--color-secondary)' }}>
                     View All →
-                  </Link>
+                  </TVLink>
                 </div>
                 <div className="flex flex-col gap-2">
                   {isLoading ? (
@@ -1011,7 +1035,7 @@ export default function DashboardPage() {
             fallbackPoster={detailModalItem.poster}
           />
         )}
-      </>
+      </Wrapper>
     );
   }
 
