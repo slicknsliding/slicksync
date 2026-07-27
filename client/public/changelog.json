@@ -1,16 +1,5 @@
 [
   {
-    "version": "1.58.1",
-    "date": "2026-07-27",
-    "title": "fix: TV D-pad couldn't reach nav under sticky topbar, back button exited the app",
-    "features": [],
-    "bugFixes": [
-      "Confirmed live on an actual TV: scrolling back up to reach the Movies/Series toggle or genre chips on Discover looked broken - focus moved there fine, but the sticky topbar (always full-height on TV) visually covered it, since scrollIntoView had no idea a ~300px sticky bar was sitting over the top of the viewport and stopped scrolling the moment the target was technically \"in view.\" Every TV page now reserves that headroom (scroll-padding-top) so a focused element always lands fully below the bar, not hidden under it.",
-      "The remote/hardware back button exited the app outright from anywhere in it, instead of navigating back within the app the way Home/Discover/etc. do for every other app. The TV shell now takes over back-button handling itself and only actually exits once there's nowhere left to go back to. Requires updating to the latest TV APK - the fix needs a native plugin the old build doesn't have."
-    ],
-    "miscChores": []
-  },
-  {
     "version": "1.58.0",
     "date": "2026-07-27",
     "title": "feat: SlickTrax \"Not interested\" feedback + real household attribution",
