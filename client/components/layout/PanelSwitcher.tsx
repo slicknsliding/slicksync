@@ -371,6 +371,36 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                   </div>
                   <span className="text-sm font-medium">Changelog</span>
                 </button>
+                {/* TorBox referral - previously a floating badge fixed to a
+                    screen corner (NebulaTopbar/Sidebar), which needed its own
+                    positioning/sizing pass on every layout and viewport size
+                    and still read inconsistently across deployments. One
+                    stable spot in the existing "System" menu instead - same
+                    row styling as Tasks/Settings/Themes/Changelog above, just
+                    an external link (opens in a new tab) instead of a
+                    router.push. */}
+                <a
+                  href="https://torbox.app/subscription?referral=790ccd5b-646d-43d7-9072-aef7a6eb1de8"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setIsOpen(false)}
+                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
+                  style={{ color: 'var(--color-text)' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--color-surface-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center p-1.5"
+                    style={{ background: 'var(--color-surface-hover)' }}
+                  >
+                    <img src="https://torbox.app/assets/logo-bb7a9579.svg" alt="TorBox" className="w-full h-full" />
+                  </div>
+                  <span className="text-sm font-medium">Torbox Referral</span>
+                </a>
               </>
             )}
 
