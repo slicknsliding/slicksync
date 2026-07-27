@@ -34,6 +34,19 @@ function heartbeat(event, data = {}) {
 // recently, even during genuine continuous playback).
 const CHECK_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes - freshness window base, not a poll interval
 
+// Ceiling for the wall-clock fallback duration (used only when position data
+// isn't available - see both call sites below). A WatchSession row is reused
+// across every rewatch of the same item (@@unique on accountId/userId/itemId)
+// and startTime only ever moves backward, never forward - if the row somehow
+// stays "active" across a much longer stretch than a real single sitting
+// (confirmed real case: a session created at a first, brief play stayed
+// active until a much later replay, wall-clock fallback then computed ~14h
+// from the frozen original startTime), the fallback shouldn't be trusted at
+// face value. Capping it stops the absurd display regardless of why the
+// session stayed open that long - a real single-sitting watch is never
+// anywhere near this long anyway.
+const MAX_WALLCLOCK_FALLBACK_SECONDS = 6 * 60 * 60 // 6h
+
 /**
  * Format episode info to match UI display
  * - With season: S{season}E{episode}
@@ -450,7 +463,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
         const hasPositionData = existingSession.startPosition != null && !Number.isNaN(currentPosition)
         const sessionDurationSeconds = hasPositionData
           ? Math.max(0, Math.floor((currentPosition - existingSession.startPosition) / 1000))
-          : Math.max(0, Math.floor(((watchDate ? watchDate.getTime() : nowMs) - existingSession.startTime.getTime()) / 1000))
+          : Math.min(MAX_WALLCLOCK_FALLBACK_SECONDS, Math.max(0, Math.floor(((watchDate ? watchDate.getTime() : nowMs) - existingSession.startTime.getTime()) / 1000)))
 
         // NEVER update startTime forward - only backward if we discover an earlier ping
         // This prevents resets when lastWatched gets updated to recent times
@@ -638,7 +651,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
       const hasPositionData = session.startPosition != null && lastPositionValue != null
       const sessionDurationSeconds = hasPositionData
         ? Math.max(0, Math.floor((lastPositionValue - session.startPosition) / 1000))
-        : Math.max(0, Math.floor((endTime.getTime() - session.startTime.getTime()) / 1000))
+        : Math.min(MAX_WALLCLOCK_FALLBACK_SECONDS, Math.max(0, Math.floor((endTime.getTime() - session.startTime.getTime()) / 1000)))
 
       await prisma.watchSession.update({
         where: { id: session.id },
