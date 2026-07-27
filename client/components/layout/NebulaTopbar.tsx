@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Fragment, ReactNode, useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import {
@@ -15,12 +16,15 @@ import {
   PuzzlePieceIcon,
   ShieldCheckIcon,
   EnvelopeIcon,
+  Bars3Icon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { PanelSwitcher } from './PanelSwitcher';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { api } from '@/lib/api';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
+import { useMobileMenu } from '@/app/(admin)/AdminClientLayout';
 
 // Replaces the sidebar for pages rendering Nebula layout mode (see
 // lib/layout-mode.tsx's NEBULA_ELIGIBLE_PATHS) - brand sits on its own row
@@ -63,6 +67,16 @@ export function NebulaTopbar() {
   const pathname = usePathname();
   const router = useRouter();
   const isTV = useIsTV();
+  // Reuses the same open/close state Original layout's Sidebar drawer
+  // already gets from AdminClientLayout - the two never render at once
+  // (Sidebar is hidden on exactly the pages that render this component
+  // instead), so there's no conflict, just one shared "is the mobile nav
+  // open" flag instead of a second one. Previously the nav rows rendered
+  // inline unconditionally on every screen size, which meant two full rows
+  // of pills permanently eating space above the fold on a phone, worse
+  // once the topbar went sticky - now collapsed behind the hamburger on
+  // mobile, same pattern Original layout already uses.
+  const { isOpen: mobileNavOpen, onOpen: openMobileNav, onClose: closeMobileNav } = useMobileMenu();
   // Gates which of the two possible NotificationsDropdown locations (fixed
   // top-right here vs inline in NebulaPageHeading's actions row) actually
   // mounts the component - see the comment on that div below for why a
@@ -202,7 +216,23 @@ export function NebulaTopbar() {
             never reliably worked on a phone regardless of how far each
             piece got shrunk - it's just the logo now, so nothing to shrink
             for or stack rows over on any screen size. */}
-        <div className="flex items-center justify-center gap-2 md:gap-4 mb-4">
+        <div className="relative flex items-center justify-center gap-2 md:gap-4 mb-4">
+          {/* Hamburger - mobile only, matches Original layout's Sidebar
+              toggle (same icon, same shared open state). Absolutely
+              positioned so the logo stays genuinely centered either way,
+              rather than the hamburger's own width pushing it off-center. */}
+          <button
+            onClick={() => (mobileNavOpen ? closeMobileNav() : openMobileNav())}
+            className="md:hidden absolute left-0 p-2 rounded-lg hover:bg-surface-hover transition-colors"
+            aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={mobileNavOpen}
+          >
+            {mobileNavOpen ? (
+              <XMarkIcon className="w-6 h-6" style={{ color: 'var(--color-text)' }} />
+            ) : (
+              <Bars3Icon className="w-6 h-6" style={{ color: 'var(--color-text)' }} />
+            )}
+          </button>
           <Link href="/" className="flex items-center gap-2 md:gap-4 justify-center min-w-0">
             <div
               className="w-10 h-10 md:w-16 md:h-16 rounded-2xl flex items-center justify-center flex-shrink-0"
@@ -226,11 +256,24 @@ export function NebulaTopbar() {
             </b>
           </Link>
         </div>
-        <nav
-          className="flex flex-col items-center gap-3 pt-4"
-          style={{ borderTop: '1px solid var(--color-surface-border)' }}
-        >
-          {NEBULA_NAV_SECTIONS.map((section) => (
+        {/* Always visible on desktop regardless of mobileNavOpen (isMobile is
+            false there, so navVisible is always true); on mobile, collapsed
+            behind the hamburger above and pops open/closed with a height
+            animation instead of permanently eating space above the fold. */}
+        {(() => {
+          const navVisible = !isMobile || mobileNavOpen;
+          return (
+            <AnimatePresence initial={false}>
+              {navVisible && (
+                <motion.nav
+                  initial={isMobile ? { height: 0, opacity: 0 } : false}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: 'easeInOut' }}
+                  className="flex flex-col items-center gap-3 pt-4 overflow-hidden"
+                  style={{ borderTop: '1px solid var(--color-surface-border)' }}
+                >
+                  {NEBULA_NAV_SECTIONS.map((section) => (
             // Each section is its own row, same as Sidebar.tsx's vertical
             // stack of groups - spacing alone marks the grouping, no text
             // label above either row. flex-nowrap + overflow-x-auto instead
@@ -253,6 +296,7 @@ export function NebulaTopbar() {
                   <Link
                     href={link.href}
                     tabIndex={isTV ? -1 : undefined}
+                    onClick={closeMobileNav}
                     className="nav-item-hover-pill flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap"
                     style={
                       isActive
@@ -285,7 +329,11 @@ export function NebulaTopbar() {
               })}
             </div>
           ))}
-        </nav>
+                </motion.nav>
+              )}
+            </AnimatePresence>
+          );
+        })()}
       </div>
     </div>
     </>

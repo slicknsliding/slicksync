@@ -315,25 +315,6 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                   <span className="text-sm font-medium">Tasks</span>
                 </button>
                 <button
-                  onClick={() => { setIsOpen(false); router.push('/settings'); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
-                  style={{ color: 'var(--color-text)' }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--color-surface-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                  }}
-                >
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'var(--color-surface-hover)' }}
-                  >
-                    <Cog6ToothIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-                  </div>
-                  <span className="text-sm font-medium">Settings</span>
-                </button>
-                <button
                   onClick={() => { setIsOpen(false); router.push('/themes'); }}
                   className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
                   style={{ color: 'var(--color-text)' }}
@@ -401,6 +382,25 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                   </div>
                   <span className="text-sm font-medium">Torbox Referral</span>
                 </a>
+                <button
+                  onClick={() => { setIsOpen(false); router.push('/settings'); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
+                  style={{ color: 'var(--color-text)' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--color-surface-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ background: 'var(--color-surface-hover)' }}
+                  >
+                    <Cog6ToothIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                  </div>
+                  <span className="text-sm font-medium">Settings</span>
+                </button>
               </>
             )}
 

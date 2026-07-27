@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.54.0",
+    "date": "2026-07-27",
+    "title": "feat: Nebula mobile nav collapses behind a hamburger, dropdown reorder",
+    "features": [
+      "Nebula layout's top nav now collapses behind a hamburger toggle on mobile, same pattern Original layout's Sidebar already uses - previously both nav rows rendered inline unconditionally, permanently eating space above the fold on a phone (worse once the nav went sticky). Desktop is unaffected, still always visible.",
+      "Account dropdown reordered: Tasks, Themes, Changelog, Torbox Referral, Settings, Logout."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.53.1",
     "date": "2026-07-27",
     "title": "fix: sticky nav had an opaque black background",
