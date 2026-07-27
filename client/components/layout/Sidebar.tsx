@@ -24,7 +24,6 @@ import {
   SwatchIcon,
 } from '@heroicons/react/24/outline';
 import { PanelSwitcher } from './PanelSwitcher';
-import { TorBoxBadge } from './TorBoxBadge';
 import { api } from '@/lib/api';
 
 interface SidebarProps {
@@ -303,14 +302,14 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </span>
         </div>
 
-        {/* TorBox referral badge + Panel Switcher - stacked (was side by
-            side) to match Nebula's layout and read as a cleaner single
-            column instead of two things competing for width. */}
+        {/* Panel Switcher - TorBox referral moved into its dropdown (System
+            group, alongside Tasks/Settings/Themes/Changelog) instead of
+            floating here as its own badge - one stable spot instead of a
+            positioning pass on every layout. */}
         <div
           className="p-3 flex flex-col items-start gap-2"
           style={{ borderTop: '1px solid var(--color-surface-border)' }}
         >
-          <TorBoxBadge size={24} />
           <div className="w-full min-w-0">
             <PanelSwitcher
               mode="admin"
