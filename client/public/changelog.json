@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.53.0",
+    "date": "2026-07-27",
+    "title": "feat: sticky top nav, TorBox referral moved into the account menu",
+    "features": [
+      "The top nav (Dashboard/Discover/Activity/Metrics/Users/Groups/Addons/Vault/Invitations) now stays put while you scroll instead of scrolling away with the page - no more scrolling all the way back up to switch pages or tabs.",
+      "TorBox referral moved from a floating badge (which needed its own size/position handling on every layout and viewport, and read inconsistently across different deployments/versions) into the account switcher's dropdown menu, alongside Tasks/Settings/Themes/Changelog - one stable spot instead."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.52.1",
     "date": "2026-07-27",
     "title": "fix: bogus multi-day \"Watching for\" duration on replayed debrid streams",

@@ -18,7 +18,6 @@ import {
 } from '@heroicons/react/24/outline';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { PanelSwitcher } from './PanelSwitcher';
-import { TorBoxBadge } from './TorBoxBadge';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { api } from '@/lib/api';
 import { useIsMobile } from '@/lib/hooks/useIsMobile';
@@ -113,37 +112,13 @@ export function NebulaTopbar() {
           this is for - reverted. dropdownPosition="up" (the default) is
           correct since this sits at the BOTTOM of the screen. */}
       <div className="fixed bottom-4 left-4 md:bottom-6 md:left-6 z-40 flex flex-col items-start gap-2">
-        {/* Stacked above the panel switcher (was beside it) - a cleaner
-            single column instead of two pills competing for width. This
-            pill is unconditionally fixed (no menu state gates it, unlike
-            Sidebar's TorBox placement, which is off-screen until the mobile
-            menu opens) - on a narrow phone it's rendered at half size, small
-            enough to stay out of the way of page content while still being
-            visible/tappable. */}
-        <div
-          className="md:hidden rounded-xl p-1"
-          style={{
-            background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
-            backdropFilter: 'blur(18px)',
-            WebkitBackdropFilter: 'blur(18px)',
-            border: '1px solid var(--color-surface-border)',
-            boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
-          }}
-        >
-          <TorBoxBadge size={18} />
-        </div>
-        <div
-          className="hidden md:block rounded-xl p-1"
-          style={{
-            background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
-            backdropFilter: 'blur(18px)',
-            WebkitBackdropFilter: 'blur(18px)',
-            border: '1px solid var(--color-surface-border)',
-            boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
-          }}
-        >
-          <TorBoxBadge size={24} />
-        </div>
+        {/* TorBox referral used to float here as its own pill above the
+            panel switcher - needed its own size/position pass on every
+            layout and viewport, and still read inconsistently across
+            deployments (different builds landing on different versions of
+            that positioning). Moved into the panel switcher's own dropdown
+            ("System" group, alongside Tasks/Settings/Themes/Changelog) - one
+            stable spot instead of a floating badge. */}
         <div
           className="rounded-2xl p-1.5"
           style={{
@@ -191,7 +166,18 @@ export function NebulaTopbar() {
           </div>
         </div>
       )}
-    <div className="px-4 pt-4 md:px-6 md:pt-6">
+    {/* Sticky, not the page's own scrolling content - previously scrolled
+        away with everything else, so reaching another page (or even
+        Movies/Series, Watchlist, etc. on Discover) meant scrolling all the
+        way back to the top first. z-30 keeps it under the mobile
+        notification bell (z-40, fixed top-right) and the account switcher
+        (z-40, fixed bottom-left) so neither gets covered. A background here
+        (not just on the inner card) stops page content from visibly
+        flashing through the padding gaps around the card while stuck. */}
+    <div
+      className="px-4 pt-4 md:px-6 md:pt-6 pb-4 sticky top-0 z-30"
+      style={{ background: 'var(--color-bg)' }}
+    >
       {/* Caps the bar at 72rem so it reads as a floating island on wide
           desktop viewports instead of stretching edge-to-edge into empty
           space. Set inline, not via the max-w-6xl class - globals.css has a
