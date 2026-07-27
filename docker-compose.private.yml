@@ -1,11 +1,18 @@
 services:
   slicksync:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        INSTANCE: private
-        NEXT_PUBLIC_API_URL: ''
+    # Pre-built, multi-arch (amd64+arm64) image published by
+    # .github/workflows/private-release.yml on every version tag - just
+    # `docker compose pull && docker compose up -d` for updates, no local
+    # build needed. Prefer building from source instead (e.g. to audit the
+    # code yourself, or to run an unreleased commit)? Comment this line out
+    # and uncomment the `build:` block below.
+    image: ghcr.io/slicknsliding/slicksync:private
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   args:
+    #     INSTANCE: private
+    #     NEXT_PUBLIC_API_URL: ''
     environment:
       JWT_SECRET: 'temp-jwt-secret-key'
       ENCRYPTION_KEY: 'temp-encryption-key-32-chars-long'
