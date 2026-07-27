@@ -297,60 +297,42 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                 <div className="h-px" style={{ background: 'var(--color-surface-border)' }} />
                 <button
                   onClick={() => { setIsOpen(false); router.push('/tasks'); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
+                  className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
                   style={{ color: 'var(--color-text)' }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--color-surface-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                  }}
                 >
                   <div
                     className="w-8 h-8 rounded-lg flex items-center justify-center"
                     style={{ background: 'var(--color-surface-hover)' }}
                   >
-                    <QueueListIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                    <QueueListIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
                   </div>
-                  <span className="text-sm font-medium">Tasks</span>
+                  <span className="nav-item-label text-sm font-medium">Tasks</span>
                 </button>
                 <button
                   onClick={() => { setIsOpen(false); router.push('/themes'); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
+                  className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
                   style={{ color: 'var(--color-text)' }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--color-surface-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                  }}
                 >
                   <div
                     className="w-8 h-8 rounded-lg flex items-center justify-center"
                     style={{ background: 'var(--color-surface-hover)' }}
                   >
-                    <SwatchIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                    <SwatchIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
                   </div>
-                  <span className="text-sm font-medium">Themes</span>
+                  <span className="nav-item-label text-sm font-medium">Themes</span>
                 </button>
                 <button
                   onClick={() => { setIsOpen(false); router.push('/changelog'); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
+                  className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
                   style={{ color: 'var(--color-text)' }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--color-surface-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                  }}
                 >
                   <div
                     className="w-8 h-8 rounded-lg flex items-center justify-center"
                     style={{ background: 'var(--color-surface-hover)' }}
                   >
-                    <NewspaperIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                    <NewspaperIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
                   </div>
-                  <span className="text-sm font-medium">Changelog</span>
+                  <span className="nav-item-label text-sm font-medium">Changelog</span>
                 </button>
                 {/* TorBox referral - previously a floating badge fixed to a
                     screen corner (NebulaTopbar/Sidebar), which needed its own
@@ -365,14 +347,8 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setIsOpen(false)}
-                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
+                  className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
                   style={{ color: 'var(--color-text)' }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--color-surface-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                  }}
                 >
                   <div
                     className="w-8 h-8 rounded-lg flex items-center justify-center p-1.5"
@@ -380,26 +356,20 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                   >
                     <img src="https://torbox.app/assets/logo-bb7a9579.svg" alt="TorBox" className="w-full h-full" />
                   </div>
-                  <span className="text-sm font-medium">Torbox Referral</span>
+                  <span className="nav-item-label text-sm font-medium">Torbox Referral</span>
                 </a>
                 <button
                   onClick={() => { setIsOpen(false); router.push('/settings'); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
+                  className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
                   style={{ color: 'var(--color-text)' }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--color-surface-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                  }}
                 >
                   <div
                     className="w-8 h-8 rounded-lg flex items-center justify-center"
                     style={{ background: 'var(--color-surface-hover)' }}
                   >
-                    <Cog6ToothIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                    <Cog6ToothIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
                   </div>
-                  <span className="text-sm font-medium">Settings</span>
+                  <span className="nav-item-label text-sm font-medium">Settings</span>
                 </button>
               </>
             )}

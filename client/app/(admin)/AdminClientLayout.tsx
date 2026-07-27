@@ -99,9 +99,17 @@ export default function AdminClientLayout({
     setIsMobileMenuOpen(false);
   }, [pathname]);
 
-  // Prevent body scroll when mobile menu is open
+  // Prevent body scroll when mobile menu is open - but only for Original's
+  // actual full-screen overlay drawer (Sidebar), where locking scroll behind
+  // the backdrop is the whole point. Nebula's mobile nav is an inline
+  // dropdown that expands within the already-sticky topbar, not an overlay -
+  // locking body scroll there broke position: sticky instead (confirmed:
+  // opening the dropdown while scrolled down made the sticky nav appear to
+  // vanish until scrolling all the way back to top). Sticky's "stuck"
+  // behavior depends on a scrollable ancestor chain up to the real viewport;
+  // freezing that chain out from under it mid-scroll is what caused it.
   useEffect(() => {
-    if (isMobileMenuOpen) {
+    if (isMobileMenuOpen && !useNebulaChrome) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -109,7 +117,7 @@ export default function AdminClientLayout({
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [isMobileMenuOpen]);
+  }, [isMobileMenuOpen, useNebulaChrome]);
 
   const handleOpen = () => setIsMobileMenuOpen(true);
   const handleClose = () => setIsMobileMenuOpen(false);
