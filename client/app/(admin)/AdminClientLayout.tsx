@@ -9,6 +9,7 @@ import { DndContext, DragOverlay, closestCenter } from "@/components/ui/DragSort
 import { useSortableSensors } from "@/components/ui/DragSortable";
 import { pointerWithin } from "@dnd-kit/core";
 import { VaultDragProvider, useVaultDrag } from "@/components/providers/VaultDragContext";
+import { TVBackButton } from "@/components/tv/TVBackButton";
 import type { DragStartEvent, DragEndEvent, CollisionDetection } from "@dnd-kit/core";
 
 interface MobileMenuContextType {
@@ -124,6 +125,7 @@ export default function AdminClientLayout({
 
   return (
     <MobileMenuContext.Provider value={{ isOpen: isMobileMenuOpen, onOpen: handleOpen, onClose: handleClose }}>
+      <TVBackButton />
       <VaultDragProvider>
         <LayoutDndWrapper>
           <div className="relative min-h-screen">
