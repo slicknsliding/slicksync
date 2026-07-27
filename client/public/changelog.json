@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.52.0",
+    "date": "2026-07-25",
+    "title": "fix: short debrid/proxy watches never recorded to History or Continue Watching",
+    "features": [],
+    "bugFixes": [
+      "Confirmed real case: a movie stopped a few minutes into a 2h+ runtime never crosses isActuallyWatched()'s 5%-of-runtime threshold (the exact watch landed at 4.76%), so it silently never became a MovieWatchHistory/EpisodeWatchHistory row at all, despite the proxy pipeline clearly having seen a real ~10 minute connection - it never showed in History or Continue Watching, only ever flickered through as a raw WatchSession entry that changed or vanished on every replay. Added hasConfirmedProxyPlayback(): when the proxy independently confirms a sustained (90s+) connection for a title, that's treated as proof real playback happened even under the 5% threshold, which still only exists to filter out preview/hover-autoplay noise the proxy never sees.",
+      "That same reused WatchSession row could display an absurd multi-hour \"Watching for\" duration (confirmed: 14h+) when its position data went missing for a poll and it fell back to a wall-clock calculation against a startTime frozen from a much earlier, unrelated play of the same item. Capped the fallback at 6 hours - a real single sitting is never anywhere near that long."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.51.3",
     "date": "2026-07-24",
     "title": "fix: TV oversized layout, and D-pad couldn't reach the page nav",

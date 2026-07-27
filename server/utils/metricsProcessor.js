@@ -10,7 +10,7 @@
 
 const { resolveSinglePoster } = require('./libraryHelpers')
 const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
-const { findDebridServiceForWatch } = require('./debridDetection')
+const { findDebridServiceForWatch, hasConfirmedProxyPlayback } = require('./debridDetection')
 const { postDiscord } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
 const { notifyPushForType } = require('./pushNotifications')
@@ -151,8 +151,8 @@ async function notifyNativeWatchDetected(prisma, accountId, { title, poster, ite
  */
 async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
   try {
-    // Only process series items with video_id and real watch progress
-    if (item.type !== 'series' || !item.state?.video_id || !isActuallyWatched(item)) return
+    // Only process series items with a video_id
+    if (item.type !== 'series' || !item.state?.video_id) return
 
     const videoId = item.state.video_id
     const showId = item._id || item.id
@@ -171,6 +171,18 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     }
 
     const accountIdValue = accountId || 'default'
+
+    // See recordMovieWatch's matching comment - isActuallyWatched()'s
+    // 5%-of-runtime threshold has a false negative on short-but-real
+    // debrid/torrent watches (a movie/episode stopped a few minutes into a
+    // long runtime never crosses 5%). hasConfirmedProxyPlayback rescues
+    // that case using independent proof from the proxy pipeline.
+    if (!isActuallyWatched(item)) {
+      const confirmedByProxy = await hasConfirmedProxyPlayback(prisma, {
+        accountId: accountIdValue, userId, title: showName, watchedAt, users
+      })
+      if (!confirmedByProxy) return
+    }
 
     // durationSeconds was previously never written here at all - it only ever
     // got "backfilled" in-memory for the Activity feed's API response
@@ -268,10 +280,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
  */
 async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
   try {
-    // Only process movie items with real watch progress - a bare library
-    // bookmark (no video_id, no position) was previously sailing through
-    // here unconditionally, since the only check was item.type === 'movie'
-    if (item.type !== 'movie' || !isActuallyWatched(item)) return false
+    if (item.type !== 'movie') return false
 
     const itemId = item._id || item.id
     if (!itemId) return false
@@ -289,6 +298,26 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
     }
 
     const accountIdValue = accountId || 'default'
+
+    // Only process movies with real watch progress - a bare library bookmark
+    // (no video_id, no position) was previously sailing through here
+    // unconditionally, since the only check was item.type === 'movie'. But
+    // isActuallyWatched()'s 5%-of-runtime threshold has its own false
+    // negative: a movie stopped a few minutes into a 2h+ runtime never
+    // crosses 5%, so a genuinely-watched debrid/torrent stream silently
+    // never became a MovieWatchHistory row at all (confirmed real case -
+    // proxy clearly saw an 8-12min connection, isActuallyWatched's ratio
+    // landed at 4.76%, just under the threshold). hasConfirmedProxyPlayback
+    // rescues that case: if the proxy independently confirms a real,
+    // sustained connection existed for this title, that's stronger evidence
+    // of real playback than the ratio heuristic (which exists only to catch
+    // preview/hover-autoplay noise the proxy never sees in the first place).
+    if (!isActuallyWatched(item)) {
+      const confirmedByProxy = await hasConfirmedProxyPlayback(prisma, {
+        accountId: accountIdValue, userId, title: itemName, watchedAt, users
+      })
+      if (!confirmedByProxy) return false
+    }
 
     // durationSeconds was previously never written here at all - it only ever
     // got "backfilled" in-memory for the Activity feed's API response
