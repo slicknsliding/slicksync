@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.53.1",
+    "date": "2026-07-27",
+    "title": "fix: sticky nav had an opaque black background",
+    "features": [],
+    "bugFixes": [
+      "The sticky nav wrapper added in 1.53.0 had a solid background to stop content flashing through its padding gaps, but that read as an ugly black bar behind the floating card while scrolling. Removed - only the inner rounded card has a background (with its own blur), so scrolled content stays visible through the gaps around it, same look as before scrolling just now pinned in place."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.53.0",
     "date": "2026-07-27",
     "title": "feat: sticky top nav, TorBox referral moved into the account menu",

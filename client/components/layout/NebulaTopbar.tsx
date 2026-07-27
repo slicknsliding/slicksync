@@ -171,13 +171,11 @@ export function NebulaTopbar() {
         Movies/Series, Watchlist, etc. on Discover) meant scrolling all the
         way back to the top first. z-30 keeps it under the mobile
         notification bell (z-40, fixed top-right) and the account switcher
-        (z-40, fixed bottom-left) so neither gets covered. A background here
-        (not just on the inner card) stops page content from visibly
-        flashing through the padding gaps around the card while stuck. */}
-    <div
-      className="px-4 pt-4 md:px-6 md:pt-6 pb-4 sticky top-0 z-30"
-      style={{ background: 'var(--color-bg)' }}
-    >
+        (z-40, fixed bottom-left) so neither gets covered. No background on
+        this wrapper - only the inner rounded card has one (with its own
+        blur), so scrolled content stays visible through the padding gaps
+        around it instead of being hidden behind a solid block. */}
+    <div className="px-4 pt-4 md:px-6 md:pt-6 pb-4 sticky top-0 z-30">
       {/* Caps the bar at 72rem so it reads as a floating island on wide
           desktop viewports instead of stretching edge-to-edge into empty
           space. Set inline, not via the max-w-6xl class - globals.css has a
