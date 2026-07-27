@@ -459,10 +459,27 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
         // timeOffset is momentarily missing from a poll) produced a one-poll
         // "duration" equal to that entire cumulative value once diffed
         // against a much smaller startPosition.
+        //
+        // Incremental against the session's own running durationSeconds
+        // (added onto, never recomputed from startPosition directly) -
+        // confirmed real case: a session's first-ever checkpoint arrived
+        // ~26min into an episode (Nuvio only checkpoints on pause/stop, so
+        // that's just whenever the first one happened to land), correctly
+        // SEEDING durationSeconds to ~26min at creation (see the seeding
+        // comment below) - but the next poll's checkpoint at ~53min then
+        // computed 53-26=27min from startPosition and OVERWROTE the seed
+        // instead of adding to it, permanently losing the first ~26 real
+        // minutes (recorded 27min for what was actually a ~53min watch).
+        // Delta against lastPosition (this session's most recently observed
+        // position, not its fixed original startPosition) added onto the
+        // existing durationSeconds is a proper running total instead - the
+        // seed survives every subsequent poll since each one only adds its
+        // own incremental progress rather than replacing the whole figure.
         const currentPosition = Number(state.timeOffset ?? NaN)
-        const hasPositionData = existingSession.startPosition != null && !Number.isNaN(currentPosition)
+        const previousPosition = existingSession.lastPosition ?? existingSession.startPosition
+        const hasPositionData = previousPosition != null && !Number.isNaN(currentPosition)
         const sessionDurationSeconds = hasPositionData
-          ? Math.max(0, Math.floor((currentPosition - existingSession.startPosition) / 1000))
+          ? (existingSession.durationSeconds || 0) + Math.max(0, Math.floor((currentPosition - previousPosition) / 1000))
           : Math.min(MAX_WALLCLOCK_FALLBACK_SECONDS, Math.max(0, Math.floor(((watchDate ? watchDate.getTime() : nowMs) - existingSession.startTime.getTime()) / 1000)))
 
         // NEVER update startTime forward - only backward if we discover an earlier ping
@@ -647,10 +664,17 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
       // same value as the session's own startTime) closes with
       // endTime === startTime and a permanently stored durationSeconds of
       // exactly 0, regardless of how long it was actually active.
+      // Same incremental-against-running-total fix as the update branch
+      // above (added onto session.durationSeconds via the position observed
+      // since session.lastPosition, not recomputed from the fixed
+      // session.startPosition) - closing a session with the old
+      // startPosition-relative formula had the identical seed-loss bug on
+      // whichever poll happened to close it.
       const lastPositionValue = lastPositionByItemId.get(session.itemId)
-      const hasPositionData = session.startPosition != null && lastPositionValue != null
+      const previousPosition = session.lastPosition ?? session.startPosition
+      const hasPositionData = previousPosition != null && lastPositionValue != null
       const sessionDurationSeconds = hasPositionData
-        ? Math.max(0, Math.floor((lastPositionValue - session.startPosition) / 1000))
+        ? (session.durationSeconds || 0) + Math.max(0, Math.floor((lastPositionValue - previousPosition) / 1000))
         : Math.min(MAX_WALLCLOCK_FALLBACK_SECONDS, Math.max(0, Math.floor((endTime.getTime() - session.startTime.getTime()) / 1000)))
 
       await prisma.watchSession.update({
