@@ -380,8 +380,23 @@ async function pollOnce(prisma, accountId, config) {
         // "started watching" notification below.
         const existingRow = await prisma.proxyStreamSession.findUnique({
           where: { accountId_aiostreamsUser_clientIp_url: { accountId, aiostreamsUser: user.username, clientIp, url } },
-          select: { id: true },
+          select: { id: true, isActive: true },
         })
+
+        // Debrid resolvers frequently return a deterministic, content-
+        // addressed URL for the same title+store rather than a per-session
+        // token - replaying the same content days later can land on the
+        // EXACT same (accountId, user, clientIp, url) unique key as a much
+        // earlier, already-closed viewing. Without resetting startTime here,
+        // that old value rode along forever on every future reactivation of
+        // "the same" URL (confirmed real case: a row's startTime stayed
+        // frozen at its first-ever play from 2 days earlier, producing a
+        // bogus "Watching for 57h+" display once mergeProxyNowPlaying used
+        // it as the reported watch start). Only reset when the row was NOT
+        // already active - an ordinary 30s poll of a genuinely still-open
+        // connection must keep its real startTime, only a reactivation from
+        // a closed state is a new viewing occasion.
+        const isReactivation = existingRow && existingRow.isActive === false
 
         const row = await prisma.proxyStreamSession.upsert({
           where: {
@@ -409,6 +424,7 @@ async function pollOnce(prisma, accountId, config) {
             lastSeenAt: new Date(conn.lastSeen ?? Date.now()),
             isActive: true,
             endTime: null,
+            ...(isReactivation ? { startTime: new Date(conn.timestamp) } : {}),
           },
         })
 
