@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.56.0",
+    "date": "2026-07-27",
+    "title": "feat: default back to Original layout, nav polish",
+    "features": [
+      "Default layout is Original again while Nebula gets more work - Nebula stays fully available from Settings. TV mode is unaffected: it always forces Nebula regardless of the default or any saved preference, since that's the only layout with D-pad support built.",
+      "Desktop Nebula nav now also collapses behind a hamburger once you scroll down (previously only mobile did) - shows inline as normal at the top of the page.",
+      "Account dropdown items (Tasks/Themes/Changelog/Torbox Referral/Settings) now use the same hover-lights-up-as-a-pill treatment as the main nav, instead of a plain background swap."
+    ],
+    "bugFixes": [
+      "Confirmed live: opening Nebula's mobile nav while scrolled down made the sticky topbar appear to vanish until scrolling all the way back to top. Body-scroll-lock (meant for Original's full-screen drawer) was breaking position: sticky's scrollable-ancestor chain when applied to Nebula's inline dropdown, which isn't an overlay and never needed scroll-locking at all."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.55.0",
     "date": "2026-07-27",
     "title": "feat: TV mode expands to Dashboard (page 1 of the full rollout)",
