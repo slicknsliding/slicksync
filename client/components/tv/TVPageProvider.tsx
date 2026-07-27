@@ -54,21 +54,19 @@ function useTVViewport(active: boolean) {
 }
 
 // NebulaTopbar (TV's only real nav - see its own comments) is `position:
-// sticky; top: 0` and, on TV, always rendered at full height (both nav rows,
-// collapse behavior disabled). TVFocusable's scrollIntoView({block:
-// 'nearest'}) only checks raw DOM geometry against the viewport - it has no
-// idea the sticky bar visually covers ~300px at the top, so it happily stops
-// scrolling the instant a focused element's top edge crosses y=0, landing it
-// directly UNDERNEATH the bar. Confirmed live: the catalog/type-toggle row on
+// sticky; top: 0`. TVFocusable's scrollIntoView({block: 'nearest'}) only
+// checks raw DOM geometry against the viewport - it has no idea the sticky
+// bar visually covers space at the top, so it happily stops scrolling the
+// instant a focused element's top edge crosses y=0, landing it directly
+// UNDERNEATH the bar. Confirmed live: the catalog/type-toggle row on
 // Discover was reachable by focus (Norigin moved the key there fine) but
 // invisible, covered by the sticky nav - read as "can't scroll all the way
 // back up." scroll-padding-top makes every scrollIntoView in the document
 // leave that much headroom, so a focused element always lands fully below
-// the bar. Generous fixed value (not measured) because on TV the topbar's
-// content is fixed - the fixed 1920px viewport this hook already forces
-// means it renders at one consistent size, never the mobile/collapsed
-// variants that also exist on PC.
-const TV_SCROLL_PADDING_TOP = '320px';
+// the bar. NebulaTopbar now renders a compact TV-only size (~130px, down
+// from ~300px at full desktop size - see its own isTV comments), so this
+// only needs to cover that, with margin.
+const TV_SCROLL_PADDING_TOP = '160px';
 function useTVScrollPadding(active: boolean) {
   useEffect(() => {
     if (!active || typeof document === 'undefined') return;

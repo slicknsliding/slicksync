@@ -215,7 +215,7 @@ export function NebulaTopbar() {
         this wrapper - only the inner rounded card has one (with its own
         blur), so scrolled content stays visible through the padding gaps
         around it instead of being hidden behind a solid block. */}
-    <div className="px-4 pt-4 md:px-6 md:pt-6 pb-4 sticky top-0 z-30">
+    <div className={isTV ? 'px-4 pt-2 pb-2 sticky top-0 z-30' : 'px-4 pt-4 md:px-6 md:pt-6 pb-4 sticky top-0 z-30'}>
       {/* Caps the bar at 72rem so it reads as a floating island on wide
           desktop viewports instead of stretching edge-to-edge into empty
           space. Set inline, not via the max-w-6xl class - globals.css has a
@@ -224,7 +224,7 @@ export function NebulaTopbar() {
           Cascade Layers spec) that silently no-ops every max-w-* class in
           the app. An inline style always wins over both. */}
       <div
-        className="mx-auto rounded-3xl p-5 md:p-6"
+        className={isTV ? 'mx-auto rounded-2xl p-2' : 'mx-auto rounded-3xl p-5 md:p-6'}
         style={{
           maxWidth: '72rem',
           background: 'color-mix(in srgb, var(--color-surface) 70%, transparent)',
@@ -241,8 +241,16 @@ export function NebulaTopbar() {
             action, and the account button alongside the wordmark, which
             never reliably worked on a phone regardless of how far each
             piece got shrunk - it's just the logo now, so nothing to shrink
-            for or stack rows over on any screen size. */}
-        <div className="relative flex items-center justify-center gap-2 md:gap-4 mb-4">
+            for or stack rows over on any screen size.
+            TV: forced to the md: breakpoint by the fixed 1920px viewport
+            (useTVViewport), so without an explicit override this rendered
+            at full desktop size - logo, wordmark, padding, both nav rows -
+            permanently pinned at the top. Confirmed live: read as "hard to
+            see anything, in the way" while browsing. Compact sizing here is
+            TV-only and independent of the D-pad reachability fix (scroll-
+            padding-top in TVPageProvider) - this is purely about how much
+            screen real estate the bar eats, not whether focus can reach it. */}
+        <div className={isTV ? 'relative flex items-center justify-center gap-2 mb-1.5' : 'relative flex items-center justify-center gap-2 md:gap-4 mb-4'}>
           {/* Hamburger - never on TV (nav is always shown inline there
               instead, see navVisible below); always shown on mobile; on
               desktop only once scrolled (matches Original layout's Sidebar
@@ -263,18 +271,18 @@ export function NebulaTopbar() {
               )}
             </button>
           )}
-          <Link href="/" className="flex items-center gap-2 md:gap-4 justify-center min-w-0">
+          <Link href="/" className={isTV ? 'flex items-center gap-2 justify-center min-w-0' : 'flex items-center gap-2 md:gap-4 justify-center min-w-0'}>
             <div
-              className="w-10 h-10 md:w-16 md:h-16 rounded-2xl flex items-center justify-center flex-shrink-0"
+              className={isTV ? 'w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0' : 'w-10 h-10 md:w-16 md:h-16 rounded-2xl flex items-center justify-center flex-shrink-0'}
               style={{
                 background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))',
                 boxShadow: '0 8px 28px -6px var(--color-primary)',
               }}
             >
-              <SlickSyncLogo className="w-7 h-7 md:w-11 md:h-11" />
+              <SlickSyncLogo className={isTV ? 'w-4 h-4' : 'w-7 h-7 md:w-11 md:h-11'} />
             </div>
             <b
-              className="text-xl md:text-4xl font-bold font-display tracking-tight whitespace-nowrap"
+              className={isTV ? 'text-sm font-bold font-display tracking-tight whitespace-nowrap' : 'text-xl md:text-4xl font-bold font-display tracking-tight whitespace-nowrap'}
               style={{
                 background: 'linear-gradient(135deg, var(--color-text) 0%, var(--color-primary) 100%)',
                 WebkitBackgroundClip: 'text',
@@ -310,7 +318,7 @@ export function NebulaTopbar() {
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.2, ease: 'easeInOut' }}
-                  className="flex flex-col items-center gap-3 pt-4 overflow-hidden"
+                  className={isTV ? 'flex flex-col items-center gap-1 pt-1.5 overflow-hidden' : 'flex flex-col items-center gap-3 pt-4 overflow-hidden'}
                   style={{ borderTop: '1px solid var(--color-surface-border)' }}
                 >
                   {NEBULA_NAV_SECTIONS.map((section) => (
@@ -327,7 +335,7 @@ export function NebulaTopbar() {
             // comment for why this can't be a Tailwind justify-* class.
             <div
               key={section.id}
-              className="flex flex-nowrap items-center gap-2 w-full overflow-x-auto no-scrollbar px-1 -mx-1 nebula-nav-row"
+              className={isTV ? 'flex flex-nowrap items-center gap-1.5 w-full overflow-x-auto no-scrollbar px-1 -mx-1 nebula-nav-row' : 'flex flex-nowrap items-center gap-2 w-full overflow-x-auto no-scrollbar px-1 -mx-1 nebula-nav-row'}
             >
               {section.items.map((link) => {
                 const isActive = pathname === link.href;
@@ -337,7 +345,7 @@ export function NebulaTopbar() {
                     href={link.href}
                     tabIndex={isTV ? -1 : undefined}
                     onClick={closeMobileNav}
-                    className="nav-item-hover-pill flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap"
+                    className={isTV ? 'nav-item-hover-pill flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap' : 'nav-item-hover-pill flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-full whitespace-nowrap'}
                     style={
                       isActive
                         ? {
@@ -349,7 +357,7 @@ export function NebulaTopbar() {
                         : { color: 'var(--color-text-muted)' }
                     }
                   >
-                    <Icon className="w-4 h-4 shrink-0" />
+                    <Icon className={isTV ? 'w-3.5 h-3.5 shrink-0' : 'w-4 h-4 shrink-0'} />
                     {link.label}
                   </Link>
                 );
