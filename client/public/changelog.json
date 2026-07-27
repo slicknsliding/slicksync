@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.57.1",
+    "date": "2026-07-27",
+    "title": "fix: TV nav was glitchy and could become unreachable",
+    "features": [],
+    "bugFixes": [
+      "Confirmed live on an actual TV: the desktop scroll-triggered hamburger (1.56.0) collapsed the nav constantly during ordinary D-pad use, since scrolling there only ever happens as a side effect of focus movement (scrollIntoView), never deliberate user intent - and the hamburger button itself was never wired as D-pad-focusable, so once collapsed it became permanently unreachable with a remote. The collapse/expand animation's DOM churn also looked like it was fighting focus tracking, causing navigation to \"snap back to the top.\" TV now always shows the nav inline, full-stop - no collapse behavior at all, regardless of scroll position."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.57.0",
     "date": "2026-07-27",
     "title": "fix: watch duration silently undercounted whenever a session got a second checkpoint",

@@ -83,13 +83,18 @@ export function NebulaTopbar() {
   // clutter (the original ask behind the mobile collapse applies here too,
   // it just took a sticky nav for anyone to notice on desktop). Threshold
   // above 0 so it doesn't flicker right at the top from sub-pixel scroll.
+  // Not tracked at all on TV - see the navVisible/hamburger comments below
+  // for why TV never collapses the nav in the first place; no reason to
+  // even listen for scroll events (which fire constantly there as a side
+  // effect of D-pad focus movement, not user intent) if nothing reads them.
   const [isScrolled, setIsScrolled] = useState(false);
   useEffect(() => {
+    if (isTV) return;
     const onScroll = () => setIsScrolled(window.scrollY > 24);
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+  }, [isTV]);
   // Scrolling back to top should always reveal the full nav again, even if
   // it was left open from a scrolled-down state - closing here means
   // navVisible's `!isScrolled` branch below doesn't have to fight a stale
@@ -238,12 +243,13 @@ export function NebulaTopbar() {
             piece got shrunk - it's just the logo now, so nothing to shrink
             for or stack rows over on any screen size. */}
         <div className="relative flex items-center justify-center gap-2 md:gap-4 mb-4">
-          {/* Hamburger - always shown on mobile; on desktop only once
-              scrolled (matches Original layout's Sidebar toggle icon/shared
-              open state otherwise). Absolutely positioned so the logo stays
-              genuinely centered either way, rather than the hamburger's own
-              width pushing it off-center. */}
-          {(isMobile || isScrolled) && (
+          {/* Hamburger - never on TV (nav is always shown inline there
+              instead, see navVisible below); always shown on mobile; on
+              desktop only once scrolled (matches Original layout's Sidebar
+              toggle icon/shared open state otherwise). Absolutely
+              positioned so the logo stays genuinely centered either way,
+              rather than the hamburger's own width pushing it off-center. */}
+          {!isTV && (isMobile || isScrolled) && (
             <button
               onClick={() => (mobileNavOpen ? closeMobileNav() : openMobileNav())}
               className="absolute left-0 p-2 rounded-lg hover:bg-surface-hover transition-colors"
@@ -280,14 +286,22 @@ export function NebulaTopbar() {
             </b>
           </Link>
         </div>
-        {/* Mobile: always collapsed behind the hamburger, opens/closes on
-            tap. Desktop: shown inline same as always while at the top of
-            the page (isScrolled false ignores any stale mobileNavOpen left
-            over from before scrolling back up), collapses behind the same
-            hamburger once scrolled - a permanently-pinned full nav row the
-            whole time you scroll read as clutter once the nav went sticky. */}
+        {/* TV: always shown inline, collapse behavior disabled entirely -
+            confirmed live this was actively broken on a real TV. Scrolling
+            there only ever happens as a side effect of TVFocusable's
+            scrollIntoView when D-pad focus moves, never a deliberate user
+            gesture, so treating any scroll as "collapse the nav" collapsed
+            it constantly during ordinary navigation - and since the
+            hamburger button itself was never wired as D-pad-focusable,
+            once collapsed there was no way to reach it with a remote at
+            all. The collapse/expand DOM churn (AnimatePresence mounting
+            and unmounting the whole nav) also looked like it was fighting
+            TVPageProvider's focus tracking, causing the "snaps back to
+            top" symptom. Mobile: always collapsed behind the hamburger,
+            opens/closes on tap. Desktop: shown inline while at the top of
+            the page, collapses behind the same hamburger once scrolled. */}
         {(() => {
-          const navVisible = isMobile ? mobileNavOpen : (isScrolled ? mobileNavOpen : true);
+          const navVisible = isTV ? true : (isMobile ? mobileNavOpen : (isScrolled ? mobileNavOpen : true));
           return (
             <AnimatePresence initial={false}>
               {navVisible && (
