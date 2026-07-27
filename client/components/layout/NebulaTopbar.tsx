@@ -77,6 +77,27 @@ export function NebulaTopbar() {
   // once the topbar went sticky - now collapsed behind the hamburger on
   // mobile, same pattern Original layout already uses.
   const { isOpen: mobileNavOpen, onOpen: openMobileNav, onClose: closeMobileNav } = useMobileMenu();
+  // Desktop: nav shows inline at the top of the page same as always, but
+  // collapses behind the same hamburger mobile uses once you scroll down -
+  // a permanently-pinned full nav row the whole time you scroll read as
+  // clutter (the original ask behind the mobile collapse applies here too,
+  // it just took a sticky nav for anyone to notice on desktop). Threshold
+  // above 0 so it doesn't flicker right at the top from sub-pixel scroll.
+  const [isScrolled, setIsScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setIsScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  // Scrolling back to top should always reveal the full nav again, even if
+  // it was left open from a scrolled-down state - closing here means
+  // navVisible's `!isScrolled` branch below doesn't have to fight a stale
+  // "open" flag once the collapse condition itself goes away.
+  useEffect(() => {
+    if (!isScrolled) closeMobileNav();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScrolled]);
   // Gates which of the two possible NotificationsDropdown locations (fixed
   // top-right here vs inline in NebulaPageHeading's actions row) actually
   // mounts the component - see the comment on that div below for why a
@@ -217,22 +238,25 @@ export function NebulaTopbar() {
             piece got shrunk - it's just the logo now, so nothing to shrink
             for or stack rows over on any screen size. */}
         <div className="relative flex items-center justify-center gap-2 md:gap-4 mb-4">
-          {/* Hamburger - mobile only, matches Original layout's Sidebar
-              toggle (same icon, same shared open state). Absolutely
-              positioned so the logo stays genuinely centered either way,
-              rather than the hamburger's own width pushing it off-center. */}
-          <button
-            onClick={() => (mobileNavOpen ? closeMobileNav() : openMobileNav())}
-            className="md:hidden absolute left-0 p-2 rounded-lg hover:bg-surface-hover transition-colors"
-            aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
-            aria-expanded={mobileNavOpen}
-          >
-            {mobileNavOpen ? (
-              <XMarkIcon className="w-6 h-6" style={{ color: 'var(--color-text)' }} />
-            ) : (
-              <Bars3Icon className="w-6 h-6" style={{ color: 'var(--color-text)' }} />
-            )}
-          </button>
+          {/* Hamburger - always shown on mobile; on desktop only once
+              scrolled (matches Original layout's Sidebar toggle icon/shared
+              open state otherwise). Absolutely positioned so the logo stays
+              genuinely centered either way, rather than the hamburger's own
+              width pushing it off-center. */}
+          {(isMobile || isScrolled) && (
+            <button
+              onClick={() => (mobileNavOpen ? closeMobileNav() : openMobileNav())}
+              className="absolute left-0 p-2 rounded-lg hover:bg-surface-hover transition-colors"
+              aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={mobileNavOpen}
+            >
+              {mobileNavOpen ? (
+                <XMarkIcon className="w-6 h-6" style={{ color: 'var(--color-text)' }} />
+              ) : (
+                <Bars3Icon className="w-6 h-6" style={{ color: 'var(--color-text)' }} />
+              )}
+            </button>
+          )}
           <Link href="/" className="flex items-center gap-2 md:gap-4 justify-center min-w-0">
             <div
               className="w-10 h-10 md:w-16 md:h-16 rounded-2xl flex items-center justify-center flex-shrink-0"
@@ -256,17 +280,19 @@ export function NebulaTopbar() {
             </b>
           </Link>
         </div>
-        {/* Always visible on desktop regardless of mobileNavOpen (isMobile is
-            false there, so navVisible is always true); on mobile, collapsed
-            behind the hamburger above and pops open/closed with a height
-            animation instead of permanently eating space above the fold. */}
+        {/* Mobile: always collapsed behind the hamburger, opens/closes on
+            tap. Desktop: shown inline same as always while at the top of
+            the page (isScrolled false ignores any stale mobileNavOpen left
+            over from before scrolling back up), collapses behind the same
+            hamburger once scrolled - a permanently-pinned full nav row the
+            whole time you scroll read as clutter once the nav went sticky. */}
         {(() => {
-          const navVisible = !isMobile || mobileNavOpen;
+          const navVisible = isMobile ? mobileNavOpen : (isScrolled ? mobileNavOpen : true);
           return (
             <AnimatePresence initial={false}>
               {navVisible && (
                 <motion.nav
-                  initial={isMobile ? { height: 0, opacity: 0 } : false}
+                  initial={(isMobile || isScrolled) ? { height: 0, opacity: 0 } : false}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.2, ease: 'easeInOut' }}
