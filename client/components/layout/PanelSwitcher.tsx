@@ -19,6 +19,7 @@ import {
 import { Avatar } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { AccountModal } from './AccountModal';
+import { useLayoutMode } from '@/lib/layout-mode';
 
 interface PanelSwitcherProps {
   /** Current panel mode */
@@ -147,6 +148,13 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
 
   const isAdmin = mode === 'admin';
   const isPublicInstance = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') === 'public';
+  // Original layout's own Sidebar already has a "System" section with Tasks/
+  // Settings/Themes/Changelog directly in the nav - only Nebula moved them
+  // into this dropdown, specifically because its topbar has no room to
+  // spare for a fourth nav row. Showing them here too on Original was pure
+  // duplication of something already one click away in the sidebar.
+  const { layoutMode } = useLayoutMode();
+  const showSystemLinks = layoutMode === 'nebula';
   const targetPanel = isAdmin ? 'User' : 'Admin';
   const TargetIcon = isAdmin ? UserIcon : ShieldCheckIcon;
   const isCompact = variant === 'compact';
@@ -289,59 +297,18 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
               <ArrowsRightLeftIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
             </button>
 
-            {/* Tasks / Settings / Themes / Changelog quick links (Admin Mode
-                only) - these are Nebula's "System" group, now dropped from the
-                topbar's own nav row entirely and reachable only from here. */}
+            {/* TorBox referral - always shown for both layouts (previously a
+                floating badge fixed to a screen corner, which needed its own
+                positioning/sizing pass on every layout and viewport size and
+                still read inconsistently across deployments - one stable
+                spot here instead). Tasks/Settings/Themes/Changelog below are
+                Nebula's "System" group, dropped from its topbar entirely
+                since there's no room to spare there - Original's own
+                Sidebar already has these same 4 directly in the nav, so
+                showing them here too on Original was pure duplication. */}
             {isAdmin && (
               <>
                 <div className="h-px" style={{ background: 'var(--color-surface-border)' }} />
-                <button
-                  onClick={() => { setIsOpen(false); router.push('/tasks'); }}
-                  className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
-                  style={{ color: 'var(--color-text)' }}
-                >
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'var(--color-surface-hover)' }}
-                  >
-                    <QueueListIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-                  </div>
-                  <span className="nav-item-label text-sm font-medium">Tasks</span>
-                </button>
-                <button
-                  onClick={() => { setIsOpen(false); router.push('/themes'); }}
-                  className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
-                  style={{ color: 'var(--color-text)' }}
-                >
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'var(--color-surface-hover)' }}
-                  >
-                    <SwatchIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-                  </div>
-                  <span className="nav-item-label text-sm font-medium">Themes</span>
-                </button>
-                <button
-                  onClick={() => { setIsOpen(false); router.push('/changelog'); }}
-                  className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
-                  style={{ color: 'var(--color-text)' }}
-                >
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'var(--color-surface-hover)' }}
-                  >
-                    <NewspaperIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-                  </div>
-                  <span className="nav-item-label text-sm font-medium">Changelog</span>
-                </button>
-                {/* TorBox referral - previously a floating badge fixed to a
-                    screen corner (NebulaTopbar/Sidebar), which needed its own
-                    positioning/sizing pass on every layout and viewport size
-                    and still read inconsistently across deployments. One
-                    stable spot in the existing "System" menu instead - same
-                    row styling as Tasks/Settings/Themes/Changelog above, just
-                    an external link (opens in a new tab) instead of a
-                    router.push. */}
                 <a
                   href="https://torbox.app/subscription?referral=790ccd5b-646d-43d7-9072-aef7a6eb1de8"
                   target="_blank"
@@ -358,19 +325,62 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                   </div>
                   <span className="nav-item-label text-sm font-medium">Torbox Referral</span>
                 </a>
-                <button
-                  onClick={() => { setIsOpen(false); router.push('/settings'); }}
-                  className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
-                  style={{ color: 'var(--color-text)' }}
-                >
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'var(--color-surface-hover)' }}
-                  >
-                    <Cog6ToothIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-                  </div>
-                  <span className="nav-item-label text-sm font-medium">Settings</span>
-                </button>
+                {showSystemLinks && (
+                  <>
+                    <button
+                      onClick={() => { setIsOpen(false); router.push('/tasks'); }}
+                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
+                      style={{ color: 'var(--color-text)' }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: 'var(--color-surface-hover)' }}
+                      >
+                        <QueueListIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                      </div>
+                      <span className="nav-item-label text-sm font-medium">Tasks</span>
+                    </button>
+                    <button
+                      onClick={() => { setIsOpen(false); router.push('/themes'); }}
+                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
+                      style={{ color: 'var(--color-text)' }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: 'var(--color-surface-hover)' }}
+                      >
+                        <SwatchIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                      </div>
+                      <span className="nav-item-label text-sm font-medium">Themes</span>
+                    </button>
+                    <button
+                      onClick={() => { setIsOpen(false); router.push('/changelog'); }}
+                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
+                      style={{ color: 'var(--color-text)' }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: 'var(--color-surface-hover)' }}
+                      >
+                        <NewspaperIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                      </div>
+                      <span className="nav-item-label text-sm font-medium">Changelog</span>
+                    </button>
+                    <button
+                      onClick={() => { setIsOpen(false); router.push('/settings'); }}
+                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
+                      style={{ color: 'var(--color-text)' }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: 'var(--color-surface-hover)' }}
+                      >
+                        <Cog6ToothIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                      </div>
+                      <span className="nav-item-label text-sm font-medium">Settings</span>
+                    </button>
+                  </>
+                )}
               </>
             )}
 

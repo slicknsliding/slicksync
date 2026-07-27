@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.58.0",
+    "date": "2026-07-27",
+    "title": "feat: SlickTrax \"Not interested\" feedback + real household attribution",
+    "features": [
+      "For You rows now have a \"Not interested\" option on each poster's right-click menu. Dismissing a title excludes it from future recommendations and quietly downweights similar titles too, based on the household's own real viewing overlap - never fully zeroes a similar title out, just makes it less likely to surface.",
+      "For You reasons now credit real household matches when one exists - \"Sarah and Mike both loved X\" instead of the generic \"Because you watched X\", whenever this account's own actual watch-time overlap backs it up. Falls back to the generic reason otherwise.",
+      "Original layout's account menu no longer duplicates Tasks/Settings/Themes/Changelog - those already live in Original's own sidebar. Nebula still shows them in its dropdown since its topbar has no room for a fourth nav row."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.57.1",
     "date": "2026-07-27",
     "title": "fix: TV nav was glitchy and could become unreachable",

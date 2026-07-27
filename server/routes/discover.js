@@ -101,7 +101,7 @@ module.exports = ({ prisma, getAccountId } = {}) => {
 
       const lookbackDate = new Date(Date.now() - ACTIVITY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
 
-      const [movies, episodes, overrides, activity, watchlist] = await Promise.all([
+      const [movies, episodes, overrides, activity, watchlist, notInterested] = await Promise.all([
         prisma.movieWatchHistory.findMany({
           where: { accountId },
           orderBy: { watchedAt: 'desc' },
@@ -123,6 +123,7 @@ module.exports = ({ prisma, getAccountId } = {}) => {
           select: { itemId: true, itemType: true, watchTimeSeconds: true, date: true },
         }),
         prisma.watchlistItem.findMany({ where: { accountId }, select: { itemId: true, itemType: true, name: true } }).catch(() => []),
+        prisma.notInterestedItem.findMany({ where: { accountId }, select: { itemId: true, itemType: true } }).catch(() => []),
       ])
 
       // Title/type for every candidate, from whichever source names it first.
@@ -146,6 +147,12 @@ module.exports = ({ prisma, getAccountId } = {}) => {
         else watchedIds.delete(o.itemId)
       }
       const watchlistIds = new Set(watchlist.map((w) => w.itemId))
+      // SlickTrax "Not interested" feedback - excluded the same way watched/
+      // watchlisted items already are (never a seed, never a recommended
+      // item), plus notInterestedKeys below feeds computeNotInterestedPenalties
+      // to also downweight items merely SIMILAR to what was dismissed.
+      const notInterestedIds = new Set(notInterested.map((n) => n.itemId))
+      const notInterestedKeys = notInterested.map((n) => `${n.itemType === 'series' ? 'series' : 'movie'}:${n.itemId}`)
 
       // Real watch-time weight, decayed by age so recent viewing still
       // matters more than ancient history without ignoring it outright.
@@ -167,25 +174,58 @@ module.exports = ({ prisma, getAccountId } = {}) => {
       // viewer's score happens to be highest. See recommendationEngine.js's
       // own header for why this is a boost on top of genre/Cinemeta
       // discovery rather than a full replacement.
+      //
+      // affinity/pairwiseOverlaps/usersById are hoisted out of this try
+      // block (not just local consts) because the row-building loop below
+      // reuses them to attribute a seed to a real pairwise match ("Sarah
+      // and Mike both loved X") instead of re-deriving the same vectors/
+      // affinity a second time.
+      let affinity = null
+      let pairwiseOverlaps = []
+      let usersById = new Map()
       try {
-        const { buildUserVectors, computeItemSimilarity, collaborativeBoost } = require('../utils/recommendationEngine')
-        const { vectors } = await buildUserVectors(prisma, accountId)
-        if (vectors.size > 1) {
-          const affinity = computeItemSimilarity(vectors)
+        const {
+          buildUserVectors, computeItemSimilarity, collaborativeBoost, computePairwiseOverlap,
+          computeNotInterestedPenalties, applyNotInterestedPenalty,
+        } = require('../utils/recommendationEngine')
+        const { vectors, itemMeta: vectorItemMeta } = await buildUserVectors(prisma, accountId)
+        if (vectors.size > 0) {
+          affinity = computeItemSimilarity(vectors)
           const COLLAB_BOOST_WEIGHT = 0.5
+          // Only meaningful with 2+ real vectors (a single person can't have
+          // cross-person affinity), but the not-interested penalty below
+          // still applies even for a single-user household, so affinity is
+          // still built either way - it'll just be empty for one user.
+          const penalties = computeNotInterestedPenalties(affinity, notInterestedKeys)
           for (const [id, score] of scoreByItem) {
             const meta = itemMeta.get(id)
             if (!meta) continue
             const key = `${meta.type === 'series' ? 'series' : 'movie'}:${id}`
-            const boost = collaborativeBoost(affinity, key)
-            if (boost > 0) scoreByItem.set(id, score + boost * COLLAB_BOOST_WEIGHT)
+            let next = score
+            if (vectors.size > 1) {
+              const boost = collaborativeBoost(affinity, key)
+              if (boost > 0) next += boost * COLLAB_BOOST_WEIGHT
+            }
+            next = applyNotInterestedPenalty(next, penalties.get(key) || 0)
+            if (next !== score) scoreByItem.set(id, next)
+          }
+        }
+        if (vectors.size > 1) {
+          pairwiseOverlaps = computePairwiseOverlap(vectors, vectorItemMeta)
+          if (pairwiseOverlaps.length > 0) {
+            const userRows = await prisma.user.findMany({
+              where: { id: { in: [...vectors.keys()] } },
+              select: { id: true, username: true, email: true },
+            })
+            usersById = new Map(userRows.map((u) => [u.id, u.username || u.email || 'someone']))
           }
         }
       } catch (e) {
-        console.warn('Collaborative boost skipped:', e?.message)
+        console.warn('Collaborative boost/not-interested penalty/attribution skipped:', e?.message)
       }
 
       const ranked = [...scoreByItem.entries()]
+        .filter(([id]) => !notInterestedIds.has(id))
         .sort((a, b) => b[1] - a[1])
         .slice(0, CANDIDATE_POOL)
         .map(([id, score]) => ({ id, score, ...(itemMeta.get(id) || { type: 'movie' }) }))
@@ -225,18 +265,39 @@ module.exports = ({ prisma, getAccountId } = {}) => {
         // Top Rated in that genre, filtered to unwatched and not already on
         // the watchlist. Fall back to Popular if too few survive filtering.
         let items = await fetchCatalog(seed.type, { catalog: 'imdbRating', genre })
-        let filtered = items.filter((i) => !watchedIds.has(i.id) && !watchlistIds.has(i.id))
+        let filtered = items.filter((i) => !watchedIds.has(i.id) && !watchlistIds.has(i.id) && !notInterestedIds.has(i.id))
         if (filtered.length < 4) {
           const popular = await fetchCatalog(seed.type, { catalog: 'top', genre })
           const seenIds = new Set(filtered.map((i) => i.id))
           for (const p of popular) {
-            if (!watchedIds.has(p.id) && !watchlistIds.has(p.id) && !seenIds.has(p.id)) filtered.push(p)
+            if (!watchedIds.has(p.id) && !watchlistIds.has(p.id) && !notInterestedIds.has(p.id) && !seenIds.has(p.id)) filtered.push(p)
           }
         }
         filtered = filtered.slice(0, ITEMS_PER_ROW)
         if (filtered.length === 0) continue
+
+        // Real household match behind this seed ("Sarah and Mike both loved
+        // X") beats the generic fallback whenever one exists - see
+        // findAttributionForSeed's own comment for why this isn't scoped to
+        // a single "current user" the way a personalized feed would be.
+        let reason = `Because you watched ${seed.name}`
+        if (affinity && pairwiseOverlaps.length > 0) {
+          try {
+            const { findAttributionForSeed } = require('../utils/recommendationEngine')
+            const seedKey = `${seed.type === 'series' ? 'series' : 'movie'}:${seed.id}`
+            const attribution = findAttributionForSeed(seedKey, pairwiseOverlaps, affinity)
+            if (attribution) {
+              const nameA = usersById.get(attribution.userA) || 'someone'
+              const nameB = usersById.get(attribution.userB) || 'someone else'
+              reason = `${nameA} and ${nameB} both loved ${seed.name}`
+            }
+          } catch (e) {
+            console.warn('Attribution lookup skipped:', e?.message)
+          }
+        }
+
         rows.push({
-          reason: `Because you watched ${seed.name}`,
+          reason,
           genre,
           seedId: seed.id,
           seedType: seed.type,
@@ -248,6 +309,28 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     } catch (error) {
       console.error('Error building recommendations:', error)
       res.status(500).json({ error: 'Failed to build recommendations' })
+    }
+  })
+
+  // POST /api/discover/not-interested { itemId, itemType }
+  // SlickTrax feedback: excludes this item from future /recommendations
+  // (never a seed, never a recommended item) and downweights similar items
+  // via the household's own item-item affinity map. Household-wide, not
+  // per-user - see NotInterestedItem's schema comment.
+  router.post('/not-interested', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.status(503).json({ error: 'Not available' })
+      const accountId = getAccountId(req) || 'default'
+      const { itemId, itemType } = req.body || {}
+      if (!itemId || (itemType !== 'movie' && itemType !== 'series')) {
+        return res.status(400).json({ error: 'itemId and itemType (movie|series) are required' })
+      }
+      const { markNotInterested } = require('../utils/notInterested')
+      await markNotInterested(prisma, accountId, itemId, itemType)
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error marking not interested:', error)
+      res.status(500).json({ error: 'Failed to save feedback' })
     }
   })
 

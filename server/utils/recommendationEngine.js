@@ -136,6 +136,66 @@ function computePairwiseOverlap(vectors, itemMeta, { topN = 5 } = {}) {
 }
 
 /**
+ * Cross-references a recommendation row's seed against real pairwise
+ * overlap data, so /recommendations can say "Sarah and Mike both loved X"
+ * instead of the generic "Because you watched X" whenever there's a real
+ * household match behind the seed - not just whenever the collaborative
+ * boost nudged its score (that boost sums affinity across ALL users at once
+ * and discards per-user attribution in the process, so it alone can't
+ * answer "which two people" - this reads computePairwiseOverlap's per-pair
+ * `shared` list instead, which keeps that attribution intact).
+ *
+ * NOT scoped to "the current user" - /recommendations is the ADMIN's
+ * account-wide Discover page (aggregated across every managed user's watch
+ * history, no per-viewer login of its own), so there's no single logged-in
+ * "you" to filter pairs by the way a personalized per-user feed would.
+ * Every pair is a candidate; the caller names both people in the pair.
+ *
+ * Two ways a match counts, checked in order:
+ *   1. Direct: the seed itself is one of a pair's shared titles.
+ *   2. Neighbor: a title in a pair's shared list is a strong affinity
+ *      neighbor of the seed (same item-item map collaborativeBoost reads) -
+ *      catches "recommended City B because of its similarity to City A,
+ *      which Sarah and Mike both watched" even when the seed itself isn't
+ *      something either of them has seen.
+ * neighborThreshold is in the same accumulated-seconds units as the rest of
+ * this file (affinity weights are min(secX, secY) sums, not a 0-1 ratio) -
+ * defaults to half a single BASELINE_SECONDS watch's worth, so a barely-
+ * touched neighbor link doesn't produce a confident-sounding attribution.
+ *
+ * @param {string} seedKey - "movie:<id>" / "series:<id>"
+ * @param {Array} pairwiseOverlaps - computePairwiseOverlap's raw output (all pairs)
+ * @param {Map<string, Map<string, number>>} affinity - computeItemSimilarity's output
+ * @returns {{ userA: string, userB: string, similarity: number, sharedCount: number, matchedItem: object } | null}
+ */
+function findAttributionForSeed(seedKey, pairwiseOverlaps, affinity, { neighborThreshold = BASELINE_SECONDS / 2 } = {}) {
+  const matches = []
+  const neighbors = affinity.get(seedKey)
+
+  for (const pair of pairwiseOverlaps) {
+    const directHit = pair.shared.find((s) => s.key === seedKey)
+    if (directHit) {
+      matches.push({ userA: pair.userA, userB: pair.userB, similarity: pair.similarity, sharedCount: pair.sharedCount, matchedItem: directHit })
+      continue
+    }
+
+    if (neighbors) {
+      const neighborHit = pair.shared.find((s) => (neighbors.get(s.key) || 0) >= neighborThreshold)
+      if (neighborHit) {
+        matches.push({ userA: pair.userA, userB: pair.userB, similarity: pair.similarity, sharedCount: pair.sharedCount, matchedItem: neighborHit })
+      }
+    }
+  }
+
+  return matches.length > 0 ? pickStrongestAttribution(matches) : null
+}
+
+/** Strongest of several candidate attributions - highest similarity, then most shared titles. */
+function pickStrongestAttribution(matches) {
+  return [...matches].sort((a, b) => b.similarity - a.similarity || b.sharedCount - a.sharedCount)[0]
+}
+
+/**
  * Item-item affinity: for every user, every pair of titles they both spent
  * real time on gets a bump of min(timeX, timeY) - so two titles that keep
  * showing up together across different people's real viewing (not just one
@@ -176,4 +236,48 @@ function collaborativeBoost(affinity, key) {
   return total
 }
 
-module.exports = { buildUserVectors, computePairwiseOverlap, computeItemSimilarity, collaborativeBoost }
+/**
+ * SlickTrax "Not interested" feedback: for every item marked not-interested,
+ * walk its affinity neighbors (the same item-item map collaborativeBoost
+ * reads) and accumulate a penalty on each - so marking one title downweights
+ * titles that keep co-occurring with it in real household viewing, not just
+ * the exact marked title itself. decay < 1 keeps a similar item's penalty
+ * smaller than the affinity weight that produced it, since "similar to
+ * something you didn't want" is weaker evidence than the direct signal.
+ * @returns {Map<string, number>} candidateKey -> raw penalty (uncapped)
+ */
+function computeNotInterestedPenalties(affinity, notInterestedKeys, { decay = 0.5 } = {}) {
+  const penalties = new Map()
+  for (const niKey of notInterestedKeys) {
+    const neighbors = affinity.get(niKey)
+    if (!neighbors) continue
+    for (const [neighborKey, weight] of neighbors) {
+      penalties.set(neighborKey, (penalties.get(neighborKey) || 0) + weight * decay)
+    }
+  }
+  return penalties
+}
+
+/**
+ * Applies a not-interested penalty to a candidate's score, capped so it can
+ * never fully zero out (or invert the sign of) a positive score - a title
+ * merely similar to something dismissed should rank lower, not disappear
+ * outright the way a direct not-interested match already does via the
+ * candidate filter in /recommendations.
+ */
+function applyNotInterestedPenalty(score, penalty, { maxPenaltyRatio = 0.9 } = {}) {
+  if (!penalty || penalty <= 0 || score <= 0) return score
+  const cappedPenalty = Math.min(penalty, score * maxPenaltyRatio)
+  return score - cappedPenalty
+}
+
+module.exports = {
+  buildUserVectors,
+  computePairwiseOverlap,
+  computeItemSimilarity,
+  collaborativeBoost,
+  computeNotInterestedPenalties,
+  applyNotInterestedPenalty,
+  findAttributionForSeed,
+  pickStrongestAttribution,
+}
