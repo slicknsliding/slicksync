@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.57.0",
+    "date": "2026-07-27",
+    "title": "fix: watch duration silently undercounted whenever a session got a second checkpoint",
+    "features": [],
+    "bugFixes": [
+      "Confirmed real case: a ~53 minute episode watch recorded as 31 minutes. Nuvio's first-ever checkpoint for a session correctly seeds durationSeconds to reflect however far in you already were when it landed (added 2026-07-17 specifically so single-checkpoint watches aren't recorded as 0) - but the next checkpoint after that recomputed duration as (new position minus the session's original start position) and OVERWROTE the seed instead of adding to it, permanently losing whatever the seed had already captured. Duration is now a proper running total: each poll adds only its own incremental progress (against the session's most recently observed position) onto the existing figure, so the seed survives every subsequent checkpoint instead of just the first one. Affects both the live-update and session-close paths."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.56.0",
     "date": "2026-07-27",
     "title": "feat: default back to Original layout, nav polish",
