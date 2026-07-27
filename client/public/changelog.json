@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.52.1",
+    "date": "2026-07-27",
+    "title": "fix: bogus multi-day \"Watching for\" duration on replayed debrid streams",
+    "features": [],
+    "bugFixes": [
+      "Confirmed real case: replaying a title 2 days later showed \"Watching for 57h+\". Debrid resolvers often return a deterministic, content-addressed URL for the same title+store rather than a per-session token, so a replay days later can match the exact same (user, IP, url) row as the original closed session - proxyStreamMonitor.js's upsert never reset startTime on that match, only isActive/lastSeenAt, so the ancient startTime rode along on every future reactivation of \"the same\" URL. Now resets startTime whenever a row is reactivated from a closed state - AIOStreams' own connection timestamp was correct all along, SlickSync just wasn't reading it on a match."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.52.0",
     "date": "2026-07-25",
     "title": "fix: short debrid/proxy watches never recorded to History or Continue Watching",
