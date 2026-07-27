@@ -92,4 +92,56 @@ async function findDebridServiceForWatch(prisma, { accountId, userId, title, wat
   }
 }
 
-module.exports = { detectDebridService, findDebridServiceForWatch, DEBRID_LABELS }
+// Same title+user correlation as findDebridServiceForWatch, but answers a
+// narrower question: did the proxy see a REAL, sustained connection for this
+// title at all (any URL, not just a recognized debrid pattern)? Used to
+// rescue isActuallyWatched()'s 5%-of-runtime heuristic (metricsProcessor.js)
+// from false negatives on short-but-genuine debrid/torrent watches - a movie
+// stopped a few minutes in never crosses 5% of a 2h+ runtime, so it silently
+// never became a MovieWatchHistory row despite the proxy having confirmed a
+// real, non-trivial connection existed (a >90s connection rules out the
+// preview/hover-autoplay case isActuallyWatched's threshold exists to guard
+// against - see this repo's CLAUDE.md on the two-pipeline split for why the
+// proxy is authoritative for "did playback happen" but never for duration;
+// this only answers the former, the actual recorded duration still comes
+// from native's own position data exactly as before).
+const MIN_CONFIRMED_CONNECTION_MS = 90 * 1000
+
+async function hasConfirmedProxyPlayback(prisma, { accountId, userId, title, watchedAt, users }) {
+  if (!title || !watchedAt || !Array.isArray(users) || users.length === 0) return false
+  try {
+    const windowStart = new Date(watchedAt.getTime() - CORRELATION_WINDOW_MS)
+    const windowEnd = new Date(watchedAt.getTime() + CORRELATION_WINDOW_MS)
+    const candidates = await prisma.proxyStreamSession.findMany({
+      where: {
+        accountId,
+        lastSeenAt: { gte: windowStart },
+        startTime: { lte: windowEnd },
+      },
+      select: { aiostreamsUser: true, displayName: true, filename: true, startTime: true, lastSeenAt: true },
+    })
+    if (candidates.length === 0) return false
+
+    const wantTitle = normalizeTitle(title)
+    if (!wantTitle) return false
+
+    for (const candidate of candidates) {
+      const candidateTitle = normalizeTitle(candidate.displayName || candidate.filename)
+      if (!candidateTitle) continue
+      const isMatch = candidateTitle === wantTitle || candidateTitle.startsWith(`${wantTitle} `)
+      if (!isMatch) continue
+
+      const resolvedUser = resolveUserForActiveConnection(users, candidate.aiostreamsUser)
+      if (!resolvedUser || resolvedUser.id !== userId) continue
+
+      const connectionMs = candidate.lastSeenAt.getTime() - candidate.startTime.getTime()
+      if (connectionMs >= MIN_CONFIRMED_CONNECTION_MS) return true
+    }
+    return false
+  } catch (error) {
+    console.warn('[DebridDetection] Confirmed-playback lookup failed:', error.message)
+    return false
+  }
+}
+
+module.exports = { detectDebridService, findDebridServiceForWatch, hasConfirmedProxyPlayback, DEBRID_LABELS }
