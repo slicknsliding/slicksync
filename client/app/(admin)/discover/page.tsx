@@ -9,7 +9,7 @@ import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextM
 import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem, RecommendationRow } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
-import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { toast } from '@/components/ui/Toast';
 import { useIsTV } from '@/lib/hooks/useIsTV';
@@ -54,6 +54,8 @@ const PosterCard = memo(function PosterCard({
   showWatchedMenu = true,
   showWatchedBadge = true,
   showWatchlistBadge = true,
+  showNotInterested = false,
+  onMarkNotInterested,
   isMenuOpen,
   onMenuOpenChange,
   focusable = false,
@@ -74,6 +76,11 @@ const PosterCard = memo(function PosterCard({
   showWatchedMenu?: boolean;
   showWatchedBadge?: boolean;
   showWatchlistBadge?: boolean;
+  /** SlickTrax feedback - only shown on For You rows, not the plain
+   *  Discover/Watchlist grids, where "not interested" doesn't make sense
+   *  the same way. */
+  showNotInterested?: boolean;
+  onMarkNotInterested?: (item: DiscoverItem) => void;
   /** Only-one-menu-open-at-a-time state, lifted to the parent so opening
    *  a second card's menu closes the previous card's. Same pattern the
    *  Dashboard Continue Watching row uses. */
@@ -167,7 +174,7 @@ const PosterCard = memo(function PosterCard({
         )}
       </div>
 
-      {(showWatchlistMenu || showWatchedMenu) && (
+      {(showWatchlistMenu || showWatchedMenu || showNotInterested) && (
         <ContextMenu isOpen={controlledOpen} position={position} onClose={close}>
           {showWatchlistMenu && (
             <button
@@ -189,6 +196,15 @@ const PosterCard = memo(function PosterCard({
               {watched
                 ? <><EyeSlashIcon className="w-4 h-4" /> Mark as unwatched</>
                 : <><EyeIcon className="w-4 h-4" /> Mark as watched</>}
+            </button>
+          )}
+          {showNotInterested && (
+            <button
+              type="button"
+              onClick={() => { close(); onMarkNotInterested?.(item); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              <HandThumbDownIcon className="w-4 h-4" /> Not interested
             </button>
           )}
         </ContextMenu>
@@ -341,6 +357,19 @@ export default function DiscoverPage() {
     } catch (e: any) {
       setWatchedStatus((prev) => ({ ...prev, [item.id]: !nextWatched }));
       toast.error(e?.message || 'Failed to update watched status');
+    }
+  }, []);
+
+  const handleMarkNotInterested = useCallback(async (item: DiscoverItem) => {
+    // Optimistic — splice it out of the current rows immediately rather than
+    // refetching /recommendations, which would rerun seed selection and can
+    // reshuffle every row for one dismissal.
+    setRecRows((prev) => prev.map((row) => ({ ...row, items: row.items.filter((i) => i.id !== item.id) })));
+    try {
+      await api.markNotInterested(item.id, item.type);
+      toast.success(`Won't recommend "${item.name}" again`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to update');
     }
   }, []);
 
@@ -703,6 +732,8 @@ export default function DiscoverPage() {
                           showWatchlistBadge={enableWatchlist}
                           showWatchedMenu={enableWatchedIndicators}
                           showWatchedBadge={enableWatchedIndicators}
+                          showNotInterested
+                          onMarkNotInterested={handleMarkNotInterested}
                           onOpenDetails={setDetailItem}
                           onToggleWatchlist={handleToggleWatchlist}
                           onToggleWatched={handleToggleWatched}
