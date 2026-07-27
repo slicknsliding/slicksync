@@ -399,6 +399,18 @@ model WatchlistItem {
   @@map("watchlist_item")
 }
 
+// SlickTrax "Not interested" feedback — see schema.sqlite.prisma for the full comment.
+model NotInterestedItem {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, itemId])
+  @@map("not_interested_items")
+}
+
 // Manual "watched" override — see schema.sqlite.prisma for the full comment.
 model ManualWatchOverride {
   id        String   @id @default(cuid())

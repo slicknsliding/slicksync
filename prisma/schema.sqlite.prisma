@@ -408,6 +408,25 @@ model WatchlistItem {
   @@map("watchlist_item")
 }
 
+// SlickTrax feedback: a "Not interested" action on a For You recommendation
+// row. Household-wide (no userId), same scoping as WatchlistItem above -
+// the recommendation engine itself operates on household-wide watch
+// vectors, not per-user, so per-user "not interested" state wouldn't have
+// anywhere consistent to plug into the scoring. itemType is stored (not
+// looked up at read time) because computeNotInterestedPenalties needs the
+// "movie:<id>" / "series:<id>" affinity key format to find similar items to
+// downweight, and re-deriving type from itemId alone isn't reliable.
+model NotInterestedItem {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String   // "movie" | "series"
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, itemId])
+  @@map("not_interested_items")
+}
+
 // Manual override for the "watched" indicator on Discover posters. Lets a
 // user mark something as watched even though they don't have polled watch
 // history for it (e.g. they saw it on a different service), OR mark it as

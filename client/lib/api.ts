@@ -1550,6 +1550,12 @@ class ApiClient {
   async getTasteOverlap() {
     return this.fetch<{ pairs: TasteOverlapPair[] }>('/discover/taste-overlap');
   }
+  async markNotInterested(itemId: string, itemType: 'movie' | 'series') {
+    return this.fetch<{ success: boolean }>('/discover/not-interested', {
+      method: 'POST',
+      body: JSON.stringify({ itemId, itemType }),
+    });
+  }
 
   async getUpcomingEpisodes() {
     return this.fetch<UpcomingEpisode[]>('/users/upcoming-episodes');
