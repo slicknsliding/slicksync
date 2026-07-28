@@ -360,6 +360,107 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     }
   })
 
+  // GET /api/discover/similar?id=X&type=movie|series
+  // "More Like This" for the detail popup - ANY item, not just Discover's
+  // For You rows (that's /recommendations, which seeds off the household's
+  // own top-scored watch history; this seeds off whatever single item the
+  // popup happens to be open on, including titles nobody's watched yet).
+  //
+  // Two-tier: real signal first, genre fallback to fill the gap it can't
+  // cover. The item-item affinity map (computeItemSimilarity, same one
+  // /recommendations' collaborative boost reads) only has entries for
+  // titles someone in the household has actually spent real time on - so a
+  // freshly-browsed, never-watched title (the common case when opening this
+  // popup from a Discover catalog grid) has ZERO affinity neighbors by
+  // construction, not a bug to fix. Backfilling with a genre-matched
+  // Cinemeta catalog fetch (same fallback shape /recommendations already
+  // uses for sparse rows) means the section still shows something useful
+  // instead of silently empty most of the time - real signal is just
+  // listed first when both are present.
+  router.get('/similar', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.json({ items: [], hasRealSignal: false })
+      const accountId = getAccountId(req) || 'default'
+      const { id, type } = req.query
+      if (!id || (type !== 'movie' && type !== 'series')) {
+        return res.status(400).json({ error: 'id and type (movie|series) are required' })
+      }
+
+      // Same opt-out /recommendations respects - this reuses the identical
+      // engine, so a household that turned SlickTrax off shouldn't have it
+      // silently running here either.
+      try {
+        const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+        let cfg = acc?.sync
+        if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+        if (cfg && typeof cfg === 'object' && cfg.enableRecommendations === false) {
+          return res.json({ items: [], hasRealSignal: false })
+        }
+      } catch {}
+
+      const MAX_ITEMS = 16
+      const MIN_BEFORE_GENRE_BACKFILL = 6
+      const seedKey = `${type}:${id}`
+
+      const notInterested = await prisma.notInterestedItem.findMany({ where: { accountId }, select: { itemId: true } }).catch(() => [])
+      const notInterestedIds = new Set(notInterested.map((n) => n.itemId))
+
+      const { buildUserVectors, computeItemSimilarity } = require('../utils/recommendationEngine')
+      const { vectors, itemMeta: vectorItemMeta } = await buildUserVectors(prisma, accountId)
+      const affinity = computeItemSimilarity(vectors)
+      const neighbors = affinity.get(seedKey)
+
+      const items = []
+      const seenIds = new Set([id])
+      if (neighbors) {
+        const ranked = [...neighbors.entries()].sort((a, b) => b[1] - a[1])
+        for (const [key, weight] of ranked) {
+          if (items.length >= MAX_ITEMS) break
+          const neighborId = key.slice(key.indexOf(':') + 1)
+          if (seenIds.has(neighborId) || notInterestedIds.has(neighborId)) continue
+          const meta = vectorItemMeta.get(key)
+          if (!meta || !meta.name) continue
+          seenIds.add(neighborId)
+          items.push({
+            id: neighborId,
+            type: key.startsWith('series:') ? 'series' : 'movie',
+            name: meta.name,
+            poster: meta.poster || null,
+            releaseInfo: null,
+            imdbRating: null,
+            genres: [],
+          })
+        }
+      }
+      const hasRealSignal = items.length > 0
+
+      if (items.length < MIN_BEFORE_GENRE_BACKFILL) {
+        try {
+          const { fetchMetadata } = require('../utils/notify')
+          const seedMeta = await fetchMetadata(id, type)
+          const genre = Array.isArray(seedMeta?.genres) ? seedMeta.genres[0] : null
+          if (genre) {
+            let candidates = await fetchCatalog(type, { catalog: 'imdbRating', genre })
+            if (candidates.length === 0) candidates = await fetchCatalog(type, { catalog: 'top', genre })
+            for (const c of candidates) {
+              if (items.length >= MAX_ITEMS) break
+              if (seenIds.has(c.id) || notInterestedIds.has(c.id)) continue
+              seenIds.add(c.id)
+              items.push(c)
+            }
+          }
+        } catch (e) {
+          console.warn('Genre backfill for /similar skipped:', e?.message)
+        }
+      }
+
+      res.json({ items, hasRealSignal })
+    } catch (error) {
+      console.error('Error building similar items:', error)
+      res.status(500).json({ error: 'Failed to build similar items' })
+    }
+  })
+
   // POST /api/discover/not-interested { itemId, itemType }
   // SlickTrax feedback: excludes this item from future /recommendations
   // (never a seed, never a recommended item) and downweights similar items
