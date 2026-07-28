@@ -3,10 +3,12 @@
 import { useState, useRef, useLayoutEffect, useEffect, useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDroppable } from '@dnd-kit/core';
-import { 
+import {
   ChevronDownIcon,
-  CheckIcon 
+  CheckIcon
 } from '@heroicons/react/24/outline';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 
 // Wraps a tab button to make it a dnd-kit drop target when enabled — kept as
 // its own component since useDroppable is a hook and can't be called
@@ -124,6 +126,7 @@ export function FilterTabs({
   };
 
   const styles = sizeClasses[size];
+  const isTV = useIsTV();
 
   return (
     <div
@@ -160,62 +163,65 @@ export function FilterTabs({
         
         return (
           <DroppableTabButton key={option.key} id={`${dropTargetPrefix}${option.key}`} enabled={enableDropTargets}>
-            {(isOver) => (
-            <button
-              data-tab-key={option.key}
-              onClick={() => onChange(option.key)}
-              role="tab"
-              aria-selected={isActive}
-              aria-controls={`panel-${option.key}`}
-              className={`
-                relative z-10 flex items-center justify-center gap-2 w-full min-w-0 ${styles.button} rounded-lg font-medium 
-                transition-colors duration-150 ease-out
-                ${isActive 
-                  ? 'text-primary' 
-                  : 'text-muted hover:text-default'
-                }
-              `}
-              style={isOver ? { boxShadow: '0 0 0 2px var(--color-primary)', background: 'var(--color-primary-muted)', borderRadius: '0.5rem' } : undefined}
-            >
-            {/* Icon */}
-            {option.icon && (
-              <span className={`${styles.icon} shrink-0`}>
-                {option.icon}
-              </span>
-            )}
-            
-            {/* Label */}
-            <span>{option.label}</span>
-            
-            {/* Count (inline, muted) */}
-            {option.count !== undefined && (
-              <span className={`text-xs tabular-nums ${isActive ? 'text-primary/60' : 'text-subtle'}`}>
-                ({option.count})
-              </span>
-            )}
-            
-            {/* Badge (notification style, positioned) */}
-            {option.badge && (
-              <span
+            {(isOver) => {
+              const btn = (
+              <button
+                data-tab-key={option.key}
+                onClick={() => onChange(option.key)}
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={`panel-${option.key}`}
                 className={`
-                  absolute -top-1 -right-1 ${styles.badge} rounded-full 
-                  flex items-center justify-center font-bold
-                  ${option.badge.variant === 'error' 
-                    ? 'bg-error text-white' 
-                    : option.badge.variant === 'warning'
-                      ? 'bg-warning text-white'
-                      : option.badge.variant === 'success'
-                        ? 'bg-success text-white'
-                        : 'bg-primary text-white'
+                  relative z-10 flex items-center justify-center gap-2 w-full min-w-0 ${styles.button} rounded-lg font-medium
+                  transition-colors duration-150 ease-out
+                  ${isActive
+                    ? 'text-primary'
+                    : 'text-muted hover:text-default'
                   }
                 `}
-                aria-label={`${option.badge.value} ${option.label}`}
+                style={isOver ? { boxShadow: '0 0 0 2px var(--color-primary)', background: 'var(--color-primary-muted)', borderRadius: '0.5rem' } : undefined}
               >
-                {option.badge.value}
-              </span>
-            )}
-            </button>
-            )}
+              {/* Icon */}
+              {option.icon && (
+                <span className={`${styles.icon} shrink-0`}>
+                  {option.icon}
+                </span>
+              )}
+
+              {/* Label */}
+              <span>{option.label}</span>
+
+              {/* Count (inline, muted) */}
+              {option.count !== undefined && (
+                <span className={`text-xs tabular-nums ${isActive ? 'text-primary/60' : 'text-subtle'}`}>
+                  ({option.count})
+                </span>
+              )}
+
+              {/* Badge (notification style, positioned) */}
+              {option.badge && (
+                <span
+                  className={`
+                    absolute -top-1 -right-1 ${styles.badge} rounded-full
+                    flex items-center justify-center font-bold
+                    ${option.badge.variant === 'error'
+                      ? 'bg-error text-white'
+                      : option.badge.variant === 'warning'
+                        ? 'bg-warning text-white'
+                        : option.badge.variant === 'success'
+                          ? 'bg-success text-white'
+                          : 'bg-primary text-white'
+                    }
+                  `}
+                  aria-label={`${option.badge.value} ${option.label}`}
+                >
+                  {option.badge.value}
+                </span>
+              )}
+              </button>
+              );
+              return isTV ? <TVFocusable onEnterPress={() => onChange(option.key)}>{btn}</TVFocusable> : btn;
+            }}
           </DroppableTabButton>
         );
       })}

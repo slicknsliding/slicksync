@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, memo, useMemo, useEffect } from 'react';
+import { useState, memo, useMemo, useEffect, Fragment } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { Card, StatCard, Badge, UserAvatar, PageToolbar } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, MetricsData, AtRiskUser, TasteOverlapPair } from '@/lib/api';
@@ -172,6 +174,8 @@ const ContentBreakdownChart = memo(function ContentBreakdownChart({ data }: { da
 
 export default function MetricsPage() {
   const { layoutMode } = useLayoutMode();
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const [period, setPeriod] = useState('30d');
   const [viewMode, setViewMode] = useState<'users' | 'content' | 'admin'>('users');
   const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
@@ -299,7 +303,7 @@ export default function MetricsPage() {
   );
 
   return (
-    <>
+    <Wrapper>
       {layoutMode === 'nebula' ? (
         <NebulaTopbar />
       ) : (
@@ -895,6 +899,6 @@ export default function MetricsPage() {
         )}
       </div>
       </div>
-    </>
+    </Wrapper>
   );
 }
