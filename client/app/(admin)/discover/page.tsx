@@ -8,6 +8,7 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextMenu, useContextMenu } from '@/components/ui';
 import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem, RecommendationRow, User } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
+import { useLongPress } from '@/lib/hooks/useLongPress';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
@@ -97,15 +98,33 @@ const PosterCard = memo(function PosterCard({
   const { position, handleContextMenu, close: closeInternal } = useContextMenu();
   const controlledOpen = isMenuOpen === true;
   const close = () => { closeInternal(); onMenuOpenChange?.(false); };
+  // onContextMenu alone covers a real desktop right-click, but iOS Safari
+  // doesn't reliably synthesize a `contextmenu` DOM event from a touch
+  // long-press - this card's Add to Watchlist/Mark as Watched/Not Interested
+  // menu was effectively unreachable by holding on iPhone before. See
+  // useLongPress's own comment for why this needs a plain JS timer instead.
+  const longPress = useLongPress({
+    onLongPress: (e, x, y) => {
+      handleContextMenu(e, x, y);
+      onMenuOpenChange?.(true);
+    },
+  });
 
   const card = (
     <div
       className="group relative cursor-pointer tap-card"
-      onClick={() => onOpenDetails(item)}
+      onClick={() => {
+        // Suppress the click that fires immediately after a long-press
+        // opens the menu - otherwise a long-press both opens the menu AND
+        // the detail modal as soon as the finger lifts.
+        if (controlledOpen) return;
+        onOpenDetails(item);
+      }}
       onContextMenu={(e) => {
         handleContextMenu(e);
         onMenuOpenChange?.(true);
       }}
+      {...longPress}
     >
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl">
         {item.poster && !imageError ? (
