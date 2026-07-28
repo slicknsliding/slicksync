@@ -1180,7 +1180,12 @@ function RequestCard({ request, onUpdate }: { request: RequestDisplay; onUpdate?
   return (
     <Card padding="md" className={isRejected ? 'opacity-60' : ''}>
       <div className="flex items-center gap-4">
-        <UserAvatar userId={request.userId || ''} name={request.username || 'Unknown'} email={request.email} size="lg" />
+        {/* userId is required by UserAvatar's props but unused here - it only
+            looks a user up by id when no email is given, and this always
+            passes one. InviteRequest has no userId field at all (it's not
+            tied to a managed User record), so request.id just fills the
+            required prop without referencing a property that doesn't exist. */}
+        <UserAvatar userId={request.id} name={request.username || 'Unknown'} email={request.email} size="lg" />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
