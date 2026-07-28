@@ -21,6 +21,22 @@ function getCsrfToken(): string | null {
 
 class ApiClient {
   private token: string | null = null;
+  // Dedup for concurrent identical GETs, not a data cache - no TTL, entries
+  // clear the instant the shared request settles, so nothing here ever goes
+  // stale. Several unrelated pages/components independently poll the same
+  // couple of endpoints (getInvitations, getMetrics - Dashboard, Activity,
+  // Invitations, Metrics, Users, Vault, plus NotificationsDropdown's own
+  // 30s poll) with no coordination between them, which on a single page
+  // load fired ~15-20 near-simultaneous identical requests to the same
+  // endpoint. Every request round-trips through Traefik's Authelia
+  // forward-auth check (confirmed via the container's own routing labels),
+  // and that burst was the likely source of an occasional real 404 seen
+  // live under the concurrent load (data still loaded fine off the other
+  // requests in the burst, so nothing user-visible broke - just wasteful,
+  // and apparently not perfectly safe at that volume). Concurrent callers
+  // asking for the same GET within the same tick now share one in-flight
+  // request instead of each firing their own.
+  private inFlightGets = new Map<string, Promise<any>>();
 
   setToken(token: string) {
     this.token = token;
@@ -59,7 +75,25 @@ class ApiClient {
     return headers;
   }
 
-  private async fetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
+  private fetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
+    const method = (options.method || 'GET').toUpperCase();
+    // Only GETs are safe to dedup - a mutating request needs to actually
+    // happen every time it's called, and two callers might not even mean
+    // the same body. Keyed on endpoint + token, since a mid-flight token
+    // change (e.g. login) shouldn't hand an anonymous caller someone else's
+    // in-flight authenticated response or vice versa.
+    if (method !== 'GET') return this.fetchImpl<T>(endpoint, options);
+    const key = `${endpoint}::${options.token || this.getToken() || ''}`;
+    const existing = this.inFlightGets.get(key);
+    if (existing) return existing;
+    const promise = this.fetchImpl<T>(endpoint, options).finally(() => {
+      this.inFlightGets.delete(key);
+    });
+    this.inFlightGets.set(key, promise);
+    return promise;
+  }
+
+  private async fetchImpl<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
     const token = options.token || this.getToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
