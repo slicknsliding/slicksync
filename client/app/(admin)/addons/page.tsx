@@ -1,9 +1,13 @@
 'use client';
 
 import Head from 'next/head';
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import Link from 'next/link';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { TVLink } from '@/components/tv/TVLink';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, ResourceBadge, SearchInput, Modal, Input, ConfirmModal, VersionBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
@@ -171,6 +175,8 @@ function SortableAddonWrapper({ id, children }: { id: string; children: React.Re
 }
 export default function AddonsPage() {
   const { layoutMode } = useLayoutMode();
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const [searchQuery, setSearchQuery] = useState('');
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -584,7 +590,7 @@ export default function AddonsPage() {
     }
   };
 
-  const reloadAllButton = (
+  const reloadAllButtonInner = (
     <Button
       variant="secondary"
       leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isReloading ? 'animate-spin' : ''}`} />}
@@ -594,9 +600,12 @@ export default function AddonsPage() {
       {isReloading ? 'Reloading...' : 'Reload All'}
     </Button>
   );
+  const reloadAllButton = isTV ? (
+    <TVFocusable onEnterPress={handleReloadAllAddons}>{reloadAllButtonInner}</TVFocusable>
+  ) : reloadAllButtonInner;
 
   return (
-    <>
+    <Wrapper>
       <Head>
         <title>SlickSync - Addons</title>
       </Head>
@@ -664,15 +673,18 @@ export default function AddonsPage() {
             enableDropTargets: true,
             dropTargetPrefix: 'addon-filter-',
           }}
-          primaryAction={
-            <Button
-              variant="primary"
-              leftIcon={<PlusIcon className="w-5 h-5" />}
-              onClick={() => setIsAddModalOpen(true)}
-            >
-              Add
-            </Button>
-          }
+          primaryAction={(() => {
+            const btn = (
+              <Button
+                variant="primary"
+                leftIcon={<PlusIcon className="w-5 h-5" />}
+                onClick={() => setIsAddModalOpen(true)}
+              >
+                Add
+              </Button>
+            );
+            return isTV ? <TVFocusable onEnterPress={() => setIsAddModalOpen(true)}>{btn}</TVFocusable> : btn;
+          })()}
         />
 
         {/* Custom tag pills — drag an addon card onto one to tag it (or click
@@ -779,6 +791,7 @@ export default function AddonsPage() {
                                 addonTagColors={addonTagColors}
                                 onSetTag={(tag) => handleSetTag(addon, tag)}
                                 onCreateLabel={(name) => handleCreateAndSetTag(addon, name)}
+                                focusable={isTV}
                               />
                             </StaggerItem>
                           </SortableAddonWrapper>
@@ -845,7 +858,7 @@ export default function AddonsPage() {
                                 </div>
                               </td>
                               <td className="px-6 py-4">
-                                <Link
+                                <TVLink
                                   href={`/addons/${addon.id}`}
                                   className="flex items-center gap-3 group"
                                   onClick={(e) => e.stopPropagation()}
@@ -872,7 +885,7 @@ export default function AddonsPage() {
                                       {addon.description || 'No description'}
                                     </p>
                                   </div>
-                                </Link>
+                                </TVLink>
                               </td>
                               <td className="px-6 py-4">
                                 {addon.lastHealthCheck ? (
@@ -1202,7 +1215,7 @@ export default function AddonsPage() {
           </div>
         </div>
       </Modal>
-    </>
+    </Wrapper>
   );
 }
 
@@ -1222,6 +1235,7 @@ function AddonCard({
   addonTagColors,
   onSetTag,
   onCreateLabel,
+  focusable = false,
 }: {
   addon: AddonDisplay;
   isSelected: boolean;
@@ -1237,6 +1251,9 @@ function AddonCard({
   addonTagColors?: Record<string, string>;
   onSetTag?: (tag: string) => void;
   onCreateLabel?: (name: string) => void;
+  /** TV mode: wraps the card in a D-pad-focusable container, Enter/OK opens
+   *  the same detail page a click would. */
+  focusable?: boolean;
 }) {
   const [isReloading, setIsReloading] = useState(false);
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
@@ -1330,8 +1347,7 @@ function AddonCard({
 
   const configUrl = getConfigureUrl(addon);
 
-  return (
-    <>
+  const cardElement = (
       <Card
         variant="interactive"
         padding="none"
@@ -1468,6 +1484,15 @@ function AddonCard({
           </div>
         )}
       </Card>
+  );
+
+  return (
+    <>
+      {focusable ? (
+        <TVFocusable onEnterPress={() => { window.location.href = `/addons/${addon.id}`; }}>
+          {cardElement}
+        </TVFocusable>
+      ) : cardElement}
 
       <ContextMenu isOpen={isOpen} position={position} onClose={close}>
         {menuView === 'main' ? (

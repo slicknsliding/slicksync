@@ -1,12 +1,16 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { TVLink } from '@/components/tv/TVLink';
 import { Button, Card, Badge, Avatar, Modal, Input, Select, ConfirmModal, ToggleSwitch, DateTimePicker, UserAvatar, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
@@ -65,6 +69,8 @@ interface RequestDisplay {
 
 export default function InvitationsPage() {
   const { layoutMode } = useLayoutMode();
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const [activeTab, setActiveTab] = useState<'invitations' | 'requests'>('invitations');
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -296,7 +302,7 @@ export default function InvitationsPage() {
   const hasSelection = selectedIds.size > 0;
 
   return (
-    <>
+    <Wrapper>
       {layoutMode === 'nebula' ? (
         <NebulaTopbar />
       ) : (
@@ -337,15 +343,18 @@ export default function InvitationsPage() {
             onChange: (key) => handleTabChange(key as 'invitations' | 'requests'),
             layoutId: 'invitations-filter-tabs',
           }}
-          primaryAction={
-            <Button
-              variant="primary"
-              leftIcon={<PlusIcon className="w-5 h-5" />}
-              onClick={() => setIsCreateModalOpen(true)}
-            >
-              Add
-            </Button>
-          }
+          primaryAction={(() => {
+            const btn = (
+              <Button
+                variant="primary"
+                leftIcon={<PlusIcon className="w-5 h-5" />}
+                onClick={() => setIsCreateModalOpen(true)}
+              >
+                Add
+              </Button>
+            );
+            return isTV ? <TVFocusable onEnterPress={() => setIsCreateModalOpen(true)}>{btn}</TVFocusable> : btn;
+          })()}
         />
 
         <AnimatePresence mode="wait">
@@ -389,6 +398,7 @@ export default function InvitationsPage() {
                                 onDelete={() => setDeleteTarget(invite)}
                                 onEdit={() => setEditTarget(invite)}
                                 onDuplicate={() => setDuplicateTarget(invite)}
+                                focusable={isTV}
                               />
                             </StaggerItem>
                           ))}
@@ -698,7 +708,7 @@ export default function InvitationsPage() {
         )}
       </Modal>
 
-    </>
+    </Wrapper>
   );
 }
 
@@ -710,6 +720,7 @@ function InvitationCard({
   onDelete,
   onEdit,
   onDuplicate,
+  focusable = false,
 }: {
   invitation: InvitationDisplay;
   isSelected: boolean;
@@ -717,6 +728,11 @@ function InvitationCard({
   onDelete: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
+  /** TV mode: wraps the card in a D-pad-focusable container. Enter/OK maps
+   *  to the detail page (handleViewDetail/double-click), not the single-
+   *  click selection-toggle behavior - more useful as a default action for
+   *  a remote, and selection is still reachable via the context menu. */
+  focusable?: boolean;
 }) {
   const router = useRouter();
   const [copiedLink, setCopiedLink] = useState(false);
@@ -810,8 +826,7 @@ function InvitationCard({
     ? new Date(invitation.expiresAt).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
     : false;
 
-  return (
-    <>
+  const cardElement = (
       <Card
         padding="none"
         className={`relative cursor-pointer transition-all group ${isSelected ? 'ring-2 ring-primary' : ''}`}
@@ -978,6 +993,15 @@ function InvitationCard({
           </div>
         </div>
       </Card>
+  );
+
+  return (
+    <>
+      {focusable ? (
+        <TVFocusable onEnterPress={() => router.push(`/invitations/${invitation.id}`)}>
+          {cardElement}
+        </TVFocusable>
+      ) : cardElement}
 
       <ContextMenu isOpen={isOpen} position={position} onClose={close}>
         <button
@@ -1057,6 +1081,7 @@ function OAuthCountdown({ expiresAt }: { expiresAt: string }) {
 
 // Request Card with enhanced features
 function RequestCard({ request, onUpdate }: { request: RequestDisplay; onUpdate?: () => void }) {
+  const isTV = useIsTV();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -1219,26 +1244,36 @@ function RequestCard({ request, onUpdate }: { request: RequestDisplay; onUpdate?
         {/* Actions for pending requests */}
         {isPending && (
           <div className="flex items-center gap-2">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => handleAction('accept')}
-              disabled={isProcessing}
-              className="p-3 rounded-xl transition-colors disabled:opacity-50 bg-success-muted text-success"
-              aria-label={`Accept request from ${request.username}`}
-            >
-              <CheckIcon className="w-5 h-5" />
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => handleAction('reject')}
-              disabled={isProcessing}
-              className="p-3 rounded-xl transition-colors disabled:opacity-50 bg-error-muted text-error"
-              aria-label={`Reject request from ${request.username}`}
-            >
-              <XMarkIcon className="w-5 h-5" />
-            </motion.button>
+            {(() => {
+              const btn = (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleAction('accept')}
+                  disabled={isProcessing}
+                  className="p-3 rounded-xl transition-colors disabled:opacity-50 bg-success-muted text-success"
+                  aria-label={`Accept request from ${request.username}`}
+                >
+                  <CheckIcon className="w-5 h-5" />
+                </motion.button>
+              );
+              return isTV ? <TVFocusable onEnterPress={() => handleAction('accept')}>{btn}</TVFocusable> : btn;
+            })()}
+            {(() => {
+              const btn = (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleAction('reject')}
+                  disabled={isProcessing}
+                  className="p-3 rounded-xl transition-colors disabled:opacity-50 bg-error-muted text-error"
+                  aria-label={`Reject request from ${request.username}`}
+                >
+                  <XMarkIcon className="w-5 h-5" />
+                </motion.button>
+              );
+              return isTV ? <TVFocusable onEnterPress={() => handleAction('reject')}>{btn}</TVFocusable> : btn;
+            })()}
           </div>
         )}
 

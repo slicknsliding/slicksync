@@ -1,9 +1,12 @@
 'use client';
 
 import Head from 'next/head';
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
 import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
@@ -217,6 +220,8 @@ function SortableEntryCard({
 // already uses for its own search-param-driven state.
 function VaultPageContent() {
   const { layoutMode } = useLayoutMode();
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const searchParams = useSearchParams();
   const router = useRouter();
   const [entries, setEntries] = useState<VaultEntry[]>([]);
@@ -623,7 +628,7 @@ function VaultPageContent() {
             const days = daysUntil(entry.expiresAt);
             const alertWorthy = days !== null && (days < 0 || days <= entry.notifyDaysBefore);
             if (!alertWorthy || isSnoozed(entry)) return null;
-            return (
+            const btn = (
               <button
                 onClick={() => handleSnooze(entry)}
                 title="Snooze this expiry alert for 7 days"
@@ -633,6 +638,7 @@ function VaultPageContent() {
                 <BellSlashIcon className="w-3.5 h-3.5" />
               </button>
             );
+            return isTV ? <TVFocusable onEnterPress={() => handleSnooze(entry)}>{btn}</TVFocusable> : btn;
           })()}
         </div>
       </div>
@@ -642,12 +648,22 @@ function VaultPageContent() {
           {revealed[entry.id] || '••••••••••••••••'}
         </code>
         <div className="flex items-center gap-2 shrink-0">
-          <button onClick={() => handleCopy(entry)} title="Copy to clipboard" style={{ color: 'var(--color-textMuted)' }}>
-            <DocumentDuplicateIcon className="w-4 h-4" />
-          </button>
-          <button onClick={() => handleReveal(entry)} style={{ color: 'var(--color-textMuted)' }}>
-            {revealed[entry.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
-          </button>
+          {(() => {
+            const btn = (
+              <button onClick={() => handleCopy(entry)} title="Copy to clipboard" style={{ color: 'var(--color-textMuted)' }}>
+                <DocumentDuplicateIcon className="w-4 h-4" />
+              </button>
+            );
+            return isTV ? <TVFocusable onEnterPress={() => handleCopy(entry)}>{btn}</TVFocusable> : btn;
+          })()}
+          {(() => {
+            const btn = (
+              <button onClick={() => handleReveal(entry)} style={{ color: 'var(--color-textMuted)' }}>
+                {revealed[entry.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+              </button>
+            );
+            return isTV ? <TVFocusable onEnterPress={() => handleReveal(entry)}>{btn}</TVFocusable> : btn;
+          })()}
         </div>
       </div>
 
@@ -656,41 +672,66 @@ function VaultPageContent() {
       )}
 
       <div className="mt-auto flex items-center gap-2 pt-2 flex-wrap" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
-        <button
-          onClick={() => handleTest(entry)}
-          disabled={testingId === entry.id || entry.testType === 'manual'}
-          title={entry.testType === 'manual' ? 'No automated check configured' : 'Run check now'}
-          className="p-2 rounded-lg transition-colors disabled:opacity-40"
-          style={{ background: 'var(--color-surfaceHover)' }}
-        >
-          <ArrowPathIcon className={`w-4 h-4 ${testingId === entry.id ? 'animate-spin' : ''}`} style={{ color: 'var(--color-text)' }} />
-        </button>
-        <button onClick={() => openEditModal(entry)} className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surfaceHover)' }}>
-          <PencilIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
-        </button>
-        {entry.dashboardUrl && (
-          <a href={entry.dashboardUrl} target="_blank" rel="noreferrer" className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surfaceHover)' }}>
-            <ArrowTopRightOnSquareIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
-          </a>
-        )}
-        <button
-          onClick={() => handleMoveToAddons(entry)}
-          disabled={movingToAddonsId === entry.id}
-          title="Move to Addons"
-          className="p-2 rounded-lg transition-colors disabled:opacity-40"
-          style={{ background: 'var(--color-surfaceHover)' }}
-        >
-          <PuzzlePieceIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
-        </button>
-        <button onClick={() => handleDelete(entry)} className="p-2 rounded-lg transition-colors ml-auto" style={{ background: 'var(--color-surfaceHover)' }}>
-          <TrashIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
-        </button>
+        {(() => {
+          const btn = (
+            <button
+              onClick={() => handleTest(entry)}
+              disabled={testingId === entry.id || entry.testType === 'manual'}
+              title={entry.testType === 'manual' ? 'No automated check configured' : 'Run check now'}
+              className="p-2 rounded-lg transition-colors disabled:opacity-40"
+              style={{ background: 'var(--color-surfaceHover)' }}
+            >
+              <ArrowPathIcon className={`w-4 h-4 ${testingId === entry.id ? 'animate-spin' : ''}`} style={{ color: 'var(--color-text)' }} />
+            </button>
+          );
+          return isTV && entry.testType !== 'manual' ? <TVFocusable onEnterPress={() => handleTest(entry)}>{btn}</TVFocusable> : btn;
+        })()}
+        {(() => {
+          const btn = (
+            <button onClick={() => openEditModal(entry)} className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surfaceHover)' }}>
+              <PencilIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
+            </button>
+          );
+          return isTV ? <TVFocusable onEnterPress={() => openEditModal(entry)}>{btn}</TVFocusable> : btn;
+        })()}
+        {entry.dashboardUrl && (() => {
+          const link = (
+            <a href={entry.dashboardUrl} target="_blank" rel="noreferrer" className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surfaceHover)' }}>
+              <ArrowTopRightOnSquareIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
+            </a>
+          );
+          return isTV ? (
+            <TVFocusable onEnterPress={() => window.open(entry.dashboardUrl, '_blank', 'noopener,noreferrer')}>{link}</TVFocusable>
+          ) : link;
+        })()}
+        {(() => {
+          const btn = (
+            <button
+              onClick={() => handleMoveToAddons(entry)}
+              disabled={movingToAddonsId === entry.id}
+              title="Move to Addons"
+              className="p-2 rounded-lg transition-colors disabled:opacity-40"
+              style={{ background: 'var(--color-surfaceHover)' }}
+            >
+              <PuzzlePieceIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
+            </button>
+          );
+          return isTV ? <TVFocusable onEnterPress={() => handleMoveToAddons(entry)}>{btn}</TVFocusable> : btn;
+        })()}
+        {(() => {
+          const btn = (
+            <button onClick={() => handleDelete(entry)} className="p-2 rounded-lg transition-colors ml-auto" style={{ background: 'var(--color-surfaceHover)' }}>
+              <TrashIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
+            </button>
+          );
+          return isTV ? <TVFocusable onEnterPress={() => handleDelete(entry)}>{btn}</TVFocusable> : btn;
+        })()}
       </div>
     </Card>
   );
 
   return (
-    <>
+    <Wrapper>
       <Head><title>SlickSync - Vault</title></Head>
       {layoutMode === 'nebula' ? (
         <NebulaTopbar />
@@ -714,11 +755,14 @@ function VaultPageContent() {
         <NebulaPageHeading
           title="Vault"
           subtitle={isLoading ? 'Loading...' : `${total} ${total === 1 ? 'entry' : 'entries'}`}
-          actions={
-            <Button variant="primary" leftIcon={<PlusIcon className="w-5 h-5" />} onClick={openAddModal}>
-              Add Entry
-            </Button>
-          }
+          actions={(() => {
+            const btn = (
+              <Button variant="primary" leftIcon={<PlusIcon className="w-5 h-5" />} onClick={openAddModal}>
+                Add Entry
+              </Button>
+            );
+            return isTV ? <TVFocusable onEnterPress={openAddModal}>{btn}</TVFocusable> : btn;
+          })()}
         />
       )}
       {/* Cost summary - only once at least one entry has a cost set. Debrid,
@@ -955,7 +999,7 @@ function VaultPageContent() {
           </div>
         </div>
       </Modal>
-    </>
+    </Wrapper>
   );
 }
 
