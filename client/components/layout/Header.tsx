@@ -51,8 +51,14 @@ export function Header({
       {/* Desktop uses a 3-column grid so the page title sits centered in the
           middle column while the right section (notifications + actions) stays
           right-aligned in the last column. Mobile keeps the flex layout so the
-          hamburger and title flow tight on the left. */}
-      <div className="px-4 md:px-6 lg:px-8 py-3 md:py-4 flex items-center justify-between gap-4 md:grid md:grid-cols-[1fr_auto_1fr]">
+          hamburger and title flow tight on the left - flex-wrap (harmless at
+          md+ since display switches to grid there) lets the right section
+          drop to its own row below the title instead of squeezing or
+          overflowing when a page passes several action buttons. Safe to grow
+          taller here since this header is position:sticky, not fixed - it
+          stays in normal document flow, so page content below it reflows
+          around whatever height it ends up at instead of getting covered. */}
+      <div className="px-4 md:px-6 lg:px-8 py-3 md:py-4 flex items-center justify-between gap-x-4 gap-y-2 flex-wrap md:grid md:grid-cols-[1fr_auto_1fr]">
         {/* Mobile Menu Button & Title section */}
         <div className="flex items-center gap-3 md:col-start-2 md:justify-self-center md:text-center">
           {/* Hamburger - only show on mobile */}
@@ -98,11 +104,15 @@ export function Header({
             `right-0` off the bell, and if the bell isn't at the true right
             edge the dropdown extends left off-screen (dropdown is ~320px wide,
             so even a small offset shoves its left edge past 0). */}
-        <div className="flex items-center gap-2 md:gap-3 md:col-start-3 md:justify-self-end">
-          {/* Actions */}
+        <div className="flex items-center gap-2 md:gap-3 flex-wrap justify-end w-full md:w-auto md:col-start-3 md:justify-self-end">
+          {/* Actions - w-full on mobile is load-bearing: flex-wrap only
+              engages once this div's own width is bounded, same reasoning
+              as NebulaPageHeading's actions container (see that file for
+              the fuller writeup of why an unbounded flex child won't wrap
+              on its own). */}
           {actions ? (
             <div
-              className="flex items-center gap-2 pr-3"
+              className="flex items-center gap-2 pr-3 flex-wrap"
               style={{ borderRight: '1px solid var(--color-surface-border)' }}
             >
               {actions}
