@@ -1,7 +1,7 @@
 'use client';
 
 import Head from 'next/head';
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
@@ -13,6 +13,10 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, Group, User } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { TVLink } from '@/components/tv/TVLink';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -54,6 +58,8 @@ const colorOptions = [
 
 export default function GroupsPage() {
   const { layoutMode } = useLayoutMode();
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const [searchQuery, setSearchQuery] = useState('');
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -278,7 +284,7 @@ export default function GroupsPage() {
     }
   };
 
-  const syncAllGroupsButton = (
+  const syncAllGroupsButtonInner = (
     <Button
       variant="secondary"
       leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
@@ -288,9 +294,12 @@ export default function GroupsPage() {
       {isSyncing ? 'Syncing...' : 'Sync All'}
     </Button>
   );
+  const syncAllGroupsButton = isTV ? (
+    <TVFocusable onEnterPress={handleSyncAllGroups}>{syncAllGroupsButtonInner}</TVFocusable>
+  ) : syncAllGroupsButtonInner;
 
   return (
-    <>
+    <Wrapper>
       <Head>
         <title>SlickSync - Groups</title>
       </Head>
@@ -335,15 +344,18 @@ export default function GroupsPage() {
             onChange: (value) => setSearchQuery(value),
             placeholder: 'Search groups...',
           }}
-          primaryAction={
-            <Button
-              variant="primary"
-              leftIcon={<PlusIcon className="w-5 h-5" />}
-              onClick={() => setIsCreateModalOpen(true)}
-            >
-              Add
-            </Button>
-          }
+          primaryAction={(() => {
+            const btn = (
+              <Button
+                variant="primary"
+                leftIcon={<PlusIcon className="w-5 h-5" />}
+                onClick={() => setIsCreateModalOpen(true)}
+              >
+                Add
+              </Button>
+            );
+            return isTV ? <TVFocusable onEnterPress={() => setIsCreateModalOpen(true)}>{btn}</TVFocusable> : btn;
+          })()}
         />
 
         {/* Loading state */}
@@ -388,6 +400,7 @@ export default function GroupsPage() {
                                   : g
                               ));
                             }}
+                            focusable={isTV}
                           />
                         </StaggerItem>
                       ))}
@@ -450,7 +463,7 @@ export default function GroupsPage() {
                                 </div>
                               </td>
                               <td className="px-6 py-4">
-                                <Link
+                                <TVLink
                                   href={`/groups/${group.id}`}
                                   className="flex items-center gap-3 group"
                                   onClick={(e) => e.stopPropagation()}
@@ -469,7 +482,7 @@ export default function GroupsPage() {
                                       {group.description || 'No description'}
                                     </p>
                                   </div>
-                                </Link>
+                                </TVLink>
                               </td>
                               <td className="px-6 py-4 text-muted">
                                 <span className="flex items-center gap-1.5">
@@ -631,7 +644,7 @@ export default function GroupsPage() {
           group={cloneTarget}
         />
       )}
-    </>
+    </Wrapper>
   );
 }
 
@@ -643,6 +656,7 @@ function GroupCard({
   onDelete,
   onClone,
   onToggleStatus,
+  focusable = false,
 }: {
   group: GroupDisplay;
   isSelected: boolean;
@@ -650,6 +664,9 @@ function GroupCard({
   onDelete: () => void;
   onClone: () => void;
   onToggleStatus?: (groupId: string, newStatus: boolean) => void;
+  /** TV mode: wraps the card in a D-pad-focusable container, Enter/OK opens
+   *  the same detail page a click would. */
+  focusable?: boolean;
 }) {
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
@@ -698,8 +715,7 @@ function GroupCard({
     onDelete();
   };
 
-  return (
-    <>
+  const cardElement = (
       <Card
         variant="interactive"
         padding="md"
@@ -789,6 +805,15 @@ function GroupCard({
           </div>
         </div>
       </Card>
+  );
+
+  return (
+    <>
+      {focusable ? (
+        <TVFocusable onEnterPress={() => { window.location.href = `/groups/${group.id}`; }}>
+          {cardElement}
+        </TVFocusable>
+      ) : cardElement}
 
       <ContextMenu isOpen={isOpen} position={position} onClose={close}>
         <Link

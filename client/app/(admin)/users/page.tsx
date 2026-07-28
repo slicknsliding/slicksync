@@ -1,7 +1,7 @@
 'use client';
 
 import Head from 'next/head';
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
@@ -15,6 +15,10 @@ import { api, User, Group, MetricsData } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { TVLink } from '@/components/tv/TVLink';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -60,6 +64,8 @@ function formatWatchTime(minutes: number): string {
 
 export default function UsersPage() {
   const { layoutMode } = useLayoutMode();
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const { hideSensitive } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const { viewMode, setViewMode } = useDefaultViewMode();
@@ -348,7 +354,7 @@ export default function UsersPage() {
     }
   };
 
-  const syncAllButton = (
+  const syncAllButtonInner = (
     <Button
       variant="secondary"
       leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
@@ -358,9 +364,12 @@ export default function UsersPage() {
       {isSyncing ? 'Syncing...' : 'Sync All'}
     </Button>
   );
+  const syncAllButton = isTV ? (
+    <TVFocusable onEnterPress={handleSyncAll}>{syncAllButtonInner}</TVFocusable>
+  ) : syncAllButtonInner;
 
   return (
-    <>
+    <Wrapper>
       <Head>
         <title>SlickSync - Users</title>
       </Head>
@@ -411,15 +420,18 @@ export default function UsersPage() {
             onChange: (value) => setSearchQuery(value),
             placeholder: 'Search users...',
           }}
-          primaryAction={
-            <Button
-              variant="primary"
-              leftIcon={<PlusIcon className="w-5 h-5" />}
-              onClick={() => setIsCreateModalOpen(true)}
-            >
-              Add
-            </Button>
-          }
+          primaryAction={(() => {
+            const btn = (
+              <Button
+                variant="primary"
+                leftIcon={<PlusIcon className="w-5 h-5" />}
+                onClick={() => setIsCreateModalOpen(true)}
+              >
+                Add
+              </Button>
+            );
+            return isTV ? <TVFocusable onEnterPress={() => setIsCreateModalOpen(true)}>{btn}</TVFocusable> : btn;
+          })()}
         />
 
         {/* Loading state */}
@@ -471,6 +483,7 @@ export default function UsersPage() {
                             syncingUserIds={syncingUserIds}
                             onSyncStart={handleSyncStart}
                             onSyncEnd={handleSyncEnd}
+                            focusable={isTV}
                           />
                         </StaggerItem>
                       ))}
@@ -535,7 +548,7 @@ export default function UsersPage() {
                                 </div>
                               </td>
                               <td className="px-6 py-4">
-                                <Link
+                                <TVLink
                                   href={`/users/${user.id}`}
                                   className="flex items-center gap-3 group"
                                   onClick={(e) => e.stopPropagation()}
@@ -557,7 +570,7 @@ export default function UsersPage() {
                                       {hideSensitive ? '••••••••' : user.email}
                                     </p>
                                   </div>
-                                </Link>
+                                </TVLink>
                               </td>
                               <td className="px-6 py-4">
                                 <StatusBadge status={user.status} />
@@ -740,7 +753,7 @@ export default function UsersPage() {
         confirmText={isDeleting ? 'Deleting...' : 'Delete User'}
         variant="danger"
       />
-    </>
+    </Wrapper>
   );
 }
 
@@ -755,6 +768,7 @@ function UserCard({
   syncingUserIds,
   onSyncStart,
   onSyncEnd,
+  focusable = false,
 }: {
   user: UserDisplay;
   isSelected: boolean;
@@ -765,6 +779,9 @@ function UserCard({
   syncingUserIds: Set<string>;
   onSyncStart: (userId: string) => void;
   onSyncEnd: (userId: string) => void;
+  /** TV mode: wraps the card in a D-pad-focusable container, Enter/OK opens
+   *  the same detail page a click would. */
+  focusable?: boolean;
 }) {
   const { hideSensitive } = useTheme();
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
@@ -844,8 +861,7 @@ function UserCard({
     onDelete();
   };
 
-  return (
-    <>
+  const cardElement = (
       <Card
         variant="interactive"
         padding="md"
@@ -954,6 +970,15 @@ function UserCard({
           </div>
         </div>
       </Card>
+  );
+
+  return (
+    <>
+      {focusable ? (
+        <TVFocusable onEnterPress={() => { window.location.href = `/users/${user.id}`; }}>
+          {cardElement}
+        </TVFocusable>
+      ) : cardElement}
 
       <ContextMenu isOpen={isOpen} position={position} onClose={close}>
         <Link

@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, memo, useEffect, useMemo, useRef, useCallback, Suspense } from 'react';
+import { useState, memo, useEffect, useMemo, useRef, useCallback, Suspense, Fragment } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
+import { useIsTV } from '@/lib/hooks/useIsTV';
+import { TVPageProvider } from '@/components/tv/TVPageProvider';
+import { TVFocusable } from '@/components/tv/TVFocusable';
+import { TVLink } from '@/components/tv/TVLink';
 import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { NebulaTopbar, NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
@@ -371,16 +375,20 @@ const ActivityCard = memo(function ActivityCard({
   onFilterByContent,
   onFilterByEpisode,
   onOpenDetails,
+  focusable = false,
 }: {
   activity: ActivityItem;
   onFilterByContent?: (name: string) => void;
   onFilterByEpisode?: (activity: ActivityItem) => void;
   onOpenDetails?: (activity: ActivityItem) => void;
+  /** TV mode: wraps the row in a D-pad-focusable container, Enter/OK opens
+   *  the detail modal. */
+  focusable?: boolean;
 }) {
   const showProgress = activity.type === 'watch' || activity.type === 'pause';
   const [imageError, setImageError] = useState(false);
 
-  return (
+  const rowElement = (
     <motion.div
       whileHover={{ x: 4 }}
       className="flex items-start gap-4 p-4 rounded-xl bg-surface border border-default hover:border-primary/50 transition-colors"
@@ -490,6 +498,9 @@ const ActivityCard = memo(function ActivityCard({
       </div>
     </motion.div>
   );
+
+  if (!focusable) return rowElement;
+  return <TVFocusable onEnterPress={() => onOpenDetails?.(activity)}>{rowElement}</TVFocusable>;
 });
 
 // Grid view activity card component - Cinematic poster design
@@ -497,14 +508,18 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
   activity,
   onFilterByContent,
   onOpenDetails,
+  focusable = false,
 }: {
   activity: ActivityItem;
   onFilterByContent?: (name: string) => void;
   onOpenDetails?: (activity: ActivityItem) => void;
+  /** TV mode: wraps the card in a D-pad-focusable container, Enter/OK opens
+   *  the detail modal. */
+  focusable?: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
 
-  return (
+  const cardElement = (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -623,6 +638,9 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
       </div>
     </motion.div>
   );
+
+  if (!focusable) return cardElement;
+  return <TVFocusable onEnterPress={() => onOpenDetails?.(activity)}>{cardElement}</TVFocusable>;
 });
 
 // Task history helper functions
@@ -992,12 +1010,12 @@ function NowPlayingItemBody({
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <Link href={`/users/${np.user.id}`} className="flex items-center gap-2 mb-1">
+        <TVLink href={`/users/${np.user.id}`} className="flex items-center gap-2 mb-1">
           <UserAvatar userId={np.user.id} name={np.user.username} email={np.user.email} src={np.user.useGravatar ? undefined : (np.user.avatarUrl ?? undefined)} size="sm" />
           <span className="text-sm font-medium text-default truncate hover:text-primary transition-colors">
             {np.user.username}
           </span>
-        </Link>
+        </TVLink>
         <p className="text-sm text-muted truncate">
           {np.item.name}
           {np.item.type === 'series' && np.item.episode !== undefined && np.item.episode > 0 && (
@@ -1231,6 +1249,8 @@ function InviteHistoryRow({ invite }: { invite: InviteHistoryItem }) {
 
 function ActivityPageContent() {
   const { layoutMode } = useLayoutMode();
+  const isTV = useIsTV();
+  const Wrapper = isTV ? TVPageProvider : Fragment;
   const searchParams = useSearchParams();
   const userParam = searchParams.get('user');
   const periodParam = searchParams.get('period'); // 'today' | 'week'
@@ -1600,7 +1620,7 @@ function ActivityPageContent() {
   );
 
   return (
-    <>
+    <Wrapper>
       {layoutMode === 'nebula' ? (
         <NebulaTopbar />
       ) : (
@@ -1782,6 +1802,7 @@ function ActivityPageContent() {
                             setSearchQuery(name);
                           }}
                           onOpenDetails={setDetailModalItem}
+                          focusable={isTV}
                         />
                       ))}
                     </div>
@@ -1804,6 +1825,7 @@ function ActivityPageContent() {
                               });
                             }}
                             onOpenDetails={setDetailModalItem}
+                            focusable={isTV}
                           />
                         </StaggerItem>
                       ))}
@@ -1851,15 +1873,18 @@ function ActivityPageContent() {
                       <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                       <span>Loading more...</span>
                     </div>
-                  ) : (
-                    <Button
-                      variant="glass"
-                      size="lg"
-                      onClick={loadMore}
-                    >
-                      Load more activity
-                    </Button>
-                  )}
+                  ) : (() => {
+                    const btn = (
+                      <Button
+                        variant="glass"
+                        size="lg"
+                        onClick={loadMore}
+                      >
+                        Load more activity
+                      </Button>
+                    );
+                    return isTV ? <TVFocusable onEnterPress={loadMore}>{btn}</TVFocusable> : btn;
+                  })()}
                 </div>
               </div>
             )}
@@ -2045,7 +2070,7 @@ function ActivityPageContent() {
           fallbackPoster={detailModalItem.poster}
         />
       )}
-    </>
+    </Wrapper>
   );
 }
 
