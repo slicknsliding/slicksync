@@ -366,17 +366,19 @@ module.exports = ({ prisma, getAccountId } = {}) => {
   // own top-scored watch history; this seeds off whatever single item the
   // popup happens to be open on, including titles nobody's watched yet).
   //
-  // Two-tier: real signal first, genre fallback to fill the gap it can't
-  // cover. The item-item affinity map (computeItemSimilarity, same one
-  // /recommendations' collaborative boost reads) only has entries for
-  // titles someone in the household has actually spent real time on - so a
-  // freshly-browsed, never-watched title (the common case when opening this
-  // popup from a Discover catalog grid) has ZERO affinity neighbors by
-  // construction, not a bug to fix. Backfilling with a genre-matched
-  // Cinemeta catalog fetch (same fallback shape /recommendations already
-  // uses for sparse rows) means the section still shows something useful
-  // instead of silently empty most of the time - real signal is just
-  // listed first when both are present.
+  // Real household affinity is used to WEIGHT which genre(s) to search,
+  // never to supply the displayed items directly - a first version did the
+  // latter and got it wrong: the item-item affinity map (computeItemSimilarity,
+  // same one /recommendations' collaborative boost reads) only has entries
+  // for titles someone has actually spent real time on, since that's the
+  // literal definition of "affinity neighbor" here - two titles the same
+  // person watched. Showing those directly meant "More Like This" was
+  // guaranteed to recommend already-watched content back whenever real
+  // signal existed, which is the opposite of the point. So: look at what
+  // genres the top real neighbors carry, bias the actual Cinemeta pull
+  // toward those genres (on top of the seed's own), then filter the result
+  // against the WHOLE household's watch history same as /recommendations
+  // does - every displayed item is guaranteed unwatched by anyone here.
   router.get('/similar', async (req, res) => {
     try {
       if (!prisma || !getAccountId) return res.json({ items: [], hasRealSignal: false })
@@ -399,58 +401,70 @@ module.exports = ({ prisma, getAccountId } = {}) => {
       } catch {}
 
       const MAX_ITEMS = 16
-      const MIN_BEFORE_GENRE_BACKFILL = 6
+      const MAX_GENRES_TRIED = 3
+      const SEED_GENRE_VOTES = 3 // the seed's own genre(s) anchor the ranking - neighbor genres supplement, don't override
       const seedKey = `${type}:${id}`
 
-      const notInterested = await prisma.notInterestedItem.findMany({ where: { accountId }, select: { itemId: true } }).catch(() => [])
+      const [movies, episodes, overrides, notInterested] = await Promise.all([
+        prisma.movieWatchHistory.findMany({ where: { accountId }, select: { itemId: true } }),
+        prisma.episodeWatchHistory.findMany({ where: { accountId }, select: { showId: true } }),
+        prisma.manualWatchOverride.findMany({ where: { accountId }, select: { itemId: true, watched: true } }),
+        prisma.notInterestedItem.findMany({ where: { accountId }, select: { itemId: true } }).catch(() => []),
+      ])
+      // Watched-status resolution matches /recommendations exactly - manual
+      // overrides set to true also count as watched; set to false REMOVES
+      // from the watched set (unwatched override wins over real history).
+      const watchedIds = new Set([...movies.map((m) => m.itemId), ...episodes.map((e) => e.showId)])
+      for (const o of overrides) {
+        if (o.watched) watchedIds.add(o.itemId)
+        else watchedIds.delete(o.itemId)
+      }
       const notInterestedIds = new Set(notInterested.map((n) => n.itemId))
+      const excludeIds = new Set([id, ...watchedIds, ...notInterestedIds])
 
       const { buildUserVectors, computeItemSimilarity } = require('../utils/recommendationEngine')
-      const { vectors, itemMeta: vectorItemMeta } = await buildUserVectors(prisma, accountId)
+      const { vectors } = await buildUserVectors(prisma, accountId)
       const affinity = computeItemSimilarity(vectors)
       const neighbors = affinity.get(seedKey)
 
-      const items = []
-      const seenIds = new Set([id])
+      const { fetchMetadata } = require('../utils/notify')
+      const genreVotes = new Map()
+      const seedMeta = await fetchMetadata(id, type).catch(() => null)
+      for (const g of (Array.isArray(seedMeta?.genres) ? seedMeta.genres : [])) {
+        genreVotes.set(g, (genreVotes.get(g) || 0) + SEED_GENRE_VOTES)
+      }
+
+      const hasRealSignal = !!(neighbors && neighbors.size > 0)
       if (neighbors) {
-        const ranked = [...neighbors.entries()].sort((a, b) => b[1] - a[1])
-        for (const [key, weight] of ranked) {
-          if (items.length >= MAX_ITEMS) break
+        // Top 5 real neighbors by affinity weight - just enough to bias the
+        // genre pick without turning this into 5 extra metadata calls' worth
+        // of latency for a popup that should feel instant.
+        const topNeighbors = [...neighbors.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
+        for (const [key] of topNeighbors) {
           const neighborId = key.slice(key.indexOf(':') + 1)
-          if (seenIds.has(neighborId) || notInterestedIds.has(neighborId)) continue
-          const meta = vectorItemMeta.get(key)
-          if (!meta || !meta.name) continue
-          seenIds.add(neighborId)
-          items.push({
-            id: neighborId,
-            type: key.startsWith('series:') ? 'series' : 'movie',
-            name: meta.name,
-            poster: meta.poster || null,
-            releaseInfo: null,
-            imdbRating: null,
-            genres: [],
-          })
+          const neighborType = key.startsWith('series:') ? 'series' : 'movie'
+          try {
+            const meta = await fetchMetadata(neighborId, neighborType)
+            for (const g of (Array.isArray(meta?.genres) ? meta.genres : [])) {
+              genreVotes.set(g, (genreVotes.get(g) || 0) + 1)
+            }
+          } catch {}
         }
       }
-      const hasRealSignal = items.length > 0
 
-      if (items.length < MIN_BEFORE_GENRE_BACKFILL) {
-        try {
-          const { fetchMetadata } = require('../utils/notify')
-          const seedMeta = await fetchMetadata(id, type)
-          const genre = Array.isArray(seedMeta?.genres) ? seedMeta.genres[0] : null
-          if (genre) {
-            let candidates = await fetchCatalog(type, { catalog: 'imdbRating', genre })
-            if (candidates.length === 0) candidates = await fetchCatalog(type, { catalog: 'top', genre })
-            for (const c of candidates) {
-              if (items.length >= MAX_ITEMS) break
-              if (seenIds.has(c.id) || notInterestedIds.has(c.id)) continue
-              seenIds.add(c.id)
-              items.push(c)
-            }
-          }
-        } catch (e) {
-          console.warn('Genre backfill for /similar skipped:', e?.message)
+      const topGenres = [...genreVotes.entries()].sort((a, b) => b[1] - a[1]).map(([g]) => g).slice(0, MAX_GENRES_TRIED)
+
+      const items = []
+      const seenIds = new Set([id])
+      for (const genre of topGenres) {
+        if (items.length >= MAX_ITEMS) break
+        let candidates = await fetchCatalog(type, { catalog: 'imdbRating', genre })
+        if (candidates.length === 0) candidates = await fetchCatalog(type, { catalog: 'top', genre })
+        for (const c of candidates) {
+          if (items.length >= MAX_ITEMS) break
+          if (seenIds.has(c.id) || excludeIds.has(c.id)) continue
+          seenIds.add(c.id)
+          items.push(c)
         }
       }
 

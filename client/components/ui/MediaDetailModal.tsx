@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
-import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon } from '@heroicons/react/24/outline';
+import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
@@ -271,13 +271,26 @@ export function MediaDetailModal({
     };
   }, [isOpen, effectiveId, effectiveType, effectiveVideoId]);
 
-  // SlickTrax "More Like This" - real household affinity first, genre
-  // backfill second (see the /similar route's own comment). Keyed on
-  // effectiveId so a "More Like This" click re-runs this for the newly
-  // drilled-into title too, letting you chain through related titles.
+  // SlickTrax "More Like This" - always fresh, always unwatched by anyone
+  // in the household (see the /similar route's own comment for why real
+  // affinity only biases the genre search rather than supplying items
+  // directly). Keyed on effectiveId so a "More Like This" click re-runs
+  // this for the newly drilled-into title too, letting you chain through
+  // related titles.
   const [similarItems, setSimilarItems] = useState<DiscoverItem[]>([]);
   const [similarHasRealSignal, setSimilarHasRealSignal] = useState(false);
   const [similarLoading, setSimilarLoading] = useState(false);
+  // Collapsed by default - a full poster row made this the tallest thing in
+  // the popup even for a title with no other details worth reading yet.
+  // Data still loads eagerly in the background (cheap for this instance's
+  // scale, see the route's own comment) so expanding is instant rather than
+  // showing a spinner on click; only the disclosure's OPEN state is what's
+  // deferred. Collapses again on every item change, including a "More Like
+  // This" drill-down, so it never opens already-expanded on a fresh title.
+  const [similarExpanded, setSimilarExpanded] = useState(false);
+  useEffect(() => {
+    setSimilarExpanded(false);
+  }, [effectiveId]);
   useEffect(() => {
     if (!isOpen || !effectiveId) return;
     setSimilarItems([]);
@@ -657,30 +670,52 @@ export function MediaDetailModal({
                 </p>
               )}
 
-              {/* SlickTrax "More Like This" - hidden entirely once loaded if
+              {/* SlickTrax "More Like This" - a disclosure, collapsed by
+                  default, rather than an always-open poster row that made
+                  this the tallest section in the whole popup regardless of
+                  whether anyone wanted it. Hidden entirely once loaded if
                   the /similar route came back empty (a title Cinemeta has no
                   genre data for, on top of nobody in the household having
-                  watched it), rather than showing an empty section header
-                  for nothing. hasRealSignal just swaps the label - real
-                  household affinity is a stronger, more specific claim than
-                  the generic genre-backfill copy. */}
+                  watched it) - no point showing a toggle for nothing.
+                  hasRealSignal swaps the label - real household affinity is
+                  a stronger, more specific claim than the generic
+                  genre-backfill copy. */}
               {(similarLoading || similarItems.length > 0) && (
                 <div>
-                  <p className="text-base text-muted mb-2">
-                    {similarHasRealSignal ? 'Because you watched this' : 'More Like This'}
-                  </p>
-                  {similarLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-muted py-2">
-                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      Finding similar titles…
-                    </div>
-                  ) : (
+                  {(() => {
+                    const toggleLabel = (
+                      <span className="flex items-center justify-between w-full py-1 text-base text-muted hover:text-default transition-colors">
+                        <span className="flex items-center gap-2">
+                          {similarHasRealSignal ? "Because you're into titles like this" : 'More Like This'}
+                          {!similarLoading && (
+                            <span className="text-xs text-subtle">({similarItems.length})</span>
+                          )}
+                        </span>
+                        {similarLoading ? (
+                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <ChevronDownIcon className={`w-4 h-4 transition-transform ${similarExpanded ? 'rotate-180' : ''}`} />
+                        )}
+                      </span>
+                    );
+                    const onToggle = () => { if (!similarLoading) setSimilarExpanded((v) => !v); };
+                    return isTV ? (
+                      <TVFocusable onEnterPress={onToggle} className="block w-full">
+                        {toggleLabel}
+                      </TVFocusable>
+                    ) : (
+                      <button type="button" onClick={onToggle} disabled={similarLoading} className="block w-full">
+                        {toggleLabel}
+                      </button>
+                    );
+                  })()}
+                  {similarExpanded && !similarLoading && (
                     <div
                       ref={similarRowRef}
                       onPointerDown={handleSimilarPointerDown}
                       onPointerMove={handleSimilarPointerMove}
                       onPointerUp={handleSimilarPointerUp}
-                      className="flex gap-3 overflow-x-auto pb-1 pr-6 no-scrollbar cursor-grab active:cursor-grabbing select-none"
+                      className="flex gap-3 overflow-x-auto pb-1 pr-6 mt-2 no-scrollbar cursor-grab active:cursor-grabbing select-none"
                     >
                       {similarItems.map((item) => {
                         const goToItem = () => setOverrideItem({
