@@ -653,12 +653,21 @@ body {
      text-selection callout (Copy / Look Up / Translate), and holding on
      the poster <img> shows its native image callout (Save to Photos /
      Copy), both of which win over the tap before our onClick ever fires.
-     Neither the poster image nor a card's title text is content anyone
-     needs to select/copy/save here, so disabling both callout systems
-     lets a press-and-hold register as a normal tap instead. Applies to
-     descendants too so title text and badges inside a card are covered
-     without hunting down every element individually. */
-  .tap-card, .tap-card * {
+     -webkit-touch-callout: none kills both callouts and is safe on the
+     clickable container itself. user-select: none is NOT safe there,
+     though - confirmed live: putting it on the same plain <div onClick>
+     that owns the tap handler made iOS stop dispatching the click
+     entirely (a known WebKit quirk - a non-native-interactive element
+     with user-select:none can lose click dispatch outright on iOS,
+     first-party <button>s aren't affected the same way). So user-select
+     only goes on DESCENDANTS (the image, the title text) where the
+     touch actually lands and the callout needs suppressing - the
+     container that owns onClick keeps its default selection behavior so
+     iOS still treats it as a normal tap target. */
+  .tap-card {
+    -webkit-touch-callout: none;
+  }
+  .tap-card * {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
