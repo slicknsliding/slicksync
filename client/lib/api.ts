@@ -21,22 +21,35 @@ function getCsrfToken(): string | null {
 
 class ApiClient {
   private token: string | null = null;
-  // Dedup for concurrent identical GETs, not a data cache - no TTL, entries
-  // clear the instant the shared request settles, so nothing here ever goes
-  // stale. Several unrelated pages/components independently poll the same
-  // couple of endpoints (getInvitations, getMetrics - Dashboard, Activity,
-  // Invitations, Metrics, Users, Vault, plus NotificationsDropdown's own
-  // 30s poll) with no coordination between them, which on a single page
-  // load fired ~15-20 near-simultaneous identical requests to the same
+  // Dedup + short-window cache for GETs. Several unrelated pages/components
+  // independently poll the same couple of endpoints (getInvitations,
+  // getMetrics - Dashboard, Activity, Invitations, Metrics, Users, Vault,
+  // plus NotificationsDropdown's own always-running 30s poll, now persistent
+  // across navigation) with no coordination between them, which on a single
+  // page load fired ~15-20 near-simultaneous identical requests to the same
   // endpoint. Every request round-trips through Traefik's Authelia
   // forward-auth check (confirmed via the container's own routing labels),
   // and that burst was the likely source of an occasional real 404 seen
   // live under the concurrent load (data still loaded fine off the other
   // requests in the burst, so nothing user-visible broke - just wasteful,
-  // and apparently not perfectly safe at that volume). Concurrent callers
-  // asking for the same GET within the same tick now share one in-flight
-  // request instead of each firing their own.
+  // and apparently not perfectly safe at that volume).
+  //
+  // Sharing only the exact in-flight promise (the original fix) caught
+  // requests that overlap down to the millisecond, but independent 30s
+  // intervals drift out of phase with each other and with whatever a page
+  // fires on its own mount - most of the burst is "near-simultaneous," not
+  // truly concurrent, so a pure in-flight dedup missed most of it and the
+  // occasional 404 kept happening. Layering a short resolved-value cache on
+  // top (same idea as SWR's own `dedupingInterval`, same default duration)
+  // catches those near-misses too: a second caller within the window gets
+  // the first caller's already-resolved data instantly, no network request
+  // at all. Bounded to 2s specifically so it's invisible against this data's
+  // own 30s natural refresh cadence - nothing here is ever meaningfully
+  // stale. Failures are never cached (evicted immediately) so a transient
+  // error can't get replayed onto callers that would've otherwise succeeded.
   private inFlightGets = new Map<string, Promise<any>>();
+  private recentGets = new Map<string, { value: any; at: number }>();
+  private static readonly DEDUPE_WINDOW_MS = 2000;
 
   setToken(token: string) {
     this.token = token;
@@ -82,13 +95,44 @@ class ApiClient {
     // the same body. Keyed on endpoint + token, since a mid-flight token
     // change (e.g. login) shouldn't hand an anonymous caller someone else's
     // in-flight authenticated response or vice versa.
-    if (method !== 'GET') return this.fetchImpl<T>(endpoint, options);
+    //
+    // Any mutation drops the whole GET cache once it settles. The common
+    // "delete/create, then immediately re-fetch the list to show the
+    // result" pattern (e.g. Invitations' handleDeleteSingle) would
+    // otherwise risk being served a pre-mutation snapshot straight out of
+    // the 2s cache below instead of the fresh data it's explicitly asking
+    // for - confirmed this exact call shape exists before shipping the
+    // cache. Cleared on settle (not before starting) so a GET that lands
+    // mid-mutation and caches its own snapshot doesn't leave a stale entry
+    // behind for the caller's own post-mutation refetch to pick up -
+    // clearing only up front would miss exactly that window. Cleared on
+    // both success and failure for simplicity; a failed mutation didn't
+    // change server state so this is a few extra requests at worst, never
+    // a stale read. Blunt (a mutation to one resource evicts unrelated
+    // cached GETs too) but safe by construction.
+    if (method !== 'GET') {
+      return this.fetchImpl<T>(endpoint, options).finally(() => {
+        this.recentGets.clear();
+      });
+    }
     const key = `${endpoint}::${options.token || this.getToken() || ''}`;
-    const existing = this.inFlightGets.get(key);
-    if (existing) return existing;
-    const promise = this.fetchImpl<T>(endpoint, options).finally(() => {
-      this.inFlightGets.delete(key);
-    });
+
+    const inFlight = this.inFlightGets.get(key);
+    if (inFlight) return inFlight;
+
+    const recent = this.recentGets.get(key);
+    if (recent && Date.now() - recent.at < ApiClient.DEDUPE_WINDOW_MS) {
+      return Promise.resolve(recent.value);
+    }
+
+    const promise = this.fetchImpl<T>(endpoint, options)
+      .then((value) => {
+        this.recentGets.set(key, { value, at: Date.now() });
+        return value;
+      })
+      .finally(() => {
+        this.inFlightGets.delete(key);
+      });
     this.inFlightGets.set(key, promise);
     return promise;
   }

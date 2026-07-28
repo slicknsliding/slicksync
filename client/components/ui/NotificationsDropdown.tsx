@@ -148,10 +148,18 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       }
     };
 
-    fetchRequests();
-    // Poll every 30 seconds
+    // Small random delay on the very first fetch only (not the recurring
+    // poll, to keep the 30s cadence predictable) - this component mounts
+    // once per session now (persists across navigation, see NebulaTopbar),
+    // so its own initial fetch only ever collides with a page's own mount
+    // fetch on first load. Spreads that one moment out a little rather than
+    // firing in the exact same tick as everything else - the per-endpoint
+    // dedupe/cache in api.ts covers repeat calls to these same two
+    // endpoints, but a fresh page load fires plenty of genuinely different
+    // endpoints too, which that cache can't help with.
+    const initialDelay = setTimeout(fetchRequests, 200 + Math.random() * 600);
     const interval = setInterval(fetchRequests, 30000);
-    return () => clearInterval(interval);
+    return () => { clearTimeout(initialDelay); clearInterval(interval); };
   }, []);
 
   // Fetch recent watch activity for the "activity" notification type
@@ -166,9 +174,12 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       }
     };
 
-    fetchActivity();
+    // Same first-fetch jitter as the requests poll above, and for the same
+    // reason - independent 200-800ms delay so the two don't compound into
+    // one bigger simultaneous burst on their own.
+    const initialDelay = setTimeout(fetchActivity, 200 + Math.random() * 600);
     const interval = setInterval(fetchActivity, 30000);
-    return () => clearInterval(interval);
+    return () => { clearTimeout(initialDelay); clearInterval(interval); };
   }, []);
 
   // New-episode alerts (fired server-side by the episodeAlerts poller when a
