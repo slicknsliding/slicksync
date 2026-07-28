@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, Suspense, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
@@ -161,9 +162,14 @@ function SortableEntryCard({
 }) {
   const { dragHandleProps, itemProps, isDragging } = useSortableDragState(entry.id);
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
+  // onContextMenu alone only covers a real desktop right-click - iOS Safari
+  // doesn't reliably synthesize that DOM event from a touch-and-hold, so
+  // this menu (Run Check Now/Edit/Move to Addons/Delete) was effectively
+  // unreachable by holding on mobile. See useLongPress's own comment.
+  const longPress = useLongPress({ onLongPress: handleContextMenu });
 
   return (
-    <div ref={itemProps.ref} style={itemProps.style} className={itemProps.className} onContextMenu={handleContextMenu}>
+    <div ref={itemProps.ref} style={itemProps.style} className={`${itemProps.className} tap-card`} onContextMenu={handleContextMenu} {...longPress}>
       {renderEntryCard(entry, dragHandleProps, isDragging)}
 
       <ContextMenu isOpen={isOpen} position={position} onClose={close}>
