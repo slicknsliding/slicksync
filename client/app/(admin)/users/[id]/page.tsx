@@ -1521,6 +1521,7 @@ export default function UserDetailPage() {
         description={`Are you sure you want to delete ${user?.username || user?.name || 'this user'}? This action cannot be undone.`}
         confirmText={isDeleting ? 'Deleting...' : 'Delete'}
         variant="danger"
+        isLoading={isDeleting}
       />
 
       {/* Reconnect Modal - reusing CreateUserModal */}

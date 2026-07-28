@@ -1329,6 +1329,7 @@ export default function GroupDetailPage() {
         description={`Are you sure you want to delete "${group?.name || 'this group'}"? This will remove all member associations but won't delete the users themselves.`}
         confirmText={isDeleting ? 'Deleting...' : 'Delete Group'}
         variant="danger"
+        isLoading={isDeleting}
       />
 
       {/* Edit Group Modal */}
