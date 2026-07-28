@@ -14,6 +14,7 @@ import { toast } from '@/components/ui/Toast';
 import { api, Group, User } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { TVLink } from '@/components/tv/TVLink';
@@ -669,7 +670,6 @@ function GroupCard({
   focusable?: boolean;
 }) {
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const [showActions, setShowActions] = useState(false);
 
   // Single click opens detail page
@@ -681,21 +681,16 @@ function GroupCard({
     window.location.href = `/groups/${group.id}`;
   };
 
-  // Handle touch for long press on mobile
-  const handleTouchStart = (e: React.TouchEvent) => {
-    longPressTimer.current = setTimeout(() => {
+  // Long-press → context menu on mobile - a plain JS timer, not the DOM
+  // `contextmenu` event, since iOS Safari doesn't reliably synthesize that
+  // from a touch-and-hold the way desktop browsers do from a real
+  // right-click (see useLongPress's own comment).
+  const longPress = useLongPress({
+    onLongPress: (e, x, y) => {
       setShowActions(true);
-      const touch = e.touches[0];
-      handleContextMenu(e as unknown as React.MouseEvent, touch.clientX, touch.clientY);
-    }, 500);
-  };
-
-  const handleTouchEnd = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  };
+      handleContextMenu(e, x, y);
+    },
+  });
 
   const handleSync = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -724,11 +719,10 @@ function GroupCard({
         // can run under the toggle and overlap it. Unconditional (not just
         // md:) because the toggle itself has no responsive hiding — it's
         // just as visible on a narrow phone as it is at 3-column desktop.
-        className={`group cursor-pointer select-none pr-24 ${isSelected ? 'ring-2 ring-primary' : ''}`}
+        className={`group cursor-pointer tap-card pr-24 ${isSelected ? 'ring-2 ring-primary' : ''}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
+        {...longPress}
       >
         {/* Selection indicator & Toggle - visible on hover or when selected */}
         <div className="absolute top-4 right-4 flex items-center gap-2">
