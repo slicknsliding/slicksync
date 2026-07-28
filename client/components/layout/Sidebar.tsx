@@ -267,8 +267,18 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           </Link>
         </div>
 
-        {/* Navigation Sections */}
-        <nav className="flex-1 p-3 space-y-5 overflow-y-auto custom-scrollbar">
+        {/* Navigation Sections. overscroll-contain stops scroll chaining -
+            without it, dragging past this list's own top/bottom edge (or
+            even a small drag when there's barely anything to scroll)
+            hands the gesture off to whatever scrollable ancestor is next,
+            which on mobile meant the page underneath took over mid-drag
+            even with the body-scroll lock in place (that lock stops the
+            page from scrolling on its own, but doesn't stop an in-progress
+            touch gesture from chaining into it once this list runs out of
+            room to move). Confirmed live: touching over the nav and
+            dragging moved the page instead once the list had little/no
+            room left to scroll in that direction. */}
+        <nav className="flex-1 p-3 space-y-5 overflow-y-auto overscroll-contain custom-scrollbar">
           {navigationSections.map((section, sectionIndex) => (
             <NavSection key={section.id} label={section.label} delay={sectionIndex * 0.1}>
               {section.items.map((item) => {
