@@ -259,7 +259,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
           // navigates away as soon as the finger lifts.
           if (wasDraggedRef.current || isMenuOpen) e.preventDefault();
         }}
-        className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer"
+        className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer tap-card"
       >
         <div className="relative aspect-video">
           {/* Image priority for this landscape (16:9) frame: episode still

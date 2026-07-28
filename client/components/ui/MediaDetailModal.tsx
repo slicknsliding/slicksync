@@ -731,7 +731,7 @@ export function MediaDetailModal({
                             type="button"
                             onClick={goToItem}
                             tabIndex={isTV ? -1 : undefined}
-                            className="shrink-0 w-28 text-left group"
+                            className="shrink-0 w-28 text-left group tap-card"
                           >
                             <div className="w-28 h-40 rounded-lg overflow-hidden bg-surface-hover">
                               {item.poster ? (

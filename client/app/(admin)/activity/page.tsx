@@ -397,7 +397,7 @@ const ActivityCard = memo(function ActivityCard({
       {activity.type === 'complete' && activity.poster && !imageError ? (
         <button
           type="button"
-          className="w-12 h-16 rounded-lg overflow-hidden shrink-0 bg-surface border border-default"
+          className="w-12 h-16 rounded-lg overflow-hidden shrink-0 bg-surface border border-default tap-card"
           onClick={() => onOpenDetails?.(activity)}
         >
           <img
@@ -528,7 +528,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
     >
       {/* Poster Card */}
       <div
-        className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl"
+        className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl tap-card"
         onClick={() => onOpenDetails?.(activity)}
       >
         {activity.poster && !imageError ? (
