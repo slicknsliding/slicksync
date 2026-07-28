@@ -701,7 +701,7 @@ function VaultPageContent() {
             </a>
           );
           return isTV ? (
-            <TVFocusable onEnterPress={() => window.open(entry.dashboardUrl, '_blank', 'noopener,noreferrer')}>{link}</TVFocusable>
+            <TVFocusable onEnterPress={() => window.open(entry.dashboardUrl || undefined, '_blank', 'noopener,noreferrer')}>{link}</TVFocusable>
           ) : link;
         })()}
         {(() => {
