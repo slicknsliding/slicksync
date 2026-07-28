@@ -981,9 +981,18 @@ export default function AddonsPage() {
             initial={{ opacity: 0, y: 100 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 100 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50"
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-2rem)]"
           >
-            <div className="flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl bg-surface border border-default backdrop-blur-xl">
+            {/* flex-wrap + justify-center: 3 action buttons (Reload/Move to
+                Vault/Delete) plus the count badge and close button is wide
+                enough to run off both edges of a phone screen at once, since
+                this bar is position:fixed and centered - unlike a normal-flow
+                overflow there's no scroll to reach the clipped buttons at
+                all. Confirmed live: Delete and the close button were
+                completely unreachable on a 375px viewport before this.
+                Groups/Users' bars only have 2 short-label buttons and fit
+                without wrapping (verified live), so left as-is. */}
+            <div className="flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl bg-surface border border-default backdrop-blur-xl flex-wrap justify-center">
               <div className="flex items-center gap-2 pr-4 border-r border-default">
                 <div className="w-8 h-8 rounded-lg bg-primary-muted flex items-center justify-center">
                   <span className="text-sm font-bold text-primary">{selectedIds.size}</span>
@@ -991,7 +1000,7 @@ export default function AddonsPage() {
                 <span className="text-sm text-muted">selected</span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-center">
                 <Button
                   variant="secondary"
                   size="sm"
