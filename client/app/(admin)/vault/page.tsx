@@ -88,10 +88,10 @@ function isSnoozed(entry: VaultEntry): boolean {
 function ExpiryBadge({ entry }: { entry: VaultEntry }) {
   const days = daysUntil(entry.expiresAt);
   if (days === null) return null;
-  if (isSnoozed(entry)) return <Badge variant="neutral" size="sm">Snoozed</Badge>;
-  if (days < 0) return <Badge variant="error" size="sm">Expired</Badge>;
-  if (days <= entry.notifyDaysBefore) return <Badge variant="warning" size="sm">{days}d left</Badge>;
-  return <Badge variant="outline" size="sm">{days}d left</Badge>;
+  if (isSnoozed(entry)) return <Badge variant="neutral" size="md" className="!text-sm">Snoozed</Badge>;
+  if (days < 0) return <Badge variant="error" size="md" className="!text-sm">Expired</Badge>;
+  if (days <= entry.notifyDaysBefore) return <Badge variant="warning" size="md" className="!text-sm">{days}d left</Badge>;
+  return <Badge variant="outline" size="md" className="!text-sm">{days}d left</Badge>;
 }
 
 interface EntryFormState {
@@ -674,7 +674,7 @@ function VaultPageContent() {
       </div>
 
       {entry.lastCheckMessage && (
-        <p className="text-xs mb-3" style={{ color: 'var(--color-textMuted)' }}>{entry.lastCheckMessage}</p>
+        <p className="text-sm mb-3" style={{ color: 'var(--color-textMuted)' }}>{entry.lastCheckMessage}</p>
       )}
 
       <div className="mt-auto flex items-center gap-2 pt-2 flex-wrap" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
