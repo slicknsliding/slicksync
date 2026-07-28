@@ -2,11 +2,11 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
-import { BookmarkIcon as BookmarkOutlineIcon } from '@heroicons/react/24/outline';
+import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
-import { api, MediaDetails } from '@/lib/api';
+import { api, MediaDetails, DiscoverItem } from '@/lib/api';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { useIsTV } from '@/lib/hooks/useIsTV';
@@ -61,6 +61,34 @@ export function MediaDetailModal({
   const [hasFetched, setHasFetched] = useState(false);
   const [isTrailerPlaying, setIsTrailerPlaying] = useState(false);
 
+  // "More Like This" drill-down - clicking a related poster swaps the
+  // modal's effective item in place instead of closing and asking whatever
+  // opened this modal (5 different callers: Dashboard, Discover, Activity,
+  // Settings, UpcomingEpisodesPanel) to manage a second item. Self-contained
+  // here so none of them need changes. null = showing the item the caller
+  // actually opened; set = drilled into a related title. Reset whenever the
+  // EXTERNAL itemId changes (see the effect below) so reopening the modal
+  // for a different poster doesn't carry over a stale drill-down.
+  const [overrideItem, setOverrideItem] = useState<{
+    id: string;
+    type: 'movie' | 'series';
+    name: string;
+    poster: string | null;
+    imdbRating?: string | null;
+    releaseInfo?: string | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    setOverrideItem(null);
+  }, [isOpen, itemId, itemType, videoId]);
+  const effectiveId = overrideItem?.id ?? itemId;
+  const effectiveType = overrideItem?.type ?? itemType;
+  const effectiveVideoId = overrideItem ? null : videoId;
+  const effectiveFallbackTitle = overrideItem?.name ?? fallbackTitle;
+  const effectiveFallbackPoster = overrideItem?.poster ?? fallbackPoster;
+  const effectiveFallbackRating = overrideItem ? (overrideItem.imdbRating ?? null) : fallbackRating;
+  const effectiveFallbackReleaseInfo = overrideItem ? (overrideItem.releaseInfo ?? null) : fallbackReleaseInfo;
+
   const { enableWatchlist } = usePersonalFeatures();
   const isTV = useIsTV();
 
@@ -87,43 +115,44 @@ export function MediaDetailModal({
   }, [isTV, isOpen, details, focusModal]);
 
   // Watchlist state — optimistic-toggle so the icon flips instantly on click
-  // and the request happens in the background. Reset on itemId change so the
-  // modal doesn't carry the previous title's state when reopened. Skipped
-  // entirely when the Watchlist personal feature is disabled.
+  // and the request happens in the background. Reset on effectiveId change
+  // (not just itemId) so drilling into a related title via "More Like This"
+  // re-checks watchlist status for THAT title, not the originally-opened
+  // one. Skipped entirely when the Watchlist personal feature is disabled.
   const [inWatchlist, setInWatchlist] = useState(false);
   const [watchlistBusy, setWatchlistBusy] = useState(false);
   useEffect(() => {
-    if (!isOpen || !itemId || !enableWatchlist) return;
+    if (!isOpen || !effectiveId || !enableWatchlist) return;
     // Ask the watchlist for our current status. Cheap round-trip since we
     // only care about one id — the batched watched-status endpoint isn't
     // needed here.
     let cancelled = false;
     api.getWatchlist().then((list) => {
       if (cancelled) return;
-      setInWatchlist(list.some((i) => i.itemId === itemId));
+      setInWatchlist(list.some((i) => i.itemId === effectiveId));
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [isOpen, itemId, enableWatchlist]);
+  }, [isOpen, effectiveId, enableWatchlist]);
   const toggleWatchlist = async () => {
     if (watchlistBusy) return;
     setWatchlistBusy(true);
     const next = !inWatchlist;
     setInWatchlist(next); // optimistic
-    onWatchlistChange?.(itemId, next);
+    onWatchlistChange?.(effectiveId, next);
     try {
       if (next) {
         await api.addToWatchlist({
-          itemId,
-          itemType,
-          name: details?.title || fallbackTitle,
-          poster: details?.poster || fallbackPoster || null,
+          itemId: effectiveId,
+          itemType: effectiveType,
+          name: details?.title || effectiveFallbackTitle,
+          poster: details?.poster || effectiveFallbackPoster || null,
         });
       } else {
-        await api.removeFromWatchlist(itemId);
+        await api.removeFromWatchlist(effectiveId);
       }
     } catch {
       setInWatchlist(!next); // revert on failure
-      onWatchlistChange?.(itemId, !next);
+      onWatchlistChange?.(effectiveId, !next);
     } finally {
       setWatchlistBusy(false);
     }
@@ -181,16 +210,56 @@ export function MediaDetailModal({
     }
   }, []);
 
+  // Same mouse-drag-scroll treatment as the Cast row above, for the "More
+  // Like This" poster row - separate refs since it's a different DOM node.
+  const similarRowRef = useRef<HTMLDivElement>(null);
+  const isSimilarPointerDownRef = useRef(false);
+  const similarDragStartXRef = useRef(0);
+  const similarDragStartScrollLeftRef = useRef(0);
+  const hasCapturedSimilarPointerRef = useRef(false);
+
+  const handleSimilarPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || !similarRowRef.current) return;
+    isSimilarPointerDownRef.current = true;
+    hasCapturedSimilarPointerRef.current = false;
+    similarDragStartXRef.current = e.clientX;
+    similarDragStartScrollLeftRef.current = similarRowRef.current.scrollLeft;
+  }, []);
+
+  const handleSimilarPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || !isSimilarPointerDownRef.current || !similarRowRef.current) return;
+    if ((e.buttons & 1) === 0) {
+      isSimilarPointerDownRef.current = false;
+      return;
+    }
+    const dx = e.clientX - similarDragStartXRef.current;
+    if (Math.abs(dx) > 5 && !hasCapturedSimilarPointerRef.current) {
+      similarRowRef.current.setPointerCapture(e.pointerId);
+      hasCapturedSimilarPointerRef.current = true;
+    }
+    similarRowRef.current.scrollLeft = similarDragStartScrollLeftRef.current - dx;
+  }, []);
+
+  const handleSimilarPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse') return;
+    isSimilarPointerDownRef.current = false;
+    if (hasCapturedSimilarPointerRef.current) {
+      similarRowRef.current?.releasePointerCapture(e.pointerId);
+      hasCapturedSimilarPointerRef.current = false;
+    }
+  }, []);
+
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !effectiveId) return;
     // Reset per-item, since the same modal instance is reused across clicks
+    // (and across "More Like This" drill-downs, via effectiveId/effectiveType)
     setDetails(null);
     setHasFetched(false);
     setIsLoading(true);
     setIsTrailerPlaying(false);
 
     let cancelled = false;
-    api.getMediaDetails(itemId, itemType, videoId).then((result) => {
+    api.getMediaDetails(effectiveId, effectiveType, effectiveVideoId).then((result) => {
       if (cancelled) return;
       setDetails(result);
       setIsLoading(false);
@@ -200,12 +269,36 @@ export function MediaDetailModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, itemId, itemType, videoId]);
+  }, [isOpen, effectiveId, effectiveType, effectiveVideoId]);
+
+  // SlickTrax "More Like This" - real household affinity first, genre
+  // backfill second (see the /similar route's own comment). Keyed on
+  // effectiveId so a "More Like This" click re-runs this for the newly
+  // drilled-into title too, letting you chain through related titles.
+  const [similarItems, setSimilarItems] = useState<DiscoverItem[]>([]);
+  const [similarHasRealSignal, setSimilarHasRealSignal] = useState(false);
+  const [similarLoading, setSimilarLoading] = useState(false);
+  useEffect(() => {
+    if (!isOpen || !effectiveId) return;
+    setSimilarItems([]);
+    setSimilarLoading(true);
+    let cancelled = false;
+    api.getSimilarItems(effectiveId, effectiveType).then((result) => {
+      if (cancelled) return;
+      setSimilarItems(result.items);
+      setSimilarHasRealSignal(result.hasRealSignal);
+    }).finally(() => {
+      if (!cancelled) setSimilarLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, effectiveId, effectiveType]);
 
   const title = details?.episode?.title
-    ? `${details?.title || fallbackTitle} — ${details.episode.title}`
-    : (details?.title || fallbackTitle);
-  const heroImage = details?.episode?.thumbnail || details?.background || details?.poster || fallbackPoster;
+    ? `${details?.title || effectiveFallbackTitle} — ${details.episode.title}`
+    : (details?.title || effectiveFallbackTitle);
+  const heroImage = details?.episode?.thumbnail || details?.background || details?.poster || effectiveFallbackPoster;
   const overview = details?.episode?.overview || details?.description;
   const trailerId = details?.trailers?.[0];
 
@@ -301,6 +394,27 @@ export function MediaDetailModal({
         )}
 
         <div className="px-6 pb-2 pt-4">
+          {/* Only shown mid drill-down (came here via a "More Like This"
+              poster) - closing the modal from a related title would
+              otherwise just lose the original one entirely, one click from
+              a poster grid or not. */}
+          {overrideItem && (isTV ? (
+            <TVFocusable onEnterPress={() => setOverrideItem(null)} className="inline-block mb-2">
+              <span className="flex items-center gap-1 text-sm font-medium text-muted">
+                <ChevronLeftIcon className="w-4 h-4" />
+                Back to {fallbackTitle}
+              </span>
+            </TVFocusable>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setOverrideItem(null)}
+              className="flex items-center gap-1 mb-2 text-sm font-medium text-muted hover:text-default transition-colors"
+            >
+              <ChevronLeftIcon className="w-4 h-4" />
+              Back to {fallbackTitle}
+            </button>
+          ))}
           <h2 className="text-2xl font-bold font-display text-default">{title}</h2>
 
           {isLoading && (
@@ -323,17 +437,17 @@ export function MediaDetailModal({
                   two backends can disagree, and showing a different number
                   than what the user just clicked reads as a bug. */}
               <div className="flex flex-wrap items-center gap-3 text-base text-muted">
-                {(fallbackReleaseInfo || details.releaseInfo) && <span>{fallbackReleaseInfo || details.releaseInfo}</span>}
+                {(effectiveFallbackReleaseInfo || details.releaseInfo) && <span>{effectiveFallbackReleaseInfo || details.releaseInfo}</span>}
                 {details.runtime && (
                   <span className="flex items-center gap-1.5">
                     <ClockIcon className="w-5 h-5" />
                     {details.runtime}
                   </span>
                 )}
-                {(fallbackRating || details.imdbRating) && (
+                {(effectiveFallbackRating || details.imdbRating) && (
                   <span className="flex items-center gap-1.5 text-amber-400 font-medium">
                     <StarIcon className="w-5 h-5" />
-                    {fallbackRating || details.imdbRating}
+                    {effectiveFallbackRating || details.imdbRating}
                     <span className="text-muted font-normal">/10</span>
                   </span>
                 )}
@@ -361,7 +475,7 @@ export function MediaDetailModal({
                 )}
                 {details.moviedb_id && (
                   <a
-                    href={`https://www.themoviedb.org/${itemType === 'movie' ? 'movie' : 'tv'}/${details.moviedb_id}`}
+                    href={`https://www.themoviedb.org/${effectiveType === 'movie' ? 'movie' : 'tv'}/${details.moviedb_id}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary hover:underline"
@@ -405,7 +519,7 @@ export function MediaDetailModal({
                 );
                 const stremioBtn = (
                   <a
-                    href={buildStremioAppUrl(details.imdb_id, itemType)}
+                    href={buildStremioAppUrl(details.imdb_id, effectiveType)}
                     tabIndex={isTV ? -1 : undefined}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                     style={{
@@ -420,7 +534,7 @@ export function MediaDetailModal({
                 );
                 const nuvioBtn = (
                   <a
-                    href={buildNuvioAppUrl(details.imdb_id, itemType)}
+                    href={buildNuvioAppUrl(details.imdb_id, effectiveType)}
                     tabIndex={isTV ? -1 : undefined}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                     style={{
@@ -449,10 +563,10 @@ export function MediaDetailModal({
                       {enableWatchlist && (
                         <TVFocusable onEnterPress={toggleWatchlist}>{watchlistBtn}</TVFocusable>
                       )}
-                      <TVFocusable onEnterPress={() => { window.location.href = buildStremioAppUrl(details.imdb_id!, itemType); }}>
+                      <TVFocusable onEnterPress={() => { window.location.href = buildStremioAppUrl(details.imdb_id!, effectiveType); }}>
                         {stremioBtn}
                       </TVFocusable>
-                      <TVFocusable onEnterPress={() => { window.location.href = buildNuvioAppUrl(details.imdb_id!, itemType); }}>
+                      <TVFocusable onEnterPress={() => { window.location.href = buildNuvioAppUrl(details.imdb_id!, effectiveType); }}>
                         {nuvioBtn}
                       </TVFocusable>
                     </div>
@@ -541,6 +655,84 @@ export function MediaDetailModal({
                   <FilmIcon className="w-5 h-5 shrink-0 mt-0.5" />
                   {details.awards}
                 </p>
+              )}
+
+              {/* SlickTrax "More Like This" - hidden entirely once loaded if
+                  the /similar route came back empty (a title Cinemeta has no
+                  genre data for, on top of nobody in the household having
+                  watched it), rather than showing an empty section header
+                  for nothing. hasRealSignal just swaps the label - real
+                  household affinity is a stronger, more specific claim than
+                  the generic genre-backfill copy. */}
+              {(similarLoading || similarItems.length > 0) && (
+                <div>
+                  <p className="text-base text-muted mb-2">
+                    {similarHasRealSignal ? 'Because you watched this' : 'More Like This'}
+                  </p>
+                  {similarLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted py-2">
+                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      Finding similar titles…
+                    </div>
+                  ) : (
+                    <div
+                      ref={similarRowRef}
+                      onPointerDown={handleSimilarPointerDown}
+                      onPointerMove={handleSimilarPointerMove}
+                      onPointerUp={handleSimilarPointerUp}
+                      className="flex gap-3 overflow-x-auto pb-1 pr-6 no-scrollbar cursor-grab active:cursor-grabbing select-none"
+                    >
+                      {similarItems.map((item) => {
+                        const goToItem = () => setOverrideItem({
+                          id: item.id,
+                          type: item.type,
+                          name: item.name,
+                          poster: item.poster,
+                          imdbRating: item.imdbRating,
+                          releaseInfo: item.releaseInfo,
+                        });
+                        const card = (
+                          <button
+                            type="button"
+                            onClick={goToItem}
+                            tabIndex={isTV ? -1 : undefined}
+                            className="shrink-0 w-28 text-left group"
+                          >
+                            <div className="w-28 h-40 rounded-lg overflow-hidden bg-surface-hover">
+                              {item.poster ? (
+                                <img
+                                  src={item.poster}
+                                  alt={item.name}
+                                  loading="lazy"
+                                  decoding="async"
+                                  draggable={false}
+                                  onDragStart={(e) => e.preventDefault()}
+                                  className="w-full h-full object-cover pointer-events-none transition-transform group-hover:scale-105"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-muted">
+                                  <FilmIcon className="w-8 h-8" />
+                                </div>
+                              )}
+                            </div>
+                            <p
+                              className="mt-1.5 text-sm font-medium text-default leading-tight group-hover:text-primary transition-colors"
+                              style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                              title={item.name}
+                            >
+                              {item.name}
+                            </p>
+                          </button>
+                        );
+                        return isTV ? (
+                          <TVFocusable key={item.id} onEnterPress={goToItem}>{card}</TVFocusable>
+                        ) : (
+                          <Fragment key={item.id}>{card}</Fragment>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
