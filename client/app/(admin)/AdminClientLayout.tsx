@@ -110,12 +110,34 @@ export default function AdminClientLayout({
   // vanish until scrolling all the way back to top). Sticky's "stuck"
   // behavior depends on a scrollable ancestor chain up to the real viewport;
   // freezing that chain out from under it mid-scroll is what caused it.
+  //
+  // `overflow: hidden` alone doesn't actually stop background touch-scroll
+  // on iOS Safari - it's a well-known gap, iOS keeps scrolling the page
+  // underneath regardless. Confirmed live: with the drawer open, scrolling
+  // the sidebar's own nav list didn't work at all - the touch was scrolling
+  // the body behind it instead. `position: fixed` on the body (with the
+  // current scroll offset preserved via `top`, then restored via
+  // `window.scrollTo` on close) is the standard robust fix - it genuinely
+  // removes the body from the scroll chain instead of just asking it not to
+  // scroll.
   useEffect(() => {
     if (isMobileMenuOpen && !useNebulaChrome) {
+      const scrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.left = '0';
+      document.body.style.right = '0';
       document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
+      return () => {
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.left = '';
+        document.body.style.right = '';
+        document.body.style.overflow = '';
+        window.scrollTo(0, scrollY);
+      };
     }
+    document.body.style.overflow = 'unset';
     return () => {
       document.body.style.overflow = 'unset';
     };
