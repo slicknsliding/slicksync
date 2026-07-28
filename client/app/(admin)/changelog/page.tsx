@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Card, Button, Badge } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import {
@@ -293,9 +293,7 @@ export default function ChangelogPage() {
 
   return (
     <>
-      {layoutMode === 'nebula' ? (
-        <NebulaTopbar />
-      ) : (
+      {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: "What's New" }]} className="text-xl font-semibold" />}
           subtitle="All notable changes to this project will be documented here."

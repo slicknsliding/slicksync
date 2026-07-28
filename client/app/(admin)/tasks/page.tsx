@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, UserAvatar, ConfirmModal, Modal, Input } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, User, Group, AddonSnapshot, BackupFile, DisasterRecoveryKit } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -899,9 +899,7 @@ export default function TasksPage() {
 
   return (
     <>
-      {layoutMode === 'nebula' ? (
-        <NebulaTopbar />
-      ) : (
+      {layoutMode !== 'nebula' && (
         <Header
           title="Tasks"
           subtitle="Manage and export all your SlickSync data"

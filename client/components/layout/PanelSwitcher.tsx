@@ -354,19 +354,6 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                       <span className="nav-item-label text-sm font-medium">Themes</span>
                     </button>
                     <button
-                      onClick={() => { setIsOpen(false); router.push('/changelog'); }}
-                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
-                      style={{ color: 'var(--color-text)' }}
-                    >
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center"
-                        style={{ background: 'var(--color-surface-hover)' }}
-                      >
-                        <NewspaperIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-                      </div>
-                      <span className="nav-item-label text-sm font-medium">Changelog</span>
-                    </button>
-                    <button
                       onClick={() => { setIsOpen(false); router.push('/settings'); }}
                       className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
                       style={{ color: 'var(--color-text)' }}
@@ -378,6 +365,19 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                         <Cog6ToothIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
                       </div>
                       <span className="nav-item-label text-sm font-medium">Settings</span>
+                    </button>
+                    <button
+                      onClick={() => { setIsOpen(false); router.push('/changelog'); }}
+                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
+                      style={{ color: 'var(--color-text)' }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: 'var(--color-surface-hover)' }}
+                      >
+                        <NewspaperIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                      </div>
+                      <span className="nav-item-label text-sm font-medium">Changelog</span>
                     </button>
                   </>
                 )}

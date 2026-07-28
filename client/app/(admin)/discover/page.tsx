@@ -3,10 +3,10 @@
 import { useState, useEffect, memo, useRef, useCallback, Fragment } from 'react';
 import { Header } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextMenu, useContextMenu } from '@/components/ui';
-import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem, RecommendationRow } from '@/lib/api';
+import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem, RecommendationRow, User } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon } from '@heroicons/react/24/outline';
@@ -256,17 +256,67 @@ export default function DiscoverPage() {
     if (!enableRecommendations && source === 'foryou') setSource('discover');
   }, [enableWatchlist, enableRecommendations, source]);
 
-  // For You state — fetched once when the user picks the source (and the
-  // feature is enabled).
+  // For You state — fetched when the user picks the source (and the
+  // feature is enabled), and re-fetched whenever the mode/user picker
+  // below changes. This page has no single logged-in "current user" of its
+  // own (it's the admin's account-wide view), so there's no automatic "me"
+  // to default to - personal mode needs an explicit managed-user pick.
+  // Defaults to personal mode per explicit preference (over household-wide
+  // or picking a pairing) - remembered across visits the same way
+  // viewMode/theme choices are.
   const [recRows, setRecRows] = useState<RecommendationRow[]>([]);
   const [recsLoaded, setRecsLoaded] = useState(false);
+  const [recMode, setRecMode] = useState<'personal' | 'shared'>('personal');
+  const [recUserId, setRecUserId] = useState<string>('');
+  const [recUserId2, setRecUserId2] = useState<string>('');
+  const [recUsers, setRecUsers] = useState<User[]>([]);
   useEffect(() => {
-    if (source !== 'foryou' || !enableRecommendations || recsLoaded) return;
-    api.getRecommendations()
+    if (source !== 'foryou' || recUsers.length > 0) return;
+    api.getUsers().then((users) => {
+      setRecUsers(users);
+      const stored = localStorage.getItem('slicksync-foryou-mode');
+      const storedUserId = localStorage.getItem('slicksync-foryou-userId');
+      const storedUserId2 = localStorage.getItem('slicksync-foryou-userId2');
+      const mode = stored === 'shared' ? 'shared' : 'personal';
+      setRecMode(mode);
+      // Fall back to the first managed user if a previously-stored pick no
+      // longer exists (deleted user, or first time ever) - always resolve
+      // to SOME valid selection rather than leaving the picker empty.
+      const validId = (id: string | null) => id && users.some((u) => u.id === id) ? id : '';
+      setRecUserId(validId(storedUserId) || users[0]?.id || '');
+      setRecUserId2(validId(storedUserId2) || (users[1]?.id ?? users[0]?.id ?? ''));
+    }).catch(() => {});
+  }, [source, recUsers.length]);
+  useEffect(() => {
+    if (source !== 'foryou' || !enableRecommendations) return;
+    // Personal mode needs a user; shared mode needs two distinct users.
+    // Wait for the picker to resolve (recUsers fetch above) rather than
+    // firing once with empty ids and falling back to the old household-wide
+    // behavior, which would flash the wrong rows before the real fetch.
+    if (recMode === 'personal' && !recUserId) return;
+    if (recMode === 'shared' && (!recUserId || !recUserId2 || recUserId === recUserId2)) return;
+    setRecsLoaded(false);
+    api.getRecommendations(
+      recMode === 'personal'
+        ? { mode: 'personal', userId: recUserId }
+        : { mode: 'shared', userId: recUserId, userId2: recUserId2 }
+    )
       .then((r) => setRecRows(Array.isArray(r?.rows) ? r.rows : []))
       .catch(() => setRecRows([]))
       .finally(() => setRecsLoaded(true));
-  }, [source, enableRecommendations, recsLoaded]);
+  }, [source, enableRecommendations, recMode, recUserId, recUserId2]);
+  useEffect(() => { if (recUsers.length > 0) localStorage.setItem('slicksync-foryou-mode', recMode); }, [recMode, recUsers.length]);
+  useEffect(() => { if (recUserId) localStorage.setItem('slicksync-foryou-userId', recUserId); }, [recUserId]);
+  useEffect(() => { if (recUserId2) localStorage.setItem('slicksync-foryou-userId2', recUserId2); }, [recUserId2]);
+  // Second picker's own options exclude whoever's picked first (can't share
+  // with yourself) - if that leaves the second picker's current value
+  // stale, snap it to the next available person instead of leaving a
+  // filtered-out value selected.
+  useEffect(() => {
+    if (recUserId2 && recUserId2 !== recUserId) return;
+    const next = recUsers.find((u) => u.id !== recUserId);
+    if (next) setRecUserId2(next.id);
+  }, [recUserId, recUserId2, recUsers]);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [watchlistLoaded, setWatchlistLoaded] = useState(false);
   // Watched-status filter for the Discover grid — hide things you've seen,
@@ -470,9 +520,7 @@ export default function DiscoverPage() {
 
   return (
     <Wrapper>
-      {layoutMode === 'nebula' ? (
-        <NebulaTopbar />
-      ) : (
+      {layoutMode !== 'nebula' && (
         <Header
           title="Discover"
           subtitle="Browse or search for something to watch, then open it straight in Stremio or Nuvio"
@@ -704,6 +752,114 @@ export default function DiscoverPage() {
 
         {source === 'foryou' ? (
           <PageSection delay={0.1}>
+            {/* Personal (one managed user's own watch history) vs Shared
+                (combined signal + real overlap from exactly two picked
+                users) - this page has no single "current user" of its own,
+                so there's no automatic default beyond picking Personal mode
+                itself. Mirrors the Movies/Series and catalog picker's own
+                pill-row + native-select pattern used elsewhere on this
+                page rather than introducing a new control style. TV mode
+                swaps both native <select>s for focusable chip rows, same
+                reason (and same pattern) as the genre picker below. */}
+            {recUsers.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                {(recUsers.length > 1 ? (['personal', 'shared'] as const) : (['personal'] as const)).map((m) => {
+                  const btn = (
+                    <button
+                      type="button"
+                      onClick={() => setRecMode(m)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        recMode === m
+                          ? 'bg-primary text-white'
+                          : 'bg-surface-hover text-muted hover:text-default'
+                      }`}
+                    >
+                      {m === 'personal' ? 'Personal' : 'Shared with…'}
+                    </button>
+                  );
+                  return isTV ? (
+                    <TVFocusable key={m} onEnterPress={() => setRecMode(m)}>{btn}</TVFocusable>
+                  ) : (
+                    <Fragment key={m}>{btn}</Fragment>
+                  );
+                })}
+                {isTV ? (
+                  <div className="flex gap-2 flex-wrap items-center">
+                    {recUsers.map((u) => {
+                      const chip = (
+                        <button
+                          type="button"
+                          onClick={() => setRecUserId(u.id)}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                            recUserId === u.id
+                              ? 'bg-primary text-white border-transparent'
+                              : 'bg-surface-hover text-muted hover:text-default border-default'
+                          }`}
+                        >
+                          {u.name || u.username}
+                        </button>
+                      );
+                      return (
+                        <TVFocusable key={u.id} onEnterPress={() => setRecUserId(u.id)}>
+                          {chip}
+                        </TVFocusable>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <select
+                    value={recUserId}
+                    onChange={(e) => setRecUserId(e.target.value)}
+                    aria-label={recMode === 'personal' ? 'Show recommendations for' : 'First person'}
+                    className="px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer bg-surface-hover text-default border-default"
+                  >
+                    {recUsers.map((u) => (
+                      <option key={u.id} value={u.id}>{u.name || u.username}</option>
+                    ))}
+                  </select>
+                )}
+                {recMode === 'shared' && (
+                  <>
+                    <span className="text-sm text-muted">and</span>
+                    {isTV ? (
+                      <div className="flex gap-2 flex-wrap items-center">
+                        {recUsers.filter((u) => u.id !== recUserId).map((u) => {
+                          const chip = (
+                            <button
+                              type="button"
+                              onClick={() => setRecUserId2(u.id)}
+                              className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                                recUserId2 === u.id
+                                  ? 'bg-primary text-white border-transparent'
+                                  : 'bg-surface-hover text-muted hover:text-default border-default'
+                              }`}
+                            >
+                              {u.name || u.username}
+                            </button>
+                          );
+                          return (
+                            <TVFocusable key={u.id} onEnterPress={() => setRecUserId2(u.id)}>
+                              {chip}
+                            </TVFocusable>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                    <select
+                      value={recUserId2}
+                      onChange={(e) => setRecUserId2(e.target.value)}
+                      aria-label="Second person"
+                      className="px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer bg-surface-hover text-default border-default"
+                    >
+                      {recUsers.filter((u) => u.id !== recUserId).map((u) => (
+                        <option key={u.id} value={u.id}>{u.name || u.username}</option>
+                      ))}
+                    </select>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
             {!recsLoaded ? (
               <div className="flex items-center justify-center py-24 text-muted">
                 <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />

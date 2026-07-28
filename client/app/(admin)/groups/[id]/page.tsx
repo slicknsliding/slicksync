@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, User, Group, Addon } from '@/lib/api';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
-import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { Button, Card, Avatar, AvatarGroup, Badge, Modal, ConfirmModal, Input, ColorPicker, InlineEdit, ToggleSwitch, SyncBadge, VersionBadge, ResourceBadge, UserAvatar, SelectionCheckbox } from '@/components/ui';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -899,9 +899,7 @@ export default function GroupDetailPage() {
 
   return (
     <>
-      {layoutMode === 'nebula' ? (
-        <NebulaTopbar />
-      ) : (
+      {layoutMode !== 'nebula' && (
         <Header
           title={
             <Breadcrumbs

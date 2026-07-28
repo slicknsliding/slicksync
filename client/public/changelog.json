@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.59.0",
+    "date": "2026-07-27",
+    "title": "feat: personal/shared For You recommendations + mobile nav fixes",
+    "features": [
+      "For You now lets you choose whose taste it's recommending from: Personal (one managed user's own watch history) or Shared with someone (combined viewing + real overlap between two picked users). Defaults to Personal. Previously always blended everyone's history together with no way to narrow it down.",
+      "The account dropdown's Settings and Changelog items swapped positions."
+    ],
+    "bugFixes": [
+      "Original layout's mobile sidebar: scrolling the nav list didn't move, and items lit up with hover styling mid-scroll like your finger was hovering over them. Root cause: the hover-pill CSS had no guard for touch devices, which don't have real hover and get a simulated one on touch that then sticks. Scoped to actual hover-capable pointers only.",
+      "Nebula's top nav now hides on scroll and reveals via the hamburger on mobile the same way it already did on desktop - previously mobile ignored scroll position entirely and was hamburger-only at all times, unlike desktop's \"visible at top, hides once scrolled\" behavior.",
+      "General mobile sluggishness switching between pages: the top nav bar was being fully rebuilt from scratch on every single page navigation (re-fetching account info, replaying its entrance animation, losing scroll-collapsed state) instead of persisting the way the rest of the app's shared chrome does. It now persists across navigation like everything else."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.58.0",
     "date": "2026-07-27",
     "title": "feat: SlickTrax \"Not interested\" feedback + real household attribution",
