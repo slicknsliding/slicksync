@@ -452,9 +452,18 @@ export function NebulaPageHeading({
         <h1 className="text-2xl font-bold font-display mb-1 text-default">{title}</h1>
         {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
       </div>
-      <div className="flex items-center gap-2 flex-wrap order-2 md:order-3 md:col-start-3 md:justify-self-end">
+      <div className="flex items-center gap-2 flex-wrap w-full md:w-auto order-2 md:order-3 md:col-start-3 md:justify-self-end">
         {/* Desktop only - mobile gets a fixed top-right copy in NebulaTopbar
-            instead (see above for why). */}
+            instead (see above for why). w-full on mobile is load-bearing:
+            flex-wrap only kicks in once this div's own width is bounded -
+            without it, a flex child is free to grow past the viewport to
+            fit all actions on one line instead of wrapping, which is
+            exactly what happened on Group/User/Addon detail pages with 4+
+            action buttons (Active toggle, Sync, Edit, Delete) - they ran
+            off the right edge requiring a horizontal scroll to reach
+            Delete. md:w-auto reverts to natural sizing in the desktop grid
+            cell, where justify-self-end still needs it hugging content
+            width. */}
         {!isMobile && <NotificationsDropdown />}
         {actions}
       </div>

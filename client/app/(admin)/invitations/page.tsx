@@ -659,6 +659,7 @@ export default function InvitationsPage() {
         description={`Are you sure you want to delete ${selectedIds.size} invitation${selectedIds.size !== 1 ? 's' : ''}? This will invalidate the invite codes.`}
         confirmText={isDeleting ? 'Deleting...' : 'Delete Invitations'}
         variant="danger"
+        isLoading={isDeleting}
       />
 
       {/* Delete Confirmation Modal (single) */}
@@ -670,6 +671,7 @@ export default function InvitationsPage() {
         description={`Are you sure you want to delete invitation "${deleteTarget?.code}"? This will invalidate the invite code.`}
         confirmText={isDeleting ? 'Deleting...' : 'Delete Invitation'}
         variant="danger"
+        isLoading={isDeleting}
       />
 
       {/* Edit Invitation Modal */}

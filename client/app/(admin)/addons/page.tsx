@@ -1066,6 +1066,7 @@ export default function AddonsPage() {
         description={`Are you sure you want to delete ${selectedIds.size} addon${selectedIds.size !== 1 ? 's' : ''}? This action cannot be undone.`}
         confirmText={isDeleting ? 'Deleting...' : 'Delete Addons'}
         variant="danger"
+        isLoading={isDeleting}
       />
 
       {/* Delete Confirmation Modal (single) */}
@@ -1077,6 +1078,7 @@ export default function AddonsPage() {
         description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
         confirmText={isDeleting ? 'Deleting...' : 'Delete Addon'}
         variant="danger"
+        isLoading={isDeleting}
       />
 
       {/* Delete Tag Confirmation Modal */}
