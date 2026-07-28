@@ -3,7 +3,7 @@
 import { useState, memo, useMemo, useEffect, Fragment } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
-import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
@@ -304,9 +304,7 @@ export default function MetricsPage() {
 
   return (
     <Wrapper>
-      {layoutMode === 'nebula' ? (
-        <NebulaTopbar />
-      ) : (
+      {layoutMode !== 'nebula' && (
         <Header
           title="Metrics"
           subtitle="Track watch time, content consumption, and user activity"

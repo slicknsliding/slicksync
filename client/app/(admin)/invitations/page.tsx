@@ -5,7 +5,7 @@ import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
-import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
@@ -303,9 +303,7 @@ export default function InvitationsPage() {
 
   return (
     <Wrapper>
-      {layoutMode === 'nebula' ? (
-        <NebulaTopbar />
-      ) : (
+      {layoutMode !== 'nebula' && (
         <Header
           title="Invitations"
           subtitle={isLoading ? 'Loading...' : `${invitations.length} active invite${invitations.length !== 1 ? 's' : ''} • ${pendingRequests.length} pending request${pendingRequests.length !== 1 ? 's' : ''}`}

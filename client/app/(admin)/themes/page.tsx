@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
-import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { Button, Card, Badge, ConfirmModal } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import {
@@ -459,9 +459,7 @@ export default function ThemesPage() {
 
   return (
     <>
-      {layoutMode === 'nebula' ? (
-        <NebulaTopbar />
-      ) : (
+      {layoutMode !== 'nebula' && (
         <Header
           title="Themes"
           subtitle="Pick a built-in theme, or build your own"

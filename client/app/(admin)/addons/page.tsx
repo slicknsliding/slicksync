@@ -12,7 +12,7 @@ import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, ResourceBadge, SearchInput, Modal, Input, ConfirmModal, VersionBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NebulaPageHeading, NebulaHeaderStats, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading, NebulaHeaderStats, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, Addon } from '@/lib/api';
@@ -609,9 +609,7 @@ export default function AddonsPage() {
       <Head>
         <title>SlickSync - Addons</title>
       </Head>
-      {layoutMode === 'nebula' ? (
-        <NebulaTopbar />
-      ) : (
+      {layoutMode !== 'nebula' && (
         <Header
           title="Addons"
           subtitle={isLoading ? 'Loading...' : `${addons.length} addon${addons.length !== 1 ? 's' : ''} • ${protectedCount} protected`}

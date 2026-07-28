@@ -416,18 +416,29 @@ body {
 
 @layer components {
   /* ----- Nav item hover (pure CSS — no JS state to get stuck) ----- */
-  /* Bold colored pill — only ever shows on real-time hover, for any nav item */
-  .nav-item-hover-pill {
-    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-  }
-  .nav-item-hover-pill:hover {
-    background: linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 70%, var(--color-secondary))) !important;
-    color: #fff !important;
-    box-shadow: 0 6px 20px -8px var(--color-primary);
-  }
-  .nav-item-hover-pill:hover .nav-item-icon,
-  .nav-item-hover-pill:hover .nav-item-label {
-    color: #fff !important;
+  /* Bold colored pill — only ever shows on real-time hover, for any nav item.
+     (hover: hover) gates this to devices that have a real pointer capable of
+     hovering without touching - plain `:hover` alone fires on touchstart on
+     mobile (browsers simulate a hover-then-click for compatibility with
+     hover-dependent sites) and then stays "stuck" active until something
+     else is tapped, since touch has no real hover-out event. Confirmed live:
+     items in the Original layout's mobile sidebar lit up mid-scroll just
+     from a finger passing over them. Scoping to real hover-capable pointers
+     fixes this everywhere this class is used (Sidebar, NebulaTopbar,
+     PanelSwitcher) without touching any of their call sites. */
+  @media (hover: hover) {
+    .nav-item-hover-pill {
+      transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .nav-item-hover-pill:hover {
+      background: linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 70%, var(--color-secondary))) !important;
+      color: #fff !important;
+      box-shadow: 0 6px 20px -8px var(--color-primary);
+    }
+    .nav-item-hover-pill:hover .nav-item-icon,
+    .nav-item-hover-pill:hover .nav-item-label {
+      color: #fff !important;
+    }
   }
 
   /* ----- Text Colors ----- */
@@ -594,6 +605,16 @@ body {
   }
 
   /* ----- Scrollbar ----- */
+  /* iOS Safari needs this explicitly for momentum/inertial scrolling inside
+     a nested overflow region - without it, a scrollable element nested
+     inside an ancestor that has (or has had) a CSS transform applied
+     (Sidebar's mobile drawer slides in via a framer-motion transform, which
+     stays on the element's inline style even at rest) can scroll sluggishly
+     or not at all on touch. Applied to every .custom-scrollbar consumer,
+     not just the sidebar - harmless no-op on browsers that don't need it. */
+  .custom-scrollbar {
+    -webkit-overflow-scrolling: touch;
+  }
   .custom-scrollbar::-webkit-scrollbar {
     width: 8px;
     height: 8px;

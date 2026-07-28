@@ -4,7 +4,7 @@ import { memo, useEffect, useState, useMemo, useCallback, useRef, Fragment } fro
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
-import { NebulaTopbar, NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -701,8 +701,6 @@ export default function DashboardPage() {
     const Wrapper = isTV ? TVPageProvider : Fragment;
     return (
       <Wrapper>
-        <NebulaTopbar />
-
         <div className="px-4 md:px-6 pb-8 pt-6">
           {/* Same 72rem cap as NebulaTopbar, set inline for the same reason
               (globals.css's unlayered `* { max-width: 100vw }` silently

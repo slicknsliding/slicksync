@@ -252,12 +252,16 @@ export function NebulaTopbar() {
             screen real estate the bar eats, not whether focus can reach it. */}
         <div className={isTV ? 'relative flex items-center justify-center gap-2 mb-1.5' : 'relative flex items-center justify-center gap-2 md:gap-4 mb-4'}>
           {/* Hamburger - never on TV (nav is always shown inline there
-              instead, see navVisible below); always shown on mobile; on
-              desktop only once scrolled (matches Original layout's Sidebar
-              toggle icon/shared open state otherwise). Absolutely
-              positioned so the logo stays genuinely centered either way,
-              rather than the hamburger's own width pushing it off-center. */}
-          {!isTV && (isMobile || isScrolled) && (
+              instead, see navVisible below); on mobile AND desktop alike,
+              only once scrolled - nav shows inline at the top of the page
+              on both, same as Original layout's Sidebar toggle icon/shared
+              open state. Previously mobile was hamburger-only regardless of
+              scroll position, unlike desktop's "visible at top, hides on
+              scroll" - confirmed as an explicit inconsistency to fix, not a
+              deliberate design choice. Absolutely positioned so the logo
+              stays genuinely centered either way, rather than the
+              hamburger's own width pushing it off-center. */}
+          {!isTV && isScrolled && (
             <button
               onClick={() => (mobileNavOpen ? closeMobileNav() : openMobileNav())}
               className="absolute left-0 p-2 rounded-lg hover:bg-surface-hover transition-colors"
@@ -305,16 +309,16 @@ export function NebulaTopbar() {
             all. The collapse/expand DOM churn (AnimatePresence mounting
             and unmounting the whole nav) also looked like it was fighting
             TVPageProvider's focus tracking, causing the "snaps back to
-            top" symptom. Mobile: always collapsed behind the hamburger,
-            opens/closes on tap. Desktop: shown inline while at the top of
-            the page, collapses behind the same hamburger once scrolled. */}
+            top" symptom. Mobile and desktop now share the exact same rule:
+            shown inline while at the top of the page, collapses behind the
+            hamburger once scrolled, regardless of viewport size. */}
         {(() => {
-          const navVisible = isTV ? true : (isMobile ? mobileNavOpen : (isScrolled ? mobileNavOpen : true));
+          const navVisible = isTV ? true : (isScrolled ? mobileNavOpen : true);
           return (
             <AnimatePresence initial={false}>
               {navVisible && (
                 <motion.nav
-                  initial={(isMobile || isScrolled) ? { height: 0, opacity: 0 } : false}
+                  initial={isScrolled ? { height: 0, opacity: 0 } : false}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.2, ease: 'easeInOut' }}

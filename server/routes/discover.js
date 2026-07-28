@@ -79,6 +79,31 @@ module.exports = ({ prisma, getAccountId } = {}) => {
       if (!prisma || !getAccountId) return res.json({ rows: [] })
       const accountId = getAccountId(req) || 'default'
 
+      // This page has no single logged-in "current user" of its own (it's
+      // the admin's account-wide view - see findAttributionForSeed's own
+      // comment), so "personal" vs "shared" recommendations both need an
+      // explicit pick from the caller rather than an implicit "me."
+      // personal + one userId = that person's own watch history only.
+      // shared + two userIds = combined watch signal from exactly those two,
+      // with the existing collaborative-boost/pairwise-attribution logic
+      // naturally scoped down to just them (nothing else changes - see
+      // scopedUserIds usage below). No mode/userId at all = the original
+      // household-wide behavior, unchanged, for any caller that doesn't
+      // send these params.
+      const mode = req.query.mode === 'shared' ? 'shared' : 'personal'
+      const userId = typeof req.query.userId === 'string' && req.query.userId ? req.query.userId : null
+      const userId2 = typeof req.query.userId2 === 'string' && req.query.userId2 ? req.query.userId2 : null
+      const scopedUserIds = mode === 'shared' && userId && userId2 && userId !== userId2
+        ? [userId, userId2]
+        : (mode === 'personal' && userId ? [userId] : null)
+      const scopedNamesById = new Map()
+      if (scopedUserIds) {
+        try {
+          const rows = await prisma.user.findMany({ where: { id: { in: scopedUserIds } }, select: { id: true, username: true, email: true } })
+          for (const u of rows) scopedNamesById.set(u.id, u.username || u.email || 'someone')
+        } catch {}
+      }
+
       // Respect the SlickTrax opt-out — a disabled feature should never
       // trigger the metadata + catalog fetches this endpoint does,
       // regardless of what the client sends.
@@ -101,15 +126,20 @@ module.exports = ({ prisma, getAccountId } = {}) => {
 
       const lookbackDate = new Date(Date.now() - ACTIVITY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
 
+      // Overrides/watchlist/notInterested stay account-wide regardless of
+      // mode - neither model has a userId column (both deliberately
+      // household-wide, see their own schema comments), and "already
+      // watched/wishlisted/dismissed by anyone in the household" is still
+      // the right exclusion even for a personal or shared row.
       const [movies, episodes, overrides, activity, watchlist, notInterested] = await Promise.all([
         prisma.movieWatchHistory.findMany({
-          where: { accountId },
+          where: scopedUserIds ? { accountId, userId: { in: scopedUserIds } } : { accountId },
           orderBy: { watchedAt: 'desc' },
           take: 200,
           distinct: ['itemId'],
         }),
         prisma.episodeWatchHistory.findMany({
-          where: { accountId },
+          where: scopedUserIds ? { accountId, userId: { in: scopedUserIds } } : { accountId },
           orderBy: { watchedAt: 'desc' },
           take: 200,
           distinct: ['showId'],
@@ -119,7 +149,7 @@ module.exports = ({ prisma, getAccountId } = {}) => {
           select: { itemId: true, watched: true },
         }),
         prisma.watchActivity.findMany({
-          where: { accountId, date: { gte: lookbackDate } },
+          where: scopedUserIds ? { accountId, userId: { in: scopedUserIds }, date: { gte: lookbackDate } } : { accountId, date: { gte: lookbackDate } },
           select: { itemId: true, itemType: true, watchTimeSeconds: true, date: true },
         }),
         prisma.watchlistItem.findMany({ where: { accountId }, select: { itemId: true, itemType: true, name: true } }).catch(() => []),
@@ -188,7 +218,17 @@ module.exports = ({ prisma, getAccountId } = {}) => {
           buildUserVectors, computeItemSimilarity, collaborativeBoost, computePairwiseOverlap,
           computeNotInterestedPenalties, applyNotInterestedPenalty,
         } = require('../utils/recommendationEngine')
-        const { vectors, itemMeta: vectorItemMeta } = await buildUserVectors(prisma, accountId)
+        const { vectors: allVectors, itemMeta: vectorItemMeta } = await buildUserVectors(prisma, accountId)
+        // Scoped down to just the requested user(s) - buildUserVectors has
+        // no userId filter of its own (it always reads the whole account),
+        // so this is where personal/shared mode actually take effect for
+        // the collaborative-boost/attribution layer. Personal mode leaves
+        // exactly one entry, which makes every `vectors.size > 1` check
+        // below naturally false - no separate "skip this for personal mode"
+        // branch needed, the existing household-mode gates already do it.
+        const vectors = scopedUserIds
+          ? new Map([...allVectors].filter(([uid]) => scopedUserIds.includes(uid)))
+          : allVectors
         if (vectors.size > 0) {
           affinity = computeItemSimilarity(vectors)
           const COLLAB_BOOST_WEIGHT = 0.5
@@ -280,7 +320,15 @@ module.exports = ({ prisma, getAccountId } = {}) => {
         // X") beats the generic fallback whenever one exists - see
         // findAttributionForSeed's own comment for why this isn't scoped to
         // a single "current user" the way a personalized feed would be.
-        let reason = `Because you watched ${seed.name}`
+        // Personal/shared mode (scopedUserIds set) name the actual person/
+        // pair explicitly instead - "you" doesn't fit when the admin picked
+        // a specific managed user (or two) rather than reading their own
+        // account-wide feed.
+        let reason = scopedUserIds && scopedUserIds.length === 1
+          ? `Because ${scopedNamesById.get(scopedUserIds[0]) || 'they'} watched ${seed.name}`
+          : scopedUserIds && scopedUserIds.length === 2
+            ? `Because ${scopedNamesById.get(scopedUserIds[0]) || 'they'} and ${scopedNamesById.get(scopedUserIds[1]) || 'they'} watched ${seed.name}`
+            : `Because you watched ${seed.name}`
         if (affinity && pairwiseOverlaps.length > 0) {
           try {
             const { findAttributionForSeed } = require('../utils/recommendationEngine')

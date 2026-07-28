@@ -8,7 +8,7 @@ import { Header } from '@/components/layout/Header';
 import { Button, Card, Avatar, Badge, StatusBadge, SearchInput, ConfirmModal, SyncBadge, ToggleSwitch, Modal, Input, UserAvatar, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { NebulaTopbar, NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, User, Group, MetricsData } from '@/lib/api';
@@ -373,9 +373,7 @@ export default function UsersPage() {
       <Head>
         <title>SlickSync - Users</title>
       </Head>
-      {layoutMode === 'nebula' ? (
-        <NebulaTopbar />
-      ) : (
+      {layoutMode !== 'nebula' && (
         <Header
           title="Users"
           subtitle={isLoading ? 'Loading...' : `${users.length} total user${users.length !== 1 ? 's' : ''}`}
