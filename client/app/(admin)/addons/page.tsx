@@ -5,6 +5,7 @@ import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'rea
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import Link from 'next/link';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { TVLink } from '@/components/tv/TVLink';
@@ -1266,8 +1267,17 @@ function AddonCard({
 }) {
   const [isReloading, setIsReloading] = useState(false);
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const [showActions, setShowActions] = useState(false);
+  // Long-press → context menu on mobile - a plain JS timer, not the DOM
+  // `contextmenu` event, since iOS Safari doesn't reliably synthesize that
+  // from a touch-and-hold the way desktop browsers do from a real
+  // right-click (see useLongPress's own comment).
+  const longPress = useLongPress({
+    onLongPress: (e, x, y) => {
+      setShowActions(true);
+      handleContextMenu(e, x, y);
+    },
+  });
   // Context menu's "Label" item drills into a sub-view of the same menu
   // (existing labels to pick from + create-new) rather than opening a
   // separate modal — reset back to the main view whenever the menu closes.
@@ -1318,22 +1328,6 @@ function AddonCard({
     window.location.href = `/addons/${addon.id}`;
   };
 
-  // Handle touch for long press on mobile
-  const handleTouchStart = (e: React.TouchEvent) => {
-    longPressTimer.current = setTimeout(() => {
-      setShowActions(true);
-      const touch = e.touches[0];
-      handleContextMenu(e as unknown as React.MouseEvent, touch.clientX, touch.clientY);
-    }, 500);
-  };
-
-  const handleTouchEnd = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  };
-
   const handleClone = (e: React.MouseEvent) => {
     e.stopPropagation();
     close();
@@ -1360,11 +1354,10 @@ function AddonCard({
       <Card
         variant="interactive"
         padding="none"
-        className={`group relative cursor-pointer select-none ${isSelected ? 'ring-2 ring-primary' : ''}`}
+        className={`group relative cursor-pointer tap-card ${isSelected ? 'ring-2 ring-primary' : ''}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
+        {...longPress}
       >
         {/* Selection indicator & Toggle - hidden on mobile, use context menu */}
         <div className="absolute top-4 right-4 z-10 flex items-center gap-3">
