@@ -646,6 +646,24 @@ body {
     display: none;
   }
 
+  /* Poster/activity cards across Discover, Dashboard, Activity, and the
+     detail modal's own "More Like This"/Cast rows are tap targets that
+     open a detail modal on click - but iOS Safari's default long-press
+     behavior preempts that: holding on the title text shows its native
+     text-selection callout (Copy / Look Up / Translate), and holding on
+     the poster <img> shows its native image callout (Save to Photos /
+     Copy), both of which win over the tap before our onClick ever fires.
+     Neither the poster image nor a card's title text is content anyone
+     needs to select/copy/save here, so disabling both callout systems
+     lets a press-and-hold register as a normal tap instead. Applies to
+     descendants too so title text and badges inside a card are covered
+     without hunting down every element individually. */
+  .tap-card, .tap-card * {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
   /* ----- Gradients & Effects ----- */
   .text-gradient {
     background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));

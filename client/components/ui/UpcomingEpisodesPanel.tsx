@@ -94,7 +94,7 @@ const UpcomingRow = memo(function UpcomingRow({
         onTouchEnd={clearPress}
         onTouchCancel={clearPress}
         onTouchMove={handleTouchMove}
-        className="w-full flex items-center gap-3 p-2 rounded-lg text-left hover:bg-surface-hover transition-colors"
+        className="w-full flex items-center gap-3 p-2 rounded-lg text-left hover:bg-surface-hover transition-colors tap-card"
       >
         <div className="w-10 h-14 rounded-md overflow-hidden bg-surface-hover flex-shrink-0 flex items-center justify-center">
           {item.poster ? (

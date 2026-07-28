@@ -100,7 +100,7 @@ const PosterCard = memo(function PosterCard({
 
   const card = (
     <div
-      className="group relative cursor-pointer"
+      className="group relative cursor-pointer tap-card"
       onClick={() => onOpenDetails(item)}
       onContextMenu={(e) => {
         handleContextMenu(e);
