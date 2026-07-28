@@ -40,6 +40,7 @@ export default function InvitationDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [deleteUserConfirm, setDeleteUserConfirm] = useState<{
     open: boolean;
     request: InviteRequest | null;
@@ -107,12 +108,14 @@ export default function InvitationDetailPage() {
   };
 
   const handleDelete = async () => {
+    setIsDeleting(true);
     try {
       await api.deleteInvitation(invitationId);
       toast.success('Invitation deleted successfully');
       router.push('/invitations');
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete invitation');
+      setIsDeleting(false);
     }
   };
 
@@ -527,8 +530,9 @@ export default function InvitationDetailPage() {
         onConfirm={handleDelete}
         title="Delete Invitation"
         description={`Are you sure you want to delete invitation "${code}"? This will invalidate the invite code and remove all associated users.`}
-        confirmText="Delete Invitation"
+        confirmText={isDeleting ? 'Deleting...' : 'Delete Invitation'}
         variant="danger"
+        isLoading={isDeleting}
       />
 
       {/* Remove User Confirmation Modal */}
