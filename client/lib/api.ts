@@ -2472,6 +2472,9 @@ export interface TopItemWithUsers {
   users: Array<{
     userId: string;
     username: string;
+    email?: string;
+    avatarUrl?: string | null;
+    colorIndex?: number;
     watchTimeSeconds: number;
     watchTimeHours: number;
     episodesWatched?: number;

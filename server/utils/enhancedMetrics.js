@@ -8,7 +8,13 @@ const { getAccountDateString } = require('./dateUtils')
  */
 function calculateTopItemsWithUsers(watchSessions, allUsers) {
   const itemStats = new Map()
-  
+  // allUsers carries avatarUrl/colorIndex/email (see metricsBuilder.js's own
+  // select) but was previously accepted as a param and never actually read -
+  // session.user only ever had username, so every avatar in this panel's
+  // per-user breakdown silently fell back to an initial-letter circle
+  // regardless of whether the user had a real uploaded avatar.
+  const userInfoById = new Map((allUsers || []).map(u => [u.id, u]))
+
   // Process each session to aggregate by item and track users
   watchSessions.forEach(session => {
     const itemId = session.item.id
@@ -34,9 +40,13 @@ function calculateTopItemsWithUsers(watchSessions, allUsers) {
     
     // Track per-user watch time (accumulate if user watched multiple times)
     if (!stats.users.has(userId)) {
+      const userInfo = userInfoById.get(userId)
       stats.users.set(userId, {
         userId: userId,
         username: session.user.username,
+        email: userInfo?.email,
+        avatarUrl: userInfo?.avatarUrl ?? null,
+        colorIndex: userInfo?.colorIndex,
         watchTimeSeconds: 0,
         watchTimeHours: 0,
         episodesWatched: new Set() // Track unique episodes for series
