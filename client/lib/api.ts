@@ -1633,9 +1633,11 @@ class ApiClient {
   async getTasteOverlap() {
     return this.fetch<{ pairs: TasteOverlapPair[] }>('/discover/taste-overlap');
   }
-  // "More Like This" for the detail popup - real household affinity first,
-  // genre-matched Cinemeta backfill after (see the route's own comment for
-  // why: a never-watched item has no affinity neighbors by construction).
+  // "More Like This" for the detail popup - real household affinity biases
+  // which genre(s) get searched, but every returned item is always a fresh
+  // Cinemeta pull filtered against the whole household's watch history
+  // (never an affinity neighbor directly - see the route's own comment for
+  // why that would just recommend already-watched titles back).
   async getSimilarItems(id: string, type: 'movie' | 'series') {
     const params = new URLSearchParams({ id, type });
     try {
