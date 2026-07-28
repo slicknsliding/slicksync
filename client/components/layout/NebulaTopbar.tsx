@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Fragment, ReactNode, useEffect, useState } from 'react';
+import { Fragment, ReactNode, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -67,6 +67,31 @@ export function NebulaTopbar() {
   const pathname = usePathname();
   const router = useRouter();
   const isTV = useIsTV();
+  // Confirmed live (Firefox, desktop): after hoisting this component into
+  // the persistent admin layout so it survives route changes (previously
+  // remounted fresh on every navigation), every nav pill the cursor had
+  // ever rested over while clicking through pages stayed visually "lit up"
+  // - not just the truly active one. Root cause is a real, documented
+  // Firefox quirk: when an element's own styling/content changes under a
+  // stationary cursor (exactly what happens here - `isActive` restyles
+  // these same persistent <Link>s on every route change) without a fresh
+  // native mousemove in between, Firefox can fail to re-evaluate :hover
+  // and leaves it stuck. Remounting used to paper over this for free
+  // (brand new DOM nodes have no stale hover state); persisting exposed
+  // it. Standard workaround: toggle pointer-events off and back on for
+  // one frame on route change, which forces the browser to drop any
+  // stale :hover on the subtree - it'll only re-apply on a genuine new
+  // mouse move afterward.
+  const navRowsRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = navRowsRef.current;
+    if (!el) return;
+    el.style.pointerEvents = 'none';
+    const raf = requestAnimationFrame(() => {
+      el.style.pointerEvents = '';
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [pathname]);
   // Reuses the same open/close state Original layout's Sidebar drawer
   // already gets from AdminClientLayout - the two never render at once
   // (Sidebar is hidden on exactly the pages that render this component
@@ -318,6 +343,7 @@ export function NebulaTopbar() {
             <AnimatePresence initial={false}>
               {navVisible && (
                 <motion.nav
+                  ref={navRowsRef}
                   initial={isScrolled ? { height: 0, opacity: 0 } : false}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
