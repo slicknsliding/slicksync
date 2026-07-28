@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
-import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { Button, Card, Badge, Modal, ConfirmModal, Avatar } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { useTheme } from '@/lib/theme';
@@ -450,9 +450,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      {layoutMode === 'nebula' ? (
-        <NebulaTopbar />
-      ) : (
+      {layoutMode !== 'nebula' && (
         <Header
           title="Settings"
           subtitle="Customize your SlickSync experience"

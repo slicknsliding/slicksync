@@ -1544,8 +1544,13 @@ class ApiClient {
   async clearWatchedOverride(itemId: string) {
     return this.fetch<{ success: boolean }>(`/watchlist/mark/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
   }
-  async getRecommendations() {
-    return this.fetch<{ rows: RecommendationRow[] }>('/discover/recommendations');
+  async getRecommendations(opts?: { mode?: 'personal' | 'shared'; userId?: string; userId2?: string }) {
+    const params = new URLSearchParams();
+    if (opts?.mode) params.set('mode', opts.mode);
+    if (opts?.userId) params.set('userId', opts.userId);
+    if (opts?.userId2) params.set('userId2', opts.userId2);
+    const qs = params.toString();
+    return this.fetch<{ rows: RecommendationRow[] }>(`/discover/recommendations${qs ? `?${qs}` : ''}`);
   }
   async getTasteOverlap() {
     return this.fetch<{ pairs: TasteOverlapPair[] }>('/discover/taste-overlap');

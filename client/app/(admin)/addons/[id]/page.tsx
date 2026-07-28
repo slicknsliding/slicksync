@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, Addon, Group } from '@/lib/api';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
-import { NebulaTopbar, NebulaPageHeading } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { Button, Card, Badge, ResourceBadge, Modal, ConfirmModal, Input, ToggleSwitch, VersionBadge, InlineEdit, SyncBadge } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
@@ -1145,7 +1145,7 @@ export default function AddonDetailPage() {
   if (isLoading) {
     return (
       <>
-        {layoutMode === 'nebula' ? <NebulaTopbar /> : <Header title="Loading..." />}
+        {layoutMode !== 'nebula' && <Header title="Loading..." />}
         <div className="p-8">
           <div className="flex items-center justify-center h-40 md:h-64">
             <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin text-primary" />
@@ -1158,7 +1158,7 @@ export default function AddonDetailPage() {
   if (error) {
     return (
       <>
-        {layoutMode === 'nebula' ? <NebulaTopbar /> : <Header title="Error" />}
+        {layoutMode !== 'nebula' && <Header title="Error" />}
         <div className="p-8">
           <div className="flex flex-col items-center justify-center h-40 md:h-64 gap-4">
             <p className="text-lg text-error">Failed to load addon</p>
@@ -1173,7 +1173,7 @@ export default function AddonDetailPage() {
   if (!addon) {
     return (
       <>
-        {layoutMode === 'nebula' ? <NebulaTopbar /> : <Header title="Not Found" />}
+        {layoutMode !== 'nebula' && <Header title="Not Found" />}
         <div className="p-8">
           <div className="flex flex-col items-center justify-center h-40 md:h-64 gap-4">
             <p className="text-lg text-default">Addon not found</p>
@@ -1240,9 +1240,7 @@ export default function AddonDetailPage() {
 
   return (
     <>
-      {layoutMode === 'nebula' ? (
-        <NebulaTopbar />
-      ) : (
+      {layoutMode !== 'nebula' && (
         <Header
           title={
             <Breadcrumbs
