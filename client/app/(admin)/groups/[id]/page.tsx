@@ -1088,7 +1088,7 @@ export default function GroupDetailPage() {
                         whileHover={{ x: 4 }}
                         className="flex items-center gap-4 p-4 rounded-xl bg-surface-hover hover:bg-surface transition-colors group overflow-hidden"
                       >
-                        <UserAvatar userId={user.id} name={displayName} email={user.email} size="md" />
+                        <UserAvatar userId={user.id} name={displayName} email={user.email} src={user.avatarUrl ?? undefined} colorIndex={user.colorIndex} size="md" />
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -1573,7 +1573,7 @@ function AddMemberForm({ groupId, existingUserIds, onClose, onUsersChanged }: {
                 checked={isSelected}
                 onChange={() => toggleUser(user.id)}
               />
-              <UserAvatar userId={user.id} name={displayName} email={user.email} size="sm" />
+              <UserAvatar userId={user.id} name={displayName} email={user.email} src={user.avatarUrl ?? undefined} colorIndex={user.colorIndex} size="sm" />
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-default truncate">{displayName}</p>
                 <p className="text-sm text-muted truncate">{user.email}</p>

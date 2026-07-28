@@ -17,6 +17,8 @@ interface TopItem {
     userId: string;
     username: string;
     email?: string;
+    avatarUrl?: string | null;
+    colorIndex?: number;
     watchTimeSeconds: number;
     watchTimeHours: number;
     episodesWatched?: number;
@@ -144,7 +146,7 @@ export const TopItemsSection = memo(function TopItemsSection({ movies, series }:
                     {selectedItem.users.map((user) => (
                       <div key={user.userId} className="flex items-center justify-between p-2 rounded-lg bg-surface-hover">
                         <div className="flex items-center gap-2">
-                          <UserAvatar userId={user.userId} name={user.username} email={user.email} size="sm" />
+                          <UserAvatar userId={user.userId} name={user.username} email={user.email} src={user.avatarUrl ?? undefined} colorIndex={user.colorIndex} size="sm" />
                           <span className="text-sm">{user.username}</span>
                         </div>
                         <span className="text-sm text-muted">
