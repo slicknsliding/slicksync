@@ -743,7 +743,7 @@ export default function UserDetailPage() {
   }, [params.id, stremioAddons]);
 
   const detailActions = (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 flex-wrap justify-end">
       <div className="flex items-center gap-2">
         <span className="text-sm text-muted">Active</span>
         <ToggleSwitch
