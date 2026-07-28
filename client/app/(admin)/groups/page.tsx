@@ -621,6 +621,7 @@ export default function GroupsPage() {
         description={`Are you sure you want to delete ${selectedIds.size} group${selectedIds.size !== 1 ? 's' : ''}? This will remove all member associations but won't delete the users themselves.`}
         confirmText={isDeleting ? 'Deleting...' : 'Delete Groups'}
         variant="danger"
+        isLoading={isDeleting}
       />
 
       {/* Delete Confirmation Modal (single) */}
@@ -632,6 +633,7 @@ export default function GroupsPage() {
         description={`Are you sure you want to delete "${deleteTarget?.name}"? This will remove all member associations but won't delete the users themselves.`}
         confirmText={isDeleting ? 'Deleting...' : 'Delete Group'}
         variant="danger"
+        isLoading={isDeleting}
       />
 
       {/* Clone Group Modal */}

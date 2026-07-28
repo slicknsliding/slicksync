@@ -739,6 +739,7 @@ export default function UsersPage() {
         description={`Are you sure you want to delete ${selectedIds.size} user${selectedIds.size !== 1 ? 's' : ''}? This action cannot be undone.`}
         confirmText={isDeleting ? 'Deleting...' : 'Delete Users'}
         variant="danger"
+        isLoading={isDeleting}
       />
 
       {/* Delete Confirmation Modal (single) */}
@@ -750,6 +751,7 @@ export default function UsersPage() {
         description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
         confirmText={isDeleting ? 'Deleting...' : 'Delete User'}
         variant="danger"
+        isLoading={isDeleting}
       />
     </Wrapper>
   );
