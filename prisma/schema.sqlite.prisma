@@ -45,21 +45,6 @@ model User {
   // (usually an expired session) is fixed.
   providerConnectionError   String?
   providerConnectionErrorAt DateTime?
-  // Silent account-mismatch detection. Distinct from providerConnectionError
-  // above (which is a live-fetch FAILURE - auth expired, network): here the
-  // fetch succeeds fine, but the proxy keeps catching this user actively
-  // streaming while their connected Stremio account's library records none of
-  // it. That divergence means the device is almost certainly signed into a
-  // DIFFERENT Stremio account than the one connected here (confirmed real
-  // case, 2026-07-29: user watched under whatchudabbin@ while SlickSync held
-  // slicknslidin@'s key - Now Playing fired via the IP-based proxy, but
-  // History stayed empty because native reads the connected account only).
-  // SlickSync can't read or name the other account, but it CAN surface this
-  // so a member isn't left with a silently-empty history. Set by
-  // watchSyncMismatch.js; cleared automatically once the connected account's
-  // library starts recording watches again.
-  watchSyncWarning   String?
-  watchSyncWarningAt DateTime?
   createdAt          DateTime  @default(now())
 
   // Relationships
