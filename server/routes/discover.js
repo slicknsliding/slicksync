@@ -329,15 +329,27 @@ module.exports = ({ prisma, getAccountId } = {}) => {
           : scopedUserIds && scopedUserIds.length === 2
             ? `Because ${scopedNamesById.get(scopedUserIds[0]) || 'they'} and ${scopedNamesById.get(scopedUserIds[1]) || 'they'} watched ${seed.name}`
             : `Because you watched ${seed.name}`
+        // hasRealSignal - same definition /similar uses: does the item-item
+        // affinity map have any real neighbors for THIS specific seed, i.e.
+        // did actual cross-item viewing behavior (not just this seed's own
+        // decayed watch-time score) touch this row at all. Every row here
+        // already starts from something genuinely watched, so this isn't
+        // "watched vs not" - it's "confirmed by real behavioral overlap
+        // (this account's own rewatch patterns, or another household
+        // member's) vs riding on this one seed's score alone." A found
+        // pairwise attribution is strictly stronger evidence of the same
+        // thing, so it also counts.
+        const seedKey = `${seed.type === 'series' ? 'series' : 'movie'}:${seed.id}`
+        let hasRealSignal = !!(affinity && affinity.get(seedKey)?.size > 0)
         if (affinity && pairwiseOverlaps.length > 0) {
           try {
             const { findAttributionForSeed } = require('../utils/recommendationEngine')
-            const seedKey = `${seed.type === 'series' ? 'series' : 'movie'}:${seed.id}`
             const attribution = findAttributionForSeed(seedKey, pairwiseOverlaps, affinity)
             if (attribution) {
               const nameA = usersById.get(attribution.userA) || 'someone'
               const nameB = usersById.get(attribution.userB) || 'someone else'
               reason = `${nameA} and ${nameB} both loved ${seed.name}`
+              hasRealSignal = true
             }
           } catch (e) {
             console.warn('Attribution lookup skipped:', e?.message)
@@ -349,6 +361,7 @@ module.exports = ({ prisma, getAccountId } = {}) => {
           genre,
           seedId: seed.id,
           seedType: seed.type,
+          hasRealSignal,
           items: filtered,
         })
       }
