@@ -376,6 +376,64 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // POST /users/upcoming-episodes/mute - whole-show opt-out. Stops the show
+  // appearing in "Coming up" AND stops new-episode alerts for it entirely,
+  // until unmuted - see utils/episodeAlerts.js's muteShow.
+  router.post('/upcoming-episodes/mute', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const { showId, showName, poster } = req.body || {}
+      if (!showId) {
+        return res.status(400).json({ error: 'showId is required' })
+      }
+      const { muteShow } = require('../utils/episodeAlerts')
+      await muteShow(prisma, accountId, showId, showName, poster)
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error muting show:', error)
+      res.status(500).json({ error: 'Failed to mute show' })
+    }
+  })
+
+  // POST /users/upcoming-episodes/unmute
+  router.post('/upcoming-episodes/unmute', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const { showId } = req.body || {}
+      if (!showId) {
+        return res.status(400).json({ error: 'showId is required' })
+      }
+      const { unmuteShow } = require('../utils/episodeAlerts')
+      await unmuteShow(prisma, accountId, showId)
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error unmuting show:', error)
+      res.status(500).json({ error: 'Failed to unmute show' })
+    }
+  })
+
+  // GET /users/upcoming-episodes/muted - list for the "manage muted shows" UI
+  router.get('/upcoming-episodes/muted', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const { getMutedShows } = require('../utils/episodeAlerts')
+      const shows = await getMutedShows(prisma, accountId)
+      res.json(shows)
+    } catch (error) {
+      console.error('Error fetching muted shows:', error)
+      res.status(500).json({ error: 'Failed to fetch muted shows' })
+    }
+  })
+
   // GET /users/episode-alerts - recent new-episode alerts (fired by
   // utils/episodeAlerts.js's poller) for the notification bell. Must be
   // before /:id route.

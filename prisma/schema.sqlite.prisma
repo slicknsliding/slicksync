@@ -487,6 +487,23 @@ model DismissedUpcomingEpisode {
   @@map("dismissed_upcoming_episode")
 }
 
+// A whole-show opt-out from upcoming-episode tracking - unlike
+// DismissedUpcomingEpisode (hides one occurrence, reappears once the poller
+// advances to the next episode), muting a show stops it being tracked at
+// all: no more Coming Up entries, no more new-episode alerts (push/Discord),
+// until unmuted. See episodeAlerts.js's checkForNewEpisodes/getUpcomingEpisodes.
+model MutedShow {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  showId    String
+  showName  String?
+  poster    String?
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, showId])
+  @@map("muted_show")
+}
+
 // New-episode alerts: per-show baseline of the latest RELEASED episode we
 // last saw in Cinemeta's episode list. The episodeAlerts poller compares
 // against this on each run - anything newer means a new episode dropped for

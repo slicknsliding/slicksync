@@ -1685,6 +1685,21 @@ class ApiClient {
       body: JSON.stringify({ showId, season, episode }),
     });
   }
+  async muteShow(showId: string, showName?: string, poster?: string) {
+    return this.fetch<{ success: boolean }>('/users/upcoming-episodes/mute', {
+      method: 'POST',
+      body: JSON.stringify({ showId, showName, poster }),
+    });
+  }
+  async unmuteShow(showId: string) {
+    return this.fetch<{ success: boolean }>('/users/upcoming-episodes/unmute', {
+      method: 'POST',
+      body: JSON.stringify({ showId }),
+    });
+  }
+  async getMutedShows() {
+    return this.fetch<MutedShow[]>('/users/upcoming-episodes/muted');
+  }
 
   // Rotten Tomatoes/Metacritic/IMDb ratings for a batch of IMDb IDs, for grid
   // views (Discover, Activity) that render many poster cards at once. Pass
@@ -2138,6 +2153,14 @@ export interface UpcomingEpisode {
   episode: number;
   title: string | null;
   airDate: string;
+}
+
+export interface MutedShow {
+  id: string;
+  showId: string;
+  showName: string | null;
+  poster: string | null;
+  createdAt: string;
 }
 
 export interface ExportedConfig {
