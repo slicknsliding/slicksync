@@ -652,3 +652,23 @@ model ProxyStreamSession {
   @@index([accountId, aiostreamsUser, isActive])
   @@map("proxy_stream_sessions")
 }
+
+// Remembers which managed user a client IP resolved to the last time there
+// was a REAL signal (a unique direct/email match, or a native title match) -
+// used as the tiebreaker for FUTURE ambiguous proxy attributions from the
+// same IP, instead of a fixed AIOSTREAMS_FALLBACK_USER_IDS order. See
+// proxyNowPlaying.js's disambiguateMatch. Most households have one device
+// per person on a fairly stable local IP, so "who was confirmed on this IP
+// last time" is a much better guess than a static id order - and unlike the
+// static order, it can never be wrong in the SAME way twice once it's had
+// one confident observation to learn from.
+model ProxyUserIpAffinity {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  clientIp    String
+  userId      String
+  confirmedAt DateTime @default(now())
+
+  @@unique([accountId, clientIp])
+  @@map("proxy_user_ip_affinity")
+}

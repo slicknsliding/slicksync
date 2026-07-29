@@ -1,14 +1,17 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Badge } from '@/components/ui';
+import { Badge, UserAvatar } from '@/components/ui';
 import { PlayIcon, FilmIcon, TvIcon } from '@heroicons/react/24/outline';
 
 interface NowPlayingItem {
   user: {
     id: string;
     username: string;
+    email?: string;
     colorIndex?: number;
+    avatarUrl?: string | null;
+    useGravatar?: boolean;
   };
   item: {
     id: string;
@@ -59,14 +62,14 @@ export function NowPlayingSection({ items }: NowPlayingSectionProps) {
         >
           {/* User Avatar */}
           <div className="flex-shrink-0">
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium"
-              style={{
-                background: `var(--color-avatar-${(item.user.colorIndex || 0) % 10})`,
-              }}
-            >
-              {item.user.username.slice(0, 2).toUpperCase()}
-            </div>
+            <UserAvatar
+              userId={item.user.id}
+              name={item.user.username}
+              email={item.user.email}
+              src={item.user.useGravatar ? undefined : (item.user.avatarUrl ?? undefined)}
+              colorIndex={item.user.colorIndex}
+              size="md"
+            />
           </div>
 
           {/* Item Poster */}
