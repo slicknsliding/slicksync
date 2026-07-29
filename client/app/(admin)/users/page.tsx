@@ -35,6 +35,7 @@ import {
   UserGroupIcon,
   PuzzlePieceIcon,
   MinusIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 
 // User type for display
@@ -44,6 +45,7 @@ interface UserDisplay {
   email?: string;
   providerType?: 'stremio' | 'nuvio';
   secondaryProviderType?: 'stremio' | 'nuvio' | null;
+  providerConnectionError?: string | null;
   avatarUrl?: string | null;
   status: 'active' | 'expired' | 'pending';
   watchTime: number;
@@ -176,6 +178,7 @@ export default function UsersPage() {
         email: user.email,
         providerType: user.providerType || 'stremio',
         secondaryProviderType: (user as any).secondaryProviderType || null,
+        providerConnectionError: (user as any).providerConnectionError || null,
         avatarUrl: (user as any).avatarUrl,
         status,
         watchTime: (user as any).watchTime || 0, // Use watchTime from API
@@ -574,6 +577,12 @@ export default function UsersPage() {
                                           {user.secondaryProviderType === 'nuvio' ? 'Nuvio' : 'Stremio'}
                                         </Badge>
                                       )}
+                                      {user.providerConnectionError && (
+                                        <ExclamationTriangleIcon
+                                          className="w-4 h-4 text-warning shrink-0"
+                                          title={user.providerConnectionError}
+                                        />
+                                      )}
                                     </div>
                                     <p className="text-sm text-subtle">
                                       {hideSensitive ? '••••••••' : user.email}
@@ -929,6 +938,12 @@ function UserCard({
                 >
                   {user.secondaryProviderType === 'nuvio' ? 'Nuvio' : 'Stremio'}
                 </Badge>
+              )}
+              {user.providerConnectionError && (
+                <ExclamationTriangleIcon
+                  className="w-4 h-4 text-warning shrink-0"
+                  title={user.providerConnectionError}
+                />
               )}
               <SyncBadge
                 key={`sync-badge-${user.id}`}
