@@ -271,27 +271,36 @@ async function checkForNewEpisodes(prisma) {
 
       const epLabel = `S${String(latest.season).padStart(2, '0')}E${String(latest.episode).padStart(2, '0')}`
 
+      const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest')
+      const digestOn = await isDigestEnabled(prisma, show.accountId)
+
       // Native web-push to any PWA-installed device that opted in - fires even
       // when SlickSync isn't open. Best-effort; failures never block the rest.
-      try {
-        const { sendPushToAccount } = require('./pushNotifications')
-        await sendPushToAccount(prisma, show.accountId, {
-          title: `New episode: ${metadata.title || show.showName}`,
-          body: `${epLabel}${latest.title ? ` · ${latest.title}` : ''} is out`,
-          icon: metadata.poster || show.poster || '/android-chrome-192x192.png',
-          url: '/activity',
-        })
-      } catch {}
+      // Skipped when digest mode is on - the digest poller sends one push at
+      // send time instead (push + bell are primary; Discord is secondary and
+      // was the only channel this feature originally had).
+      if (!digestOn) {
+        try {
+          const { sendPushToAccount } = require('./pushNotifications')
+          await sendPushToAccount(prisma, show.accountId, {
+            title: `New episode: ${metadata.title || show.showName}`,
+            body: `${epLabel}${latest.title ? ` · ${latest.title}` : ''} is out`,
+            icon: metadata.poster || show.poster || '/android-chrome-192x192.png',
+            url: '/activity',
+          })
+        } catch {}
+      }
 
-      const target = await getNotifyTarget(prisma, show.accountId)
-      if (target.enabled && target.webhookUrl) {
-        const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest')
-        if (await isDigestEnabled(prisma, show.accountId)) {
-          await queueDigestEntry(prisma, show.accountId, 'episode', `${metadata.title || show.showName} ${epLabel}${latest.title ? ` · ${latest.title}` : ''}`)
-        } else {
+      if (digestOn) {
+        // Queued regardless of whether Discord is even configured - the
+        // digest poller decides which channels (push, Discord, or both) to
+        // actually deliver it through.
+        await queueDigestEntry(prisma, show.accountId, 'episode', `${metadata.title || show.showName} ${epLabel}${latest.title ? ` · ${latest.title}` : ''}`)
+      } else {
+        const target = await getNotifyTarget(prisma, show.accountId)
+        if (target.enabled && target.webhookUrl) {
           // "Who's behind" flavor - a watcher already past the new episode
-          // (rewatch scenarios) is skipped. Digest mode skips this detail -
-          // a compact one-liner per show reads better in a batched summary.
+          // (rewatch scenarios) is skipped.
           const behind = [...show.watchers.entries()]
             .filter(([, w]) => episodeOrder(w.season, w.episode) < episodeOrder(latest.season, latest.episode))
           let behindLine = ''

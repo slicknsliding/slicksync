@@ -83,20 +83,25 @@ async function notifyAddonStatusChange(prisma, addon, isOnline, errorMessage) {
       },
     });
 
-    const { notifyPushForType } = require('./pushNotifications');
-    await notifyPushForType(prisma, addon.accountId, 'notifyOnAddonHealth', {
-      title,
-      body: message,
-      icon: '/android-chrome-192x192.png',
-      url: '/addons',
-    });
+    const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest');
+    const digestOn = await isDigestEnabled(prisma, addon.accountId);
 
-    const target = await getAddonHealthNotifyTarget(prisma, addon.accountId);
-    if (target.enabled && target.webhookUrl) {
-      const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest');
-      if (await isDigestEnabled(prisma, addon.accountId)) {
-        await queueDigestEntry(prisma, addon.accountId, 'addon_health', `${title.replace(/^[✅⚠️]\s*/, '')} — ${message}`);
-      } else {
+    if (digestOn) {
+      // Queued regardless of whether Discord is even configured - the
+      // digest poller decides which channels to deliver through. Push +
+      // bell are the primary channels; Discord is secondary.
+      await queueDigestEntry(prisma, addon.accountId, 'addon_health', `${title.replace(/^[✅⚠️]\s*/, '')} — ${message}`);
+    } else {
+      const { notifyPushForType } = require('./pushNotifications');
+      await notifyPushForType(prisma, addon.accountId, 'notifyOnAddonHealth', {
+        title,
+        body: message,
+        icon: '/android-chrome-192x192.png',
+        url: '/addons',
+      });
+
+      const target = await getAddonHealthNotifyTarget(prisma, addon.accountId);
+      if (target.enabled && target.webhookUrl) {
         const { postDiscord } = require('./notify');
         await postDiscord(target.webhookUrl, `**${title}**\n${message}`).catch(() => {});
       }
