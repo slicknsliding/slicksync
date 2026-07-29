@@ -33,6 +33,18 @@ model User {
   lastSyncedAt       DateTime? // When user addons were last successfully synced
   syncStatus         String? // "idle", "syncing", "success", "error"
   syncErrorMessage   String? // Last sync error message if any
+  // Distinct from syncStatus/syncErrorMessage above, which is about PUSHING
+  // addon config - this is about READING the user's own library/watch state
+  // (activityMonitor.js's getLibraryForUser, used by both sessionTracker.js
+  // and metricsProcessor.js). A live-fetch failure here silently fell back
+  // to a stale cached library file with zero visibility before this field
+  // existed - confirmed real case: a Stremio user's watch history went
+  // quiet for over a week with nothing anywhere surfacing why. Null means
+  // the most recent attempt succeeded; cleared automatically on the next
+  // successful live fetch, so this self-heals once the underlying issue
+  // (usually an expired session) is fixed.
+  providerConnectionError   String?
+  providerConnectionErrorAt DateTime?
   createdAt          DateTime  @default(now())
 
   // Relationships

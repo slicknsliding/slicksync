@@ -124,6 +124,34 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       const { encrypt } = require('./encryption')
       const createProvider = makeCreateProvider({ prisma, encrypt })
 
+      // A live-fetch failure below falls back to a stale cached library so
+      // sessions/metrics processing still has *something* to run against -
+      // but that fallback used to be completely silent, with no record
+      // anywhere that it was even happening. Confirmed real case: a user's
+      // watch history went quiet for over a week with zero visibility into
+      // why. providerConnectionError makes that visible and self-healing -
+      // set on any live-fetch failure, cleared on the next success.
+      function isAuthFailure(message) {
+        const m = (message || '').toLowerCase()
+        return m.includes('session does not exist') || m.includes('unauthorized') || m.includes('invalid auth') || m.includes(' 401')
+      }
+      async function recordConnectionError(userId, message) {
+        try {
+          await prisma.user.update({
+            where: { id: userId },
+            data: { providerConnectionError: message.slice(0, 500), providerConnectionErrorAt: new Date() },
+          })
+        } catch {}
+      }
+      async function clearConnectionError(userId) {
+        try {
+          await prisma.user.update({
+            where: { id: userId },
+            data: { providerConnectionError: null, providerConnectionErrorAt: null },
+          })
+        } catch {}
+      }
+
       // Helper function to get library for a user via their provider
       // (Stremio or Nuvio); falls back to cache if no credentials or on error
       const getLibraryForUser = async (user) => {
@@ -149,10 +177,13 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
             itemCount: Array.isArray(library) ? library.length : 0
           })
 
+          if (user.providerConnectionError) await clearConnectionError(user.id)
           return library || []
         } catch (error) {
           heartbeat('getLibraryForUser:live_fetch_failed', { userId: user.id, message: error.message })
           console.warn(`[ActivityMonitor] Failed to fetch library for user ${user.id}:`, error.message)
+          const prefix = isAuthFailure(error.message) ? 'Reconnect needed: ' : 'Connection issue: '
+          await recordConnectionError(user.id, prefix + error.message)
           // Fallback to cache if API call fails
           const cachedLibrary = getCachedLibrary(accountId, user)
           return cachedLibrary || []
