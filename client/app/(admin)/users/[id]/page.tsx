@@ -3,7 +3,7 @@
 import { useState, useCallback, memo, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
-import { api, Addon, StremioAddon, MergeCandidate, MergePreview } from '@/lib/api';
+import { api, Addon, StremioAddon, MergeCandidate, MergePreview, MergeInfo } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -214,12 +214,18 @@ export default function UserDetailPage() {
   const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
+  const [mergeInfo, setMergeInfo] = useState<MergeInfo | null>(null);
+  const [isUndoModalOpen, setIsUndoModalOpen] = useState(false);
+  const [isUndoing, setIsUndoing] = useState(false);
 
   useEffect(() => {
     if (!params.id) return;
     let cancelled = false;
     api.getMergeCandidate(params.id as string).then((res) => {
       if (!cancelled) setMergeCandidate(res.candidate);
+    }).catch(() => {});
+    api.getMergeInfo(params.id as string).then((res) => {
+      if (!cancelled) setMergeInfo(res.info);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [params.id]);
@@ -243,12 +249,36 @@ export default function UserDetailPage() {
       toast.success(`Merged ${mergeCandidate.username} into this account`);
       setIsMergeModalOpen(false);
       setMergeCandidate(null);
-      const userData = await api.getUser(params.id as string);
+      const [userData, infoRes] = await Promise.all([
+        api.getUser(params.id as string),
+        api.getMergeInfo(params.id as string),
+      ]);
       setUser(userData);
+      setMergeInfo(infoRes.info);
     } catch (err: any) {
       toast.error(err.message || 'Failed to merge accounts');
     } finally {
       setIsMerging(false);
+    }
+  };
+
+  const handleUndoMerge = async () => {
+    setIsUndoing(true);
+    try {
+      const result = await api.undoMerge(params.id as string);
+      toast.success(`Split ${result.donorUsername} back into its own account`);
+      setIsUndoModalOpen(false);
+      setMergeInfo(null);
+      const [userData, candidateRes] = await Promise.all([
+        api.getUser(params.id as string),
+        api.getMergeCandidate(params.id as string),
+      ]);
+      setUser(userData);
+      setMergeCandidate(candidateRes.candidate);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to undo merge');
+    } finally {
+      setIsUndoing(false);
     }
   };
 
@@ -1080,6 +1110,42 @@ export default function UserDetailPage() {
               </PageSection>
             )}
 
+            {/* Merged-account state - this user has already absorbed a
+                second provider's account. See server/utils/userMerge.js;
+                undo is best-effort (see its module comment for exactly
+                what it can and can't reverse). */}
+            {mergeInfo && (
+              <PageSection className="mb-6">
+                <Card padding="lg">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary-muted">
+                        <LinkIcon className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-default">
+                          Merged with {mergeInfo.donorUsername || 'a second account'}
+                        </h3>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant={mergeInfo.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
+                            {mergeInfo.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                          </Badge>
+                          <p className="text-sm text-muted">Its watch history now lives on this account</p>
+                        </div>
+                      </div>
+                    </div>
+                    {mergeInfo.undoable ? (
+                      <Button variant="secondary" size="sm" onClick={() => setIsUndoModalOpen(true)}>
+                        Undo merge
+                      </Button>
+                    ) : (
+                      <p className="text-xs text-muted max-w-xs text-right">Can't be undone automatically (no archive on file)</p>
+                    )}
+                  </div>
+                </Card>
+              </PageSection>
+            )}
+
             {/* Sync Debug Section */}
             {showSyncDebug && (
               <PageSection className="mb-6">
@@ -1611,6 +1677,21 @@ export default function UserDetailPage() {
         confirmText={isDeleting ? 'Deleting...' : 'Delete'}
         variant="danger"
         isLoading={isDeleting}
+      />
+
+      {/* Undo-merge confirmation - splits the two accounts back apart using
+          the pre-merge archive. Best-effort: any watching recorded on this
+          account since the merge doesn't get un-merged, since there's no
+          way to tell which side it belongs to after the fact. */}
+      <ConfirmModal
+        isOpen={isUndoModalOpen}
+        onClose={() => setIsUndoModalOpen(false)}
+        onConfirm={handleUndoMerge}
+        title="Undo Merge"
+        description={`This recreates ${mergeInfo?.donorUsername || 'the absorbed account'} as its own account again and splits its original watch history back out. Any new watching recorded on this account since the merge stays here — there's no way to tell which side it belongs to after the fact.`}
+        confirmText={isUndoing ? 'Undoing...' : 'Undo Merge'}
+        variant="danger"
+        isLoading={isUndoing}
       />
 
       {/* Merge confirmation - shows real counts before committing, and flags
