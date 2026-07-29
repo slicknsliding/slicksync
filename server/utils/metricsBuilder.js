@@ -510,6 +510,16 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       orderBy: { date: 'asc' }
     })
 
+    // Same same-email phantom-duplicate problem dedupWatchActivityBySharedEmail
+    // already solves for the per-user watch-time-by-day chart and the user
+    // list's totalWatchTimeMinutes (see server/utils/watchDedup.js) - this is
+    // the third WatchActivity-aggregation call site (Top Viewers/leaderboard,
+    // via watchActivityByUser below) and was missed when that dedup was
+    // added elsewhere, so a shared-email pair's Stremio-library-sync phantom
+    // watch was double-counted here specifically.
+    const { findSharedEmailUserIds, dedupWatchActivityBySharedEmail } = require('./watchDedup')
+    watchActivities = dedupWatchActivityBySharedEmail(watchActivities, findSharedEmailUserIds(allUsers))
+
     hasWatchActivityData = watchActivities.length > 0
     if (hasWatchActivityData) {
       earliestWatchActivityDate = watchActivities[0].date
