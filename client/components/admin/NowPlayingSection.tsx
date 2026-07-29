@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui';
-import { PlayIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { PlayIcon, FilmIcon, TvIcon } from '@heroicons/react/24/outline';
 
 interface NowPlayingItem {
   user: {
@@ -119,5 +119,3 @@ export function NowPlayingSection({ items }: NowPlayingSectionProps) {
     </div>
   );
 }
-
-import { FilmIcon, TvIcon } from '@heroicons/react/24/outline';

@@ -11,6 +11,7 @@ import { TVFocusable } from '@/components/tv/TVFocusable';
 import { TVLink } from '@/components/tv/TVLink';
 import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, VersionBadge, ResourceBadge, ContextMenu, useContextMenu, MediaDetailModal } from '@/components/ui';
 import { UpcomingEpisodesPanel } from '@/components/ui/UpcomingEpisodesPanel';
+import { NowPlayingSection } from '@/components/admin';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
@@ -801,6 +802,15 @@ export default function DashboardPage() {
               </TVLink>
             </div>
 
+            {/* Now Playing - identical to Current mode's placement, just above Continue Watching */}
+            {metricsData?.nowPlaying && metricsData.nowPlaying.length > 0 && (
+              <div className={`${NEBULA_GLASS_CLASS} p-5 mb-5`} style={nebulaGlassStyle}>
+                <NebulaGlassStripe />
+                <h3 className="text-base font-semibold font-display text-default mb-4">Now Playing</h3>
+                <NowPlayingSection items={metricsData.nowPlaying} />
+              </div>
+            )}
+
             {/* Continue Watching - identical cards/drag logic to Current mode */}
             {continueWatching.length > 0 && (
               <div className={`${NEBULA_GLASS_CLASS} p-5 mb-5`} style={nebulaGlassStyle}>
@@ -1105,6 +1115,20 @@ export default function DashboardPage() {
             </Link>
           </div>
         </PageSection>
+
+        {/* Now Playing - same live nowPlaying feed Activity's "Currently
+            Watching" reads, surfaced here too so it's visible without
+            leaving the Dashboard. */}
+        {metricsData?.nowPlaying && metricsData.nowPlaying.length > 0 && (
+          <PageSection className="mb-6" delay={0.17}>
+            <Card padding="lg">
+              <h3 className="text-base font-semibold font-display text-default mb-4">
+                Now Playing
+              </h3>
+              <NowPlayingSection items={metricsData.nowPlaying} />
+            </Card>
+          </PageSection>
+        )}
 
         {/* Continue Watching */}
         {continueWatching.length > 0 && (
