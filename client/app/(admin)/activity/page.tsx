@@ -74,6 +74,11 @@ interface ActivityItem {
   profileLabel?: string; // Nuvio profile name this was watched under, if known
   userAvatarUrl?: string | null;
   debridService?: string; // e.g. "torbox" - only set when confidently detected via the AIOStreams proxy (see server/utils/debridDetection.js). Absent doesn't mean "not debrid".
+  // Grid view only (see buildGridWatchers below) - other distinct users who
+  // watched this SAME content on the SAME day, oldest first. Set only on the
+  // most-recent activity for that content+day; the earlier ones are omitted
+  // from the grid entirely (still present in list view/stats, unchanged).
+  additionalWatchers?: Array<{ userId: string; userName: string; userEmail?: string; userColorIndex?: number; userAvatarUrl?: string | null }>;
 }
 
 // Invite history types
@@ -330,6 +335,51 @@ function formatDateHeader(dateKey: string): string {
   return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+// Grid view only: when the SAME content (same contentId + season/episode) was
+// watched by MULTIPLE distinct users within one day's group, that's usually
+// either a genuine household overlap, or - just as often for a shared debrid
+// login - the proxy's best guess disagreeing with itself between two watches
+// of the same title (the proxy has no way to tell two profiles apart once
+// they share one AIOStreams login; see proxyNowPlaying.js's disambiguateMatch
+// for the full story). Either way, showing two separate posters for the same
+// title/day is confusing and wastes grid space - collapse them into ONE card
+// on the most recent watch, carrying the others as additionalWatchers so
+// their avatars stack on top of it instead of disappearing. List view is
+// untouched (each row already shows its own user clearly, no crowding issue).
+function buildGridWatchers(activities: ActivityItem[]): ActivityItem[] {
+  const contentKey = (a: ActivityItem) => `${a.contentId}:${a.season ?? ''}:${a.episode ?? ''}`;
+  const groups = new Map<string, ActivityItem[]>();
+  for (const a of activities) {
+    const key = contentKey(a);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(a);
+  }
+
+  const result: ActivityItem[] = [];
+  for (const group of groups.values()) {
+    // Most recent first - that's the one whose poster/duration/etc. the
+    // merged card displays, and whose avatar sits on top of the stack.
+    const sorted = [...group].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    const primary = sorted[0];
+    const seenUserIds = new Set([primary.userId]);
+    const others: NonNullable<ActivityItem['additionalWatchers']> = [];
+    for (const a of sorted.slice(1)) {
+      if (seenUserIds.has(a.userId)) continue; // same user watched twice today - not "another watcher"
+      seenUserIds.add(a.userId);
+      others.push({
+        userId: a.userId,
+        userName: a.userName,
+        userEmail: a.userEmail,
+        userColorIndex: a.userColorIndex,
+        userAvatarUrl: a.userAvatarUrl,
+      });
+    }
+    result.push(others.length > 0 ? { ...primary, additionalWatchers: others } : primary);
+  }
+  // Keep most-recent-overall-first ordering, matching the ungrouped list.
+  return result.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+}
+
 function getActivityIcon(type: ActivityType) {
   switch (type) {
     case 'watch':
@@ -552,9 +602,29 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           </div>
         )}
 
-        {/* User avatar - top right */}
-        <div className="absolute top-2 right-2">
-          <Link href={`/users/${activity.userId}`} onClick={(e) => e.stopPropagation()}>
+        {/* User avatar(s) - top right. When this card represents multiple
+            distinct users who watched this same title today (see
+            buildGridWatchers), stack their avatars overlapping - oldest
+            watcher first/furthest back, most recent (activity's own user)
+            last/on top/fully visible, per the negative-space overlap below. */}
+        <div className="absolute top-2 right-2 flex items-center -space-x-2">
+          {activity.additionalWatchers && [...activity.additionalWatchers].reverse().map((w) => (
+            <Link
+              key={w.userId}
+              href={`/users/${w.userId}`}
+              onClick={(e) => e.stopPropagation()}
+              className="rounded-full ring-2 ring-slate-900 shrink-0"
+              title={w.userName}
+            >
+              <UserAvatar userId={w.userId} name={w.userName} email={w.userEmail} src={w.userAvatarUrl ?? undefined} size="sm" />
+            </Link>
+          ))}
+          <Link
+            href={`/users/${activity.userId}`}
+            onClick={(e) => e.stopPropagation()}
+            className={activity.additionalWatchers ? 'rounded-full ring-2 ring-slate-900 shrink-0' : undefined}
+            title={activity.additionalWatchers ? activity.userName : undefined}
+          >
             <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
           </Link>
         </div>
@@ -1550,6 +1620,7 @@ function ActivityPageContent() {
           dateKey,
           label: formatDateHeader(dateKey),
           activities,
+          gridActivities: buildGridWatchers(activities),
           totalDuration,
           isToday: dateKey === todayKey,
           isYesterday: dateKey === yesterdayKey,
@@ -1797,9 +1868,12 @@ function ActivityPageContent() {
                   </div>
 
                   {watchActivityViewMode === 'grid' ? (
-                    // Grid view - Cinematic poster cards
+                    // Grid view - Cinematic poster cards. Uses gridActivities
+                    // (same content/day merged across users - see
+                    // buildGridWatchers), not the raw per-event activities
+                    // list view uses.
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
-                      {group.activities.map((activity, idx) => (
+                      {group.gridActivities.map((activity, idx) => (
                         <ActivityCardGrid
                           key={activity.id}
                           activity={activity}
