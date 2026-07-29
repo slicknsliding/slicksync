@@ -1020,6 +1020,29 @@ class ApiClient {
     return this.fetch<AddonHealthAlert[]>(`/addons/health-alerts?days=${days}`);
   }
 
+  // Persistent in-app bell notifications - written server-side from the same
+  // dispatch path as push/Discord (notificationStore.js), with server-side
+  // read state so the bell is consistent across devices.
+  async getNotifications(days = 14) {
+    return this.fetch<StoredNotification[]>(`/users/notifications?days=${days}`);
+  }
+
+  // Mark notifications read - specific ids, or all when omitted.
+  async markNotificationsRead(ids?: string[]) {
+    return this.fetch('/users/notifications/mark-read', {
+      method: 'POST',
+      body: JSON.stringify(ids ? { ids } : {}),
+    });
+  }
+
+  // Delete notifications - specific ids, or all when omitted (Clear).
+  async dismissNotifications(ids?: string[]) {
+    return this.fetch('/users/notifications/dismiss', {
+      method: 'POST',
+      body: JSON.stringify(ids ? { ids } : {}),
+    });
+  }
+
   // PWA web-push
   async getPushVapidKey() {
     return this.fetch<{ enabled: boolean; publicKey: string | null }>('/push/vapid-key');
@@ -2234,6 +2257,21 @@ export interface AddonHealthAlert {
   backupAddonName: string | null;
   groupCount: number;
   errorMessage: string | null;
+  createdAt: string;
+}
+
+// Persistent in-app bell notification (notifications table). Written from the
+// same dispatch path as push/Discord; read state is server-side.
+export interface StoredNotification {
+  id: string;
+  type: 'activity' | 'sync' | 'invite' | 'vault' | 'task' | 'mismatch';
+  title: string;
+  body: string;
+  poster: string | null;
+  url: string | null;
+  data: string | null;
+  read: boolean;
+  readAt: string | null;
   createdAt: string;
 }
 
