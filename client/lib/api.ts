@@ -2036,6 +2036,11 @@ export interface RecommendationRow {
   genre: string;
   seedId: string;
   seedType: 'movie' | 'series';
+  // True when the item-item affinity map has real neighbors for this row's
+  // seed - i.e. actual cross-item viewing behavior backs this row, not just
+  // the seed's own decayed watch-time score in isolation. See the /similar
+  // route's own comment for the fuller reasoning behind this distinction.
+  hasRealSignal?: boolean;
   items: DiscoverItem[];
 }
 
