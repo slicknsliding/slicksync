@@ -43,6 +43,7 @@ interface UserDisplay {
   name: string;
   email?: string;
   providerType?: 'stremio' | 'nuvio';
+  secondaryProviderType?: 'stremio' | 'nuvio' | null;
   avatarUrl?: string | null;
   status: 'active' | 'expired' | 'pending';
   watchTime: number;
@@ -174,6 +175,7 @@ export default function UsersPage() {
         name: userName,
         email: user.email,
         providerType: user.providerType || 'stremio',
+        secondaryProviderType: (user as any).secondaryProviderType || null,
         avatarUrl: (user as any).avatarUrl,
         status,
         watchTime: (user as any).watchTime || 0, // Use watchTime from API
@@ -564,6 +566,14 @@ export default function UsersPage() {
                                       >
                                         {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
                                       </Badge>
+                                      {user.secondaryProviderType && (
+                                        <Badge
+                                          variant={user.secondaryProviderType === 'nuvio' ? 'nuvio' : 'stremio'}
+                                          size="sm"
+                                        >
+                                          {user.secondaryProviderType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                                        </Badge>
+                                      )}
                                     </div>
                                     <p className="text-sm text-subtle">
                                       {hideSensitive ? '••••••••' : user.email}
@@ -912,6 +922,14 @@ function UserCard({
               >
                 {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
               </Badge>
+              {user.secondaryProviderType && (
+                <Badge
+                  variant={user.secondaryProviderType === 'nuvio' ? 'nuvio' : 'stremio'}
+                  size="sm"
+                >
+                  {user.secondaryProviderType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                </Badge>
+              )}
               <SyncBadge
                 key={`sync-badge-${user.id}`}
                 userId={user.id}
