@@ -1645,11 +1645,12 @@ class ApiClient {
   async clearWatchedOverride(itemId: string) {
     return this.fetch<{ success: boolean }>(`/watchlist/mark/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
   }
-  async getRecommendations(opts?: { mode?: 'personal' | 'shared'; userId?: string; userId2?: string }) {
+  async getRecommendations(opts?: { mode?: 'personal' | 'shared'; userId?: string; userId2?: string; type?: 'movie' | 'series' }) {
     const params = new URLSearchParams();
     if (opts?.mode) params.set('mode', opts.mode);
     if (opts?.userId) params.set('userId', opts.userId);
     if (opts?.userId2) params.set('userId2', opts.userId2);
+    if (opts?.type) params.set('type', opts.type);
     const qs = params.toString();
     return this.fetch<{ rows: RecommendationRow[] }>(`/discover/recommendations${qs ? `?${qs}` : ''}`);
   }

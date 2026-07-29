@@ -317,13 +317,13 @@ export default function DiscoverPage() {
     setRecsLoaded(false);
     api.getRecommendations(
       recMode === 'personal'
-        ? { mode: 'personal', userId: recUserId }
-        : { mode: 'shared', userId: recUserId, userId2: recUserId2 }
+        ? { mode: 'personal', userId: recUserId, type }
+        : { mode: 'shared', userId: recUserId, userId2: recUserId2, type }
     )
       .then((r) => setRecRows(Array.isArray(r?.rows) ? r.rows : []))
       .catch(() => setRecRows([]))
       .finally(() => setRecsLoaded(true));
-  }, [source, enableRecommendations, recMode, recUserId, recUserId2]);
+  }, [source, enableRecommendations, recMode, recUserId, recUserId2, type]);
   useEffect(() => { if (recUsers.length > 0) localStorage.setItem('slicksync-foryou-mode', recMode); }, [recMode, recUsers.length]);
   useEffect(() => { if (recUserId) localStorage.setItem('slicksync-foryou-userId', recUserId); }, [recUserId]);
   useEffect(() => { if (recUserId2) localStorage.setItem('slicksync-foryou-userId2', recUserId2); }, [recUserId2]);
