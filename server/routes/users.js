@@ -1449,6 +1449,28 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   });
 
+  router.get('/:id/merge-info', async (req, res) => {
+    try {
+      const { getUndoInfo } = require('../utils/userMerge')
+      const info = await getUndoInfo(prisma, req.params.id)
+      res.json({ info })
+    } catch (error) {
+      console.error('Error checking merge info:', error)
+      res.status(500).json({ error: 'Failed to check merge info' })
+    }
+  });
+
+  router.post('/:id/undo-merge', async (req, res) => {
+    try {
+      const { undoMerge } = require('../utils/userMerge')
+      const result = await undoMerge(prisma, req.params.id)
+      res.json({ success: true, ...result })
+    } catch (error) {
+      console.error('Error undoing merge:', error)
+      res.status(400).json({ error: error.message || 'Failed to undo merge' })
+    }
+  });
+
   // Update user (including Discord settings for public users)
   router.put('/:id', async (req, res) => {
     try {
