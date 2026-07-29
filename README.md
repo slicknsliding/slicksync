@@ -7,7 +7,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js&logoColor=white)](https://nextjs.org)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://github.com/slicknsliding/slicksync/pkgs/container/slicksync)
 [![Fork of Syncio](https://img.shields.io/badge/fork%20of-Syncio-blueviolet)](https://github.com/iamneur0/syncio)
-[![Vault inspired by AIOManager](https://img.shields.io/badge/vault%20inspired%20by-AIOManager-orange)](https://github.com/Sonicx161/AIOManager)
+[![Inspired by AIOManager](https://img.shields.io/badge/inspired%20by-AIOManager-orange)](https://github.com/Sonicx161/AIOManager)
 
 SlickSync manages a private streaming group's accounts from one dashboard: groups, addon sets, shared credentials, watch history, and live playback — kept in sync whether a member uses Stremio or Nuvio.
 
