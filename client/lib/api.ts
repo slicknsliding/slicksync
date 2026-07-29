@@ -334,6 +334,14 @@ class ApiClient {
       body: JSON.stringify({ donorId }),
     });
   }
+  async getMergeInfo(id: string) {
+    return this.fetch<{ info: MergeInfo | null }>(`/users/${id}/merge-info`);
+  }
+  async undoMerge(id: string) {
+    return this.fetch<{ success: boolean; donorUsername: string; donorProviderType: 'stremio' | 'nuvio' }>(`/users/${id}/undo-merge`, {
+      method: 'POST',
+    });
+  }
 
   async createUser(data: CreateUserData) {
     return this.fetch<User>('/users', {
@@ -1786,6 +1794,12 @@ export interface MergePreview {
   survivorGroupName: string | null;
   donorGroupName: string | null;
   groupsDiffer: boolean;
+}
+
+export interface MergeInfo {
+  providerType: 'stremio' | 'nuvio';
+  donorUsername: string | null;
+  undoable: boolean;
 }
 
 export interface CreateUserData {

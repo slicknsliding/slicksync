@@ -58,6 +58,8 @@ model UserProviderCredential {
   stremioAuthKey    String? // Encrypted, same scheme as User.stremioAuthKey
   nuvioRefreshToken String? // Encrypted, same scheme as User.nuvioRefreshToken
   nuvioUserId       String?
+  donorId           String? // the absorbed User's original id (that row no longer exists) - lets undoMerge() find its archive
+  mergeArchivePath  String? // filename under data/backup/merges/ holding the pre-merge snapshot needed to reverse this merge
   createdAt         DateTime @default(now())
 
   @@unique([userId, providerType])
