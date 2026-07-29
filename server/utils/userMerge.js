@@ -103,15 +103,21 @@ async function getMergePreview(prisma, survivorId, donorId) {
 async function getUndoInfo(prisma, survivorId, { dataDir = path.join(process.cwd(), 'data') } = {}) {
   const credential = await prisma.userProviderCredential.findFirst({ where: { userId: survivorId } })
   if (!credential) return null
-  const donor = credential.donorId
-    ? await prisma.user.findUnique({ where: { id: credential.donorId } }).catch(() => null)
-    : null
+  // The donor's User row is gone by the time this is called (that's the
+  // whole point of the merge) - its username only still exists in the
+  // archive file, never in a live `user` query.
   const archiveFullPath = credential.mergeArchivePath
     ? path.join(dataDir, 'backup', 'merges', credential.mergeArchivePath)
     : null
+  let donorUsername = null
+  if (archiveFullPath && fs.existsSync(archiveFullPath)) {
+    try {
+      donorUsername = JSON.parse(fs.readFileSync(archiveFullPath, 'utf8')).donor?.username || null
+    } catch { /* leave null - undoable still reflects the file existing */ }
+  }
   return {
     providerType: credential.providerType,
-    donorUsername: donor?.username || null,
+    donorUsername,
     undoable: !!(credential.donorId && archiveFullPath && fs.existsSync(archiveFullPath)),
   }
 }
