@@ -376,6 +376,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize episode alerts:', err)
     }
 
+    // Schedule notification digest sends (hourly check, actual send gated by
+    // each account's daily/weekly cadence) - opt-in, off by default.
+    try {
+      const { scheduleNotificationDigest } = require('./utils/notificationDigest')
+      scheduleNotificationDigest(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize notification digest:', err)
+    }
+
     // Schedule vault backup export (decrypted JSON snapshot to data/backup/vault/,
     // nightly by default — set VAULT_BACKUP_INTERVAL_HOURS to change)
     try {

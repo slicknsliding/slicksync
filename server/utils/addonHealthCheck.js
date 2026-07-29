@@ -93,8 +93,13 @@ async function notifyAddonStatusChange(prisma, addon, isOnline, errorMessage) {
 
     const target = await getAddonHealthNotifyTarget(prisma, addon.accountId);
     if (target.enabled && target.webhookUrl) {
-      const { postDiscord } = require('./notify');
-      await postDiscord(target.webhookUrl, `**${title}**\n${message}`).catch(() => {});
+      const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest');
+      if (await isDigestEnabled(prisma, addon.accountId)) {
+        await queueDigestEntry(prisma, addon.accountId, 'addon_health', `${title.replace(/^[✅⚠️]\s*/, '')} — ${message}`);
+      } else {
+        const { postDiscord } = require('./notify');
+        await postDiscord(target.webhookUrl, `**${title}**\n${message}`).catch(() => {});
+      }
     }
   } catch (e) {
     console.warn(`[AddonHealthCheck] Failed to notify status change for ${addon.name}:`, e?.message);

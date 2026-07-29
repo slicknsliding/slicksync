@@ -35,9 +35,14 @@ function getFixNowUrl(entryId) {
 
 async function notify({ discordWebhookUrl }, { title, message, entryId }, ctx) {
   if (discordWebhookUrl) {
-    const fixNowUrl = entryId ? getFixNowUrl(entryId) : null
-    const text = fixNowUrl ? `**${title}**\n${message}\n\nFix now: ${fixNowUrl}` : `**${title}**\n${message}`
-    await postDiscord(discordWebhookUrl, text)
+    const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest')
+    if (ctx?.prisma && ctx?.accountId && await isDigestEnabled(ctx.prisma, ctx.accountId)) {
+      await queueDigestEntry(ctx.prisma, ctx.accountId, 'vault', `${title}: ${message}`)
+    } else {
+      const fixNowUrl = entryId ? getFixNowUrl(entryId) : null
+      const text = fixNowUrl ? `**${title}**\n${message}\n\nFix now: ${fixNowUrl}` : `**${title}**\n${message}`
+      await postDiscord(discordWebhookUrl, text)
+    }
   }
   // Mirror to phone push (self-gates on notifyOnVault). Independent of Discord,
   // so vault alerts reach an installed PWA even with no webhook configured.
