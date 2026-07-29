@@ -779,8 +779,7 @@ export default function SettingsPage() {
 
                 <SettingRow
                   label="Digest mode"
-                  description="Batch every notification above into one Discord message on a schedule, instead of pinging instantly"
-                  disabled={!syncSettings.webhookUrl?.trim()}
+                  description="Batch every notification above into one push + bell summary on a schedule instead of pinging instantly (also posts to Discord if a webhook is set above)"
                 >
                   <div className="flex items-center gap-2">
                     <select

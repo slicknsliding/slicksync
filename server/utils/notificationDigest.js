@@ -1,18 +1,21 @@
 // Notification digest mode: an opt-in, per-account alternative to instant
-// Discord pings. When AppAccount.sync.notifyDigestEnabled is true, the four
+// notifications. When AppAccount.sync.notifyDigestEnabled is true, the four
 // existing notify call sites (episode alerts, sync, vault, addon health)
-// queue a short summary line here instead of posting to Discord immediately.
-// A periodic poller batches everything since the last send into ONE message
-// on the chosen cadence (daily/weekly) and posts that instead.
+// queue a short summary line here instead of sending immediately. A
+// periodic poller batches everything since the last send into ONE message
+// on the chosen cadence (daily/weekly) and delivers that instead.
 //
-// Deliberately Discord-only - push notifications stay instant regardless of
-// digest mode, since the user's own framing was about noisy Discord pings
-// specifically, not about delaying a phone notification.
+// Push (native web-push) + the in-app notification bell are the PRIMARY
+// channels here - a digest still sends push even with no Discord webhook
+// configured at all. Discord is secondary: posted too, but only if a
+// webhook is actually set. This mirrors the broader priority going forward
+// (push/bell first, Discord as an optional extra), not just this feature.
 //
 // When digest mode is off (the default), none of this runs - every call
-// site's existing instant-post behavior is completely unchanged.
+// site's existing instant-send behavior is completely unchanged.
 
 const { postDiscord } = require('./notify')
+const { sendPushToAccount } = require('./pushNotifications')
 
 const CATEGORY_LABELS = {
   episode: '📺 New Episodes',
@@ -38,7 +41,7 @@ async function isDigestEnabled(prisma, accountId) {
   }
 }
 
-/** Called instead of an instant postDiscord() when digest mode is on. */
+/** Called instead of an instant send when digest mode is on. */
 async function queueDigestEntry(prisma, accountId, category, summary) {
   try {
     await prisma.notificationDigestEntry.create({ data: { accountId, category, summary } })
@@ -62,7 +65,7 @@ async function sendDueDigests(prisma) {
   for (const account of accounts) {
     try {
       const cfg = parseSyncConfig(account.sync)
-      if (cfg.notifyDigestEnabled !== true || !cfg.webhookUrl) continue
+      if (cfg.notifyDigestEnabled !== true) continue
 
       const frequency = cfg.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily'
       const intervalMs = (frequency === 'weekly' ? 7 : 1) * 24 * 60 * 60 * 1000
@@ -75,21 +78,39 @@ async function sendDueDigests(prisma) {
       })
 
       // Nothing happened this period - still advance lastSentAt below so the
-      // next check doesn't re-scan the same empty window, but don't post a
-      // pointless "nothing happened" message.
+      // next check doesn't re-scan the same empty window, but don't send a
+      // pointless "nothing happened" notification.
       if (entries.length > 0) {
         const byCategory = new Map()
         for (const e of entries) {
           if (!byCategory.has(e.category)) byCategory.set(e.category, [])
           byCategory.get(e.category).push(e.summary)
         }
-        const lines = [`**SlickSync ${frequency === 'weekly' ? 'Weekly' : 'Daily'} Digest**`]
-        for (const [category, summaries] of byCategory) {
-          lines.push(`\n**${CATEGORY_LABELS[category] || category}** (${summaries.length})`)
-          for (const s of summaries.slice(0, MAX_LINES_PER_CATEGORY)) lines.push(`• ${s}`)
-          if (summaries.length > MAX_LINES_PER_CATEGORY) lines.push(`…and ${summaries.length - MAX_LINES_PER_CATEGORY} more`)
+        const cadenceLabel = frequency === 'weekly' ? 'Weekly' : 'Daily'
+
+        // Push + bell (primary) - one condensed line, Discord gets the full
+        // per-item breakdown since it has room for it.
+        const pushSummary = [...byCategory.entries()]
+          .map(([category, summaries]) => `${summaries.length} ${(CATEGORY_LABELS[category] || category).replace(/^\S+\s/, '')}`)
+          .join(' · ')
+        await sendPushToAccount(prisma, account.id, {
+          title: `SlickSync ${cadenceLabel} Digest`,
+          body: pushSummary,
+          icon: '/android-chrome-192x192.png',
+          url: '/activity',
+        }).catch(() => {})
+
+        // Discord (secondary) - only if a webhook is actually configured.
+        if (cfg.webhookUrl) {
+          const lines = [`**SlickSync ${cadenceLabel} Digest**`]
+          for (const [category, summaries] of byCategory) {
+            lines.push(`\n**${CATEGORY_LABELS[category] || category}** (${summaries.length})`)
+            for (const s of summaries.slice(0, MAX_LINES_PER_CATEGORY)) lines.push(`• ${s}`)
+            if (summaries.length > MAX_LINES_PER_CATEGORY) lines.push(`…and ${summaries.length - MAX_LINES_PER_CATEGORY} more`)
+          }
+          await postDiscord(cfg.webhookUrl, lines.join('\n')).catch(() => {})
         }
-        await postDiscord(cfg.webhookUrl, lines.join('\n')).catch(() => {})
+
         await prisma.notificationDigestEntry.deleteMany({ where: { id: { in: entries.map((e) => e.id) } } })
       }
 
