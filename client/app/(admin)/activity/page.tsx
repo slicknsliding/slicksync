@@ -1131,11 +1131,21 @@ function NowPlayingItemBody({
           if (elapsedSeconds === null) return null;
 
           return (
-            <p className="text-xs text-subtle mt-0.5">
-              Watching for{' '}
-              {elapsedSeconds > 0
-                ? formatDuration(elapsedSeconds)
-                : '<1m'}
+            <p className="text-xs text-subtle mt-0.5 flex items-center gap-1.5">
+              <span>
+                Watching for{' '}
+                {elapsedSeconds > 0
+                  ? formatDuration(elapsedSeconds)
+                  : '<1m'}
+              </span>
+              {np.possiblyPaused && (
+                <span
+                  className="text-warning"
+                  title="No new proxy activity in a few minutes - may be paused, or just playing from a fully-buffered fast connection"
+                >
+                  · possibly paused
+                </span>
+              )}
             </p>
           );
         })()}

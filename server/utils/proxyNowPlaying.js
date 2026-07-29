@@ -34,13 +34,22 @@ const RECENTLY_CLOSED_MS = 23 * 60 * 1000
 // request actually comes in - it does NOT expire/close the connection just
 // because requests stopped (confirmed real case: `lastSeen` sat 3.4s after
 // `startTime` for a whole 8+ minute paused session, connection still
-// `isActive` in AIOStreams the entire time). Pausing a video stops the
-// player from requesting more of the file, so `lastSeenAt` freezing is
-// exactly what a real pause looks like - a stale `isActive: true` row must
-// not keep advancing "Watching for Xm" or showing up as live playback.
-// Comfortably above normal buffering/seek gaps (a few seconds to under a
-// minute for continuous playback) so a genuine brief stall isn't mistaken
-// for a pause.
+// `isActive` in AIOStreams the entire time).
+//
+// This is NOT a reliable pause detector, though - confirmed with real
+// production data (2026-07-29): a fast debrid connection (TorBox) can pull
+// most/all of a file through the proxy in a handful of requests within
+// seconds of starting (`requestCount: 6`, `lastSeenAt` frozen 2.7s after
+// `startTime`), then play on for the movie's entire runtime straight from
+// the player's local buffer with zero further proxy traffic - genuinely
+// still playing, indistinguishable from a real pause by request cadence
+// alone. An earlier version of this file used this threshold to EXCLUDE a
+// stale row from Now Playing entirely, which broke exactly that case: the
+// entry vanished after ~3min of real (buffered) playback and never came
+// back, even after the user resumed from an actual pause, because a
+// resume-from-deep-buffer needs no new proxy request either. Do not resurrect
+// that behavior - use this constant only for the softer "possibly paused"
+// hint below, never to hide a still-`isActive` row.
 const PAUSED_STALE_MS = 3 * 60 * 1000
 
 async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPlaying) {
@@ -48,7 +57,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   let recentlyClosedSessions
   try {
     proxySessions = await prisma.proxyStreamSession.findMany({
-      where: { accountId, isActive: true, lastSeenAt: { gte: new Date(Date.now() - PAUSED_STALE_MS) } },
+      where: { accountId, isActive: true },
       orderBy: { startTime: 'desc' },
     })
     // Also load streams the proxy recently finished. The proxy is
@@ -328,6 +337,14 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       // Most recent connection's own start time (e.g. when the last seek
       // happened) - kept separately, not used for duration display.
       lastConnectionStartTime: representative.startTime.toISOString(),
+      // Soft hint only, not a visibility gate (see PAUSED_STALE_MS comment) -
+      // no new proxy traffic in a while COULD mean paused, but is just as
+      // often a fast debrid connection that already front-loaded the whole
+      // file and is playing on from buffer with nothing left to fetch. The
+      // UI should show this as a possibility, never hide the entry over it.
+      lastActivityAt: representative.lastSeenAt.toISOString(),
+      lastActivityAtTimestamp: representative.lastSeenAt.getTime(),
+      possiblyPaused: (Date.now() - representative.lastSeenAt.getTime()) > PAUSED_STALE_MS,
       source: 'aiostreams-proxy',
     })
   }
