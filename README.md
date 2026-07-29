@@ -5,8 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js&logoColor=white)](https://nextjs.org)
-[![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)](#-installation)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://github.com/slicknsliding/slicksync/pkgs/container/slicksync)
 [![Fork of Syncio](https://img.shields.io/badge/fork%20of-Syncio-blueviolet)](https://github.com/iamneur0/syncio)
+[![Vault inspired by AIOManager](https://img.shields.io/badge/vault%20inspired%20by-AIOManager-orange)](https://github.com/Sonicx161/AIOManager)
 
 SlickSync manages a private streaming group's accounts from one dashboard: groups, addon sets, shared credentials, watch history, and live playback — kept in sync whether a member uses Stremio or Nuvio.
 
@@ -14,7 +15,21 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 
 ## Contents
 
-[Multi-Provider Sync](#-multi-provider-sync) · [Activity & Now Playing](#-activity--now-playing) · [Discover & Media Details](#-discover--media-details) · [SlickTrax](#-slicktrax) · [Vault](#-vault) · [Notifications](#-notifications) · [PWA & Push](#-pwa--push) · [Addons](#-addons) · [Themes](#-themes) · [Metrics](#-metrics) · [Backup](#-backup--disaster-recovery) · [Security](#-security) · [Installation](#-installation) · [Credits](#credits) · [License](#license)
+- [Multi-Provider Sync](#-multi-provider-sync)
+- [Activity & Now Playing](#-activity--now-playing)
+- [Discover & Media Details](#-discover--media-details)
+- [SlickTrax](#-slicktrax)
+- [Vault](#-vault)
+- [Notifications](#-notifications)
+- [PWA & Push](#-pwa--push)
+- [Addons](#-addons)
+- [Themes](#-themes)
+- [Metrics](#-metrics)
+- [Backup & Disaster Recovery](#-backup--disaster-recovery)
+- [Security](#-security)
+- [Installation](#-installation)
+- [Credits](#credits)
+- [License](#license)
 
 ## ⚡ Features
 
