@@ -197,6 +197,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           providerType: user.providerType || 'stremio',
           secondaryProviderType: secondaryProviderByUserId.get(user.id) || null,
           providerConnectionError: user.providerConnectionError || null,
+          watchSyncWarning: user.watchSyncWarning || null,
           groupName: userGroup?.name || null,
           groupId: userGroup?.id || null,
           status: user.isActive ? 'active' : 'inactive',
@@ -1530,7 +1531,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         notifyOnWatch: user.notifyOnWatch !== false,
         watchTime: totalWatchTimeMinutes,
         providerConnectionError: user.providerConnectionError || null,
-        providerConnectionErrorAt: user.providerConnectionErrorAt || null
+        providerConnectionErrorAt: user.providerConnectionErrorAt || null,
+        watchSyncWarning: user.watchSyncWarning || null,
+        watchSyncWarningAt: user.watchSyncWarningAt || null
       }
 
       res.json(transformedUser)

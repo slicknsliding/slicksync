@@ -207,6 +207,18 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
         console.warn(`[ActivityMonitor] Error processing sessions:`, sessionError.message)
       }
 
+      // Detect silent account mismatches (proxy sees this user watching, but
+      // their connected Stremio account logs none of it - device likely signed
+      // into a different account). Runs after sessions are refreshed above so
+      // it compares against the freshest native watch state. Self-contained /
+      // best-effort - never disturbs the metrics work around it.
+      try {
+        const { checkWatchSyncMismatch } = require('./watchSyncMismatch')
+        await checkWatchSyncMismatch(prisma, accountId, users)
+      } catch (mismatchError) {
+        console.warn(`[ActivityMonitor] Error checking watch-sync mismatch:`, mismatchError.message)
+      }
+
       // Precompute and cache metrics for all periods (runs every 5 minutes)
       // This ensures fresh data is available for both /users/metrics and /ext/metrics.json
       try {
