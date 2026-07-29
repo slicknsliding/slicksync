@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { Badge, UserAvatar } from '@/components/ui';
-import { PlayIcon, FilmIcon, TvIcon } from '@heroicons/react/24/outline';
+import { PlayIcon, PauseIcon, FilmIcon, TvIcon } from '@heroicons/react/24/outline';
 
 interface NowPlayingItem {
   user: {
@@ -24,6 +24,7 @@ interface NowPlayingItem {
   };
   watchedAt: string;
   watchedAtTimestamp?: number;
+  possiblyPaused?: boolean;
 }
 
 interface NowPlayingSectionProps {
@@ -108,14 +109,21 @@ export function NowPlayingSection({ items }: NowPlayingSectionProps) {
           </div>
 
           {/* Live indicator and Time Ago */}
-          <div className="flex-shrink-0 text-right flex items-center gap-3">
+          <div
+            className="flex-shrink-0 text-right flex items-center gap-3"
+            title={item.possiblyPaused ? 'No new activity in a few minutes - may be paused' : undefined}
+          >
             <div className="flex items-center gap-1 text-sm text-muted">
-              <PlayIcon className="w-4 h-4 text-success" />
-              {item.watchedAtTimestamp 
+              {item.possiblyPaused ? (
+                <PauseIcon className="w-4 h-4 text-warning" />
+              ) : (
+                <PlayIcon className="w-4 h-4 text-success" />
+              )}
+              {item.watchedAtTimestamp
                 ? formatTimeAgo(item.watchedAtTimestamp)
                 : 'Active'}
             </div>
-            <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
+            <div className={`w-2 h-2 rounded-full ${item.possiblyPaused ? 'bg-muted' : 'bg-secondary animate-pulse'}`} />
           </div>
         </motion.div>
       ))}
