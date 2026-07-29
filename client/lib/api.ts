@@ -320,6 +320,21 @@ class ApiClient {
     return this.fetch<User>(`/users/${id}`);
   }
 
+  // Account merge (Stremio<->Nuvio, same real person) - see
+  // server/utils/userMerge.js for the full design.
+  async getMergeCandidate(id: string) {
+    return this.fetch<{ candidate: MergeCandidate | null }>(`/users/${id}/merge-candidate`);
+  }
+  async getMergePreview(id: string, donorId: string) {
+    return this.fetch<MergePreview>(`/users/${id}/merge-preview?donorId=${encodeURIComponent(donorId)}`);
+  }
+  async mergeUsers(id: string, donorId: string) {
+    return this.fetch<{ success: boolean } & MergePreview & { archivePath: string }>(`/users/${id}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ donorId }),
+    });
+  }
+
   async createUser(data: CreateUserData) {
     return this.fetch<User>('/users', {
       method: 'POST',
@@ -1750,6 +1765,27 @@ export interface User {
   colorIndex?: number;
   avatarUrl?: string | null;
   inviteCode?: string;
+}
+
+export interface MergeCandidate {
+  id: string;
+  username: string;
+  providerType: 'stremio' | 'nuvio';
+  avatarUrl?: string | null;
+  colorIndex?: number;
+  email?: string;
+}
+
+export interface MergePreview {
+  survivor: { id: string; username: string; providerType: 'stremio' | 'nuvio' };
+  donor: { id: string; username: string; providerType: 'stremio' | 'nuvio' };
+  movieCount: number;
+  episodeCount: number;
+  sessionCount: number;
+  snapshotCount: number;
+  survivorGroupName: string | null;
+  donorGroupName: string | null;
+  groupsDiffer: boolean;
 }
 
 export interface CreateUserData {
