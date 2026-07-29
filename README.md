@@ -124,12 +124,12 @@ JWT_SECRET=<any long random string>
 `ENCRYPTION_KEY` can stay unset — one generates itself on first boot (see Security above).
 
 ```bash
-docker compose -f docker-compose.private.yml up -d --build
+docker compose -f docker-compose.private.yml up -d
 docker compose -f docker-compose.private.yml logs -f   # watch it come up
 ```
 Frontend on `:3000`, API on `:4000` — point your reverse proxy at `:3000` only.
 
-**Updating**: `git pull && docker compose -f docker-compose.private.yml up -d --build` — your `/app/data` volume (database, encryption key, Vault backups, avatars) survives rebuilds.
+**Updating**: `docker compose -f docker-compose.private.yml pull && docker compose -f docker-compose.private.yml up -d` — your `/app/data` volume (database, encryption key, Vault backups, avatars) survives updates. No `git pull` or rebuild needed since the default config just pulls the published image. (If you switched to the commented-out `build:` block instead, use `git pull && docker compose -f docker-compose.private.yml up -d --build`.)
 
 <details>
 <summary><strong>Public / multi-tenant mode</strong> — hosting for more than one separate group</summary>
@@ -141,7 +141,7 @@ Private and public are genuinely different modes:
 | Who it's for | One household running their own copy | Hosting for multiple separate groups |
 | Database | SQLite, embedded | PostgreSQL (required) |
 | Accounts | One shared instance, no signup | Self-registered, isolated per account |
-| Image | Builds from source | Pre-built `ghcr.io/slicknsliding/slicksync:public` |
+| Image | Pre-built `ghcr.io/slicknsliding/slicksync:private` | Pre-built `ghcr.io/slicknsliding/slicksync:public` |
 
 ```bash
 cp env.example .env
@@ -152,9 +152,11 @@ ENCRYPTION_KEY=<any 32+ character string>
 DATABASE_URL=postgresql://slicksync:slicksync@db:5432/slicksync
 ```
 ```bash
-docker compose -f docker-compose.public.yml up -d --build
+docker compose -f docker-compose.public.yml up -d
 ```
 First visit shows a "Create one" registration link. `/register` generates a random account UUID once — that UUID *is* the login ID, so save it; there's no recovery if it's lost.
+
+**Updating**: `docker compose -f docker-compose.public.yml pull && docker compose -f docker-compose.public.yml up -d`.
 </details>
 
 <details>
