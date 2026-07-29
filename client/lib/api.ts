@@ -2363,6 +2363,13 @@ export interface MetricsData {
     // item id to link to (e.g. an unmatched proxy-only entry).
     stremioAppUrl?: string;
     nuvioAppUrl?: string;
+    // Soft hint only (proxy-sourced entries) - no new proxy byte-range
+    // request in a few minutes. NOT reliable evidence of an actual pause
+    // (a fast debrid connection can front-load an entire file in seconds
+    // and then go quiet for the rest of a genuinely continuous watch), so
+    // this must never be used to hide the entry - see PAUSED_STALE_MS in
+    // server/utils/proxyNowPlaying.js for the full story.
+    possiblyPaused?: boolean;
   }>;
   startedPlaying: Array<{
     user: { id: string; username: string; email: string; colorIndex: number };
