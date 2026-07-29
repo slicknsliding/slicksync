@@ -107,7 +107,13 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
         nuvioUserId: true,
         colorIndex: true,
         notifyOnWatch: true,
-        discordWebhookUrl: true
+        discordWebhookUrl: true,
+        // Needed by the watch-sync mismatch detector: it must see the current
+        // flag to self-heal (clear it on native recovery), and must defer to
+        // providerConnectionError - a failing fetch is a different, already-
+        // surfaced problem, not an account mismatch.
+        providerConnectionError: true,
+        watchSyncWarning: true
       }
     })
 
