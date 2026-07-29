@@ -459,6 +459,66 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // GET /users/notifications - persistent in-app bell notifications (written
+  // by notificationStore.js from the same dispatch path as push/Discord).
+  // Must be before the /:id route. Returns newest-first with server-side read
+  // state, so the bell is consistent across devices (unlike the old
+  // localStorage-only read tracking).
+  router.get('/notifications', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 14))
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+      const notifications = await prisma.notification.findMany({
+        where: { accountId, createdAt: { gte: since } },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      })
+      res.json(notifications)
+    } catch (error) {
+      console.error('Error fetching notifications:', error)
+      res.status(500).json({ error: 'Failed to fetch notifications' })
+    }
+  })
+
+  // POST /users/notifications/mark-read - mark specific ids read, or all when
+  // no ids are given (the bell's "Mark all read").
+  router.post('/notifications/mark-read', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids : null
+      await prisma.notification.updateMany({
+        where: { accountId, read: false, ...(ids ? { id: { in: ids } } : {}) },
+        data: { read: true, readAt: new Date() },
+      })
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error marking notifications read:', error)
+      res.status(500).json({ error: 'Failed to mark notifications read' })
+    }
+  })
+
+  // POST /users/notifications/dismiss - delete specific ids, or all when no
+  // ids are given (the bell's "Clear"). Deletion (not a hidden flag) matches
+  // the bell's existing Clear semantics and keeps the table from growing
+  // unbounded on a long-lived instance.
+  router.post('/notifications/dismiss', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids : null
+      await prisma.notification.deleteMany({
+        where: { accountId, ...(ids ? { id: { in: ids } } : {}) },
+      })
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error dismissing notifications:', error)
+      res.status(500).json({ error: 'Failed to dismiss notifications' })
+    }
+  })
+
   // GET /users/metrics - Get metrics data for dashboard (must be before /:id route)
   router.get('/metrics', async (req, res) => {
     try {

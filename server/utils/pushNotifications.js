@@ -140,14 +140,31 @@ async function sendPushToAccount(prisma, accountId, payload) {
  */
 async function notifyPushForType(prisma, accountId, typeKey, payload) {
   try {
-    if (!accountId || !isPushEnabled()) return
+    if (!accountId) return
     const account = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
     let cfg = account?.sync
     if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
     if (!cfg || typeof cfg !== 'object' || cfg[typeKey] !== true) return
-    await sendPushToAccount(prisma, accountId, payload)
+
+    // Persist an in-app bell notification FIRST - the bell is a primary
+    // channel (alongside push), so it must record the event whether or not
+    // web-push transport (VAPID keys) is even configured. Previously this
+    // function returned early when push was disabled, which is exactly why a
+    // notification could reach Discord/push but never the bell.
+    try {
+      const { persistBellNotification } = require('./notificationStore')
+      await persistBellNotification(prisma, accountId, typeKey, payload)
+    } catch (e) {
+      // Bell write is best-effort; don't block the push transport below.
+      console.warn('[Push] bell persist failed:', e?.message)
+    }
+
+    // Web-push transport is secondary and only fires when VAPID is set up.
+    if (isPushEnabled()) {
+      await sendPushToAccount(prisma, accountId, payload)
+    }
   } catch {
-    // Never let a push failure disturb the Discord/bell path it rides alongside.
+    // Never let a failure here disturb the Discord path it rides alongside.
   }
 }
 

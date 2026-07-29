@@ -605,6 +605,46 @@ model AddonHealthAlert {
   @@map("addon_health_alerts")
 }
 
+// Generic persistent in-app notification - the durable backing store for the
+// notification bell. Before this, the bell had NO event store: it re-derived
+// watch notifications live from the metrics snapshot every poll, so a
+// "started/finished watching" event that push and Discord fired as discrete,
+// persistent events never produced a matching bell entry (the bell only ever
+// showed a transient "is watching" row while a session was live in Now
+// Playing, and a "completed" row only if the NATIVE pipeline happened to
+// record it - so a proxy-only watch, or a watch under a mismatched Stremio
+// account, left the bell empty while push/Discord both fired for it). That
+// directly broke the "push + bell are primary" rule. This table fixes it at
+// the root: every notification dispatch writes one row here, so bell + push +
+// Discord are all fed from one place instead of three disconnected paths.
+// EpisodeAlert/AddonHealthAlert keep their own dedicated tables (they predate
+// this and already feed the bell), so they are deliberately NOT duplicated here.
+//
+// dedupeKey makes a dispatch idempotent across restarts/re-polls: a stable key
+// (e.g. "watch-start-<sessionId>") means the same event can never create two
+// rows. Nullable, and SQLite treats NULLs as distinct in a unique index, so
+// rows that don't need dedupe (dedupeKey null) never collide. read/readAt are
+// server-side so read state is consistent across devices - the bell's old
+// localStorage-only read state was per-browser and reset on every new device.
+model Notification {
+  id        String    @id @default(cuid())
+  accountId String    @default("default")
+  type      String // 'activity' | 'sync' | 'vault' | 'mismatch' - drives the bell's category icon
+  title     String
+  body      String
+  poster    String?
+  url       String? // deep-link the bell row navigates to on click
+  data      String? // optional JSON blob for extra per-type context
+  dedupeKey String? // stable idempotency key; null = always create a new row
+  read      Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([accountId, dedupeKey])
+  @@index([accountId, createdAt])
+  @@map("notifications")
+}
+
 // PWA web-push subscriptions - one row per browser/device that opted in to
 // native push notifications. endpoint is the push service URL; p256dh/auth
 // are the browser-provided encryption keys web-push needs. Unique on
