@@ -266,18 +266,23 @@ function scheduleSyncs(frequency, prisma, getAccountId, scopedWhere, decrypt, re
         const webhookUrl = syncCfg?.webhookUrl
         if (syncCfg?.notifyOnSync === true && webhookUrl && groups.length > 0) {
           try {
-            if (!QUIET && mode === 'advanced') {
-              console.log(`📤 Sending webhook notification with ${allReloadDiffs.length} diff(s)`)
+            const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest')
+            if (accountIdOrNull && await isDigestEnabled(prisma, accountIdOrNull)) {
+              await queueDigestEntry(prisma, accountIdOrNull, 'sync', `Synced ${groups.length} group${groups.length !== 1 ? 's' : ''} (${totalUsers} user${totalUsers !== 1 ? 's' : ''})`)
+            } else {
+              if (!QUIET && mode === 'advanced') {
+                console.log(`📤 Sending webhook notification with ${allReloadDiffs.length} diff(s)`)
+              }
+              await sendSyncNotification(webhookUrl, {
+                groupsCount: groups.length,
+                usersCount: totalUsers,
+                syncMode: mode,
+                diffs: allReloadDiffs,
+                sourceLabel: 'Auto-Sync',
+                sourceLogo: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png',
+                accountUuid: accountUuid || undefined
+              })
             }
-            await sendSyncNotification(webhookUrl, {
-              groupsCount: groups.length,
-              usersCount: totalUsers,
-              syncMode: mode,
-              diffs: allReloadDiffs,
-              sourceLabel: 'Auto-Sync',
-              sourceLogo: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png',
-              accountUuid: accountUuid || undefined
-            })
           } catch {}
         }
         // Mirror to phone push (self-gates on notifyOnSync; no webhook needed).
