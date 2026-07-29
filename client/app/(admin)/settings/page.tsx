@@ -183,6 +183,8 @@ export default function SettingsPage() {
     notifyOnAddonHealth: false,
     notifyOnBackup: false,
     notifyOnMosaic: false,
+    notifyDigestEnabled: false,
+    notifyDigestFrequency: 'daily' as 'daily' | 'weekly',
     accountTimezone: '',
   });
 
@@ -301,6 +303,8 @@ export default function SettingsPage() {
           notifyOnAddonHealth: settings.notifyOnAddonHealth || false,
           notifyOnBackup: settings.notifyOnBackup || false,
           notifyOnMosaic: settings.notifyOnMosaic || false,
+          notifyDigestEnabled: settings.notifyDigestEnabled || false,
+          notifyDigestFrequency: settings.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily',
           accountTimezone: settings.accountTimezone || '',
         });
       } catch (e) {
@@ -422,6 +426,8 @@ export default function SettingsPage() {
       notifyOnAddonHealth: false,
       notifyOnBackup: false,
       notifyOnMosaic: false,
+      notifyDigestEnabled: false,
+      notifyDigestFrequency: 'daily',
     });
     try {
       await api.updateSyncSettings({
@@ -436,6 +442,8 @@ export default function SettingsPage() {
         notifyOnAddonHealth: false,
         notifyOnBackup: false,
         notifyOnMosaic: false,
+        notifyDigestEnabled: false,
+        notifyDigestFrequency: 'daily',
       });
       toast.success('Settings reset to defaults');
     } catch (e: any) {
@@ -765,6 +773,29 @@ export default function SettingsPage() {
                       enabled={syncSettings.notifyOnMosaic || false}
                       onChange={(v) => handleSaveSetting('notifyOnMosaic', v)}
                       label="Toggle monthly poster mosaic"
+                    />
+                  </div>
+                </SettingRow>
+
+                <SettingRow
+                  label="Digest mode"
+                  description="Batch every notification above into one Discord message on a schedule, instead of pinging instantly"
+                  disabled={!syncSettings.webhookUrl?.trim()}
+                >
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={syncSettings.notifyDigestFrequency || 'daily'}
+                      onChange={(e) => handleSaveSetting('notifyDigestFrequency', e.target.value)}
+                      disabled={!syncSettings.notifyDigestEnabled}
+                      className="input-base px-2 py-1.5 text-sm disabled:opacity-50"
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                    </select>
+                    <ToggleSwitch
+                      enabled={syncSettings.notifyDigestEnabled || false}
+                      onChange={(v) => handleSaveSetting('notifyDigestEnabled', v)}
+                      label="Toggle digest mode"
                     />
                   </div>
                 </SettingRow>

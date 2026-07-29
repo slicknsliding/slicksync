@@ -285,25 +285,31 @@ async function checkForNewEpisodes(prisma) {
 
       const target = await getNotifyTarget(prisma, show.accountId)
       if (target.enabled && target.webhookUrl) {
-        // "Who's behind" flavor - a watcher already past the new episode
-        // (rewatch scenarios) is skipped.
-        const behind = [...show.watchers.entries()]
-          .filter(([, w]) => episodeOrder(w.season, w.episode) < episodeOrder(latest.season, latest.episode))
-        let behindLine = ''
-        if (behind.length > 0) {
-          const userRows = await prisma.user.findMany({
-            where: { id: { in: behind.map(([userId]) => userId) } },
-            select: { id: true, username: true, email: true },
-          })
-          const nameById = new Map(userRows.map((u) => [u.id, u.username || u.email || 'someone']))
-          behindLine = '\n' + behind
-            .map(([userId, w]) => `${nameById.get(userId) || 'someone'} is on S${String(w.season).padStart(2, '0')}E${String(w.episode).padStart(2, '0')}`)
-            .join(' · ')
+        const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest')
+        if (await isDigestEnabled(prisma, show.accountId)) {
+          await queueDigestEntry(prisma, show.accountId, 'episode', `${metadata.title || show.showName} ${epLabel}${latest.title ? ` · ${latest.title}` : ''}`)
+        } else {
+          // "Who's behind" flavor - a watcher already past the new episode
+          // (rewatch scenarios) is skipped. Digest mode skips this detail -
+          // a compact one-liner per show reads better in a batched summary.
+          const behind = [...show.watchers.entries()]
+            .filter(([, w]) => episodeOrder(w.season, w.episode) < episodeOrder(latest.season, latest.episode))
+          let behindLine = ''
+          if (behind.length > 0) {
+            const userRows = await prisma.user.findMany({
+              where: { id: { in: behind.map(([userId]) => userId) } },
+              select: { id: true, username: true, email: true },
+            })
+            const nameById = new Map(userRows.map((u) => [u.id, u.username || u.email || 'someone']))
+            behindLine = '\n' + behind
+              .map(([userId, w]) => `${nameById.get(userId) || 'someone'} is on S${String(w.season).padStart(2, '0')}E${String(w.episode).padStart(2, '0')}`)
+              .join(' · ')
+          }
+          await postDiscord(
+            target.webhookUrl,
+            `**New episode: ${metadata.title || show.showName} ${epLabel}${latest.title ? ` · ${latest.title}` : ''}**${behindLine}`
+          ).catch(() => {})
         }
-        await postDiscord(
-          target.webhookUrl,
-          `**New episode: ${metadata.title || show.showName} ${epLabel}${latest.title ? ` · ${latest.title}` : ''}**${behindLine}`
-        ).catch(() => {})
       }
     } catch (e) {
       console.warn(`[EpisodeAlerts] Failed to check ${show.showId}:`, e?.message)

@@ -2062,6 +2062,8 @@ export interface SyncSettings {
   notifyOnAddonHealth?: boolean;
   notifyOnBackup?: boolean;
   notifyOnMosaic?: boolean;
+  notifyDigestEnabled?: boolean;
+  notifyDigestFrequency?: 'daily' | 'weekly';
   accountTimezone?: string;
   vaultCurrency?: string;
   // Personal-features opt-outs (v1.31+). Default true when absent.

@@ -487,6 +487,24 @@ model DismissedUpcomingEpisode {
   @@map("dismissed_upcoming_episode")
 }
 
+// Queued summary lines for notification digest mode (AppAccount.sync's
+// notifyDigestEnabled) - an opt-in alternative to instant Discord pings.
+// Written instead of an instant postDiscord() call at each notify call site
+// when digest mode is on; a periodic poller (notificationDigest.js) batches
+// everything since the last send into one message, then deletes the
+// consumed rows. Never touched when digest mode is off - Discord behavior
+// is completely unchanged for anyone who doesn't opt in.
+model NotificationDigestEntry {
+  id        String   @id @default(cuid())
+  accountId String
+  category  String // 'episode' | 'sync' | 'vault' | 'addon_health'
+  summary   String
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@map("notification_digest_entry")
+}
+
 // A whole-show opt-out from upcoming-episode tracking - unlike
 // DismissedUpcomingEpisode (hides one occurrence, reappears once the poller
 // advances to the next episode), muting a show stops it being tracked at
