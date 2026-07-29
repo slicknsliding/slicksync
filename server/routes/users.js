@@ -6005,13 +6005,29 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
   const hasCredentials = credentials.stremioAuthKey || (credentials.nuvioRefreshToken && credentials.nuvioUserId)
   if (!hasCredentials) return { success: false, error: 'User is not connected to a provider' }
 
-  // Account-scoped decrypt helper (same key selection logic as legacy path:
-  // per-account DEK if present, else server key)
+  // Account-scoped decrypt helper. Tries, in order: the per-account DEK (if
+  // any), the server key, then every configured ENCRYPTION_KEY_FALLBACKS -
+  // the SAME fallback chain the global decrypt() uses. The fallbacks are
+  // essential: after an ENCRYPTION_KEY rotation, older credentials stay
+  // encrypted under a previous key (kept decrypt-only by keyManager). Without
+  // trying them here, this path alone failed to decrypt those credentials and
+  // returned a null provider -> "credentials may be invalid", even though the
+  // exact same data read fine everywhere that goes through global decrypt
+  // (confirmed real case 2026-07-29: a Stremio authKey encrypted under the
+  // previous key polled the native library fine but broke the addon-sync path
+  // for precisely this reason - a rotation had moved the key into fallback[1]).
   const decryptWithAccountKey = (payload) => {
-    let key = null
-    try { key = (typeof getAccountDek === 'function' ? getAccountDek : getAccountDekUtil)(credentials.accountId) } catch { }
-    if (!key) { key = (typeof getServerKey === 'function' ? getServerKey : getServerKeyUtil)() }
-    return (typeof aesGcmDecrypt === 'function' ? aesGcmDecrypt : aesGcmDecryptUtil)(key, payload)
+    const dec = (typeof aesGcmDecrypt === 'function' ? aesGcmDecrypt : aesGcmDecryptUtil)
+    const keys = []
+    try { const dek = (typeof getAccountDek === 'function' ? getAccountDek : getAccountDekUtil)(credentials.accountId); if (dek) keys.push(dek) } catch { }
+    try { keys.push((typeof getServerKey === 'function' ? getServerKey : getServerKeyUtil)()) } catch { }
+    try { const { ENCRYPTION_KEY_FALLBACKS } = require('../utils/config'); for (const k of (ENCRYPTION_KEY_FALLBACKS || [])) keys.push(k) } catch { }
+    let lastErr
+    for (const key of keys) {
+      if (!key) continue
+      try { return dec(key, payload) } catch (e) { lastErr = e }
+    }
+    throw lastErr || new Error('decrypt failed: no usable key')
   }
 
   // Build provider (Stremio or Nuvio based on credentials.providerType).
