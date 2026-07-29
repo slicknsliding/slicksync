@@ -42,6 +42,28 @@ model User {
   @@map("users")
 }
 
+// Account merge: a second provider's credentials absorbed into an existing
+// User row (Stremio+Nuvio, same real person). Deliberately a side table
+// rather than more nullable fields on User - User.providerType is a single
+// string checked everywhere (sync's provider selection, badges, the
+// [email, providerType] unique constraint), so a merged identity keeps
+// that field meaning exactly what it always has ("the primary provider"),
+// and every existing single-provider user is completely unaffected (zero
+// rows here for the common case). userId is the SURVIVING User row from a
+// merge - see server/utils/userMerge.js for how a row ends up here.
+model UserProviderCredential {
+  id                String   @id @default(cuid())
+  userId            String
+  providerType      String // "stremio" | "nuvio" - always the OTHER provider from the owning User's own providerType
+  stremioAuthKey    String? // Encrypted, same scheme as User.stremioAuthKey
+  nuvioRefreshToken String? // Encrypted, same scheme as User.nuvioRefreshToken
+  nuvioUserId       String?
+  createdAt         DateTime @default(now())
+
+  @@unique([userId, providerType])
+  @@map("user_provider_credentials")
+}
+
 model Group {
   id                 String  @id @default(cuid())
   name               String

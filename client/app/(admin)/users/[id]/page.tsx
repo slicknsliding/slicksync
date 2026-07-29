@@ -3,7 +3,7 @@
 import { useState, useCallback, memo, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
-import { api, Addon, StremioAddon } from '@/lib/api';
+import { api, Addon, StremioAddon, MergeCandidate, MergePreview } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -37,6 +37,7 @@ import {
   CheckCircleIcon,
   ArrowDownTrayIcon,
   FolderIcon,
+  LinkIcon,
 } from '@heroicons/react/24/outline';
 import { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
@@ -205,6 +206,51 @@ export default function UserDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now());
+
+  // Account merge (Stremio<->Nuvio, same real person) - a same-email,
+  // different-provider sibling that hasn't been absorbed yet gets surfaced
+  // here as a suggestion, never auto-linked. See server/utils/userMerge.js.
+  const [mergeCandidate, setMergeCandidate] = useState<MergeCandidate | null>(null);
+  const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
+
+  useEffect(() => {
+    if (!params.id) return;
+    let cancelled = false;
+    api.getMergeCandidate(params.id as string).then((res) => {
+      if (!cancelled) setMergeCandidate(res.candidate);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [params.id]);
+
+  const openMergeModal = async () => {
+    if (!mergeCandidate) return;
+    try {
+      const preview = await api.getMergePreview(params.id as string, mergeCandidate.id);
+      setMergePreview(preview);
+      setIsMergeModalOpen(true);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to load merge preview');
+    }
+  };
+
+  const handleMerge = async () => {
+    if (!mergeCandidate) return;
+    setIsMerging(true);
+    try {
+      await api.mergeUsers(params.id as string, mergeCandidate.id);
+      toast.success(`Merged ${mergeCandidate.username} into this account`);
+      setIsMergeModalOpen(false);
+      setMergeCandidate(null);
+      const userData = await api.getUser(params.id as string);
+      setUser(userData);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to merge accounts');
+    } finally {
+      setIsMerging(false);
+    }
+  };
 
   // Update ticker every second
   useEffect(() => {
@@ -991,6 +1037,49 @@ export default function UserDetailPage() {
               </Card>
             </PageSection>
 
+            {/* Merge candidate - a same-email, different-provider sibling
+                (Stremio<->Nuvio) that hasn't been absorbed yet. Suggested,
+                never auto-linked - see server/utils/userMerge.js. */}
+            {mergeCandidate && (
+              <PageSection className="mb-6">
+                <Card padding="lg">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary-muted">
+                      <LinkIcon className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-default">Same person, different provider?</h3>
+                      <p className="text-sm text-muted">Shares this account's email, on {mergeCandidate.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 p-4 rounded-xl bg-surface-hover">
+                    <UserAvatar
+                      userId={mergeCandidate.id}
+                      name={mergeCandidate.username}
+                      email={mergeCandidate.email}
+                      src={mergeCandidate.avatarUrl ?? undefined}
+                      colorIndex={mergeCandidate.colorIndex}
+                      size="md"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Link href={`/users/${mergeCandidate.id}`} className="font-medium text-default hover:text-primary transition-colors truncate">
+                          {mergeCandidate.username}
+                        </Link>
+                        <Badge variant={mergeCandidate.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
+                          {mergeCandidate.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                        </Badge>
+                      </div>
+                      {mergeCandidate.email && <p className="text-sm text-muted truncate">{mergeCandidate.email}</p>}
+                    </div>
+                    <Button variant="primary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openMergeModal}>
+                      Merge
+                    </Button>
+                  </div>
+                </Card>
+              </PageSection>
+            )}
+
             {/* Sync Debug Section */}
             {showSyncDebug && (
               <PageSection className="mb-6">
@@ -1523,6 +1612,51 @@ export default function UserDetailPage() {
         variant="danger"
         isLoading={isDeleting}
       />
+
+      {/* Merge confirmation - shows real counts before committing, and flags
+          if the two accounts are in different Groups (merge deliberately
+          doesn't auto-combine group membership - see userMerge.js). */}
+      <Modal
+        isOpen={isMergeModalOpen}
+        onClose={() => setIsMergeModalOpen(false)}
+        title="Merge Accounts"
+        size="md"
+      >
+        {mergePreview && mergeCandidate && (
+          <div className="space-y-4">
+            <p className="text-default">
+              Merge <strong>{mergePreview.donor.username}</strong> ({mergePreview.donor.providerType}) into{' '}
+              <strong>{mergePreview.survivor.username}</strong> ({mergePreview.survivor.providerType})?
+            </p>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="p-3 rounded-lg bg-surface-hover">
+                <p className="text-muted">Movies</p>
+                <p className="text-lg font-semibold text-default">{mergePreview.movieCount}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-surface-hover">
+                <p className="text-muted">Episodes</p>
+                <p className="text-lg font-semibold text-default">{mergePreview.episodeCount}</p>
+              </div>
+            </div>
+            <p className="text-sm text-muted">
+              {mergePreview.donor.username}&apos;s watch history moves onto this account, both providers will keep syncing their own addons, and {mergePreview.donor.username} will be removed as a separate entry (its data is archived first).
+            </p>
+            {mergePreview.groupsDiffer && (
+              <p className="text-sm p-3 rounded-lg bg-warning-muted text-warning">
+                <strong>{mergePreview.donor.username}</strong> is in {mergePreview.donorGroupName || 'a different group'}, separate from {mergePreview.survivor.username}&apos;s {mergePreview.survivorGroupName || 'group'}. After merging, {mergePreview.donor.providerType} will keep following {mergePreview.donorGroupName || 'its current group'} unless you manually move it.
+              </p>
+            )}
+            <div className="flex gap-3 justify-end pt-2">
+              <Button variant="secondary" onClick={() => setIsMergeModalOpen(false)} disabled={isMerging}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleMerge} isLoading={isMerging}>
+                {isMerging ? 'Merging...' : 'Merge Accounts'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Reconnect Modal - reusing CreateUserModal */}
       <CreateUserModal
