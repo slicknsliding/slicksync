@@ -106,7 +106,7 @@ const UpcomingRow = memo(function UpcomingRow({
         </div>
         <div className="min-w-0 flex-1">
           <span
-            className={`inline-block px-2 py-0.5 mb-1 rounded-full text-[10px] font-medium ${
+            className={`inline-block px-2 py-0.5 mb-1 rounded-full text-xs font-medium ${
               label.soon ? 'bg-primary/15 text-primary' : 'bg-surface-hover text-muted'
             }`}
           >

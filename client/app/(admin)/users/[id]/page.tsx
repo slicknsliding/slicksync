@@ -1119,9 +1119,14 @@ export default function UserDetailPage() {
                 <Card padding="lg">
                   <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary-muted">
-                        <LinkIcon className="w-5 h-5 text-primary" />
-                      </div>
+                      <UserAvatar
+                        userId={`${params.id}-merged-donor`}
+                        name={mergeInfo.donorUsername || undefined}
+                        email={mergeInfo.donorEmail || undefined}
+                        src={mergeInfo.donorAvatarUrl ?? undefined}
+                        colorIndex={mergeInfo.donorColorIndex ?? undefined}
+                        size="md"
+                      />
                       <div>
                         <h3 className="text-lg font-semibold text-default">
                           Merged with {mergeInfo.donorUsername || 'a second account'}
@@ -1130,7 +1135,7 @@ export default function UserDetailPage() {
                           <Badge variant={mergeInfo.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
                             {mergeInfo.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
                           </Badge>
-                          <p className="text-sm text-muted">Its watch history now lives on this account</p>
+                          <p className="text-sm text-muted">{mergeInfo.donorEmail || 'Its watch history now lives on this account'}</p>
                         </div>
                       </div>
                     </div>

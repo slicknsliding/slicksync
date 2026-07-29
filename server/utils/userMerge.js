@@ -109,15 +109,18 @@ async function getUndoInfo(prisma, survivorId, { dataDir = path.join(process.cwd
   const archiveFullPath = credential.mergeArchivePath
     ? path.join(dataDir, 'backup', 'merges', credential.mergeArchivePath)
     : null
-  let donorUsername = null
+  let donor = null
   if (archiveFullPath && fs.existsSync(archiveFullPath)) {
     try {
-      donorUsername = JSON.parse(fs.readFileSync(archiveFullPath, 'utf8')).donor?.username || null
+      donor = JSON.parse(fs.readFileSync(archiveFullPath, 'utf8')).donor || null
     } catch { /* leave null - undoable still reflects the file existing */ }
   }
   return {
     providerType: credential.providerType,
-    donorUsername,
+    donorUsername: donor?.username || null,
+    donorEmail: donor?.email || null,
+    donorAvatarUrl: donor?.avatarUrl || null,
+    donorColorIndex: donor?.colorIndex ?? null,
     undoable: !!(credential.donorId && archiveFullPath && fs.existsSync(archiveFullPath)),
   }
 }
