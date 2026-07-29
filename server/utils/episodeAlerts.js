@@ -71,7 +71,16 @@ async function getUpcomingEpisodes(prisma, accountId, limit = 24) {
     orderBy: { nextAirDate: 'asc' },
     take: limit,
   })
-  const candidates = rows.filter((r) => r.nextSeason != null && r.nextEpisode != null && r.nextAirDate)
+  let candidates = rows.filter((r) => r.nextSeason != null && r.nextEpisode != null && r.nextAirDate)
+
+  try {
+    const muted = await prisma.mutedShow.findMany({
+      where: { accountId, showId: { in: candidates.map((r) => r.showId) } },
+      select: { showId: true },
+    })
+    const mutedIds = new Set(muted.map((m) => m.showId))
+    candidates = candidates.filter((r) => !mutedIds.has(r.showId))
+  } catch {} // Table may not exist yet on a very-first boot before db push runs.
 
   // Filter out dismissed episodes — the (season, episode) tuple is intentional,
   // so once the poller advances the show to a NEW next episode, that new one
@@ -108,6 +117,32 @@ async function dismissUpcomingEpisode(prisma, accountId, showId, season, episode
     where: { accountId_showId_season_episode: { accountId: accountIdValue, showId, season, episode } },
     create: { accountId: accountIdValue, showId, season, episode },
     update: {},
+  })
+}
+
+/**
+ * Whole-show opt-out: stops the show appearing in "Coming up" AND stops
+ * new-episode alerts (push/Discord) for it, until unmuted. Unlike dismissing
+ * one episode, this doesn't wear off when the show advances.
+ */
+async function muteShow(prisma, accountId, showId, showName, poster) {
+  const accountIdValue = accountId || 'default'
+  await prisma.mutedShow.upsert({
+    where: { accountId_showId: { accountId: accountIdValue, showId } },
+    create: { accountId: accountIdValue, showId, showName: showName || null, poster: poster || null },
+    update: {},
+  })
+}
+
+async function unmuteShow(prisma, accountId, showId) {
+  const accountIdValue = accountId || 'default'
+  await prisma.mutedShow.deleteMany({ where: { accountId: accountIdValue, showId } })
+}
+
+async function getMutedShows(prisma, accountId) {
+  return prisma.mutedShow.findMany({
+    where: { accountId },
+    orderBy: { createdAt: 'desc' },
   })
 }
 
@@ -154,8 +189,14 @@ async function checkForNewEpisodes(prisma) {
     }
   }
 
+  // Muted shows are skipped entirely below - no baseline/nextFields refresh,
+  // no alert, no push, no Discord - until unmuted.
+  const mutedRows = await prisma.mutedShow.findMany({ select: { accountId: true, showId: true } }).catch(() => [])
+  const mutedKeys = new Set(mutedRows.map((m) => `${m.accountId}::${m.showId}`))
+
   let alertsFired = 0
   for (const show of shows.values()) {
+    if (mutedKeys.has(`${show.accountId}::${show.showId}`)) continue
     try {
       const metadata = await fetchMetadata(show.showId, 'series', show.videoId)
       if (!metadata?.allEpisodes?.length) continue
@@ -281,4 +322,4 @@ function scheduleEpisodeAlerts(prisma) {
   setInterval(run, POLL_INTERVAL_MS)
 }
 
-module.exports = { scheduleEpisodeAlerts, checkForNewEpisodes, getUpcomingEpisodes, dismissUpcomingEpisode }
+module.exports = { scheduleEpisodeAlerts, checkForNewEpisodes, getUpcomingEpisodes, dismissUpcomingEpisode, muteShow, unmuteShow, getMutedShows }
