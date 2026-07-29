@@ -14,7 +14,21 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 
 ## Contents
 
-[Multi-Provider Sync](#-multi-provider-sync) · [Activity & Now Playing](#-activity--now-playing) · [Discover & Media Details](#-discover--media-details) · [SlickTrax](#-slicktrax) · [Vault](#-vault) · [Notifications](#-notifications) · [PWA & Push](#-pwa--push) · [Addons](#-addons) · [Themes](#-themes) · [Metrics](#-metrics) · [Backup](#-backup--disaster-recovery) · [Security](#-security) · [Installation](#-installation) · [Credits](#credits) · [License](#license)
+· [Multi-Provider Sync](#-multi-provider-sync) 
+· [Activity & Now Playing](#-activity--now-playing) 
+· [Discover & Media Details](#-discover--media-details)
+· [SlickTrax](#-slicktrax) 
+· [Vault](#-vault) 
+· [Notifications](#-notifications)
+· [PWA & Push](#-pwa--push) 
+· [Addons](#-addons) 
+· [Themes](#-themes) 
+· [Metrics](#-metrics) 
+· [Backup](#-backup--disaster-recovery)
+· [Security](#-security) 
+· [Installation](#-installation) 
+· [Credits](#credits) 
+· [License](#license)
 
 ## ⚡ Features
 
