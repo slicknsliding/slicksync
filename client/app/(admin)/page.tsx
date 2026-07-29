@@ -510,9 +510,12 @@ export default function DashboardPage() {
     return Math.round(totalSeconds / 60);
   }, [metricsData, nowTick]);
 
-  // Fetch dashboard data
-  const refreshData = useCallback(async () => {
-    setIsLoading(true);
+  // Fetch dashboard data. `silent` skips the loading spinner - used by the
+  // 30s auto-refresh below so Now Playing stays live without the whole
+  // Dashboard flashing back to a loading state every cycle (same pattern
+  // Activity's own 30s Now Playing refresh already uses).
+  const refreshData = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
     setError(null);
     try {
       const [stats, metrics, addons] = await Promise.all([
@@ -520,20 +523,23 @@ export default function DashboardPage() {
         api.getMetrics('7d'),
         api.getAddons(),
       ]);
-      
+
       setAccountStats(stats);
       setMetricsData(metrics);
       setRecentAddons(addons.slice(0, 3));
     } catch (err) {
       console.error('Dashboard data fetch failed:', err);
-      setError(err as Error);
+      if (!silent) setError(err as Error);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
     refreshData();
+    // Keeps Now Playing live - see the "Live" badge on its section header.
+    const id = setInterval(() => refreshData(true), 30000);
+    return () => clearInterval(id);
   }, [refreshData]);
 
   // Derived stats with fallbacks
@@ -806,7 +812,13 @@ export default function DashboardPage() {
             {metricsData?.nowPlaying && metricsData.nowPlaying.length > 0 && (
               <div className={`${NEBULA_GLASS_CLASS} p-5 mb-5`} style={nebulaGlassStyle}>
                 <NebulaGlassStripe />
-                <h3 className="text-base font-semibold font-display text-default mb-4">Now Playing</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-semibold font-display text-default">Now Playing</h3>
+                  <div className="flex items-center gap-1.5 text-xs text-muted">
+                    <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                    <span>Live</span>
+                  </div>
+                </div>
                 <NowPlayingSection items={metricsData.nowPlaying} />
               </div>
             )}
@@ -1122,9 +1134,13 @@ export default function DashboardPage() {
         {metricsData?.nowPlaying && metricsData.nowPlaying.length > 0 && (
           <PageSection className="mb-6" delay={0.17}>
             <Card padding="lg">
-              <h3 className="text-base font-semibold font-display text-default mb-4">
-                Now Playing
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-semibold font-display text-default">Now Playing</h3>
+                <div className="flex items-center gap-1.5 text-xs text-muted">
+                  <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                  <span>Live</span>
+                </div>
+              </div>
               <NowPlayingSection items={metricsData.nowPlaying} />
             </Card>
           </PageSection>
