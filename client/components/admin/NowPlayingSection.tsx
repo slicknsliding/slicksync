@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { Badge, UserAvatar } from '@/components/ui';
-import { PlayIcon, PauseIcon, FilmIcon, TvIcon } from '@heroicons/react/24/outline';
+import { PlayIcon, FilmIcon, TvIcon } from '@heroicons/react/24/outline';
 
 interface NowPlayingItem {
   user: {
@@ -24,7 +24,12 @@ interface NowPlayingItem {
   };
   watchedAt: string;
   watchedAtTimestamp?: number;
-  possiblyPaused?: boolean;
+  source?: string;
+  // Proxy-sourced entries only - real elapsed time we can stand behind,
+  // frozen once proxy traffic goes quiet instead of climbing forever off
+  // raw wall-clock (see server/utils/proxyNowPlaying.js). Prefer this over
+  // watchedAtTimestamp whenever present.
+  elapsedSeconds?: number;
 }
 
 interface NowPlayingSectionProps {
@@ -44,11 +49,19 @@ export function NowPlayingSection({ items }: NowPlayingSectionProps) {
     const now = Date.now();
     const diff = now - timestamp;
     const minutes = Math.floor(diff / 60000);
-    
+
     if (minutes < 1) return 'Just now';
     if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
     return `${hours}h ago`;
+  };
+
+  const formatElapsed = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 1) return '<1m';
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ${minutes % 60}m`;
   };
 
   return (
@@ -109,21 +122,16 @@ export function NowPlayingSection({ items }: NowPlayingSectionProps) {
           </div>
 
           {/* Live indicator and Time Ago */}
-          <div
-            className="flex-shrink-0 text-right flex items-center gap-3"
-            title={item.possiblyPaused ? 'No new activity in a few minutes - may be paused' : undefined}
-          >
+          <div className="flex-shrink-0 text-right flex items-center gap-3">
             <div className="flex items-center gap-1 text-sm text-muted">
-              {item.possiblyPaused ? (
-                <PauseIcon className="w-4 h-4 text-warning" />
-              ) : (
-                <PlayIcon className="w-4 h-4 text-success" />
-              )}
-              {item.watchedAtTimestamp
-                ? formatTimeAgo(item.watchedAtTimestamp)
-                : 'Active'}
+              <PlayIcon className="w-4 h-4 text-success" />
+              {item.source === 'aiostreams-proxy' && typeof item.elapsedSeconds === 'number'
+                ? formatElapsed(item.elapsedSeconds)
+                : item.watchedAtTimestamp
+                  ? formatTimeAgo(item.watchedAtTimestamp)
+                  : 'Active'}
             </div>
-            <div className={`w-2 h-2 rounded-full ${item.possiblyPaused ? 'bg-muted' : 'bg-secondary animate-pulse'}`} />
+            <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
           </div>
         </motion.div>
       ))}

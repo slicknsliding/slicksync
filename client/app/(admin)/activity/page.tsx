@@ -1119,33 +1119,31 @@ function NowPlayingItemBody({
           // every second regardless of whether the provider's position had
           // actually advanced at all, which overstated progress whenever the
           // provider went a while between checkpoints (common - see the
-          // freshness-window notes in sessionTracker.js). Still falls back to
-          // the wall-clock estimate when no session row exists yet.
+          // freshness-window notes in sessionTracker.js). A proxy-only entry
+          // (no matched native session) uses the backend's elapsedSeconds
+          // instead of ticking off nowTick directly - that value is frozen
+          // once proxy traffic goes quiet, rather than climbing forever off
+          // raw wall-clock even after the stream was actually exited
+          // (confirmed real case: a proxy connection AIOStreams still listed
+          // as open kept "Watching for" climbing well past 45+ minutes after
+          // the user had already stopped watching - see proxyNowPlaying.js).
           const elapsedSeconds = (session && typeof session.durationSeconds === 'number')
             ? Math.max(0, session.durationSeconds)
-            : (startMs && !Number.isNaN(startMs))
-              ? Math.max(0, Math.floor((nowTick - startMs) / 1000))
-              : null;
+            : (np.source === 'aiostreams-proxy' && typeof np.elapsedSeconds === 'number')
+              ? np.elapsedSeconds
+              : (startMs && !Number.isNaN(startMs))
+                ? Math.max(0, Math.floor((nowTick - startMs) / 1000))
+                : null;
 
           // Only show duration if we have something to show (from session or recent fallback)
           if (elapsedSeconds === null) return null;
 
           return (
-            <p className="text-xs text-subtle mt-0.5 flex items-center gap-1.5">
-              <span>
-                Watching for{' '}
-                {elapsedSeconds > 0
-                  ? formatDuration(elapsedSeconds)
-                  : '<1m'}
-              </span>
-              {np.possiblyPaused && (
-                <span
-                  className="text-warning"
-                  title="No new proxy activity in a few minutes - may be paused, or just playing from a fully-buffered fast connection"
-                >
-                  · possibly paused
-                </span>
-              )}
+            <p className="text-xs text-subtle mt-0.5">
+              Watching for{' '}
+              {elapsedSeconds > 0
+                ? formatDuration(elapsedSeconds)
+                : '<1m'}
             </p>
           );
         })()}

@@ -337,14 +337,33 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       // Most recent connection's own start time (e.g. when the last seek
       // happened) - kept separately, not used for duration display.
       lastConnectionStartTime: representative.startTime.toISOString(),
-      // Soft hint only, not a visibility gate (see PAUSED_STALE_MS comment) -
-      // no new proxy traffic in a while COULD mean paused, but is just as
-      // often a fast debrid connection that already front-loaded the whole
-      // file and is playing on from buffer with nothing left to fetch. The
-      // UI should show this as a possibility, never hide the entry over it.
+      // A "possibly paused" label was tried here and pulled (2026-07-29,
+      // same day) - confirmed against real usage that a fast debrid
+      // connection (TorBox) routinely front-loads an entire file within
+      // seconds, so the request-cadence signal it was based on reads as
+      // "stale" for nearly this account's ENTIRE runtime on every normal
+      // play, not just real pauses. A label that's wrong by default is
+      // worse than no label - removed rather than left showing a
+      // confidently incorrect guess.
       lastActivityAt: representative.lastSeenAt.toISOString(),
       lastActivityAtTimestamp: representative.lastSeenAt.getTime(),
-      possiblyPaused: (Date.now() - representative.lastSeenAt.getTime()) > PAUSED_STALE_MS,
+      // Elapsed time we can actually stand behind, in seconds - real
+      // wall-clock elapsed while proxy traffic is flowing, but frozen at
+      // the point activity went quiet rather than continuing to climb off
+      // raw wall-clock forever. Same root cause as the label above (no way
+      // to confirm real activity once requests stop), but the honest fix
+      // for a NUMBER is to stop advancing it, not to keep incrementing a
+      // figure we can no longer vouch for (confirmed real case: a session
+      // showed "Watching for 49m" and climbing well after the stream had
+      // already been exited - proxy startTime alone is not a safe basis
+      // for an ever-increasing duration display).
+      elapsedSeconds: Math.max(0, Math.floor(
+        (Math.min(Date.now(), representative.lastSeenAt.getTime() + PAUSED_STALE_MS) - earliestStartTime.getTime()) / 1000
+      )),
+      // True once elapsedSeconds above has stopped advancing (no proxy
+      // traffic for PAUSED_STALE_MS) - lets the UI stop ticking a frozen
+      // number live instead of implying it's still counting up.
+      elapsedFrozen: (Date.now() - representative.lastSeenAt.getTime()) > PAUSED_STALE_MS,
       source: 'aiostreams-proxy',
     })
   }
