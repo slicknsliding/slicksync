@@ -1,4 +1,4 @@
-# SlickSync
+#                                 SlickSync
 
 *Multi-provider addon, user, and credential management for **Stremio** and **Nuvio**.*
 
