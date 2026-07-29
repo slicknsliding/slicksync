@@ -196,6 +196,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           email: user.email,
           providerType: user.providerType || 'stremio',
           secondaryProviderType: secondaryProviderByUserId.get(user.id) || null,
+          providerConnectionError: user.providerConnectionError || null,
           groupName: userGroup?.name || null,
           groupId: userGroup?.id || null,
           status: user.isActive ? 'active' : 'inactive',
@@ -1467,7 +1468,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         createdAt: user.createdAt,
         discordWebhookUrl: user.discordWebhookUrl || null,
         notifyOnWatch: user.notifyOnWatch !== false,
-        watchTime: totalWatchTimeMinutes
+        watchTime: totalWatchTimeMinutes,
+        providerConnectionError: user.providerConnectionError || null,
+        providerConnectionErrorAt: user.providerConnectionErrorAt || null
       }
 
       res.json(transformedUser)
