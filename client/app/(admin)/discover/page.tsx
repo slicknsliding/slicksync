@@ -5,12 +5,12 @@ import { Header } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextMenu, useContextMenu } from '@/components/ui';
+import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextMenu, useContextMenu, Badge } from '@/components/ui';
 import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem, RecommendationRow, User } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
-import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon } from '@heroicons/react/24/outline';
+import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { toast } from '@/components/ui/Toast';
 import { useIsTV } from '@/lib/hooks/useIsTV';
@@ -891,8 +891,29 @@ export default function DiscoverPage() {
               <div className="space-y-8">
                 {recRows.map((row) => (
                   <div key={row.seedId}>
-                    <div className="flex items-baseline gap-2 mb-3">
+                    <div className="flex items-baseline gap-2 mb-3 flex-wrap">
                       <h3 className="text-base font-semibold font-display text-default">{row.reason}</h3>
+                      {/* Confidence-visible recommendations: the reason text
+                          alone only reads differently when a real pairwise
+                          match was found ("X and Y both loved Z") - a row
+                          resting on just this seed's own score with zero
+                          real cross-item affinity behind it still gets the
+                          same-looking generic "Because you watched X" text.
+                          This badge surfaces that distinction directly
+                          instead of leaving it invisible, using the same
+                          hasRealSignal signal "More Like This" already
+                          computes - no new data, just showing what's
+                          already there. */}
+                      {row.hasRealSignal && (
+                        <Badge
+                          variant="primary"
+                          size="sm"
+                          icon={<SparklesIcon className="w-3 h-3" />}
+                          title="Backed by real watch-time overlap in your household, not just this title's own score"
+                        >
+                          Real match
+                        </Badge>
+                      )}
                       <span className="text-xs text-muted">· Top Rated {row.genre}</span>
                     </div>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
