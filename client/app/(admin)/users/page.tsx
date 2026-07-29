@@ -46,6 +46,7 @@ interface UserDisplay {
   providerType?: 'stremio' | 'nuvio';
   secondaryProviderType?: 'stremio' | 'nuvio' | null;
   providerConnectionError?: string | null;
+  watchSyncWarning?: string | null;
   avatarUrl?: string | null;
   status: 'active' | 'expired' | 'pending';
   watchTime: number;
@@ -179,6 +180,7 @@ export default function UsersPage() {
         providerType: user.providerType || 'stremio',
         secondaryProviderType: (user as any).secondaryProviderType || null,
         providerConnectionError: (user as any).providerConnectionError || null,
+        watchSyncWarning: (user as any).watchSyncWarning || null,
         avatarUrl: (user as any).avatarUrl,
         status,
         watchTime: (user as any).watchTime || 0, // Use watchTime from API
@@ -583,6 +585,12 @@ export default function UsersPage() {
                                           title={user.providerConnectionError}
                                         />
                                       )}
+                                      {user.watchSyncWarning && (
+                                        <ExclamationTriangleIcon
+                                          className="w-4 h-4 text-amber-500 shrink-0"
+                                          title={user.watchSyncWarning}
+                                        />
+                                      )}
                                     </div>
                                     <p className="text-sm text-subtle">
                                       {hideSensitive ? '••••••••' : user.email}
@@ -943,6 +951,12 @@ function UserCard({
                 <ExclamationTriangleIcon
                   className="w-4 h-4 text-warning shrink-0"
                   title={user.providerConnectionError}
+                />
+              )}
+              {user.watchSyncWarning && (
+                <ExclamationTriangleIcon
+                  className="w-4 h-4 text-amber-500 shrink-0"
+                  title={user.watchSyncWarning}
                 />
               )}
               <SyncBadge
