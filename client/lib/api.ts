@@ -1799,6 +1799,9 @@ export interface MergePreview {
 export interface MergeInfo {
   providerType: 'stremio' | 'nuvio';
   donorUsername: string | null;
+  donorEmail: string | null;
+  donorAvatarUrl: string | null;
+  donorColorIndex: number | null;
   undoable: boolean;
 }
 

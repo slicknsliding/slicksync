@@ -112,6 +112,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         orderBy: { id: 'asc' }
       });
 
+      // One bulk lookup for every merged user's absorbed second provider,
+      // rather than a per-user query inside the map below.
+      const secondaryCredentials = await prisma.userProviderCredential.findMany({
+        where: { userId: { in: users.map((u) => u.id) } },
+        select: { userId: true, providerType: true }
+      })
+      const secondaryProviderByUserId = new Map(secondaryCredentials.map((c) => [c.userId, c.providerType]))
+
       // Transform data for frontend compatibility
       const transformedUsers = await Promise.all(users.map(async (user) => {
         // For SQLite, we need to find groups that contain this user
@@ -187,6 +195,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           username: user.username,
           email: user.email,
           providerType: user.providerType || 'stremio',
+          secondaryProviderType: secondaryProviderByUserId.get(user.id) || null,
           groupName: userGroup?.name || null,
           groupId: userGroup?.id || null,
           status: user.isActive ? 'active' : 'inactive',
