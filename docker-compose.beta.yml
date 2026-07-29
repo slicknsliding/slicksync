@@ -1,0 +1,29 @@
+services:
+  slicksync:
+    # Pre-built, multi-arch (amd64+arm64) image published by
+    # .github/workflows/beta-release.yml on every beta-vX.Y.Z tag - a
+    # floating channel for features being tried out before they're promoted
+    # to a real vX.Y.Z tag (which publishes the private/public images
+    # everyone else runs). Same INSTANCE=private (single-tenant SQLite)
+    # build as the private image - beta is about testing NEW FEATURES, not
+    # a separate instance mode. `docker compose pull && docker compose up -d`
+    # for updates, no local build needed.
+    image: ghcr.io/slicknsliding/slicksync:beta
+    environment:
+      JWT_SECRET: 'temp-jwt-secret-key'
+      ENCRYPTION_KEY: 'temp-encryption-key-32-chars-long'
+
+      # To enable private instance authentication, uncomment the following variables
+      # SLICKSYNC_PRIVATE_USERNAME: ''
+      # SLICKSYNC_PRIVATE_PASSWORD: ''
+
+      # Public URL this instance is reachable at, used to build clickable
+      # links (e.g. Vault alert "Fix now" links) in Discord notifications.
+      # Leave unset to skip those links rather than post a broken one.
+      # PUBLIC_APP_URL: 'https://example.com'
+    user: "1001:1001"
+    # volumes:
+      # - ./data:/app/data
+    ports:
+      - "3000:3000"
+      - "4000:4000"
