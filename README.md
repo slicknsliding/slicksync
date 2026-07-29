@@ -56,6 +56,7 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 - Three sources side by side: Discover, ★ Watchlist, ✨ For You.
 - Deep links use each provider's real format (`stremio:///detail/...`, `nuvio://meta?...`) — no guessing, no account-specific data in the link.
 - Continue Watching row on the Dashboard — drag to scroll, right-click/long-press to remove.
+- Right-click (desktop) or long-press (mobile) any poster for a quick-action menu — Add to Watchlist / Mark Watched without opening the detail popup first.
 
 ### ✨ SlickTrax
 Built-in Trakt-alternative — no external service, no tokens.
@@ -63,6 +64,7 @@ Built-in Trakt-alternative — no external service, no tokens.
 - **Watched indicators** — real watch-history based, with a manual override.
 - **For You recommendations** — up to 3 genre rows from real weighted watch time (recency-decayed), independently toggleable.
 - **More Like This** on every detail popup, biased by real household affinity, always fresh/unwatched results.
+- **✨ Real match** badge on any For You/More Like This row backed by genuine household viewing — reads differently at a glance from a pure genre-fallback guess.
 - **Not Interested** feedback downweights similar titles, not just the one dismissed.
 
 ### 🔐 Vault
@@ -83,7 +85,9 @@ One Discord webhook, per-type toggles (activity/sync/invites/Vault), mirrored to
 - Addon down/back-up alerts from a background health check.
 
 ### 📱 PWA & Push
-Installs like a native app (Home Screen / desktop install). Once installed, per-device push for every notification type — zero setup, VAPID keys self-generate on first boot. Manage subscribed devices (rename, revoke) from Settings.
+- Installs like a native app — Home Screen on iOS/Android, desktop install on Chrome/Edge.
+- Per-device push for every notification type once installed, zero setup — VAPID keys self-generate on first boot.
+- Manage subscribed devices (rename, revoke) from Settings; a revoked device stops getting pushed to immediately, no re-install needed.
 
 ### 🧩 Addons
 Drag-and-drop reordering, drag-to-protect or drag-to-label with color-coded custom tags, order-insensitive sync comparison, provider-agnostic live addon counts, and a template library (**Addon Snapshots**) to save/deploy a named addon set to any user.
@@ -93,6 +97,7 @@ Ten full themes, switchable live, synced across devices. Build your own on top o
 
 ### 📊 Metrics
 User leaderboard, watch streaks, watch-time trend, Top Viewers/Recent Activity/Recent Addons on the Dashboard, provider parity view, and a per-group activity dashboard.
+- Same-email Stremio/Nuvio pairs are deduped in every leaderboard and total — one household member never counts as two.
 
 ### 💾 Backup & Disaster Recovery
 Scheduled + on-demand config backups (validated for real restorability, not just valid JSON) and a separate **Disaster Recovery Kit** — the same export plus every Vault secret, re-encrypted under a passphrase you choose, fully portable to a brand-new instance.
