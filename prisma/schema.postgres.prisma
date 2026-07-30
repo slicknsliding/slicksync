@@ -348,6 +348,24 @@ model MovieWatchHistory {
   @@map("movie_watch_history")
 }
 
+// User-curated lists of titles (roadmap #7). Account-scoped, shared across the
+// account's admins (not per-user) - matches how Discover/Groups behave here.
+// itemsJson is a stringified array of { id, type, name, poster?, year? }; kept
+// as text (not Json) to mirror the SQLite schema so the router handles both
+// identically.
+model CustomList {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  name        String
+  description String?
+  itemsJson   String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([accountId])
+  @@map("custom_lists")
+}
+
 // Metrics: Watch sessions - tracks individual viewing sessions with start/end times
 // Since Stremio only provides cumulative watch time, we track sessions during syncs
 model WatchSession {
