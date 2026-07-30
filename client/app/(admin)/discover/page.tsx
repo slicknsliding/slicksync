@@ -1245,6 +1245,8 @@ export default function DiscoverPage() {
           fallbackPoster={detailItem.poster}
           fallbackRating={detailItem.imdbRating}
           fallbackReleaseInfo={detailItem.releaseInfo}
+          fallbackRottenTomatoes={ratingsById[detailItem.id]?.rottenTomatoes}
+          fallbackMetacritic={ratingsById[detailItem.id]?.metacritic}
           onWatchlistChange={(id, next) => {
             const item = detailItem;
             setWatchlist((prev) => next
