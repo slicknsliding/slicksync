@@ -1050,6 +1050,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
           },
           videoId: ep.videoId,
           profileLabel: ep.profileLabel || null,
+          episodeName: ep.episodeName || null,
           watchedAt: ep.watchedAt.toISOString(),
           watchedAtTimestamp: ep.watchedAt.getTime(),
           // The History row itself already carries the duration this specific

@@ -2419,6 +2419,9 @@ export interface MetricsData {
     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };
     videoId: string | null;
     profileLabel?: string | null;
+    // Episode title from Cinemeta, when known - series entries only. See
+    // EpisodeWatchHistory.episodeName in the schema for how this gets filled.
+    episodeName?: string | null;
     watchedAt: string;
     watchedAtTimestamp: number;
     // Only present when backfilled from a matching native WatchSession -

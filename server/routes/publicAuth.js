@@ -1030,11 +1030,21 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
     return res.json({ message: 'Logged out' });
   });
 
-  // Export all data for the logged-in account (config export)
-  router.get('/config-export', async (req, res) => {
-    try {
+  // Export all data for one account (config export). Extracted from the
+  // route below so the scheduled backup system (server/utils/backup.js) can
+  // call this directly with a synthetic { appAccountId } object instead of
+  // going through a real HTTP request - it previously self-called this same
+  // route over plain fetch() with no auth context at all, which would have
+  // hit the 401 guard below for every account except by accident in private
+  // mode (where whereScope ignores appAccountId entirely). That's the actual
+  // reason scheduled backups only ever worked for the single private-mode
+  // account: there was no way for an unauthenticated internal call to name
+  // which tenant to export. Calling this function directly with a real
+  // accountId sidesteps that entirely - no HTTP hop, no auth token needed,
+  // same account-scoping logic either way.
+  async function buildConfigExportPayload(req) {
       const whereScope = INSTANCE_TYPE === 'public' ? { accountId: req.appAccountId } : {}
-      if (INSTANCE_TYPE === 'public' && !req.appAccountId) return res.status(401).json({ error: 'Unauthorized' })
+      if (INSTANCE_TYPE === 'public' && !req.appAccountId) { const e = new Error('Unauthorized'); e.status = 401; throw e }
       // Ensure request-scoped DEK is available for decryption in public mode
       try {
         if (INSTANCE_TYPE === 'public' && !req.accountDek && typeof getAccountDek === 'function') {
@@ -1247,9 +1257,18 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       }
 
       const payload = { users: decryptedUsers, groups: cleanedGroups, addons: exportedAddons, sync: accountSync }
+      return payload
+  }
+
+  // Export all data for the logged-in account (config export) - thin HTTP
+  // wrapper around buildConfigExportPayload above.
+  router.get('/config-export', async (req, res) => {
+    try {
+      const payload = await buildConfigExportPayload(req)
       res.setHeader('Content-Disposition', 'attachment; filename="slicksync-export.json"')
       return res.json(payload)
     } catch (e) {
+      if (e?.status === 401) return res.status(401).json({ error: 'Unauthorized' })
       console.error('Export failed:', e)
       return res.status(500).json({ error: 'Export failed' })
     }
@@ -2095,6 +2114,12 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       res.status(500).json({ message: 'Failed to delete account', error: error.message });
     }
   });
+
+  // Attached as a property (not a separate export) so index.js's existing
+  // `app.use('/api/public-auth', publicAuthRouterInstance)` keeps working
+  // unchanged - router is still a real Express Router, just with this one
+  // extra callable hanging off it for backup.js to use directly.
+  router.buildConfigExportPayload = buildConfigExportPayload;
 
   return router;
 };

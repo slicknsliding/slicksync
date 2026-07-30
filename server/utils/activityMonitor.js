@@ -7,6 +7,25 @@ const { sendShareNotification: notifySendShareNotification } = require('./notify
 
 const CHECK_INTERVAL_MS = 1 * 60 * 1000 // 1 minute
 
+// Public (multi-tenant) mode processes every registered account on this same
+// 1-minute tick, one full native-library fetch + session/metrics pass per
+// account. Each account's pass involves real outbound HTTP to Stremio/Nuvio's
+// API, so with enough accounts a single pass can take longer than the
+// interval between ticks - without a guard, the NEXT tick would start a
+// second overlapping pass over the same accounts, compounding indefinitely
+// (more concurrent outbound requests, more DB contention, memory pressure)
+// rather than settling into a steady rate. isAccountsPassRunning makes a
+// tick that finds a previous pass still in flight skip entirely instead of
+// stacking - the same account just gets checked on the NEXT tick instead,
+// which is a far safer failure mode than unbounded pile-up. ACCOUNT_BATCH_SIZE
+// bounds how many accounts are processed in parallel within one pass - fully
+// serial (batch size 1) is safe but slow with many accounts; fully parallel
+// risks hammering every account's provider API and this box's own outbound
+// connections at once. Neither of these was needed before tonight because
+// private mode only ever has exactly one account to iterate.
+let isAccountsPassRunning = false
+const ACCOUNT_BATCH_SIZE = 5
+
 let activityTimer = null
 // Track notified items: Map<accountId, Set<itemId>>
 const notifiedItems = new Map()
@@ -396,16 +415,29 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
 }
 
 async function checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
+  if (isAccountsPassRunning) {
+    heartbeat('checkAllAccounts:skipped_overlap', { INSTANCE_TYPE })
+    return
+  }
+  isAccountsPassRunning = true
+  const startedAt = Date.now()
   heartbeat('checkAllAccounts:start', { INSTANCE_TYPE })
   try {
     if (INSTANCE_TYPE === 'public') {
-      // Check all accounts
+      // Check all accounts, bounded-concurrency batches rather than fully
+      // serial (slow) or fully parallel (hammers every account's provider
+      // API + this box's outbound connections simultaneously) - see the
+      // module-level comment on isAccountsPassRunning/ACCOUNT_BATCH_SIZE.
       const accounts = await prisma.appAccount.findMany({
         select: { id: true }
       })
-      for (const account of accounts) {
-        await checkActivityForAccount(prisma, account.id, decrypt, getAccountId)
+      for (let i = 0; i < accounts.length; i += ACCOUNT_BATCH_SIZE) {
+        const batch = accounts.slice(i, i + ACCOUNT_BATCH_SIZE)
+        await Promise.all(batch.map((account) =>
+          checkActivityForAccount(prisma, account.id, decrypt, getAccountId)
+        ))
       }
+      heartbeat('checkAllAccounts:done', { INSTANCE_TYPE, accountCount: accounts.length, durationMs: Date.now() - startedAt })
     } else {
       // Private mode: check default account
       const DEFAULT_ACCOUNT_ID = process.env.DEFAULT_ACCOUNT_ID || 'default'
@@ -417,6 +449,8 @@ async function checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
     // theoretically still fail invisibly above/around that call.
     heartbeat('checkAllAccounts:error', { message: error.message, stack: error.stack })
     console.warn(`[ActivityMonitor] checkAllAccounts failed:`, error.message)
+  } finally {
+    isAccountsPassRunning = false
   }
 }
 
