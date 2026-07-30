@@ -1314,7 +1314,7 @@ export default function AddonDetailPage() {
                     )}
                     {addon.lastHealthCheck && (
                       <div 
-                        className={`w-2.5 h-2.5 rounded-full ${addon.isOnline ? 'bg-success' : 'bg-danger'}`}
+                        className={`w-2.5 h-2.5 rounded-full ${addon.isOnline ? 'bg-success' : 'bg-error'}`}
                         title={addon.isOnline ? 'Online' : 'Offline'}
                       />
                     )}
