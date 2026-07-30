@@ -607,7 +607,14 @@ module.exports = ({ prisma, getAccountId } = {}) => {
         })
         .filter((c) => { const k = `${c.mediaType}:${c.tmdbId}`; if (seen.has(k)) return false; seen.add(k); return true })
         .sort((a, b) => b._sort.localeCompare(a._sort))
-        .slice(0, 60)
+        // No cap here on purpose - TMDb's combined_credits already returns a
+        // person's full filmography in one bounded response (it's not
+        // paginated upstream), and this feed renders as a horizontal scroll
+        // row, not a paginated grid. An earlier `.slice(0, 60)` silently
+        // dropped everything older than a prolific actor's most recent ~60
+        // credits (confirmed real case: Tom Cruise has well over 60 combined
+        // movie+TV credits across a 40+ year career, so most of his early
+        // filmography never showed up here at all).
         .map(({ _sort, popularity, ...rest }) => rest)
 
       res.json({ person: { id: Number(personId), name: data.name || null }, credits })
@@ -860,7 +867,8 @@ module.exports = ({ prisma, getAccountId } = {}) => {
         })
         .filter((c) => { const k = c.tmdbId; if (seen.has(k)) return false; seen.add(k); return true })
         .sort((a, b) => b._sort.localeCompare(a._sort))
-        .slice(0, 40)
+        // Same reasoning as /person/:id above - no artificial cap on a
+        // person's real filmography.
         .map(({ _sort, ...rest }) => rest)
 
       res.json({
