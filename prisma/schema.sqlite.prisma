@@ -410,6 +410,42 @@ model UserSyncGuardState {
   @@map("user_sync_guard_state")
 }
 
+// "What should we watch tonight" swipe-off: a household picks a set of
+// participants (existing Users), swipes yes/no on a shared candidate pool,
+// and the session resolves the instant every participant has said yes to the
+// same title. candidatesJson/matchedItemJson are stringified JSON (SQLite has
+// no Json type - see AppAccount's note); participantIds likewise, since it's
+// a small fixed-at-creation list, not something queried by membership.
+model WatchPartySession {
+  id              String    @id @default(cuid())
+  accountId       String    @default("default")
+  createdBy       String // userId of the creator
+  participantIds  String // JSON array of userIds invited to this session
+  candidatesJson  String // JSON array of { id, type, name, poster, year? }
+  status          String    @default("active") // active | matched | ended
+  matchedItemJson String? // JSON of the matched item, once resolved
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([accountId])
+  @@map("watch_party_sessions")
+}
+
+// One participant's yes/no on one candidate. A title matches the instant
+// every participantId in its session's participantIds has a `true` vote here.
+model WatchPartyVote {
+  id        String   @id @default(cuid())
+  sessionId String
+  userId    String
+  itemId    String
+  vote      Boolean
+  createdAt DateTime @default(now())
+
+  @@unique([sessionId, userId, itemId])
+  @@index([sessionId])
+  @@map("watch_party_votes")
+}
+
 // User-curated lists of titles (roadmap #7). Account-scoped, shared across the
 // account's admins (not per-user) - matches how Discover/Groups behave here.
 // itemsJson is a stringified array of { id, type, name, poster?, year? };
