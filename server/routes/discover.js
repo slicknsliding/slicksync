@@ -638,5 +638,92 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     }
   })
 
+  // GET /api/discover/taste-profile
+  // A real per-user "taste profile" built entirely from first-party watch
+  // data (the same weighted vectors taste-overlap uses), NOT self-reported
+  // tags: total watch time, movie/series split, top titles by real time,
+  // top genres, and the household member they match most. This turns the old
+  // flat "Taste overlap" pair list into "here's YOU, and who you're closest
+  // to" - the overlap number becomes one field of a fuller profile instead of
+  // the whole thing. Genres are the one piece not in the vectors, so they're
+  // looked up (Cinemeta, cached) only for each user's top few titles - bounded
+  // so this stays a handful of cached calls, not a wall of them.
+  router.get('/taste-profile', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.json({ profiles: [] })
+      const accountId = getAccountId(req) || 'default'
+
+      const { buildUserVectors, computePairwiseOverlap } = require('../utils/recommendationEngine')
+      const { vectors, itemMeta } = await buildUserVectors(prisma, accountId)
+      if (vectors.size === 0) return res.json({ profiles: [] })
+
+      const users = await prisma.user.findMany({
+        where: { id: { in: [...vectors.keys()] } },
+        select: { id: true, username: true, avatarUrl: true, useGravatar: true, colorIndex: true, email: true },
+      })
+      const userById = new Map(users.map((u) => [u.id, u]))
+
+      // Strongest taste twin per user, from the same pairwise overlap math.
+      const twinByUser = new Map()
+      for (const p of computePairwiseOverlap(vectors, itemMeta)) {
+        if (p.sharedCount <= 0) continue
+        for (const [self, other] of [[p.userA, p.userB], [p.userB, p.userA]]) {
+          const prev = twinByUser.get(self)
+          if (!prev || p.similarity > prev.similarity) twinByUser.set(self, { userId: other, similarity: p.similarity })
+        }
+      }
+
+      const { fetchMetadata } = require('../utils/notify')
+      const TOP_TITLES = 5
+      const TOP_TITLES_FOR_GENRES = 6
+
+      const profiles = []
+      for (const [userId, vec] of vectors.entries()) {
+        if (!userById.has(userId)) continue
+        const entries = [...vec.entries()].sort((a, b) => b[1] - a[1])
+        const totalSeconds = entries.reduce((sum, [, s]) => sum + s, 0)
+        let movieCount = 0, seriesCount = 0
+        for (const [key] of entries) { if (key.startsWith('series:')) seriesCount++; else movieCount++ }
+
+        const topTitles = entries.slice(0, TOP_TITLES).map(([key, seconds]) => ({
+          key, seconds, ...(itemMeta.get(key) || { name: key, poster: null, type: key.startsWith('series:') ? 'series' : 'movie' }),
+        }))
+
+        // Genre votes from the user's top titles (bounded + cached).
+        const genreVotes = new Map()
+        for (const [key] of entries.slice(0, TOP_TITLES_FOR_GENRES)) {
+          const id = key.slice(key.indexOf(':') + 1)
+          const type = key.startsWith('series:') ? 'series' : 'movie'
+          try {
+            const meta = await fetchMetadata(id, type)
+            for (const g of (Array.isArray(meta?.genres) ? meta.genres : [])) genreVotes.set(g, (genreVotes.get(g) || 0) + 1)
+          } catch {}
+        }
+        const topGenres = [...genreVotes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([genre, count]) => ({ genre, count }))
+
+        const twin = twinByUser.get(userId)
+        profiles.push({
+          user: userById.get(userId),
+          totalSeconds,
+          titleCount: entries.length,
+          movieCount,
+          seriesCount,
+          topTitles,
+          topGenres,
+          tasteTwin: twin && userById.has(twin.userId)
+            ? { user: userById.get(twin.userId), similarity: Math.round(twin.similarity * 100) }
+            : null,
+        })
+      }
+
+      // Most-active first, so the section leads with the household's heaviest viewer.
+      profiles.sort((a, b) => b.totalSeconds - a.totalSeconds)
+      res.json({ profiles })
+    } catch (error) {
+      console.error('Error computing taste profile:', error)
+      res.status(500).json({ error: 'Failed to compute taste profile' })
+    }
+  })
+
   return router;
 };
