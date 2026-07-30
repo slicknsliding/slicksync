@@ -1704,6 +1704,13 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  // System Health board - one aggregated read of Sync/Addons/Vault/Proxy
+  // status, all sourced from state existing background monitors already
+  // maintain (no live calls made by this request itself).
+  async getHealthStatus() {
+    return this.fetch<HealthStatus>('/health');
+  }
   async getRecommendations(opts?: { mode?: 'personal' | 'shared'; userId?: string; userId2?: string; type?: 'movie' | 'series' }) {
     const params = new URLSearchParams();
     if (opts?.mode) params.set('mode', opts.mode);
@@ -2300,6 +2307,31 @@ export interface YearInReview {
   mostRewatched: YearInReviewTitle[];
   perUser: Array<{ userId: string; username: string; seconds: number }>;
   hasData: boolean;
+}
+
+export interface HealthStatus {
+  overall: 'healthy' | 'attention';
+  checkedAt: string;
+  sync: {
+    usersTracked: number;
+    driftCount: number;
+    drifted: Array<{ title: string; body: string; url: string | null; since: string }>;
+  };
+  addons: {
+    total: number;
+    checked: number;
+    offlineCount: number;
+    offline: Array<{ name: string; error: string | null; lastChecked: string | null }>;
+  };
+  vault: {
+    total: number;
+    failingCount: number;
+    failing: Array<{ name: string; provider: string | null; message: string | null; lastChecked: string | null }>;
+    expiringCount: number;
+    expiring: Array<{ name: string; provider: string | null; expiresAt: string }>;
+  };
+  proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean };
+  mismatchCount: number;
 }
 
 export interface UpcomingEpisode {
