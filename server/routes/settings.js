@@ -395,6 +395,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           enableWatchlist: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchlist === 'boolean') ? syncCfg.enableWatchlist : true,
           enableWatchedIndicators: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchedIndicators === 'boolean') ? syncCfg.enableWatchedIndicators : true,
           enableRecommendations: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableRecommendations === 'boolean') ? syncCfg.enableRecommendations : true,
+          tmdbApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.tmdbApiKey === 'string') ? syncCfg.tmdbApiKey : '',
         }
 
         return res.json(response)
@@ -428,6 +429,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           enableWatchlist: typeof syncCfg.enableWatchlist === 'boolean' ? syncCfg.enableWatchlist : true,
           enableWatchedIndicators: typeof syncCfg.enableWatchedIndicators === 'boolean' ? syncCfg.enableWatchedIndicators : true,
           enableRecommendations: typeof syncCfg.enableRecommendations === 'boolean' ? syncCfg.enableRecommendations : true,
+          tmdbApiKey: typeof syncCfg.tmdbApiKey === 'string' ? syncCfg.tmdbApiKey : '',
         }
         return res.json(resp)
       }
@@ -439,7 +441,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnMosaic, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnMosaic, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, tmdbApiKey } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -506,6 +508,9 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           enableWatchlist: enableWatchlist !== undefined ? !!enableWatchlist : (typeof baseCfg.enableWatchlist === 'boolean' ? baseCfg.enableWatchlist : true),
           enableWatchedIndicators: enableWatchedIndicators !== undefined ? !!enableWatchedIndicators : (typeof baseCfg.enableWatchedIndicators === 'boolean' ? baseCfg.enableWatchedIndicators : true),
           enableRecommendations: enableRecommendations !== undefined ? !!enableRecommendations : (typeof baseCfg.enableRecommendations === 'boolean' ? baseCfg.enableRecommendations : true),
+          // Optional TMDb API key for the cast/crew deep-dive. Trimmed; empty
+          // string clears it (falls back to the TMDB_API_KEY env var, if any).
+          tmdbApiKey: tmdbApiKey !== undefined ? (typeof tmdbApiKey === 'string' ? tmdbApiKey.trim() : '') : (baseCfg.tmdbApiKey || ''),
         }
 
         try {
@@ -550,6 +555,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (enableWatchlist !== undefined) partial.enableWatchlist = !!enableWatchlist
       if (enableWatchedIndicators !== undefined) partial.enableWatchedIndicators = !!enableWatchedIndicators
       if (enableRecommendations !== undefined) partial.enableRecommendations = !!enableRecommendations
+      if (tmdbApiKey !== undefined) partial.tmdbApiKey = typeof tmdbApiKey === 'string' ? tmdbApiKey.trim() : ''
 
       const nextCfg = { ...base, ...partial }
 
