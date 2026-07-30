@@ -4,23 +4,35 @@
 // never writes, so it carries none of the watch-time-inflation risk that
 // surrounds the write path.
 //
-// Day/month bucketing goes through dateUtils (account timezone), never
-// toISOString (UTC) - same rule as the rest of the codebase.
-const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
+// Year/month bucketing is done in the account timezone (never UTC) - same rule
+// as the rest of the codebase. We read the tz-local year and month via
+// Intl.formatToParts rather than string-slicing getAccountDateString: that
+// helper's formatted string is locale-order-dependent (en-CA yields
+// YYYY-MM-DD, but a runtime whose ICU falls back to en-US yields MM/DD/YYYY),
+// so slicing by position is not portable. formatToParts reads the named parts
+// regardless of order.
+const { resolveAccountTimezone } = require('./dateUtils')
 
 async function buildYearInReview(prisma, accountId, year, users = []) {
   const accountIdValue = accountId || 'default'
   const tz = await resolveAccountTimezone(prisma, accountIdValue)
   const y = Number(year) || new Date().getFullYear()
 
+  const partsFmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit' })
+  const ymOf = (d) => {
+    const parts = partsFmt.formatToParts(new Date(d))
+    const yr = Number(parts.find((p) => p.type === 'year')?.value)
+    const mo = Number(parts.find((p) => p.type === 'month')?.value) - 1 // 0-11
+    return { yr, mo }
+  }
+
   // A generous UTC window around the target year: a timezone offset can push a
   // local calendar day into an adjacent UTC day, so we over-fetch by a day on
   // each side and then filter precisely by the account-timezone year below.
   const start = new Date(Date.UTC(y - 1, 11, 30))
   const end = new Date(Date.UTC(y + 1, 0, 2))
-  const dayStr = (d) => getAccountDateString(new Date(d), tz) // YYYY-MM-DD
-  const inYear = (d) => d && dayStr(d).slice(0, 4) === String(y)
-  const monthOf = (d) => Number(dayStr(d).slice(5, 7)) - 1 // 0-11
+  const inYear = (d) => d && ymOf(d).yr === y
+  const monthOf = (d) => ymOf(d).mo
 
   const [activity, movies, episodes] = await Promise.all([
     prisma.watchActivity.findMany({
