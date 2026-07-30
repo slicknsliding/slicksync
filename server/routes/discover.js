@@ -725,5 +725,96 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     }
   })
 
+  // GET /api/discover/household-picks?type=movie|series
+  // "Nobody's seen it yet, but the house would probably love it." Something
+  // Trakt structurally can't do (it's single-user): titles NO household member
+  // has watched/watchlisted/dismissed, in the genres that appeal broadly
+  // across the household (shared by 2+ members where possible, not just one
+  // person's taste). Reuses buildUserVectors for per-user genre affinity and
+  // the same catalog fetch + household-wide exclusion the recommendations row
+  // uses - no new machinery.
+  router.get('/household-picks', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.json({ items: [], genres: [], memberCount: 0 })
+      const accountId = getAccountId(req) || 'default'
+      const type = req.query.type === 'series' ? 'series' : 'movie'
+
+      // Respect the recommendations opt-out (same feature family).
+      try {
+        const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+        let cfg = acc?.sync
+        if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+        if (cfg && typeof cfg === 'object' && cfg.enableRecommendations === false) return res.json({ items: [], genres: [], memberCount: 0 })
+      } catch {}
+
+      const { buildUserVectors } = require('../utils/recommendationEngine')
+      const { fetchMetadata } = require('../utils/notify')
+      const { vectors } = await buildUserVectors(prisma, accountId)
+      if (vectors.size === 0) return res.json({ items: [], genres: [], memberCount: 0 })
+
+      // Genre affinity per user (their top ~6 titles), then count DISTINCT
+      // users per genre so "broad household appeal" means multiple people, not
+      // one heavy viewer.
+      const TOP_TITLES_PER_USER = 6
+      const genreUsers = new Map() // genre -> Set<userId>
+      for (const [userId, vec] of vectors.entries()) {
+        const top = [...vec.entries()].sort((a, b) => b[1] - a[1]).slice(0, TOP_TITLES_PER_USER)
+        const userGenres = new Set()
+        for (const [key] of top) {
+          const id = key.slice(key.indexOf(':') + 1)
+          const t = key.startsWith('series:') ? 'series' : 'movie'
+          try {
+            const meta = await fetchMetadata(id, t)
+            for (const g of (Array.isArray(meta?.genres) ? meta.genres : [])) userGenres.add(g)
+          } catch {}
+        }
+        for (const g of userGenres) {
+          if (!genreUsers.has(g)) genreUsers.set(g, new Set())
+          genreUsers.get(g).add(userId)
+        }
+      }
+      if (genreUsers.size === 0) return res.json({ items: [], genres: [], memberCount: vectors.size })
+
+      // Prefer genres shared by 2+ members; if a single-user household (or no
+      // genre reaches 2), fall back to that household's strongest genres so
+      // the row still produces unwatched picks.
+      const ranked = [...genreUsers.entries()].sort((a, b) => b[1].size - a[1].size)
+      const shared = ranked.filter(([, s]) => s.size >= 2)
+      const chosen = (shared.length > 0 ? shared : ranked).slice(0, 4).map(([g]) => g)
+
+      // Household-wide exclusion: watched (history + manual overrides),
+      // watchlisted, or dismissed by ANYONE.
+      const [movies, episodes, overrides, watchlist, notInterested] = await Promise.all([
+        prisma.movieWatchHistory.findMany({ where: { accountId }, select: { itemId: true }, distinct: ['itemId'] }),
+        prisma.episodeWatchHistory.findMany({ where: { accountId }, select: { showId: true }, distinct: ['showId'] }),
+        prisma.manualWatchOverride.findMany({ where: { accountId }, select: { itemId: true, watched: true } }),
+        prisma.watchlistItem.findMany({ where: { accountId }, select: { itemId: true } }).catch(() => []),
+        prisma.notInterestedItem.findMany({ where: { accountId }, select: { itemId: true } }).catch(() => []),
+      ])
+      const excludeIds = new Set([...movies.map((m) => m.itemId), ...episodes.map((e) => e.showId), ...watchlist.map((w) => w.itemId), ...notInterested.map((n) => n.itemId)])
+      for (const o of overrides) { if (o.watched) excludeIds.add(o.itemId); else excludeIds.delete(o.itemId) }
+
+      const MAX_ITEMS = 12
+      const items = []
+      const seen = new Set()
+      for (const genre of chosen) {
+        if (items.length >= MAX_ITEMS) break
+        let candidates = await fetchCatalog(type, { catalog: 'imdbRating', genre })
+        if (candidates.length === 0) candidates = await fetchCatalog(type, { catalog: 'top', genre })
+        for (const c of candidates) {
+          if (items.length >= MAX_ITEMS) break
+          if (seen.has(c.id) || excludeIds.has(c.id)) continue
+          seen.add(c.id)
+          items.push(c)
+        }
+      }
+
+      res.json({ items, genres: chosen, memberCount: vectors.size, sharedAppeal: shared.length > 0 })
+    } catch (error) {
+      console.error('Error building household picks:', error)
+      res.status(500).json({ error: 'Failed to build household picks' })
+    }
+  })
+
   return router;
 };

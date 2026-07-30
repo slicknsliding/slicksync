@@ -1684,6 +1684,11 @@ class ApiClient {
   async getTasteProfile() {
     return this.fetch<{ profiles: TasteProfile[] }>('/discover/taste-profile');
   }
+  // Household picks: unwatched-by-everyone titles in genres the whole house
+  // likes. Empty items when recommendations are off or there's no signal yet.
+  async getHouseholdPicks(type: 'movie' | 'series') {
+    return this.fetch<{ items: DiscoverItem[]; genres: string[]; memberCount: number; sharedAppeal: boolean }>(`/discover/household-picks?type=${type}`);
+  }
   // "More Like This" for the detail popup - real household affinity biases
   // which genre(s) get searched, but every returned item is always a fresh
   // Cinemeta pull filtered against the whole household's watch history
