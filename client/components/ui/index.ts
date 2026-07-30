@@ -11,6 +11,7 @@ export * from './DateTimePicker';
 export * from './InlineEdit';
 export * from './Modal';
 export * from './MediaDetailModal';
+export * from './YearInReviewCard';
 export * from './Input';
 export * from './Skeleton';
 export * from './Toast';

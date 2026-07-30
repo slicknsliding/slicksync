@@ -7,7 +7,7 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
-import { Card, StatCard, Badge, UserAvatar, PageToolbar } from '@/components/ui';
+import { Card, StatCard, Badge, UserAvatar, PageToolbar, YearInReviewCard } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, MetricsData, AtRiskUser, TasteOverlapPair, TasteProfile } from '@/lib/api';
 import {
@@ -340,6 +340,12 @@ export default function MetricsPage() {
               layoutId: 'metrics-view-tabs',
             }}
           />
+        </PageSection>
+
+        {/* Year in Review (roadmap #8) - a Wrapped-style yearly summary, shown
+            above the tabbed metrics regardless of which tab is active. */}
+        <PageSection className="mb-6">
+          <YearInReviewCard />
         </PageSection>
 
         {/* Users Tab - User Leaderboard + Streaks + Watch Time Trend */}
