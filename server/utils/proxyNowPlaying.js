@@ -250,6 +250,13 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       p.startTime < earliest ? p.startTime : earliest
     , representative.startTime)
 
+    // Most recent poll cycle that reconfirmed ANY connection in this group is
+    // still in AIOStreams' own active-connection list - see the elapsedSeconds
+    // comment below for why this, not lastSeenAt, is the freeze basis.
+    const mostRecentPollConfirmation = group.reduce((latest, p) =>
+      p.updatedAt > latest ? p.updatedAt : latest
+    , representative.updatedAt)
+
     let candidates = []
     // True only when `candidates` came from a genuinely unique match
     // (username or email), not an arbitrary configured list - a fallback
@@ -348,22 +355,43 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       lastActivityAt: representative.lastSeenAt.toISOString(),
       lastActivityAtTimestamp: representative.lastSeenAt.getTime(),
       // Elapsed time we can actually stand behind, in seconds - real
-      // wall-clock elapsed while proxy traffic is flowing, but frozen at
-      // the point activity went quiet rather than continuing to climb off
-      // raw wall-clock forever. Same root cause as the label above (no way
-      // to confirm real activity once requests stop), but the honest fix
-      // for a NUMBER is to stop advancing it, not to keep incrementing a
-      // figure we can no longer vouch for (confirmed real case: a session
-      // showed "Watching for 49m" and climbing well after the stream had
-      // already been exited - proxy startTime alone is not a safe basis
-      // for an ever-increasing duration display).
+      // wall-clock elapsed while the connection is confirmed live, but
+      // frozen once we can no longer confirm that rather than continuing to
+      // climb off raw wall-clock forever (same root cause as the label
+      // above: no way to confirm real activity once requests stop; the
+      // honest fix for a NUMBER is to stop advancing it, not to keep
+      // incrementing a figure we can no longer vouch for - confirmed real
+      // case: a session showed "Watching for 49m" and climbing well after
+      // the stream had already been exited, so proxy startTime alone is not
+      // a safe basis for an ever-increasing duration display).
+      //
+      // The freeze basis is mostRecentPollConfirmation (this row's updatedAt,
+      // bumped every ~30s poll cycle for as long as AIOStreams' OWN stats
+      // still list the connection as active), NOT lastSeenAt (the last
+      // actual application-level request). Confirmed real case 2026-07-30: a
+      // StremThru/TorBox 4K stream hit lastSeenAt exactly once, ~0.8s after
+      // startTime (3 requests, then the player streamed the rest of a
+      // 20+ minute watch straight from TorBox's own CDN with zero further
+      // proxy traffic) - lastSeenAt froze the display at "~3m" for the
+      // entire watch despite proxyStreamMonitor.js's own 30s poll
+      // continuing to confirm, cycle after cycle, that AIOStreams still had
+      // this exact connection open. updatedAt reflects that ongoing
+      // reconfirmation; lastSeenAt only reflects request cadence, which this
+      // debrid pattern has none of after the first second. This still can't
+      // reintroduce the "climbing after exit" bug above: the moment
+      // AIOStreams actually drops the connection, proxyStreamMonitor.js
+      // stops touching the row (see toClose in that file), updatedAt stops
+      // advancing right along with it, and the row is closed outright
+      // shortly after - same safety property as before, just anchored to a
+      // signal that doesn't go stale within the first second of a fast
+      // debrid stream.
       elapsedSeconds: Math.max(0, Math.floor(
-        (Math.min(Date.now(), representative.lastSeenAt.getTime() + PAUSED_STALE_MS) - earliestStartTime.getTime()) / 1000
+        (Math.min(Date.now(), mostRecentPollConfirmation.getTime() + PAUSED_STALE_MS) - earliestStartTime.getTime()) / 1000
       )),
-      // True once elapsedSeconds above has stopped advancing (no proxy
-      // traffic for PAUSED_STALE_MS) - lets the UI stop ticking a frozen
-      // number live instead of implying it's still counting up.
-      elapsedFrozen: (Date.now() - representative.lastSeenAt.getTime()) > PAUSED_STALE_MS,
+      // True once elapsedSeconds above has stopped advancing (no poll
+      // reconfirmation for PAUSED_STALE_MS) - lets the UI stop ticking a
+      // frozen number live instead of implying it's still counting up.
+      elapsedFrozen: (Date.now() - mostRecentPollConfirmation.getTime()) > PAUSED_STALE_MS,
       source: 'aiostreams-proxy',
     })
   }

@@ -80,6 +80,14 @@ function extractSeasonEpisode(videoId) {
  * either real timeWatched, or progress that's a meaningful fraction (5%,
  * same threshold used by AIOManager) of the item's actual runtime.
  */
+// When a library item has no duration to compute a real percentage against,
+// this is the minimum absolute progress required to still count as watched.
+// Deliberately generous (5 real minutes) so a legitimately short watch of
+// something whose provider never reports a duration still counts - this
+// exists to reject near-zero/placeholder progress, not to raise the bar for
+// genuine short watches.
+const MIN_PROGRESS_MS_NO_DURATION = 5 * 60 * 1000
+
 function isActuallyWatched(item) {
   const state = item.state || {}
   const timeWatched = Number(state.timeWatched || 0)
@@ -93,7 +101,15 @@ function isActuallyWatched(item) {
     return (progressMs / duration) > 0.05
   }
 
-  return !!(state.video_id && state.video_id.trim() !== '')
+  // No duration to compute a ratio against - require real minimum progress
+  // instead of merely "video_id is present". Confirmed real case
+  // 2026-07-30: ~800 bulk-imported "mark as watched" library entries (a
+  // real video_id, backdated lastWatched, some small/placeholder
+  // overallTimeWatched, but no duration ever recorded) sailed through this
+  // fallback as if they were genuine watches - state.video_id being
+  // non-empty is true for essentially every real library item, so it was
+  // never actually filtering anything.
+  return progressMs >= MIN_PROGRESS_MS_NO_DURATION
 }
 
 // Fires a "watched X" notification (Discord + push) for a brand-new
