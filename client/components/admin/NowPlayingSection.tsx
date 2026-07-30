@@ -1,14 +1,17 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Badge } from '@/components/ui';
-import { PlayIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { Badge, UserAvatar } from '@/components/ui';
+import { PlayIcon, FilmIcon, TvIcon } from '@heroicons/react/24/outline';
 
 interface NowPlayingItem {
   user: {
     id: string;
     username: string;
+    email?: string;
     colorIndex?: number;
+    avatarUrl?: string | null;
+    useGravatar?: boolean;
   };
   item: {
     id: string;
@@ -21,6 +24,12 @@ interface NowPlayingItem {
   };
   watchedAt: string;
   watchedAtTimestamp?: number;
+  source?: string;
+  // Proxy-sourced entries only - real elapsed time we can stand behind,
+  // frozen once proxy traffic goes quiet instead of climbing forever off
+  // raw wall-clock (see server/utils/proxyNowPlaying.js). Prefer this over
+  // watchedAtTimestamp whenever present.
+  elapsedSeconds?: number;
 }
 
 interface NowPlayingSectionProps {
@@ -40,11 +49,19 @@ export function NowPlayingSection({ items }: NowPlayingSectionProps) {
     const now = Date.now();
     const diff = now - timestamp;
     const minutes = Math.floor(diff / 60000);
-    
+
     if (minutes < 1) return 'Just now';
     if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
     return `${hours}h ago`;
+  };
+
+  const formatElapsed = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 1) return '<1m';
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ${minutes % 60}m`;
   };
 
   return (
@@ -59,14 +76,14 @@ export function NowPlayingSection({ items }: NowPlayingSectionProps) {
         >
           {/* User Avatar */}
           <div className="flex-shrink-0">
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium"
-              style={{
-                background: `var(--color-avatar-${(item.user.colorIndex || 0) % 10})`,
-              }}
-            >
-              {item.user.username.slice(0, 2).toUpperCase()}
-            </div>
+            <UserAvatar
+              userId={item.user.id}
+              name={item.user.username}
+              email={item.user.email}
+              src={item.user.useGravatar ? undefined : (item.user.avatarUrl ?? undefined)}
+              colorIndex={item.user.colorIndex}
+              size="md"
+            />
           </div>
 
           {/* Item Poster */}
@@ -108,9 +125,11 @@ export function NowPlayingSection({ items }: NowPlayingSectionProps) {
           <div className="flex-shrink-0 text-right flex items-center gap-3">
             <div className="flex items-center gap-1 text-sm text-muted">
               <PlayIcon className="w-4 h-4 text-success" />
-              {item.watchedAtTimestamp 
-                ? formatTimeAgo(item.watchedAtTimestamp)
-                : 'Active'}
+              {item.source === 'aiostreams-proxy' && typeof item.elapsedSeconds === 'number'
+                ? formatElapsed(item.elapsedSeconds)
+                : item.watchedAtTimestamp
+                  ? formatTimeAgo(item.watchedAtTimestamp)
+                  : 'Active'}
             </div>
             <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
           </div>
@@ -119,5 +138,3 @@ export function NowPlayingSection({ items }: NowPlayingSectionProps) {
     </div>
   );
 }
-
-import { FilmIcon, TvIcon } from '@heroicons/react/24/outline';

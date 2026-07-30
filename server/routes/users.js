@@ -112,6 +112,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         orderBy: { id: 'asc' }
       });
 
+      // One bulk lookup for every merged user's absorbed second provider,
+      // rather than a per-user query inside the map below.
+      const secondaryCredentials = await prisma.userProviderCredential.findMany({
+        where: { userId: { in: users.map((u) => u.id) } },
+        select: { userId: true, providerType: true }
+      })
+      const secondaryProviderByUserId = new Map(secondaryCredentials.map((c) => [c.userId, c.providerType]))
+
       // Transform data for frontend compatibility
       const transformedUsers = await Promise.all(users.map(async (user) => {
         // For SQLite, we need to find groups that contain this user
@@ -187,6 +195,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           username: user.username,
           email: user.email,
           providerType: user.providerType || 'stremio',
+          secondaryProviderType: secondaryProviderByUserId.get(user.id) || null,
+          providerConnectionError: user.providerConnectionError || null,
           groupName: userGroup?.name || null,
           groupId: userGroup?.id || null,
           status: user.isActive ? 'active' : 'inactive',
@@ -367,6 +377,64 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // POST /users/upcoming-episodes/mute - whole-show opt-out. Stops the show
+  // appearing in "Coming up" AND stops new-episode alerts for it entirely,
+  // until unmuted - see utils/episodeAlerts.js's muteShow.
+  router.post('/upcoming-episodes/mute', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const { showId, showName, poster } = req.body || {}
+      if (!showId) {
+        return res.status(400).json({ error: 'showId is required' })
+      }
+      const { muteShow } = require('../utils/episodeAlerts')
+      await muteShow(prisma, accountId, showId, showName, poster)
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error muting show:', error)
+      res.status(500).json({ error: 'Failed to mute show' })
+    }
+  })
+
+  // POST /users/upcoming-episodes/unmute
+  router.post('/upcoming-episodes/unmute', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const { showId } = req.body || {}
+      if (!showId) {
+        return res.status(400).json({ error: 'showId is required' })
+      }
+      const { unmuteShow } = require('../utils/episodeAlerts')
+      await unmuteShow(prisma, accountId, showId)
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error unmuting show:', error)
+      res.status(500).json({ error: 'Failed to unmute show' })
+    }
+  })
+
+  // GET /users/upcoming-episodes/muted - list for the "manage muted shows" UI
+  router.get('/upcoming-episodes/muted', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) {
+        return res.status(401).json({ error: 'Unauthorized' })
+      }
+      const { getMutedShows } = require('../utils/episodeAlerts')
+      const shows = await getMutedShows(prisma, accountId)
+      res.json(shows)
+    } catch (error) {
+      console.error('Error fetching muted shows:', error)
+      res.status(500).json({ error: 'Failed to fetch muted shows' })
+    }
+  })
+
   // GET /users/episode-alerts - recent new-episode alerts (fired by
   // utils/episodeAlerts.js's poller) for the notification bell. Must be
   // before /:id route.
@@ -388,6 +456,66 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     } catch (error) {
       console.error('Error fetching episode alerts:', error)
       res.status(500).json({ error: 'Failed to fetch episode alerts' })
+    }
+  })
+
+  // GET /users/notifications - persistent in-app bell notifications (written
+  // by notificationStore.js from the same dispatch path as push/Discord).
+  // Must be before the /:id route. Returns newest-first with server-side read
+  // state, so the bell is consistent across devices (unlike the old
+  // localStorage-only read tracking).
+  router.get('/notifications', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 14))
+      const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+      const notifications = await prisma.notification.findMany({
+        where: { accountId, createdAt: { gte: since } },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      })
+      res.json(notifications)
+    } catch (error) {
+      console.error('Error fetching notifications:', error)
+      res.status(500).json({ error: 'Failed to fetch notifications' })
+    }
+  })
+
+  // POST /users/notifications/mark-read - mark specific ids read, or all when
+  // no ids are given (the bell's "Mark all read").
+  router.post('/notifications/mark-read', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids : null
+      await prisma.notification.updateMany({
+        where: { accountId, read: false, ...(ids ? { id: { in: ids } } : {}) },
+        data: { read: true, readAt: new Date() },
+      })
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error marking notifications read:', error)
+      res.status(500).json({ error: 'Failed to mark notifications read' })
+    }
+  })
+
+  // POST /users/notifications/dismiss - delete specific ids, or all when no
+  // ids are given (the bell's "Clear"). Deletion (not a hidden flag) matches
+  // the bell's existing Clear semantics and keeps the table from growing
+  // unbounded on a long-lived instance.
+  router.post('/notifications/dismiss', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids : null
+      await prisma.notification.deleteMany({
+        where: { accountId, ...(ids ? { id: { in: ids } } : {}) },
+      })
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error dismissing notifications:', error)
+      res.status(500).json({ error: 'Failed to dismiss notifications' })
     }
   })
 
@@ -1400,13 +1528,76 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         createdAt: user.createdAt,
         discordWebhookUrl: user.discordWebhookUrl || null,
         notifyOnWatch: user.notifyOnWatch !== false,
-        watchTime: totalWatchTimeMinutes
+        watchTime: totalWatchTimeMinutes,
+        providerConnectionError: user.providerConnectionError || null,
+        providerConnectionErrorAt: user.providerConnectionErrorAt || null
       }
 
       res.json(transformedUser)
     } catch (error) {
       console.error('Error fetching user details:', error)
       res.status(500).json({ error: 'Failed to fetch user details' })
+    }
+  });
+
+  // Account merge (Stremio<->Nuvio, same real person) - see
+  // server/utils/userMerge.js for the full design/reasoning.
+  router.get('/:id/merge-candidate', async (req, res) => {
+    try {
+      const { getMergeCandidate } = require('../utils/userMerge')
+      const candidate = await getMergeCandidate(prisma, req.params.id)
+      res.json({ candidate })
+    } catch (error) {
+      console.error('Error checking merge candidate:', error)
+      res.status(500).json({ error: 'Failed to check merge candidate' })
+    }
+  });
+
+  router.get('/:id/merge-preview', async (req, res) => {
+    try {
+      const { donorId } = req.query
+      if (!donorId) return res.status(400).json({ error: 'donorId is required' })
+      const { getMergePreview } = require('../utils/userMerge')
+      const preview = await getMergePreview(prisma, req.params.id, donorId)
+      res.json(preview)
+    } catch (error) {
+      console.error('Error building merge preview:', error)
+      res.status(400).json({ error: error.message || 'Failed to build merge preview' })
+    }
+  });
+
+  router.post('/:id/merge', async (req, res) => {
+    try {
+      const { donorId } = req.body || {}
+      if (!donorId) return res.status(400).json({ error: 'donorId is required' })
+      const { mergeUsers } = require('../utils/userMerge')
+      const result = await mergeUsers(prisma, req.params.id, donorId)
+      res.json({ success: true, ...result })
+    } catch (error) {
+      console.error('Error merging users:', error)
+      res.status(400).json({ error: error.message || 'Failed to merge users' })
+    }
+  });
+
+  router.get('/:id/merge-info', async (req, res) => {
+    try {
+      const { getUndoInfo } = require('../utils/userMerge')
+      const info = await getUndoInfo(prisma, req.params.id)
+      res.json({ info })
+    } catch (error) {
+      console.error('Error checking merge info:', error)
+      res.status(500).json({ error: 'Failed to check merge info' })
+    }
+  });
+
+  router.post('/:id/undo-merge', async (req, res) => {
+    try {
+      const { undoMerge } = require('../utils/userMerge')
+      const result = await undoMerge(prisma, req.params.id)
+      res.json({ success: true, ...result })
+    } catch (error) {
+      console.error('Error undoing merge:', error)
+      res.status(400).json({ error: error.message || 'Failed to undo merge' })
     }
   });
 
@@ -5804,6 +5995,101 @@ async function reloadGroupAddons(prisma, getAccountId, groupId, req, decrypt) {
   }
 }
 
+// Does the actual sync work for one set of provider credentials. Split out
+// of syncUserAddons so a merged user (see server/utils/userMerge.js) can run
+// this a second time against their absorbed UserProviderCredential row
+// without re-fetching/re-validating the User row itself - `credentials` is
+// already shaped exactly like the fields syncUserAddons used to select
+// directly off `user`.
+async function syncCredentialsAddons(prismaClient, credentials, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields) {
+  const hasCredentials = credentials.stremioAuthKey || (credentials.nuvioRefreshToken && credentials.nuvioUserId)
+  if (!hasCredentials) return { success: false, error: 'User is not connected to a provider' }
+
+  // Account-scoped decrypt helper. Tries, in order: the per-account DEK (if
+  // any), the server key, then every configured ENCRYPTION_KEY_FALLBACKS -
+  // the SAME fallback chain the global decrypt() uses. The fallbacks are
+  // essential: after an ENCRYPTION_KEY rotation, older credentials stay
+  // encrypted under a previous key (kept decrypt-only by keyManager). Without
+  // trying them here, this path alone failed to decrypt those credentials and
+  // returned a null provider -> "credentials may be invalid", even though the
+  // exact same data read fine everywhere that goes through global decrypt
+  // (confirmed real case 2026-07-29: a Stremio authKey encrypted under the
+  // previous key polled the native library fine but broke the addon-sync path
+  // for precisely this reason - a rotation had moved the key into fallback[1]).
+  const decryptWithAccountKey = (payload) => {
+    const dec = (typeof aesGcmDecrypt === 'function' ? aesGcmDecrypt : aesGcmDecryptUtil)
+    const keys = []
+    try { const dek = (typeof getAccountDek === 'function' ? getAccountDek : getAccountDekUtil)(credentials.accountId); if (dek) keys.push(dek) } catch { }
+    try { keys.push((typeof getServerKey === 'function' ? getServerKey : getServerKeyUtil)()) } catch { }
+    try { const { ENCRYPTION_KEY_FALLBACKS } = require('../utils/config'); for (const k of (ENCRYPTION_KEY_FALLBACKS || [])) keys.push(k) } catch { }
+    let lastErr
+    for (const key of keys) {
+      if (!key) continue
+      try { return dec(key, payload) } catch (e) { lastErr = e }
+    }
+    throw lastErr || new Error('decrypt failed: no usable key')
+  }
+
+  // Build provider (Stremio or Nuvio based on credentials.providerType).
+  // makeCreateProvider with prisma+encrypt enables Nuvio refresh-token persistence.
+  const { makeCreateProvider } = require('../providers')
+  const { encrypt: encryptUtil } = require('../utils/encryption')
+  const createProviderLocal = makeCreateProvider({ prisma: prismaClient, encrypt: encryptUtil })
+  const provider = createProviderLocal(credentials, { decrypt: decryptWithAccountKey, req })
+  if (!provider) {
+    return { success: false, error: 'Failed to initialize provider for user (credentials may be invalid)' }
+  }
+
+  // Compute plan (shared logic); short-circuit if already synced
+  try {
+    const { computeUserSyncPlan } = require('../utils/sync')
+    const parseAddonIdsFn = (typeof parseAddonIds === 'function' ? parseAddonIds : parseAddonIdsUtil)
+    const parseProtectedAddonsFn = (typeof parseProtectedAddons === 'function' ? parseProtectedAddons : require('../utils/validation').parseProtectedAddons)
+    const canonicalizeFn = (typeof canonicalizeManifestUrl === 'function' ? canonicalizeManifestUrl : canonicalizeManifestUrlUtil)
+    const plan = await computeUserSyncPlan(credentials, req, {
+      prisma: prismaClient,
+      getAccountId: (typeof getAccountIdParam === 'function' ? getAccountIdParam : getAccountId),
+      decrypt: (text) => decryptWithAccountKey(text),
+      parseAddonIds: parseAddonIdsFn,
+      parseProtectedAddons: parseProtectedAddonsFn,
+      canonicalizeManifestUrl: canonicalizeFn,
+      StremioAPIClient,
+      createProvider: createProviderLocal,
+      unsafeMode,
+      useCustomFields
+    })
+    if (!plan.success) return { success: false, error: plan.error || 'Failed to compute plan' }
+
+    // Log concise names
+    try {
+      const currentNames = (plan.current || []).map(a => a?.manifest?.name || a?.transportName || 'Unknown').filter(Boolean)
+      const desiredNames = (plan.desired || []).map(a => a?.manifest?.name || a?.name || a?.transportName || 'Unknown').filter(Boolean)
+      console.log(`📥 Current addons (${currentNames.length}):`, currentNames.join(', '))
+      console.log(`🎯 Desired addons (${desiredNames.length}):`, desiredNames.join(', '))
+    } catch { }
+
+    if (plan.alreadySynced) {
+      console.log(`✅ User already synced`)
+      return { success: true, total: (plan.desired || []).length, alreadySynced: true }
+    }
+
+    // If desired addons is empty (empty group), clear all addons
+    let finalDesired = plan.desired || []
+    if (finalDesired.length === 0) {
+      await provider.clearAddons()
+      console.log('📦 Empty group detected, cleared all addons')
+      return { success: true, total: 0 }
+    }
+
+    await provider.setAddons(finalDesired)
+    console.log('✅ User now synced')
+    return { success: true, total: (plan.desired || []).length }
+  } catch (e) {
+    console.error('❌ Failed to apply sync plan:', e?.message)
+    return { success: false, error: e?.message || 'Failed to sync addons' }
+  }
+}
+
 async function syncUserAddons(prismaClient, userId, excludedManifestUrls = [], unsafeMode = false, req, decrypt, getAccountIdParam, useCustomFields = true) {
   try {
     // Ensure req has appAccountId for account scoping
@@ -5837,78 +6123,61 @@ async function syncUserAddons(prismaClient, userId, excludedManifestUrls = [], u
 
     if (!user) return { success: false, error: 'User not found' }
     if (!user.isActive) return { success: false, error: 'User is disabled' }
-    const hasCredentials = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
-    if (!hasCredentials) return { success: false, error: 'User is not connected to a provider' }
 
-    // syncUserAddons only handles the actual syncing - no mode handling
+    const result = await syncCredentialsAddons(prismaClient, user, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields)
 
-    // Account-scoped decrypt helper (same key selection logic as legacy path:
-    // per-account DEK if present, else server key)
-    const decryptWithAccountKey = (payload) => {
-      let key = null
-      try { key = (typeof getAccountDek === 'function' ? getAccountDek : getAccountDekUtil)(user.accountId) } catch { }
-      if (!key) { key = (typeof getServerKey === 'function' ? getServerKey : getServerKeyUtil)() }
-      return (typeof aesGcmDecrypt === 'function' ? aesGcmDecrypt : aesGcmDecryptUtil)(key, payload)
-    }
-
-    // Build provider (Stremio or Nuvio based on user.providerType).
-    // makeCreateProvider with prisma+encrypt enables Nuvio refresh-token persistence.
-    const { makeCreateProvider } = require('../providers')
-    const { encrypt: encryptUtil } = require('../utils/encryption')
-    const createProviderLocal = makeCreateProvider({ prisma: prismaClient, encrypt: encryptUtil })
-    const provider = createProviderLocal(user, { decrypt: decryptWithAccountKey, req })
-    if (!provider) {
-      return { success: false, error: 'Failed to initialize provider for user (credentials may be invalid)' }
-    }
-
-    // Compute plan (shared logic); short-circuit if already synced
+    // Merged users (see server/utils/userMerge.js) absorb a second provider's
+    // credentials into a UserProviderCredential row rather than a second
+    // User row - sync it as a second pass here so every existing caller of
+    // syncUserAddons (this route, sync-all, groups.js's group sync) picks up
+    // both providers automatically with no changes on their end. The
+    // PRIMARY result above is still what's returned/checked by callers
+    // (unchanged shape); the secondary pass is logged, not merged into it,
+    // so a secondary-only failure can't make an otherwise-successful primary
+    // sync look like it failed.
     try {
-      const { computeUserSyncPlan } = require('../utils/sync')
-      const parseAddonIdsFn = (typeof parseAddonIds === 'function' ? parseAddonIds : parseAddonIdsUtil)
-      const parseProtectedAddonsFn = (typeof parseProtectedAddons === 'function' ? parseProtectedAddons : require('../utils/validation').parseProtectedAddons)
-      const canonicalizeFn = (typeof canonicalizeManifestUrl === 'function' ? canonicalizeManifestUrl : canonicalizeManifestUrlUtil)
-      const plan = await computeUserSyncPlan(user, req, {
-        prisma: prismaClient,
-        getAccountId: (typeof getAccountIdParam === 'function' ? getAccountIdParam : getAccountId),
-        decrypt: (text) => decryptWithAccountKey(text),
-        parseAddonIds: parseAddonIdsFn,
-        parseProtectedAddons: parseProtectedAddonsFn,
-        canonicalizeManifestUrl: canonicalizeFn,
-        StremioAPIClient,
-        createProvider: createProviderLocal,
-        unsafeMode,
-        useCustomFields
-      })
-      if (!plan.success) return { success: false, error: plan.error || 'Failed to compute plan' }
-
-      // Log concise names
-      try {
-        const currentNames = (plan.current || []).map(a => a?.manifest?.name || a?.transportName || 'Unknown').filter(Boolean)
-        const desiredNames = (plan.desired || []).map(a => a?.manifest?.name || a?.name || a?.transportName || 'Unknown').filter(Boolean)
-        console.log(`📥 Current addons (${currentNames.length}):`, currentNames.join(', '))
-        console.log(`🎯 Desired addons (${desiredNames.length}):`, desiredNames.join(', '))
-      } catch { }
-
-      if (plan.alreadySynced) {
-        console.log(`✅ User already synced`)
-        return { success: true, total: (plan.desired || []).length, alreadySynced: true }
+      const secondaryCredential = await prismaClient.userProviderCredential.findUnique({
+        where: { userId_providerType: { userId: user.id, providerType: user.providerType === 'nuvio' ? 'stremio' : 'nuvio' } }
+      }).catch(() => null)
+      if (secondaryCredential) {
+        // id MUST be the real survivor id, not a synthetic one - getDesiredAddons
+        // (server/utils/sync.js) resolves group membership via a string-contains
+        // match against this exact id, so a fake id here would silently resolve
+        // to zero groups and push an empty addon set to the absorbed provider.
+        // __persistNuvioRefreshToken (see server/providers/index.js) is what
+        // keeps a Nuvio token refresh from landing in the survivor's own
+        // User.nuvioRefreshToken field instead of this row.
+        const secondaryResult = await syncCredentialsAddons(prismaClient, {
+          id: user.id,
+          isActive: user.isActive,
+          protectedAddons: user.protectedAddons,
+          excludedAddons: user.excludedAddons,
+          accountId: user.accountId,
+          providerType: secondaryCredential.providerType,
+          stremioAuthKey: secondaryCredential.stremioAuthKey,
+          nuvioRefreshToken: secondaryCredential.nuvioRefreshToken,
+          nuvioUserId: secondaryCredential.nuvioUserId,
+          __persistNuvioRefreshToken: secondaryCredential.providerType === 'nuvio'
+            ? async (encryptedToken) => {
+                await prismaClient.userProviderCredential.update({
+                  where: { userId_providerType: { userId: user.id, providerType: 'nuvio' } },
+                  data: { nuvioRefreshToken: encryptedToken }
+                })
+              }
+            : undefined,
+        }, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields)
+        if (secondaryResult.success) {
+          console.log(`✅ Secondary provider (${secondaryCredential.providerType}) also synced for ${userName}`)
+        } else {
+          console.error(`❌ Secondary provider (${secondaryCredential.providerType}) sync failed for ${userName}:`, secondaryResult.error)
+        }
+        result.secondary = secondaryResult
       }
-
-      // If desired addons is empty (empty group), clear all addons
-      let finalDesired = plan.desired || []
-      if (finalDesired.length === 0) {
-        await provider.clearAddons()
-        console.log('📦 Empty group detected, cleared all addons')
-        return { success: true, total: 0 }
-      }
-
-      await provider.setAddons(finalDesired)
-      console.log('✅ User now synced')
-      return { success: true, total: (plan.desired || []).length }
     } catch (e) {
-      console.error('❌ Failed to apply sync plan:', e?.message)
-      return { success: false, error: e?.message || 'Failed to sync addons' }
+      console.error('Secondary provider sync check skipped:', e?.message)
     }
+
+    return result
   } catch (error) {
     console.error('Error in syncUserAddons:', error)
     return { success: false, error: error?.message || 'Unknown error' }

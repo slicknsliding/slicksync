@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState, memo, useCallback, useRef } from 'react';
-import { CalendarDaysIcon, TvIcon, XCircleIcon } from '@heroicons/react/24/outline';
-import { Card, MediaDetailModal, ContextMenu, useContextMenu } from '@/components/ui';
-import { api, UpcomingEpisode } from '@/lib/api';
+import { CalendarDaysIcon, TvIcon, XCircleIcon, SpeakerXMarkIcon, SpeakerWaveIcon } from '@heroicons/react/24/outline';
+import { Card, MediaDetailModal, ContextMenu, useContextMenu, Modal, Button } from '@/components/ui';
+import { api, UpcomingEpisode, MutedShow } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 
 // Dashboard "Coming up" calendar: the next upcoming episode for every show
@@ -43,10 +43,12 @@ const UpcomingRow = memo(function UpcomingRow({
   item,
   onOpen,
   onDismiss,
+  onMute,
 }: {
   item: UpcomingEpisode;
   onOpen: (item: UpcomingEpisode) => void;
   onDismiss: (item: UpcomingEpisode) => void;
+  onMute: (item: UpcomingEpisode) => void;
 }) {
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
   const label = airLabel(item.airDate);
@@ -104,24 +106,19 @@ const UpcomingRow = memo(function UpcomingRow({
             <TvIcon className="w-5 h-5 text-subtle" />
           )}
         </div>
-        {/* No flex-1 here — this used to stretch to fill the row (which can
-            be very wide with only one item, e.g. a single-column Coming Up
-            list), shoving the air-date badge all the way to the far right
-            with a huge empty gap. min-w-0 alone still lets a long show name
-            truncate correctly; the date now just sits right after it. */}
-        <div className="min-w-0 max-w-[60%]">
+        <div className="min-w-0 flex-1">
+          <span
+            className={`inline-block px-2 py-0.5 mb-1 rounded-full text-xs font-medium ${
+              label.soon ? 'bg-primary/15 text-primary' : 'bg-surface-hover text-muted'
+            }`}
+          >
+            {label.text}
+          </span>
           <p className="text-sm font-medium text-default truncate">{item.showName || 'Unknown show'}</p>
           <p className="text-xs text-muted truncate">
             {epLabel(item.season, item.episode)}{item.title ? ` · ${item.title}` : ''}
           </p>
         </div>
-        <span
-          className={`flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium ${
-            label.soon ? 'bg-primary/15 text-primary' : 'bg-surface-hover text-muted'
-          }`}
-        >
-          {label.text}
-        </span>
       </button>
 
       <ContextMenu isOpen={isOpen} position={position} onClose={close}>
@@ -133,6 +130,14 @@ const UpcomingRow = memo(function UpcomingRow({
           <XCircleIcon className="w-4 h-4" />
           Hide this episode
         </button>
+        <button
+          type="button"
+          onClick={() => { close(); onMute(item); }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+        >
+          <SpeakerXMarkIcon className="w-4 h-4" />
+          Stop tracking this series
+        </button>
       </ContextMenu>
     </div>
   );
@@ -142,6 +147,8 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
   const [items, setItems] = useState<UpcomingEpisode[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [detail, setDetail] = useState<UpcomingEpisode | null>(null);
+  const [mutedShows, setMutedShows] = useState<MutedShow[]>([]);
+  const [isMutedModalOpen, setIsMutedModalOpen] = useState(false);
 
   useEffect(() => {
     api.getUpcomingEpisodes()
@@ -156,6 +163,26 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
     toast.success(`Hidden ${item.showName || 'episode'} ${epLabel(item.season, item.episode)}`);
   }, []);
 
+  // Mutes the whole show, not just this one episode - removes every row for
+  // it (there's only ever one per show anyway) and stops future new-episode
+  // alerts server-side too. See utils/episodeAlerts.js's muteShow.
+  const handleMute = useCallback((item: UpcomingEpisode) => {
+    setItems((prev) => prev.filter((i) => i.showId !== item.showId));
+    api.muteShow(item.showId, item.showName || undefined, item.poster || undefined).catch(() => {});
+    toast.success(`Won't track new episodes for ${item.showName || 'this show'} anymore`);
+  }, []);
+
+  const openMutedModal = useCallback(() => {
+    api.getMutedShows().then(setMutedShows).catch(() => setMutedShows([]));
+    setIsMutedModalOpen(true);
+  }, []);
+
+  const handleUnmute = useCallback((show: MutedShow) => {
+    setMutedShows((prev) => prev.filter((s) => s.id !== show.id));
+    api.unmuteShow(show.showId).catch(() => {});
+    toast.success(`${show.showName || 'Show'} will show up again once it has a new episode`);
+  }, []);
+
   if (!loaded || items.length === 0) return null;
 
   return (
@@ -166,6 +193,14 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
           <h3 className="text-base font-semibold font-display text-default">Coming up</h3>
           <span className="text-xs text-muted hidden sm:inline">New episodes for shows you&apos;re watching · right-click or long-press to hide</span>
           <span className="text-xs text-muted sm:hidden">Long-press to hide</span>
+          <button
+            type="button"
+            onClick={openMutedModal}
+            title="Manage muted shows"
+            className="ml-auto p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface-hover transition-colors"
+          >
+            <SpeakerXMarkIcon className="w-4 h-4" />
+          </button>
         </div>
 
         {/* Grid on desktop (two columns from md up) so a healthy watchlist
@@ -178,6 +213,7 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
               item={item}
               onOpen={setDetail}
               onDismiss={handleDismiss}
+              onMute={handleMute}
             />
           ))}
         </div>
@@ -193,6 +229,31 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
           fallbackPoster={detail.poster}
         />
       )}
+
+      <Modal isOpen={isMutedModalOpen} onClose={() => setIsMutedModalOpen(false)} title="Muted Shows" size="md">
+        {mutedShows.length === 0 ? (
+          <p className="text-sm text-muted py-4 text-center">No muted shows — "Stop tracking this series" on any Coming Up entry adds it here.</p>
+        ) : (
+          <div className="space-y-2">
+            {mutedShows.map((show) => (
+              <div key={show.id} className="flex items-center gap-3 p-2 rounded-lg bg-surface-hover">
+                <div className="w-8 h-11 rounded-md overflow-hidden bg-surface flex-shrink-0 flex items-center justify-center">
+                  {show.poster ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={show.poster} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <TvIcon className="w-4 h-4 text-subtle" />
+                  )}
+                </div>
+                <p className="flex-1 min-w-0 text-sm font-medium text-default truncate">{show.showName || 'Unknown show'}</p>
+                <Button variant="secondary" size="sm" leftIcon={<SpeakerWaveIcon className="w-4 h-4" />} onClick={() => handleUnmute(show)}>
+                  Unmute
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 });

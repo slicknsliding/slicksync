@@ -1,11 +1,11 @@
-# SlickSync
+#                                 SlickSync
 
 *Multi-provider addon, user, and credential management for **Stremio** and **Nuvio**.*
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js&logoColor=white)](https://nextjs.org)
-[![Docker](https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://github.com/slicknsliding/slicksync/pkgs/container/slicksync)
+[![Docker Pulls](https://img.shields.io/docker/pulls/slicknsliding/slicksync?logo=docker&logoColor=white&color=2496ED)](https://hub.docker.com/r/slicknsliding/slicksync)
 [![Fork of Syncio](https://img.shields.io/badge/fork%20of-Syncio-blueviolet)](https://github.com/iamneur0/syncio)
 [![Inspired by AIOManager](https://img.shields.io/badge/inspired%20by-AIOManager-orange)](https://github.com/Sonicx161/AIOManager)
 
@@ -180,6 +180,7 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 <summary><strong>Troubleshooting</strong></summary>
 
 - **Decryption errors after an update** (`Unsupported state or unable to authenticate data`): the running code is deriving a different key than what encrypted your data — check `data/server_secret.key` wasn't lost, and don't modify `server/utils/encryption.js`'s key-derivation constants on a fork.
+- **"credentials may be invalid" on Sync, but the same user's library/history still updates fine**: a decrypt-key rotation split your data across key generations — every read path falls back to the previous key automatically, but that leaves some secrets still encrypted under the old one. Boot logs show `[keyManager] ENCRYPTION_KEY differs from the previously persisted key` when this is the case. Fix it once and for all: `docker exec -it -e DATABASE_URL="file:///app/data/sqlite.db" <container> node scripts/consolidate-encryption-keys.js` (dry-run; add `--apply --sync-keyfile` to actually re-encrypt everything onto your current key and stop the warning from recurring).
 - **"Detected additional lockfiles" during build**: delete any stray `package-lock.json` — this project runs on `bun`.
 - **First-boot database errors**: confirm `/app/data` is writable by the container's user (`1001:1001`).
 </details>

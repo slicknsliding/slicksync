@@ -107,7 +107,10 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
         nuvioUserId: true,
         colorIndex: true,
         notifyOnWatch: true,
-        discordWebhookUrl: true
+        discordWebhookUrl: true,
+        // Needed so getLibraryForUser can clear the flag on a successful fetch
+        // (the self-healing half of the "Reconnect needed" warning).
+        providerConnectionError: true
       }
     })
 
@@ -123,6 +126,34 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       const { makeCreateProvider } = require('../providers')
       const { encrypt } = require('./encryption')
       const createProvider = makeCreateProvider({ prisma, encrypt })
+
+      // A live-fetch failure below falls back to a stale cached library so
+      // sessions/metrics processing still has *something* to run against -
+      // but that fallback used to be completely silent, with no record
+      // anywhere that it was even happening. Confirmed real case: a user's
+      // watch history went quiet for over a week with zero visibility into
+      // why. providerConnectionError makes that visible and self-healing -
+      // set on any live-fetch failure, cleared on the next success.
+      function isAuthFailure(message) {
+        const m = (message || '').toLowerCase()
+        return m.includes('session does not exist') || m.includes('unauthorized') || m.includes('invalid auth') || m.includes(' 401')
+      }
+      async function recordConnectionError(userId, message) {
+        try {
+          await prisma.user.update({
+            where: { id: userId },
+            data: { providerConnectionError: message.slice(0, 500), providerConnectionErrorAt: new Date() },
+          })
+        } catch {}
+      }
+      async function clearConnectionError(userId) {
+        try {
+          await prisma.user.update({
+            where: { id: userId },
+            data: { providerConnectionError: null, providerConnectionErrorAt: null },
+          })
+        } catch {}
+      }
 
       // Helper function to get library for a user via their provider
       // (Stremio or Nuvio); falls back to cache if no credentials or on error
@@ -149,10 +180,13 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
             itemCount: Array.isArray(library) ? library.length : 0
           })
 
+          if (user.providerConnectionError) await clearConnectionError(user.id)
           return library || []
         } catch (error) {
           heartbeat('getLibraryForUser:live_fetch_failed', { userId: user.id, message: error.message })
           console.warn(`[ActivityMonitor] Failed to fetch library for user ${user.id}:`, error.message)
+          const prefix = isAuthFailure(error.message) ? 'Reconnect needed: ' : 'Connection issue: '
+          await recordConnectionError(user.id, prefix + error.message)
           // Fallback to cache if API call fails
           const cachedLibrary = getCachedLibrary(accountId, user)
           return cachedLibrary || []
@@ -174,6 +208,18 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       } catch (sessionError) {
         heartbeat('processAccountSessions:error', { message: sessionError.message, stack: sessionError.stack })
         console.warn(`[ActivityMonitor] Error processing sessions:`, sessionError.message)
+      }
+
+      // Detect silent account mismatches (proxy sees this user watching, but
+      // their connected Stremio account logs none of it - device likely signed
+      // into a different account). Runs after sessions are refreshed above so
+      // it compares against the freshest native watch state. Self-contained /
+      // best-effort - never disturbs the metrics work around it.
+      try {
+        const { checkWatchSyncMismatch } = require('./watchSyncMismatch')
+        await checkWatchSyncMismatch(prisma, accountId, users)
+      } catch (mismatchError) {
+        console.warn(`[ActivityMonitor] Error checking watch-sync mismatch:`, mismatchError.message)
       }
 
       // Precompute and cache metrics for all periods (runs every 5 minutes)
