@@ -589,13 +589,31 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           // see stremioWatchedDecoder.js's captured example, where timeOffset ~=
           // duration for the current video while overallTimeWatched is 30x larger).
           // Capped against state.duration as a safety net regardless.
+          //
+          // BUT: bounded-by-runtime doesn't mean the position is FRESH. Confirmed
+          // real case (2026-07-30): a profile's very first-ever observed session
+          // for an item had timeOffset already sitting at ~100% of duration
+          // (startPosition === lastPosition === totalDuration, to the
+          // millisecond) - seeding the full ~95min runtime as "watched right
+          // now" produced a bogus full-length History entry for a movie that
+          // was never actually watched in that sitting. A position already at
+          // the end on the FIRST-ever observation is far more likely to mean
+          // "this was finished at some earlier, untracked time and we're only
+          // just now seeing that state" than "watched start-to-finish in the
+          // instant between polls" - same principle as getMaxOverallTimeWatched
+          // (metricsProcessor.js): recovering to/starting at an already-complete
+          // value must never register as fresh progress. Don't seed in that case;
+          // let it accrue from here via the normal incremental delta instead.
+          const NEAR_COMPLETE_RATIO = 0.95
           let seedDurationSeconds = 0
           if (priorDurationSeconds === 0 && typeof state.timeOffset === 'number' && state.timeOffset > 0) {
             const durationMs = Number(state.duration ?? NaN)
-            const cappedMs = Number.isNaN(durationMs) || durationMs <= 0
-              ? state.timeOffset
-              : Math.min(state.timeOffset, durationMs)
-            seedDurationSeconds = Math.max(0, Math.floor(cappedMs / 1000))
+            const hasRealDuration = !Number.isNaN(durationMs) && durationMs > 0
+            const alreadyNearComplete = hasRealDuration && state.timeOffset >= durationMs * NEAR_COMPLETE_RATIO
+            if (!alreadyNearComplete) {
+              const cappedMs = hasRealDuration ? Math.min(state.timeOffset, durationMs) : state.timeOffset
+              seedDurationSeconds = Math.max(0, Math.floor(cappedMs / 1000))
+            }
           }
           const initialDurationSeconds = Math.max(priorDurationSeconds, seedDurationSeconds)
 
