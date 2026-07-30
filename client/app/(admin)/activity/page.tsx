@@ -756,19 +756,12 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           </span>
         </div>
 
-        {/* Real completion - subtle text marker (off the poster art). Finished
-            = played to ~end; Dropped = started but not finished. Only when we
-            have a verdict; unknown shows nothing. */}
-        {activity.completed === true && (
-          <p className="text-[11px] font-medium text-success">
-            ✓ Finished
-            {activity.rewatchCount && activity.rewatchCount > 0 ? (
-              <span className="ml-1 text-primary">· ↻ {activity.rewatchCount + 1}×</span>
-            ) : null}
-          </p>
-        )}
-        {activity.completed === false && (
-          <p className="text-[11px] text-slate-500">Started · not finished</p>
+        {/* Rewatch count only - the "Finished"/"Started, not finished" text
+            marker was removed per feedback (looked cluttered on the card).
+            Real completion is still tracked and used elsewhere (Year in
+            Review, rewatch detection itself); it just isn't surfaced here. */}
+        {!!activity.rewatchCount && activity.rewatchCount > 0 && (
+          <p className="text-[11px] font-medium text-primary">↻ {activity.rewatchCount + 1}×</p>
         )}
       </div>
     </motion.div>
