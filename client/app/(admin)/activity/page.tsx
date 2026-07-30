@@ -74,6 +74,7 @@ interface ActivityItem {
   profileLabel?: string; // Nuvio profile name this was watched under, if known
   userAvatarUrl?: string | null;
   debridService?: string; // e.g. "torbox" - only set when confidently detected via the AIOStreams proxy (see server/utils/debridDetection.js). Absent doesn't mean "not debrid".
+  completed?: boolean | null; // real completion: true = finished, false = started/dropped, null/undefined = unknown
   // Grid view only (see buildGridWatchers below) - other distinct users who
   // watched this SAME content on the SAME day, oldest first. Set only on the
   // most-recent activity for that content+day; the earlier ones are omitted
@@ -167,6 +168,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         season: entry.item.season ?? undefined,
         episode: entry.item.episode ?? undefined,
         episodeName: entry.episodeName ?? undefined,
+        completed: entry.completed ?? null,
         durationSeconds: entry.durationSeconds && entry.durationSeconds > 0 ? entry.durationSeconds : undefined,
         timestamp: new Date(entry.watchedAt),
         endTime: new Date(entry.watchedAt),
@@ -682,12 +684,28 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           </div>
         )}
 
-        {/* Session duration badge - top left, styled like the activity type tick */}
-        {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
-          <div className="absolute top-2 left-2">
-            <div className={`px-2 py-1 rounded-md text-xs font-medium shadow-lg ${getActivityColor(activity.type)}`}>
-              {formatDuration(activity.durationSeconds)}
-            </div>
+        {/* Session duration badge + real-completion indicator - top left.
+            completed distinguishes a genuine finish (played to ~the end) from
+            a started-and-dropped watch, from actual position data - something
+            self-reported check-ins can't tell apart. Only shown when we have
+            a verdict (true/false); null (unknown) shows just the duration. */}
+        {!activity.isSynthetic && ((activity.durationSeconds !== undefined && activity.durationSeconds > 0) || activity.completed === true || activity.completed === false) && (
+          <div className="absolute top-2 left-2 flex items-center gap-1">
+            {activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
+              <div className={`px-2 py-1 rounded-md text-xs font-medium shadow-lg ${getActivityColor(activity.type)}`}>
+                {formatDuration(activity.durationSeconds)}
+              </div>
+            )}
+            {activity.completed === true && (
+              <div className="px-1.5 py-1 rounded-md shadow-lg bg-success text-white flex items-center gap-0.5" title="Finished — played to the end">
+                <CheckCircleIcon className="w-3.5 h-3.5" />
+              </div>
+            )}
+            {activity.completed === false && (
+              <div className="px-1.5 py-1 rounded-md shadow-lg bg-slate-900/80 text-slate-300 backdrop-blur-sm flex items-center gap-0.5" title="Started but not finished">
+                <PauseIcon className="w-3.5 h-3.5" />
+              </div>
+            )}
           </div>
         )}
 

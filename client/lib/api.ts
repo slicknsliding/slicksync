@@ -2474,6 +2474,9 @@ export interface MetricsData {
     // Episode title from Cinemeta, when known - series entries only. See
     // EpisodeWatchHistory.episodeName in the schema for how this gets filled.
     episodeName?: string | null;
+    // Real completion: true = genuinely finished (played to ~end), false =
+    // started but dropped, null = unknown. See the schema comment.
+    completed?: boolean | null;
     watchedAt: string;
     watchedAtTimestamp: number;
     // Only present when backfilled from a matching native WatchSession -
