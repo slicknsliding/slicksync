@@ -9,9 +9,22 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, CustomListItem } from '@/lib/api';
+import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import {
   RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon,
 } from '@heroicons/react/24/outline';
+
+// Mirrors Discover's own sort options - "List order" here instead of
+// "Default order" since that's what it actually is (items in the order they
+// were added), not a server-side catalog sort.
+const SORT_OPTIONS = [
+  { key: 'default', label: 'List order' },
+  { key: 'title', label: 'Title (A-Z)' },
+  { key: 'year-desc', label: 'Year (Newest)' },
+  { key: 'year-asc', label: 'Year (Oldest)' },
+  { key: 'rating-desc', label: 'Rating (Highest)' },
+] as const;
+type SortKey = typeof SORT_OPTIONS[number]['key'];
 
 // A list's own page (roadmap #7 follow-up) - opening a list is a destination,
 // not a transient popup, so it gets a real route (/lists/[id]) with a URL you
@@ -31,6 +44,16 @@ export default function ListDetailPage() {
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [sortBy, setSortBy] = useState<SortKey>('default');
+
+  const ratingsById = useRatingsBatch((list?.items || []).map((i) => i.id));
+  const sortedItems = !list ? [] : sortBy === 'default' ? list.items : [...list.items].sort((a, b) => {
+    if (sortBy === 'title') return a.name.localeCompare(b.name);
+    if (sortBy === 'year-desc') return (Number(b.year) || 0) - (Number(a.year) || 0);
+    if (sortBy === 'year-asc') return (Number(a.year) || 0) - (Number(b.year) || 0);
+    const ratingOf = (i: CustomListItem) => parseFloat(ratingsById[i.id]?.imdbRating || '0') || 0;
+    return ratingOf(b) - ratingOf(a);
+  });
 
   const load = useCallback(() => {
     setIsLoading(true);
@@ -151,8 +174,24 @@ export default function ListDetailPage() {
               <p className="text-xs text-subtle mt-1">Open any movie or show and use &quot;Add to list&quot;.</p>
             </Card>
           ) : list ? (
+            <>
+              {list.items.length > 1 && (
+                <div className="flex items-center justify-end gap-1.5 mb-3">
+                  <span className="text-xs text-muted">Sort:</span>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as SortKey)}
+                    aria-label="Sort list"
+                    className="px-2.5 py-1 rounded-md text-xs font-medium bg-surface-hover text-muted hover:text-default border border-default cursor-pointer"
+                  >
+                    {SORT_OPTIONS.map((opt) => (
+                      <option key={opt.key} value={opt.key}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-              {list.items.map((item) => (
+              {sortedItems.map((item) => (
                 <div key={item.id} className="relative group">
                   <button type="button" onClick={() => setDetail(item)} className="w-full text-left">
                     <PosterThumb item={item} className="w-full aspect-[2/3]" />
@@ -169,6 +208,7 @@ export default function ListDetailPage() {
                 </div>
               ))}
             </div>
+            </>
           ) : null}
         </PageSection>
       </div>
@@ -209,6 +249,9 @@ export default function ListDetailPage() {
           itemType={detail.type}
           fallbackTitle={detail.name}
           fallbackPoster={detail.poster || undefined}
+          fallbackRating={ratingsById[detail.id]?.imdbRating}
+          fallbackRottenTomatoes={ratingsById[detail.id]?.rottenTomatoes}
+          fallbackMetacritic={ratingsById[detail.id]?.metacritic}
         />
       )}
     </>

@@ -37,6 +37,27 @@ const GENRES = [
   'Romance', 'Sci-Fi', 'Thriller', 'War', 'Western',
 ];
 
+// Client-side re-sort options for whatever's currently loaded/filtered.
+// "Default" is server/catalog order (Popular/New/Top Rated already are a
+// sort, and Watchlist keeps the order items were added in). The others sort
+// in place — exact for Watchlist and search results (both fully loaded, no
+// pagination), and a "sort what's loaded so far" reorder for infinite-scroll
+// browse mode, same caveat any client-side sort over a paginated API has.
+const SORT_OPTIONS = [
+  { key: 'default', label: 'Default order' },
+  { key: 'title', label: 'Title (A-Z)' },
+  { key: 'year-desc', label: 'Year (Newest)' },
+  { key: 'year-asc', label: 'Year (Oldest)' },
+  { key: 'rating-desc', label: 'Rating (Highest)' },
+] as const;
+type SortKey = typeof SORT_OPTIONS[number]['key'];
+
+function extractYear(releaseInfo: string | null | undefined): number {
+  if (!releaseInfo) return 0;
+  const match = releaseInfo.match(/\d{4}/);
+  return match ? parseInt(match[0], 10) : 0;
+}
+
 const PAGE_SIZE = 100; // Cinemeta serves 100 items per catalog page
 // Some catalog+genre combos have legitimately small pages (e.g. Western +
 // Top Rated has < 100 real IMDb items after our filter). A fixed high
@@ -379,6 +400,7 @@ export default function DiscoverPage() {
     if (!enableWatchedIndicators && watchedFilter !== 'all') setWatchedFilter('all');
   }, [enableWatchedIndicators, watchedFilter]);
   const [watchedStatus, setWatchedStatus] = useState<Record<string, boolean>>({});
+  const [sortBy, setSortBy] = useState<SortKey>('default');
 
   // Convert saved WatchlistItem[] into DiscoverItem[] so the same grid + card
   // component renders both sources with no branching in the render tree.
@@ -402,6 +424,13 @@ export default function DiscoverPage() {
   });
   const loading = source === 'watchlist' ? !watchlistLoaded : isLoading;
   const ratingsById = useRatingsBatch(displayedItems.map((i) => i.id));
+  const sortedItems = sortBy === 'default' ? displayedItems : [...displayedItems].sort((a, b) => {
+    if (sortBy === 'title') return a.name.localeCompare(b.name);
+    if (sortBy === 'year-desc') return extractYear(b.releaseInfo) - extractYear(a.releaseInfo);
+    if (sortBy === 'year-asc') return extractYear(a.releaseInfo) - extractYear(b.releaseInfo);
+    const ratingOf = (i: DiscoverItem) => parseFloat(ratingsById[i.id]?.imdbRating || i.imdbRating || '0') || 0;
+    return ratingOf(b) - ratingOf(a);
+  });
 
   // Debounce typing so search isn't firing a request per keystroke.
   useEffect(() => {
@@ -767,31 +796,51 @@ export default function DiscoverPage() {
                 return isTV ? <TVFocusable onEnterPress={() => setSource('foryou')}>{btn}</TVFocusable> : btn;
               })()}
 
-              {/* Watched filter — right side of the same row, subtle. */}
-              {enableWatchedIndicators && (
-                <div className="ml-auto flex gap-1 items-center">
-                  <span className="text-xs text-muted mr-1 hidden sm:inline">Show:</span>
-                  {([['all', 'All'], ['hide', 'Unwatched'], ['only', 'Watched']] as const).map(([key, label]) => {
-                    const btn = (
-                      <button
-                        type="button"
-                        onClick={() => setWatchedFilter(key)}
-                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                          watchedFilter === key
-                            ? 'bg-primary/20 text-primary'
-                            : 'text-muted hover:text-default'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    );
-                    return isTV ? (
-                      <TVFocusable key={key} onEnterPress={() => setWatchedFilter(key)}>{btn}</TVFocusable>
-                    ) : (
-                      <Fragment key={key}>{btn}</Fragment>
-                    );
-                  })}
+              {/* Watched filter + sort — right side of the same row, subtle.
+                  Sort/watched filter only apply to the flat grid views
+                  (Discover browse+search, Watchlist) - For You renders as
+                  personalized rows, not a single sortable/filterable list. */}
+              {source !== 'foryou' && (
+              <div className="ml-auto flex gap-3 items-center flex-wrap">
+                {enableWatchedIndicators && (
+                  <div className="flex gap-1 items-center">
+                    <span className="text-xs text-muted mr-1 hidden sm:inline">Show:</span>
+                    {([['all', 'All'], ['hide', 'Unwatched'], ['only', 'Watched']] as const).map(([key, label]) => {
+                      const btn = (
+                        <button
+                          type="button"
+                          onClick={() => setWatchedFilter(key)}
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                            watchedFilter === key
+                              ? 'bg-primary/20 text-primary'
+                              : 'text-muted hover:text-default'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                      return isTV ? (
+                        <TVFocusable key={key} onEnterPress={() => setWatchedFilter(key)}>{btn}</TVFocusable>
+                      ) : (
+                        <Fragment key={key}>{btn}</Fragment>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted hidden sm:inline">Sort:</span>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as SortKey)}
+                    aria-label="Sort results"
+                    className="px-2.5 py-1 rounded-md text-xs font-medium bg-surface-hover text-muted hover:text-default border border-default cursor-pointer"
+                  >
+                    {SORT_OPTIONS.map((opt) => (
+                      <option key={opt.key} value={opt.key}>{opt.label}</option>
+                    ))}
+                  </select>
                 </div>
+              </div>
               )}
             </div>
           </PageSection>
@@ -1185,7 +1234,7 @@ export default function DiscoverPage() {
           ) : (
             <>
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
-                {displayedItems.map((item) => (
+                {sortedItems.map((item) => (
                   <PosterCard
                     key={item.id}
                     item={item}
