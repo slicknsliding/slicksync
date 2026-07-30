@@ -311,6 +311,24 @@ export function MediaDetailModal({
   const title = details?.episode?.title
     ? `${details?.title || effectiveFallbackTitle} — ${details.episode.title}`
     : (details?.title || effectiveFallbackTitle);
+  // The title above already shows the episode NAME ("Cape Fear — The Scar"),
+  // but not which episode that is - parsed from videoId (standard Cinemeta
+  // format "tt1234567:season:episode") since the episode metadata endpoint
+  // itself doesn't return the numbers, only title/overview/thumbnail. Kitsu
+  // IDs ("kitsu:50008:4") have no season component, so this only matches the
+  // 3-part numeric form both formats happen to share positionally - safe
+  // since a non-matching id just renders nothing rather than a wrong number.
+  const episodeLabel = (() => {
+    if (!effectiveVideoId || !details?.episode) return null;
+    const parts = effectiveVideoId.split(':');
+    if (parts.length !== 3) return null;
+    const season = parseInt(parts[1], 10);
+    const episode = parseInt(parts[2], 10);
+    if (Number.isNaN(episode)) return null;
+    return Number.isNaN(season) || effectiveVideoId.startsWith('kitsu:')
+      ? `E${String(episode).padStart(2, '0')}`
+      : `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
+  })();
   const heroImage = details?.episode?.thumbnail || details?.background || details?.poster || effectiveFallbackPoster;
   const overview = details?.episode?.overview || details?.description;
   const trailerId = details?.trailers?.[0];
@@ -450,6 +468,11 @@ export function MediaDetailModal({
                   two backends can disagree, and showing a different number
                   than what the user just clicked reads as a bug. */}
               <div className="flex flex-wrap items-center gap-3 text-base text-muted">
+                {episodeLabel && (
+                  <span className="px-2 py-0.5 rounded-md text-sm font-semibold bg-surface-hover text-default border border-default">
+                    {episodeLabel}
+                  </span>
+                )}
                 {(effectiveFallbackReleaseInfo || details.releaseInfo) && <span>{effectiveFallbackReleaseInfo || details.releaseInfo}</span>}
                 {details.runtime && (
                   <span className="flex items-center gap-1.5">
