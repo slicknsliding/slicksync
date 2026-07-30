@@ -441,6 +441,69 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
   }
 }
 
+// Ratio of runtime a movie's position must drop below to count as "restarted".
+const REWATCH_ARM_RATIO = 0.15
+
+/**
+ * Rewatch detection for MOVIES. A small, deliberately isolated state machine
+ * that only ever writes rewatchCount / rewatchArmed on MovieWatchHistory -
+ * never any watch-time, delta, snapshot, or activity field - so it physically
+ * cannot inflate Watch Time (the recurring failure mode this codebase guards
+ * against everywhere else).
+ *
+ * How it works, using the live playback position (state.timeOffset) against
+ * the movie's runtime (state.duration):
+ *   - Only a movie that has ALREADY been completed once can be rewatched, so
+ *     we do nothing until completed === true.
+ *   - "arm" when a finished movie's position dips back near the start
+ *     (<= REWATCH_ARM_RATIO of runtime): the viewer started it over. This runs
+ *     from processLibraryItem, which sees every library item every poll (no
+ *     isActuallyWatched gate), so the low-position moment is observable even
+ *     though recordMovieWatch would early-return on it.
+ *   - "count" when an armed movie's position reaches the end again
+ *     (>= COMPLETE_RATIO): increment rewatchCount and disarm. One increment per
+ *     dip-then-finish cycle - the persistent rewatchArmed flag is what makes it
+ *     edge-triggered rather than firing every poll while near the end.
+ * Series are intentionally out of scope: their timeOffset is per-episode, so a
+ * reset is just the next episode starting, not a rewatch.
+ */
+async function detectMovieRewatch(prisma, accountId, userId, item) {
+  try {
+    if (item.type !== 'movie') return
+    const itemId = item._id || item.id
+    if (!itemId) return
+    const dur = Number(item.state?.duration || 0)
+    const off = Number(item.state?.timeOffset || 0)
+    if (!(dur > 0) || !(off >= 0)) return
+    const ratio = off / dur
+
+    const row = await prisma.movieWatchHistory.findUnique({
+      where: { accountId_userId_itemId: { accountId: accountId || 'default', userId, itemId } },
+      select: { completed: true, rewatchArmed: true }
+    })
+    // Only a previously-finished movie can be rewatched; if there's no row yet
+    // (or it was never completed) there's nothing to detect.
+    if (!row || row.completed !== true) return
+
+    if (!row.rewatchArmed && ratio <= REWATCH_ARM_RATIO) {
+      await prisma.movieWatchHistory.update({
+        where: { accountId_userId_itemId: { accountId: accountId || 'default', userId, itemId } },
+        data: { rewatchArmed: true }
+      })
+    } else if (row.rewatchArmed && ratio >= COMPLETE_RATIO) {
+      await prisma.movieWatchHistory.update({
+        where: { accountId_userId_itemId: { accountId: accountId || 'default', userId, itemId } },
+        data: { rewatchArmed: false, rewatchCount: { increment: 1 } }
+      })
+    }
+  } catch (error) {
+    // Best-effort only - rewatch tracking must never block metrics processing.
+    if (error?.code !== 'P2002') {
+      console.warn(`[MetricsProcessor] Rewatch detection failed for ${userId}/${item?._id || item?.id}:`, error.message)
+    }
+  }
+}
+
 /**
  * Get the most recent snapshot for an item on or before today.
  * This lets us compute deltas within the same day as well as across days.
@@ -772,6 +835,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
       await recordEpisodeWatch(prisma, accountIdValue, userId, item, users)
     } else if (item.type === 'movie') {
       await recordMovieWatch(prisma, accountIdValue, userId, item, users)
+      await detectMovieRewatch(prisma, accountIdValue, userId, item)
     }
 
     return { snapshotCreated, activityCreated }

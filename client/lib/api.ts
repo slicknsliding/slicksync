@@ -2477,6 +2477,9 @@ export interface MetricsData {
     // Real completion: true = genuinely finished (played to ~end), false =
     // started but dropped, null = unknown. See the schema comment.
     completed?: boolean | null;
+    // Movies only: times watched to the end AGAIN after first completion
+    // (0 = first watch). See MovieWatchHistory.rewatchCount in the schema.
+    rewatchCount?: number;
     watchedAt: string;
     watchedAtTimestamp: number;
     // Only present when backfilled from a matching native WatchSession -

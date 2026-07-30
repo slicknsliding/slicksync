@@ -75,6 +75,7 @@ interface ActivityItem {
   userAvatarUrl?: string | null;
   debridService?: string; // e.g. "torbox" - only set when confidently detected via the AIOStreams proxy (see server/utils/debridDetection.js). Absent doesn't mean "not debrid".
   completed?: boolean | null; // real completion: true = finished, false = started/dropped, null/undefined = unknown
+  rewatchCount?: number; // movies only: times watched to the end again after first completion (0 = first watch)
   // Grid view only (see buildGridWatchers below) - other distinct users who
   // watched this SAME content on the SAME day, oldest first. Set only on the
   // most-recent activity for that content+day; the earlier ones are omitted
@@ -169,6 +170,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         episode: entry.item.episode ?? undefined,
         episodeName: entry.episodeName ?? undefined,
         completed: entry.completed ?? null,
+        rewatchCount: entry.rewatchCount ?? 0,
         durationSeconds: entry.durationSeconds && entry.durationSeconds > 0 ? entry.durationSeconds : undefined,
         timestamp: new Date(entry.watchedAt),
         endTime: new Date(entry.watchedAt),
@@ -758,7 +760,12 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             = played to ~end; Dropped = started but not finished. Only when we
             have a verdict; unknown shows nothing. */}
         {activity.completed === true && (
-          <p className="text-[11px] font-medium text-success">✓ Finished</p>
+          <p className="text-[11px] font-medium text-success">
+            ✓ Finished
+            {activity.rewatchCount && activity.rewatchCount > 0 ? (
+              <span className="ml-1 text-primary">· ↻ {activity.rewatchCount + 1}×</span>
+            ) : null}
+          </p>
         )}
         {activity.completed === false && (
           <p className="text-[11px] text-slate-500">Started · not finished</p>

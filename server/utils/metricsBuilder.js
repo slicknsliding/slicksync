@@ -1095,6 +1095,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
           videoId: null,
           profileLabel: m.profileLabel || null,
           completed: m.completed ?? null,
+          rewatchCount: m.rewatchCount || 0,
           watchedAt: m.watchedAt.toISOString(),
           watchedAtTimestamp: m.watchedAt.getTime(),
           // See the matching comment on episodeEntries above.
