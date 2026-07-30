@@ -605,13 +605,25 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                           key={notification.id}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
-                          className="p-4 hover:bg-surface-hover transition-colors cursor-pointer"
-                          style={notification.read ? undefined : { background: 'var(--color-primary-muted)' }}
+                          className="p-4 hover:bg-surface-hover transition-colors duration-500 cursor-pointer"
+                          // Explicit value for BOTH states (not undefined for
+                          // "read") - the underlying read state was already
+                          // updating instantly on "Mark all read" (confirmed:
+                          // the DOM attribute flips the instant you click,
+                          // no delay), but going from a real background value
+                          // to no inline style AT ALL doesn't reliably
+                          // cross-fade the same way toggling between two
+                          // concrete values does, so the (already-correct)
+                          // change was easy to miss and looked "stuck" until
+                          // closing/reopening replayed the entrance animation
+                          // and made the end state obvious. Confirmed real
+                          // case, 2026-07-30.
+                          style={{ background: notification.read ? 'transparent' : 'var(--color-primary-muted)' }}
                         >
                           <div className="flex flex-col gap-3">
                             <div className="flex items-start gap-3">
                               <span
-                                className="w-1.5 h-1.5 rounded-full shrink-0 mt-2"
+                                className="w-1.5 h-1.5 rounded-full shrink-0 mt-2 transition-colors duration-500"
                                 style={{ background: notification.read ? 'transparent' : 'var(--color-primary)' }}
                                 aria-hidden="true"
                               />
