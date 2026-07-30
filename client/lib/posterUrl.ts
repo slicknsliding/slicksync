@@ -8,9 +8,14 @@ import { API_BASE } from './api';
 //
 // RPDB only knows title posters, not backdrops/thumbnails/person photos -
 // don't use this for anything that isn't a poster-shaped title card.
-export function posterUrl(item: { id?: string | null; poster?: string | null }, rpdbEnabled: boolean): string | null {
+//
+// Returns `undefined`, not `null`, when there's no poster - React's <img
+// src> prop type is `string | undefined`; a previous version returned
+// `string | null` here and broke the production build (TS2322) at every
+// call site passing this straight into src={...}.
+export function posterUrl(item: { id?: string | null; poster?: string | null }, rpdbEnabled: boolean): string | undefined {
   if (rpdbEnabled && item.id && /^tt\d+$/.test(item.id)) {
     return `${API_BASE}/poster/${item.id}`;
   }
-  return item.poster || null;
+  return item.poster || undefined;
 }
