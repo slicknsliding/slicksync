@@ -10,6 +10,7 @@ import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem, RecommendationRow,
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
+import { posterUrl } from '@/lib/posterUrl';
 import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { toast } from '@/components/ui/Toast';
@@ -92,6 +93,7 @@ const PosterCard = memo(function PosterCard({
   focusable?: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
+  const { rpdbEnabled } = usePersonalFeatures();
   // useContextMenu still owns the position calc + preventDefault, but the
   // OPEN state is driven by the parent's isMenuOpen prop so only one card's
   // menu is visible at a time across the whole grid.
@@ -134,7 +136,7 @@ const PosterCard = memo(function PosterCard({
         {item.poster && !imageError ? (
           <>
             <img
-              src={item.poster}
+              src={posterUrl(item, rpdbEnabled)}
               alt={item.name}
               loading="lazy"
               decoding="async"

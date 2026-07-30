@@ -397,6 +397,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           enableRecommendations: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableRecommendations === 'boolean') ? syncCfg.enableRecommendations : true,
           tmdbApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.tmdbApiKey === 'string') ? syncCfg.tmdbApiKey : '',
           mdblistApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.mdblistApiKey === 'string') ? syncCfg.mdblistApiKey : '',
+          rpdbApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.rpdbApiKey === 'string') ? syncCfg.rpdbApiKey : '',
         }
 
         return res.json(response)
@@ -432,6 +433,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           enableRecommendations: typeof syncCfg.enableRecommendations === 'boolean' ? syncCfg.enableRecommendations : true,
           tmdbApiKey: typeof syncCfg.tmdbApiKey === 'string' ? syncCfg.tmdbApiKey : '',
           mdblistApiKey: typeof syncCfg.mdblistApiKey === 'string' ? syncCfg.mdblistApiKey : '',
+          rpdbApiKey: typeof syncCfg.rpdbApiKey === 'string' ? syncCfg.rpdbApiKey : '',
         }
         return res.json(resp)
       }
@@ -443,7 +445,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnMosaic, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, tmdbApiKey, mdblistApiKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnMosaic, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, tmdbApiKey, mdblistApiKey, rpdbApiKey } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -516,6 +518,10 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // Optional MDBList API key for List import. Free from mdblist.com ->
           // Preferences -> API Access.
           mdblistApiKey: mdblistApiKey !== undefined ? (typeof mdblistApiKey === 'string' ? mdblistApiKey.trim() : '') : (baseCfg.mdblistApiKey || ''),
+          // Optional RPDB (RatingPosterDB) key - free tier works, upgrades
+          // posters app-wide with rating-embedded art. Free at
+          // ratingposterdb.com.
+          rpdbApiKey: rpdbApiKey !== undefined ? (typeof rpdbApiKey === 'string' ? rpdbApiKey.trim() : '') : (baseCfg.rpdbApiKey || ''),
         }
 
         try {
@@ -562,6 +568,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (enableRecommendations !== undefined) partial.enableRecommendations = !!enableRecommendations
       if (tmdbApiKey !== undefined) partial.tmdbApiKey = typeof tmdbApiKey === 'string' ? tmdbApiKey.trim() : ''
       if (mdblistApiKey !== undefined) partial.mdblistApiKey = typeof mdblistApiKey === 'string' ? mdblistApiKey.trim() : ''
+      if (rpdbApiKey !== undefined) partial.rpdbApiKey = typeof rpdbApiKey === 'string' ? rpdbApiKey.trim() : ''
 
       const nextCfg = { ...base, ...partial }
 

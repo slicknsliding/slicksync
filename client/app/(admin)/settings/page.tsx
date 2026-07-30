@@ -308,6 +308,7 @@ export default function SettingsPage() {
           accountTimezone: settings.accountTimezone || '',
           tmdbApiKey: settings.tmdbApiKey || '',
           mdblistApiKey: settings.mdblistApiKey || '',
+          rpdbApiKey: settings.rpdbApiKey || '',
         });
       } catch (e) {
         // Settings may not exist yet, use defaults
@@ -986,6 +987,27 @@ export default function SettingsPage() {
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, mdblistApiKey: e.target.value }))}
                   onBlur={() => handleSaveSetting('mdblistApiKey' as keyof SyncSettings, syncSettings.mdblistApiKey)}
                   placeholder="MDBList API key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* RPDB key - upgrades posters app-wide (Discover, Lists,
+                  Activity, Airing Calendar) to rating-embedded art. The free
+                  tier (Tier 0) already includes ratings, just not the
+                  customizable badge styles - plenty for this purpose. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">RPDB API key <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Upgrades posters everywhere to rating-embedded art from RatingPosterDB. The free key works fine. Get one at ratingposterdb.com → API Key. Leave blank to keep today's posters.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.rpdbApiKey || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, rpdbApiKey: e.target.value }))}
+                  onBlur={() => { handleSaveSetting('rpdbApiKey' as keyof SyncSettings, syncSettings.rpdbApiKey); invalidatePersonalFeatures(); }}
+                  placeholder="RPDB API key"
                   autoComplete="off"
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"

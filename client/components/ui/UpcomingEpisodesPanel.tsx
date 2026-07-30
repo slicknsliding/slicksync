@@ -5,6 +5,8 @@ import { CalendarDaysIcon, TvIcon, XCircleIcon, SpeakerXMarkIcon, SpeakerWaveIco
 import { Card, MediaDetailModal, ContextMenu, useContextMenu, Modal, Button } from '@/components/ui';
 import { api, UpcomingEpisode, MutedShow } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
+import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
+import { posterUrl } from '@/lib/posterUrl';
 
 // Dashboard "Coming up" calendar: the next upcoming episode for every show
 // someone here is mid-season on. Data is precomputed server-side by the
@@ -82,6 +84,7 @@ const UpcomingRow = memo(function UpcomingRow({
 }) {
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
   const label = airLabel(item.airDate);
+  const { rpdbEnabled } = usePersonalFeatures();
 
   // Long-press → context menu for touch devices. Cancel on move/scroll so a
   // scroll gesture doesn't get hijacked into a menu open. Track start position
@@ -131,7 +134,7 @@ const UpcomingRow = memo(function UpcomingRow({
         <div className="w-10 h-14 rounded-md overflow-hidden bg-surface-hover flex-shrink-0 flex items-center justify-center">
           {item.poster ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.poster} alt="" className="w-full h-full object-cover" />
+            <img src={posterUrl({ id: item.showId, poster: item.poster }, rpdbEnabled)} alt="" className="w-full h-full object-cover" />
           ) : (
             <TvIcon className="w-5 h-5 text-subtle" />
           )}
