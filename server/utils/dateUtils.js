@@ -110,6 +110,51 @@ function getAccountMonthString(date = new Date(), timeZone = DEFAULT_TIMEZONE) {
   return `${parts.year}-${parts.month}`
 }
 
+const dayNumberFormatterCache = new Map()
+
+function dayNumberFormatterFor(timeZone) {
+  let formatter = dayNumberFormatterCache.get(timeZone)
+  if (!formatter) {
+    try {
+      formatter = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+    } catch {
+      formatter = new Intl.DateTimeFormat('en-CA', { timeZone: DEFAULT_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' })
+    }
+    dayNumberFormatterCache.set(timeZone, formatter)
+  }
+  return formatter
+}
+
+/**
+ * Returns `date`'s calendar day, as experienced in `timeZone`, as a plain
+ * integer YYYYMMDD (e.g. 20260730) - a safely-comparable value for "is this
+ * day on/before/after that day" logic, without the locale-order pitfall
+ * getAccountDateString's own formatted string carries (its en-CA formatter
+ * falls back to en-US ordering on this app's Bun runtime, so slicing it by
+ * position silently breaks - see yearInReview.js's fix for the same issue).
+ * Built from formatToParts (order-independent) rather than trusting the
+ * formatter's string output, same as getAccountMonthString above.
+ *
+ * Use this (not `releasedTs > Date.now()`) anywhere that decides whether a
+ * metadata-provider air date has "arrived" - those dates are plain calendar
+ * days (typically serialized as literal midnight UTC, not a real airtime),
+ * so comparing them against an absolute epoch instant means an account
+ * behind UTC (e.g. America/Los_Angeles, UTC-7 in summer) sees an episode
+ * flip to "released" hours before its own calendar day actually starts -
+ * confirmed real case: a July 30 (UTC) release date counted as released
+ * starting 5pm PDT on July 29, firing episodeAlerts.js's "new episode" alert
+ * a full evening early for Pacific-timezone accounts. Comparing calendar-day
+ * numbers instead closes that gap for every account timezone and every show,
+ * not just the one that happened to get reported.
+ * @param {Date} [date]
+ * @param {string} [timeZone]
+ * @returns {number}
+ */
+function getAccountDayNumber(date = new Date(), timeZone = DEFAULT_TIMEZONE) {
+  const parts = dayNumberFormatterFor(timeZone).formatToParts(date).reduce((acc, p) => { acc[p.type] = p.value; return acc }, {})
+  return Number(`${parts.year}${parts.month}${parts.day}`)
+}
+
 /**
  * Converts a wall-clock date/time as experienced in `timeZone` into the
  * actual UTC instant it represents. Standard "guess, then correct by the
@@ -169,6 +214,7 @@ module.exports = {
   resolveAccountTimezone,
   DEFAULT_TIMEZONE,
   getAccountMonthString,
+  getAccountDayNumber,
   monthBoundsInTimezone,
   previousMonthString,
 }
