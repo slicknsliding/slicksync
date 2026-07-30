@@ -178,6 +178,7 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 <summary><strong>Troubleshooting</strong></summary>
 
 - **Decryption errors after an update** (`Unsupported state or unable to authenticate data`): the running code is deriving a different key than what encrypted your data — check `data/server_secret.key` wasn't lost, and don't modify `server/utils/encryption.js`'s key-derivation constants on a fork.
+- **"credentials may be invalid" on Sync, but the same user's library/history still updates fine**: a decrypt-key rotation split your data across key generations — every read path falls back to the previous key automatically, but that leaves some secrets still encrypted under the old one. Boot logs show `[keyManager] ENCRYPTION_KEY differs from the previously persisted key` when this is the case. Fix it once and for all: `docker exec -it -e DATABASE_URL="file:///app/data/sqlite.db" <container> node scripts/consolidate-encryption-keys.js` (dry-run; add `--apply --sync-keyfile` to actually re-encrypt everything onto your current key and stop the warning from recurring).
 - **"Detected additional lockfiles" during build**: delete any stray `package-lock.json` — this project runs on `bun`.
 - **First-boot database errors**: confirm `/app/data` is writable by the container's user (`1001:1001`).
 </details>

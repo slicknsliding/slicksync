@@ -168,8 +168,20 @@ async function sendSessionStartNotification(webhookUrl, session, user) {
     })
 
     console.log(`[SessionTracker] Sent now playing notification for user ${user.username}, item: ${session.itemName}`)
+    heartbeat('sessionTracker:discord_start_sent', { userId: user.id, itemName: session.itemName })
   } catch (error) {
+    // console.warn alone is lost on the next container restart (docker logs
+    // aren't persisted to the mounted volume) - confirmed real case
+    // (2026-07-29): a "started watching" notification's Discord/push delivery
+    // failed once, self-recovered on its own shortly after, and by the time
+    // it was investigated the only surviving evidence was an indirect
+    // inference from bell-notification/push-lastSeenAt timestamps in the DB -
+    // there was no direct record of the failure itself. heartbeat() writes to
+    // the same mounted-volume debug log sessionTracker already uses
+    // elsewhere in this file, so a delivery failure is diagnosable after a
+    // restart instead of requiring that kind of reconstruction.
     console.warn(`[SessionTracker] Failed to send session start notification:`, error.message)
+    heartbeat('sessionTracker:discord_start_failed', { userId: user?.id, itemName: session?.itemName, message: error.message })
   }
 }
 
@@ -225,8 +237,10 @@ async function sendSessionStopNotification(webhookUrl, session, user) {
     })
 
     console.log(`[SessionTracker] Sent stopped-watching notification for user ${user.username}, item: ${session.itemName}`)
+    heartbeat('sessionTracker:discord_stop_sent', { userId: user.id, itemName: session.itemName })
   } catch (error) {
     console.warn(`[SessionTracker] Failed to send session stop notification:`, error.message)
+    heartbeat('sessionTracker:discord_stop_failed', { userId: user?.id, itemName: session?.itemName, message: error.message })
   }
 }
 

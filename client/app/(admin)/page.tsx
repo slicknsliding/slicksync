@@ -200,7 +200,11 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   // (needed to suppress the native menu) blocked the FIRST card's "close on
   // outside click" listener from ever firing, orphaning it open. A single
   // shared "which card owns the open menu" value fixes that by construction.
-  const { position, handleContextMenu } = useContextMenu();
+  const { position, handleContextMenu, setExternalClose } = useContextMenu();
+  // Registers the REAL close (onClose below) for cross-section/cross-page
+  // closing - onMenuOpenChange is the lifted state that actually drives
+  // isOpen here, so this hook's own internal close wouldn't hide anything.
+  setExternalClose(() => onMenuOpenChange(false));
 
   // Long-press → context menu for touch devices. onContextMenu alone (below)
   // only reliably fires from an actual right-click; mobile browsers don't
