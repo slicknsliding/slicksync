@@ -41,6 +41,7 @@ const avatarsRouter = require('./routes/avatars');
 const vaultRouter = require('./routes/vault');
 const discoverRouter = require('./routes/discover');
 const listsRouter = require('./routes/lists');
+const healthRouter = require('./routes/health');
 const { makeCreateProvider } = require('./providers');
 
 // Import configuration constants
@@ -248,6 +249,7 @@ app.use('/api/push', pushRouter({ prisma, getAccountId }));
 app.use('/api/watchlist', watchlistRouter({ prisma, getAccountId }));
 app.use('/api/discover', discoverRouter({ prisma, getAccountId }));
 app.use('/api/lists', listsRouter({ prisma, getAccountId }));
+app.use('/api/health', healthRouter({ prisma, getAccountId }));
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({
   prisma,
@@ -426,6 +428,18 @@ async function bootstrap() {
       scheduleMosaicMonitor(prisma, schedulerReq.appAccountId)
     } catch (err) {
       console.error('⚠️ Failed to initialize poster mosaic scheduler:', err)
+    }
+
+    // Schedule Sync Guardian (catches a synced user's addons reverting
+    // outside SlickSync - see utils/syncGuardian.js for the full mechanism)
+    try {
+      const { scheduleSyncGuardian } = require('./utils/syncGuardian')
+      scheduleSyncGuardian(prisma, {
+        getAccountId, decrypt, parseAddonIds, parseProtectedAddons,
+        getDecryptedManifestUrl, canonicalizeManifestUrl, StremioAPIClient, createProvider,
+      }, schedulerReq.appAccountId)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize Sync Guardian:', err)
     }
 
     // Startup repair: reload addons with uninitialized resources/catalogs across all accounts

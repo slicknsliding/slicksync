@@ -24,6 +24,14 @@ const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 
 
 let pollTimer = null
 let cachedCookie = null
+// Last poll outcome, for the health board (server/routes/health.js) - this
+// module has no other exposed "is the proxy actually reachable right now"
+// signal; everything else here is fire-and-forget into a debug log file.
+let lastPollStatus = { ok: null, at: null, error: null }
+
+function getProxyMonitorStatus() {
+  return { ...lastPollStatus }
+}
 
 function heartbeat(event, data = {}) {
   try {
@@ -510,9 +518,11 @@ async function pollOnce(prisma, accountId, config) {
       activeSeen: seenKeys.size,
       closed: toClose.length,
     })
+    lastPollStatus = { ok: true, at: now, error: null }
   } catch (error) {
     heartbeat('pollOnce:error', { message: error.message, stack: error.stack })
     console.warn('[ProxyStreamMonitor] pollOnce failed:', error.message)
+    lastPollStatus = { ok: false, at: new Date(), error: error.message }
   }
 }
 
@@ -536,5 +546,6 @@ module.exports = {
   clearProxyStreamMonitor,
   parseDisplayName,
   resolveUserForActiveConnection,
+  getProxyMonitorStatus,
   CHECK_INTERVAL_MS,
 }

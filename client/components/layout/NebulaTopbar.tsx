@@ -48,6 +48,7 @@ const NEBULA_NAV_SECTIONS = [
     items: [
       { href: '/', label: 'Dashboard', icon: HomeIcon },
       { href: '/activity', label: 'Activity', icon: ClockIcon },
+      { href: '/metrics', label: 'Metrics', icon: ChartBarIcon },
       { href: '/users', label: 'Users', icon: UsersIcon },
       { href: '/groups', label: 'Groups', icon: UserGroupIcon },
     ],
@@ -58,7 +59,6 @@ const NEBULA_NAV_SECTIONS = [
       { href: '/discover', label: 'Discover', icon: MagnifyingGlassIcon },
       { href: '/lists', label: 'Lists', icon: RectangleStackIcon },
       { href: '/addons', label: 'Addons', icon: PuzzlePieceIcon },
-      { href: '/metrics', label: 'Metrics', icon: ChartBarIcon },
       { href: '/vault', label: 'Vault', icon: ShieldCheckIcon },
       { href: '/invitations', label: 'Invitations', icon: EnvelopeIcon },
     ],

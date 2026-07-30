@@ -23,6 +23,7 @@ import {
   MagnifyingGlassIcon,
   SwatchIcon,
   RectangleStackIcon,
+  HeartIcon,
 } from '@heroicons/react/24/outline';
 import { PanelSwitcher } from './PanelSwitcher';
 import { api } from '@/lib/api';
@@ -60,6 +61,7 @@ const navigationSections = [
     id: 'system',
     label: 'System',
     items: [
+      { name: 'Health', href: '/health', icon: HeartIcon },
       { name: 'Tasks', href: '/tasks', icon: QueueListIcon },
       { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },
       { name: 'Themes', href: '/themes', icon: SwatchIcon },
