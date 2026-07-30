@@ -15,6 +15,8 @@ import { NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, MetricsData, Invitation } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
+import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
+import { posterUrl } from '@/lib/posterUrl';
 import {
   ClockIcon,
   FilmIcon,
@@ -442,6 +444,7 @@ const ActivityCard = memo(function ActivityCard({
 }) {
   const showProgress = activity.type === 'watch' || activity.type === 'pause';
   const [imageError, setImageError] = useState(false);
+  const { rpdbEnabled } = usePersonalFeatures();
 
   const rowElement = (
     <motion.div
@@ -456,7 +459,7 @@ const ActivityCard = memo(function ActivityCard({
           onClick={() => onOpenDetails?.(activity)}
         >
           <img
-            src={activity.poster}
+            src={posterUrl({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
             alt={activity.contentName}
             className="w-full h-full object-cover"
             onError={() => setImageError(true)}
@@ -573,6 +576,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
   focusable?: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
+  const { rpdbEnabled } = usePersonalFeatures();
   // Multi-watcher popover (who else watched this same title today) - kept off
   // the poster art itself (just a count badge there); tapping reveals the
   // full list, so it's discoverable on mobile too, not a desktop-only tooltip.
@@ -593,7 +597,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
         {activity.poster && !imageError ? (
           <>
             <img
-              src={activity.poster}
+              src={posterUrl({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
               alt={activity.contentName}
               className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
               onError={() => setImageError(true)}
@@ -697,24 +701,17 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           </div>
         )}
 
-        {/* Request count / debrid service badge - bottom right, mirrors the
-            profile badge on the opposite corner. Both pieces of info only
-            ever show up for proxy-observed streams, so they share one
-            corner instead of needing a 5th badge position. */}
-        {!activity.isSynthetic && (
-          (activity.requestCount !== undefined && activity.requestCount > 0) || activity.debridService
-        ) && (
+        {/* Request count badge - bottom right, mirrors the profile badge on
+            the opposite corner. The "Proxied · <service>" badge that used to
+            share this spot was removed - on a narrower poster card the two
+            bottom badges (this one and the profile badge, bottom-left) could
+            grow wide enough to visually overlap each other. The debrid
+            service is still visible in the list view's text row below the
+            poster, which has no such collision risk. */}
+        {!activity.isSynthetic && activity.requestCount !== undefined && activity.requestCount > 0 && (
           <div className="absolute bottom-2 right-2">
-            <div
-              className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm"
-              title={activity.debridService ? 'Detected via the AIOStreams proxy' : undefined}
-            >
-              {[
-                activity.debridService ? `Proxied · ${DEBRID_SERVICE_LABELS[activity.debridService] || activity.debridService}` : null,
-                activity.requestCount !== undefined && activity.requestCount > 0
-                  ? `${activity.requestCount} ${activity.requestCount === 1 ? 'req' : 'reqs'}`
-                  : null,
-              ].filter(Boolean).join(' · ')}
+            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
+              {activity.requestCount} {activity.requestCount === 1 ? 'req' : 'reqs'}
             </div>
           </div>
         )}
@@ -1117,13 +1114,14 @@ function NowPlayingItemBody({
   metricsData: MetricsData;
   nowTick: number;
 }) {
+  const { rpdbEnabled } = usePersonalFeatures();
   return (
     <>
       {/* Poster */}
       {np.item.poster ? (
         <div className="w-10 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-hover">
           <img
-            src={np.item.poster}
+            src={posterUrl(np.item, rpdbEnabled)}
             alt={np.item.name}
             className="w-full h-full object-cover"
           />

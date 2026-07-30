@@ -10,6 +10,7 @@ import { metacriticColor as metacriticTextColor } from './RatingBadges';
 import { api, MediaDetails, DiscoverItem } from '@/lib/api';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
+import { posterUrl } from '@/lib/posterUrl';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { useDragScroll } from '@/lib/hooks/useDragScroll';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -130,7 +131,7 @@ export function MediaDetailModal({
   const effectiveFallbackRating = overrideItem ? (overrideItem.imdbRating ?? null) : fallbackRating;
   const effectiveFallbackReleaseInfo = overrideItem ? (overrideItem.releaseInfo ?? null) : fallbackReleaseInfo;
 
-  const { enableWatchlist } = usePersonalFeatures();
+  const { enableWatchlist, rpdbEnabled } = usePersonalFeatures();
   const isTV = useIsTV();
 
   // TV mode: the whole modal body (trailer button, Watchlist / Open in
@@ -875,7 +876,7 @@ export function MediaDetailModal({
                             <div className="w-28 h-40 rounded-lg overflow-hidden bg-surface-hover">
                               {item.poster ? (
                                 <img
-                                  src={item.poster}
+                                  src={posterUrl(item, rpdbEnabled)}
                                   alt={item.name}
                                   loading="lazy"
                                   decoding="async"

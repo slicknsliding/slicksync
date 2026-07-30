@@ -14,12 +14,19 @@ export interface PersonalFeatures {
   enableWatchlist: boolean;
   enableWatchedIndicators: boolean;
   enableRecommendations: boolean;
+  // Whether an RPDB (RatingPosterDB) key is configured - callers use this to
+  // decide whether to route a title's poster through /api/poster/{imdbId}
+  // instead of its own stored poster. Deliberately just a boolean: the raw
+  // key stays server-side / confined to the Settings page's own edit form,
+  // never round-tripped into this shared cache other components read.
+  rpdbEnabled: boolean;
 }
 
 const DEFAULT: PersonalFeatures = {
   enableWatchlist: true,
   enableWatchedIndicators: true,
   enableRecommendations: true,
+  rpdbEnabled: false,
 };
 
 // One in-flight promise + one cached value shared across every hook
@@ -39,6 +46,7 @@ async function fetchOnce(): Promise<PersonalFeatures> {
         enableWatchlist: s?.enableWatchlist !== false,
         enableWatchedIndicators: s?.enableWatchedIndicators !== false,
         enableRecommendations: s?.enableRecommendations !== false,
+        rpdbEnabled: !!(s?.rpdbApiKey && s.rpdbApiKey.trim()),
       };
       inFlight = null;
       return cached;

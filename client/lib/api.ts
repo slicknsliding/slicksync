@@ -1,7 +1,7 @@
 // API client for connecting to SlickSync backend
 // Use relative path if NEXT_PUBLIC_API_URL is not set (Next.js will proxy via rewrites)
 // Otherwise use the explicit URL (useful for production or different ports)
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 interface FetchOptions extends RequestInit {
   token?: string;
@@ -2186,6 +2186,7 @@ export interface SyncSettings {
   enableRecommendations?: boolean;
   tmdbApiKey?: string;
   mdblistApiKey?: string;
+  rpdbApiKey?: string;
 }
 
 export interface ThemePref {
