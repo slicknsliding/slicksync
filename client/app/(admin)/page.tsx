@@ -252,18 +252,16 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
       onTouchMove={handleTouchMove}
       className="shrink-0 relative"
     >
-      <a
-        href={item.appUrl || item.webUrl}
-        target={item.appUrl ? undefined : '_blank'}
-        rel={item.appUrl ? undefined : 'noopener noreferrer'}
-        draggable={false}
-        onDragStart={(e) => e.preventDefault()}
-        onClick={(e) => {
+      <div
+        onClick={() => {
           // Suppress the click that fires immediately after a long-press
           // opens the menu - otherwise a long-press both opens the menu AND
-          // navigates away as soon as the finger lifts.
-          if (wasDraggedRef.current || isMenuOpen) e.preventDefault();
+          // the detail modal as soon as the finger lifts.
+          if (wasDraggedRef.current || isMenuOpen) return;
+          onOpenDetails(item);
         }}
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
         className="group relative block w-40 rounded-xl overflow-hidden bg-slate-800 shadow-lg select-none cursor-pointer tap-card"
       >
         <div className="relative aspect-video">
@@ -286,12 +284,27 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
               <PlayIcon className="w-8 h-8 text-slate-600" />
             </div>
           )}
-          <div
+          {/* ONLY this play button navigates straight to the app/web link -
+              everywhere else on the card opens the detail modal instead
+              (onClick above). Previously the whole card was one <a>, so
+              clicking anywhere - poster art, title, anywhere - launched the
+              app link; only the small (i) button below opened the modal.
+              stopPropagation keeps this click from also bubbling to the
+              card's own onClick and opening the modal right behind it. */}
+          <a
+            href={item.appUrl || item.webUrl}
+            target={item.appUrl ? undefined : '_blank'}
+            rel={item.appUrl ? undefined : 'noopener noreferrer'}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (wasDraggedRef.current || isMenuOpen) e.preventDefault();
+            }}
+            aria-label={`Resume ${item.showName}`}
             className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
             style={{ background: 'rgba(0,0,0,0.4)' }}
           >
             <PlayIcon className="w-8 h-8 text-white" />
-          </div>
+          </a>
           {/* Netflix-style progress bar for partway-through items - only on
               resume entries, where progressPercent is real position data from
               WatchSession (not shown for next-episode cards, which by
@@ -326,31 +339,24 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
           </p>
           <p className="text-[10px] text-subtle truncate mt-0.5">{item.username}</p>
         </div>
-      </a>
+      </div>
 
-      {/* A custom-scheme app link either opens the app or the OS shows its
-          own "no app registered for this link" dialog - the page has no way
-          to detect which happened or react to it (an earlier attempt to
-          intercept the click and add a JS-driven fallback ended up breaking
-          the Stremio link that already worked). Rather than try that again,
-          this is a second, always-functional affordance - can't nest it
-          inside the card's own <a> (invalid HTML), so it's a small
-          absolutely-positioned sibling instead. Opens the same rich detail
-          modal the Activity page's poster click uses (cast, trailer,
-          rating, IMDb/TMDb links) instead of bouncing straight to an
-          external site - more useful than a bare link, and sidesteps
-          picking "the right" external URL entirely. Only shown when
-          there's an app link to fall back FROM; when there's only a web
-          link, the card itself already goes straight there. */}
+      {/* Now redundant with the card's own default click (which opens this
+          same modal), since only the play button navigates away - kept as a
+          visible, explicit affordance for "view details" rather than
+          removing it, and still useful as the one spot that works even if
+          the play button's target changes. stopPropagation avoids also
+          re-firing the card's own onClick behind it. */}
       {item.appUrl && (
         <button
           type="button"
           onClick={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             onOpenDetails(item);
           }}
-          title="App didn't open? View details instead"
-          aria-label="App didn't open? View details instead"
+          title="View details"
+          aria-label="View details"
           className="absolute top-1.5 right-1.5 z-10 p-1.5 rounded-md transition-colors"
           style={{ color: 'white', background: 'rgba(0,0,0,0.6)' }}
         >

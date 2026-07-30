@@ -45,7 +45,6 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
             ${{ env.DOCKERHUB_IMAGE_NAME }}
           tags: |
-            type=raw,value=latest
             type=raw,value=private
             type=semver,pattern=private-v{{version}}
           labels: |
