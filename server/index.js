@@ -40,6 +40,7 @@ const watchlistRouter = require('./routes/watchlist');
 const avatarsRouter = require('./routes/avatars');
 const vaultRouter = require('./routes/vault');
 const discoverRouter = require('./routes/discover');
+const listsRouter = require('./routes/lists');
 const { makeCreateProvider } = require('./providers');
 
 // Import configuration constants
@@ -246,6 +247,7 @@ app.use('/api/settings', settingsRouter({ prisma, INSTANCE_TYPE, getAccountDek, 
 app.use('/api/push', pushRouter({ prisma, getAccountId }));
 app.use('/api/watchlist', watchlistRouter({ prisma, getAccountId }));
 app.use('/api/discover', discoverRouter({ prisma, getAccountId }));
+app.use('/api/lists', listsRouter({ prisma, getAccountId }));
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({
   prisma,

@@ -1668,6 +1668,38 @@ class ApiClient {
   async clearWatchedOverride(itemId: string) {
     return this.fetch<{ success: boolean }>(`/watchlist/mark/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
   }
+
+  // Custom lists — named collections of titles (the tier above the single
+  // watchlist above).
+  async getLists() {
+    return this.fetch<CustomList[]>('/lists');
+  }
+  async createList(name: string, description?: string) {
+    return this.fetch<CustomList>('/lists', {
+      method: 'POST',
+      body: JSON.stringify({ name, description }),
+    });
+  }
+  async updateList(id: string, data: { name?: string; description?: string }) {
+    return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+  async deleteList(id: string) {
+    return this.fetch<{ success: boolean }>(`/lists/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  async addToList(id: string, item: { id: string; type: 'movie' | 'series'; name: string; poster?: string | null; year?: number | string | null }) {
+    return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items`, {
+      method: 'POST',
+      body: JSON.stringify(item),
+    });
+  }
+  async removeFromList(id: string, itemId: string) {
+    return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items/${encodeURIComponent(itemId)}`, {
+      method: 'DELETE',
+    });
+  }
   async getRecommendations(opts?: { mode?: 'personal' | 'shared'; userId?: string; userId2?: string; type?: 'movie' | 'series' }) {
     const params = new URLSearchParams();
     if (opts?.mode) params.set('mode', opts.mode);
@@ -2221,6 +2253,23 @@ export interface WatchlistItem {
   name: string;
   poster: string | null;
   addedAt: string;
+}
+
+export interface CustomListItem {
+  id: string;
+  type: 'movie' | 'series';
+  name: string;
+  poster?: string | null;
+  year?: number | string | null;
+}
+
+export interface CustomList {
+  id: string;
+  name: string;
+  description: string | null;
+  items: CustomListItem[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UpcomingEpisode {
