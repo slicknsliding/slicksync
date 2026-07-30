@@ -289,6 +289,10 @@ export default function DiscoverPage() {
   // viewMode/theme choices are.
   const [recRows, setRecRows] = useState<RecommendationRow[]>([]);
   const [recsLoaded, setRecsLoaded] = useState(false);
+  // Household picks: unwatched-by-anyone titles in the whole house's genres.
+  // Household-wide (not tied to the personal/shared user picker), so it only
+  // depends on the type toggle - a lead row above the personalized rows.
+  const [householdPicks, setHouseholdPicks] = useState<{ items: DiscoverItem[]; genres: string[]; memberCount: number; sharedAppeal: boolean } | null>(null);
   const [recMode, setRecMode] = useState<'personal' | 'shared'>('personal');
   const [recUserId, setRecUserId] = useState<string>('');
   const [recUserId2, setRecUserId2] = useState<string>('');
@@ -328,6 +332,16 @@ export default function DiscoverPage() {
       .catch(() => setRecRows([]))
       .finally(() => setRecsLoaded(true));
   }, [source, enableRecommendations, recMode, recUserId, recUserId2, type]);
+  // Household picks - household-wide, so only re-fetch on type change (not on
+  // mode/user-picker changes). Independent of the personal/shared rows below.
+  useEffect(() => {
+    if (source !== 'foryou' || !enableRecommendations) { setHouseholdPicks(null); return; }
+    let cancelled = false;
+    api.getHouseholdPicks(type)
+      .then((r) => { if (!cancelled) setHouseholdPicks(r && r.items.length > 0 ? r : null); })
+      .catch(() => { if (!cancelled) setHouseholdPicks(null); });
+    return () => { cancelled = true; };
+  }, [source, enableRecommendations, type]);
   useEffect(() => { if (recUsers.length > 0) localStorage.setItem('slicksync-foryou-mode', recMode); }, [recMode, recUsers.length]);
   useEffect(() => { if (recUserId) localStorage.setItem('slicksync-foryou-userId', recUserId); }, [recUserId]);
   useEffect(() => { if (recUserId2) localStorage.setItem('slicksync-foryou-userId2', recUserId2); }, [recUserId2]);
@@ -883,14 +897,64 @@ export default function DiscoverPage() {
                 )}
               </div>
             )}
+            {/* Household picks - unwatched by ANYONE, in genres the whole
+                house likes. Lead row, above the personal/shared rows, and
+                independent of them (shows even if the personal picker's own
+                rows are empty). Something single-user Trakt can't do. */}
+            {householdPicks && householdPicks.items.length > 0 && (
+              <div className="mb-8">
+                <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+                  <h3 className="text-base font-semibold font-display text-default">✨ Nobody&apos;s seen it yet</h3>
+                  {householdPicks.sharedAppeal && householdPicks.memberCount > 1 && (
+                    <Badge
+                      variant="primary"
+                      size="sm"
+                      icon={<SparklesIcon className="w-3 h-3" />}
+                      title="In genres shared across multiple household members - broad appeal, and no one's watched it"
+                    >
+                      House pick
+                    </Badge>
+                  )}
+                  <span className="text-xs text-muted">· {householdPicks.genres.join(', ')} the whole house likes</span>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
+                  {householdPicks.items.map((item) => (
+                    <PosterCard
+                      key={item.id}
+                      item={item}
+                      ratings={ratingsById[item.id]}
+                      watched={watchedStatus[item.id]}
+                      inWatchlist={inWatchlistIds.has(item.id)}
+                      showWatchlistMenu={enableWatchlist}
+                      showWatchlistBadge={enableWatchlist}
+                      showWatchedMenu={enableWatchedIndicators}
+                      showWatchedBadge={enableWatchedIndicators}
+                      showNotInterested
+                      onMarkNotInterested={handleMarkNotInterested}
+                      onOpenDetails={setDetailItem}
+                      onToggleWatchlist={handleToggleWatchlist}
+                      onToggleWatched={handleToggleWatched}
+                      isMenuOpen={openMenuKey === item.id}
+                      onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                      focusable={isTV}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {!recsLoaded ? (
               <div className="flex items-center justify-center py-24 text-muted">
                 <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
               </div>
             ) : recRows.length === 0 ? (
-              <div className="text-center py-24 text-muted">
-                <p>No recommendations yet — watch a few things first, and we&apos;ll suggest more.</p>
-              </div>
+              // Only show the empty message when there's ALSO no household-
+              // picks row above - otherwise the page isn't actually empty.
+              !householdPicks || householdPicks.items.length === 0 ? (
+                <div className="text-center py-24 text-muted">
+                  <p>No recommendations yet — watch a few things first, and we&apos;ll suggest more.</p>
+                </div>
+              ) : null
             ) : (
               <div className="space-y-8">
                 {recRows.map((row) => (
