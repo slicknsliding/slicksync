@@ -889,8 +889,8 @@ export default function AddonsPage() {
                               <td className="px-6 py-4">
                                 {addon.lastHealthCheck ? (
                                   <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${addon.isOnline ? 'bg-success' : 'bg-danger'}`} />
-                                    <span className={`text-sm ${addon.isOnline ? 'text-success' : 'text-danger'}`}>
+                                    <div className={`w-2 h-2 rounded-full ${addon.isOnline ? 'bg-success' : 'bg-error'}`} />
+                                    <span className={`text-sm ${addon.isOnline ? 'text-success' : 'text-error'}`}>
                                       {addon.isOnline ? 'Online' : 'Offline'}
                                     </span>
                                   </div>
@@ -1425,7 +1425,7 @@ function AddonCard({
                 )}
                 {addon.lastHealthCheck && (
                   <div
-                    className={`w-2 h-2 rounded-full shrink-0 ${addon.isOnline ? 'bg-success' : 'bg-danger'}`}
+                    className={`w-2 h-2 rounded-full shrink-0 ${addon.isOnline ? 'bg-success' : 'bg-error'}`}
                     title={addon.isOnline
                       ? `Online - Last checked: ${new Date(addon.lastHealthCheck).toLocaleString()}`
                       : `Offline${addon.healthCheckError ? `: ${addon.healthCheckError}` : ''} - Last checked: ${new Date(addon.lastHealthCheck).toLocaleString()}`
