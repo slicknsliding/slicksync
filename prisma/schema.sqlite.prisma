@@ -374,6 +374,17 @@ model MovieWatchHistory {
   // true = watched to (near) the end, false = real position data but well
   // short of the end. Once true it stays true (finishing can't un-finish).
   completed Boolean?
+  // Rewatch tracking (movies only). rewatchCount is how many times this movie
+  // was watched to the end AGAIN after its first completion. rewatchArmed is
+  // an internal edge-trigger flag: set when a finished movie's playback
+  // position dips back near the start (a rewatch began), cleared when it
+  // reaches the end again (which is when rewatchCount increments). This state
+  // machine is deliberately isolated from all watch-time/delta math - it only
+  // ever touches these two fields - so it can never inflate Watch Time. Series
+  // are excluded: a per-episode position reset there is just normal
+  // episode-to-episode progression, not a rewatch.
+  rewatchCount Int     @default(0)
+  rewatchArmed Boolean @default(false)
   watchedAt DateTime // When this movie was watched
   createdAt DateTime @default(now())
 
