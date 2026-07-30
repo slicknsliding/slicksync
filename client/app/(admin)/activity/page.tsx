@@ -681,25 +681,29 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           );
         })()}
 
-        {/* Nuvio profile badge - bottom left, only shown when known */}
-        {activity.profileLabel && (
-          <div className="absolute bottom-2 left-2">
-            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
-              {activity.profileLabel}
-            </div>
-          </div>
-        )}
-
-        {/* Session duration badge - top left. Completion (finished vs dropped)
-            is NOT shown on the poster art anymore (it cluttered) - it's a
-            subtle text marker below the poster instead. */}
-        {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
-          <div className="absolute top-2 left-2">
+        {/* Duration + Nuvio profile badges - stacked in the TOP-left corner,
+            not bottom-left. RPDB (when configured, see posterUrl.ts) burns
+            its own rating badge directly into the poster's pixels in the
+            bottom-left corner - an HTML badge placed there too visually
+            collided with it (confirmed real case: the profile tag partially
+            covered RPDB's rating on "The Bear"'s poster). RPDB never puts
+            anything in the top corners, so stacking here instead is safe
+            regardless of whether RPDB is on. */}
+        <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
+          {/* Completion (finished vs dropped) is NOT shown on the poster art
+              anymore (it cluttered) - it's a subtle text marker below the
+              poster instead. */}
+          {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
             <div className={`px-2 py-1 rounded-md text-xs font-medium shadow-lg ${getActivityColor(activity.type)}`}>
               {formatDuration(activity.durationSeconds)}
             </div>
-          </div>
-        )}
+          )}
+          {activity.profileLabel && (
+            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
+              {activity.profileLabel}
+            </div>
+          )}
+        </div>
 
         {/* Request count badge - bottom right, mirrors the profile badge on
             the opposite corner. The "Proxied · <service>" badge that used to
