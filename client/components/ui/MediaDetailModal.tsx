@@ -10,6 +10,7 @@ import { api, MediaDetails, DiscoverItem } from '@/lib/api';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useDragScroll } from '@/lib/hooks/useDragScroll';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { useFocusable, FocusContext } from '@noriginmedia/norigin-spatial-navigation';
 
@@ -100,13 +101,20 @@ export function MediaDetailModal({
     setPersonView({ id: member.tmdbId, name: res.person?.name || member.name, loading: false, credits: res.credits });
   }, []);
 
+  // Mouse grab-drag for the person-filmography row (touch/trackpad scroll it
+  // natively already; this adds the desktop drag affordance it was missing).
+  const creditsDrag = useDragScroll();
+
   const openCredit = useCallback(async (credit: { tmdbId: number; mediaType: 'movie' | 'tv'; title: string; poster: string | null }) => {
+    // Suppress the click that ends a drag-scroll (otherwise dragging the row
+    // and releasing over a poster would also navigate).
+    if (creditsDrag.isDragging()) return;
     const res = await api.resolveImdbId(credit.tmdbId, credit.mediaType);
     if (res?.imdbId) {
       setOverrideItem({ id: res.imdbId, type: res.type, name: credit.title, poster: credit.poster });
       setPersonView(null);
     }
-  }, []);
+  }, [creditsDrag]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -758,7 +766,14 @@ export function MediaDetailModal({
                       ) : personView.credits.length === 0 ? (
                         <p className="text-sm text-muted py-3">No other titles found.</p>
                       ) : (
-                        <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
+                        <div
+                          ref={creditsDrag.ref}
+                          onPointerDown={creditsDrag.handlers.onPointerDown}
+                          onPointerMove={creditsDrag.handlers.onPointerMove}
+                          onPointerUp={creditsDrag.handlers.onPointerUp}
+                          onPointerLeave={creditsDrag.handlers.onPointerLeave}
+                          className="flex gap-3 overflow-x-auto pb-1 no-scrollbar cursor-grab active:cursor-grabbing select-none"
+                        >
                           {personView.credits.map((c) => (
                             <button
                               key={`${c.mediaType}-${c.tmdbId}`}

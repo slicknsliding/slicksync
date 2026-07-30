@@ -254,6 +254,10 @@ export default function DiscoverPage() {
   const [items, setItems] = useState<DiscoverItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [detailItem, setDetailItem] = useState<DiscoverItem | null>(null);
+  // Person search (TMDb): typing an actor/director's name surfaces their
+  // titles of the current type as a section above the normal title results.
+  // Null when there's no key, no query, or no person match.
+  const [personSearch, setPersonSearch] = useState<{ person: { name: string; profile: string | null } | null; results: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }> } | null>(null);
   // Which poster's right-click menu is open — shared across the whole page
   // (both the main grid and the For You rows) so opening a second card's
   // menu closes whichever one was open before, same as Continue Watching.
@@ -460,6 +464,17 @@ export default function DiscoverPage() {
     }
   }, []);
 
+  // Open a person-search result: TMDb titles have no tt id, so resolve the
+  // IMDb id first, then open the normal Cinemeta-backed detail modal.
+  const openPersonResult = useCallback(async (r: { tmdbId: number; mediaType: 'movie' | 'tv'; title: string; poster: string | null }) => {
+    const res = await api.resolveImdbId(r.tmdbId, r.mediaType);
+    if (res?.imdbId) {
+      setDetailItem({ id: res.imdbId, type: res.type, name: r.title, poster: r.poster || undefined } as DiscoverItem);
+    } else {
+      toast.error('Couldn\'t open that title');
+    }
+  }, []);
+
   const handleToggleWatchlist = useCallback(async (item: DiscoverItem, next: boolean) => {
     // Optimistic — flip the local set immediately so the badge reacts.
     setWatchlist((prev) => next
@@ -503,6 +518,17 @@ export default function DiscoverPage() {
       setHasMore(gotFullPage);
       setSkip(results.length);
     });
+
+    // Person search runs in parallel with the title search - a name typed in
+    // the box surfaces that person's filmography too. Only in the plain
+    // Discover source (not watchlist/foryou), only with a query.
+    if (debouncedQuery && source === 'discover') {
+      api.searchPerson(debouncedQuery, type)
+        .then((r) => { if (!cancelled) setPersonSearch(r && r.person && r.results.length > 0 ? r : null); })
+        .catch(() => { if (!cancelled) setPersonSearch(null); });
+    } else {
+      setPersonSearch(null);
+    }
 
     return () => {
       cancelled = true;
@@ -1017,11 +1043,53 @@ export default function DiscoverPage() {
           </PageSection>
         ) : (
         <PageSection delay={0.1}>
+          {/* Person search results - shown above the normal title grid when a
+              typed name matches an actor/director (TMDb). Their titles of the
+              current Movies/Series type; clicking one resolves its IMDb id and
+              opens the detail modal. Only in the Discover source with a key. */}
+          {personSearch && personSearch.person && personSearch.results.length > 0 && (
+            <div className="mb-8">
+              <div className="flex items-center gap-2 mb-3">
+                {personSearch.person.profile && (
+                  <img src={personSearch.person.profile} alt={personSearch.person.name} className="w-8 h-8 rounded-full object-cover" />
+                )}
+                <h3 className="text-base font-semibold font-display text-default">
+                  {personSearch.person.name}
+                  <span className="text-muted font-normal"> — {type === 'series' ? 'series' : 'movies'} they&apos;re in</span>
+                </h3>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
+                {personSearch.results.map((r) => (
+                  <button
+                    key={`${r.mediaType}-${r.tmdbId}`}
+                    type="button"
+                    onClick={() => openPersonResult(r)}
+                    title={`${r.title}${r.role ? ` · ${r.role}` : ''}`}
+                    className="text-left group/pr"
+                  >
+                    <div className="aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-lg">
+                      {r.poster ? (
+                        <img src={r.poster} alt={r.title} loading="lazy" className="w-full h-full object-cover transition-transform group-hover/pr:scale-105" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-muted text-xs p-2 text-center">{r.title}</div>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs font-medium text-default leading-tight line-clamp-2 group-hover/pr:text-primary transition-colors text-center">{r.title}</p>
+                    {r.year && <p className="text-[10px] text-subtle text-center">{r.year}</p>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="flex items-center justify-center py-24 text-muted">
               <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
             </div>
           ) : displayedItems.length === 0 ? (
+            // Suppress the empty message when a person-search section is
+            // already showing results above - the page isn't actually empty.
+            (personSearch && personSearch.results.length > 0) ? null : (
             <div className="text-center py-24 text-muted">
               <MagnifyingGlassIcon className="w-10 h-10 mx-auto mb-3 text-subtle" />
               <p>
@@ -1034,6 +1102,7 @@ export default function DiscoverPage() {
                       : 'No results found.'}
               </p>
             </div>
+            )
           ) : (
             <>
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">

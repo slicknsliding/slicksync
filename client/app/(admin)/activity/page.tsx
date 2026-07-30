@@ -569,6 +569,10 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
   focusable?: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
+  // Multi-watcher popover (who else watched this same title today) - kept off
+  // the poster art itself (just a count badge there); tapping reveals the
+  // full list, so it's discoverable on mobile too, not a desktop-only tooltip.
+  const [showWatchers, setShowWatchers] = useState(false);
 
   const cardElement = (
     <motion.div
@@ -603,43 +607,67 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           </div>
         )}
 
-        {/* User avatar(s) - top right. When this card represents multiple
-            distinct users who watched this same title today (see
-            buildGridWatchers), stack them VERTICALLY, most-recent on top -
-            a horizontal overlapping row spread across the (narrow, on mobile)
-            poster and the ring around each avatar read as stray dark halos.
-            A vertical column with a small gap + soft shadow (no hard ring)
-            stays tucked in the corner and reads cleanly on any poster art.
-            Capped so a heavily-shared title can't run avatars down the whole
-            edge - the rest collapse into a "+N" chip. */}
+        {/* User avatar - top right. Just ONE avatar (the most recent watcher)
+            keeps the poster corner uncluttered. When multiple distinct
+            household members watched this same title (see buildGridWatchers),
+            a small count badge shows how many, and TAPPING it opens a compact
+            popover listing everyone who watched (each linking to their
+            profile) - discoverable on mobile, unlike a hover tooltip, without
+            spreading avatars across the art. */}
         {(() => {
-          const MAX_STACK = 3;
           const watchers = [
             { userId: activity.userId, userName: activity.userName, userEmail: activity.userEmail, userAvatarUrl: activity.userAvatarUrl },
             ...(activity.additionalWatchers ?? []),
           ];
-          const shown = watchers.slice(0, MAX_STACK);
-          const extra = watchers.length - shown.length;
+          const count = watchers.length;
           return (
-            <div className="absolute top-2 right-2 flex flex-col items-center gap-1">
-              {shown.map((w) => (
+            <div className="absolute top-2 right-2">
+              {count > 1 ? (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setShowWatchers((v) => !v); }}
+                  className="relative block rounded-full shadow-md shadow-black/40"
+                  title={`${count} watched`}
+                  aria-label={`${count} people watched — show who`}
+                >
+                  <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
+                  <span className="absolute -bottom-1 -right-1 min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-[10px] font-bold bg-primary text-white ring-2 ring-slate-900">
+                    {count}
+                  </span>
+                </button>
+              ) : (
                 <Link
-                  key={w.userId}
-                  href={`/users/${w.userId}`}
+                  href={`/users/${activity.userId}`}
                   onClick={(e) => e.stopPropagation()}
-                  className="rounded-full shadow-md shadow-black/40 shrink-0"
-                  title={watchers.length > 1 ? w.userName : undefined}
+                  className="block rounded-full shadow-md shadow-black/40"
                 >
-                  <UserAvatar userId={w.userId} name={w.userName} email={w.userEmail} src={w.userAvatarUrl ?? undefined} size="sm" />
+                  <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
                 </Link>
-              ))}
-              {extra > 0 && (
-                <div
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold bg-slate-900/85 text-slate-100 shadow-md shadow-black/40"
-                  title={`+${extra} more`}
-                >
-                  +{extra}
-                </div>
+              )}
+
+              {count > 1 && showWatchers && (
+                <>
+                  {/* Click-away backdrop so the popover closes on any outside
+                      tap without also triggering the card underneath. */}
+                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowWatchers(false); }} />
+                  <div
+                    className="absolute right-0 mt-1 z-50 w-44 rounded-lg bg-slate-900/95 backdrop-blur-sm border border-default shadow-xl p-1.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <p className="text-[10px] uppercase tracking-wide text-subtle px-1.5 pb-1">Watched by</p>
+                    {watchers.map((w) => (
+                      <Link
+                        key={w.userId}
+                        href={`/users/${w.userId}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-2 px-1.5 py-1 rounded-md hover:bg-surface-hover transition-colors"
+                      >
+                        <UserAvatar userId={w.userId} name={w.userName} email={w.userEmail} src={w.userAvatarUrl ?? undefined} size="xs" />
+                        <span className="text-xs text-default truncate">{w.userName}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           );

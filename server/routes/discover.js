@@ -816,5 +816,62 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     }
   })
 
+  // GET /api/discover/search-person?query=X&type=movie|series
+  // Person search for Discover: type an actor/director's name and get what
+  // they've been in, filtered to the current Movies/Series toggle. Same TMDb
+  // key + credits pipeline as the cast deep-dive; returns the best-matching
+  // person plus their titles of the requested type. Results carry tmdbId +
+  // mediaType so a click resolves the IMDb id (/imdb-id) and opens the normal
+  // Cinemeta-backed detail modal.
+  router.get('/search-person', async (req, res) => {
+    try {
+      const key = await resolveTmdbKey(req)
+      if (!key) return res.status(503).json({ error: 'TMDb key not configured' })
+      const query = String(req.query.query || '').trim()
+      const wantTv = req.query.type === 'series'
+      if (!query) return res.json({ person: null, results: [] })
+
+      const sr = await fetch(`https://api.themoviedb.org/3/search/person?api_key=${encodeURIComponent(key)}&query=${encodeURIComponent(query)}`)
+      if (!sr.ok) return res.status(502).json({ error: 'TMDb request failed' })
+      const sd = await sr.json()
+      // Highest-billed match (TMDb sorts by popularity); require a real name
+      // match-ish by taking the top result, which is TMDb's own best guess.
+      const person = (sd.results || [])[0]
+      if (!person) return res.json({ person: null, results: [] })
+
+      const cr = await fetch(`https://api.themoviedb.org/3/person/${person.id}/combined_credits?api_key=${encodeURIComponent(key)}`)
+      if (!cr.ok) return res.status(502).json({ error: 'TMDb request failed' })
+      const cd = await cr.json()
+
+      const seen = new Set()
+      const results = [...(cd.cast || []), ...(cd.crew || [])]
+        .filter((c) => c && c.media_type === (wantTv ? 'tv' : 'movie') && (c.poster_path || c.title || c.name))
+        .map((c) => {
+          const date = c.release_date || c.first_air_date || ''
+          return {
+            tmdbId: c.id,
+            mediaType: c.media_type,
+            title: c.title || c.name || 'Untitled',
+            year: date ? date.slice(0, 4) : null,
+            poster: c.poster_path ? `${TMDB_IMG}${c.poster_path}` : null,
+            role: c.character || c.job || null,
+            _sort: date || '0000',
+          }
+        })
+        .filter((c) => { const k = c.tmdbId; if (seen.has(k)) return false; seen.add(k); return true })
+        .sort((a, b) => b._sort.localeCompare(a._sort))
+        .slice(0, 40)
+        .map(({ _sort, ...rest }) => rest)
+
+      res.json({
+        person: { id: person.id, name: person.name, profile: person.profile_path ? `${TMDB_IMG}${person.profile_path}` : null },
+        results,
+      })
+    } catch (error) {
+      console.error('Error searching person:', error)
+      res.status(500).json({ error: 'Failed to search person' })
+    }
+  })
+
   return router;
 };
