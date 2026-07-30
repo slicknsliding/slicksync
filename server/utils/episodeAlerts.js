@@ -19,6 +19,7 @@
  */
 
 const { fetchMetadata, postDiscord } = require('./notify')
+const { getAccountDayNumber, resolveAccountTimezone } = require('./dateUtils')
 
 const POLL_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6h - episode drops are a daily-scale event
 const FIRST_RUN_DELAY_MS = 3 * 60 * 1000 // let boot-time work settle first
@@ -28,14 +29,28 @@ function episodeOrder(season, episode) {
   return season * 10000 + episode
 }
 
-/** Latest episode in the list whose released date is in the past. */
-function latestReleasedEpisode(allEpisodes) {
-  const now = Date.now()
+/**
+ * A metadata provider's `released` field is a plain calendar day (typically
+ * serialized as literal T00:00:00.000Z, not a real airtime), so its OWN
+ * calendar-day components are read as encoded (timeZone: 'UTC'), not
+ * converted through the account's timezone - that would shift a July 30
+ * release date to July 29 for a UTC-7 account, moving the bug in the wrong
+ * direction. It's `todayDayNumber` (see resolveTodayDayNumber below) that
+ * needs to be account-timezone-aware, not this.
+ */
+function releasedDayNumber(ep) {
+  const d = new Date(ep.released)
+  if (isNaN(d.getTime())) return null
+  return getAccountDayNumber(d, 'UTC')
+}
+
+/** Latest episode in the list whose released day is on or before today (in the account's own timezone - see module comment / getAccountDayNumber). */
+function latestReleasedEpisode(allEpisodes, todayDayNumber) {
   let latest = null
   for (const ep of allEpisodes) {
     if (!ep.released) continue
-    const releasedTs = new Date(ep.released).getTime()
-    if (!Number.isFinite(releasedTs) || releasedTs > now) continue
+    const day = releasedDayNumber(ep)
+    if (day === null || day > todayDayNumber) continue
     if (!latest || episodeOrder(ep.season, ep.episode) > episodeOrder(latest.season, latest.episode)) {
       latest = ep
     }
@@ -43,16 +58,15 @@ function latestReleasedEpisode(allEpisodes) {
   return latest
 }
 
-/** Soonest episode whose released date is still in the future (by air date). */
-function nextUpcomingEpisode(allEpisodes) {
-  const now = Date.now()
+/** Soonest episode whose released day is still after today (by air date, account-timezone-aware). */
+function nextUpcomingEpisode(allEpisodes, todayDayNumber) {
   let next = null
-  let nextTs = Infinity
+  let nextDay = Infinity
   for (const ep of allEpisodes) {
     if (!ep.released) continue
-    const ts = new Date(ep.released).getTime()
-    if (!Number.isFinite(ts) || ts <= now) continue
-    if (ts < nextTs) { next = ep; nextTs = ts }
+    const day = releasedDayNumber(ep)
+    if (day === null || day <= todayDayNumber) continue
+    if (day < nextDay) { next = ep; nextDay = day }
   }
   return next
 }
@@ -194,6 +208,18 @@ async function checkForNewEpisodes(prisma) {
   const mutedRows = await prisma.mutedShow.findMany({ select: { accountId: true, showId: true } }).catch(() => [])
   const mutedKeys = new Set(mutedRows.map((m) => `${m.accountId}::${m.showId}`))
 
+  // Resolved once per account (not per show) and cached for this run - shows
+  // can span multiple accounts, and each account may have its own configured
+  // timezone (AppAccount.sync.accountTimezone).
+  const todayDayNumberByAccount = new Map()
+  async function todayDayNumberFor(accountId) {
+    if (todayDayNumberByAccount.has(accountId)) return todayDayNumberByAccount.get(accountId)
+    const tz = await resolveAccountTimezone(prisma, accountId)
+    const value = getAccountDayNumber(new Date(), tz)
+    todayDayNumberByAccount.set(accountId, value)
+    return value
+  }
+
   let alertsFired = 0
   for (const show of shows.values()) {
     if (mutedKeys.has(`${show.accountId}::${show.showId}`)) continue
@@ -201,12 +227,13 @@ async function checkForNewEpisodes(prisma) {
       const metadata = await fetchMetadata(show.showId, 'series', show.videoId)
       if (!metadata?.allEpisodes?.length) continue
 
-      const latest = latestReleasedEpisode(metadata.allEpisodes)
+      const todayDayNumber = await todayDayNumberFor(show.accountId)
+      const latest = latestReleasedEpisode(metadata.allEpisodes, todayDayNumber)
       if (!latest) continue
 
       // Upcoming-episode + display fields for the "Coming up" calendar, kept
       // fresh on every poll independently of the alert baseline below.
-      const next = nextUpcomingEpisode(metadata.allEpisodes)
+      const next = nextUpcomingEpisode(metadata.allEpisodes, todayDayNumber)
       const nextFields = {
         showName: metadata.title || show.showName || null,
         poster: metadata.poster || show.poster || null,
