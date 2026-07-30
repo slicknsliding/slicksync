@@ -166,12 +166,17 @@ async function fetchMetadata(itemId, itemType, videoId) {
           const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w185'
           const normalizedCast = (meta.credits_cast || meta.cast || [])
             .map((c) => {
-              if (typeof c === 'string') return { name: c, character: null, photo: null }
+              if (typeof c === 'string') return { name: c, character: null, photo: null, tmdbId: null }
               if (c && typeof c === 'object' && c.name) {
                 return {
                   name: c.name,
                   character: c.character || null,
-                  photo: c.profile_path ? `${TMDB_IMAGE_BASE}${c.profile_path}` : null
+                  photo: c.profile_path ? `${TMDB_IMAGE_BASE}${c.profile_path}` : null,
+                  // TMDb person id from Cinemeta's credits_cast - preserved so
+                  // the cast/crew deep-dive can fetch this person's filmography
+                  // (needs a TMDb key; see discover.js's /person route). Null
+                  // for the plain-string legacy `cast` shape, which has no id.
+                  tmdbId: (typeof c.id === 'number' || typeof c.id === 'string') ? c.id : null,
                 }
               }
               return null

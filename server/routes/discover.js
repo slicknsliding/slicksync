@@ -555,5 +555,88 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     }
   })
 
+  // --- Cast/crew deep-dive (optional; requires a TMDb API key) -------------
+  // Cinemeta has no people database, so a person's filmography can only come
+  // from TMDb. The key is opt-in: per-account (Settings, sync.tmdbApiKey)
+  // takes precedence, else the TMDB_API_KEY env var. With neither, these
+  // endpoints return 503 and the frontend hides the feature entirely.
+  const TMDB_IMG = 'https://image.tmdb.org/t/p/w342'
+  async function resolveTmdbKey(req) {
+    try {
+      const accountId = (typeof getAccountId === 'function' ? getAccountId(req) : null) || 'default'
+      const acc = await prisma?.appAccount?.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let cfg = acc?.sync
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+      const fromSettings = cfg && typeof cfg === 'object' && typeof cfg.tmdbApiKey === 'string' ? cfg.tmdbApiKey.trim() : ''
+      if (fromSettings) return fromSettings
+    } catch {}
+    return (process.env.TMDB_API_KEY || '').trim()
+  }
+
+  // GET /api/discover/person/:id - a TMDb person's film/TV credits, newest
+  // first, deduped, with poster + year + role. tmdbId/mediaType are returned
+  // so the frontend can resolve an IMDb id on click (see /imdb-id below) and
+  // open the existing Cinemeta-backed detail modal.
+  router.get('/person/:id', async (req, res) => {
+    try {
+      const key = await resolveTmdbKey(req)
+      if (!key) return res.status(503).json({ error: 'TMDb key not configured' })
+      const personId = String(req.params.id).replace(/[^0-9]/g, '')
+      if (!personId) return res.status(400).json({ error: 'Invalid person id' })
+
+      const url = `https://api.themoviedb.org/3/person/${personId}/combined_credits?api_key=${encodeURIComponent(key)}`
+      const rsp = await fetch(url)
+      if (!rsp.ok) return res.status(502).json({ error: 'TMDb request failed' })
+      const data = await rsp.json()
+
+      const seen = new Set()
+      const credits = [...(data.cast || []), ...(data.crew || [])]
+        .filter((c) => c && (c.media_type === 'movie' || c.media_type === 'tv') && (c.poster_path || c.title || c.name))
+        .map((c) => {
+          const date = c.release_date || c.first_air_date || ''
+          return {
+            tmdbId: c.id,
+            mediaType: c.media_type, // 'movie' | 'tv'
+            title: c.title || c.name || 'Untitled',
+            year: date ? date.slice(0, 4) : null,
+            poster: c.poster_path ? `${TMDB_IMG}${c.poster_path}` : null,
+            role: c.character || c.job || null,
+            popularity: typeof c.popularity === 'number' ? c.popularity : 0,
+            _sort: date || '0000',
+          }
+        })
+        .filter((c) => { const k = `${c.mediaType}:${c.tmdbId}`; if (seen.has(k)) return false; seen.add(k); return true })
+        .sort((a, b) => b._sort.localeCompare(a._sort))
+        .slice(0, 60)
+        .map(({ _sort, popularity, ...rest }) => rest)
+
+      res.json({ person: { id: Number(personId), name: data.name || null }, credits })
+    } catch (error) {
+      console.error('Error fetching person credits:', error)
+      res.status(500).json({ error: 'Failed to fetch person credits' })
+    }
+  })
+
+  // GET /api/discover/imdb-id?tmdbId=X&type=movie|tv - resolve a TMDb title to
+  // its IMDb id, so a person-credit click can open the existing detail modal
+  // (which is Cinemeta/tt-id based). One extra call, made only on click - the
+  // person endpoint stays a single TMDb request.
+  router.get('/imdb-id', async (req, res) => {
+    try {
+      const key = await resolveTmdbKey(req)
+      if (!key) return res.status(503).json({ error: 'TMDb key not configured' })
+      const tmdbId = String(req.query.tmdbId || '').replace(/[^0-9]/g, '')
+      const type = req.query.type === 'tv' ? 'tv' : 'movie'
+      if (!tmdbId) return res.status(400).json({ error: 'Invalid tmdbId' })
+      const rsp = await fetch(`https://api.themoviedb.org/3/${type}/${tmdbId}/external_ids?api_key=${encodeURIComponent(key)}`)
+      if (!rsp.ok) return res.status(502).json({ error: 'TMDb request failed' })
+      const data = await rsp.json()
+      res.json({ imdbId: data.imdb_id || null, type: type === 'tv' ? 'series' : 'movie' })
+    } catch (error) {
+      console.error('Error resolving imdb id:', error)
+      res.status(500).json({ error: 'Failed to resolve imdb id' })
+    }
+  })
+
   return router;
 };

@@ -306,6 +306,7 @@ export default function SettingsPage() {
           notifyDigestEnabled: settings.notifyDigestEnabled || false,
           notifyDigestFrequency: settings.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily',
           accountTimezone: settings.accountTimezone || '',
+          tmdbApiKey: settings.tmdbApiKey || '',
         });
       } catch (e) {
         // Settings may not exist yet, use defaults
@@ -948,6 +949,27 @@ export default function SettingsPage() {
                   label="Toggle recommendations"
                 />
               </SettingRow>
+
+              {/* TMDb key for the cast/crew deep-dive. Text field, not a
+                  toggle - the feature simply appears once a valid key is set.
+                  Free from themoviedb.org (Settings -> API). Saved on blur,
+                  same pattern as the webhook URL above. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">TMDb API key <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Enables the cast/crew deep-dive — click any actor in a title's detail popup to see everything else they're in. Get a free key at themoviedb.org → Settings → API. Leave blank to keep the feature off.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.tmdbApiKey || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, tmdbApiKey: e.target.value }))}
+                  onBlur={() => handleSaveSetting('tmdbApiKey' as keyof SyncSettings, syncSettings.tmdbApiKey)}
+                  placeholder="TMDb API key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
             </div>
           </Card>
         </PageSection>
