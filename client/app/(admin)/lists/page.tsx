@@ -144,7 +144,7 @@ export default function ListsPage() {
                       type="button"
                       title="Delete list"
                       onClick={() => setDeleting(list)}
-                      className="p-1.5 rounded-lg text-muted hover:text-danger hover:bg-surface-hover transition-colors"
+                      className="p-1.5 rounded-lg text-muted hover:text-error hover:bg-surface-hover transition-colors"
                     >
                       <TrashIcon className="w-4 h-4" />
                     </button>
