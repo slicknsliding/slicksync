@@ -199,7 +199,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     const [existing, session] = await Promise.all([
       prisma.episodeWatchHistory.findUnique({
         where: { accountId_userId_videoId: { accountId: accountIdValue, userId, videoId } },
-        select: { durationSeconds: true, debridService: true }
+        select: { durationSeconds: true, debridService: true, episodeName: true }
       }),
       prisma.watchSession.findUnique({
         where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId: showId } },
@@ -215,6 +215,23 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     // already-labeled rows would be pure waste.
     const debridService = existing?.debridService
       || await findDebridServiceForWatch(prisma, { accountId: accountIdValue, userId, title: showName, watchedAt, users })
+
+    // Episode title, fetched once per episode (never re-fetched once known -
+    // a title never changes) via the same Cinemeta lookup already used for
+    // Discord "started watching" embeds. Activity's History view previously
+    // had no way to show this at all - it renders straight from this table,
+    // unlike Continue Watching (which reads live provider metadata directly
+    // and could always show it). Best-effort: a lookup failure just leaves
+    // it null, same as debridService above, never blocks the actual watch
+    // record from being written.
+    let episodeName = existing?.episodeName || null
+    if (!episodeName) {
+      try {
+        const { fetchMetadata } = require('./notify')
+        const meta = await fetchMetadata(showId, 'series', videoId)
+        episodeName = meta?.episode?.title || null
+      } catch {}
+    }
 
     // Upsert the episode watch (updates watchedAt if already exists)
     await prisma.episodeWatchHistory.upsert({
@@ -233,6 +250,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
         videoId,
         season,
         episode,
+        episodeName,
         poster,
         profileLabel,
         watchedAt,
@@ -248,7 +266,8 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
         // Only overwrite if we found something this time - never blank out
         // an already-confirmed label just because a later poll's window no
         // longer catches the original proxy session.
-        ...(debridService ? { debridService } : {})
+        ...(debridService ? { debridService } : {}),
+        ...(episodeName ? { episodeName } : {})
       }
     })
 

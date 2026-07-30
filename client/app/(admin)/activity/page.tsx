@@ -166,6 +166,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         contentName: entry.item.name,
         season: entry.item.season ?? undefined,
         episode: entry.item.episode ?? undefined,
+        episodeName: entry.episodeName ?? undefined,
         durationSeconds: entry.durationSeconds && entry.durationSeconds > 0 ? entry.durationSeconds : undefined,
         timestamp: new Date(entry.watchedAt),
         endTime: new Date(entry.watchedAt),
