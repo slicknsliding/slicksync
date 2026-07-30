@@ -295,6 +295,8 @@ model EpisodeWatchHistory {
   season      Int? // Season number (null if unknown)
   episode     Int? // Episode number (null if unknown)
   episodeName String? // Episode title from Cinemeta, when known - fetched once via the same lookup used for Discord "started watching" embeds (server/utils/notify.js's fetchMetadata), not on every poll
+  // Real completion for this episode - same semantics as MovieWatchHistory.completed.
+  completed   Boolean?
   poster      String? // Show poster URL
   profileLabel String?
   durationSeconds Int?     // Real duration, backfilled from a matching AIOStreams-proxy WatchSession entry when the two are merged as the same viewing event // Which provider profile this was watched under (e.g. Nuvio profile name), if known
@@ -324,6 +326,9 @@ model MovieWatchHistory {
   profileLabel String?
   durationSeconds Int?     // Real duration, backfilled from a matching AIOStreams-proxy WatchSession entry when the two are merged as the same viewing event // Which provider profile this was watched under (e.g. Nuvio profile name), if known
   debridService String? // See EpisodeWatchHistory.debridService's comment - same field, same rules.
+  // Real completion (position/runtime >= ~90% at write time). null = unknown,
+  // true = finished, false = started but dropped. See sqlite schema comment.
+  completed Boolean?
   watchedAt DateTime // When this movie was watched
   createdAt DateTime @default(now())
 

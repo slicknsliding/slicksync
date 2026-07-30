@@ -15,6 +15,22 @@ const { postDiscord } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
 const { notifyPushForType } = require('./pushNotifications')
 
+// Real completion for a library item: did playback reach (near) the end?
+// From the item's own position vs runtime (state.timeOffset / state.duration),
+// the same fields the duration logic reads. Returns true (finished), false
+// (real position but well short), or null (no position/runtime data to judge).
+// Unlike duration-crediting, this is safe to read at any single point - a
+// position near the end IS "finished" regardless of when it got there, so no
+// first-observation caveat applies here. 90% threshold accounts for end
+// credits / a few unwatched trailing seconds.
+const COMPLETE_RATIO = 0.9
+function computeCompleted(state) {
+  const pos = Number(state?.timeOffset ?? NaN)
+  const dur = Number(state?.duration ?? NaN)
+  if (Number.isNaN(pos) || Number.isNaN(dur) || dur <= 0 || pos <= 0) return null
+  return pos / dur >= COMPLETE_RATIO
+}
+
 /**
  * Extract season/episode from video_id
  * Handles various formats:
@@ -199,7 +215,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     const [existing, session] = await Promise.all([
       prisma.episodeWatchHistory.findUnique({
         where: { accountId_userId_videoId: { accountId: accountIdValue, userId, videoId } },
-        select: { durationSeconds: true, debridService: true, episodeName: true }
+        select: { durationSeconds: true, debridService: true, episodeName: true, completed: true }
       }),
       prisma.watchSession.findUnique({
         where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId: showId } },
@@ -233,6 +249,10 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
       } catch {}
     }
 
+    // Real completion - once true, stays true (same as recordMovieWatch).
+    const computedCompleted = computeCompleted(item.state)
+    const completed = existing?.completed === true ? true : computedCompleted
+
     // Upsert the episode watch (updates watchedAt if already exists)
     await prisma.episodeWatchHistory.upsert({
       where: {
@@ -255,7 +275,8 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
         profileLabel,
         watchedAt,
         durationSeconds,
-        debridService
+        debridService,
+        completed
       },
       update: {
         watchedAt, // Update watch time if re-watching
@@ -267,7 +288,8 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
         // an already-confirmed label just because a later poll's window no
         // longer catches the original proxy session.
         ...(debridService ? { debridService } : {}),
-        ...(episodeName ? { episodeName } : {})
+        ...(episodeName ? { episodeName } : {}),
+        ...(completed !== null && completed !== undefined ? { completed } : {})
       }
     })
 
@@ -349,7 +371,7 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
     const [existing, session] = await Promise.all([
       prisma.movieWatchHistory.findUnique({
         where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
-        select: { durationSeconds: true, debridService: true }
+        select: { durationSeconds: true, debridService: true, completed: true }
       }),
       prisma.watchSession.findUnique({
         where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
@@ -357,6 +379,11 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
       })
     ])
     const durationSeconds = Math.max(existing?.durationSeconds || 0, session?.durationSeconds || 0) || undefined
+
+    // Real completion - once true, stays true (finishing can't un-finish; a
+    // later partial re-watch of the same title mustn't flip it back).
+    const computedCompleted = computeCompleted(item.state)
+    const completed = existing?.completed === true ? true : computedCompleted
 
     // See recordEpisodeWatch's matching comment - only look up if not
     // already confirmed.
@@ -381,7 +408,8 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
         profileLabel,
         watchedAt,
         durationSeconds,
-        debridService
+        debridService,
+        completed
       },
       update: {
         watchedAt, // Update watch time if re-watching
@@ -389,7 +417,9 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
         poster, // Update in case poster changed
         profileLabel,
         durationSeconds,
-        ...(debridService ? { debridService } : {})
+        ...(debridService ? { debridService } : {}),
+        // Only write when we have a verdict, and never downgrade a prior true.
+        ...(completed !== null && completed !== undefined ? { completed } : {})
       }
     })
 
