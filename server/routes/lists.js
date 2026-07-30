@@ -66,6 +66,46 @@ module.exports = ({ prisma, getAccountId }) => {
     }
   });
 
+  // POST /api/lists/import — create a list from a pasted TMDb or MDBList URL.
+  // { url, name? } - name overrides the source list's own name if given.
+  // Provider is auto-detected from the URL host, so this is the only import
+  // entry point (no separate per-provider routes/UI).
+  router.post('/import', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const url = String(req.body?.url || '').trim();
+      if (!url) return res.status(400).json({ error: 'url is required' });
+
+      const { detectProvider, importFromTmdb, importFromMdblist, resolveTmdbKey, resolveMdblistKey } = require('../utils/listImport');
+      const provider = detectProvider(url);
+      if (!provider) {
+        return res.status(400).json({ error: 'Unrecognized list URL - paste a TMDb (themoviedb.org/list/...) or MDBList (mdblist.com/lists/...) list URL' });
+      }
+
+      let result;
+      if (provider === 'tmdb') {
+        const key = await resolveTmdbKey(prisma, getAccountId, req);
+        result = await importFromTmdb(key, url);
+      } else {
+        const key = await resolveMdblistKey(prisma, getAccountId, req);
+        result = await importFromMdblist(key, url);
+      }
+
+      if (result.items.length === 0) {
+        return res.status(422).json({ error: 'That list has no importable titles (or none could be resolved to an IMDb id)' });
+      }
+
+      const name = (req.body?.name || '').trim() || result.name;
+      const list = await prisma.customList.create({
+        data: { accountId, name, itemsJson: JSON.stringify(result.items) },
+      });
+      res.status(201).json({ ...shape(list), truncated: !!result.truncated, totalAvailable: result.totalAvailable });
+    } catch (e) {
+      console.error('Error importing list:', e);
+      res.status(400).json({ error: e?.message || 'Failed to import list' });
+    }
+  });
+
   // PATCH /api/lists/:id — rename / re-describe. { name?, description? }
   router.patch('/:id', async (req, res) => {
     try {
