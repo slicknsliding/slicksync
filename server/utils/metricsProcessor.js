@@ -584,6 +584,15 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
     // Decide whether to record an activity delta - this part is pure
     // decision-making (reads only), the actual writes happen atomically
     // below.
+    // Highest overallTimeWatched ever recorded for this (user,item) across all
+    // days - the monotonic high-water-mark. Computed once and reused for BOTH
+    // the delta baseline below AND clamping the snapshot write further down, so
+    // the snapshot can never regress it (see the clamp comment at the write).
+    let maxSeenBig = null
+    if (current.overallTimeWatched) {
+      try { maxSeenBig = await getMaxOverallTimeWatched(prisma, accountIdValue, userId, itemId) } catch {}
+    }
+
     let activityDeltaSeconds = null
     if (current.overallTimeWatched && snapshotChanged) {
       let totalDeltaSeconds = 0
@@ -594,8 +603,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         // snapshot - see getMaxOverallTimeWatched's comment for why. Falls
         // back to the plain prior-snapshot comparison only in the
         // practically-unreachable case where the max lookup itself fails.
-        const maxSeen = await getMaxOverallTimeWatched(prisma, accountIdValue, userId, itemId)
-        const deltaBaseline = maxSeen !== null ? maxSeen : BigInt(oldSnapshotValue)
+        const deltaBaseline = maxSeenBig !== null ? maxSeenBig : BigInt(oldSnapshotValue)
         const currOverall = BigInt(current.overallTimeWatched)
         const totalDeltaMs = currOverall - deltaBaseline
 
@@ -689,6 +697,23 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         }))
       }
       if (snapshotChanged && current.overallTimeWatched) {
+        // Clamp the stored overallTimeWatched to the monotonic high-water-mark:
+        // never let a snapshot regress below the max ever seen for this item.
+        // overallTimeWatched is cumulative and only ever grows in reality, so a
+        // DROP is always a data artifact - specifically Nuvio's multi-profile
+        // merge transiently dropping a profile's progress (documented in
+        // CLAUDE.md). Before this clamp, that drop overwrote the snapshot LOWER,
+        // which erased the high-water-mark getMaxOverallTimeWatched relies on -
+        // so when the value recovered, the recovery re-registered as a fresh
+        // delta, over and over (confirmed real case 2026-07-30: the identical
+        // 19104-second delta recorded 8x in one day for one series, inflating
+        // Watch Time Today by 5+ hours). Keeping overallTimeWatched monotonic
+        // makes a drop-then-recover a no-op by construction. timeOffset /
+        // lastWatched / mtime still reflect current (those legitimately move).
+        const currOverallBig = BigInt(current.overallTimeWatched)
+        const overallToStore = (maxSeenBig !== null && maxSeenBig > currOverallBig)
+          ? maxSeenBig.toString()
+          : current.overallTimeWatched
         ops.push(prisma.watchSnapshot.upsert({
           where: {
             accountId_userId_itemId_date: {
@@ -703,13 +728,13 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
             userId,
             itemId,
             date: new Date(todayDate),
-            overallTimeWatched: current.overallTimeWatched,
+            overallTimeWatched: overallToStore,
             timeOffset: current.timeOffset,
             lastWatched: current.lastWatched,
             mtime: current.mtime
           },
           update: {
-            overallTimeWatched: current.overallTimeWatched,
+            overallTimeWatched: overallToStore,
             timeOffset: current.timeOffset,
             lastWatched: current.lastWatched,
             mtime: current.mtime
