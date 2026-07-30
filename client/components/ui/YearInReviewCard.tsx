@@ -2,9 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Card } from './Card';
+import { Button } from './Button';
 import { MediaDetailModal } from './MediaDetailModal';
-import { SparklesIcon, FilmIcon, TvIcon, TrophyIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { SparklesIcon, FilmIcon, TvIcon, TrophyIcon, ArrowPathIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { api, YearInReview, YearInReviewTitle } from '@/lib/api';
+import { renderWrappedCard, downloadBlob } from '@/lib/wrappedCard';
+import { toast } from '@/components/ui/Toast';
 
 // Year in Review (roadmap #8): a "Wrapped"-style yearly summary card for the
 // Metrics page. Read-only - it just visualizes what the metrics tables already
@@ -60,6 +63,20 @@ export function YearInReviewCard() {
   const [data, setData] = useState<YearInReview | null>(null);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<YearInReviewTitle | null>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!data || !data.hasData) return;
+    setDownloading(true);
+    try {
+      const blob = await renderWrappedCard(data);
+      downloadBlob(blob, `slicksync-wrapped-${data.year}.png`);
+    } catch {
+      toast.error('Failed to generate image');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const load = useCallback((y: number) => {
     setLoading(true);
@@ -78,6 +95,11 @@ export function YearInReviewCard() {
       <div className="flex items-center gap-2 mb-4">
         <SparklesIcon className="w-5 h-5 text-primary" />
         <h3 className="text-base font-semibold font-display text-default">Year in Review</h3>
+        {data && data.hasData && (
+          <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={handleDownload} disabled={downloading}>
+            {downloading ? 'Generating…' : 'Share'}
+          </Button>
+        )}
         <div className="ml-auto flex gap-1">
           {years.map((y) => (
             <button
