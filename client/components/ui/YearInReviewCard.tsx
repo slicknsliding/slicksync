@@ -138,15 +138,23 @@ export function YearInReviewCard() {
             <Stat label="Shows" value={data.showsWatched} />
           </div>
 
-          {/* Monthly bars */}
+          {/* Monthly bars. Each bar's height is a % of its immediate parent -
+              that only resolves to something visible if the parent has a
+              DEFINITE height (CSS spec: a percentage height inside a parent
+              with no explicit height computes to nothing). The per-month
+              column below used to be a bare flex-col with no height of its
+              own, so every bar silently rendered at 0px regardless of the
+              real value - h-full (inheriting the row's own h-20) plus
+              justify-end anchors [bar, month-letter] as a group to the
+              bottom, which is what actually makes the % height resolve. */}
           <div>
             <p className="text-xs font-medium text-muted mb-1.5">By month</p>
             <div className="flex items-end gap-1 h-20">
               {data.byMonth.map((s, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1" title={`${MONTHS[i]}: ${fmtDuration(s)}`}>
+                <div key={i} className="flex-1 h-full flex flex-col items-center justify-end gap-1" title={`${MONTHS[i]}: ${fmtDuration(s)}`}>
                   <div
                     className={`w-full rounded-t ${i === data.busiestMonth ? 'bg-primary' : 'bg-primary/30'}`}
-                    style={{ height: `${Math.max(2, (s / maxMonth) * 100)}%` }}
+                    style={{ height: `${Math.max(4, (s / maxMonth) * 100)}%` }}
                   />
                   <span className="text-[9px] text-subtle">{MONTHS[i][0]}</span>
                 </div>
