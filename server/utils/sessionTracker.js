@@ -604,13 +604,27 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           // (metricsProcessor.js): recovering to/starting at an already-complete
           // value must never register as fresh progress. Don't seed in that case;
           // let it accrue from here via the normal incremental delta instead.
+          // Refinement (2026-07-30): "near-complete on first observation" alone
+          // isn't enough to decide old-vs-fresh. The Nutty Professor false
+          // positive was a DIFFERENT profile's OLD finished state surfacing -
+          // its lastWatched was old. A genuine just-finished single-sitting
+          // watch (confirmed real case same day: a 120min movie watched
+          // start-to-finish) has lastWatched ~= now, and NOT seeding it
+          // under-counted the card to a few minutes. So: seed as normal unless
+          // near-complete AND stale - i.e. still seed a near-complete watch
+          // when it was finished recently (real just-watched), only skip the
+          // seed when it's near-complete AND lastWatched is old (surfaced old
+          // state). RECENT window is generous since the provider only
+          // checkpoints at pause/stop and our poll may land a bit later.
           const NEAR_COMPLETE_RATIO = 0.95
+          const RECENT_FINISH_MS = 6 * 60 * 60 * 1000
           let seedDurationSeconds = 0
           if (priorDurationSeconds === 0 && typeof state.timeOffset === 'number' && state.timeOffset > 0) {
             const durationMs = Number(state.duration ?? NaN)
             const hasRealDuration = !Number.isNaN(durationMs) && durationMs > 0
             const alreadyNearComplete = hasRealDuration && state.timeOffset >= durationMs * NEAR_COMPLETE_RATIO
-            if (!alreadyNearComplete) {
+            const finishedRecently = watchDate instanceof Date && (nowMs - watchDate.getTime()) < RECENT_FINISH_MS
+            if (!alreadyNearComplete || finishedRecently) {
               const cappedMs = hasRealDuration ? Math.min(state.timeOffset, durationMs) : state.timeOffset
               seedDurationSeconds = Math.max(0, Math.floor(cappedMs / 1000))
             }
