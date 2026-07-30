@@ -1689,6 +1689,16 @@ class ApiClient {
   async getHouseholdPicks(type: 'movie' | 'series') {
     return this.fetch<{ items: DiscoverItem[]; genres: string[]; memberCount: number; sharedAppeal: boolean }>(`/discover/household-picks?type=${type}`);
   }
+  // Person search (needs a TMDb key): type an actor/director's name, get their
+  // titles of the requested type. Returns null on 503 (no key) so callers hide
+  // the feature. Results carry tmdbId/mediaType for click-through resolution.
+  async searchPerson(query: string, type: 'movie' | 'series') {
+    try {
+      return await this.fetch<{ person: { id: number; name: string; profile: string | null } | null; results: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }> }>(`/discover/search-person?query=${encodeURIComponent(query)}&type=${type}`);
+    } catch {
+      return null;
+    }
+  }
   // "More Like This" for the detail popup - real household affinity biases
   // which genre(s) get searched, but every returned item is always a fresh
   // Cinemeta pull filtered against the whole household's watch history
