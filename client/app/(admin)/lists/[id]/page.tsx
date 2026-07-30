@@ -10,7 +10,7 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, CustomListItem } from '@/lib/api';
 import {
-  RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon,
+  RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon,
 } from '@heroicons/react/24/outline';
 
 // A list's own page (roadmap #7 follow-up) - opening a list is a destination,
@@ -77,8 +77,19 @@ export default function ListDetailPage() {
   const title = isLoading ? 'Loading…' : notFound ? 'List not found' : (list?.name || 'List');
   const subtitle = isLoading ? '' : notFound ? '' : `${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}`;
 
+  // Explicit navigation to /lists (not router.back()) - back should always
+  // land on the Lists index in one hop, regardless of how this page was
+  // reached, per feedback that clicking "Lists" in the nav to get back felt
+  // like backtracking.
+  const backButton = (
+    <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/lists')}>
+      Back
+    </Button>
+  );
+
   const detailActions = list && !isLoading && !notFound ? (
     <div className="flex items-center gap-2">
+      {backButton}
       <Button variant="secondary" size="sm" leftIcon={<PencilSquareIcon className="w-4 h-4" />} onClick={() => { setRenameValue(list.name); setRenaming(true); }}>
         Rename
       </Button>
@@ -86,7 +97,7 @@ export default function ListDetailPage() {
         Delete
       </Button>
     </div>
-  ) : undefined;
+  ) : backButton;
 
   return (
     <>

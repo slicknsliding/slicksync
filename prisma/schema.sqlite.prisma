@@ -393,6 +393,23 @@ model MovieWatchHistory {
   @@map("movie_watch_history")
 }
 
+// Sync Guardian: per-user "was this account synced last time we checked"
+// baseline, so a transition from synced -> unsynced that SlickSync itself
+// didn't cause (auto-sync off, no admin action) can be told apart from a
+// user that has simply never been synced (a normal, pre-existing state, not
+// a drift event). See server/utils/syncGuardian.js for the full mechanism -
+// built directly off catching a real revert live on 2026-07-30.
+model UserSyncGuardState {
+  id            String    @id @default(cuid())
+  accountId     String    @default("default")
+  userId        String
+  wasSynced     Boolean   @default(false)
+  lastCheckedAt DateTime?
+
+  @@unique([accountId, userId])
+  @@map("user_sync_guard_state")
+}
+
 // User-curated lists of titles (roadmap #7). Account-scoped, shared across the
 // account's admins (not per-user) - matches how Discover/Groups behave here.
 // itemsJson is a stringified array of { id, type, name, poster?, year? };

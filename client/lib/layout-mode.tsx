@@ -86,7 +86,7 @@ export function useLayoutMode() {
 // switch to. This is every top-level admin page - full Nebula coverage.
 const NEBULA_ELIGIBLE_PATHS = [
   '/', '/activity', '/users', '/groups', '/addons',
-  '/discover', '/lists', '/metrics', '/vault', '/invitations', '/tasks', '/settings', '/themes', '/changelog',
+  '/discover', '/lists', '/metrics', '/vault', '/invitations', '/tasks', '/settings', '/themes', '/changelog', '/health',
 ];
 
 // Dynamic detail routes (/users/[id], /groups/[id]) - prefix match since
