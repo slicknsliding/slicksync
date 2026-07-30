@@ -14,6 +14,20 @@
 const fs = require('fs')
 const path = require('path')
 
+// Shares the same debug log file as activityMonitor.js/sessionTracker.js's
+// heartbeat() - console.warn alone doesn't survive a container restart
+// (docker logs aren't persisted to the mounted volume), which made a real
+// push-delivery failure undiagnosable after the fact (confirmed real case,
+// 2026-07-29: a notification's push delivery failed once, self-recovered
+// minutes later, and by the time it was investigated the only surviving
+// evidence was inferring it indirectly from PushSubscription.lastSeenAt
+// timestamps - there was no direct record of the failure itself).
+function heartbeat(event, data = {}) {
+  try {
+    fs.appendFileSync('/app/data/activity-monitor-debug.log', `[${new Date().toISOString()}] ${event} ${JSON.stringify(data)}\n`)
+  } catch {}
+}
+
 const VAPID_FILE = path.join(process.cwd(), 'data', 'vapid.json')
 // Apple's web.push.apple.com validates the VAPID JWT's `sub` claim more
 // strictly than Chrome/Firefox's push services do, and rejects a `.local`
@@ -92,7 +106,10 @@ function configureWebPush() {
  * one endpoint never throws out of here.
  */
 async function sendPushToAccount(prisma, accountId, payload) {
-  if (!configureWebPush()) return { sent: 0, pruned: 0 }
+  if (!configureWebPush()) {
+    heartbeat('push:transport_unavailable', { accountId, title: payload?.title })
+    return { sent: 0, pruned: 0 }
+  }
   let subs = []
   try {
     subs = await prisma.pushSubscription.findMany({ where: { accountId } })
@@ -122,9 +139,11 @@ async function sendPushToAccount(prisma, accountId, payload) {
         // it so a systemic failure (wrong subject, revoked VAPID keys, etc.)
         // is actually visible instead of just "push never seems to arrive."
         console.warn(`[Push] Send failed for subscription ${sub.id} (${new URL(sub.endpoint).host}): status=${status} ${err?.body || err?.message || ''}`)
+        heartbeat('push:send_failed', { subscriptionId: sub.id, status, message: err?.body || err?.message, title: payload?.title })
       }
     }
   }
+  heartbeat('push:dispatch_done', { accountId, title: payload?.title, sent, pruned, totalSubs: subs.length })
   return { sent, pruned }
 }
 
@@ -157,6 +176,7 @@ async function notifyPushForType(prisma, accountId, typeKey, payload) {
     } catch (e) {
       // Bell write is best-effort; don't block the push transport below.
       console.warn('[Push] bell persist failed:', e?.message)
+      heartbeat('push:bell_persist_failed', { accountId, typeKey, message: e?.message })
     }
 
     // Web-push transport is secondary and only fires when VAPID is set up.
