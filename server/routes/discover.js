@@ -93,6 +93,11 @@ module.exports = ({ prisma, getAccountId } = {}) => {
       const mode = req.query.mode === 'shared' ? 'shared' : 'personal'
       const userId = typeof req.query.userId === 'string' && req.query.userId ? req.query.userId : null
       const userId2 = typeof req.query.userId2 === 'string' && req.query.userId2 ? req.query.userId2 : null
+      // Which type of row to build - matches Discover's own Movies/Series
+      // toggle. Filtered in BEFORE ranking/slicing to CANDIDATE_POOL below,
+      // not after - filtering after would starve the pool if the highest-
+      // scored items that poll happened to skew the other type.
+      const requestedType = req.query.type === 'series' ? 'series' : 'movie'
       const scopedUserIds = mode === 'shared' && userId && userId2 && userId !== userId2
         ? [userId, userId2]
         : (mode === 'personal' && userId ? [userId] : null)
@@ -266,10 +271,10 @@ module.exports = ({ prisma, getAccountId } = {}) => {
 
       const ranked = [...scoreByItem.entries()]
         .filter(([id]) => !notInterestedIds.has(id))
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, CANDIDATE_POOL)
         .map(([id, score]) => ({ id, score, ...(itemMeta.get(id) || { type: 'movie' }) }))
-        .filter((c) => c.type === 'movie' || c.type === 'series')
+        .filter((c) => c.type === requestedType)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, CANDIDATE_POOL)
 
       if (ranked.length === 0) return res.json({ rows: [] })
 

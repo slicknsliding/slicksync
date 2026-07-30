@@ -30,6 +30,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Deliberately GHCR-only, unlike private/public - Docker Hub pull-count
+      # is meant to track real installs of the stable images, and a "beta"
+      # tag showing up there would just be test traffic, not a real metric.
       - name: Extract metadata (beta)
         id: meta
         uses: docker/metadata-action@v5

@@ -46,17 +46,17 @@ const NEBULA_NAV_SECTIONS = [
     id: 'overview',
     items: [
       { href: '/', label: 'Dashboard', icon: HomeIcon },
-      { href: '/discover', label: 'Discover', icon: MagnifyingGlassIcon },
       { href: '/activity', label: 'Activity', icon: ClockIcon },
-      { href: '/metrics', label: 'Metrics', icon: ChartBarIcon },
+      { href: '/users', label: 'Users', icon: UsersIcon },
+      { href: '/groups', label: 'Groups', icon: UserGroupIcon },
     ],
   },
   {
     id: 'management',
     items: [
-      { href: '/users', label: 'Users', icon: UsersIcon },
-      { href: '/groups', label: 'Groups', icon: UserGroupIcon },
+      { href: '/discover', label: 'Discover', icon: MagnifyingGlassIcon },
       { href: '/addons', label: 'Addons', icon: PuzzlePieceIcon },
+      { href: '/metrics', label: 'Metrics', icon: ChartBarIcon },
       { href: '/vault', label: 'Vault', icon: ShieldCheckIcon },
       { href: '/invitations', label: 'Invitations', icon: EnvelopeIcon },
     ],

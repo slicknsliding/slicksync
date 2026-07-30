@@ -34,6 +34,17 @@ function getFixNowUrl(entryId) {
 }
 
 async function notify({ discordWebhookUrl }, { title, message, entryId }, ctx) {
+  const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest')
+  const digestOn = ctx?.prisma && ctx?.accountId && await isDigestEnabled(ctx.prisma, ctx.accountId)
+
+  if (digestOn) {
+    // Queued regardless of whether Discord is even configured - the digest
+    // poller decides which channels (push, Discord, or both) to deliver
+    // through. Push + bell are the primary channels; Discord is secondary.
+    await queueDigestEntry(ctx.prisma, ctx.accountId, 'vault', `${title}: ${message}`)
+    return
+  }
+
   if (discordWebhookUrl) {
     const fixNowUrl = entryId ? getFixNowUrl(entryId) : null
     const text = fixNowUrl ? `**${title}**\n${message}\n\nFix now: ${fixNowUrl}` : `**${title}**\n${message}`

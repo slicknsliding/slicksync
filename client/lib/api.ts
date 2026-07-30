@@ -320,6 +320,29 @@ class ApiClient {
     return this.fetch<User>(`/users/${id}`);
   }
 
+  // Account merge (Stremio<->Nuvio, same real person) - see
+  // server/utils/userMerge.js for the full design.
+  async getMergeCandidate(id: string) {
+    return this.fetch<{ candidate: MergeCandidate | null }>(`/users/${id}/merge-candidate`);
+  }
+  async getMergePreview(id: string, donorId: string) {
+    return this.fetch<MergePreview>(`/users/${id}/merge-preview?donorId=${encodeURIComponent(donorId)}`);
+  }
+  async mergeUsers(id: string, donorId: string) {
+    return this.fetch<{ success: boolean } & MergePreview & { archivePath: string }>(`/users/${id}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ donorId }),
+    });
+  }
+  async getMergeInfo(id: string) {
+    return this.fetch<{ info: MergeInfo | null }>(`/users/${id}/merge-info`);
+  }
+  async undoMerge(id: string) {
+    return this.fetch<{ success: boolean; donorUsername: string; donorProviderType: 'stremio' | 'nuvio' }>(`/users/${id}/undo-merge`, {
+      method: 'POST',
+    });
+  }
+
   async createUser(data: CreateUserData) {
     return this.fetch<User>('/users', {
       method: 'POST',
@@ -997,6 +1020,29 @@ class ApiClient {
     return this.fetch<AddonHealthAlert[]>(`/addons/health-alerts?days=${days}`);
   }
 
+  // Persistent in-app bell notifications - written server-side from the same
+  // dispatch path as push/Discord (notificationStore.js), with server-side
+  // read state so the bell is consistent across devices.
+  async getNotifications(days = 14) {
+    return this.fetch<StoredNotification[]>(`/users/notifications?days=${days}`);
+  }
+
+  // Mark notifications read - specific ids, or all when omitted.
+  async markNotificationsRead(ids?: string[]) {
+    return this.fetch('/users/notifications/mark-read', {
+      method: 'POST',
+      body: JSON.stringify(ids ? { ids } : {}),
+    });
+  }
+
+  // Delete notifications - specific ids, or all when omitted (Clear).
+  async dismissNotifications(ids?: string[]) {
+    return this.fetch('/users/notifications/dismiss', {
+      method: 'POST',
+      body: JSON.stringify(ids ? { ids } : {}),
+    });
+  }
+
   // PWA web-push
   async getPushVapidKey() {
     return this.fetch<{ enabled: boolean; publicKey: string | null }>('/push/vapid-key');
@@ -1622,11 +1668,12 @@ class ApiClient {
   async clearWatchedOverride(itemId: string) {
     return this.fetch<{ success: boolean }>(`/watchlist/mark/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
   }
-  async getRecommendations(opts?: { mode?: 'personal' | 'shared'; userId?: string; userId2?: string }) {
+  async getRecommendations(opts?: { mode?: 'personal' | 'shared'; userId?: string; userId2?: string; type?: 'movie' | 'series' }) {
     const params = new URLSearchParams();
     if (opts?.mode) params.set('mode', opts.mode);
     if (opts?.userId) params.set('userId', opts.userId);
     if (opts?.userId2) params.set('userId2', opts.userId2);
+    if (opts?.type) params.set('type', opts.type);
     const qs = params.toString();
     return this.fetch<{ rows: RecommendationRow[] }>(`/discover/recommendations${qs ? `?${qs}` : ''}`);
   }
@@ -1661,6 +1708,21 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ showId, season, episode }),
     });
+  }
+  async muteShow(showId: string, showName?: string, poster?: string) {
+    return this.fetch<{ success: boolean }>('/users/upcoming-episodes/mute', {
+      method: 'POST',
+      body: JSON.stringify({ showId, showName, poster }),
+    });
+  }
+  async unmuteShow(showId: string) {
+    return this.fetch<{ success: boolean }>('/users/upcoming-episodes/unmute', {
+      method: 'POST',
+      body: JSON.stringify({ showId }),
+    });
+  }
+  async getMutedShows() {
+    return this.fetch<MutedShow[]>('/users/upcoming-episodes/muted');
   }
 
   // Rotten Tomatoes/Metacritic/IMDb ratings for a batch of IMDb IDs, for grid
@@ -1750,6 +1812,36 @@ export interface User {
   colorIndex?: number;
   avatarUrl?: string | null;
   inviteCode?: string;
+}
+
+export interface MergeCandidate {
+  id: string;
+  username: string;
+  providerType: 'stremio' | 'nuvio';
+  avatarUrl?: string | null;
+  colorIndex?: number;
+  email?: string;
+}
+
+export interface MergePreview {
+  survivor: { id: string; username: string; providerType: 'stremio' | 'nuvio' };
+  donor: { id: string; username: string; providerType: 'stremio' | 'nuvio' };
+  movieCount: number;
+  episodeCount: number;
+  sessionCount: number;
+  snapshotCount: number;
+  survivorGroupName: string | null;
+  donorGroupName: string | null;
+  groupsDiffer: boolean;
+}
+
+export interface MergeInfo {
+  providerType: 'stremio' | 'nuvio';
+  donorUsername: string | null;
+  donorEmail: string | null;
+  donorAvatarUrl: string | null;
+  donorColorIndex: number | null;
+  undoable: boolean;
 }
 
 export interface CreateUserData {
@@ -1993,6 +2085,8 @@ export interface SyncSettings {
   notifyOnAddonHealth?: boolean;
   notifyOnBackup?: boolean;
   notifyOnMosaic?: boolean;
+  notifyDigestEnabled?: boolean;
+  notifyDigestFrequency?: 'daily' | 'weekly';
   accountTimezone?: string;
   vaultCurrency?: string;
   // Personal-features opt-outs (v1.31+). Default true when absent.
@@ -2087,6 +2181,14 @@ export interface UpcomingEpisode {
   airDate: string;
 }
 
+export interface MutedShow {
+  id: string;
+  showId: string;
+  showName: string | null;
+  poster: string | null;
+  createdAt: string;
+}
+
 export interface ExportedConfig {
   users: User[];
   groups: Group[];
@@ -2155,6 +2257,21 @@ export interface AddonHealthAlert {
   backupAddonName: string | null;
   groupCount: number;
   errorMessage: string | null;
+  createdAt: string;
+}
+
+// Persistent in-app bell notification (notifications table). Written from the
+// same dispatch path as push/Discord; read state is server-side.
+export interface StoredNotification {
+  id: string;
+  type: 'activity' | 'sync' | 'invite' | 'vault' | 'task' | 'mismatch';
+  title: string;
+  body: string;
+  poster: string | null;
+  url: string | null;
+  data: string | null;
+  read: boolean;
+  readAt: string | null;
   createdAt: string;
 }
 
@@ -2284,6 +2401,13 @@ export interface MetricsData {
     // item id to link to (e.g. an unmatched proxy-only entry).
     stremioAppUrl?: string;
     nuvioAppUrl?: string;
+    // Proxy-sourced entries only: elapsed watch time we can actually stand
+    // behind (seconds), frozen once proxy traffic goes quiet rather than
+    // climbing forever off raw wall-clock time - see the comment in
+    // server/utils/proxyNowPlaying.js for why. Use this (with elapsedFrozen)
+    // instead of computing `now - watchedAtTimestamp` for proxy entries.
+    elapsedSeconds?: number;
+    elapsedFrozen?: boolean;
   }>;
   startedPlaying: Array<{
     user: { id: string; username: string; email: string; colorIndex: number };

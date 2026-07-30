@@ -71,7 +71,16 @@ async function getUpcomingEpisodes(prisma, accountId, limit = 24) {
     orderBy: { nextAirDate: 'asc' },
     take: limit,
   })
-  const candidates = rows.filter((r) => r.nextSeason != null && r.nextEpisode != null && r.nextAirDate)
+  let candidates = rows.filter((r) => r.nextSeason != null && r.nextEpisode != null && r.nextAirDate)
+
+  try {
+    const muted = await prisma.mutedShow.findMany({
+      where: { accountId, showId: { in: candidates.map((r) => r.showId) } },
+      select: { showId: true },
+    })
+    const mutedIds = new Set(muted.map((m) => m.showId))
+    candidates = candidates.filter((r) => !mutedIds.has(r.showId))
+  } catch {} // Table may not exist yet on a very-first boot before db push runs.
 
   // Filter out dismissed episodes — the (season, episode) tuple is intentional,
   // so once the poller advances the show to a NEW next episode, that new one
@@ -108,6 +117,32 @@ async function dismissUpcomingEpisode(prisma, accountId, showId, season, episode
     where: { accountId_showId_season_episode: { accountId: accountIdValue, showId, season, episode } },
     create: { accountId: accountIdValue, showId, season, episode },
     update: {},
+  })
+}
+
+/**
+ * Whole-show opt-out: stops the show appearing in "Coming up" AND stops
+ * new-episode alerts (push/Discord) for it, until unmuted. Unlike dismissing
+ * one episode, this doesn't wear off when the show advances.
+ */
+async function muteShow(prisma, accountId, showId, showName, poster) {
+  const accountIdValue = accountId || 'default'
+  await prisma.mutedShow.upsert({
+    where: { accountId_showId: { accountId: accountIdValue, showId } },
+    create: { accountId: accountIdValue, showId, showName: showName || null, poster: poster || null },
+    update: {},
+  })
+}
+
+async function unmuteShow(prisma, accountId, showId) {
+  const accountIdValue = accountId || 'default'
+  await prisma.mutedShow.deleteMany({ where: { accountId: accountIdValue, showId } })
+}
+
+async function getMutedShows(prisma, accountId) {
+  return prisma.mutedShow.findMany({
+    where: { accountId },
+    orderBy: { createdAt: 'desc' },
   })
 }
 
@@ -154,8 +189,14 @@ async function checkForNewEpisodes(prisma) {
     }
   }
 
+  // Muted shows are skipped entirely below - no baseline/nextFields refresh,
+  // no alert, no push, no Discord - until unmuted.
+  const mutedRows = await prisma.mutedShow.findMany({ select: { accountId: true, showId: true } }).catch(() => [])
+  const mutedKeys = new Set(mutedRows.map((m) => `${m.accountId}::${m.showId}`))
+
   let alertsFired = 0
   for (const show of shows.values()) {
+    if (mutedKeys.has(`${show.accountId}::${show.showId}`)) continue
     try {
       const metadata = await fetchMetadata(show.showId, 'series', show.videoId)
       if (!metadata?.allEpisodes?.length) continue
@@ -230,39 +271,54 @@ async function checkForNewEpisodes(prisma) {
 
       const epLabel = `S${String(latest.season).padStart(2, '0')}E${String(latest.episode).padStart(2, '0')}`
 
+      const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest')
+      const digestOn = await isDigestEnabled(prisma, show.accountId)
+
       // Native web-push to any PWA-installed device that opted in - fires even
       // when SlickSync isn't open. Best-effort; failures never block the rest.
-      try {
-        const { sendPushToAccount } = require('./pushNotifications')
-        await sendPushToAccount(prisma, show.accountId, {
-          title: `New episode: ${metadata.title || show.showName}`,
-          body: `${epLabel}${latest.title ? ` · ${latest.title}` : ''} is out`,
-          icon: metadata.poster || show.poster || '/android-chrome-192x192.png',
-          url: '/activity',
-        })
-      } catch {}
-
-      const target = await getNotifyTarget(prisma, show.accountId)
-      if (target.enabled && target.webhookUrl) {
-        // "Who's behind" flavor - a watcher already past the new episode
-        // (rewatch scenarios) is skipped.
-        const behind = [...show.watchers.entries()]
-          .filter(([, w]) => episodeOrder(w.season, w.episode) < episodeOrder(latest.season, latest.episode))
-        let behindLine = ''
-        if (behind.length > 0) {
-          const userRows = await prisma.user.findMany({
-            where: { id: { in: behind.map(([userId]) => userId) } },
-            select: { id: true, username: true, email: true },
+      // Skipped when digest mode is on - the digest poller sends one push at
+      // send time instead (push + bell are primary; Discord is secondary and
+      // was the only channel this feature originally had).
+      if (!digestOn) {
+        try {
+          const { sendPushToAccount } = require('./pushNotifications')
+          await sendPushToAccount(prisma, show.accountId, {
+            title: `New episode: ${metadata.title || show.showName}`,
+            body: `${epLabel}${latest.title ? ` · ${latest.title}` : ''} is out`,
+            icon: metadata.poster || show.poster || '/android-chrome-192x192.png',
+            url: '/activity',
           })
-          const nameById = new Map(userRows.map((u) => [u.id, u.username || u.email || 'someone']))
-          behindLine = '\n' + behind
-            .map(([userId, w]) => `${nameById.get(userId) || 'someone'} is on S${String(w.season).padStart(2, '0')}E${String(w.episode).padStart(2, '0')}`)
-            .join(' · ')
+        } catch {}
+      }
+
+      if (digestOn) {
+        // Queued regardless of whether Discord is even configured - the
+        // digest poller decides which channels (push, Discord, or both) to
+        // actually deliver it through.
+        await queueDigestEntry(prisma, show.accountId, 'episode', `${metadata.title || show.showName} ${epLabel}${latest.title ? ` · ${latest.title}` : ''}`)
+      } else {
+        const target = await getNotifyTarget(prisma, show.accountId)
+        if (target.enabled && target.webhookUrl) {
+          // "Who's behind" flavor - a watcher already past the new episode
+          // (rewatch scenarios) is skipped.
+          const behind = [...show.watchers.entries()]
+            .filter(([, w]) => episodeOrder(w.season, w.episode) < episodeOrder(latest.season, latest.episode))
+          let behindLine = ''
+          if (behind.length > 0) {
+            const userRows = await prisma.user.findMany({
+              where: { id: { in: behind.map(([userId]) => userId) } },
+              select: { id: true, username: true, email: true },
+            })
+            const nameById = new Map(userRows.map((u) => [u.id, u.username || u.email || 'someone']))
+            behindLine = '\n' + behind
+              .map(([userId, w]) => `${nameById.get(userId) || 'someone'} is on S${String(w.season).padStart(2, '0')}E${String(w.episode).padStart(2, '0')}`)
+              .join(' · ')
+          }
+          await postDiscord(
+            target.webhookUrl,
+            `**New episode: ${metadata.title || show.showName} ${epLabel}${latest.title ? ` · ${latest.title}` : ''}**${behindLine}`
+          ).catch(() => {})
         }
-        await postDiscord(
-          target.webhookUrl,
-          `**New episode: ${metadata.title || show.showName} ${epLabel}${latest.title ? ` · ${latest.title}` : ''}**${behindLine}`
-        ).catch(() => {})
       }
     } catch (e) {
       console.warn(`[EpisodeAlerts] Failed to check ${show.showId}:`, e?.message)
@@ -281,4 +337,4 @@ function scheduleEpisodeAlerts(prisma) {
   setInterval(run, POLL_INTERVAL_MS)
 }
 
-module.exports = { scheduleEpisodeAlerts, checkForNewEpisodes, getUpcomingEpisodes, dismissUpcomingEpisode }
+module.exports = { scheduleEpisodeAlerts, checkForNewEpisodes, getUpcomingEpisodes, dismissUpcomingEpisode, muteShow, unmuteShow, getMutedShows }

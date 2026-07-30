@@ -20,14 +20,29 @@ function makeCreateProvider({ prisma, encrypt } = {}) {
       if (type === 'nuvio') {
         if (!user.nuvioRefreshToken || !user.nuvioUserId) return null
 
-        const onTokenRefresh = (prisma && encrypt && user.id)
-          ? async (newRefreshToken) => {
-              await prisma.user.update({
-                where: { id: user.id },
-                data: { nuvioRefreshToken: encrypt(newRefreshToken, req) }
-              })
-            }
-          : undefined
+        // A merged user's absorbed second provider (see
+        // server/utils/userMerge.js / UserProviderCredential) still needs
+        // user.id to be the real surviving User.id - that's what group-
+        // membership lookups elsewhere in the sync pipeline match against -
+        // but that means the DEFAULT persistence below (keyed on that same
+        // id) would refresh-write into the survivor's own User.nuvioRefreshToken
+        // field instead of the absorbed UserProviderCredential row it
+        // actually belongs to. __persistNuvioRefreshToken lets a caller
+        // building a credentials object for a secondary provider override
+        // WHERE a refreshed token is persisted without changing WHICH id
+        // group lookups see - same plaintext-in contract as the default
+        // closure (encrypts it itself), so this is a drop-in replacement,
+        // not a different calling convention.
+        const onTokenRefresh = typeof user.__persistNuvioRefreshToken === 'function'
+          ? async (newRefreshToken) => user.__persistNuvioRefreshToken(encrypt(newRefreshToken, req))
+          : (prisma && encrypt && user.id)
+            ? async (newRefreshToken) => {
+                await prisma.user.update({
+                  where: { id: user.id },
+                  data: { nuvioRefreshToken: encrypt(newRefreshToken, req) }
+                })
+              }
+            : undefined
 
         return createNuvioProvider({
           refreshToken: decrypt(user.nuvioRefreshToken, req),

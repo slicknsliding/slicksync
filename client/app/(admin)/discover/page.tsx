@@ -95,9 +95,13 @@ const PosterCard = memo(function PosterCard({
   // useContextMenu still owns the position calc + preventDefault, but the
   // OPEN state is driven by the parent's isMenuOpen prop so only one card's
   // menu is visible at a time across the whole grid.
-  const { position, handleContextMenu, close: closeInternal } = useContextMenu();
+  const { position, handleContextMenu, close: closeInternal, setExternalClose } = useContextMenu();
   const controlledOpen = isMenuOpen === true;
   const close = () => { closeInternal(); onMenuOpenChange?.(false); };
+  // Registers the REAL close (above) for cross-page/cross-section closing -
+  // this card's own isMenuOpen is lifted, so closeInternal alone (this hook's
+  // unused-for-rendering internal state) wouldn't actually hide anything.
+  setExternalClose(close);
   // onContextMenu alone covers a real desktop right-click, but iOS Safari
   // doesn't reliably synthesize a `contextmenu` DOM event from a touch
   // long-press - this card's Add to Watchlist/Mark as Watched/Not Interested
@@ -317,13 +321,13 @@ export default function DiscoverPage() {
     setRecsLoaded(false);
     api.getRecommendations(
       recMode === 'personal'
-        ? { mode: 'personal', userId: recUserId }
-        : { mode: 'shared', userId: recUserId, userId2: recUserId2 }
+        ? { mode: 'personal', userId: recUserId, type }
+        : { mode: 'shared', userId: recUserId, userId2: recUserId2, type }
     )
       .then((r) => setRecRows(Array.isArray(r?.rows) ? r.rows : []))
       .catch(() => setRecRows([]))
       .finally(() => setRecsLoaded(true));
-  }, [source, enableRecommendations, recMode, recUserId, recUserId2]);
+  }, [source, enableRecommendations, recMode, recUserId, recUserId2, type]);
   useEffect(() => { if (recUsers.length > 0) localStorage.setItem('slicksync-foryou-mode', recMode); }, [recMode, recUsers.length]);
   useEffect(() => { if (recUserId) localStorage.setItem('slicksync-foryou-userId', recUserId); }, [recUserId]);
   useEffect(() => { if (recUserId2) localStorage.setItem('slicksync-foryou-userId2', recUserId2); }, [recUserId2]);
