@@ -18,6 +18,7 @@ import {
   EnvelopeIcon,
   Bars3Icon,
   XMarkIcon,
+  RectangleStackIcon,
 } from '@heroicons/react/24/outline';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { PanelSwitcher } from './PanelSwitcher';
@@ -55,6 +56,7 @@ const NEBULA_NAV_SECTIONS = [
     id: 'management',
     items: [
       { href: '/discover', label: 'Discover', icon: MagnifyingGlassIcon },
+      { href: '/lists', label: 'Lists', icon: RectangleStackIcon },
       { href: '/addons', label: 'Addons', icon: PuzzlePieceIcon },
       { href: '/metrics', label: 'Metrics', icon: ChartBarIcon },
       { href: '/vault', label: 'Vault', icon: ShieldCheckIcon },

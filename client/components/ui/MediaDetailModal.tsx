@@ -5,6 +5,7 @@ import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as Boo
 import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
+import { AddToListButton } from './AddToListButton';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
 import { api, MediaDetails, DiscoverItem } from '@/lib/api';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
@@ -652,6 +653,7 @@ export function MediaDetailModal({
                 return (
                   <div className="flex flex-wrap gap-2 items-center">
                     {watchlistBtn}
+                    <AddToListButton item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
                     {stremioBtn}
                     {nuvioBtn}
                   </div>
