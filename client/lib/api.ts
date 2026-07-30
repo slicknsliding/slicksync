@@ -1704,6 +1704,13 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+  // Import a TMDb or MDBList list (auto-detected from the URL) into a new list.
+  async importList(url: string, name?: string) {
+    return this.fetch<CustomList & { truncated: boolean; totalAvailable: number }>('/lists/import', {
+      method: 'POST',
+      body: JSON.stringify({ url, name }),
+    });
+  }
 
   // System Health board - one aggregated read of Sync/Addons/Vault/Proxy
   // status, all sourced from state existing background monitors already
@@ -2178,6 +2185,7 @@ export interface SyncSettings {
   enableWatchedIndicators?: boolean;
   enableRecommendations?: boolean;
   tmdbApiKey?: string;
+  mdblistApiKey?: string;
 }
 
 export interface ThemePref {

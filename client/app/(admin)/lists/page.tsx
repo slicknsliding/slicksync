@@ -10,7 +10,7 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList } from '@/lib/api';
 import {
-  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon,
+  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 
 // Custom Lists (roadmap #7): named collections of titles. Create/rename/delete
@@ -29,6 +29,10 @@ export default function ListsPage() {
   const [renaming, setRenaming] = useState<CustomList | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deleting, setDeleting] = useState<CustomList | null>(null);
+  const [showImport, setShowImport] = useState(false);
+  const [importUrl, setImportUrl] = useState('');
+  const [importName, setImportName] = useState('');
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(() => {
     api.getLists()
@@ -60,6 +64,28 @@ export default function ListsPage() {
       setRenaming(null);
       toast.success('Renamed');
     } catch { toast.error('Failed to rename'); }
+  };
+
+  const handleImport = async () => {
+    const url = importUrl.trim();
+    if (!url) return;
+    setImporting(true);
+    try {
+      const list = await api.importList(url, importName.trim() || undefined);
+      setImportUrl('');
+      setImportName('');
+      setShowImport(false);
+      toast.success(
+        list.truncated
+          ? `Imported ${list.items.length} of ${list.totalAvailable} titles (capped at ${list.items.length})`
+          : `Imported "${list.name}" (${list.items.length} title${list.items.length !== 1 ? 's' : ''})`
+      );
+      router.push(`/lists/${list.id}`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to import list');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -94,9 +120,14 @@ export default function ListsPage() {
                 {loaded ? `${lists.length} list${lists.length !== 1 ? 's' : ''}` : 'Lists'}
               </h3>
             </div>
-            <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
-              New list
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={() => setShowImport(true)}>
+                Import
+              </Button>
+              <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
+                New list
+              </Button>
+            </div>
           </div>
 
           {loaded && lists.length === 0 && (
@@ -172,6 +203,44 @@ export default function ListsPage() {
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setShowCreate(false)}>Cancel</Button>
             <Button variant="primary" size="sm" onClick={handleCreate} disabled={!newName.trim()}>Create</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Import list from TMDb or MDBList - provider auto-detected from the URL. */}
+      <Modal isOpen={showImport} onClose={() => setShowImport(false)} title="Import a list" size="sm">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-muted mb-1.5">List URL</label>
+            <input
+              autoFocus
+              type="text"
+              value={importUrl}
+              onChange={(e) => setImportUrl(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleImport(); }}
+              placeholder="https://mdblist.com/lists/user/slug or themoviedb.org/list/123"
+              className="w-full px-3 py-2 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
+            />
+            <p className="text-xs text-subtle mt-1.5">
+              Supports MDBList and TMDb lists (movies only for TMDb). Requires an API key in Settings → SlickTrax.
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted mb-1.5">Name <span className="text-subtle font-normal">(optional — uses the source list&apos;s name if blank)</span></label>
+            <input
+              type="text"
+              value={importName}
+              onChange={(e) => setImportName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleImport(); }}
+              placeholder="e.g. Halloween Marathon"
+              className="w-full px-3 py-2 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setShowImport(false)} disabled={importing}>Cancel</Button>
+            <Button variant="primary" size="sm" onClick={handleImport} disabled={!importUrl.trim() || importing}>
+              {importing ? 'Importing…' : 'Import'}
+            </Button>
           </div>
         </div>
       </Modal>

@@ -307,6 +307,7 @@ export default function SettingsPage() {
           notifyDigestFrequency: settings.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily',
           accountTimezone: settings.accountTimezone || '',
           tmdbApiKey: settings.tmdbApiKey || '',
+          mdblistApiKey: settings.mdblistApiKey || '',
         });
       } catch (e) {
         // Settings may not exist yet, use defaults
@@ -965,6 +966,26 @@ export default function SettingsPage() {
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, tmdbApiKey: e.target.value }))}
                   onBlur={() => handleSaveSetting('tmdbApiKey' as keyof SyncSettings, syncSettings.tmdbApiKey)}
                   placeholder="TMDb API key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* MDBList key for List import (Lists page - "Import"). Free
+                  from mdblist.com -> Preferences -> API Access. Same
+                  optional-text-field pattern as the TMDb key above. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">MDBList API key <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Enables importing an MDBList list into Lists. Get a free key at mdblist.com → Preferences → API Access. Leave blank to keep list import to TMDb lists only.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.mdblistApiKey || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, mdblistApiKey: e.target.value }))}
+                  onBlur={() => handleSaveSetting('mdblistApiKey' as keyof SyncSettings, syncSettings.mdblistApiKey)}
+                  placeholder="MDBList API key"
                   autoComplete="off"
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"
