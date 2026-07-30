@@ -88,21 +88,52 @@ export function ContextMenu({ isOpen, position, onClose, children }: ContextMenu
   );
 }
 
+// Only one context/quick-action menu should ever be open at a time, but every
+// useContextMenu() call site (one per poster card, per user row, etc.) has
+// its own independent isOpen state with no shared awareness of the others.
+// Confirmed real bug: right-clicking a second card on Users/Discover/
+// Dashboard (Continue Watching, Coming Up) left BOTH menus open at once.
+// The existing "close on click/contextmenu elsewhere" listener in
+// ContextMenu above can't fix this on its own either - handleContextMenu
+// below calls preventDefault+stopPropagation on the triggering event, which
+// stops it from ever bubbling up to a DIFFERENT (already-open) menu's
+// window-level listener, so that menu never even sees the event that should
+// have closed it. This module-level registry is the actual fix: opening a
+// menu explicitly closes whichever other one is currently open first.
+let activeMenu: { id: object; close: () => void } | null = null;
+
 // Helper hook for elements that trigger the menu
 export function useContextMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const idRef = useRef({});
+  // Some consumers (Discover's poster grid, Dashboard's Continue Watching/
+  // Coming Up rows) don't render this hook's own `isOpen` directly - they
+  // lift a single "which item owns the open menu" value to a shared parent
+  // instead, so the menu they actually show is driven by that, not this
+  // hook's internal state. For those, closing THIS hook's isOpen does
+  // nothing visible. setExternalClose lets such a consumer register its
+  // real close function (the one that actually clears the lifted state) so
+  // the cross-instance registry below closes the right thing. Plain ref
+  // write - safe to call unconditionally every render.
+  const externalCloseRef = useRef<(() => void) | null>(null);
+  const setExternalClose = (fn: (() => void) | null) => { externalCloseRef.current = fn; };
+
+  const close = () => {
+    setIsOpen(false);
+    if (activeMenu?.id === idRef.current) activeMenu = null;
+  };
 
   const handleContextMenu = (e: React.MouseEvent | React.TouchEvent | Event, x?: number, y?: number) => {
     e.preventDefault();
     e.stopPropagation();
+    if (activeMenu && activeMenu.id !== idRef.current) activeMenu.close();
     const targetX = x ?? (e as React.MouseEvent).clientX;
     const targetY = y ?? (e as React.MouseEvent).clientY;
     setPosition({ x: targetX, y: targetY });
     setIsOpen(true);
+    activeMenu = { id: idRef.current, close: () => (externalCloseRef.current ?? close)() };
   };
-
-  const close = () => setIsOpen(false);
 
   return {
     isOpen,
@@ -110,5 +141,6 @@ export function useContextMenu() {
     handleContextMenu,
     close,
     setIsOpen, // Expose setter if manual control is needed
+    setExternalClose,
   };
 }

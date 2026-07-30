@@ -30,6 +30,28 @@
 // Kept at the same ~5min margin above that window as before (was 20 vs 15).
 const RECENTLY_CLOSED_MS = 23 * 60 * 1000
 
+// AIOStreams only bumps a connection's `lastSeen` when a new byte-range
+// request actually comes in - it does NOT expire/close the connection just
+// because requests stopped (confirmed real case: `lastSeen` sat 3.4s after
+// `startTime` for a whole 8+ minute paused session, connection still
+// `isActive` in AIOStreams the entire time).
+//
+// This is NOT a reliable pause detector, though - confirmed with real
+// production data (2026-07-29): a fast debrid connection (TorBox) can pull
+// most/all of a file through the proxy in a handful of requests within
+// seconds of starting (`requestCount: 6`, `lastSeenAt` frozen 2.7s after
+// `startTime`), then play on for the movie's entire runtime straight from
+// the player's local buffer with zero further proxy traffic - genuinely
+// still playing, indistinguishable from a real pause by request cadence
+// alone. An earlier version of this file used this threshold to EXCLUDE a
+// stale row from Now Playing entirely, which broke exactly that case: the
+// entry vanished after ~3min of real (buffered) playback and never came
+// back, even after the user resumed from an actual pause, because a
+// resume-from-deep-buffer needs no new proxy request either. Do not resurrect
+// that behavior - use this constant only for the softer "possibly paused"
+// hint below, never to hide a still-`isActive` row.
+const PAUSED_STALE_MS = 3 * 60 * 1000
+
 async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPlaying) {
   let proxySessions
   let recentlyClosedSessions
@@ -63,6 +85,16 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   if (proxySessions.length === 0 && recentlyClosedSessions.length === 0) {
     return watchSessionNowPlaying
   }
+
+  // Which managed user a client IP resolved to, the last time there was a
+  // real signal for it (see disambiguateMatch below) - the smarter
+  // tiebreaker for ambiguous same-email attributions, learned over time
+  // instead of a fixed AIOSTREAMS_FALLBACK_USER_IDS order.
+  let ipAffinityByIp = new Map()
+  try {
+    const affinityRows = await prisma.proxyUserIpAffinity.findMany({ where: { accountId } })
+    ipAffinityByIp = new Map(affinityRows.map((r) => [r.clientIp, r.userId]))
+  } catch {} // table may not exist yet on a very-first boot before db push runs
 
   const userByUsername = new Map(
     users.filter((u) => u.username).map((u) => [u.username.toLowerCase(), u])
@@ -137,8 +169,13 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     return a.includes(b) || b.includes(a)
   }
 
-  function disambiguateMatch(candidates, proxyDisplayName) {
-    if (candidates.length <= 1) return candidates[0] || null
+  // Returns { user, confident }. `confident` means this resolution came from
+  // real evidence (a unique match, or a title match against a live native
+  // session) rather than a guess - only confident resolutions get written
+  // back into ipAffinityByIp, so a guess can never reinforce itself into a
+  // permanent wrong answer.
+  function disambiguateMatch(candidates, proxyDisplayName, clientIp, confidentIfUnique) {
+    if (candidates.length <= 1) return { user: candidates[0] || null, confident: confidentIfUnique }
 
     const proxyTitle = normalizeTitle(proxyDisplayName)
     if (proxyTitle) {
@@ -146,25 +183,37 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
         const existing = watchSessionByUserId.get(u.id)
         return existing && titlesMatch(normalizeTitle(existing.item?.name), proxyTitle)
       })
-      if (titleMatch) return titleMatch
+      if (titleMatch) return { user: titleMatch, confident: true }
     }
 
-    // No title-match signal available (common when multiple profiles share
-    // one email, since the email-match tier always returns all of them as
-    // candidates - AIOSTREAMS_FALLBACK_USER_IDS never even gets consulted
-    // in that case otherwise). Use the fallback list's order as the
-    // tiebreaker here too: whichever candidate appears earliest in
-    // AIOSTREAMS_FALLBACK_USER_IDS wins, rather than picking candidates[0]
-    // in arbitrary database row order.
+    // No title-match signal available (common while a stream is mid-playback
+    // and native hasn't checkpointed yet - native only writes a session at
+    // pause/stop). Next best guess: which candidate this exact client IP
+    // resolved to the last time there WAS a real signal - most households
+    // have one device per person on a fairly stable local IP, so this beats
+    // a fixed id order without needing a fresh confirmation every time.
+    if (clientIp) {
+      const affinityUserId = ipAffinityByIp.get(clientIp)
+      if (affinityUserId) {
+        const affinityMatch = candidates.find((u) => u.id === affinityUserId)
+        if (affinityMatch) return { user: affinityMatch, confident: false }
+      }
+    }
+
+    // No affinity learned for this IP yet either. Use the fallback list's
+    // order as a last-resort tiebreaker: whichever candidate appears
+    // earliest in AIOSTREAMS_FALLBACK_USER_IDS wins, rather than picking
+    // candidates[0] in arbitrary database row order. Not confident - this is
+    // exactly the guess the affinity tier above exists to eventually replace.
     if (fallbackUserIds.length > 0) {
       const byFallbackOrder = candidates
         .map((u) => ({ u, rank: fallbackUserIds.indexOf(u.id) }))
         .filter((c) => c.rank !== -1)
         .sort((a, b) => a.rank - b.rank)
-      if (byFallbackOrder.length > 0) return byFallbackOrder[0].u
+      if (byFallbackOrder.length > 0) return { user: byFallbackOrder[0].u, confident: false }
     }
 
-    return candidates[0]
+    return { user: candidates[0], confident: false }
   }
 
   // Group active proxy rows by normalized title before attributing them.
@@ -202,18 +251,25 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     , representative.startTime)
 
     let candidates = []
+    // True only when `candidates` came from a genuinely unique match
+    // (username or email), not an arbitrary configured list - a fallback
+    // list that happens to resolve to exactly one valid id is still just a
+    // guess, not evidence, and must not be recorded as confirmed affinity.
+    let candidatesAreRealMatch = false
     const aiostreamsUserLower = (representative.aiostreamsUser || '').toLowerCase()
     const directMatch = userByUsername.get(aiostreamsUserLower)
     const emailMatch = userByEmailLocalPart.get(aiostreamsUserLower)
 
     if (directMatch) {
       candidates = [directMatch]
+      candidatesAreRealMatch = true
     } else if (emailMatch) {
       // One AIOStreams login, multiple per-provider profiles sharing an
       // email - matched by email local-part rather than username.
       candidates = users.filter(
         (u) => u.email && u.email.split('@')[0].toLowerCase() === aiostreamsUserLower
       )
+      candidatesAreRealMatch = true
     } else if (fallbackUserIds.length > 0) {
       candidates = fallbackUserIds
         .map((id) => usersById.get(id))
@@ -222,8 +278,18 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
 
     if (candidates.length === 0) continue // no direct match and no usable fallback - skip rather than guess
 
-    const user = disambiguateMatch(candidates, representative.displayName)
+    const { user, confident } = disambiguateMatch(candidates, representative.displayName, representative.clientIp, candidatesAreRealMatch)
     if (!user) continue
+
+    // Learn from this resolution for next time - only when it's real
+    // evidence, not a guess (see disambiguateMatch's own comment on why).
+    if (confident && representative.clientIp) {
+      prisma.proxyUserIpAffinity.upsert({
+        where: { accountId_clientIp: { accountId, clientIp: representative.clientIp } },
+        create: { accountId, clientIp: representative.clientIp, userId: user.id },
+        update: { userId: user.id, confirmedAt: new Date() },
+      }).catch(() => {}) // best-effort, never blocks building the Now Playing list
+    }
 
     if (!coveredTitlesByUser.has(user.id)) coveredTitlesByUser.set(user.id, new Set())
     coveredTitlesByUser.get(user.id).add(normalizeTitle(representative.displayName))
@@ -271,6 +337,33 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       // Most recent connection's own start time (e.g. when the last seek
       // happened) - kept separately, not used for duration display.
       lastConnectionStartTime: representative.startTime.toISOString(),
+      // A "possibly paused" label was tried here and pulled (2026-07-29,
+      // same day) - confirmed against real usage that a fast debrid
+      // connection (TorBox) routinely front-loads an entire file within
+      // seconds, so the request-cadence signal it was based on reads as
+      // "stale" for nearly this account's ENTIRE runtime on every normal
+      // play, not just real pauses. A label that's wrong by default is
+      // worse than no label - removed rather than left showing a
+      // confidently incorrect guess.
+      lastActivityAt: representative.lastSeenAt.toISOString(),
+      lastActivityAtTimestamp: representative.lastSeenAt.getTime(),
+      // Elapsed time we can actually stand behind, in seconds - real
+      // wall-clock elapsed while proxy traffic is flowing, but frozen at
+      // the point activity went quiet rather than continuing to climb off
+      // raw wall-clock forever. Same root cause as the label above (no way
+      // to confirm real activity once requests stop), but the honest fix
+      // for a NUMBER is to stop advancing it, not to keep incrementing a
+      // figure we can no longer vouch for (confirmed real case: a session
+      // showed "Watching for 49m" and climbing well after the stream had
+      // already been exited - proxy startTime alone is not a safe basis
+      // for an ever-increasing duration display).
+      elapsedSeconds: Math.max(0, Math.floor(
+        (Math.min(Date.now(), representative.lastSeenAt.getTime() + PAUSED_STALE_MS) - earliestStartTime.getTime()) / 1000
+      )),
+      // True once elapsedSeconds above has stopped advancing (no proxy
+      // traffic for PAUSED_STALE_MS) - lets the UI stop ticking a frozen
+      // number live instead of implying it's still counting up.
+      elapsedFrozen: (Date.now() - representative.lastSeenAt.getTime()) > PAUSED_STALE_MS,
       source: 'aiostreams-proxy',
     })
   }

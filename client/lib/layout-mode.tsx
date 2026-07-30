@@ -16,7 +16,7 @@ export const layoutModeMeta: Record<LayoutModeId, { name: string; description: s
     description: 'Sidebar navigation with card-based dashboard',
   },
   nebula: {
-    name: 'Nebula',
+    name: 'Top Navi',
     description: 'Glass panels over a nebula-cloud background, top nav instead of a sidebar',
   },
 };
@@ -26,20 +26,19 @@ interface LayoutModeContextValue {
   setLayoutMode: (id: LayoutModeId) => void;
 }
 
-// Back to 'current' (Original) as the default while Nebula gets more work -
-// real usage kept surfacing Nebula-specific issues (sticky nav background,
-// mobile nav collapse, hover styling, etc.) that Original doesn't have.
-// Original stays the safe/stable choice; Nebula remains fully available as
-// an opt-in from Settings.
+// Default is 'nebula' ("Top Navi") - the earlier Nebula-specific issues
+// (sticky nav background, mobile nav collapse, hover styling) that prompted
+// reverting to Original as the default have since been fixed. Original
+// remains fully available as an opt-in from Settings.
 const defaultContextValue: LayoutModeContextValue = {
-  layoutMode: 'current',
+  layoutMode: 'nebula',
   setLayoutMode: () => {},
 };
 
 const LayoutModeContext = createContext<LayoutModeContextValue>(defaultContextValue);
 
 export function LayoutModeProvider({ children }: { children: ReactNode }) {
-  const [layoutMode, setLayoutModeState] = useState<LayoutModeId>('current');
+  const [layoutMode, setLayoutModeState] = useState<LayoutModeId>('nebula');
   const [mounted, setMounted] = useState(false);
   // TV mode has no D-pad wiring built for Original's sidebar/card chrome at
   // all - every TVPageProvider/TVFocusable/TVLink pass this session
@@ -54,7 +53,7 @@ export function LayoutModeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const saved = localStorage.getItem('slicksync-layout-mode') as LayoutModeId | null;
-    const initial = saved && layoutModeIds.includes(saved) ? saved : 'current';
+    const initial = saved && layoutModeIds.includes(saved) ? saved : 'nebula';
     setLayoutModeState(initial);
     setMounted(true);
   }, []);

@@ -472,8 +472,35 @@ export default function ThemesPage() {
         <NebulaPageHeading title="Themes" subtitle="Pick a built-in theme, or build your own" />
       )}
 
-        {/* Theme Selection */}
+        {/* Layout - structure, independent of Theme's color choice. Scoped
+            to Dashboard + Activity today; other pages are unaffected. */}
         <PageSection className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
+                <Squares2X2Icon className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold font-display text-default">Layout</h3>
+                <p className="text-xs text-muted">Choose how Dashboard and Activity are arranged</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {layoutModeIds.map((id) => (
+                <LayoutModeCard
+                  key={id}
+                  layoutId={id}
+                  isSelected={layoutMode === id}
+                  onSelect={() => setLayoutMode(id)}
+                />
+              ))}
+            </div>
+          </Card>
+        </PageSection>
+
+        {/* Theme Selection */}
+        <PageSection delay={0.05} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
               <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
@@ -504,33 +531,6 @@ export default function ThemesPage() {
                   isSelected={themeId === t.id}
                   onSelect={() => setTheme(t.id)}
                   onDelete={() => setPendingDelete(t)}
-                />
-              ))}
-            </div>
-          </Card>
-        </PageSection>
-
-        {/* Layout - structure, independent of Theme's color choice. Scoped
-            to Dashboard + Activity today; other pages are unaffected. */}
-        <PageSection delay={0.05} className="mb-6">
-          <Card padding="lg">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
-                <Squares2X2Icon className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold font-display text-default">Layout</h3>
-                <p className="text-xs text-muted">Choose how Dashboard and Activity are arranged</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {layoutModeIds.map((id) => (
-                <LayoutModeCard
-                  key={id}
-                  layoutId={id}
-                  isSelected={layoutMode === id}
-                  onSelect={() => setLayoutMode(id)}
                 />
               ))}
             </div>

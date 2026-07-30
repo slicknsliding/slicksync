@@ -33,6 +33,18 @@ model User {
   lastSyncedAt       DateTime? // When user addons were last successfully synced
   syncStatus         String? // "idle", "syncing", "success", "error"
   syncErrorMessage   String? // Last sync error message if any
+  // Distinct from syncStatus/syncErrorMessage above, which is about PUSHING
+  // addon config - this is about READING the user's own library/watch state
+  // (activityMonitor.js's getLibraryForUser, used by both sessionTracker.js
+  // and metricsProcessor.js). A live-fetch failure here silently fell back
+  // to a stale cached library file with zero visibility before this field
+  // existed - confirmed real case: a Stremio user's watch history went
+  // quiet for over a week with nothing anywhere surfacing why. Null means
+  // the most recent attempt succeeded; cleared automatically on the next
+  // successful live fetch, so this self-heals once the underlying issue
+  // (usually an expired session) is fixed.
+  providerConnectionError   String?
+  providerConnectionErrorAt DateTime?
   createdAt          DateTime  @default(now())
 
   // Relationships
@@ -40,6 +52,30 @@ model User {
   @@unique([email, providerType])
   @@index([expiresAt])
   @@map("users")
+}
+
+// Account merge: a second provider's credentials absorbed into an existing
+// User row (Stremio+Nuvio, same real person). Deliberately a side table
+// rather than more nullable fields on User - User.providerType is a single
+// string checked everywhere (sync's provider selection, badges, the
+// [email, providerType] unique constraint), so a merged identity keeps
+// that field meaning exactly what it always has ("the primary provider"),
+// and every existing single-provider user is completely unaffected (zero
+// rows here for the common case). userId is the SURVIVING User row from a
+// merge - see server/utils/userMerge.js for how a row ends up here.
+model UserProviderCredential {
+  id                String   @id @default(cuid())
+  userId            String
+  providerType      String // "stremio" | "nuvio" - always the OTHER provider from the owning User's own providerType
+  stremioAuthKey    String? // Encrypted, same scheme as User.stremioAuthKey
+  nuvioRefreshToken String? // Encrypted, same scheme as User.nuvioRefreshToken
+  nuvioUserId       String?
+  donorId           String? // the absorbed User's original id (that row no longer exists) - lets undoMerge() find its archive
+  mergeArchivePath  String? // filename under data/backup/merges/ holding the pre-merge snapshot needed to reverse this merge
+  createdAt         DateTime @default(now())
+
+  @@unique([userId, providerType])
+  @@map("user_provider_credentials")
 }
 
 model Group {
@@ -463,6 +499,41 @@ model DismissedUpcomingEpisode {
   @@map("dismissed_upcoming_episode")
 }
 
+// Queued summary lines for notification digest mode (AppAccount.sync's
+// notifyDigestEnabled) - an opt-in alternative to instant Discord pings.
+// Written instead of an instant postDiscord() call at each notify call site
+// when digest mode is on; a periodic poller (notificationDigest.js) batches
+// everything since the last send into one message, then deletes the
+// consumed rows. Never touched when digest mode is off - Discord behavior
+// is completely unchanged for anyone who doesn't opt in.
+model NotificationDigestEntry {
+  id        String   @id @default(cuid())
+  accountId String
+  category  String // 'episode' | 'sync' | 'vault' | 'addon_health'
+  summary   String
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@map("notification_digest_entry")
+}
+
+// A whole-show opt-out from upcoming-episode tracking - unlike
+// DismissedUpcomingEpisode (hides one occurrence, reappears once the poller
+// advances to the next episode), muting a show stops it being tracked at
+// all: no more Coming Up entries, no more new-episode alerts (push/Discord),
+// until unmuted. See episodeAlerts.js's checkForNewEpisodes/getUpcomingEpisodes.
+model MutedShow {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  showId    String
+  showName  String?
+  poster    String?
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, showId])
+  @@map("muted_show")
+}
+
 // New-episode alerts: per-show baseline of the latest RELEASED episode we
 // last saw in Cinemeta's episode list. The episodeAlerts poller compares
 // against this on each run - anything newer means a new episode dropped for
@@ -534,6 +605,46 @@ model AddonHealthAlert {
   @@map("addon_health_alerts")
 }
 
+// Generic persistent in-app notification - the durable backing store for the
+// notification bell. Before this, the bell had NO event store: it re-derived
+// watch notifications live from the metrics snapshot every poll, so a
+// "started/finished watching" event that push and Discord fired as discrete,
+// persistent events never produced a matching bell entry (the bell only ever
+// showed a transient "is watching" row while a session was live in Now
+// Playing, and a "completed" row only if the NATIVE pipeline happened to
+// record it - so a proxy-only watch, or a watch under a mismatched Stremio
+// account, left the bell empty while push/Discord both fired for it). That
+// directly broke the "push + bell are primary" rule. This table fixes it at
+// the root: every notification dispatch writes one row here, so bell + push +
+// Discord are all fed from one place instead of three disconnected paths.
+// EpisodeAlert/AddonHealthAlert keep their own dedicated tables (they predate
+// this and already feed the bell), so they are deliberately NOT duplicated here.
+//
+// dedupeKey makes a dispatch idempotent across restarts/re-polls: a stable key
+// (e.g. "watch-start-<sessionId>") means the same event can never create two
+// rows. Nullable, and SQLite treats NULLs as distinct in a unique index, so
+// rows that don't need dedupe (dedupeKey null) never collide. read/readAt are
+// server-side so read state is consistent across devices - the bell's old
+// localStorage-only read state was per-browser and reset on every new device.
+model Notification {
+  id        String    @id @default(cuid())
+  accountId String    @default("default")
+  type      String // 'activity' | 'sync' | 'vault' | 'mismatch' - drives the bell's category icon
+  title     String
+  body      String
+  poster    String?
+  url       String? // deep-link the bell row navigates to on click
+  data      String? // optional JSON blob for extra per-type context
+  dedupeKey String? // stable idempotency key; null = always create a new row
+  read      Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([accountId, dedupeKey])
+  @@index([accountId, createdAt])
+  @@map("notifications")
+}
+
 // PWA web-push subscriptions - one row per browser/device that opted in to
 // native push notifications. endpoint is the push service URL; p256dh/auth
 // are the browser-provided encryption keys web-push needs. Unique on
@@ -592,4 +703,24 @@ model ProxyStreamSession {
   @@index([accountId, isActive])
   @@index([accountId, aiostreamsUser, isActive])
   @@map("proxy_stream_sessions")
+}
+
+// Remembers which managed user a client IP resolved to the last time there
+// was a REAL signal (a unique direct/email match, or a native title match) -
+// used as the tiebreaker for FUTURE ambiguous proxy attributions from the
+// same IP, instead of a fixed AIOSTREAMS_FALLBACK_USER_IDS order. See
+// proxyNowPlaying.js's disambiguateMatch. Most households have one device
+// per person on a fairly stable local IP, so "who was confirmed on this IP
+// last time" is a much better guess than a static id order - and unlike the
+// static order, it can never be wrong in the SAME way twice once it's had
+// one confident observation to learn from.
+model ProxyUserIpAffinity {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  clientIp    String
+  userId      String
+  confirmedAt DateTime @default(now())
+
+  @@unique([accountId, clientIp])
+  @@map("proxy_user_ip_affinity")
 }

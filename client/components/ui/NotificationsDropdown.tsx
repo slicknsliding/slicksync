@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon, ArrowPathIcon, LockClosedIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { Badge, Button, Avatar } from '@/components/ui';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 
 interface NotificationItem {
   id: string;
-  type: 'activity' | 'invite' | 'task' | 'user' | 'request' | 'episode' | 'addon';
+  type: 'activity' | 'invite' | 'task' | 'user' | 'request' | 'episode' | 'addon' | 'sync' | 'vault' | 'mismatch';
   title: string;
   message: string;
   timestamp: Date;
@@ -67,6 +67,12 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   const handleDismiss = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     persistDismissedIds(new Set(dismissedIds).add(id));
+    // Persisted bell notifications (id prefixed "stored-") are deleted
+    // server-side too, so they don't just reappear on the next poll.
+    if (id.startsWith('stored-')) {
+      const realId = id.slice('stored-'.length);
+      api.dismissNotifications([realId]).catch(() => {});
+    }
   };
 
   // Which notifications have been marked read - separate from dismissedIds
@@ -96,18 +102,28 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   // this IS "real" inviteHistory, no separate endpoint needed. Merged with
   // any inviteHistory passed in via props.
   const [acceptedRequests, setAcceptedRequests] = useState<any[]>([]);
-  // Recent watch activity, from the same cached metrics endpoint the
-  // Activity/Dashboard pages use (server-side cache refreshed every 5
-  // minutes by activityMonitor.js, so polling this here is cheap). Merged
-  // with any activities passed in via props.
-  const [recentWatchActivity, setRecentWatchActivity] = useState<any[]>([]);
-  // Live "now playing" sessions, from the same metrics response. Discord
-  // gets an instant "started watching" ping from the proxy pipeline (see
-  // CLAUDE.md), but nothing ever fed that event into this bell - it only
-  // ever showed completed watches. Each entry keeps a stable id/timestamp
-  // (session start) across polls, so it surfaces once and sticks until
-  // marked read/dismissed rather than re-notifying every 30s.
-  const [recentNowPlaying, setRecentNowPlaying] = useState<any[]>([]);
+
+  // Persistent bell notifications (notifications table) - the durable event
+  // store written from the SAME dispatch path as push/Discord
+  // (notificationStore.js). This replaces the old approach of re-deriving
+  // watch activity live from the metrics snapshot, which could never
+  // represent a discrete "started/finished watching" event and left the bell
+  // empty for proxy-only or mismatched-account watches even though push and
+  // Discord both fired. Watch, sync, vault, invite and mismatch events all
+  // flow through here; episode/addon alerts keep their own sources below.
+  const [storedNotifications, setStoredNotifications] = useState<any[]>([]);
+  useEffect(() => {
+    const fetchStored = async () => {
+      try {
+        setStoredNotifications(await api.getNotifications());
+      } catch {
+        // Endpoint may not exist yet on an older backend - stay silent.
+      }
+    };
+    const initialDelay = setTimeout(fetchStored, 200 + Math.random() * 600);
+    const interval = setInterval(fetchStored, 30000);
+    return () => { clearTimeout(initialDelay); clearInterval(interval); };
+  }, []);
 
   // Fetch pending + accepted invite requests
   useEffect(() => {
@@ -162,25 +178,10 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     return () => { clearTimeout(initialDelay); clearInterval(interval); };
   }, []);
 
-  // Fetch recent watch activity for the "activity" notification type
-  useEffect(() => {
-    const fetchActivity = async () => {
-      try {
-        const metrics = await api.getMetrics('30d');
-        setRecentWatchActivity(metrics.recentActivity || []);
-        setRecentNowPlaying(metrics.nowPlaying || []);
-      } catch (e) {
-        console.error('Failed to fetch recent activity for notifications', e);
-      }
-    };
-
-    // Same first-fetch jitter as the requests poll above, and for the same
-    // reason - independent 200-800ms delay so the two don't compound into
-    // one bigger simultaneous burst on their own.
-    const initialDelay = setTimeout(fetchActivity, 200 + Math.random() * 600);
-    const interval = setInterval(fetchActivity, 30000);
-    return () => { clearTimeout(initialDelay); clearInterval(interval); };
-  }, []);
+  // (Watch activity is no longer re-derived from the metrics snapshot here -
+  // it now comes through storedNotifications above, as discrete persisted
+  // events written at the moment they happen, so a "started/finished
+  // watching" event shows in the bell the same way it reaches push/Discord.)
 
   // New-episode alerts (fired server-side by the episodeAlerts poller when a
   // show someone here watches gets a newly-released episode). Server polls
@@ -238,30 +239,12 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     }
   };
 
-  // Real recent-activity feed, mapped to the shape the block below expects.
-  // metrics.recentActivity's own shape (see MetricsData in lib/api.ts) is
-  // {user: {username}, item: {name, poster}, watchedAt, ...} - flatten that
-  // out rather than pass it through raw, so this component's own shape
-  // doesn't leak metrics-API details into ITS callers via the activities prop.
+  // Only the optional `activities` prop now (empty by default) - real watch
+  // activity comes through storedNotifications instead. Kept so a future
+  // caller passing pre-fetched activity data still works unchanged.
   const combinedActivities = useMemo(() => {
-    const fromMetrics = recentWatchActivity.map((entry) => ({
-      id: `${entry.user?.id}-${entry.item?.id}-${entry.watchedAt}`,
-      userName: entry.user?.username || 'Someone',
-      type: 'complete',
-      contentName: entry.item?.name || 'something',
-      timestamp: entry.watchedAt,
-      poster: entry.item?.poster,
-    }));
-    const fromNowPlaying = recentNowPlaying.map((np) => ({
-      id: `now-playing-${np.user?.id}-${np.item?.id}-${np.videoId || ''}`,
-      userName: np.user?.username || 'Someone',
-      type: 'watch',
-      contentName: np.item?.name || 'something',
-      timestamp: np.watchedAtTimestamp || np.watchedAt,
-      poster: np.item?.poster,
-    }));
-    return [...activities, ...fromMetrics, ...fromNowPlaying];
-  }, [activities, recentWatchActivity, recentNowPlaying]);
+    return [...activities];
+  }, [activities]);
 
   const combinedInviteHistory = useMemo(() => {
     const fromAccepted = acceptedRequests.map((req) => ({
@@ -288,6 +271,25 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         timestamp: new Date(req.createdAt),
         read: false,
         data: req
+      });
+    });
+
+    // Persistent bell notifications (watch/sync/vault/invite/mismatch). These
+    // carry server-side read state; readIds is layered on top only as an
+    // optimistic client override so "Mark all read" reflects instantly before
+    // the next poll. The lastChecked window doesn't apply - these are already
+    // time-bounded by the server query and cleared via server-side delete.
+    storedNotifications.forEach((n) => {
+      const id = `stored-${n.id}`;
+      items.push({
+        id,
+        type: n.type,
+        title: n.title,
+        message: n.body,
+        timestamp: new Date(n.createdAt),
+        read: n.read || readIds.has(id),
+        poster: n.poster || undefined,
+        data: { url: n.url },
       });
     });
 
@@ -384,7 +386,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     return items
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .filter((item) => !dismissedIds.has(item.id));
-  }, [combinedActivities, combinedInviteHistory, taskHistory, episodeAlerts, addonHealthAlerts, lastChecked, pendingRequests, dismissedIds, readIds]);
+  }, [combinedActivities, combinedInviteHistory, taskHistory, episodeAlerts, addonHealthAlerts, storedNotifications, lastChecked, pendingRequests, dismissedIds, readIds]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -396,6 +398,9 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     const next = new Set(readIds);
     notifications.forEach((n) => next.add(n.id));
     persistReadIds(next);
+    // Persist read state server-side for the stored subset so it stays read
+    // across devices / reloads, not just in this browser's localStorage.
+    api.markNotificationsRead().catch(() => {});
   };
 
   const handleClearAll = () => {
@@ -410,6 +415,11 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     // indefinitely.
     persistDismissedIds(new Set());
     persistReadIds(new Set());
+    // The lastChecked window hides the derived sources (episode/addon/etc.);
+    // stored bell notifications aren't windowed, so Clear deletes them
+    // server-side (and locally) to actually empty them.
+    setStoredNotifications([]);
+    api.dismissNotifications().catch(() => {});
     setIsOpen(false);
   };
 
@@ -429,6 +439,12 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         return <SparklesIcon className="w-4 h-4" />;
       case 'addon':
         return <PuzzlePieceIcon className="w-4 h-4" />;
+      case 'sync':
+        return <ArrowPathIcon className="w-4 h-4" />;
+      case 'vault':
+        return <LockClosedIcon className="w-4 h-4" />;
+      case 'mismatch':
+        return <ExclamationTriangleIcon className="w-4 h-4" />;
     }
   };
 

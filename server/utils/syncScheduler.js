@@ -262,34 +262,41 @@ function scheduleSyncs(frequency, prisma, getAccountId, scopedWhere, decrypt, re
           }
         } catch {}
 
-        // Send webhook notification
+        // Send notifications (Discord + push)
         const webhookUrl = syncCfg?.webhookUrl
-        if (syncCfg?.notifyOnSync === true && webhookUrl && groups.length > 0) {
-          try {
-            if (!QUIET && mode === 'advanced') {
-              console.log(`📤 Sending webhook notification with ${allReloadDiffs.length} diff(s)`)
-            }
-            await sendSyncNotification(webhookUrl, {
-              groupsCount: groups.length,
-              usersCount: totalUsers,
-              syncMode: mode,
-              diffs: allReloadDiffs,
-              sourceLabel: 'Auto-Sync',
-              sourceLogo: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png',
-              accountUuid: accountUuid || undefined
-            })
-          } catch {}
-        }
-        // Mirror to phone push (self-gates on notifyOnSync; no webhook needed).
         if (syncCfg?.notifyOnSync === true && groups.length > 0) {
           try {
-            const { notifyPushForType } = require('./pushNotifications')
-            await notifyPushForType(prisma, accountIdOrNull, 'notifyOnSync', {
-              title: 'Sync complete',
-              body: `${groups.length} group${groups.length !== 1 ? 's' : ''}, ${totalUsers} user${totalUsers !== 1 ? 's' : ''} synced`,
-              icon: '/android-chrome-192x192.png',
-              url: '/activity',
-            })
+            const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest')
+            const digestOn = accountIdOrNull && await isDigestEnabled(prisma, accountIdOrNull)
+            if (digestOn) {
+              // Queued regardless of whether Discord is even configured -
+              // the digest poller decides which channels to deliver
+              // through. Push + bell are primary; Discord is secondary.
+              await queueDigestEntry(prisma, accountIdOrNull, 'sync', `Synced ${groups.length} group${groups.length !== 1 ? 's' : ''} (${totalUsers} user${totalUsers !== 1 ? 's' : ''})`)
+            } else {
+              if (webhookUrl) {
+                if (!QUIET && mode === 'advanced') {
+                  console.log(`📤 Sending webhook notification with ${allReloadDiffs.length} diff(s)`)
+                }
+                await sendSyncNotification(webhookUrl, {
+                  groupsCount: groups.length,
+                  usersCount: totalUsers,
+                  syncMode: mode,
+                  diffs: allReloadDiffs,
+                  sourceLabel: 'Auto-Sync',
+                  sourceLogo: 'https://raw.githubusercontent.com/iamneur0/slicksync/refs/heads/main/client/public/logo-black.png',
+                  accountUuid: accountUuid || undefined
+                })
+              }
+              // Mirror to phone push (self-gates on notifyOnSync; no webhook needed).
+              const { notifyPushForType } = require('./pushNotifications')
+              await notifyPushForType(prisma, accountIdOrNull, 'notifyOnSync', {
+                title: 'Sync complete',
+                body: `${groups.length} group${groups.length !== 1 ? 's' : ''}, ${totalUsers} user${totalUsers !== 1 ? 's' : ''} synced`,
+                icon: '/android-chrome-192x192.png',
+                url: '/activity',
+              })
+            }
           } catch {}
         }
       } else {

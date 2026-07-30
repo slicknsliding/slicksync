@@ -1,5 +1,30 @@
 [
   {
+    "version": "1.60.0",
+    "date": "2026-07-30",
+    "title": "feat: account merge/undo, notification digest + persistent bell, Now Playing accuracy overhaul, account-mismatch detection",
+    "features": [
+      "Account merge: absorb a second provider's identity (Stremio + Nuvio) into one existing user instead of managing them as two separate people - a \"Same person, different provider?\" card appears on a user's page whenever a same-email match on the other provider exists, with a preview before merging and a full Undo afterward that restores both identities and their original watch history exactly.",
+      "Opt-in notification digest mode: batch watch/sync/vault/addon-health alerts into one daily or weekly summary instead of a ping per event. Push notifications are now primary alongside the in-app bell; Discord is secondary/optional and no longer required for any notification type to work.",
+      "The notification bell now has real persistent storage behind it instead of re-deriving a live snapshot every poll - every push/Discord event (watch start/stop, sync, vault, invites) reliably shows up in the bell too, with read state that stays in sync across devices instead of resetting per-browser.",
+      "New: silent account-mismatch detection. If a title is seen streaming but no connected Stremio/Nuvio account ever records it in History, that usually means playback happened on an account that isn't added to SlickSync yet - a notification now explains this and points at the fix, instead of leaving History silently and confusingly empty.",
+      "Now Playing accuracy pass: pausing no longer inflates the displayed watch duration forever, a stale-but-still-open connection no longer disappears from Now Playing while genuinely still playing, and an unreliable \"possibly paused\" guess was removed rather than left showing a wrong label. Now Playing on the Dashboard refreshes live every 30 seconds (previously only on manual reload) and shows the real viewer's avatar.",
+      "Activity's grid view: when the same title was watched by more than one household member on the same day, their avatars now stack on one poster card (most recent on top) instead of showing confusing duplicate cards for one title.",
+      "Provider connection failures (e.g. an expired Stremio session) now surface directly on the affected user instead of silently falling back to stale cached data with no indication anything was wrong.",
+      "\"Top Navi\" (formerly \"Nebula\") is now the default layout; its top nav is reordered to Dashboard/Activity/Users/Groups on the first row and Discover/Addons/Metrics/Vault/Invitations on the second.",
+      "Mute a show's upcoming-episode tracking directly from its Coming Up entry.",
+      "Private/public self-hosted images now also publish to Docker Hub alongside GHCR."
+    ],
+    "bugFixes": [
+      "Fixed a right-click/long-press context menu bug affecting every page that uses one (Users, Discover, Addons, Vault, Invitations, Groups, Dashboard's Continue Watching and Coming Up): opening a second card's menu left the previous one stuck open indefinitely instead of closing it, since each menu tracked its own open state with no awareness of any other.",
+      "Fixed a real case where a household member's very first tracked session for a title had its position already sitting at the very end (already fully watched at some earlier, untracked time) - the system credited that as \"watched the entire runtime just now,\" fabricating a full-length History entry and inflating Watch Time Today by the whole movie's length. A first-ever observation already at ~100% completion no longer gets credited as a fresh watch.",
+      "Fixed addon Sync failing with \"credentials may be invalid\" after rotating the server's encryption key - one internal decrypt path wasn't trying the same key-rotation fallback every other path already used. A new one-off maintenance script (`scripts/consolidate-encryption-keys.js`) re-encrypts any still-split secrets onto the current key so the underlying cause can't recur.",
+      "Discover's For You rows ignored the Movies/Series toggle and could show the wrong content type.",
+      "Notification delivery (push/Discord) now logs success and failure to a persistent, restart-surviving log, so a delivery gap is diagnosable after the fact instead of unrecoverable once the container restarts."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.59.0",
     "date": "2026-07-27",
     "title": "feat: personal/shared For You recommendations + mobile nav fixes",
