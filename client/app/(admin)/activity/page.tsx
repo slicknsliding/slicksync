@@ -684,28 +684,14 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           </div>
         )}
 
-        {/* Session duration badge + real-completion indicator - top left.
-            completed distinguishes a genuine finish (played to ~the end) from
-            a started-and-dropped watch, from actual position data - something
-            self-reported check-ins can't tell apart. Only shown when we have
-            a verdict (true/false); null (unknown) shows just the duration. */}
-        {!activity.isSynthetic && ((activity.durationSeconds !== undefined && activity.durationSeconds > 0) || activity.completed === true || activity.completed === false) && (
-          <div className="absolute top-2 left-2 flex items-center gap-1">
-            {activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
-              <div className={`px-2 py-1 rounded-md text-xs font-medium shadow-lg ${getActivityColor(activity.type)}`}>
-                {formatDuration(activity.durationSeconds)}
-              </div>
-            )}
-            {activity.completed === true && (
-              <div className="px-1.5 py-1 rounded-md shadow-lg bg-success text-white flex items-center gap-0.5" title="Finished — played to the end">
-                <CheckCircleIcon className="w-3.5 h-3.5" />
-              </div>
-            )}
-            {activity.completed === false && (
-              <div className="px-1.5 py-1 rounded-md shadow-lg bg-slate-900/80 text-slate-300 backdrop-blur-sm flex items-center gap-0.5" title="Started but not finished">
-                <PauseIcon className="w-3.5 h-3.5" />
-              </div>
-            )}
+        {/* Session duration badge - top left. Completion (finished vs dropped)
+            is NOT shown on the poster art anymore (it cluttered) - it's a
+            subtle text marker below the poster instead. */}
+        {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
+          <div className="absolute top-2 left-2">
+            <div className={`px-2 py-1 rounded-md text-xs font-medium shadow-lg ${getActivityColor(activity.type)}`}>
+              {formatDuration(activity.durationSeconds)}
+            </div>
           </div>
         )}
 
@@ -767,6 +753,16 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             }).replace(/ /g, ' ')} {formatTime(activity.timestamp)}
           </span>
         </div>
+
+        {/* Real completion - subtle text marker (off the poster art). Finished
+            = played to ~end; Dropped = started but not finished. Only when we
+            have a verdict; unknown shows nothing. */}
+        {activity.completed === true && (
+          <p className="text-[11px] font-medium text-success">✓ Finished</p>
+        )}
+        {activity.completed === false && (
+          <p className="text-[11px] text-slate-500">Started · not finished</p>
+        )}
       </div>
     </motion.div>
   );
