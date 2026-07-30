@@ -1,46 +1,31 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
-import { Card, Button, MediaDetailModal, Modal } from '@/components/ui';
+import { Card, Button, Modal, PosterThumb } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
-import { api, CustomList, CustomListItem } from '@/lib/api';
+import { api, CustomList } from '@/lib/api';
 import {
   RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon,
-  FilmIcon, TvIcon, XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 // Custom Lists (roadmap #7): named collections of titles. Create/rename/delete
-// a list here; open one to browse its titles (each opens the same
-// MediaDetailModal used across the app) and remove titles. Titles are ADDED to
-// a list from the "Add to list" control on a title's detail modal elsewhere.
-
-function PosterThumb({ item, className = '' }: { item: CustomListItem; className?: string }) {
-  return (
-    <div className={`rounded-md overflow-hidden bg-surface-hover flex items-center justify-center ${className}`}>
-      {item.poster ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={item.poster} alt="" className="w-full h-full object-cover" />
-      ) : (
-        item.type === 'series'
-          ? <TvIcon className="w-5 h-5 text-subtle" />
-          : <FilmIcon className="w-5 h-5 text-subtle" />
-      )}
-    </div>
-  );
-}
+// a list here; click one to open its own page at /lists/[id] (a real page, not
+// a popup - browsing a list's contents is a destination, not a transient
+// action). Titles are ADDED to a list from the "Add to list" control on a
+// title's detail modal elsewhere.
 
 export default function ListsPage() {
   const { layoutMode } = useLayoutMode();
+  const router = useRouter();
   const [lists, setLists] = useState<CustomList[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
-  const [openList, setOpenList] = useState<CustomList | null>(null);
-  const [detail, setDetail] = useState<CustomListItem | null>(null);
   const [renaming, setRenaming] = useState<CustomList | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deleting, setDeleting] = useState<CustomList | null>(null);
@@ -58,10 +43,10 @@ export default function ListsPage() {
     if (!name) return;
     try {
       const list = await api.createList(name);
-      setLists((prev) => [list, ...prev]);
       setNewName('');
       setShowCreate(false);
       toast.success(`Created "${name}"`);
+      router.push(`/lists/${list.id}`);
     } catch { toast.error('Failed to create list'); }
   };
 
@@ -72,7 +57,6 @@ export default function ListsPage() {
     try {
       const updated = await api.updateList(renaming.id, { name });
       setLists((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
-      if (openList?.id === updated.id) setOpenList(updated);
       setRenaming(null);
       toast.success('Renamed');
     } catch { toast.error('Failed to rename'); }
@@ -82,18 +66,9 @@ export default function ListsPage() {
     if (!deleting) return;
     const list = deleting;
     setLists((prev) => prev.filter((l) => l.id !== list.id));
-    if (openList?.id === list.id) setOpenList(null);
     setDeleting(null);
     try { await api.deleteList(list.id); toast.success(`Deleted "${list.name}"`); }
     catch { toast.error('Failed to delete'); load(); }
-  };
-
-  const handleRemoveItem = async (list: CustomList, item: CustomListItem) => {
-    const updated = { ...list, items: list.items.filter((i) => i.id !== item.id) };
-    setOpenList(updated);
-    setLists((prev) => prev.map((l) => (l.id === list.id ? updated : l)));
-    try { await api.removeFromList(list.id, item.id); }
-    catch { toast.error('Failed to remove'); load(); }
   };
 
   const heading = { title: 'Lists', subtitle: 'Your custom collections of movies and shows.' };
@@ -138,7 +113,7 @@ export default function ListsPage() {
                 <Card key={list.id} padding="md" className="group">
                   <button
                     type="button"
-                    onClick={() => setOpenList(list)}
+                    onClick={() => router.push(`/lists/${list.id}`)}
                     className="w-full text-left"
                   >
                     {/* Poster strip: up to 4 covers, or a placeholder. */}
@@ -229,47 +204,6 @@ export default function ListsPage() {
           </div>
         </div>
       </Modal>
-
-      {/* Open a list: browse + remove titles */}
-      <Modal isOpen={!!openList} onClose={() => setOpenList(null)} title={openList?.name || 'List'} size="lg">
-        {openList && (
-          openList.items.length === 0 ? (
-            <p className="text-sm text-muted py-6 text-center">
-              No titles yet — open any movie or show and use &quot;Add to list&quot;.
-            </p>
-          ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 max-h-[70vh] overflow-y-auto pr-1">
-              {openList.items.map((item) => (
-                <div key={item.id} className="relative group">
-                  <button type="button" onClick={() => setDetail(item)} className="w-full text-left">
-                    <PosterThumb item={item} className="w-full aspect-[2/3]" />
-                    <p className="text-xs text-default truncate mt-1">{item.name}</p>
-                  </button>
-                  <button
-                    type="button"
-                    title="Remove from list"
-                    onClick={() => handleRemoveItem(openList, item)}
-                    className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <XMarkIcon className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )
-        )}
-      </Modal>
-
-      {detail && (
-        <MediaDetailModal
-          isOpen={!!detail}
-          onClose={() => setDetail(null)}
-          itemId={detail.id}
-          itemType={detail.type}
-          fallbackTitle={detail.name}
-          fallbackPoster={detail.poster || undefined}
-        />
-      )}
     </>
   );
 }
