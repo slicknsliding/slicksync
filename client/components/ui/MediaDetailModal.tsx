@@ -37,6 +37,14 @@ interface MediaDetailModalProps {
   // exist on the detail lookup, so those are unaffected either way.
   fallbackRating?: string | null;
   fallbackReleaseInfo?: string | null;
+  // Same "grid already knows, don't wait on / overwrite it" reasoning as
+  // fallbackRating above, but for OMDb's Rotten Tomatoes/Metacritic scores.
+  // The modal's own detail lookup (Cinemeta) never returns these at all, so
+  // without a caller-supplied value the row falls back to the bare IMDb
+  // number even when the caller already fetched a fuller RatingBadges-style
+  // batch (Discover's useRatingsBatch) for the same item.
+  fallbackRottenTomatoes?: string | null;
+  fallbackMetacritic?: string | null;
   // Fires after the modal's own watchlist toggle succeeds (or fails and
   // reverts), so a caller with its own watchlist list/grid — Discover, in
   // practice — can stay in sync. Without this the modal's add/remove was a
@@ -57,6 +65,8 @@ export function MediaDetailModal({
   fallbackPoster,
   fallbackRating,
   fallbackReleaseInfo,
+  fallbackRottenTomatoes,
+  fallbackMetacritic,
   onWatchlistChange,
 }: MediaDetailModalProps) {
   const [details, setDetails] = useState<MediaDetails | null>(null);
@@ -130,6 +140,11 @@ export function MediaDetailModal({
   const effectiveFallbackPoster = overrideItem?.poster ?? fallbackPoster;
   const effectiveFallbackRating = overrideItem ? (overrideItem.imdbRating ?? null) : fallbackRating;
   const effectiveFallbackReleaseInfo = overrideItem ? (overrideItem.releaseInfo ?? null) : fallbackReleaseInfo;
+  // Drill-down (cast credit) items never carry a Rotten Tomatoes/Metacritic
+  // fallback of their own - details.rottenTomatoes/metacritic (if OMDb ever
+  // starts returning them there) is all a drilled-into item can show.
+  const effectiveFallbackRottenTomatoes = overrideItem ? null : fallbackRottenTomatoes;
+  const effectiveFallbackMetacritic = overrideItem ? null : fallbackMetacritic;
 
   const { enableWatchlist, rpdbEnabled } = usePersonalFeatures();
   const isTV = useIsTV();
@@ -529,16 +544,16 @@ export function MediaDetailModal({
                     <span className="text-muted font-normal">/10</span>
                   </span>
                 )}
-                {details.rottenTomatoes && (
+                {(effectiveFallbackRottenTomatoes || details.rottenTomatoes) && (
                   <span className="flex items-center gap-1.5 font-medium" style={{ color: '#fa320a' }} title="Rotten Tomatoes">
                     <span aria-hidden>🍅</span>
-                    {details.rottenTomatoes}
+                    {effectiveFallbackRottenTomatoes || details.rottenTomatoes}
                   </span>
                 )}
-                {details.metacritic && (
-                  <span className="flex items-center gap-1.5 font-medium" style={{ color: metacriticTextColor(details.metacritic) }} title="Metacritic score">
+                {(effectiveFallbackMetacritic || details.metacritic) && (
+                  <span className="flex items-center gap-1.5 font-medium" style={{ color: metacriticTextColor(effectiveFallbackMetacritic || details.metacritic || '') }} title="Metacritic score">
                     <span aria-hidden>Ⓜ</span>
-                    {details.metacritic}
+                    {effectiveFallbackMetacritic || details.metacritic}
                   </span>
                 )}
                 {details.imdb_id && (
