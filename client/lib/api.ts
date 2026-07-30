@@ -1712,28 +1712,6 @@ class ApiClient {
     return this.fetch<HealthStatus>('/health');
   }
 
-  // "What should we watch tonight" swipe-off.
-  async getWatchPartySessions() {
-    return this.fetch<WatchPartySessionSummary[]>('/watch-party');
-  }
-  async createWatchParty(createdBy: string, participantIds: string[]) {
-    return this.fetch<WatchPartySession>('/watch-party', {
-      method: 'POST',
-      body: JSON.stringify({ createdBy, participantIds }),
-    });
-  }
-  async getWatchParty(id: string) {
-    return this.fetch<WatchPartySession>(`/watch-party/${encodeURIComponent(id)}`);
-  }
-  async voteWatchParty(id: string, userId: string, itemId: string, vote: boolean) {
-    return this.fetch<{ matched: boolean; item?: WatchPartyItem }>(`/watch-party/${encodeURIComponent(id)}/vote`, {
-      method: 'POST',
-      body: JSON.stringify({ userId, itemId, vote }),
-    });
-  }
-  async endWatchParty(id: string) {
-    return this.fetch<{ success: boolean }>(`/watch-party/${encodeURIComponent(id)}/end`, { method: 'POST' });
-  }
   async getRecommendations(opts?: { mode?: 'personal' | 'shared'; userId?: string; userId2?: string; type?: 'movie' | 'series' }) {
     const params = new URLSearchParams();
     if (opts?.mode) params.set('mode', opts.mode);
@@ -2355,34 +2333,6 @@ export interface HealthStatus {
   };
   proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean };
   mismatchCount: number;
-}
-
-export interface WatchPartyItem {
-  id: string;
-  type: 'movie' | 'series';
-  name: string;
-  poster: string | null;
-  year?: string | null;
-}
-
-export interface WatchPartySession {
-  id: string;
-  createdBy: string;
-  participantIds: string[];
-  candidates: WatchPartyItem[];
-  status: 'active' | 'matched' | 'ended';
-  matchedItem: WatchPartyItem | null;
-  yesByItem: Record<string, string[]>;
-  votedItemsByUser: Record<string, string[]>;
-  createdAt: string;
-}
-
-export interface WatchPartySessionSummary {
-  id: string;
-  status: 'active' | 'matched' | 'ended';
-  participantIds: string[];
-  matchedItem: WatchPartyItem | null;
-  createdAt: string;
 }
 
 export interface UpcomingEpisode {

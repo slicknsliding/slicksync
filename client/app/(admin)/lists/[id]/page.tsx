@@ -87,15 +87,26 @@ export default function ListDetailPage() {
     </Button>
   );
 
-  const detailActions = list && !isLoading && !notFound ? (
+  // Nebula: Back sits alone in the heading's left column (see `leading`
+  // below) - Rename/Delete stay grouped with the bell on the right, since
+  // "leave this list" reads as a different kind of action from "edit it".
+  // The sidebar Header below has no such left column, so it keeps Back
+  // bundled with the other actions - there's nothing to separate it from.
+  const editActions = list && !isLoading && !notFound ? (
     <div className="flex items-center gap-2">
-      {backButton}
       <Button variant="secondary" size="sm" leftIcon={<PencilSquareIcon className="w-4 h-4" />} onClick={() => { setRenameValue(list.name); setRenaming(true); }}>
         Rename
       </Button>
       <Button variant="danger" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setDeleting(true)}>
         Delete
       </Button>
+    </div>
+  ) : null;
+
+  const detailActions = editActions ? (
+    <div className="flex items-center gap-2">
+      {backButton}
+      {editActions}
     </div>
   ) : backButton;
 
@@ -117,7 +128,7 @@ export default function ListDetailPage() {
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
         {layoutMode === 'nebula' && (
-          <NebulaPageHeading title={title} subtitle={subtitle || 'Lists'} actions={detailActions} />
+          <NebulaPageHeading title={title} subtitle={subtitle || 'Lists'} leading={backButton} actions={editActions} />
         )}
 
         <PageSection>
