@@ -618,13 +618,22 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                           // closing/reopening replayed the entrance animation
                           // and made the end state obvious. Confirmed real
                           // case, 2026-07-30.
-                          style={{ background: notification.read ? 'transparent' : 'var(--color-primary-muted)' }}
+                          // backgroundColor (not the `background` shorthand) so
+                          // Tailwind's transition-colors actually animates the
+                          // lit->read flip. The state was already updating
+                          // instantly on "Mark all read" (verified in the DOM:
+                          // 5 lit rows -> 0 within 100ms of the click), but the
+                          // shorthand isn't a transitioned property, so the
+                          // change snapped invisibly on a subtle tint and only
+                          // "looked" applied once reopening replayed the
+                          // entrance animation. Now it visibly fades.
+                          style={{ backgroundColor: notification.read ? 'transparent' : 'var(--color-primary-muted)' }}
                         >
                           <div className="flex flex-col gap-3">
                             <div className="flex items-start gap-3">
                               <span
                                 className="w-1.5 h-1.5 rounded-full shrink-0 mt-2 transition-colors duration-500"
-                                style={{ background: notification.read ? 'transparent' : 'var(--color-primary)' }}
+                                style={{ backgroundColor: notification.read ? 'transparent' : 'var(--color-primary)' }}
                                 aria-hidden="true"
                               />
                               {notification.poster ? (

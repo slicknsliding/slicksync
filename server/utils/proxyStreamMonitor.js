@@ -328,12 +328,30 @@ async function maybeNotifyStop(prisma, accountId, webhookUrl, users, row) {
 // live presence signal only: Now Playing + the instant "started watching"
 // notification.
 
+// Client IPs to never record as watches. The SlickSync/AIOStreams server's
+// own outbound requests through the proxy (poster/metadata lookups, and Nuvio
+// stream paths that route via the server) appear in /proxy/stats under the
+// SERVER's public IP, not a user's device - recording those creates phantom
+// "watch" sessions that fire spurious started/finished notifications and show
+// as a duplicate Now Playing card alongside the real native session (confirmed
+// real case 2026-07-30: a 1-request, ~1-minute session under the VPS's own IP
+// for a title a user was really watching from their home IP). Set
+// AIOSTREAMS_IGNORE_IPS to the server's public IP(s), comma-separated. Nuvio
+// Now Playing is unaffected - the native library pipeline covers it.
+function getIgnoredIps() {
+  return (process.env.AIOSTREAMS_IGNORE_IPS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
 async function pollOnce(prisma, accountId, config) {
   heartbeat('pollOnce:start', { accountId })
   try {
     await retryMissingPosters(prisma, accountId)
     const stats = await fetchProxyStats(config.baseUrl, config.username, config.password)
     const now = new Date()
+    const ignoredIps = new Set(getIgnoredIps())
     // Track which (aiostreamsUser, clientIp, url) combos are active this poll
     const seenKeys = new Set()
 
@@ -367,6 +385,13 @@ async function pollOnce(prisma, accountId, config) {
         const url = conn.url
         if (!clientIp || !url) {
           heartbeat('pollOnce:skipped_malformed_connection', { user: user.username, conn })
+          continue
+        }
+        // Skip the server's own proxied requests (see getIgnoredIps) - never a
+        // real user watch, and recording it spawns phantom sessions +
+        // notifications + duplicate Now Playing cards.
+        if (ignoredIps.has(clientIp)) {
+          heartbeat('pollOnce:skipped_ignored_ip', { clientIp })
           continue
         }
 
