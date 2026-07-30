@@ -98,6 +98,21 @@ export default function WatchPartySessionPage() {
   // voted card's fling-off animation always matches the actual vote,
   // regardless of whether it was dragged or committed via the buttons.
   const [exitDirections, setExitDirections] = useState<Record<string, 1 | -1>>({});
+  // The swipe queue, frozen once per claimed identity - NOT recomputed live
+  // from session.votedItemsByUser. It used to be a useMemo reactive to the
+  // session, which broke under the 3s background poll: the instant a vote
+  // landed server-side and a poll refetch came back, the just-voted item
+  // dropped out of the filtered list, shifting every remaining item's index
+  // down by one - but localIndex (a plain offset into that array) had no way
+  // to know the shift happened, so the next card silently skipped an
+  // unvoted title entirely (confirmed live: the counter jumped 24 -> 22
+  // after a single vote, not 23). Freezing the queue at claim time and only
+  // ever advancing via localIndex fixes it; a page reload correctly
+  // re-seeds from the server's current voted set, so resuming later still
+  // works.
+  const [queue, setQueue] = useState<WatchPartyItem[]>([]);
+  const [queueReady, setQueueReady] = useState(false);
+  const seededForUserRef = useRef<string | null>(null);
 
   const load = useCallback(() => {
     api.getWatchParty(sessionId)
@@ -143,10 +158,16 @@ export default function WatchPartySessionPage() {
 
   const userMap = useMemo(() => new Map(users.map((u) => [u.id, u.username])), [users]);
 
-  const queue = useMemo(() => {
-    if (!session || !myUserId) return [];
+  // Seed the queue exactly once per claimed identity (see the comment on the
+  // queue state above for why this can't be a live-reactive useMemo).
+  useEffect(() => {
+    if (!session || !myUserId) return;
+    if (seededForUserRef.current === myUserId) return;
     const voted = new Set(session.votedItemsByUser[myUserId] || []);
-    return session.candidates.filter((c) => !voted.has(c.id));
+    setQueue(session.candidates.filter((c) => !voted.has(c.id)));
+    setLocalIndex(0);
+    setQueueReady(true);
+    seededForUserRef.current = myUserId;
   }, [session, myUserId]);
 
   const handleVote = async (vote: boolean) => {
@@ -242,6 +263,8 @@ export default function WatchPartySessionPage() {
               </div>
             </Card>
           </PageSection>
+        ) : !queueReady ? (
+          <div className="aspect-[2/3] rounded-xl bg-surface-hover animate-pulse" />
         ) : queue.length === 0 || localIndex >= queue.length ? (
           <PageSection>
             <Card padding="lg" className="text-center">
