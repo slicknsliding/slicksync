@@ -1611,6 +1611,10 @@ class ApiClient {
   async getMetrics(period: string = '30d') {
     return this.fetch<MetricsData>(`/users/metrics?period=${period}`);
   }
+  async getYearInReview(year?: number) {
+    const q = year ? `?year=${year}` : '';
+    return this.fetch<YearInReview>(`/users/year-in-review${q}`);
+  }
 
   async getContinueWatching() {
     return this.fetch<ContinueWatchingItem[]>('/users/continue-watching');
@@ -2270,6 +2274,32 @@ export interface CustomList {
   items: CustomListItem[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface YearInReviewTitle {
+  id: string;
+  name: string;
+  poster: string | null;
+  type: 'movie' | 'series';
+  episodeCount?: number;
+  rewatchCount?: number;
+}
+
+export interface YearInReview {
+  year: number;
+  totalWatchTimeSeconds: number;
+  movieWatchTimeSeconds: number;
+  seriesWatchTimeSeconds: number;
+  moviesWatched: number;
+  completedMovies: number;
+  episodesWatched: number;
+  showsWatched: number;
+  byMonth: number[]; // 12 entries, seconds per month (Jan..Dec)
+  busiestMonth: number; // 0-11
+  topShows: YearInReviewTitle[];
+  mostRewatched: YearInReviewTitle[];
+  perUser: Array<{ userId: string; username: string; seconds: number }>;
+  hasData: boolean;
 }
 
 export interface UpcomingEpisode {
