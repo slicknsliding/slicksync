@@ -11,7 +11,7 @@ import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { posterUrl } from '@/lib/posterUrl';
-import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, SparklesIcon, UserIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { toast } from '@/components/ui/Toast';
 import { useIsTV } from '@/lib/hooks/useIsTV';
@@ -257,9 +257,17 @@ export default function DiscoverPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [detailItem, setDetailItem] = useState<DiscoverItem | null>(null);
   // Person search (TMDb): typing an actor/director's name surfaces their
-  // titles of the current type as a section above the normal title results.
-  // Null when there's no key, no query, or no person match.
+  // titles of the current type. Null when there's no key, no query, or no
+  // person match.
   const [personSearch, setPersonSearch] = useState<{ person: { name: string; profile: string | null } | null; results: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }> } | null>(null);
+  // Titles vs People search mode. These used to run in parallel and render
+  // together (a person's filmography row ABOVE the normal title-search grid)
+  // - for a query that also loosely matched unrelated title names, that read
+  // as "here's stuff this actor hasn't been in" stacked right under their
+  // real filmography. Splitting them into an explicit mode means Titles
+  // search never touches TMDb at all, and People search never shows a single
+  // title-search result that isn't actually a verified credit.
+  const [searchMode, setSearchMode] = useState<'titles' | 'people'>('titles');
   // Which poster's right-click menu is open — shared across the whole page
   // (both the main grid and the For You rows) so opening a second card's
   // menu closes whichever one was open before, same as Continue Watching.
@@ -497,11 +505,25 @@ export default function DiscoverPage() {
     }
   }, [refreshWatchlist]);
 
+  // In People mode, a query searches TMDb for a person only - the title
+  // grid/browse fetch below is skipped entirely so there's never a stray
+  // title-search result mixed into someone's filmography.
+  const isPeopleSearch = source === 'discover' && searchMode === 'people' && !!debouncedQuery;
+
   // First-page fetch — reruns whenever type/catalog/genre/search changes.
   // Search hits a different endpoint and doesn't support pagination, so it
   // just replaces items and marks the list as complete.
   useEffect(() => {
     let cancelled = false;
+
+    if (isPeopleSearch) {
+      // People mode: no title fetch at all.
+      setItems([]);
+      setIsLoading(false);
+      setHasMore(false);
+      return;
+    }
+
     setIsLoading(true);
     setSkip(0);
     setHasMore(true);
@@ -521,21 +543,28 @@ export default function DiscoverPage() {
       setSkip(results.length);
     });
 
-    // Person search runs in parallel with the title search - a name typed in
-    // the box surfaces that person's filmography too. Only in the plain
-    // Discover source (not watchlist/foryou), only with a query.
-    if (debouncedQuery && source === 'discover') {
-      api.searchPerson(debouncedQuery, type)
-        .then((r) => { if (!cancelled) setPersonSearch(r && r.person && r.results.length > 0 ? r : null); })
-        .catch(() => { if (!cancelled) setPersonSearch(null); });
-    } else {
-      setPersonSearch(null);
-    }
-
     return () => {
       cancelled = true;
     };
-  }, [type, catalog, genre, debouncedQuery]);
+  }, [type, catalog, genre, debouncedQuery, isPeopleSearch]);
+
+  // People-mode search: only runs when the toggle is explicitly set to
+  // People, never alongside a Titles search.
+  const [personSearchLoading, setPersonSearchLoading] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (isPeopleSearch) {
+      setPersonSearchLoading(true);
+      api.searchPerson(debouncedQuery, type)
+        .then((r) => { if (!cancelled) setPersonSearch(r && r.person && r.results.length > 0 ? r : null); })
+        .catch(() => { if (!cancelled) setPersonSearch(null); })
+        .finally(() => { if (!cancelled) setPersonSearchLoading(false); });
+    } else {
+      setPersonSearch(null);
+      setPersonSearchLoading(false);
+    }
+    return () => { cancelled = true; };
+  }, [isPeopleSearch, debouncedQuery, type]);
 
   // Load the next page and append. No-op if already loading, search-mode
   // (no pagination on Cinemeta's search), or the last page came back short.
@@ -576,7 +605,9 @@ export default function DiscoverPage() {
   const searchConfig: PageToolbarProps['searchConfig'] = {
     value: searchQuery,
     onChange: setSearchQuery,
-    placeholder: `Search ${type === 'movie' ? 'movies' : 'series'}...`,
+    placeholder: searchMode === 'people'
+      ? 'Search for an actor or director...'
+      : `Search ${type === 'movie' ? 'movies' : 'series'}...`,
   };
 
   // TV mode wraps the whole page in the D-pad focus root; PC/mobile get a
@@ -639,6 +670,38 @@ export default function DiscoverPage() {
                 layoutId: 'discover-type-tabs',
               }}
             />
+          )}
+
+          {/* Titles vs People search mode - only relevant to the plain
+              Discover source (Watchlist/For You have no person search).
+              Explicitly separate, not run in parallel: a Titles search never
+              touches TMDb, and a People search only ever shows that person's
+              actual verified credits - no stray title-search result can
+              land next to a filmography it doesn't belong to. */}
+          {!isTV && source === 'discover' && (
+            <div className="flex items-center gap-2 mt-3">
+              <span className="text-xs text-muted">Search:</span>
+              <button
+                type="button"
+                onClick={() => setSearchMode('titles')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                  searchMode === 'titles' ? 'bg-primary text-white' : 'bg-surface-hover text-muted hover:text-default'
+                }`}
+              >
+                <MagnifyingGlassIcon className="w-3.5 h-3.5" />
+                Titles
+              </button>
+              <button
+                type="button"
+                onClick={() => setSearchMode('people')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                  searchMode === 'people' ? 'bg-primary text-white' : 'bg-surface-hover text-muted hover:text-default'
+                }`}
+              >
+                <UserIcon className="w-3.5 h-3.5" />
+                People
+              </button>
+            </div>
           )}
         </PageSection>
 
@@ -1045,53 +1108,68 @@ export default function DiscoverPage() {
           </PageSection>
         ) : (
         <PageSection delay={0.1}>
-          {/* Person search results - shown above the normal title grid when a
-              typed name matches an actor/director (TMDb). Their titles of the
-              current Movies/Series type; clicking one resolves its IMDb id and
-              opens the detail modal. Only in the Discover source with a key. */}
-          {personSearch && personSearch.person && personSearch.results.length > 0 && (
-            <div className="mb-8">
-              <div className="flex items-center gap-2 mb-3">
-                {personSearch.person.profile && (
-                  <img src={personSearch.person.profile} alt={personSearch.person.name} className="w-8 h-8 rounded-full object-cover" />
-                )}
-                <h3 className="text-base font-semibold font-display text-default">
-                  {personSearch.person.name}
-                  <span className="text-muted font-normal"> — {type === 'series' ? 'series' : 'movies'} they&apos;re in</span>
-                </h3>
-              </div>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
-                {personSearch.results.map((r) => (
-                  <button
-                    key={`${r.mediaType}-${r.tmdbId}`}
-                    type="button"
-                    onClick={() => openPersonResult(r)}
-                    title={`${r.title}${r.role ? ` · ${r.role}` : ''}`}
-                    className="text-left group/pr"
-                  >
-                    <div className="aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-lg">
-                      {r.poster ? (
-                        <img src={r.poster} alt={r.title} loading="lazy" className="w-full h-full object-cover transition-transform group-hover/pr:scale-105" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-muted text-xs p-2 text-center">{r.title}</div>
-                      )}
-                    </div>
-                    <p className="mt-1 text-xs font-medium text-default leading-tight line-clamp-2 group-hover/pr:text-primary transition-colors text-center">{r.title}</p>
-                    {r.year && <p className="text-[10px] text-subtle text-center">{r.year}</p>}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {source === 'discover' && searchMode === 'people' ? (
+            // People mode: exclusively a person's own verified TMDb credits -
+            // never a title-search result mixed in (see the searchMode
+            // comment above for why that combination was removed).
+            <>
+              {!debouncedQuery ? (
+                <div className="text-center py-24 text-muted">
+                  <UserIcon className="w-10 h-10 mx-auto mb-3 text-subtle" />
+                  <p>Type an actor or director&apos;s name to see what they&apos;ve been in.</p>
+                </div>
+              ) : personSearchLoading ? (
+                <div className="flex items-center justify-center py-24 text-muted">
+                  <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : !personSearch || !personSearch.person || personSearch.results.length === 0 ? (
+                <div className="text-center py-24 text-muted">
+                  <UserIcon className="w-10 h-10 mx-auto mb-3 text-subtle" />
+                  <p>No match for &quot;{debouncedQuery}&quot; — or nothing of that type ({type === 'series' ? 'series' : 'movies'}) in their credits.</p>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    {personSearch.person.profile && (
+                      <img src={personSearch.person.profile} alt={personSearch.person.name} className="w-8 h-8 rounded-full object-cover" />
+                    )}
+                    <h3 className="text-base font-semibold font-display text-default">
+                      {personSearch.person.name}
+                      <span className="text-muted font-normal"> — {type === 'series' ? 'series' : 'movies'} they&apos;re in</span>
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
+                    {personSearch.results.map((r) => (
+                      <button
+                        key={`${r.mediaType}-${r.tmdbId}`}
+                        type="button"
+                        onClick={() => openPersonResult(r)}
+                        title={`${r.title}${r.role ? ` · ${r.role}` : ''}`}
+                        className="text-left group/pr"
+                      >
+                        <div className="aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-lg">
+                          {r.poster ? (
+                            <img src={r.poster} alt={r.title} loading="lazy" className="w-full h-full object-cover transition-transform group-hover/pr:scale-105" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-muted text-xs p-2 text-center">{r.title}</div>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs font-medium text-default leading-tight line-clamp-2 group-hover/pr:text-primary transition-colors text-center">{r.title}</p>
+                        {r.year && <p className="text-[10px] text-subtle text-center">{r.year}</p>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+          <>
 
           {loading ? (
             <div className="flex items-center justify-center py-24 text-muted">
               <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
             </div>
           ) : displayedItems.length === 0 ? (
-            // Suppress the empty message when a person-search section is
-            // already showing results above - the page isn't actually empty.
-            (personSearch && personSearch.results.length > 0) ? null : (
             <div className="text-center py-24 text-muted">
               <MagnifyingGlassIcon className="w-10 h-10 mx-auto mb-3 text-subtle" />
               <p>
@@ -1104,7 +1182,6 @@ export default function DiscoverPage() {
                       : 'No results found.'}
               </p>
             </div>
-            )
           ) : (
             <>
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
@@ -1149,6 +1226,8 @@ export default function DiscoverPage() {
                 </div>
               )}
             </>
+          )}
+          </>
           )}
         </PageSection>
         )}
