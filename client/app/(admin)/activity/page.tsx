@@ -605,30 +605,45 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
 
         {/* User avatar(s) - top right. When this card represents multiple
             distinct users who watched this same title today (see
-            buildGridWatchers), stack their avatars overlapping - oldest
-            watcher first/furthest back, most recent (activity's own user)
-            last/on top/fully visible, per the negative-space overlap below. */}
-        <div className="absolute top-2 right-2 flex items-center -space-x-2">
-          {activity.additionalWatchers && [...activity.additionalWatchers].reverse().map((w) => (
-            <Link
-              key={w.userId}
-              href={`/users/${w.userId}`}
-              onClick={(e) => e.stopPropagation()}
-              className="rounded-full ring-2 ring-slate-900 shrink-0"
-              title={w.userName}
-            >
-              <UserAvatar userId={w.userId} name={w.userName} email={w.userEmail} src={w.userAvatarUrl ?? undefined} size="sm" />
-            </Link>
-          ))}
-          <Link
-            href={`/users/${activity.userId}`}
-            onClick={(e) => e.stopPropagation()}
-            className={activity.additionalWatchers ? 'rounded-full ring-2 ring-slate-900 shrink-0' : undefined}
-            title={activity.additionalWatchers ? activity.userName : undefined}
-          >
-            <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
-          </Link>
-        </div>
+            buildGridWatchers), stack them VERTICALLY, most-recent on top -
+            a horizontal overlapping row spread across the (narrow, on mobile)
+            poster and the ring around each avatar read as stray dark halos.
+            A vertical column with a small gap + soft shadow (no hard ring)
+            stays tucked in the corner and reads cleanly on any poster art.
+            Capped so a heavily-shared title can't run avatars down the whole
+            edge - the rest collapse into a "+N" chip. */}
+        {(() => {
+          const MAX_STACK = 3;
+          const watchers = [
+            { userId: activity.userId, userName: activity.userName, userEmail: activity.userEmail, userAvatarUrl: activity.userAvatarUrl },
+            ...(activity.additionalWatchers ?? []),
+          ];
+          const shown = watchers.slice(0, MAX_STACK);
+          const extra = watchers.length - shown.length;
+          return (
+            <div className="absolute top-2 right-2 flex flex-col items-center gap-1">
+              {shown.map((w) => (
+                <Link
+                  key={w.userId}
+                  href={`/users/${w.userId}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="rounded-full shadow-md shadow-black/40 shrink-0"
+                  title={watchers.length > 1 ? w.userName : undefined}
+                >
+                  <UserAvatar userId={w.userId} name={w.userName} email={w.userEmail} src={w.userAvatarUrl ?? undefined} size="sm" />
+                </Link>
+              ))}
+              {extra > 0 && (
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold bg-slate-900/85 text-slate-100 shadow-md shadow-black/40"
+                  title={`+${extra} more`}
+                >
+                  +{extra}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Nuvio profile badge - bottom left, only shown when known */}
         {activity.profileLabel && (
