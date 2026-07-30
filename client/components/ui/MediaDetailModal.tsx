@@ -77,9 +77,41 @@ export function MediaDetailModal({
     imdbRating?: string | null;
     releaseInfo?: string | null;
   } | null>(null);
+  // Cast/crew deep-dive: when a cast member with a TMDb id is clicked, load
+  // their filmography into this panel (optional feature - see discover.js's
+  // /person route; null credits + unavailable=true means no TMDb key is set,
+  // which the render below treats as "feature off" rather than an error).
+  const [personView, setPersonView] = useState<null | {
+    id: number | string;
+    name: string;
+    loading: boolean;
+    credits: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }>;
+    unavailable?: boolean;
+  }>(null);
+
+  const openPerson = useCallback(async (member: { name: string; tmdbId?: number | string | null }) => {
+    if (member.tmdbId == null || member.tmdbId === '') return;
+    setPersonView({ id: member.tmdbId, name: member.name, loading: true, credits: [] });
+    const res = await api.getPersonCredits(member.tmdbId);
+    if (!res) {
+      setPersonView({ id: member.tmdbId, name: member.name, loading: false, credits: [], unavailable: true });
+      return;
+    }
+    setPersonView({ id: member.tmdbId, name: res.person?.name || member.name, loading: false, credits: res.credits });
+  }, []);
+
+  const openCredit = useCallback(async (credit: { tmdbId: number; mediaType: 'movie' | 'tv'; title: string; poster: string | null }) => {
+    const res = await api.resolveImdbId(credit.tmdbId, credit.mediaType);
+    if (res?.imdbId) {
+      setOverrideItem({ id: res.imdbId, type: res.type, name: credit.title, poster: credit.poster });
+      setPersonView(null);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isOpen) return;
     setOverrideItem(null);
+    setPersonView(null);
   }, [isOpen, itemId, itemType, videoId]);
   const effectiveId = overrideItem?.id ?? itemId;
   const effectiveType = overrideItem?.type ?? itemType;
@@ -647,8 +679,20 @@ export function MediaDetailModal({
                     onPointerUp={handleCastPointerUp}
                     className="flex gap-4 overflow-x-auto pb-1 pr-6 no-scrollbar cursor-grab active:cursor-grabbing select-none"
                   >
-                    {details.cast.slice(0, 10).map((member) => (
-                      <div key={member.name} className="shrink-0 w-24 text-center">
+                    {details.cast.slice(0, 10).map((member) => {
+                      const clickable = member.tmdbId != null && member.tmdbId !== '';
+                      return (
+                      <button
+                        key={member.name}
+                        type="button"
+                        // Only a real click (not a drag) fires - the cast row's
+                        // drag-scroll only captures the pointer after 5px of
+                        // movement, so a stationary click still reaches here.
+                        onClick={() => { if (clickable) openPerson(member); }}
+                        disabled={!clickable}
+                        title={clickable ? `See ${member.name}'s other titles` : member.name}
+                        className={`shrink-0 w-24 text-center ${clickable ? 'cursor-pointer group/cast' : 'cursor-default'}`}
+                      >
                         {member.photo ? (
                           <img
                             src={member.photo}
@@ -657,7 +701,7 @@ export function MediaDetailModal({
                             decoding="async"
                             draggable={false}
                             onDragStart={(e) => e.preventDefault()}
-                            className="w-20 h-20 rounded-full object-cover mx-auto bg-surface-hover pointer-events-none"
+                            className={`w-20 h-20 rounded-full object-cover mx-auto bg-surface-hover pointer-events-none transition-transform ${clickable ? 'group-hover/cast:scale-105 group-hover/cast:ring-2 group-hover/cast:ring-primary' : ''}`}
                           />
                         ) : (
                           <div className="w-20 h-20 rounded-full mx-auto bg-surface-hover flex items-center justify-center text-muted text-xl font-medium">
@@ -665,7 +709,7 @@ export function MediaDetailModal({
                           </div>
                         )}
                         <p
-                          className="mt-2 text-sm font-medium text-default leading-tight"
+                          className={`mt-2 text-sm font-medium leading-tight ${clickable ? 'text-default group-hover/cast:text-primary transition-colors' : 'text-default'}`}
                           style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
                           title={member.name}
                         >
@@ -680,9 +724,64 @@ export function MediaDetailModal({
                             {member.character}
                           </p>
                         )}
-                      </div>
-                    ))}
+                      </button>
+                      );
+                    })}
                   </div>
+
+                  {/* Filmography deep-dive for a clicked cast member. Inline
+                      under the Cast row so it reads as an expansion of it, not
+                      a context switch. Clicking a title resolves its IMDb id
+                      and re-drives the whole modal to that title (setOverrideItem),
+                      same navigation "More Like This" uses. */}
+                  {personView && (
+                    <div className="mt-4 rounded-xl border border-default bg-surface-hover/40 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-semibold text-default">
+                          {personView.name}
+                          <span className="text-muted font-normal"> — more titles</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setPersonView(null)}
+                          className="text-xs text-muted hover:text-default transition-colors"
+                        >
+                          Close
+                        </button>
+                      </div>
+                      {personView.loading ? (
+                        <p className="text-sm text-muted py-4 text-center">Loading filmography…</p>
+                      ) : personView.unavailable ? (
+                        <p className="text-xs text-subtle py-3">
+                          Cast deep-dive needs a TMDb API key (Settings → add one, or set TMDB_API_KEY).
+                        </p>
+                      ) : personView.credits.length === 0 ? (
+                        <p className="text-sm text-muted py-3">No other titles found.</p>
+                      ) : (
+                        <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
+                          {personView.credits.map((c) => (
+                            <button
+                              key={`${c.mediaType}-${c.tmdbId}`}
+                              type="button"
+                              onClick={() => openCredit(c)}
+                              title={`${c.title}${c.role ? ` · ${c.role}` : ''}`}
+                              className="shrink-0 w-20 text-left group/cred"
+                            >
+                              <div className="aspect-[2/3] rounded-lg overflow-hidden bg-surface border border-default">
+                                {c.poster ? (
+                                  <img src={c.poster} alt={c.title} loading="lazy" decoding="async" draggable={false} className="w-full h-full object-cover transition-transform group-hover/cred:scale-105" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-muted text-xs p-1 text-center">{c.title}</div>
+                                )}
+                              </div>
+                              <p className="mt-1 text-[11px] font-medium text-default leading-tight line-clamp-2 group-hover/cred:text-primary transition-colors">{c.title}</p>
+                              {c.year && <p className="text-[10px] text-subtle">{c.year}</p>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

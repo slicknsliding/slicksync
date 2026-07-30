@@ -1750,6 +1750,27 @@ class ApiClient {
     }
   }
 
+  // Cast/crew deep-dive (optional; needs a TMDb key server-side). Returns a
+  // person's filmography, or null when no key is configured (503) so the UI
+  // hides the feature gracefully.
+  async getPersonCredits(personId: number | string) {
+    try {
+      return await this.fetch<{ person: { id: number; name: string | null }; credits: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }> }>(`/discover/person/${personId}`);
+    } catch {
+      return null;
+    }
+  }
+
+  // Resolve a TMDb title to its IMDb id so a person-credit click can open the
+  // existing Cinemeta-backed detail modal. Returns null on any failure.
+  async resolveImdbId(tmdbId: number | string, mediaType: 'movie' | 'tv') {
+    try {
+      return await this.fetch<{ imdbId: string | null; type: 'movie' | 'series' }>(`/discover/imdb-id?tmdbId=${tmdbId}&type=${mediaType}`);
+    } catch {
+      return null;
+    }
+  }
+
   // Discover - browse/search Cinemeta's real catalogs (Popular/New/Featured).
   async discoverBrowse(type: 'movie' | 'series', options?: { catalog?: string; genre?: string; skip?: number }) {
     const params = new URLSearchParams({ type });
@@ -2093,6 +2114,7 @@ export interface SyncSettings {
   enableWatchlist?: boolean;
   enableWatchedIndicators?: boolean;
   enableRecommendations?: boolean;
+  tmdbApiKey?: string;
 }
 
 export interface ThemePref {
@@ -2324,7 +2346,7 @@ export interface MediaDetails {
   poster: string | null;
   background: string | null;
   description: string | null;
-  cast: Array<{ name: string; character: string | null; photo: string | null }>;
+  cast: Array<{ name: string; character: string | null; photo: string | null; tmdbId?: number | string | null }>;
   director: string[];
   genres: string[];
   imdbRating: string | null;
