@@ -1680,6 +1680,10 @@ class ApiClient {
   async getTasteOverlap() {
     return this.fetch<{ pairs: TasteOverlapPair[] }>('/discover/taste-overlap');
   }
+  // Per-user taste profile (extends the flat overlap into a real profile).
+  async getTasteProfile() {
+    return this.fetch<{ profiles: TasteProfile[] }>('/discover/taste-profile');
+  }
   // "More Like This" for the detail popup - real household affinity biases
   // which genre(s) get searched, but every returned item is always a fresh
   // Cinemeta pull filtered against the whole household's watch history
@@ -2182,6 +2186,17 @@ export interface TasteOverlapPair {
   similarity: number;
   sharedCount: number;
   shared: TasteOverlapSharedItem[];
+}
+
+export interface TasteProfile {
+  user: TasteOverlapUser;
+  totalSeconds: number;
+  titleCount: number;
+  movieCount: number;
+  seriesCount: number;
+  topTitles: Array<{ key: string; name: string; poster: string | null; type: 'movie' | 'series'; seconds: number }>;
+  topGenres: Array<{ genre: string; count: number }>;
+  tasteTwin: { user: TasteOverlapUser; similarity: number } | null;
 }
 
 export interface WatchlistItem {
