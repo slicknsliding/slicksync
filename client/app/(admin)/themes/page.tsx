@@ -12,6 +12,8 @@ import {
   THEME_REAL_COLORS,
 } from '@/lib/theme';
 import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId } from '@/lib/layout-mode';
+import { useDefaultViewMode } from '@/lib/viewMode';
+import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import { toast } from '@/components/ui/Toast';
 import {
   PaintBrushIcon,
@@ -387,6 +389,7 @@ export default function ThemesPage() {
     previewCustom, cancelPreview,
   } = useTheme();
   const { layoutMode, setLayoutMode } = useLayoutMode();
+  const { viewMode, setViewMode } = useDefaultViewMode();
   // Confirmation modal for deleting a saved custom theme.
   const [pendingDelete, setPendingDelete] = useState<SavedCustomTheme | null>(null);
 
@@ -495,6 +498,26 @@ export default function ThemesPage() {
                   onSelect={() => setLayoutMode(id)}
                 />
               ))}
+            </div>
+
+            {/* Moved here from Settings -> Other Settings - a display
+                arrangement choice belongs alongside Layout, not off on its
+                own page. */}
+            <div className="flex items-center justify-between p-4 rounded-lg bg-subtle mt-3">
+              <div>
+                <p className="font-medium text-sm text-default">Default View Mode</p>
+                <p className="text-xs text-muted">Choose how lists are displayed by default</p>
+              </div>
+              <div className="hidden md:block">
+                <ViewModeToggle
+                  mode={viewMode}
+                  onChange={setViewMode}
+                  showLabels={false}
+                />
+              </div>
+              <span className="md:hidden text-xs text-muted text-right" style={{ maxWidth: '120px' }}>
+                Grid view only on mobile
+              </span>
             </div>
           </Card>
         </PageSection>
