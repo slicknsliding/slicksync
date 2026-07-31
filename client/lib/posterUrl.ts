@@ -14,8 +14,22 @@ import { API_BASE } from './api';
 // `string | null` here and broke the production build (TS2322) at every
 // call site passing this straight into src={...}.
 export function posterUrl(item: { id?: string | null; poster?: string | null }, rpdbEnabled: boolean): string | undefined {
-  if (rpdbEnabled && item.id && /^tt\d+$/.test(item.id)) {
+  if (isRpdbPoster(item, rpdbEnabled)) {
     return `${API_BASE}/poster/${item.id}`;
   }
   return item.poster || undefined;
+}
+
+// True exactly when posterUrl() above would actually resolve to RPDB's art -
+// same condition, kept in sync in one place. Callers that also render their
+// own RatingBadges row need this: RPDB's poster already has an IMDb/Rotten
+// Tomatoes/Metacritic bar baked into the image itself (that's the point of
+// its "Posters with Default Ratings" tier), so drawing our own ratings row
+// on top of an RPDB poster doubles up - two near-identical, slightly
+// disagreeing rating bars stacked at the bottom of the same card. Only skip
+// our own row when RPDB is actually supplying this specific poster; an item
+// without a valid IMDb id still falls back to its own plain poster (no
+// baked-in ratings), where our row is the only rating info there is.
+export function isRpdbPoster(item: { id?: string | null }, rpdbEnabled: boolean): boolean {
+  return !!(rpdbEnabled && item.id && /^tt\d+$/.test(item.id));
 }
