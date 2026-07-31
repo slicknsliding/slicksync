@@ -41,11 +41,32 @@ async function buildKit(prisma, accountId, passphrase, req, { decrypt }) {
     return { ...rest, secret };
   });
 
+  // The config export above deliberately strips real secrets out of
+  // AppAccount.sync (webhookUrl, rpdbApiKey, tmdbApiKey, mdblistApiKey) so
+  // they never land in a plain backup file - see buildConfigExportPayload.
+  // This kit is the one place they DO get backed up, same passphrase
+  // protection as Vault below.
+  let syncSecrets = null;
+  try {
+    const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } });
+    let cfg = acct?.sync;
+    if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+    if (cfg && typeof cfg === 'object') {
+      syncSecrets = {
+        webhookUrl: cfg.webhookUrl ?? null,
+        rpdbApiKey: cfg.rpdbApiKey ?? null,
+        tmdbApiKey: cfg.tmdbApiKey ?? null,
+        mdblistApiKey: cfg.mdblistApiKey ?? null,
+      };
+    }
+  } catch { }
+
   const bundle = {
     exportedAt: new Date().toISOString(),
     appVersion: process.env.NEXT_PUBLIC_APP_VERSION || process.env.APP_VERSION || null,
     config,
     vault,
+    syncSecrets,
   };
 
   const salt = crypto.randomBytes(16);
@@ -91,6 +112,28 @@ async function restoreKit(prisma, accountId, passphrase, kit, req, { encrypt }) 
   if (!importRsp.ok) {
     const result = await importRsp.json().catch(() => ({}));
     throw new Error(result?.message || 'Config import failed');
+  }
+
+  // Restore the secrets the config export left out (see buildKit above) -
+  // merged onto whatever's already there, same reasoning as config-import's
+  // own merge: don't blindly overwrite a field this bundle doesn't carry.
+  if (bundle.syncSecrets && typeof bundle.syncSecrets === 'object') {
+    try {
+      const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } });
+      let existingSync = acct?.sync;
+      if (typeof existingSync === 'string') {
+        try { existingSync = JSON.parse(existingSync) } catch { existingSync = null }
+      }
+      const base = (existingSync && typeof existingSync === 'object') ? existingSync : {};
+      const merged = { ...base };
+      for (const [key, value] of Object.entries(bundle.syncSecrets)) {
+        if (value !== null && value !== undefined && value !== '') merged[key] = value;
+      }
+      const valueToStore = typeof acct?.sync === 'string' ? JSON.stringify(merged) : merged;
+      await prisma.appAccount.update({ where: { id: accountId }, data: { sync: valueToStore } });
+    } catch (e) {
+      console.warn('[DisasterRecoveryKit] Failed to restore sync secrets:', e?.message);
+    }
   }
 
   // Vault: re-encrypt every secret under THIS instance's own current key,
