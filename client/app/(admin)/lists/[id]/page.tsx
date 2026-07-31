@@ -8,10 +8,10 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
-import { api, CustomList, CustomListItem } from '@/lib/api';
+import { api, CustomList, CustomListItem, CatalogSuggestion } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import {
-  RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon,
+  RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon, SparklesIcon,
 } from '@heroicons/react/24/outline';
 
 // Mirrors Discover's own sort options - "List order" here instead of
@@ -45,6 +45,14 @@ export default function ListDetailPage() {
   const [renameValue, setRenameValue] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [sortBy, setSortBy] = useState<SortKey>('default');
+  // Suggest-titles (opt-in, never automatic): opens a review panel of
+  // TMDb-sourced candidates for this catalog's theme; nothing is added
+  // until the user explicitly picks titles and confirms.
+  const [suggesting, setSuggesting] = useState(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestions, setSuggestions] = useState<CatalogSuggestion[]>([]);
+  const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<Set<string>>(new Set());
+  const [addingSuggestions, setAddingSuggestions] = useState(false);
 
   const ratingsById = useRatingsBatch((list?.items || []).map((i) => i.id));
   const sortedItems = !list ? [] : sortBy === 'default' ? list.items : [...list.items].sort((a, b) => {
@@ -97,6 +105,45 @@ export default function ListDetailPage() {
     catch { toast.error('Failed to remove'); load(); }
   };
 
+  const handleOpenSuggest = async () => {
+    if (!list) return;
+    setSuggesting(true);
+    setLoadingSuggestions(true);
+    setSelectedSuggestionIds(new Set());
+    try {
+      const res = await api.suggestCatalogTitles(list.id);
+      setSuggestions(res.suggestions);
+      // Pre-select everything - reviewing and unchecking the odd miss is
+      // faster than starting from nothing and checking each one.
+      setSelectedSuggestionIds(new Set(res.suggestions.map((s) => s.id)));
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to get suggestions');
+      setSuggesting(false);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  const handleAddSelectedSuggestions = async () => {
+    if (!list) return;
+    const toAdd = suggestions.filter((s) => selectedSuggestionIds.has(s.id));
+    if (toAdd.length === 0) { setSuggesting(false); return; }
+    setAddingSuggestions(true);
+    try {
+      for (const item of toAdd) {
+        await api.addToList(list.id, item);
+      }
+      toast.success(`Added ${toAdd.length} title${toAdd.length !== 1 ? 's' : ''}`);
+      setSuggesting(false);
+      load();
+    } catch {
+      toast.error('Some titles failed to add');
+      load();
+    } finally {
+      setAddingSuggestions(false);
+    }
+  };
+
   const title = isLoading ? 'Loading…' : notFound ? 'Catalog not found' : (list?.name || 'Catalog');
   const subtitle = isLoading ? '' : notFound ? '' : `${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}`;
 
@@ -117,6 +164,9 @@ export default function ListDetailPage() {
   // bundled with the other actions - there's nothing to separate it from.
   const editActions = list && !isLoading && !notFound ? (
     <div className="flex items-center gap-2">
+      <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
+        Suggest titles
+      </Button>
       <Button variant="secondary" size="sm" leftIcon={<PencilSquareIcon className="w-4 h-4" />} onClick={() => { setRenameValue(list.name); setRenaming(true); }}>
         Rename
       </Button>
@@ -245,6 +295,75 @@ export default function ListDetailPage() {
             <Button variant="ghost" size="sm" onClick={() => setDeleting(false)}>Cancel</Button>
             <Button variant="danger" size="sm" onClick={handleDelete}>Delete</Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Suggest titles - purely a review step. Opening this never adds
+          anything; only "Add selected" below does. */}
+      <Modal isOpen={suggesting} onClose={() => setSuggesting(false)} title={`Suggest titles for "${list?.name || ''}"`} size="lg">
+        <div className="space-y-4">
+          {loadingSuggestions ? (
+            <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
+              {[...Array(10)].map((_, i) => (
+                <div key={i} className="aspect-[2/3] rounded-md bg-surface-hover animate-pulse" />
+              ))}
+            </div>
+          ) : suggestions.length === 0 ? (
+            <p className="text-sm text-muted text-center py-6">
+              No matches found for &quot;{list?.name}&quot; — try renaming the catalog to something more specific (e.g. &quot;Halloween&quot;, &quot;Christmas&quot;) and suggest again.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-muted">
+                {selectedSuggestionIds.size} of {suggestions.length} selected — uncheck anything that doesn&apos;t belong, nothing is added until you confirm.
+              </p>
+              <div className="grid grid-cols-4 sm:grid-cols-5 gap-3 max-h-[50vh] overflow-y-auto pr-1">
+                {suggestions.map((s) => {
+                  const checked = selectedSuggestionIds.has(s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSuggestionIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
+                          return next;
+                        });
+                      }}
+                      className={`relative text-left rounded-md overflow-hidden aspect-[2/3] bg-surface-hover border-2 transition-colors ${checked ? 'border-primary' : 'border-transparent'}`}
+                    >
+                      {s.poster ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={s.poster} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-xs text-subtle p-1 text-center">{s.name}</div>
+                      )}
+                      <div className={`absolute inset-0 transition-colors ${checked ? 'bg-primary/20' : 'bg-black/0 hover:bg-black/20'}`} />
+                      <div className={`absolute top-1 right-1 w-4 h-4 rounded-sm border flex items-center justify-center ${checked ? 'bg-primary border-primary' : 'bg-black/50 border-white/60'}`}>
+                        {checked && <span className="text-white text-[10px] leading-none">✓</span>}
+                      </div>
+                      <p className="absolute bottom-0 inset-x-0 px-1 py-0.5 text-[10px] text-white bg-gradient-to-t from-black/80 to-transparent truncate">
+                        {s.name}{s.year ? ` (${s.year})` : ''}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setSuggesting(false)}>Cancel</Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleAddSelectedSuggestions}
+                  isLoading={addingSuggestions}
+                  disabled={selectedSuggestionIds.size === 0}
+                >
+                  Add {selectedSuggestionIds.size || ''} title{selectedSuggestionIds.size !== 1 ? 's' : ''}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </Modal>
 
