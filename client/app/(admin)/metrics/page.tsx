@@ -495,11 +495,14 @@ export default function MetricsPage() {
           />
         </PageSection>
 
-        {/* Year in Review (roadmap #8) - a Wrapped-style yearly summary, shown
-            above the tabbed metrics regardless of which tab is active. */}
-        <PageSection className="mb-6">
-          <YearInReviewCard />
-        </PageSection>
+        {/* Year in Review (roadmap #8) - a Wrapped-style yearly summary. Only
+            on the Users tab - it's a personal viewing-habits recap, out of
+            place above Content/Admin/Health's more operational content. */}
+        {viewMode === 'users' && (
+          <PageSection className="mb-6">
+            <YearInReviewCard />
+          </PageSection>
+        )}
 
         {/* Users Tab - User Leaderboard + Streaks + Watch Time Trend */}
         {viewMode === 'users' && (
@@ -1182,7 +1185,7 @@ export default function MetricsPage() {
               </PageSection>
 
               <PageSection>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                   <HealthCheckCard
                     icon={<ArrowsRightLeftIcon className="w-5 h-5" />}
                     title="Sync"
@@ -1285,6 +1288,42 @@ export default function MetricsPage() {
                       </p>
                     )}
                   </HealthCheckCard>
+
+                  {/* Unified incident timeline: every offline/online addon
+                      transition plus every vault/proxy health notification,
+                      in one feed - answers "when did this actually start"
+                      without digging through three separate places. Sits in
+                      the grid next to Version rather than as a separate
+                      full-width block, which just stretched a short list
+                      across the whole page width. */}
+                  {healthData.timeline.length > 0 && (
+                    <Card padding="lg">
+                      <div className="flex items-center gap-2.5 mb-3">
+                        <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary/10 text-primary">
+                          <ClockIcon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-semibold text-default">Incident timeline</h3>
+                          <p className="text-xs text-muted">Addon, Vault, and Proxy health events, most recent first</p>
+                        </div>
+                      </div>
+                      <div className="space-y-0 max-h-64 overflow-y-auto">
+                        {healthData.timeline.map((entry) => (
+                          <div key={entry.id} className="flex items-start gap-3 py-2 border-t border-default first:border-t-0 first:pt-0">
+                            <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${entry.status === 'up' ? 'bg-success' : 'bg-error'}`} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm text-default truncate">{entry.title}</p>
+                                <span className="text-xs text-subtle flex-shrink-0" title={new Date(entry.at).toLocaleString()}>{healthTimeAgo(entry.at)}</span>
+                              </div>
+                              {entry.detail && <p className="text-xs text-muted truncate">{entry.detail}</p>}
+                            </div>
+                            <Badge variant="default" size="sm" className="flex-shrink-0 capitalize">{entry.source}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
                 </div>
 
                 {healthData.mismatchCount > 0 && (
@@ -1294,39 +1333,6 @@ export default function MetricsPage() {
                       <p className="text-sm text-default">
                         {healthData.mismatchCount} title{healthData.mismatchCount !== 1 ? 's' : ''} streamed but not recorded by any connected account — see the notification bell for details.
                       </p>
-                    </div>
-                  </Card>
-                )}
-
-                {/* Unified incident timeline: every offline/online addon
-                    transition plus every vault/proxy health notification, in
-                    one feed - answers "when did this actually start" without
-                    digging through three separate places. */}
-                {healthData.timeline.length > 0 && (
-                  <Card padding="lg" className="mt-4">
-                    <div className="flex items-center gap-2.5 mb-3">
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary/10 text-primary">
-                        <ClockIcon className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-semibold text-default">Incident timeline</h3>
-                        <p className="text-xs text-muted">Addon, Vault, and Proxy health events, most recent first</p>
-                      </div>
-                    </div>
-                    <div className="space-y-0 max-h-96 overflow-y-auto">
-                      {healthData.timeline.map((entry) => (
-                        <div key={entry.id} className="flex items-start gap-3 py-2 border-t border-default first:border-t-0 first:pt-0">
-                          <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${entry.status === 'up' ? 'bg-success' : 'bg-error'}`} />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-sm text-default truncate">{entry.title}</p>
-                              <span className="text-xs text-subtle flex-shrink-0" title={new Date(entry.at).toLocaleString()}>{healthTimeAgo(entry.at)}</span>
-                            </div>
-                            {entry.detail && <p className="text-xs text-muted truncate">{entry.detail}</p>}
-                          </div>
-                          <Badge variant="default" size="sm" className="flex-shrink-0 capitalize">{entry.source}</Badge>
-                        </div>
-                      ))}
                     </div>
                   </Card>
                 )}
