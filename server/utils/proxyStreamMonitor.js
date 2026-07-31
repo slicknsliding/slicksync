@@ -17,7 +17,7 @@
 // here is (accountId, aiostreamsUser, clientIp, url).
 
 const { searchCinemetaPosterByTitle } = require('./libraryHelpers')
-const { sendSessionStartNotification, sendSessionStopNotification } = require('./sessionTracker')
+const { sendSessionStartNotification } = require('./sessionTracker')
 const { notifyPushForType } = require('./pushNotifications')
 
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
@@ -52,7 +52,15 @@ function clearProxyStreamMonitor() {
 function parseDisplayName(filename) {
   if (!filename) return null
 
-  const withoutExt = filename.replace(/\.[a-zA-Z0-9]{2,4}$/, '')
+  // Some NZB/torrent releases prepend the indexer/tracker site's own name
+  // to the actual filename (confirmed real case: "www.UIndex.org - Made.In.
+  // Korea.S01E05..." parsed straight through as the title otherwise, since
+  // there's no year/quality tag in a TV episode filename to bound where the
+  // real title starts - it just fell through both cleanup paths below
+  // untouched). Anchored to the start only, never strips mid-filename text.
+  const withoutSiteTag = filename.replace(/^\s*www\.[a-z0-9-]+\.[a-z]{2,6}\s*[-_]\s*/i, '')
+
+  const withoutExt = withoutSiteTag.replace(/\.[a-zA-Z0-9]{2,4}$/, '')
   // Year may or may not be parenthesized in the release name (e.g. both
   // "Send.Help.2026.WEB-DL" and "Send.Help.(2026).VU.Blu-ray" occur) -
   // accept an optional paren on either side so both forms match, and so
@@ -291,40 +299,19 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
   }
 }
 
-// Sends the "finished watching" Discord + push notification for a proxy
-// connection that just closed - the counterpart to maybeNotifyStart. This
-// never existed before: a session closing only ever silently flipped
-// isActive to false (see the toClose block below), so there was a
-// "started" ping but nothing ever told you playback actually stopped.
-async function maybeNotifyStop(prisma, accountId, webhookUrl, users, row) {
-  try {
-    const user = resolveUserForActiveConnection(users, row.aiostreamsUser)
-    if (!user) return
-    // Same per-user opt-out as the start notification.
-    if (user.notifyOnWatch === false) return
-
-    const targetWebhookUrl = user.discordWebhookUrl || webhookUrl
-    if (targetWebhookUrl) {
-      await sendSessionStopNotification(targetWebhookUrl, {
-        itemName: row.displayName,
-        itemType: row.metadataItemType === 'series' ? 'series' : 'movie',
-        season: null,
-        episode: null,
-        startTime: row.startTime,
-        poster: row.posterUrl || null,
-      }, user)
-    }
-    const whoName = user.username || user.email || 'Someone'
-    await notifyPushForType(prisma, accountId, 'notifyOnActivity', {
-      title: `${whoName} finished watching`,
-      body: row.displayName,
-      icon: row.posterUrl || '/android-chrome-192x192.png',
-      url: '/activity',
-    })
-  } catch (error) {
-    heartbeat('pollOnce:stop_notify_error', { message: error.message, rowId: row.id })
-  }
-}
+// Deliberately no "finished watching" notification here. It existed once,
+// but confirmed real case: for a title the proxy's own strict-match poster
+// lookup fails on, its displayName is still the raw parsed filename (junk
+// like a leading site tag - see parseDisplayName's fix for that separately),
+// so this fired a second, uglier, poster-less notification for the SAME
+// viewing session the native pipeline had already announced cleanly via its
+// own "watched" notification (real title, real poster, resolved by ID not
+// filename-guessing) once History caught up. Two notifications for one
+// session, one of them worse, is worse than the proxy just staying silent
+// on the stop side - same reasoning CLAUDE.md already documents for why
+// native must not ALSO send the start-side notification, applied to the
+// stop side instead. The session still closes (isActive: false) below;
+// only the notification side-effect is gone.
 
 // NOTE: the proxy writes NO watch history. History is owned entirely by the
 // native provider pipeline, which records every source this deployment uses -
@@ -523,12 +510,10 @@ async function pollOnce(prisma, accountId, config) {
         where: { id: { in: toClose.map((r) => r.id) } },
         data: { isActive: false, endTime: now },
       })
-      // "Finished watching" notification - was previously entirely silent.
-      if (notifyActivity) {
-        for (const row of toClose) {
-          await maybeNotifyStop(prisma, accountId, notifyWebhook, notifyUsers, row)
-        }
-      }
+      // No "finished watching" notification here - see the comment where
+      // maybeNotifyStop used to be defined for why. The native pipeline's
+      // own "watched" notification (real title, real poster) already covers
+      // this same viewing session once History catches up.
     }
 
     heartbeat('pollOnce:done', {
