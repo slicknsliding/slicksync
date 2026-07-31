@@ -72,7 +72,14 @@ export function SyncBadge({
           setStatus(syncStatusValue);
         }
       } else if (groupId) {
-        // For groups, check if all users are synced
+        // For groups, check if all users are synced. A single call - the
+        // group's userIds/addons count come back on the same group fetch,
+        // and the actual per-member sync check is aggregated server-side
+        // (server/routes/groups.js `/:id/sync-status`) instead of this
+        // component firing one request per member itself. That per-member
+        // fan-out, repeated by every group's badge every 30s, was enough on
+        // its own to exhaust the API rate limit for households with several
+        // groups/users and take down unrelated pages.
         const group = await api.getGroup(groupId);
         let userIds: string[] = [];
         try {
@@ -85,29 +92,19 @@ export function SyncBadge({
           console.error('Error parsing group userIds:', e);
           userIds = [];
         }
-        const groupAddons = await api.getGroupAddons(groupId);
+        const addonCount = (group as any)?.addons ?? 0;
 
         // If group has no addons, it's stale
-        if (groupAddons.length === 0) {
+        if (addonCount === 0) {
           setStatus('stale');
         } else if (userIds.length === 0) {
           setStatus('stale');
         } else {
-          // Check sync status of all users
-          const syncResults = await Promise.all(
-            userIds.map(async (uid: string) => {
-              try {
-                const userSyncStatus = await api.getUserSyncStatus(uid, groupId);
-                const status = (userSyncStatus as any)?.status;
-                return status;
-              } catch {
-                return 'error';
-              }
-            })
-          );
-          const allSynced = syncResults.every(s => s === 'synced');
+          const aggregated = await api.getGroupSyncStatus(groupId);
+          const syncResults = (aggregated?.userStatuses || []).map(s => s.status);
+          const allSynced = syncResults.length > 0 && syncResults.every(s => s === 'synced');
           const hasError = syncResults.some(s => s === 'error' || s === 'connect');
-          
+
           if (hasError) {
             setStatus('error');
           } else {
@@ -127,8 +124,11 @@ export function SyncBadge({
   useEffect(() => {
     fetchSyncStatus();
 
-    // Poll for updates every 30 seconds
-    const interval = setInterval(fetchSyncStatus, 30000);
+    // Poll for updates. Sync status only changes on user action (connect,
+    // sync, addon edits), and the isSyncing-transition effect below already
+    // refetches immediately right after a sync completes, so this interval
+    // only needs to catch drift, not be near-real-time.
+    const interval = setInterval(fetchSyncStatus, 120000);
     return () => clearInterval(interval);
   }, [fetchSyncStatus]);
 
