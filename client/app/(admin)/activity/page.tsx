@@ -606,7 +606,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           shown for a single watcher - the multi-watcher popover below
           already lists each person's own profile inline. */}
       {activity.additionalWatchers?.length ? null : activity.profileLabel && (
-        <p className="mb-1 px-1.5 py-0.5 rounded-md bg-surface-hover text-[10px] font-medium text-muted truncate text-center">
+        <p className="mb-1 w-fit max-w-full mx-auto px-1.5 py-0.5 rounded-md bg-surface-hover text-[10px] font-medium text-muted truncate text-center">
           {activity.profileLabel}
         </p>
       )}
