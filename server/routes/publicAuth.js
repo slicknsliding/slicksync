@@ -203,6 +203,18 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         return responseUtils.badRequest(res, 'Password must be at least 4 characters');
       }
 
+      // Soft cap on total registered accounts - unset/0 means unlimited.
+      // Exists so a public instance can be opened up gradually (start small,
+      // watch real memory/CPU for a week or two, raise it) instead of
+      // committing to a number on day one with no way to pump the brakes.
+      const maxAccounts = parseInt(process.env.MAX_PUBLIC_ACCOUNTS || '0', 10);
+      if (maxAccounts > 0) {
+        const currentCount = await prisma.appAccount.count();
+        if (currentCount >= maxAccounts) {
+          return res.status(503).json({ message: 'Registration is temporarily full. Please try again later.' });
+        }
+      }
+
       const existing = await prisma.appAccount.findUnique({ where: { uuid } });
       if (existing) {
         return res.status(409).json({ message: 'Account already exists' });
@@ -247,6 +259,14 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       if (!isValid) {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
+
+      // Disabled via the superadmin panel - block login without touching any
+      // of the account's data (reversible any time from that panel).
+      if (account.disabled) {
+        return res.status(403).json({ message: 'This account has been disabled' });
+      }
+
+      prisma.appAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } }).catch(() => {});
 
       // Set access/refresh and CSRF cookies
       const at = issueAccessToken(account.id);

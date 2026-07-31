@@ -31,6 +31,14 @@ function pathIsAllowlisted(path) {
     '/api/ext', // External API uses API key auth (handled by externalApi router)
     '/invite', // Public invitation endpoints (request submission, status check, OAuth completion)
     '/api/public-library', // Public library endpoints (OAuth-based access)
+    // /api/superadmin runs its OWN completely separate auth (a distinct
+    // sfm_superadmin cookie, never an account JWT - see superadmin.js) -
+    // allowlisted here only so a request with no account cookie at all (the
+    // normal case: an operator never logs into any tenant account) reaches
+    // that check instead of being 401'd by this generic gate first. Every
+    // route under this prefix enforces its own requireSuperAdmin regardless
+    // of what happens here.
+    '/api/superadmin',
     // Stremio helpers are NOT allowlisted; require auth
     // Note: addons endpoints are NOT allowlisted; they require auth/CSRF
   ];
