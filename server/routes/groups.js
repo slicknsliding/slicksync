@@ -1236,6 +1236,16 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         getDecryptedManifestUrl: (addon) => addon?.manifestUrl,
         canonicalizeManifestUrl,
         StremioAPIClient,
+        // Missing here meant getUserAddons() fell back to its Stremio-only
+        // legacy path (checks user.stremioAuthKey directly, ignores Nuvio
+        // credentials entirely) for every member checked through this
+        // endpoint - confirmed real case: a Nuvio-only user came back
+        // "User not connected to Stremio" here while the per-user
+        // /users/:id/sync-status route (which does pass this) correctly
+        // recognized the same user as synced. This endpoint went from
+        // dead code to actually being called by SyncBadge.tsx without this
+        // gap ever being exercised until now.
+        createProvider,
       })
 
       const aggregated = await getGroupSyncStatus(id, req)
