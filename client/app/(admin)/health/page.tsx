@@ -10,6 +10,7 @@ import { api, HealthStatus } from '@/lib/api';
 import {
   HeartIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon,
   ArrowsRightLeftIcon, PuzzlePieceIcon, ShieldCheckIcon, SignalIcon,
+  EyeSlashIcon, EyeIcon, ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 
 // System Health board: one glanceable page for "is everything actually
@@ -63,14 +64,74 @@ function CheckCard({
   );
 }
 
-function IssueRow({ title, detail, meta }: { title: string; detail?: string | null; meta?: string }) {
+function IssueRow({
+  title, detail, meta, onIgnore,
+}: {
+  title: string; detail?: string | null; meta?: string;
+  /** Present only when this row can be dismissed as a known, accepted
+   *  failure (e.g. an indexer that blocks this server's IP) - hides it from
+   *  this list and from notifications, without needing it to actually
+   *  resolve first. Reversible any time from the card's "Ignored" list. */
+  onIgnore?: () => void;
+}) {
   return (
     <div className="py-2 border-t border-default first:border-t-0 first:pt-0">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-default truncate">{title}</p>
-        {meta && <span className="text-xs text-subtle flex-shrink-0">{meta}</span>}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {meta && <span className="text-xs text-subtle">{meta}</span>}
+          {onIgnore && (
+            <button
+              type="button"
+              onClick={onIgnore}
+              title="Ignore - hide this from Health and its notifications"
+              className="p-1 rounded text-subtle hover:text-default hover:bg-surface-hover transition-colors"
+            >
+              <EyeSlashIcon className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
       {detail && <p className="text-xs text-warning mt-0.5 truncate">{detail}</p>}
+    </div>
+  );
+}
+
+function IgnoredList({
+  items, onUnignore,
+}: {
+  items: Array<{ id: string; name: string }>;
+  onUnignore: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-2 pt-2 border-t border-default">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-xs text-subtle hover:text-default transition-colors"
+      >
+        <ChevronDownIcon className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {items.length} ignored
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1">
+          {items.map((item) => (
+            <div key={item.id} className="flex items-center justify-between gap-2">
+              <p className="text-xs text-subtle truncate">{item.name}</p>
+              <button
+                type="button"
+                onClick={() => onUnignore(item.id)}
+                title="Un-ignore"
+                className="p-1 rounded text-subtle hover:text-default hover:bg-surface-hover transition-colors flex-shrink-0"
+              >
+                <EyeIcon className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -89,6 +150,13 @@ export default function HealthPage() {
       .finally(() => { setLoading(false); setRefreshing(false); });
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const toggleVaultIgnored = useCallback((id: string, healthIgnored: boolean) => {
+    api.setVaultHealthIgnored(id, healthIgnored).then(() => load(true)).catch(() => {});
+  }, [load]);
+  const toggleAddonIgnored = useCallback((id: string, healthIgnored: boolean) => {
+    api.setAddonHealthIgnored(id, healthIgnored).then(() => load(true)).catch(() => {});
+  }, [load]);
 
   const heading = { title: 'Health', subtitle: 'Is everything actually working right now.' };
   const isHealthy = data?.overall === 'healthy';
@@ -184,13 +252,14 @@ export default function HealthPage() {
                 >
                   {data.addons.offlineCount > 0 ? (
                     <div>
-                      {data.addons.offline.map((a, i) => (
-                        <IssueRow key={i} title={a.name} detail={a.error} meta={timeAgo(a.lastChecked)} />
+                      {data.addons.offline.map((a) => (
+                        <IssueRow key={a.id} title={a.name} detail={a.error} meta={timeAgo(a.lastChecked)} onIgnore={() => toggleAddonIgnored(a.id, true)} />
                       ))}
                     </div>
                   ) : (
                     <p className="text-xs text-subtle">All addon manifests are reachable.</p>
                   )}
+                  <IgnoredList items={data.addons.ignored} onUnignore={(id) => toggleAddonIgnored(id, false)} />
                 </CheckCard>
 
                 <CheckCard
@@ -201,16 +270,17 @@ export default function HealthPage() {
                 >
                   {data.vault.failingCount > 0 || data.vault.expiringCount > 0 ? (
                     <div>
-                      {data.vault.failing.map((v, i) => (
-                        <IssueRow key={`f-${i}`} title={v.name} detail={v.message || 'Check failed'} meta={timeAgo(v.lastChecked)} />
+                      {data.vault.failing.map((v) => (
+                        <IssueRow key={`f-${v.id}`} title={v.name} detail={v.message || 'Check failed'} meta={timeAgo(v.lastChecked)} onIgnore={() => toggleVaultIgnored(v.id, true)} />
                       ))}
-                      {data.vault.expiring.map((v, i) => (
-                        <IssueRow key={`e-${i}`} title={v.name} detail="Expiring soon" meta={new Date(v.expiresAt).toLocaleDateString()} />
+                      {data.vault.expiring.map((v) => (
+                        <IssueRow key={`e-${v.id}`} title={v.name} detail="Expiring soon" meta={new Date(v.expiresAt).toLocaleDateString()} onIgnore={() => toggleVaultIgnored(v.id, true)} />
                       ))}
                     </div>
                   ) : (
                     <p className="text-xs text-subtle">All credentials are passing checks with no upcoming expiry.</p>
                   )}
+                  <IgnoredList items={data.vault.ignored} onUnignore={(id) => toggleVaultIgnored(id, false)} />
                 </CheckCard>
 
                 <CheckCard

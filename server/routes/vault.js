@@ -197,7 +197,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
 
       const {
         name, category, provider, secretLabel, secret,
-        testType, testConfig, dashboardUrl, cost, costCycle, expiresAt, notifyDaysBefore, isActive,
+        testType, testConfig, dashboardUrl, cost, costCycle, expiresAt, notifyDaysBefore, isActive, healthIgnored,
       } = req.body || {};
 
       if (category && !CATEGORIES.includes(category)) {
@@ -218,6 +218,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (expiresAt !== undefined) data.expiresAt = expiresAt ? new Date(expiresAt) : null;
       if (notifyDaysBefore !== undefined) data.notifyDaysBefore = notifyDaysBefore;
       if (isActive !== undefined) data.isActive = isActive;
+      if (healthIgnored !== undefined) data.healthIgnored = !!healthIgnored;
 
       await prisma.vaultEntry.update({ where: { id: existing.id }, data });
       res.json({ success: true });
