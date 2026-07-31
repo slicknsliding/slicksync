@@ -5,7 +5,7 @@ import { Header } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextMenu, useContextMenu, Badge } from '@/components/ui';
+import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextMenu, useContextMenu, Badge, HoverTrailerPreview } from '@/components/ui';
 import { CatalogPickerMenu } from '@/components/ui/AddToListButton';
 import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem, RecommendationRow, User } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
@@ -161,7 +161,7 @@ const PosterCard = memo(function PosterCard({
     >
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl">
         {item.poster && !imageError ? (
-          <>
+          <HoverTrailerPreview itemId={item.id} itemType={item.type} className="w-full h-full">
             <img
               src={posterUrl(item, rpdbEnabled)}
               alt={item.name}
@@ -171,7 +171,7 @@ const PosterCard = memo(function PosterCard({
               onError={() => setImageError(true)}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 to-transparent opacity-40 group-hover:opacity-60 transition-opacity" />
-          </>
+          </HoverTrailerPreview>
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-slate-800">
             {item.type === 'movie' ? (

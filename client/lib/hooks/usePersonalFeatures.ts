@@ -14,6 +14,9 @@ export interface PersonalFeatures {
   enableWatchlist: boolean;
   enableWatchedIndicators: boolean;
   enableRecommendations: boolean;
+  // Muted hover-preview trailer snippet on poster cards, everywhere a poster
+  // opens MediaDetailModal. Default true (opt-out, not opt-in).
+  enableHoverPreviewTrailers: boolean;
   // Whether an RPDB (RatingPosterDB) key is configured - callers use this to
   // decide whether to route a title's poster through /api/poster/{imdbId}
   // instead of its own stored poster. Deliberately just a boolean: the raw
@@ -26,6 +29,7 @@ const DEFAULT: PersonalFeatures = {
   enableWatchlist: true,
   enableWatchedIndicators: true,
   enableRecommendations: true,
+  enableHoverPreviewTrailers: true,
   rpdbEnabled: false,
 };
 
@@ -46,6 +50,7 @@ async function fetchOnce(): Promise<PersonalFeatures> {
         enableWatchlist: s?.enableWatchlist !== false,
         enableWatchedIndicators: s?.enableWatchedIndicators !== false,
         enableRecommendations: s?.enableRecommendations !== false,
+        enableHoverPreviewTrailers: s?.enableHoverPreviewTrailers !== false,
         rpdbEnabled: !!(s?.rpdbApiKey && s.rpdbApiKey.trim()),
       };
       inFlight = null;

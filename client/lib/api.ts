@@ -2209,6 +2209,7 @@ export interface SyncSettings {
   enableWatchlist?: boolean;
   enableWatchedIndicators?: boolean;
   enableRecommendations?: boolean;
+  enableHoverPreviewTrailers?: boolean;
   tmdbApiKey?: string;
   mdblistApiKey?: string;
   rpdbApiKey?: string;
@@ -2533,6 +2534,12 @@ export interface MediaDetails {
   title: string | null;
   poster: string | null;
   background: string | null;
+  // TMDb backdrop (server/routes/users.js's /media-details) - preferred over
+  // `background` (Cinemeta's own field) when available, generally higher
+  // quality/more consistently present. Free at any TMDb tier, unlike RPDB's
+  // equivalent which needs a paid Tier 2+ key. Null when no TMDb key is
+  // configured or TMDb has nothing for this title.
+  backdrop: string | null;
   description: string | null;
   cast: Array<{ name: string; character: string | null; photo: string | null; tmdbId?: number | string | null }>;
   director: string[];
