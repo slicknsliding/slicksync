@@ -935,6 +935,10 @@ class ApiClient {
     return this.fetch<BackupFile[]>('/settings/backups');
   }
 
+  async getDbSizeReport() {
+    return this.fetch<DbSizeReport>('/settings/db-size');
+  }
+
   async downloadBackup(filename: string) {
     const response = await fetch(`${API_BASE}/settings/backups/${encodeURIComponent(filename)}/download`, {
       credentials: 'include',
@@ -2411,6 +2415,14 @@ export interface BackupFile {
   size: number;
   createdAt: string;
   validation?: BackupValidation | null;
+}
+
+export interface DbSizeReport {
+  supported: boolean;
+  currentBytes?: number | null;
+  growthBytesPerDay?: number | null;
+  projectedDaysUntilFull?: number | null;
+  samples?: Array<{ bytes: number; createdAt: string }>;
 }
 
 export interface DisasterRecoveryKit {
