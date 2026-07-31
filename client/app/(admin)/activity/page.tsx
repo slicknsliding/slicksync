@@ -9,7 +9,7 @@ import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { TVLink } from '@/components/tv/TVLink';
-import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal, HoverTrailerPreview } from '@/components/ui';
+import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -458,14 +458,12 @@ const ActivityCard = memo(function ActivityCard({
           className="w-12 h-16 rounded-lg overflow-hidden shrink-0 bg-surface border border-default tap-card"
           onClick={() => onOpenDetails?.(activity)}
         >
-          <HoverTrailerPreview itemId={activity.contentId} itemType={activity.contentType} className="w-full h-full">
-            <img
-              src={posterUrl({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
-              alt={activity.contentName}
-              className="w-full h-full object-cover"
-              onError={() => setImageError(true)}
-            />
-          </HoverTrailerPreview>
+          <img
+            src={posterUrl({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
+            alt={activity.contentName}
+            className="w-full h-full object-cover"
+            onError={() => setImageError(true)}
+          />
         </button>
       ) : (
         <button
@@ -619,7 +617,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
         onClick={() => onOpenDetails?.(activity)}
       >
         {activity.poster && !imageError ? (
-          <HoverTrailerPreview itemId={activity.contentId} itemType={activity.contentType} className="w-full h-full">
+          <>
             <img
               src={posterUrl({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
               alt={activity.contentName}
@@ -628,7 +626,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             />
             {/* Gradient overlay - subtle since no text on poster */}
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 to-transparent opacity-40 group-hover:opacity-60 transition-opacity" />
-          </HoverTrailerPreview>
+          </>
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-slate-800">
             {activity.contentType === 'movie' ? (
