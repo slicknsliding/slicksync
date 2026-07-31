@@ -653,7 +653,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <h3 className="text-base font-semibold font-display text-default">Notifications</h3>
-                <p className="text-xs text-muted">Receive notifications via Discord</p>
+                <p className="text-xs text-muted">Push + bell by default; add a Discord webhook below for optional Discord delivery too</p>
               </div>
             </div>
 
@@ -688,7 +688,6 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Activity notifications"
                   description="Notify when users start watching"
-                  disabled={!syncSettings.webhookUrl?.trim()}
                 >
                   <ToggleSwitch
                     enabled={syncSettings.notifyOnActivity || false}
@@ -700,7 +699,6 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Sync notifications"
                   description="Notify when sync completes"
-                  disabled={!syncSettings.webhookUrl?.trim()}
                 >
                   <ToggleSwitch
                     enabled={syncSettings.notifyOnSync || false}
@@ -712,7 +710,6 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Invite notifications"
                   description="Notify for invitations and user joins"
-                  disabled={!syncSettings.webhookUrl?.trim()}
                 >
                   <ToggleSwitch
                     enabled={syncSettings.notifyOnInvite || false}
@@ -724,7 +721,6 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Vault notifications"
                   description="Notify when a Vault entry is about to expire or an automated check starts failing"
-                  disabled={!syncSettings.webhookUrl?.trim()}
                 >
                   <ToggleSwitch
                     enabled={syncSettings.notifyOnVault || false}
@@ -736,7 +732,6 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Addon health notifications"
                   description="Notify when a primary addon goes offline (and switches to its backup) or comes back"
-                  disabled={!syncSettings.webhookUrl?.trim()}
                 >
                   <ToggleSwitch
                     enabled={syncSettings.notifyOnAddonHealth || false}
@@ -748,7 +743,6 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Backup notifications"
                   description="Notify only if an automatic backup fails validation (a good backup stays silent - see its badge on Tasks)"
-                  disabled={!syncSettings.webhookUrl?.trim()}
                 >
                   <ToggleSwitch
                     enabled={syncSettings.notifyOnBackup || false}
