@@ -452,6 +452,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize Sync Guardian:', err)
     }
 
+    // Schedule DB size sampling for the Tasks page's storage chart
+    // (private/SQLite-mode only - no-ops itself if DATABASE_URL isn't file:)
+    try {
+      const { scheduleDbSizeMonitor } = require('./utils/dbSizeMonitor')
+      scheduleDbSizeMonitor(prisma, schedulerReq.appAccountId || DEFAULT_ACCOUNT_ID)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize DB size monitor:', err)
+    }
+
     // Startup repair: reload addons with uninitialized resources/catalogs across all accounts
     try {
       const { reloadAddon } = require('./routes/addons')
