@@ -10,7 +10,7 @@ import { api, HealthStatus } from '@/lib/api';
 import {
   HeartIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon,
   ArrowsRightLeftIcon, PuzzlePieceIcon, ShieldCheckIcon, SignalIcon,
-  EyeSlashIcon, EyeIcon, ChevronDownIcon, TagIcon,
+  EyeSlashIcon, EyeIcon, ChevronDownIcon, TagIcon, ClockIcon,
 } from '@heroicons/react/24/outline';
 
 // System Health board: one glanceable page for "is everything actually
@@ -338,6 +338,39 @@ export default function HealthPage() {
                     <p className="text-sm text-default">
                       {data.mismatchCount} title{data.mismatchCount !== 1 ? 's' : ''} streamed but not recorded by any connected account — see the notification bell for details.
                     </p>
+                  </div>
+                </Card>
+              )}
+
+              {/* Unified incident timeline: every offline/online addon
+                  transition plus every vault/proxy health notification, in
+                  one feed - answers "when did this actually start" without
+                  digging through three separate places. */}
+              {data.timeline.length > 0 && (
+                <Card padding="lg" className="mt-4">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary/10 text-primary">
+                      <ClockIcon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-default">Incident timeline</h3>
+                      <p className="text-xs text-muted">Addon, Vault, and Proxy health events, most recent first</p>
+                    </div>
+                  </div>
+                  <div className="space-y-0 max-h-96 overflow-y-auto">
+                    {data.timeline.map((entry) => (
+                      <div key={entry.id} className="flex items-start gap-3 py-2 border-t border-default first:border-t-0 first:pt-0">
+                        <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${entry.status === 'up' ? 'bg-success' : 'bg-error'}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm text-default truncate">{entry.title}</p>
+                            <span className="text-xs text-subtle flex-shrink-0" title={new Date(entry.at).toLocaleString()}>{timeAgo(entry.at)}</span>
+                          </div>
+                          {entry.detail && <p className="text-xs text-muted truncate">{entry.detail}</p>}
+                        </div>
+                        <Badge variant="default" size="sm" className="flex-shrink-0 capitalize">{entry.source}</Badge>
+                      </div>
+                    ))}
                   </div>
                 </Card>
               )}
