@@ -353,8 +353,25 @@ function getIgnoredIps() {
     .filter(Boolean)
 }
 
+// Fires push+bell exactly on the ok/failing transition, never on every poll
+// (this runs every 30s - notifying every single failed poll would be a
+// notification every 30s during any real outage). Mirrors addonHealthCheck's
+// "went offline / came back" edge-trigger pattern.
+async function notifyProxyHealthChange(prisma, accountId, isOk, errorMessage) {
+  try {
+    const { notifyPushForType } = require('./pushNotifications')
+    await notifyPushForType(prisma, accountId, 'notifyOnProxyHealth', {
+      title: isOk ? '✅ AIOStreams proxy reachable again' : '⚠️ AIOStreams proxy unreachable',
+      body: isOk ? 'Now Playing polling has recovered.' : (errorMessage || 'Now Playing polling can\'t reach AIOStreams.'),
+      icon: '/android-chrome-192x192.png',
+      url: '/health',
+    })
+  } catch {}
+}
+
 async function pollOnce(prisma, accountId, config) {
   heartbeat('pollOnce:start', { accountId })
+  const wasOk = lastPollStatus.ok
   try {
     await retryMissingPosters(prisma, accountId)
     const stats = await fetchProxyStats(config.baseUrl, config.username, config.password)
@@ -519,10 +536,12 @@ async function pollOnce(prisma, accountId, config) {
       closed: toClose.length,
     })
     lastPollStatus = { ok: true, at: now, error: null }
+    if (wasOk === false) await notifyProxyHealthChange(prisma, accountId, true, null)
   } catch (error) {
     heartbeat('pollOnce:error', { message: error.message, stack: error.stack })
     console.warn('[ProxyStreamMonitor] pollOnce failed:', error.message)
     lastPollStatus = { ok: false, at: new Date(), error: error.message }
+    if (wasOk !== false) await notifyProxyHealthChange(prisma, accountId, false, error.message)
   }
 }
 

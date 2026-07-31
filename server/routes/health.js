@@ -19,11 +19,11 @@ module.exports = ({ prisma, getAccountId }) => {
       const [addons, vaultEntries, driftNotifications, mismatchCount, users] = await Promise.all([
         prisma.addon.findMany({
           where: { accountId },
-          select: { id: true, name: true, isOnline: true, lastHealthCheck: true, healthCheckError: true },
+          select: { id: true, name: true, isOnline: true, lastHealthCheck: true, healthCheckError: true, healthIgnored: true },
         }),
         prisma.vaultEntry.findMany({
           where: { accountId, isActive: true },
-          select: { id: true, name: true, provider: true, lastCheckStatus: true, lastCheckMessage: true, lastCheckedAt: true, expiresAt: true, notifyDaysBefore: true },
+          select: { id: true, name: true, provider: true, lastCheckStatus: true, lastCheckMessage: true, lastCheckedAt: true, expiresAt: true, notifyDaysBefore: true, healthIgnored: true },
         }),
         prisma.notification.findMany({
           where: { accountId, type: 'sync', dedupeKey: { startsWith: 'sync-guardian-' } },
@@ -33,18 +33,24 @@ module.exports = ({ prisma, getAccountId }) => {
         prisma.user.findMany({ where: { accountId, isActive: true }, select: { id: true } }),
       ]);
 
-      // Addons
-      const addonsOffline = addons.filter((a) => a.isOnline === false);
+      // Addons - healthIgnored entries never show as Attention or count
+      // toward `overall`. The ignored list itself is independent of current
+      // online/offline state (once marked ignored, it stays manageable from
+      // Health even if the addon later comes back online) so there's always
+      // a way back to un-ignore it - never a one-way black hole.
+      const addonsOffline = addons.filter((a) => a.isOnline === false && !a.healthIgnored);
+      const addonsIgnored = addons.filter((a) => a.healthIgnored);
       const addonsChecked = addons.filter((a) => a.lastHealthCheck != null);
 
-      // Vault
+      // Vault - same healthIgnored treatment as addons above.
       const now = Date.now();
-      const vaultFailing = vaultEntries.filter((v) => v.lastCheckStatus === 'error');
+      const vaultFailing = vaultEntries.filter((v) => v.lastCheckStatus === 'error' && !v.healthIgnored);
       const vaultExpiring = vaultEntries.filter((v) => {
-        if (!v.expiresAt) return false;
+        if (!v.expiresAt || v.healthIgnored) return false;
         const daysUntil = (new Date(v.expiresAt).getTime() - now) / (1000 * 60 * 60 * 24);
         return daysUntil <= (v.notifyDaysBefore ?? 3);
       });
+      const vaultIgnored = vaultEntries.filter((v) => v.healthIgnored);
 
       // Proxy connectivity - last poll outcome, in-memory (single-instance deploy)
       let proxy = { ok: null, at: null, error: null, configured: false };
@@ -71,14 +77,16 @@ module.exports = ({ prisma, getAccountId }) => {
           total: addons.length,
           checked: addonsChecked.length,
           offlineCount: addonsOffline.length,
-          offline: addonsOffline.map((a) => ({ name: a.name, error: a.healthCheckError, lastChecked: a.lastHealthCheck })),
+          offline: addonsOffline.map((a) => ({ id: a.id, name: a.name, error: a.healthCheckError, lastChecked: a.lastHealthCheck })),
+          ignored: addonsIgnored.map((a) => ({ id: a.id, name: a.name })),
         },
         vault: {
           total: vaultEntries.length,
           failingCount: vaultFailing.length,
-          failing: vaultFailing.map((v) => ({ name: v.name, provider: v.provider, message: v.lastCheckMessage, lastChecked: v.lastCheckedAt })),
+          failing: vaultFailing.map((v) => ({ id: v.id, name: v.name, provider: v.provider, message: v.lastCheckMessage, lastChecked: v.lastCheckedAt })),
           expiringCount: vaultExpiring.length,
-          expiring: vaultExpiring.map((v) => ({ name: v.name, provider: v.provider, expiresAt: v.expiresAt })),
+          expiring: vaultExpiring.map((v) => ({ id: v.id, name: v.name, provider: v.provider, expiresAt: v.expiresAt })),
+          ignored: vaultIgnored.map((v) => ({ id: v.id, name: v.name, provider: v.provider })),
         },
         proxy,
         mismatchCount,

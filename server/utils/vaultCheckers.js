@@ -106,8 +106,15 @@ async function checkNewznabCaps(secret, config = {}) {
   const { signal, cancel } = timeoutSignal(10000)
   try {
     const testUrl = `${base}/api?t=caps&apikey=${encodeURIComponent(secret)}&o=json`
-    const res = await fetch(testUrl, { signal })
+    // Node's fetch sends no User-Agent at all by default, which reads as a
+    // bare script to a lot of indexers' own bot-protection (Cloudflare, etc.)
+    // and can produce a 403 that has nothing to do with the API key itself.
+    // A normal browser UA costs nothing and rules that out as a cause.
+    const res = await fetch(testUrl, { signal, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' } })
     cancel()
+    if (res.status === 403) {
+      return { ok: false, message: 'Indexer returned 403 - likely blocking this server\'s IP (common for private indexers/Usenet providers toward cloud/VPS hosting ranges), not necessarily the API key' }
+    }
     if (!res.ok) return { ok: false, message: `Indexer returned ${res.status}` }
     const text = await res.text()
     if (/error/i.test(text) && /apikey|api key|invalid/i.test(text)) {
