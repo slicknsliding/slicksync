@@ -396,8 +396,20 @@ export function MediaDetailModal({
   const TVScope = isTV ? FocusContext.Provider : Fragment;
   const tvScopeProps = isTV ? { value: modalFocusKey } : {};
 
+  // Stop the trailer THE INSTANT a close is triggered (X/backdrop/Escape all
+  // route through Modal's onClose uniformly), not just when reopening for a
+  // new item. Otherwise the YouTube iframe stays live and keeps decoding
+  // video for the whole ~150ms exit transition, competing with the panel's
+  // own transform/opacity animation for the same compositor - a real,
+  // reported cause of the modal feeling like it lags on close specifically
+  // after watching a trailer.
+  const handleClose = useCallback(() => {
+    setIsTrailerPlaying(false);
+    onClose();
+  }, [onClose]);
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="full" hideCloseButton={isTrailerPlaying}>
+    <Modal isOpen={isOpen} onClose={handleClose} size="full" hideCloseButton={isTrailerPlaying}>
       <TVScope {...(tvScopeProps as any)}>
       <div className="-mx-6 -mt-6" ref={isTV ? modalRef : undefined}>
         {isTrailerPlaying && trailerId ? (
