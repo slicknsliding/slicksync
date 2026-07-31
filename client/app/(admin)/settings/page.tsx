@@ -10,8 +10,6 @@ import { useTheme } from '@/lib/theme';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats, PushDevice } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
-import { useDefaultViewMode } from '@/lib/viewMode';
-import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
 import { invalidatePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
@@ -165,7 +163,6 @@ export default function SettingsPage() {
   // only the sensitive-data toggle from useTheme() is still needed here.
   const { hideSensitive, toggleHideSensitive } = useTheme();
   const { layoutMode } = useLayoutMode();
-  const { viewMode, setViewMode } = useDefaultViewMode();
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const isPublicInstance = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') === 'public';
@@ -627,39 +624,6 @@ export default function SettingsPage() {
                     label="Toggle unsafe mode"
                   />
                 </div>
-              </SettingRow>
-            </div>
-          </Card>
-        </PageSection>
-
-        {/* Other Settings */}
-        <PageSection delay={0.12} className="mb-6">
-          <Card padding="lg">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
-                <CogIcon className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold font-display text-default">Other Settings</h3>
-                <p className="text-xs text-muted">Miscellaneous preferences</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <SettingRow
-                label="Default View Mode"
-                description="Choose how lists are displayed by default"
-              >
-                <div className="hidden md:block">
-                  <ViewModeToggle
-                    mode={viewMode}
-                    onChange={setViewMode}
-                    showLabels={false}
-                  />
-                </div>
-                <span className="md:hidden text-xs text-muted text-right" style={{ maxWidth: '120px' }}>
-                  Grid view only on mobile
-                </span>
               </SettingRow>
             </div>
           </Card>
