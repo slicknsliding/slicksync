@@ -18,6 +18,7 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 - [Multi-Provider Sync](#-multi-provider-sync)
 - [Activity & Now Playing](#-activity--now-playing)
 - [Discover & Media Details](#-discover--media-details)
+- [Catalogs](#-catalogs)
 - [SlickTrax](#-slicktrax)
 - [Vault](#-vault)
 - [Notifications](#-notifications)
@@ -25,6 +26,7 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 - [Addons](#-addons)
 - [Themes](#-themes)
 - [Metrics](#-metrics)
+- [System Health](#-system-health)
 - [Backup & Disaster Recovery](#-backup--disaster-recovery)
 - [Security](#-security)
 - [Installation](#-installation)
@@ -45,18 +47,28 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 ### 🎬 Activity & Now Playing
 - Live **Now Playing** panel, fed by a 30s poll of AIOStreams' proxy — real-time presence, gone the instant playback stops.
 - **History & Watch Time** come from each provider's own library state (1-minute poll) — the permanent record, including sources the proxy can't see (usenet).
-- Correct-or-nothing posters: provider poster + Cinemeta-by-ID backfill for library items; strict exact-title Cinemeta match for proxy-detected items, never a guessed poster.
-- Explicit per-account timezone for correct day-bucketing (Watch Time Today, streaks).
+- **Real completion tracking** — finished vs. started-and-dropped, distinct from a raw "watched" flag, plus **rewatch counts** for movies watched again after a first finish.
+- **Airing Calendar** — a date-grouped agenda of upcoming episodes for everything anyone's actively watching, with a "Coming Up" panel on the Dashboard.
+- Correct-or-nothing posters: provider poster + Cinemeta-by-ID backfill for library items; strict exact-title Cinemeta match for proxy-detected items, never a guessed poster; optional **RPDB** integration for rating-embedded poster art if you have a (free) API key.
+- Explicit per-account timezone for correct day-bucketing (Watch Time Today, streaks) — auto-detected from your browser the first time you open Settings, stored explicitly from then on so background jobs (which have no browser to ask) always know what "today" means.
 - Dashboard/user-page widgets: Top Watched, Recent Activity, Top Viewers — built from real session duration.
 - Cross-account library-sync dedup so a shared-login watch never double-counts.
 
 ### 🎞️ Discover & Media Details
 - Click any poster for cast, rating, genres, director, runtime, and awards (Cinemeta) — plus an inline YouTube trailer.
-- **Discover**: browse Popular / New / Top Rated, genre filter, infinite scroll, "Open in Stremio/Nuvio" on every result.
-- Three sources side by side: Discover, ★ Watchlist, ✨ For You.
+- **Cast & crew deep-dive** — click any actor/director on a detail popup to see their real filmography (optional TMDb key) and jump straight into any of it.
+- **Discover**: browse Popular / New / Top Rated, genre filter, infinite scroll, "Open in Stremio/Nuvio" on every result. Sort by title, year, or rating; filter to unwatched/watched only.
+- **People search** — a separate mode from title search, so looking up an actor/director shows only their verified credits, never an unrelated title that happened to loosely match the name.
+- Four sources side by side: Discover, ★ Watchlist, ✨ For You, and household "nobody's seen it yet" picks.
 - Deep links use each provider's real format (`stremio:///detail/...`, `nuvio://meta?...`) — no guessing, no account-specific data in the link.
 - Continue Watching row on the Dashboard — drag to scroll, right-click/long-press to remove.
-- Right-click (desktop) or long-press (mobile) any poster for a quick-action menu — Add to Watchlist / Mark Watched without opening the detail popup first.
+- Right-click (desktop) or long-press (mobile) any poster for a quick-action menu — Add to Watchlist, Add to Catalogs, Mark Watched — without opening the detail popup first.
+
+### 📚 Catalogs
+Named collections of titles, separate from the Watchlist — build a "Halloween Marathon" or "Kids' Night" list and share the idea, not just watch it alone.
+- Create, rename, delete; add titles from any poster's right-click menu or its detail popup.
+- **Import** an existing list straight from a **MDBList** or **TMDb** list URL (TMDb import is movies-only; MDBList supports both).
+- Sort by title, year, or rating; each entry opens the same rich detail popup as everywhere else.
 
 ### ✨ SlickTrax
 Built-in Trakt-alternative — no external service, no tokens.
@@ -77,12 +89,14 @@ Credential tracking with expiry alerts and real active-checks.
 - Drag-and-drop reordering; move addons between Addons and Vault without deleting them.
 
 ### 🔔 Notifications
-One Discord webhook, per-type toggles (activity/sync/invites/Vault), mirrored to native push.
+**Push + the in-app bell are primary; Discord is entirely optional** — every notification type below works with zero Discord setup, and a webhook just adds Discord delivery on top for whichever types you want it for.
+- Per-type toggles: activity, sync, invites, Vault, addon health, backups, **proxy connectivity**, and monthly recap.
 - Instant "started watching" ping from the live proxy signal.
 - Per-user notification opt-out and personal webhook override.
 - New-episode alerts + a "Coming up" calendar on the Dashboard.
-- Monthly poster-mosaic recap, posted automatically on the 1st.
-- Addon down/back-up alerts from a background health check.
+- **Monthly poster-mosaic recap**, posted automatically on the 1st — a real collage image to Discord if a webhook's set, otherwise a plain push+bell text summary ("14 titles watched this month").
+- Addon down/back-up alerts from a background health check, and an alert if the AIOStreams proxy itself goes unreachable.
+- **Digest mode** — batch everything above into one daily/weekly push+bell summary instead of a ping per event.
 
 ### 📱 PWA & Push
 - Installs like a native app — Home Screen on iOS/Android, desktop install on Chrome/Edge.
@@ -98,6 +112,14 @@ Ten full themes, switchable live, synced across devices. Build your own on top o
 ### 📊 Metrics
 User leaderboard, watch streaks, watch-time trend, Top Viewers/Recent Activity/Recent Addons on the Dashboard, provider parity view, and a per-group activity dashboard.
 - Same-email Stremio/Nuvio pairs are deduped in every leaderboard and total — one household member never counts as two.
+- **Taste Profiles** — a per-user viewing fingerprint (favorite genres, habits) built from real watch history, not a guess.
+- **Year in Review** — a Wrapped-style yearly recap: total watch time, top shows, most-rewatched titles, a by-month chart, and a per-user breakdown.
+
+### 🩺 System Health
+One page answering "is everything actually working right now" — Sync drift, addon reachability, Vault credential checks, and AIOStreams proxy connectivity, all read from state existing background monitors already maintain.
+- **Ignore** a known, accepted failure (an addon you've intentionally left offline, an indexer that blocks your server's IP) to drop it out of Attention and its notifications — reversible any time from the same card.
+- **Addon uptime %** over the last 7/30 days, reconstructed from the same health-check history the offline/online alerts already log.
+- **Version card** — what's actually running, and whether a newer stable release has been published, without needing to check GitHub or `docker exec` in to find out.
 
 ### 💾 Backup & Disaster Recovery
 Scheduled + on-demand config backups (validated for real restorability, not just valid JSON) and a separate **Disaster Recovery Kit** — the same export plus every Vault secret, re-encrypted under a passphrase you choose, fully portable to a brand-new instance.
