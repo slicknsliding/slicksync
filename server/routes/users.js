@@ -222,6 +222,50 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   });
 
+  // Same opt-in-key pattern as discover.js's cast/crew deep-dive: per-account
+  // (Settings, sync.tmdbApiKey) takes precedence, else TMDB_API_KEY env var.
+  // Duplicated here rather than shared, matching how RPDB key resolution is
+  // already duplicated between posters.js and settings.js in this codebase.
+  async function resolveTmdbKeyForBackdrop(req) {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let cfg = acc?.sync
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+      const fromSettings = cfg && typeof cfg === 'object' && typeof cfg.tmdbApiKey === 'string' ? cfg.tmdbApiKey.trim() : ''
+      if (fromSettings) return fromSettings
+    } catch {}
+    return (process.env.TMDB_API_KEY || '').trim()
+  }
+
+  // TMDb backdrop lookup by IMDb id, cached (backdrops don't change) - kept
+  // separate from fetchMetadata's own cache since that function has no `req`
+  // to resolve a per-account key from, and is shared with callers (Discord
+  // notifications, Continue Watching) that have no use for a backdrop image.
+  // RPDB serves backdrops too, but only at RPDB's paid Tier 2+ - TMDb's are
+  // free at any tier, so this is the one that actually works for everyone.
+  const backdropCache = new Map()
+  const BACKDROP_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+  async function fetchTmdbBackdrop(imdbId, req) {
+    if (!imdbId || !/^tt\d+$/.test(imdbId)) return null
+    const cached = backdropCache.get(imdbId)
+    if (cached && (Date.now() - cached.at) < BACKDROP_CACHE_TTL_MS) return cached.value
+    const key = await resolveTmdbKeyForBackdrop(req)
+    if (!key) return null
+    try {
+      const rsp = await fetch(`https://api.themoviedb.org/3/find/${imdbId}?api_key=${encodeURIComponent(key)}&external_source=imdb_id`)
+      if (!rsp.ok) return null
+      const data = await rsp.json()
+      const hit = (data.movie_results || [])[0] || (data.tv_results || [])[0]
+      const backdropPath = hit?.backdrop_path
+      const value = backdropPath ? `https://image.tmdb.org/t/p/w1280${backdropPath}` : null
+      backdropCache.set(imdbId, { value, at: Date.now() })
+      return value
+    } catch {
+      return null
+    }
+  }
+
   // GET /users/media-details - Cinemeta detail lookup for the Activity page's
   // poster-click modal (cast, rating, genres, etc). Must be before /:id route.
   router.get('/media-details', async (req, res) => {
@@ -249,7 +293,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // opening animation on mobile. Stripped at the response boundary only -
       // fetchMetadata's cache entry (shared with Continue Watching) still has it.
       const { allEpisodes, ...detailsForClient } = metadata
-      res.json(detailsForClient)
+      const backdrop = await fetchTmdbBackdrop(itemId, req)
+      res.json({ ...detailsForClient, backdrop })
     } catch (error) {
       console.error('Error fetching media details:', error)
       res.status(500).json({ error: 'Failed to fetch media details' })

@@ -978,6 +978,17 @@ export default function SettingsPage() {
                 />
               </SettingRow>
 
+              <SettingRow
+                label="Hover-preview trailers"
+                description="Play a muted trailer snippet when you hover a poster, anywhere one opens the detail popup (Discover, Catalogs, Activity, Dashboard, and more). Off: hovering just shows the poster, same as before."
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enableHoverPreviewTrailers !== false}
+                  onChange={(v) => { handleSaveSetting('enableHoverPreviewTrailers' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle hover-preview trailers"
+                />
+              </SettingRow>
+
               {/* TMDb key for the cast/crew deep-dive. Text field, not a
                   toggle - the feature simply appears once a valid key is set.
                   Free from themoviedb.org (Settings -> API). Saved on blur,

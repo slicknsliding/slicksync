@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card } from './Card';
 import { Button } from './Button';
 import { MediaDetailModal } from './MediaDetailModal';
+import { HoverTrailerPreview } from './HoverTrailerPreview';
 import { SparklesIcon, FilmIcon, TvIcon, TrophyIcon, ArrowPathIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { api, YearInReview, YearInReviewTitle } from '@/lib/api';
 import { renderWrappedCard, downloadBlob } from '@/lib/wrappedCard';
@@ -43,8 +44,10 @@ function TitleStrip({ titles, onOpen, badge }: {
         <button key={t.id} type="button" onClick={() => onOpen(t)} className="flex-shrink-0 w-16 text-left">
           <div className="w-16 h-24 rounded-md overflow-hidden bg-surface-hover flex items-center justify-center">
             {t.poster ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={t.poster} alt="" className="w-full h-full object-cover" />
+              <HoverTrailerPreview itemId={t.id} itemType={t.type} className="w-full h-full">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={t.poster} alt="" className="w-full h-full object-cover" />
+              </HoverTrailerPreview>
             ) : (
               t.type === 'series' ? <TvIcon className="w-5 h-5 text-subtle" /> : <FilmIcon className="w-5 h-5 text-subtle" />
             )}
