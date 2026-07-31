@@ -16,7 +16,9 @@ module.exports = ({ prisma, getAccountId }) => {
     try {
       const accountId = getAccountId(req) || 'default';
 
-      const [addons, vaultEntries, driftNotifications, mismatchCount, users] = await Promise.all([
+      const { getVersionStatus } = require('../utils/versionCheck');
+
+      const [addons, vaultEntries, driftNotifications, mismatchCount, users, version] = await Promise.all([
         prisma.addon.findMany({
           where: { accountId },
           select: { id: true, name: true, isOnline: true, lastHealthCheck: true, healthCheckError: true, healthIgnored: true },
@@ -31,6 +33,7 @@ module.exports = ({ prisma, getAccountId }) => {
         }),
         prisma.notification.count({ where: { accountId, type: 'mismatch' } }),
         prisma.user.findMany({ where: { accountId, isActive: true }, select: { id: true } }),
+        getVersionStatus(),
       ]);
 
       // Addons - healthIgnored entries never show as Attention or count
@@ -41,6 +44,18 @@ module.exports = ({ prisma, getAccountId }) => {
       const addonsOffline = addons.filter((a) => a.isOnline === false && !a.healthIgnored);
       const addonsIgnored = addons.filter((a) => a.healthIgnored);
       const addonsChecked = addons.filter((a) => a.lastHealthCheck != null);
+
+      // Uptime % reconstructed from AddonHealthAlert's offline/online
+      // transition log - see computeAddonUptime's own comment for why it
+      // needs the pre-window state too, not just events inside the window.
+      const { computeAddonUptime } = require('../utils/addonHealthCheck');
+      const addonUptime = Object.fromEntries(await Promise.all(addons.map(async (a) => [
+        a.id,
+        {
+          uptime7d: await computeAddonUptime(prisma, accountId, a.id, a.isOnline !== false, 7),
+          uptime30d: await computeAddonUptime(prisma, accountId, a.id, a.isOnline !== false, 30),
+        },
+      ])));
 
       // Vault - same healthIgnored treatment as addons above.
       const now = Date.now();
@@ -79,6 +94,7 @@ module.exports = ({ prisma, getAccountId }) => {
           offlineCount: addonsOffline.length,
           offline: addonsOffline.map((a) => ({ id: a.id, name: a.name, error: a.healthCheckError, lastChecked: a.lastHealthCheck })),
           ignored: addonsIgnored.map((a) => ({ id: a.id, name: a.name })),
+          uptime: addons.map((a) => ({ id: a.id, name: a.name, uptime7d: addonUptime[a.id].uptime7d, uptime30d: addonUptime[a.id].uptime30d })),
         },
         vault: {
           total: vaultEntries.length,
@@ -90,6 +106,7 @@ module.exports = ({ prisma, getAccountId }) => {
         },
         proxy,
         mismatchCount,
+        version,
       });
     } catch (error) {
       console.error('Error building health status:', error);

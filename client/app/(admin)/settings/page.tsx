@@ -312,6 +312,26 @@ export default function SettingsPage() {
           mdblistApiKey: settings.mdblistApiKey || '',
           rpdbApiKey: settings.rpdbApiKey || '',
         });
+
+        // Nobody has ever explicitly saved a timezone for this account - the
+        // browser already knows the OS's own zone, so silently fill that in
+        // once instead of leaving it on the bare fallback until someone
+        // happens to open this dropdown. Still stored explicitly server-side
+        // right away (background jobs have no browser to read from later) -
+        // this only removes the manual first pick, not the persisted value.
+        if (settings.accountTimezoneIsDefault) {
+          try {
+            const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (detected && detected !== settings.accountTimezone) {
+              setSyncSettings((prev) => ({ ...prev, accountTimezone: detected }));
+              api.updateSyncSettings({ accountTimezone: detected }).catch(() => {});
+            }
+          } catch {
+            // Intl.DateTimeFormat().resolvedOptions().timeZone is universally
+            // supported in practice, but never let a detection failure block
+            // the rest of settings from loading.
+          }
+        }
       } catch (e) {
         // Settings may not exist yet, use defaults
       }
@@ -559,9 +579,9 @@ export default function SettingsPage() {
                   ))}
                 </select>
                 <p className="text-xs text-muted mt-2">
-                  Used server-side to decide what counts as &quot;today&quot; for Watch Time Today and streaks -
-                  background jobs have no browser to read a timezone from, so this has to be set explicitly rather
-                  than auto-detected.
+                  Auto-detected from this browser on first visit, then stored explicitly - used server-side to
+                  decide what counts as &quot;today&quot; for Watch Time Today and streaks, and background jobs
+                  have no browser to re-check it against later, so change it here if you ever travel or move.
                 </p>
               </div>
             </div>

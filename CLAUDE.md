@@ -118,6 +118,12 @@ Background pollers have no request context to infer a viewer's timezone from, so
 [server/utils/dateUtils.js](server/utils/dateUtils.js), defaulting to `ACCOUNT_TIMEZONE` env / `America/Los_Angeles`.
 Anything deciding what day something happened must use `getAccountDateString()`.
 
+The Settings page auto-fills this from the browser's own `Intl.DateTimeFormat().resolvedOptions().timeZone` the
+first time anyone opens Settings on an account that's never had one explicitly saved (tracked via the
+`accountTimezoneIsDefault` flag `GET /api/settings` returns) and immediately persists it - so in practice nobody
+has to manually pick from the dropdown, but the *stored* value is still what every background job reads, per the
+paragraph above. Change it manually if you ever travel or move.
+
 ## Notifications
 
 One Discord webhook, configured once in Settings → Notifications, with per-type toggles on `AppAccount.sync`:
