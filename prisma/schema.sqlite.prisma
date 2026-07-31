@@ -663,6 +663,21 @@ model AddonHealthAlert {
   @@map("addon_health_alerts")
 }
 
+// Periodic sample of the SQLite DB file's own size, for the Tasks page's
+// size-over-time chart - private-mode only (public mode runs Postgres, which
+// has no single file to stat). Read-only reporting: no action is ever taken
+// on this data, it exists purely to catch a runaway table before disk fills
+// up on a small VPS.
+model DbSizeSample {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  bytes     BigInt
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@map("db_size_samples")
+}
+
 // Generic persistent in-app notification - the durable backing store for the
 // notification bell. Before this, the bell had NO event store: it re-derived
 // watch notifications live from the metrics snapshot every poll, so a

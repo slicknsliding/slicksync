@@ -132,6 +132,18 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       }
     })
 
+    // GET /settings/db-size - SQLite file size history for the Tasks page's
+    // storage chart. Read-only; { supported: false } in public/Postgres mode.
+    router.get('/db-size', async (req, res) => {
+      try {
+        const { getDbSizeReport } = require('../utils/dbSizeMonitor')
+        const report = await getDbSizeReport(prisma, getAccountId(req) || DEFAULT_ACCOUNT_ID)
+        return res.json(report)
+      } catch (e) {
+        return res.status(500).json({ message: 'Failed to get DB size report', error: e?.message })
+      }
+    })
+
     // GET /settings/backups/:filename/download - raw backup file
     router.get('/backups/:filename/download', async (req, res) => {
       try {
