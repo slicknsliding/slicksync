@@ -97,12 +97,12 @@ export default function ListDetailPage() {
     catch { toast.error('Failed to remove'); load(); }
   };
 
-  const title = isLoading ? 'Loading…' : notFound ? 'List not found' : (list?.name || 'List');
+  const title = isLoading ? 'Loading…' : notFound ? 'Catalog not found' : (list?.name || 'Catalog');
   const subtitle = isLoading ? '' : notFound ? '' : `${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}`;
 
   // Explicit navigation to /lists (not router.back()) - back should always
-  // land on the Lists index in one hop, regardless of how this page was
-  // reached, per feedback that clicking "Lists" in the nav to get back felt
+  // land on the Catalogs index in one hop, regardless of how this page was
+  // reached, per feedback that clicking "Catalogs" in the nav to get back felt
   // like backtracking.
   const backButton = (
     <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/lists')}>
@@ -139,7 +139,7 @@ export default function ListDetailPage() {
         <Header
           title={
             <Breadcrumbs
-              items={[{ label: 'Lists', href: '/lists' }, { label: title }]}
+              items={[{ label: 'Catalogs', href: '/lists' }, { label: title }]}
               className="text-xl font-semibold"
             />
           }
@@ -151,15 +151,15 @@ export default function ListDetailPage() {
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
         {layoutMode === 'nebula' && (
-          <NebulaPageHeading title={title} subtitle={subtitle || 'Lists'} leading={backButton} actions={editActions} />
+          <NebulaPageHeading title={title} subtitle={subtitle || 'Catalogs'} leading={backButton} actions={editActions} />
         )}
 
         <PageSection>
           {notFound ? (
             <Card padding="lg" className="text-center">
               <RectangleStackIcon className="w-10 h-10 mx-auto text-subtle mb-3" />
-              <p className="text-sm text-muted">This list doesn&apos;t exist (it may have been deleted).</p>
-              <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push('/lists')}>Back to Lists</Button>
+              <p className="text-sm text-muted">This catalog doesn&apos;t exist (it may have been deleted).</p>
+              <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push('/lists')}>Back to Catalogs</Button>
             </Card>
           ) : isLoading ? (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
@@ -171,7 +171,7 @@ export default function ListDetailPage() {
             <Card padding="lg" className="text-center">
               <RectangleStackIcon className="w-10 h-10 mx-auto text-subtle mb-3" />
               <p className="text-sm text-muted">No titles yet.</p>
-              <p className="text-xs text-subtle mt-1">Open any movie or show and use &quot;Add to list&quot;.</p>
+              <p className="text-xs text-subtle mt-1">Open any movie or show and use &quot;Add to catalog&quot;.</p>
             </Card>
           ) : list ? (
             <>
@@ -195,11 +195,18 @@ export default function ListDetailPage() {
                 <div key={item.id} className="relative group">
                   <button type="button" onClick={() => setDetail(item)} className="w-full text-left">
                     <PosterThumb item={item} className="w-full aspect-[2/3]" />
-                    <p className="text-xs text-default truncate mt-1">{item.name}</p>
+                    <div className="mt-2 space-y-0.5 text-center">
+                      <h4 className="font-semibold text-sm text-slate-300 leading-tight line-clamp-2">
+                        {item.name}
+                      </h4>
+                      {item.year && (
+                        <p className="text-xs text-slate-500">{item.year}</p>
+                      )}
+                    </div>
                   </button>
                   <button
                     type="button"
-                    title="Remove from list"
+                    title="Remove from catalog"
                     onClick={() => handleRemoveItem(item)}
                     className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity"
                   >

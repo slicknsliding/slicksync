@@ -6,12 +6,13 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextMenu, useContextMenu, Badge } from '@/components/ui';
+import { CatalogPickerMenu } from '@/components/ui/AddToListButton';
 import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem, RecommendationRow, User } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { posterUrl, isRpdbPoster } from '@/lib/posterUrl';
-import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, SparklesIcon, UserIcon } from '@heroicons/react/24/outline';
+import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, SparklesIcon, UserIcon, RectangleStackIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { toast } from '@/components/ui/Toast';
 import { useIsTV } from '@/lib/hooks/useIsTV';
@@ -115,12 +116,17 @@ const PosterCard = memo(function PosterCard({
 }) {
   const [imageError, setImageError] = useState(false);
   const { rpdbEnabled } = usePersonalFeatures();
+  // Right-click menu's "Add to Catalogs" swaps the menu's own content to the
+  // catalog picker in place (single-panel nav with a Back row) rather than
+  // opening a second flyout - simplest way to fit a multi-catalog picker
+  // into a menu that's otherwise plain one-tap toggle buttons.
+  const [catalogView, setCatalogView] = useState(false);
   // useContextMenu still owns the position calc + preventDefault, but the
   // OPEN state is driven by the parent's isMenuOpen prop so only one card's
   // menu is visible at a time across the whole grid.
   const { position, handleContextMenu, close: closeInternal, setExternalClose } = useContextMenu();
   const controlledOpen = isMenuOpen === true;
-  const close = () => { closeInternal(); onMenuOpenChange?.(false); };
+  const close = () => { closeInternal(); onMenuOpenChange?.(false); setCatalogView(false); };
   // Registers the REAL close (above) for cross-page/cross-section closing -
   // this card's own isMenuOpen is lifted, so closeInternal alone (this hook's
   // unused-for-rendering internal state) wouldn't actually hide anything.
@@ -224,36 +230,53 @@ const PosterCard = memo(function PosterCard({
 
       {(showWatchlistMenu || showWatchedMenu || showNotInterested) && (
         <ContextMenu isOpen={controlledOpen} position={position} onClose={close}>
-          {showWatchlistMenu && (
-            <button
-              type="button"
-              onClick={() => { close(); onToggleWatchlist(item, !inWatchlist); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-            >
-              {inWatchlist
-                ? <><XCircleIcon className="w-4 h-4" /> Remove from Watchlist</>
-                : <><BookmarkOutlineIcon className="w-4 h-4" /> Add to Watchlist</>}
-            </button>
-          )}
-          {showWatchedMenu && (
-            <button
-              type="button"
-              onClick={() => { close(); onToggleWatched(item, !watched); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-            >
-              {watched
-                ? <><EyeSlashIcon className="w-4 h-4" /> Mark as unwatched</>
-                : <><EyeIcon className="w-4 h-4" /> Mark as watched</>}
-            </button>
-          )}
-          {showNotInterested && (
-            <button
-              type="button"
-              onClick={() => { close(); onMarkNotInterested?.(item); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-            >
-              <HandThumbDownIcon className="w-4 h-4" /> Not interested
-            </button>
+          {catalogView ? (
+            <CatalogPickerMenu
+              item={{ id: item.id, type: item.type, name: item.name, poster: item.poster }}
+              onBack={() => setCatalogView(false)}
+              onDone={close}
+            />
+          ) : (
+            <>
+              {showWatchlistMenu && (
+                <button
+                  type="button"
+                  onClick={() => { close(); onToggleWatchlist(item, !inWatchlist); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+                >
+                  {inWatchlist
+                    ? <><XCircleIcon className="w-4 h-4" /> Remove from Watchlist</>
+                    : <><BookmarkOutlineIcon className="w-4 h-4" /> Add to Watchlist</>}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setCatalogView(true)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+              >
+                <RectangleStackIcon className="w-4 h-4" /> Add to Catalogs
+              </button>
+              {showWatchedMenu && (
+                <button
+                  type="button"
+                  onClick={() => { close(); onToggleWatched(item, !watched); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+                >
+                  {watched
+                    ? <><EyeSlashIcon className="w-4 h-4" /> Mark as unwatched</>
+                    : <><EyeIcon className="w-4 h-4" /> Mark as watched</>}
+                </button>
+              )}
+              {showNotInterested && (
+                <button
+                  type="button"
+                  onClick={() => { close(); onMarkNotInterested?.(item); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+                >
+                  <HandThumbDownIcon className="w-4 h-4" /> Not interested
+                </button>
+              )}
+            </>
           )}
         </ContextMenu>
       )}

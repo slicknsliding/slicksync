@@ -51,7 +51,7 @@ export default function ListsPage() {
       setShowCreate(false);
       toast.success(`Created "${name}"`);
       router.push(`/lists/${list.id}`);
-    } catch { toast.error('Failed to create list'); }
+    } catch { toast.error('Failed to create catalog'); }
   };
 
   const handleRename = async () => {
@@ -82,7 +82,7 @@ export default function ListsPage() {
       );
       router.push(`/lists/${list.id}`);
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to import list');
+      toast.error(e?.message || 'Failed to import catalog');
     } finally {
       setImporting(false);
     }
@@ -97,13 +97,13 @@ export default function ListsPage() {
     catch { toast.error('Failed to delete'); load(); }
   };
 
-  const heading = { title: 'Lists', subtitle: 'Your custom collections of movies and shows.' };
+  const heading = { title: 'Catalogs', subtitle: 'Your custom collections of movies and shows.' };
 
   return (
     <>
       {layoutMode !== 'nebula' && (
         <Header
-          title={<Breadcrumbs items={[{ label: 'Lists' }]} className="text-xl font-semibold" />}
+          title={<Breadcrumbs items={[{ label: 'Catalogs' }]} className="text-xl font-semibold" />}
           subtitle={heading.subtitle}
         />
       )}
@@ -117,7 +117,7 @@ export default function ListsPage() {
             <div className="flex items-center gap-2">
               <RectangleStackIcon className="w-5 h-5 text-primary" />
               <h3 className="text-base font-semibold font-display text-default">
-                {loaded ? `${lists.length} list${lists.length !== 1 ? 's' : ''}` : 'Lists'}
+                {loaded ? `${lists.length} catalog${lists.length !== 1 ? 's' : ''}` : 'Catalogs'}
               </h3>
             </div>
             <div className="flex items-center gap-2">
@@ -125,7 +125,7 @@ export default function ListsPage() {
                 Import
               </Button>
               <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
-                New list
+                New catalog
               </Button>
             </div>
           </div>
@@ -133,7 +133,7 @@ export default function ListsPage() {
           {loaded && lists.length === 0 && (
             <Card padding="lg" className="text-center">
               <RectangleStackIcon className="w-10 h-10 mx-auto text-subtle mb-3" />
-              <p className="text-sm text-muted">No lists yet.</p>
+              <p className="text-sm text-muted">No catalogs yet.</p>
               <p className="text-xs text-subtle mt-1">Create one, then add titles from any movie or show&apos;s details.</p>
             </Card>
           )}
@@ -173,7 +173,7 @@ export default function ListsPage() {
                     </button>
                     <button
                       type="button"
-                      title="Delete list"
+                      title="Delete catalog"
                       onClick={() => setDeleting(list)}
                       className="p-1.5 rounded-lg text-muted hover:text-error hover:bg-surface-hover transition-colors"
                     >
@@ -188,8 +188,8 @@ export default function ListsPage() {
       </div>
       </div>
 
-      {/* Create list */}
-      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="New list" size="sm">
+      {/* Create catalog */}
+      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="New catalog" size="sm">
         <div className="space-y-4">
           <input
             autoFocus
@@ -207,11 +207,11 @@ export default function ListsPage() {
         </div>
       </Modal>
 
-      {/* Import list from TMDb or MDBList - provider auto-detected from the URL. */}
-      <Modal isOpen={showImport} onClose={() => setShowImport(false)} title="Import a list" size="sm">
+      {/* Import catalog from TMDb or MDBList - provider auto-detected from the URL. */}
+      <Modal isOpen={showImport} onClose={() => setShowImport(false)} title="Import a catalog" size="sm">
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-muted mb-1.5">List URL</label>
+            <label className="block text-xs font-medium text-muted mb-1.5">Catalog URL</label>
             <input
               autoFocus
               type="text"
@@ -245,8 +245,8 @@ export default function ListsPage() {
         </div>
       </Modal>
 
-      {/* Rename list */}
-      <Modal isOpen={!!renaming} onClose={() => setRenaming(null)} title="Rename list" size="sm">
+      {/* Rename catalog */}
+      <Modal isOpen={!!renaming} onClose={() => setRenaming(null)} title="Rename catalog" size="sm">
         <div className="space-y-4">
           <input
             autoFocus
@@ -264,9 +264,9 @@ export default function ListsPage() {
       </Modal>
 
       {/* Delete confirm */}
-      <Modal isOpen={!!deleting} onClose={() => setDeleting(null)} title="Delete list" size="sm">
+      <Modal isOpen={!!deleting} onClose={() => setDeleting(null)} title="Delete catalog" size="sm">
         <div className="space-y-4">
-          <p className="text-sm text-muted">Delete <span className="font-medium text-default">{deleting?.name}</span>? This removes the list only — nothing about your watch history changes.</p>
+          <p className="text-sm text-muted">Delete <span className="font-medium text-default">{deleting?.name}</span>? This removes the catalog only — nothing about your watch history changes.</p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setDeleting(null)}>Cancel</Button>
             <Button variant="danger" size="sm" onClick={handleDelete}>Delete</Button>

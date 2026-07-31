@@ -57,7 +57,7 @@ const NEBULA_NAV_SECTIONS = [
     id: 'management',
     items: [
       { href: '/discover', label: 'Discover', icon: MagnifyingGlassIcon },
-      { href: '/lists', label: 'Lists', icon: RectangleStackIcon },
+      { href: '/lists', label: 'Catalogs', icon: RectangleStackIcon },
       { href: '/addons', label: 'Addons', icon: PuzzlePieceIcon },
       { href: '/vault', label: 'Vault', icon: ShieldCheckIcon },
       { href: '/invitations', label: 'Invitations', icon: EnvelopeIcon },
