@@ -431,6 +431,17 @@ export default function DiscoverPage() {
     const ratingOf = (i: DiscoverItem) => parseFloat(ratingsById[i.id]?.imdbRating || i.imdbRating || '0') || 0;
     return ratingOf(b) - ratingOf(a);
   });
+  // Person-credit results have no rating field (TMDb's credits endpoint
+  // doesn't return one here), so 'rating-desc' is meaningless for this list -
+  // the effect below resets away from it when switching into People mode.
+  const sortedPersonResults = !personSearch ? [] : sortBy === 'default' || sortBy === 'rating-desc' ? personSearch.results : [...personSearch.results].sort((a, b) => {
+    if (sortBy === 'title') return a.title.localeCompare(b.title);
+    if (sortBy === 'year-desc') return (parseInt(b.year || '0', 10) || 0) - (parseInt(a.year || '0', 10) || 0);
+    return (parseInt(a.year || '0', 10) || 0) - (parseInt(b.year || '0', 10) || 0);
+  });
+  useEffect(() => {
+    if (searchMode === 'people' && sortBy === 'rating-desc') setSortBy('default');
+  }, [searchMode, sortBy]);
 
   // Debounce typing so search isn't firing a request per keystroke.
   useEffect(() => {
@@ -800,10 +811,13 @@ export default function DiscoverPage() {
                   (Show above Sort) rather than crammed side by side. Sort/
                   watched filter only apply to the flat grid views (Discover
                   browse+search, Watchlist) - For You renders as personalized
-                  rows, not a single sortable/filterable list. */}
+                  rows, not a single sortable/filterable list. Watched filter
+                  additionally hides in People mode - watchedStatus is keyed
+                  by IMDb id, and person-credit results only carry a TMDb id,
+                  so it could never actually match anything there. */}
               {source !== 'foryou' && (
               <div className="ml-auto flex flex-col items-end gap-1.5">
-                {enableWatchedIndicators && (
+                {enableWatchedIndicators && searchMode !== 'people' && (
                   <div className="flex gap-1 items-center">
                     <span className="text-xs text-muted mr-1 hidden sm:inline">Show:</span>
                     {([['all', 'All'], ['hide', 'Unwatched'], ['only', 'Watched']] as const).map(([key, label]) => {
@@ -836,7 +850,7 @@ export default function DiscoverPage() {
                     aria-label="Sort results"
                     className="px-2.5 py-1 rounded-md text-xs font-medium bg-surface-hover text-muted hover:text-default border border-default cursor-pointer"
                   >
-                    {SORT_OPTIONS.map((opt) => (
+                    {SORT_OPTIONS.filter((opt) => searchMode !== 'people' || opt.key !== 'rating-desc').map((opt) => (
                       <option key={opt.key} value={opt.key}>{opt.label}</option>
                     ))}
                   </select>
@@ -1189,7 +1203,7 @@ export default function DiscoverPage() {
                     </h3>
                   </div>
                   <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
-                    {personSearch.results.map((r) => (
+                    {sortedPersonResults.map((r) => (
                       <button
                         key={`${r.mediaType}-${r.tmdbId}`}
                         type="button"
