@@ -2216,7 +2216,7 @@ export interface SyncSettings {
   enableWatchlist?: boolean;
   enableWatchedIndicators?: boolean;
   enableRecommendations?: boolean;
-  enableHoverPreviewTrailers?: boolean;
+  enableAutoplayTrailerMuted?: boolean;
   tmdbApiKey?: string;
   mdblistApiKey?: string;
   rpdbApiKey?: string;

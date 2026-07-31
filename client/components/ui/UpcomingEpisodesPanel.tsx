@@ -2,7 +2,7 @@
 
 import { useEffect, useState, memo, useCallback, useRef } from 'react';
 import { CalendarDaysIcon, TvIcon, XCircleIcon, SpeakerXMarkIcon, SpeakerWaveIcon } from '@heroicons/react/24/outline';
-import { Card, MediaDetailModal, ContextMenu, useContextMenu, Modal, Button, HoverTrailerPreview } from '@/components/ui';
+import { Card, MediaDetailModal, ContextMenu, useContextMenu, Modal, Button } from '@/components/ui';
 import { api, UpcomingEpisode, MutedShow } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
@@ -133,10 +133,8 @@ const UpcomingRow = memo(function UpcomingRow({
       >
         <div className="w-10 h-14 rounded-md overflow-hidden bg-surface-hover flex-shrink-0 flex items-center justify-center">
           {item.poster ? (
-            <HoverTrailerPreview itemId={item.showId} itemType="series" className="w-full h-full">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={posterUrl({ id: item.showId, poster: item.poster }, rpdbEnabled)} alt="" className="w-full h-full object-cover" />
-            </HoverTrailerPreview>
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={posterUrl({ id: item.showId, poster: item.poster }, rpdbEnabled)} alt="" className="w-full h-full object-cover" />
           ) : (
             <TvIcon className="w-5 h-5 text-subtle" />
           )}
