@@ -29,10 +29,21 @@ export function SyncBadge({
   const [status, setStatus] = useState<SyncStatus>('checking');
   const [isLoading, setIsLoading] = useState(true);
   const prevIsSyncing = useRef(isSyncing);
+  // Mirrors `status`/the real per-member error text outside React's state
+  // so the click handler below can read the just-refreshed verdict
+  // synchronously after awaiting fetchSyncStatus() - `status` itself is
+  // stale in that closure until next render.
+  const statusRef = useRef<SyncStatus>('checking');
+  const lastMessageRef = useRef<string | undefined>(undefined);
+  const updateStatus = (s: SyncStatus, message?: string) => {
+    statusRef.current = s;
+    lastMessageRef.current = message;
+    setStatus(s);
+  };
 
   const fetchSyncStatus = useCallback(async () => {
     if (!userId && !groupId) {
-      setStatus('stale');
+      updateStatus('stale');
       setIsLoading(false);
       return;
     }
@@ -46,30 +57,31 @@ export function SyncBadge({
 
         // If user has no groups, they're stale
         if (!userGroups.length) {
-          setStatus('stale');
+          updateStatus('stale');
           setIsLoading(false);
           return;
         }
 
         const syncStatus = await api.getUserSyncStatus(userId);
         const syncStatusValue = (syncStatus as any)?.status;
+        const syncMessage = (syncStatus as any)?.message;
 
         if (syncStatusValue === 'error') {
-          const message = (syncStatus as any)?.message || '';
+          const message = syncMessage || '';
           if (message.includes('Stremio connection invalid') ||
               message.includes('authentication') ||
               message.includes('auth') ||
               message.includes('invalid') ||
               message.includes('corrupted')) {
-            setStatus('connect');
+            updateStatus('connect', syncMessage);
           } else {
-            setStatus('error');
+            updateStatus('error', syncMessage);
           }
         } else if (syncStatusValue === 'stale' || !syncStatusValue) {
           // Backend returns 'stale' or nothing for users without proper sync
-          setStatus('stale');
+          updateStatus('stale');
         } else {
-          setStatus(syncStatusValue);
+          updateStatus(syncStatusValue);
         }
       } else if (groupId) {
         // For groups, check if all users are synced. A single call - the
@@ -96,25 +108,26 @@ export function SyncBadge({
 
         // If group has no addons, it's stale
         if (addonCount === 0) {
-          setStatus('stale');
+          updateStatus('stale');
         } else if (userIds.length === 0) {
-          setStatus('stale');
+          updateStatus('stale');
         } else {
           const aggregated = await api.getGroupSyncStatus(groupId);
-          const syncResults = (aggregated?.userStatuses || []).map(s => s.status);
+          const userStatuses = aggregated?.userStatuses || [];
+          const syncResults = userStatuses.map(s => s.status);
           const allSynced = syncResults.length > 0 && syncResults.every(s => s === 'synced');
-          const hasError = syncResults.some(s => s === 'error' || s === 'connect');
+          const failing = userStatuses.find(s => s.status === 'error' || s.status === 'connect');
 
-          if (hasError) {
-            setStatus('error');
+          if (failing) {
+            updateStatus('error', failing.message);
           } else {
-            setStatus(allSynced ? 'synced' : 'unsynced');
+            updateStatus(allSynced ? 'synced' : 'unsynced');
           }
         }
       }
     } catch (error) {
       console.error('Error fetching sync status:', error);
-      setStatus('error');
+      updateStatus('error');
     } finally {
       setIsLoading(false);
     }
@@ -229,13 +242,30 @@ export function SyncBadge({
     );
   }
 
-  // For error state, don't make it clickable - show message instead
+  // For error state, don't make it clickable to sync - instead re-check
+  // live and show what's actually wrong right now. This badge polls every
+  // 2 minutes and only refetches early when ITS OWN sync completes, so an
+  // out-of-band fix (e.g. a "Sync All" elsewhere, or the provider recovering
+  // on its own) can leave it showing a stale "Error" long after the real
+  // status has moved on - confirmed real case: "Sync All" reported success
+  // and a direct sync-plan check showed everything matched, while this
+  // badge kept showing the old error because nothing had told it to look
+  // again. A fresh check on click means the toast always reflects current
+  // reality, and uses the real per-member error text instead of a generic
+  // guess about credentials.
   if (finalStatus === 'error' && groupId) {
     return (
       <div
-        onClick={(e) => {
+        onClick={async (e) => {
           e.stopPropagation();
-          toast.error('Fix user credentials to resolve sync errors');
+          const toastId = `sync-error-${groupId || userId}`;
+          toast.loading('Checking...', { id: toastId });
+          await fetchSyncStatus();
+          if (statusRef.current === 'error' || statusRef.current === 'connect') {
+            toast.error(lastMessageRef.current || 'Fix user credentials to resolve sync errors', { id: toastId });
+          } else {
+            toast.success('Actually already synced - this just hadn\'t refreshed yet', { id: toastId });
+          }
         }}
         className="cursor-pointer"
       >
