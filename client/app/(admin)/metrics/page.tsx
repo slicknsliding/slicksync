@@ -343,9 +343,6 @@ export default function MetricsPage() {
     setError(null);
     api.getMetrics(period)
       .then((data) => {
-        console.log('[Metrics] API response:', data)
-        console.log('[Metrics] watchActivity:', data.watchActivity)
-        console.log('[Metrics] watchActivity.byDay:', data.watchActivity?.byDay)
         setMetricsData(data);
         setIsLoading(false);
       })
