@@ -1286,10 +1286,20 @@ function NowPlayingItemBody({
           // (confirmed real case: a proxy connection AIOStreams still listed
           // as open kept "Watching for" climbing well past 45+ minutes after
           // the user had already stopped watching - see proxyNowPlaying.js).
+          // A proxy-only entry ticks live off nowTick (like the native
+          // fallback below) as long as the backend hasn't marked it frozen -
+          // elapsedFrozen is exactly the signal for "the proxy is still
+          // reconfirming this connection right now" (see proxyNowPlaying.js),
+          // so it's safe to keep counting between polls instead of sitting on
+          // a stale number until the next 30s fetch lands. Once frozen, fall
+          // back to the backend's own (correctly stopped) value - never tick
+          // past what it can no longer vouch for.
           const elapsedSeconds = (session && typeof session.durationSeconds === 'number')
             ? Math.max(0, session.durationSeconds)
             : (np.source === 'aiostreams-proxy' && typeof np.elapsedSeconds === 'number')
-              ? np.elapsedSeconds
+              ? (!np.elapsedFrozen && startMs && !Number.isNaN(startMs)
+                  ? Math.max(0, Math.floor((nowTick - startMs) / 1000))
+                  : np.elapsedSeconds)
               : (startMs && !Number.isNaN(startMs))
                 ? Math.max(0, Math.floor((nowTick - startMs) / 1000))
                 : null;
