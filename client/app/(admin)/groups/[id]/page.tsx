@@ -1029,7 +1029,7 @@ export default function GroupDetailPage() {
                 {/* Avatar stack - show on mobile too */}
                 <div className="flex items-start shrink-0 mt-4 md:mt-0">
                   <AvatarGroup
-                    users={groupUsers.map(u => ({ name: u.name || u.username || 'Unknown', email: u.email, id: u.id }))}
+                    users={groupUsers.map(u => ({ name: u.name || u.username || 'Unknown', email: u.email, id: u.id, src: u.avatarUrl ?? undefined }))}
                     max={5}
                     size="md"
                   />
