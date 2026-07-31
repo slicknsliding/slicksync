@@ -217,9 +217,20 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
     toast.success(`${show.showName || 'Show'} will show up again once it has a new episode`);
   }, []);
 
-  if (!loaded || items.length === 0) return null;
+  if (!loaded) return null;
+
+  // The full card (with the episode grid) only makes sense when there's
+  // something to show - but the Airing Calendar modal below handles an
+  // empty list fine on its own ("Nothing on the calendar right now"), and
+  // previously had NO way to be reached at all once the card vanished
+  // (confirmed real case: a household not currently mid-season on anything
+  // had literally no path to the calendar). A minimal always-visible link
+  // keeps it reachable regardless.
+  const hasItems = items.length > 0;
 
   return (
+    <>
+    {hasItems ? (
     <div className="mb-6">
       <Card padding="lg">
         <div className="flex items-center gap-2 mb-4">
@@ -259,6 +270,17 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
           ))}
         </div>
       </Card>
+    </div>
+    ) : (
+      <button
+        type="button"
+        onClick={() => setIsCalendarOpen(true)}
+        className="mb-6 flex items-center gap-1.5 text-xs font-medium text-muted hover:text-primary transition-colors"
+      >
+        <CalendarDaysIcon className="w-4 h-4" />
+        Airing Calendar
+      </button>
+    )}
 
       {detail && (
         <MediaDetailModal
@@ -331,6 +353,6 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
           </div>
         )}
       </Modal>
-    </div>
+    </>
   );
 });
