@@ -144,9 +144,17 @@ app.use(cors({
 }));
 
 // Rate limiting (disabled by default)
+// Default max raised from 1000 - a household with a few open tabs plus
+// several users/groups worth of SyncBadge polling could get within range of
+// 1000/15min on its own even without any bug; 4000 keeps real headroom for
+// legitimate multi-tab/multi-device polling while still catching genuine
+// abuse. The actual incident that prompted this (site-wide 429s locking out
+// Dashboard/Addons/Groups) was a real N+1 bug - see SyncBadge.tsx - not
+// primarily an undersized limit, but this is cheap, real defense-in-depth
+// for whatever the next chatty component turns out to be.
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000'),
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '4000'),
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Too many requests from this IP, please try again later.',

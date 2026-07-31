@@ -420,9 +420,11 @@ class ApiClient {
   }
 
   async getGroupSyncStatus(id: string) {
-    // Groups sync status is determined by checking all users in the group
-    const group = await this.getGroup(id);
-    return group;
+    // Server aggregates every member's status in one pass (see
+    // server/routes/groups.js `/:id/sync-status`) - avoids the N+1 of
+    // fetching each member's own sync-status individually, which is what
+    // used to blow through the API rate limit on groups with several users.
+    return this.fetch<{ groupStatus: 'synced' | 'unsynced'; userStatuses: Array<{ userId: string; status?: string; isSynced?: boolean; message?: string }> }>(`/groups/${id}/sync-status`);
   }
 
   async getUserStremioAddons(id: string) {
