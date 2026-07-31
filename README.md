@@ -152,7 +152,7 @@ JWT_SECRET=<paste the output above>
 docker compose -f docker-compose.private.yml up -d
 docker compose -f docker-compose.private.yml logs -f   # watch it come up
 ```
-This pulls the pre-built `ghcr.io/slicknsliding/slicksync:private` image — the stable release built from `main`. (There's also a `:beta` image used for testing upcoming changes before they land on `main` — don't use it unless you specifically want to try something not yet released.)
+This pulls the pre-built `ghcr.io/slicknsliding/slicksync:private` image — the stable release built from `main`. (There's also a `:beta` image used for testing upcoming changes before they land on `main` — don't use it unless you specifically want to try something not yet released.) The same image is also published to Docker Hub as `slicknsliding/slicksync:private`, if you'd rather pull from there.
 
 Frontend on `:3000`, API on `:4000` — point your reverse proxy at `:3000` only.
 
@@ -184,7 +184,7 @@ DATABASE_URL=postgresql://slicksync:slicksync@db:5432/slicksync
 ```bash
 docker compose -f docker-compose.public.yml up -d
 ```
-Pulls `ghcr.io/slicknsliding/slicksync:public` — same `main`-built release channel as private mode, not `:beta`.
+Pulls `ghcr.io/slicknsliding/slicksync:public` — same `main`-built release channel as private mode, not `:beta`. Also mirrored to Docker Hub as `slicknsliding/slicksync:public`.
 First visit shows a "Create one" registration link. `/register` generates a random account UUID once — that UUID *is* the login ID, so save it; there's no recovery if it's lost.
 
 **Updating**: `docker compose -f docker-compose.public.yml pull && docker compose -f docker-compose.public.yml up -d`.
