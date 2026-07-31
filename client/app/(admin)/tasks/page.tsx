@@ -8,7 +8,6 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, User, Group, AddonSnapshot, BackupFile, DisasterRecoveryKit } from '@/lib/api';
-import { DbStorageCard } from '@/components/admin/DbStorageCard';
 import { toast } from '@/components/ui/Toast';
 import {
   ArrowPathIcon,
@@ -1303,12 +1302,6 @@ export default function TasksPage() {
             onChange={handleConfigFileChange}
             className="hidden"
           />
-        </PageSection>
-
-        {/* Database storage - renders nothing in public/Postgres mode or
-            before there's enough history to chart, see DbStorageCard */}
-        <PageSection delay={0.28}>
-          <DbStorageCard />
         </PageSection>
 
         {/* Automatic Backups */}
