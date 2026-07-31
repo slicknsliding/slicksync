@@ -796,12 +796,13 @@ export default function DiscoverPage() {
                 return isTV ? <TVFocusable onEnterPress={() => setSource('foryou')}>{btn}</TVFocusable> : btn;
               })()}
 
-              {/* Watched filter + sort — right side of the same row, subtle.
-                  Sort/watched filter only apply to the flat grid views
-                  (Discover browse+search, Watchlist) - For You renders as
-                  personalized rows, not a single sortable/filterable list. */}
+              {/* Watched filter + sort — right side of the same row, stacked
+                  (Show above Sort) rather than crammed side by side. Sort/
+                  watched filter only apply to the flat grid views (Discover
+                  browse+search, Watchlist) - For You renders as personalized
+                  rows, not a single sortable/filterable list. */}
               {source !== 'foryou' && (
-              <div className="ml-auto flex gap-3 items-center flex-wrap">
+              <div className="ml-auto flex flex-col items-end gap-1.5">
                 {enableWatchedIndicators && (
                   <div className="flex gap-1 items-center">
                     <span className="text-xs text-muted mr-1 hidden sm:inline">Show:</span>
