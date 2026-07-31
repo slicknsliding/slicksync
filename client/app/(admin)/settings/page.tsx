@@ -943,13 +943,25 @@ export default function SettingsPage() {
               </SettingRow>
 
               <SettingRow
-                label="Autoplay trailer (muted)"
-                description="When you open a title's detail popup, its trailer starts playing automatically with the sound off - unmute or go fullscreen with the player's own controls. Off: the trailer waits for a Play Trailer click, same as before."
+                label="Autoplay trailer"
+                description="When you open a title's detail popup, its trailer starts playing automatically instead of waiting for a Play Trailer click. Off: waits for the click, same as before."
               >
                 <ToggleSwitch
-                  enabled={syncSettings.enableAutoplayTrailerMuted !== false}
-                  onChange={(v) => { handleSaveSetting('enableAutoplayTrailerMuted' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  enabled={syncSettings.enableAutoplayTrailer !== false}
+                  onChange={(v) => { handleSaveSetting('enableAutoplayTrailer' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
                   label="Toggle autoplay trailer"
+                />
+              </SettingRow>
+
+              <SettingRow
+                label="Autoplay with sound"
+                description="Whether the autoplayed trailer starts muted (default) or with sound. An explicit Play Trailer click always has sound regardless of this."
+                disabled={syncSettings.enableAutoplayTrailer === false}
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.autoplayTrailerStartMuted === false}
+                  onChange={(v) => { handleSaveSetting('autoplayTrailerStartMuted' as keyof SyncSettings, !v); invalidatePersonalFeatures(); }}
+                  label="Toggle autoplay trailer sound"
                 />
               </SettingRow>
 
