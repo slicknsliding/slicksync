@@ -235,7 +235,10 @@ export function SyncBadge({
       <div
         onClick={(e) => {
           e.stopPropagation();
-          toast.error('Fix user credentials to resolve sync errors');
+          // Stable id so repeated clicks replace the existing toast instead
+          // of stacking a new identical one every time (confirmed real case:
+          // a few quick clicks piled up 4 copies of the same message).
+          toast.error('Fix user credentials to resolve sync errors', { id: `sync-error-${groupId || userId}` });
         }}
         className="cursor-pointer"
       >
