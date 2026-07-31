@@ -567,13 +567,36 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           // floor when the gap is small; a real re-watch after a longer gap
           // still starts fresh as before.
           let priorDurationSeconds = 0
+          // True when the show's prior WatchSession row (there's only ever
+          // one per show - see the @@unique([accountId, userId, itemId])
+          // upsert below) belonged to a DIFFERENT episode and closed within
+          // the last CHECK_INTERVAL_MS. Confirmed real case (2026-07-30):
+          // Episode 2 of a show was first observed with state.timeOffset
+          // already at 97% of its runtime just 67 SECONDS after Episode 1's
+          // own session closed near-complete - physically impossible to
+          // watch that much of Episode 2 in that time, so the position was
+          // almost certainly Stremio/Nuvio briefly previewing or misreporting
+          // the next episode's state right after Episode 1 finished, not
+          // genuine viewing. Used below to withhold the near-complete seed
+          // in exactly that transition window.
+          let cameFromSiblingEpisode = false
           try {
             const priorRow = await prisma.watchSession.findUnique({
               where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
-              select: { durationSeconds: true, endTime: true }
+              select: { durationSeconds: true, endTime: true, videoId: true }
             })
             if (priorRow?.endTime && (nowMs - priorRow.endTime.getTime()) <= CHECK_INTERVAL_MS) {
-              priorDurationSeconds = priorRow.durationSeconds || 0
+              if (priorRow.videoId && priorRow.videoId !== videoId) {
+                // Different episode - the "still continuing, don't reset to
+                // 0" floor below only makes sense for the SAME item/episode
+                // (this poller catching up on itself, or the proxy pipeline
+                // finalizing the same viewing). Inheriting Episode 1's
+                // duration as Episode 2's own floor would be the identical
+                // bug as the seed issue above, just via this other path.
+                cameFromSiblingEpisode = true
+              } else {
+                priorDurationSeconds = priorRow.durationSeconds || 0
+              }
             }
           } catch {}
 
@@ -604,13 +627,30 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           // (metricsProcessor.js): recovering to/starting at an already-complete
           // value must never register as fresh progress. Don't seed in that case;
           // let it accrue from here via the normal incremental delta instead.
+          // Refinement (2026-07-30): "near-complete on first observation" alone
+          // isn't enough to decide old-vs-fresh. The Nutty Professor false
+          // positive was a DIFFERENT profile's OLD finished state surfacing -
+          // its lastWatched was old. A genuine just-finished single-sitting
+          // watch (confirmed real case same day: a 120min movie watched
+          // start-to-finish) has lastWatched ~= now, and NOT seeding it
+          // under-counted the card to a few minutes. So: seed as normal unless
+          // near-complete AND stale - i.e. still seed a near-complete watch
+          // when it was finished recently (real just-watched), only skip the
+          // seed when it's near-complete AND lastWatched is old (surfaced old
+          // state). RECENT window is generous since the provider only
+          // checkpoints at pause/stop and our poll may land a bit later.
           const NEAR_COMPLETE_RATIO = 0.95
+          const RECENT_FINISH_MS = 6 * 60 * 60 * 1000
           let seedDurationSeconds = 0
           if (priorDurationSeconds === 0 && typeof state.timeOffset === 'number' && state.timeOffset > 0) {
             const durationMs = Number(state.duration ?? NaN)
             const hasRealDuration = !Number.isNaN(durationMs) && durationMs > 0
             const alreadyNearComplete = hasRealDuration && state.timeOffset >= durationMs * NEAR_COMPLETE_RATIO
-            if (!alreadyNearComplete) {
+            const finishedRecently = watchDate instanceof Date && (nowMs - watchDate.getTime()) < RECENT_FINISH_MS
+            // A near-complete first observation is only trusted as "really
+            // just finished" when it ISN'T also the immediate aftermath of a
+            // sibling episode closing out - see cameFromSiblingEpisode above.
+            if (!alreadyNearComplete || (finishedRecently && !cameFromSiblingEpisode)) {
               const cappedMs = hasRealDuration ? Math.min(state.timeOffset, durationMs) : state.timeOffset
               seedDurationSeconds = Math.max(0, Math.floor(cappedMs / 1000))
             }

@@ -182,6 +182,7 @@ export default function SettingsPage() {
     notifyOnVault: false,
     notifyOnAddonHealth: false,
     notifyOnBackup: false,
+    notifyOnProxyHealth: false,
     notifyOnMosaic: false,
     notifyDigestEnabled: false,
     notifyDigestFrequency: 'daily' as 'daily' | 'weekly',
@@ -302,11 +303,35 @@ export default function SettingsPage() {
           notifyOnVault: settings.notifyOnVault || false,
           notifyOnAddonHealth: settings.notifyOnAddonHealth || false,
           notifyOnBackup: settings.notifyOnBackup || false,
+          notifyOnProxyHealth: settings.notifyOnProxyHealth || false,
           notifyOnMosaic: settings.notifyOnMosaic || false,
           notifyDigestEnabled: settings.notifyDigestEnabled || false,
           notifyDigestFrequency: settings.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily',
           accountTimezone: settings.accountTimezone || '',
+          tmdbApiKey: settings.tmdbApiKey || '',
+          mdblistApiKey: settings.mdblistApiKey || '',
+          rpdbApiKey: settings.rpdbApiKey || '',
         });
+
+        // Nobody has ever explicitly saved a timezone for this account - the
+        // browser already knows the OS's own zone, so silently fill that in
+        // once instead of leaving it on the bare fallback until someone
+        // happens to open this dropdown. Still stored explicitly server-side
+        // right away (background jobs have no browser to read from later) -
+        // this only removes the manual first pick, not the persisted value.
+        if (settings.accountTimezoneIsDefault) {
+          try {
+            const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (detected && detected !== settings.accountTimezone) {
+              setSyncSettings((prev) => ({ ...prev, accountTimezone: detected }));
+              api.updateSyncSettings({ accountTimezone: detected }).catch(() => {});
+            }
+          } catch {
+            // Intl.DateTimeFormat().resolvedOptions().timeZone is universally
+            // supported in practice, but never let a detection failure block
+            // the rest of settings from loading.
+          }
+        }
       } catch (e) {
         // Settings may not exist yet, use defaults
       }
@@ -368,16 +393,13 @@ export default function SettingsPage() {
   };
 
   const handleGenerateMosaic = async () => {
-    if (!syncSettings.webhookUrl?.trim()) {
-      toast.error('Enter a webhook URL first');
-      return;
-    }
-
     setIsGeneratingMosaic(true);
     try {
       const result = await api.generateMosaicNow();
       if (result.posted) {
-        toast.success(`Posted ${result.month} — ${result.count} title${result.count === 1 ? '' : 's'} to Discord`);
+        toast.success(syncSettings.webhookUrl?.trim()
+          ? `Posted ${result.month} — ${result.count} title${result.count === 1 ? '' : 's'} to Discord`
+          : `Sent ${result.month} recap — ${result.count} title${result.count === 1 ? '' : 's'} watched`);
       } else if (result.reason === 'nothing watched') {
         toast.error('Nothing watched last month - nothing to post');
       } else {
@@ -425,6 +447,7 @@ export default function SettingsPage() {
       notifyOnVault: false,
       notifyOnAddonHealth: false,
       notifyOnBackup: false,
+      notifyOnProxyHealth: false,
       notifyOnMosaic: false,
       notifyDigestEnabled: false,
       notifyDigestFrequency: 'daily',
@@ -441,6 +464,7 @@ export default function SettingsPage() {
         notifyOnVault: false,
         notifyOnAddonHealth: false,
         notifyOnBackup: false,
+        notifyOnProxyHealth: false,
         notifyOnMosaic: false,
         notifyDigestEnabled: false,
         notifyDigestFrequency: 'daily',
@@ -555,9 +579,9 @@ export default function SettingsPage() {
                   ))}
                 </select>
                 <p className="text-xs text-muted mt-2">
-                  Used server-side to decide what counts as &quot;today&quot; for Watch Time Today and streaks -
-                  background jobs have no browser to read a timezone from, so this has to be set explicitly rather
-                  than auto-detected.
+                  Auto-detected from this browser on first visit, then stored explicitly - used server-side to
+                  decide what counts as &quot;today&quot; for Watch Time Today and streaks, and background jobs
+                  have no browser to re-check it against later, so change it here if you ever travel or move.
                 </p>
               </div>
             </div>
@@ -650,7 +674,7 @@ export default function SettingsPage() {
               </div>
               <div>
                 <h3 className="text-base font-semibold font-display text-default">Notifications</h3>
-                <p className="text-xs text-muted">Receive notifications via Discord</p>
+                <p className="text-xs text-muted">Push + bell by default; add a Discord webhook below for optional Discord delivery too</p>
               </div>
             </div>
 
@@ -685,7 +709,6 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Activity notifications"
                   description="Notify when users start watching"
-                  disabled={!syncSettings.webhookUrl?.trim()}
                 >
                   <ToggleSwitch
                     enabled={syncSettings.notifyOnActivity || false}
@@ -697,7 +720,6 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Sync notifications"
                   description="Notify when sync completes"
-                  disabled={!syncSettings.webhookUrl?.trim()}
                 >
                   <ToggleSwitch
                     enabled={syncSettings.notifyOnSync || false}
@@ -709,7 +731,6 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Invite notifications"
                   description="Notify for invitations and user joins"
-                  disabled={!syncSettings.webhookUrl?.trim()}
                 >
                   <ToggleSwitch
                     enabled={syncSettings.notifyOnInvite || false}
@@ -721,7 +742,6 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Vault notifications"
                   description="Notify when a Vault entry is about to expire or an automated check starts failing"
-                  disabled={!syncSettings.webhookUrl?.trim()}
                 >
                   <ToggleSwitch
                     enabled={syncSettings.notifyOnVault || false}
@@ -733,7 +753,6 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Addon health notifications"
                   description="Notify when a primary addon goes offline (and switches to its backup) or comes back"
-                  disabled={!syncSettings.webhookUrl?.trim()}
                 >
                   <ToggleSwitch
                     enabled={syncSettings.notifyOnAddonHealth || false}
@@ -745,7 +764,6 @@ export default function SettingsPage() {
                 <SettingRow
                   label="Backup notifications"
                   description="Notify only if an automatic backup fails validation (a good backup stays silent - see its badge on Tasks)"
-                  disabled={!syncSettings.webhookUrl?.trim()}
                 >
                   <ToggleSwitch
                     enabled={syncSettings.notifyOnBackup || false}
@@ -755,9 +773,21 @@ export default function SettingsPage() {
                 </SettingRow>
 
                 <SettingRow
+                  label="Proxy connectivity notifications"
+                  description="Notify if the AIOStreams proxy (Now Playing polling) goes unreachable or recovers"
+                >
+                  <ToggleSwitch
+                    enabled={syncSettings.notifyOnProxyHealth || false}
+                    onChange={(v) => handleSaveSetting('notifyOnProxyHealth', v)}
+                    label="Toggle proxy connectivity notifications"
+                  />
+                </SettingRow>
+
+                <SettingRow
                   label="Monthly poster mosaic"
-                  description="Post a poster collage of everything watched last month to Discord, on the 1st"
-                  disabled={!syncSettings.webhookUrl?.trim()}
+                  description={syncSettings.webhookUrl?.trim()
+                    ? "Post a poster collage of everything watched last month to Discord, on the 1st"
+                    : "Sends a push+bell text recap on the 1st (e.g. \"14 titles watched\") - add a Discord webhook above for the actual poster collage image"}
                 >
                   <div className="flex items-center gap-2">
                     <Button
@@ -765,7 +795,6 @@ export default function SettingsPage() {
                       size="sm"
                       onClick={handleGenerateMosaic}
                       isLoading={isGeneratingMosaic}
-                      disabled={!syncSettings.webhookUrl?.trim()}
                     >
                       Generate now
                     </Button>
@@ -948,6 +977,68 @@ export default function SettingsPage() {
                   label="Toggle recommendations"
                 />
               </SettingRow>
+
+              {/* TMDb key for the cast/crew deep-dive. Text field, not a
+                  toggle - the feature simply appears once a valid key is set.
+                  Free from themoviedb.org (Settings -> API). Saved on blur,
+                  same pattern as the webhook URL above. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">TMDb API key <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Enables the cast/crew deep-dive — click any actor in a title's detail popup to see everything else they're in. Get a free key at themoviedb.org → Settings → API. Leave blank to keep the feature off.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.tmdbApiKey || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, tmdbApiKey: e.target.value }))}
+                  onBlur={() => handleSaveSetting('tmdbApiKey' as keyof SyncSettings, syncSettings.tmdbApiKey)}
+                  placeholder="TMDb API key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* MDBList key for List import (Lists page - "Import"). Free
+                  from mdblist.com -> Preferences -> API Access. Same
+                  optional-text-field pattern as the TMDb key above. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">MDBList API key <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Enables importing an MDBList list into Lists. Get a free key at mdblist.com → Preferences → API Access. Leave blank to keep list import to TMDb lists only.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.mdblistApiKey || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, mdblistApiKey: e.target.value }))}
+                  onBlur={() => handleSaveSetting('mdblistApiKey' as keyof SyncSettings, syncSettings.mdblistApiKey)}
+                  placeholder="MDBList API key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* RPDB key - upgrades posters app-wide (Discover, Lists,
+                  Activity, Airing Calendar) to rating-embedded art. The free
+                  tier (Tier 0) already includes ratings, just not the
+                  customizable badge styles - plenty for this purpose. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">RPDB API key <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Upgrades posters everywhere to rating-embedded art from RatingPosterDB. The free key works fine. Get one at ratingposterdb.com → API Key. Leave blank to keep today's posters.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.rpdbApiKey || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, rpdbApiKey: e.target.value }))}
+                  onBlur={() => { handleSaveSetting('rpdbApiKey' as keyof SyncSettings, syncSettings.rpdbApiKey); invalidatePersonalFeatures(); }}
+                  placeholder="RPDB API key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
             </div>
           </Card>
         </PageSection>

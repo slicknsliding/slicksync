@@ -7,9 +7,9 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
-import { Card, StatCard, Badge, UserAvatar, PageToolbar } from '@/components/ui';
+import { Card, StatCard, Badge, UserAvatar, PageToolbar, YearInReviewCard } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { api, MetricsData, AtRiskUser, TasteOverlapPair } from '@/lib/api';
+import { api, MetricsData, AtRiskUser, TasteOverlapPair, TasteProfile } from '@/lib/api';
 import {
   UserLifecycleCard,
   HourlyHeatmap,
@@ -183,6 +183,7 @@ export default function MetricsPage() {
   const [error, setError] = useState<Error | null>(null);
   const [selectedUser, setSelectedUser] = useState<AtRiskUser | null>(null);
   const [tasteOverlap, setTasteOverlap] = useState<TasteOverlapPair[]>([]);
+  const [tasteProfiles, setTasteProfiles] = useState<TasteProfile[]>([]);
 
   // Fetch metrics data
   useEffect(() => {
@@ -208,6 +209,9 @@ export default function MetricsPage() {
     api.getTasteOverlap()
       .then((data) => setTasteOverlap(data.pairs || []))
       .catch(() => setTasteOverlap([]));
+    api.getTasteProfile()
+      .then((data) => setTasteProfiles(data.profiles || []))
+      .catch(() => setTasteProfiles([]));
   }, []);
 
   // Same fix as Dashboard/Activity's "Active Users" stat:
@@ -336,6 +340,12 @@ export default function MetricsPage() {
               layoutId: 'metrics-view-tabs',
             }}
           />
+        </PageSection>
+
+        {/* Year in Review (roadmap #8) - a Wrapped-style yearly summary, shown
+            above the tabbed metrics regardless of which tab is active. */}
+        <PageSection className="mb-6">
+          <YearInReviewCard />
         </PageSection>
 
         {/* Users Tab - User Leaderboard + Streaks + Watch Time Trend */}
@@ -517,6 +527,73 @@ export default function MetricsPage() {
                 </div>
               </Card>
             </PageSection>
+
+            {/* Taste profiles - per-user profile built from real watch data
+                (top titles by actual time, movie/series split, genres, and
+                closest household match). The richer replacement for the old
+                flat overlap list; the overlap "shared favorites" detail stays
+                below as a companion. */}
+            {tasteProfiles.length > 0 && (
+              <PageSection delay={0.33}>
+                <Card padding="lg">
+                  <div className="flex items-center gap-3 mb-6">
+                    <HeartIcon className="w-6 h-6" />
+                    <div>
+                      <h3 className="text-lg font-semibold font-display text-default">Taste profiles</h3>
+                      <p className="text-sm text-muted">Each member&apos;s real viewing fingerprint — from actual watch-time, not tags</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {tasteProfiles.map((p) => {
+                      const hrs = Math.floor(p.totalSeconds / 3600);
+                      const mins = Math.round((p.totalSeconds % 3600) / 60);
+                      const timeLabel = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                      return (
+                        <div key={p.user.id} className="p-4 rounded-xl bg-surface-hover flex flex-col gap-3">
+                          <div className="flex items-center gap-3">
+                            <UserAvatar userId={p.user.id} name={p.user.username} email={p.user.email} src={p.user.useGravatar ? undefined : (p.user.avatarUrl ?? undefined)} size="md" />
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-default truncate">{p.user.username}</p>
+                              <p className="text-xs text-muted">{timeLabel} · {p.movieCount} movies · {p.seriesCount} series</p>
+                            </div>
+                          </div>
+
+                          {p.topGenres.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {p.topGenres.map((g) => (
+                                <span key={g.genre} className="px-2 py-0.5 rounded-md text-[11px] font-medium bg-primary-muted text-primary">{g.genre}</span>
+                              ))}
+                            </div>
+                          )}
+
+                          {p.topTitles.length > 0 && (
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {p.topTitles.map((t) => (
+                                <div key={t.key} title={t.name} className="w-14 shrink-0">
+                                  <div className="w-14 h-20 rounded-lg overflow-hidden bg-surface border border-default">
+                                    {t.poster && <img src={t.poster} alt={t.name} className="w-full h-full object-cover" />}
+                                  </div>
+                                  <p className="text-[10px] text-muted mt-1 truncate">{t.name}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {p.tasteTwin && (
+                            <div className="flex items-center gap-2 pt-1 border-t border-default/50 mt-auto">
+                              <span className="text-xs text-muted">Closest match:</span>
+                              <UserAvatar userId={p.tasteTwin.user.id} name={p.tasteTwin.user.username} email={p.tasteTwin.user.email} src={p.tasteTwin.user.useGravatar ? undefined : (p.tasteTwin.user.avatarUrl ?? undefined)} size="xs" />
+                              <span className="text-xs font-medium text-default truncate">{p.tasteTwin.user.username}</span>
+                              <Badge variant="primary" size="sm">{p.tasteTwin.similarity}%</Badge>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              </PageSection>
+            )}
 
             {/* Taste Overlap - real behavioral overlap (actual watch-time
                 on shared titles), not genre-tag matching. Hidden entirely

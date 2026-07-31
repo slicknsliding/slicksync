@@ -15,6 +15,8 @@ import { NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, MetricsData, Invitation } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
+import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
+import { posterUrl } from '@/lib/posterUrl';
 import {
   ClockIcon,
   FilmIcon,
@@ -74,6 +76,8 @@ interface ActivityItem {
   profileLabel?: string; // Nuvio profile name this was watched under, if known
   userAvatarUrl?: string | null;
   debridService?: string; // e.g. "torbox" - only set when confidently detected via the AIOStreams proxy (see server/utils/debridDetection.js). Absent doesn't mean "not debrid".
+  completed?: boolean | null; // real completion: true = finished, false = started/dropped, null/undefined = unknown
+  rewatchCount?: number; // movies only: times watched to the end again after first completion (0 = first watch)
   // Grid view only (see buildGridWatchers below) - other distinct users who
   // watched this SAME content on the SAME day, oldest first. Set only on the
   // most-recent activity for that content+day; the earlier ones are omitted
@@ -166,6 +170,9 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         contentName: entry.item.name,
         season: entry.item.season ?? undefined,
         episode: entry.item.episode ?? undefined,
+        episodeName: entry.episodeName ?? undefined,
+        completed: entry.completed ?? null,
+        rewatchCount: entry.rewatchCount ?? 0,
         durationSeconds: entry.durationSeconds && entry.durationSeconds > 0 ? entry.durationSeconds : undefined,
         timestamp: new Date(entry.watchedAt),
         endTime: new Date(entry.watchedAt),
@@ -437,6 +444,7 @@ const ActivityCard = memo(function ActivityCard({
 }) {
   const showProgress = activity.type === 'watch' || activity.type === 'pause';
   const [imageError, setImageError] = useState(false);
+  const { rpdbEnabled } = usePersonalFeatures();
 
   const rowElement = (
     <motion.div
@@ -451,7 +459,7 @@ const ActivityCard = memo(function ActivityCard({
           onClick={() => onOpenDetails?.(activity)}
         >
           <img
-            src={activity.poster}
+            src={posterUrl({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
             alt={activity.contentName}
             className="w-full h-full object-cover"
             onError={() => setImageError(true)}
@@ -553,6 +561,14 @@ const ActivityCard = memo(function ActivityCard({
   return <TVFocusable onEnterPress={() => onOpenDetails?.(activity)}>{rowElement}</TVFocusable>;
 });
 
+// Only one grid card's watcher/profile popover should ever be open at once,
+// but every ActivityCardGrid instance has its own independent showWatchers/
+// showProfile state with no shared awareness of the others - confirmed real
+// bug, opening a second card's popover left the first one open too. Same
+// module-level "whoever's open, close it first" registry ContextMenu.tsx
+// already uses for right-click menus.
+let activePopoverClose: (() => void) | null = null;
+
 // Grid view activity card component - Cinematic poster design
 const ActivityCardGrid = memo(function ActivityCardGrid({
   activity,
@@ -568,6 +584,11 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
   focusable?: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
+  const { rpdbEnabled } = usePersonalFeatures();
+  // Multi-watcher popover (who else watched this same title today) - kept off
+  // the poster art itself (just a count badge there); tapping reveals the
+  // full list, so it's discoverable on mobile too, not a desktop-only tooltip.
+  const [showWatchers, setShowWatchers] = useState(false);
 
   const cardElement = (
     <motion.div
@@ -576,6 +597,20 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
       whileHover={{ y: -4 }}
       className="group relative cursor-pointer"
     >
+      {/* Nuvio profile - a plain static label ABOVE the poster, not on the
+          avatar. Previously a dot on the avatar that opened a popover on
+          tap; that popover was nested inside the poster's own
+          overflow-hidden container, so it visually clipped/cut off no
+          matter how it was sized (confirmed real case). A label outside
+          the poster's bounds, in normal flow, can't be clipped by it. Only
+          shown for a single watcher - the multi-watcher popover below
+          already lists each person's own profile inline. */}
+      {activity.additionalWatchers?.length ? null : activity.profileLabel && (
+        <p className="mb-1 w-fit max-w-full mx-auto px-1.5 py-0.5 rounded-md bg-surface-hover text-[10px] font-medium text-muted truncate text-center">
+          {activity.profileLabel}
+        </p>
+      )}
+
       {/* Poster Card */}
       <div
         className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl tap-card"
@@ -584,7 +619,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
         {activity.poster && !imageError ? (
           <>
             <img
-              src={activity.poster}
+              src={posterUrl({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
               alt={activity.contentName}
               className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
               onError={() => setImageError(true)}
@@ -602,43 +637,95 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           </div>
         )}
 
-        {/* User avatar(s) - top right. When this card represents multiple
-            distinct users who watched this same title today (see
-            buildGridWatchers), stack their avatars overlapping - oldest
-            watcher first/furthest back, most recent (activity's own user)
-            last/on top/fully visible, per the negative-space overlap below. */}
-        <div className="absolute top-2 right-2 flex items-center -space-x-2">
-          {activity.additionalWatchers && [...activity.additionalWatchers].reverse().map((w) => (
-            <Link
-              key={w.userId}
-              href={`/users/${w.userId}`}
-              onClick={(e) => e.stopPropagation()}
-              className="rounded-full ring-2 ring-slate-900 shrink-0"
-              title={w.userName}
-            >
-              <UserAvatar userId={w.userId} name={w.userName} email={w.userEmail} src={w.userAvatarUrl ?? undefined} size="sm" />
-            </Link>
-          ))}
-          <Link
-            href={`/users/${activity.userId}`}
-            onClick={(e) => e.stopPropagation()}
-            className={activity.additionalWatchers ? 'rounded-full ring-2 ring-slate-900 shrink-0' : undefined}
-            title={activity.additionalWatchers ? activity.userName : undefined}
-          >
-            <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
-          </Link>
-        </div>
+        {/* User avatar - top right. Just ONE avatar (the most recent watcher)
+            keeps the poster corner uncluttered. When multiple distinct
+            household members watched this same title (see buildGridWatchers),
+            a small count badge shows how many, and TAPPING it opens a compact
+            popover listing everyone who watched (each linking to their
+            profile) - discoverable on mobile, unlike a hover tooltip, without
+            spreading avatars across the art. */}
+        {(() => {
+          const watchers = [
+            { userId: activity.userId, userName: activity.userName, userEmail: activity.userEmail, userAvatarUrl: activity.userAvatarUrl },
+            ...(activity.additionalWatchers ?? []),
+          ];
+          const count = watchers.length;
+          // Mobile-safe popover positioning, shared by both popovers below:
+          // fixed + viewport-centered under `sm` (immune to clipping no
+          // matter which grid card/scroll position triggered it - the old
+          // absolute-anchored-to-a-32px-avatar dropdown could run off the
+          // top/side of a narrow phone screen), reverting to the original
+          // avatar-anchored dropdown at `sm` and up where it already worked.
+          const popoverClass = "fixed inset-x-6 top-1/2 -translate-y-1/2 sm:absolute sm:inset-x-auto sm:top-auto sm:translate-y-0 sm:right-0 sm:mt-1 z-50 w-auto max-w-xs sm:w-44 mx-auto sm:mx-0 rounded-lg bg-slate-900/95 backdrop-blur-sm border border-default shadow-xl p-1.5";
+          return (
+            <div className="absolute top-2 right-2">
+              {count > 1 ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const next = !showWatchers;
+                    activePopoverClose?.();
+                    setShowWatchers(next);
+                    activePopoverClose = next ? () => setShowWatchers(false) : null;
+                  }}
+                  className="relative block rounded-full shadow-md shadow-black/40"
+                  title={`${count} watched`}
+                  aria-label={`${count} people watched — show who`}
+                >
+                  <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
+                  <span className="absolute -bottom-1 -right-1 min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-[10px] font-bold bg-primary text-white ring-2 ring-slate-900">
+                    {count}
+                  </span>
+                </button>
+              ) : (
+                <Link
+                  href={`/users/${activity.userId}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="block rounded-full shadow-md shadow-black/40"
+                >
+                  <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
+                </Link>
+              )}
 
-        {/* Nuvio profile badge - bottom left, only shown when known */}
-        {activity.profileLabel && (
-          <div className="absolute bottom-2 left-2">
-            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
-              {activity.profileLabel}
+              {count > 1 && showWatchers && (
+                <>
+                  {/* Click-away backdrop so the popover closes on any outside
+                      tap without also triggering the card underneath. */}
+                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowWatchers(false); activePopoverClose = null; }} />
+                  <div className={popoverClass} onClick={(e) => e.stopPropagation()}>
+                    <p className="text-[10px] uppercase tracking-wide text-subtle px-1.5 pb-1">Watched by</p>
+                    {watchers.map((w) => (
+                      <Link
+                        key={w.userId}
+                        href={`/users/${w.userId}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-2 px-1.5 py-1 rounded-md hover:bg-surface-hover transition-colors"
+                      >
+                        <UserAvatar userId={w.userId} name={w.userName} email={w.userEmail} src={w.userAvatarUrl ?? undefined} size="xs" />
+                        <span className="text-xs text-default truncate">
+                          {w.userName}
+                          {/* additionalWatchers carries no per-watcher profile
+                              of its own - only the representative activity's
+                              userId has a known profileLabel. */}
+                          {w.userId === activity.userId && activity.profileLabel && (
+                            <span className="text-subtle"> · {activity.profileLabel}</span>
+                          )}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </>
+              )}
+
             </div>
-          </div>
-        )}
+          );
+        })()}
 
-        {/* Session duration badge - top left, styled like the activity type tick */}
+        {/* Duration badge - top-left. The Nuvio profile name used to sit
+            here too (stacked below duration) - it's now the small label
+            above the poster entirely (see the top of this card) instead,
+            since the always-visible text badge cluttered the poster art. */}
         {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
           <div className="absolute top-2 left-2">
             <div className={`px-2 py-1 rounded-md text-xs font-medium shadow-lg ${getActivityColor(activity.type)}`}>
@@ -647,24 +734,17 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           </div>
         )}
 
-        {/* Request count / debrid service badge - bottom right, mirrors the
-            profile badge on the opposite corner. Both pieces of info only
-            ever show up for proxy-observed streams, so they share one
-            corner instead of needing a 5th badge position. */}
-        {!activity.isSynthetic && (
-          (activity.requestCount !== undefined && activity.requestCount > 0) || activity.debridService
-        ) && (
+        {/* Request count badge - bottom right, mirrors the profile badge on
+            the opposite corner. The "Proxied · <service>" badge that used to
+            share this spot was removed - on a narrower poster card the two
+            bottom badges (this one and the profile badge, bottom-left) could
+            grow wide enough to visually overlap each other. The debrid
+            service is still visible in the list view's text row below the
+            poster, which has no such collision risk. */}
+        {!activity.isSynthetic && activity.requestCount !== undefined && activity.requestCount > 0 && (
           <div className="absolute bottom-2 right-2">
-            <div
-              className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm"
-              title={activity.debridService ? 'Detected via the AIOStreams proxy' : undefined}
-            >
-              {[
-                activity.debridService ? `Proxied · ${DEBRID_SERVICE_LABELS[activity.debridService] || activity.debridService}` : null,
-                activity.requestCount !== undefined && activity.requestCount > 0
-                  ? `${activity.requestCount} ${activity.requestCount === 1 ? 'req' : 'reqs'}`
-                  : null,
-              ].filter(Boolean).join(' · ')}
+            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
+              {activity.requestCount} {activity.requestCount === 1 ? 'req' : 'reqs'}
             </div>
           </div>
         )}
@@ -705,6 +785,14 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             }).replace(/ /g, ' ')} {formatTime(activity.timestamp)}
           </span>
         </div>
+
+        {/* Rewatch count only - the "Finished"/"Started, not finished" text
+            marker was removed per feedback (looked cluttered on the card).
+            Real completion is still tracked and used elsewhere (Year in
+            Review, rewatch detection itself); it just isn't surfaced here. */}
+        {!!activity.rewatchCount && activity.rewatchCount > 0 && (
+          <p className="text-[11px] font-medium text-primary">↻ {activity.rewatchCount + 1}×</p>
+        )}
       </div>
     </motion.div>
   );
@@ -1059,13 +1147,14 @@ function NowPlayingItemBody({
   metricsData: MetricsData;
   nowTick: number;
 }) {
+  const { rpdbEnabled } = usePersonalFeatures();
   return (
     <>
       {/* Poster */}
       {np.item.poster ? (
         <div className="w-10 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-hover">
           <img
-            src={np.item.poster}
+            src={posterUrl(np.item, rpdbEnabled)}
             alt={np.item.name}
             className="w-full h-full object-cover"
           />

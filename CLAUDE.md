@@ -19,19 +19,35 @@ Upstream docs preserved for reference: [README.upstream.md](README.upstream.md),
 
 ## Deploy flow
 
+The host-level VPS compose service is configured with BOTH an `image:` (a published GHCR tag) and a local
+`build:` context — either pulling the published image or rebuilding locally from source produces a working
+deploy, but they are two different, non-interacting paths. Since pushing a `beta-vX.Y.Z` tag publishes a real
+image to GHCR (`.github/workflows/beta-release.yml`) on every tagged commit, the current, correct, and
+only-needed deploy flow is the **pull path** — it does not touch the local git checkout at all, so **no
+`git pull` step is needed**:
+
 1. Edit code locally on Windows (this checkout).
-2. Commit and push to GitHub (`origin` = `github.com/slicknsliding/slicksync.git`).
-3. On the VPS, in `/opt/docker/build/slicksync`:
+2. Commit, push to GitHub (`origin` = `github.com/slicknsliding/slicksync.git`), tag `beta-vX.Y.Z`, push the tag —
+   this triggers `.github/workflows/beta-release.yml`, which builds and publishes `ghcr.io/slicknsliding/slicksync:beta`.
+3. Once that GitHub Actions run succeeds, on the VPS, in `/opt/docker`:
    ```
-   git pull
-   docker compose --profile slicksync up -d --build
+   docker compose --profile slicksync pull slicksync
+   docker compose --profile slicksync up -d --force-recreate
    ```
+
+The older `git pull` + `docker compose --profile slicksync up -d --build` sequence (run from
+`/opt/docker/build/slicksync`) still works — it rebuilds the image locally from that git checkout instead of
+using GHCR — but is redundant now and shouldn't be needed; don't run both paths back-to-back, since the second
+one rebuilds everything again from source. Always verify a deploy actually landed the new code by checking
+inside the running container (`docker exec slicksync ...`) rather than trusting compose's pull/up output alone —
+`up -d --build` with no actual `build:` changes, or a stale local image cache, can both report success while
+running old code.
 
 There is no separate migration step to run by hand — see below.
 
 Note: `docker-compose.private.yml` / `docker-compose.public.yml` in this repo (see Directory structure below) are
 repo-local files for building/running standalone (`docker compose -f docker-compose.private.yml up -d --build`,
-per [README.md](README.md)) — neither defines a `slicksync` profile. The actual VPS deploy command above targets a
+per [README.md](README.md)) — neither defines a `slicksync` profile. The actual VPS deploy commands above target a
 host-level compose file that lives outside this repo (elsewhere under `/opt/docker/`, likely orchestrating several
 apps), which gates this service behind a `slicksync` profile. If the VPS deploy command ever needs to change,
 check that host-level file, not the compose files checked into this repo.
@@ -101,6 +117,12 @@ Background pollers have no request context to infer a viewer's timezone from, so
 `AppAccount.sync.accountTimezone` (Settings → Privacy & Display), read via `resolveAccountTimezone()` in
 [server/utils/dateUtils.js](server/utils/dateUtils.js), defaulting to `ACCOUNT_TIMEZONE` env / `America/Los_Angeles`.
 Anything deciding what day something happened must use `getAccountDateString()`.
+
+The Settings page auto-fills this from the browser's own `Intl.DateTimeFormat().resolvedOptions().timeZone` the
+first time anyone opens Settings on an account that's never had one explicitly saved (tracked via the
+`accountTimezoneIsDefault` flag `GET /api/settings` returns) and immediately persists it - so in practice nobody
+has to manually pick from the dropdown, but the *stored* value is still what every background job reads, per the
+paragraph above. Change it manually if you ever travel or move.
 
 ## Notifications
 

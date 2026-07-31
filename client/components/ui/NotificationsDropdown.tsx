@@ -605,14 +605,35 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                           key={notification.id}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
-                          className="p-4 hover:bg-surface-hover transition-colors cursor-pointer"
-                          style={notification.read ? undefined : { background: 'var(--color-primary-muted)' }}
+                          className="p-4 hover:bg-surface-hover transition-colors duration-500 cursor-pointer"
+                          // Explicit value for BOTH states (not undefined for
+                          // "read") - the underlying read state was already
+                          // updating instantly on "Mark all read" (confirmed:
+                          // the DOM attribute flips the instant you click,
+                          // no delay), but going from a real background value
+                          // to no inline style AT ALL doesn't reliably
+                          // cross-fade the same way toggling between two
+                          // concrete values does, so the (already-correct)
+                          // change was easy to miss and looked "stuck" until
+                          // closing/reopening replayed the entrance animation
+                          // and made the end state obvious. Confirmed real
+                          // case, 2026-07-30.
+                          // backgroundColor (not the `background` shorthand) so
+                          // Tailwind's transition-colors actually animates the
+                          // lit->read flip. The state was already updating
+                          // instantly on "Mark all read" (verified in the DOM:
+                          // 5 lit rows -> 0 within 100ms of the click), but the
+                          // shorthand isn't a transitioned property, so the
+                          // change snapped invisibly on a subtle tint and only
+                          // "looked" applied once reopening replayed the
+                          // entrance animation. Now it visibly fades.
+                          style={{ backgroundColor: notification.read ? 'transparent' : 'var(--color-primary-muted)' }}
                         >
                           <div className="flex flex-col gap-3">
                             <div className="flex items-start gap-3">
                               <span
-                                className="w-1.5 h-1.5 rounded-full shrink-0 mt-2"
-                                style={{ background: notification.read ? 'transparent' : 'var(--color-primary)' }}
+                                className="w-1.5 h-1.5 rounded-full shrink-0 mt-2 transition-colors duration-500"
+                                style={{ backgroundColor: notification.read ? 'transparent' : 'var(--color-primary)' }}
                                 aria-hidden="true"
                               />
                               {notification.poster ? (

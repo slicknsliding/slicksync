@@ -555,5 +555,331 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     }
   })
 
+  // --- Cast/crew deep-dive (optional; requires a TMDb API key) -------------
+  // Cinemeta has no people database, so a person's filmography can only come
+  // from TMDb. The key is opt-in: per-account (Settings, sync.tmdbApiKey)
+  // takes precedence, else the TMDB_API_KEY env var. With neither, these
+  // endpoints return 503 and the frontend hides the feature entirely.
+  const TMDB_IMG = 'https://image.tmdb.org/t/p/w342'
+  async function resolveTmdbKey(req) {
+    try {
+      const accountId = (typeof getAccountId === 'function' ? getAccountId(req) : null) || 'default'
+      const acc = await prisma?.appAccount?.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let cfg = acc?.sync
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+      const fromSettings = cfg && typeof cfg === 'object' && typeof cfg.tmdbApiKey === 'string' ? cfg.tmdbApiKey.trim() : ''
+      if (fromSettings) return fromSettings
+    } catch {}
+    return (process.env.TMDB_API_KEY || '').trim()
+  }
+
+  // GET /api/discover/person/:id - a TMDb person's film/TV credits, newest
+  // first, deduped, with poster + year + role. tmdbId/mediaType are returned
+  // so the frontend can resolve an IMDb id on click (see /imdb-id below) and
+  // open the existing Cinemeta-backed detail modal.
+  router.get('/person/:id', async (req, res) => {
+    try {
+      const key = await resolveTmdbKey(req)
+      if (!key) return res.status(503).json({ error: 'TMDb key not configured' })
+      const personId = String(req.params.id).replace(/[^0-9]/g, '')
+      if (!personId) return res.status(400).json({ error: 'Invalid person id' })
+
+      const url = `https://api.themoviedb.org/3/person/${personId}/combined_credits?api_key=${encodeURIComponent(key)}`
+      const rsp = await fetch(url)
+      if (!rsp.ok) return res.status(502).json({ error: 'TMDb request failed' })
+      const data = await rsp.json()
+
+      const seen = new Set()
+      const credits = [...(data.cast || []), ...(data.crew || [])]
+        .filter((c) => c && (c.media_type === 'movie' || c.media_type === 'tv') && (c.poster_path || c.title || c.name))
+        .map((c) => {
+          const date = c.release_date || c.first_air_date || ''
+          return {
+            tmdbId: c.id,
+            mediaType: c.media_type, // 'movie' | 'tv'
+            title: c.title || c.name || 'Untitled',
+            year: date ? date.slice(0, 4) : null,
+            poster: c.poster_path ? `${TMDB_IMG}${c.poster_path}` : null,
+            role: c.character || c.job || null,
+            popularity: typeof c.popularity === 'number' ? c.popularity : 0,
+            _sort: date || '0000',
+          }
+        })
+        .filter((c) => { const k = `${c.mediaType}:${c.tmdbId}`; if (seen.has(k)) return false; seen.add(k); return true })
+        .sort((a, b) => b._sort.localeCompare(a._sort))
+        // No cap here on purpose - TMDb's combined_credits already returns a
+        // person's full filmography in one bounded response (it's not
+        // paginated upstream), and this feed renders as a horizontal scroll
+        // row, not a paginated grid. An earlier `.slice(0, 60)` silently
+        // dropped everything older than a prolific actor's most recent ~60
+        // credits (confirmed real case: Tom Cruise has well over 60 combined
+        // movie+TV credits across a 40+ year career, so most of his early
+        // filmography never showed up here at all).
+        .map(({ _sort, popularity, ...rest }) => rest)
+
+      res.json({ person: { id: Number(personId), name: data.name || null }, credits })
+    } catch (error) {
+      console.error('Error fetching person credits:', error)
+      res.status(500).json({ error: 'Failed to fetch person credits' })
+    }
+  })
+
+  // GET /api/discover/imdb-id?tmdbId=X&type=movie|tv - resolve a TMDb title to
+  // its IMDb id, so a person-credit click can open the existing detail modal
+  // (which is Cinemeta/tt-id based). One extra call, made only on click - the
+  // person endpoint stays a single TMDb request.
+  router.get('/imdb-id', async (req, res) => {
+    try {
+      const key = await resolveTmdbKey(req)
+      if (!key) return res.status(503).json({ error: 'TMDb key not configured' })
+      const tmdbId = String(req.query.tmdbId || '').replace(/[^0-9]/g, '')
+      const type = req.query.type === 'tv' ? 'tv' : 'movie'
+      if (!tmdbId) return res.status(400).json({ error: 'Invalid tmdbId' })
+      const rsp = await fetch(`https://api.themoviedb.org/3/${type}/${tmdbId}/external_ids?api_key=${encodeURIComponent(key)}`)
+      if (!rsp.ok) return res.status(502).json({ error: 'TMDb request failed' })
+      const data = await rsp.json()
+      res.json({ imdbId: data.imdb_id || null, type: type === 'tv' ? 'series' : 'movie' })
+    } catch (error) {
+      console.error('Error resolving imdb id:', error)
+      res.status(500).json({ error: 'Failed to resolve imdb id' })
+    }
+  })
+
+  // GET /api/discover/taste-profile
+  // A real per-user "taste profile" built entirely from first-party watch
+  // data (the same weighted vectors taste-overlap uses), NOT self-reported
+  // tags: total watch time, movie/series split, top titles by real time,
+  // top genres, and the household member they match most. This turns the old
+  // flat "Taste overlap" pair list into "here's YOU, and who you're closest
+  // to" - the overlap number becomes one field of a fuller profile instead of
+  // the whole thing. Genres are the one piece not in the vectors, so they're
+  // looked up (Cinemeta, cached) only for each user's top few titles - bounded
+  // so this stays a handful of cached calls, not a wall of them.
+  router.get('/taste-profile', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.json({ profiles: [] })
+      const accountId = getAccountId(req) || 'default'
+
+      const { buildUserVectors, computePairwiseOverlap } = require('../utils/recommendationEngine')
+      const { vectors, itemMeta } = await buildUserVectors(prisma, accountId)
+      if (vectors.size === 0) return res.json({ profiles: [] })
+
+      const users = await prisma.user.findMany({
+        where: { id: { in: [...vectors.keys()] } },
+        select: { id: true, username: true, avatarUrl: true, useGravatar: true, colorIndex: true, email: true },
+      })
+      const userById = new Map(users.map((u) => [u.id, u]))
+
+      // Strongest taste twin per user, from the same pairwise overlap math.
+      const twinByUser = new Map()
+      for (const p of computePairwiseOverlap(vectors, itemMeta)) {
+        if (p.sharedCount <= 0) continue
+        for (const [self, other] of [[p.userA, p.userB], [p.userB, p.userA]]) {
+          const prev = twinByUser.get(self)
+          if (!prev || p.similarity > prev.similarity) twinByUser.set(self, { userId: other, similarity: p.similarity })
+        }
+      }
+
+      const { fetchMetadata } = require('../utils/notify')
+      const TOP_TITLES = 5
+      const TOP_TITLES_FOR_GENRES = 6
+
+      const profiles = []
+      for (const [userId, vec] of vectors.entries()) {
+        if (!userById.has(userId)) continue
+        const entries = [...vec.entries()].sort((a, b) => b[1] - a[1])
+        const totalSeconds = entries.reduce((sum, [, s]) => sum + s, 0)
+        let movieCount = 0, seriesCount = 0
+        for (const [key] of entries) { if (key.startsWith('series:')) seriesCount++; else movieCount++ }
+
+        const topTitles = entries.slice(0, TOP_TITLES).map(([key, seconds]) => ({
+          key, seconds, ...(itemMeta.get(key) || { name: key, poster: null, type: key.startsWith('series:') ? 'series' : 'movie' }),
+        }))
+
+        // Genre votes from the user's top titles (bounded + cached).
+        const genreVotes = new Map()
+        for (const [key] of entries.slice(0, TOP_TITLES_FOR_GENRES)) {
+          const id = key.slice(key.indexOf(':') + 1)
+          const type = key.startsWith('series:') ? 'series' : 'movie'
+          try {
+            const meta = await fetchMetadata(id, type)
+            for (const g of (Array.isArray(meta?.genres) ? meta.genres : [])) genreVotes.set(g, (genreVotes.get(g) || 0) + 1)
+          } catch {}
+        }
+        const topGenres = [...genreVotes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([genre, count]) => ({ genre, count }))
+
+        const twin = twinByUser.get(userId)
+        profiles.push({
+          user: userById.get(userId),
+          totalSeconds,
+          titleCount: entries.length,
+          movieCount,
+          seriesCount,
+          topTitles,
+          topGenres,
+          tasteTwin: twin && userById.has(twin.userId)
+            ? { user: userById.get(twin.userId), similarity: Math.round(twin.similarity * 100) }
+            : null,
+        })
+      }
+
+      // Most-active first, so the section leads with the household's heaviest viewer.
+      profiles.sort((a, b) => b.totalSeconds - a.totalSeconds)
+      res.json({ profiles })
+    } catch (error) {
+      console.error('Error computing taste profile:', error)
+      res.status(500).json({ error: 'Failed to compute taste profile' })
+    }
+  })
+
+  // GET /api/discover/household-picks?type=movie|series
+  // "Nobody's seen it yet, but the house would probably love it." Something
+  // Trakt structurally can't do (it's single-user): titles NO household member
+  // has watched/watchlisted/dismissed, in the genres that appeal broadly
+  // across the household (shared by 2+ members where possible, not just one
+  // person's taste). Reuses buildUserVectors for per-user genre affinity and
+  // the same catalog fetch + household-wide exclusion the recommendations row
+  // uses - no new machinery.
+  router.get('/household-picks', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.json({ items: [], genres: [], memberCount: 0 })
+      const accountId = getAccountId(req) || 'default'
+      const type = req.query.type === 'series' ? 'series' : 'movie'
+
+      // Respect the recommendations opt-out (same feature family).
+      try {
+        const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+        let cfg = acc?.sync
+        if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+        if (cfg && typeof cfg === 'object' && cfg.enableRecommendations === false) return res.json({ items: [], genres: [], memberCount: 0 })
+      } catch {}
+
+      const { buildUserVectors } = require('../utils/recommendationEngine')
+      const { fetchMetadata } = require('../utils/notify')
+      const { vectors } = await buildUserVectors(prisma, accountId)
+      if (vectors.size === 0) return res.json({ items: [], genres: [], memberCount: 0 })
+
+      // Genre affinity per user (their top ~6 titles), then count DISTINCT
+      // users per genre so "broad household appeal" means multiple people, not
+      // one heavy viewer.
+      const TOP_TITLES_PER_USER = 6
+      const genreUsers = new Map() // genre -> Set<userId>
+      for (const [userId, vec] of vectors.entries()) {
+        const top = [...vec.entries()].sort((a, b) => b[1] - a[1]).slice(0, TOP_TITLES_PER_USER)
+        const userGenres = new Set()
+        for (const [key] of top) {
+          const id = key.slice(key.indexOf(':') + 1)
+          const t = key.startsWith('series:') ? 'series' : 'movie'
+          try {
+            const meta = await fetchMetadata(id, t)
+            for (const g of (Array.isArray(meta?.genres) ? meta.genres : [])) userGenres.add(g)
+          } catch {}
+        }
+        for (const g of userGenres) {
+          if (!genreUsers.has(g)) genreUsers.set(g, new Set())
+          genreUsers.get(g).add(userId)
+        }
+      }
+      if (genreUsers.size === 0) return res.json({ items: [], genres: [], memberCount: vectors.size })
+
+      // Prefer genres shared by 2+ members; if a single-user household (or no
+      // genre reaches 2), fall back to that household's strongest genres so
+      // the row still produces unwatched picks.
+      const ranked = [...genreUsers.entries()].sort((a, b) => b[1].size - a[1].size)
+      const shared = ranked.filter(([, s]) => s.size >= 2)
+      const chosen = (shared.length > 0 ? shared : ranked).slice(0, 4).map(([g]) => g)
+
+      // Household-wide exclusion: watched (history + manual overrides),
+      // watchlisted, or dismissed by ANYONE.
+      const [movies, episodes, overrides, watchlist, notInterested] = await Promise.all([
+        prisma.movieWatchHistory.findMany({ where: { accountId }, select: { itemId: true }, distinct: ['itemId'] }),
+        prisma.episodeWatchHistory.findMany({ where: { accountId }, select: { showId: true }, distinct: ['showId'] }),
+        prisma.manualWatchOverride.findMany({ where: { accountId }, select: { itemId: true, watched: true } }),
+        prisma.watchlistItem.findMany({ where: { accountId }, select: { itemId: true } }).catch(() => []),
+        prisma.notInterestedItem.findMany({ where: { accountId }, select: { itemId: true } }).catch(() => []),
+      ])
+      const excludeIds = new Set([...movies.map((m) => m.itemId), ...episodes.map((e) => e.showId), ...watchlist.map((w) => w.itemId), ...notInterested.map((n) => n.itemId)])
+      for (const o of overrides) { if (o.watched) excludeIds.add(o.itemId); else excludeIds.delete(o.itemId) }
+
+      const MAX_ITEMS = 12
+      const items = []
+      const seen = new Set()
+      for (const genre of chosen) {
+        if (items.length >= MAX_ITEMS) break
+        let candidates = await fetchCatalog(type, { catalog: 'imdbRating', genre })
+        if (candidates.length === 0) candidates = await fetchCatalog(type, { catalog: 'top', genre })
+        for (const c of candidates) {
+          if (items.length >= MAX_ITEMS) break
+          if (seen.has(c.id) || excludeIds.has(c.id)) continue
+          seen.add(c.id)
+          items.push(c)
+        }
+      }
+
+      res.json({ items, genres: chosen, memberCount: vectors.size, sharedAppeal: shared.length > 0 })
+    } catch (error) {
+      console.error('Error building household picks:', error)
+      res.status(500).json({ error: 'Failed to build household picks' })
+    }
+  })
+
+  // GET /api/discover/search-person?query=X&type=movie|series
+  // Person search for Discover: type an actor/director's name and get what
+  // they've been in, filtered to the current Movies/Series toggle. Same TMDb
+  // key + credits pipeline as the cast deep-dive; returns the best-matching
+  // person plus their titles of the requested type. Results carry tmdbId +
+  // mediaType so a click resolves the IMDb id (/imdb-id) and opens the normal
+  // Cinemeta-backed detail modal.
+  router.get('/search-person', async (req, res) => {
+    try {
+      const key = await resolveTmdbKey(req)
+      if (!key) return res.status(503).json({ error: 'TMDb key not configured' })
+      const query = String(req.query.query || '').trim()
+      const wantTv = req.query.type === 'series'
+      if (!query) return res.json({ person: null, results: [] })
+
+      const sr = await fetch(`https://api.themoviedb.org/3/search/person?api_key=${encodeURIComponent(key)}&query=${encodeURIComponent(query)}`)
+      if (!sr.ok) return res.status(502).json({ error: 'TMDb request failed' })
+      const sd = await sr.json()
+      // Highest-billed match (TMDb sorts by popularity); require a real name
+      // match-ish by taking the top result, which is TMDb's own best guess.
+      const person = (sd.results || [])[0]
+      if (!person) return res.json({ person: null, results: [] })
+
+      const cr = await fetch(`https://api.themoviedb.org/3/person/${person.id}/combined_credits?api_key=${encodeURIComponent(key)}`)
+      if (!cr.ok) return res.status(502).json({ error: 'TMDb request failed' })
+      const cd = await cr.json()
+
+      const seen = new Set()
+      const results = [...(cd.cast || []), ...(cd.crew || [])]
+        .filter((c) => c && c.media_type === (wantTv ? 'tv' : 'movie') && (c.poster_path || c.title || c.name))
+        .map((c) => {
+          const date = c.release_date || c.first_air_date || ''
+          return {
+            tmdbId: c.id,
+            mediaType: c.media_type,
+            title: c.title || c.name || 'Untitled',
+            year: date ? date.slice(0, 4) : null,
+            poster: c.poster_path ? `${TMDB_IMG}${c.poster_path}` : null,
+            role: c.character || c.job || null,
+            _sort: date || '0000',
+          }
+        })
+        .filter((c) => { const k = c.tmdbId; if (seen.has(k)) return false; seen.add(k); return true })
+        .sort((a, b) => b._sort.localeCompare(a._sort))
+        // Same reasoning as /person/:id above - no artificial cap on a
+        // person's real filmography.
+        .map(({ _sort, ...rest }) => rest)
+
+      res.json({
+        person: { id: person.id, name: person.name, profile: person.profile_path ? `${TMDB_IMG}${person.profile_path}` : null },
+        results,
+      })
+    } catch (error) {
+      console.error('Error searching person:', error)
+      res.status(500).json({ error: 'Failed to search person' })
+    }
+  })
+
   return router;
 };

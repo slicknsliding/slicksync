@@ -844,6 +844,28 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
     }
   })
 
+  // PATCH /api/addons/:id/health-ignore - hide this addon's offline state
+  // from the Health page's Attention list/notifications (a known, accepted
+  // failure the admin doesn't want repeated pinging about), without
+  // touching isActive or anything the manifest-refreshing PUT /:id route does.
+  router.patch('/:id/health-ignore', async (req, res) => {
+    try {
+      const { id } = req.params
+      const { healthIgnored } = req.body
+
+      const addon = await dbUtils.findEntity(prisma, 'addon', id, getAccountId(req))
+      if (!addon) {
+        return responseUtils.notFound(res, 'Addon')
+      }
+
+      const updated = await dbUtils.updateEntity(prisma, 'addon', id, { healthIgnored: !!healthIgnored }, getAccountId(req))
+      return responseUtils.success(res, { id: updated.id, healthIgnored: updated.healthIgnored })
+    } catch (error) {
+      console.error('Error updating addon health-ignore state:', error)
+      return responseUtils.internalError(res, error.message)
+    }
+  })
+
   // Create new addon
   router.post('/', async (req, res) => {
     try {

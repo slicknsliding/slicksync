@@ -561,6 +561,27 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // GET /users/year-in-review?year=YYYY - a read-only "Wrapped"-style yearly
+  // summary aggregated from the metrics tables. Defaults to the current year.
+  // Must be before /:id route.
+  router.get('/year-in-review', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const year = req.query.year ? Number(req.query.year) : new Date().getFullYear()
+      const users = await prisma.user.findMany({
+        where: { accountId },
+        select: { id: true, username: true, email: true },
+      })
+      const { buildYearInReview } = require('../utils/yearInReview')
+      const data = await buildYearInReview(prisma, accountId, year, users)
+      res.json(data)
+    } catch (error) {
+      console.error('Error building year in review:', error)
+      res.status(500).json({ error: 'Failed to build year in review' })
+    }
+  })
+
   // GET /users/parity - side-by-side view of Stremio vs Nuvio users: provider,
   // assigned addon count (fast, DB-only), and optionally live addon count.
   // Must be before /:id route. Pass ?live=true to also fetch each user's actual

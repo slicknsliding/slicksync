@@ -24,6 +24,14 @@ const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 
 
 let pollTimer = null
 let cachedCookie = null
+// Last poll outcome, for the health board (server/routes/health.js) - this
+// module has no other exposed "is the proxy actually reachable right now"
+// signal; everything else here is fire-and-forget into a debug log file.
+let lastPollStatus = { ok: null, at: null, error: null }
+
+function getProxyMonitorStatus() {
+  return { ...lastPollStatus }
+}
 
 function heartbeat(event, data = {}) {
   try {
@@ -328,12 +336,47 @@ async function maybeNotifyStop(prisma, accountId, webhookUrl, users, row) {
 // live presence signal only: Now Playing + the instant "started watching"
 // notification.
 
+// Client IPs to never record as watches. The SlickSync/AIOStreams server's
+// own outbound requests through the proxy (poster/metadata lookups, and Nuvio
+// stream paths that route via the server) appear in /proxy/stats under the
+// SERVER's public IP, not a user's device - recording those creates phantom
+// "watch" sessions that fire spurious started/finished notifications and show
+// as a duplicate Now Playing card alongside the real native session (confirmed
+// real case 2026-07-30: a 1-request, ~1-minute session under the VPS's own IP
+// for a title a user was really watching from their home IP). Set
+// AIOSTREAMS_IGNORE_IPS to the server's public IP(s), comma-separated. Nuvio
+// Now Playing is unaffected - the native library pipeline covers it.
+function getIgnoredIps() {
+  return (process.env.AIOSTREAMS_IGNORE_IPS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+// Fires push+bell exactly on the ok/failing transition, never on every poll
+// (this runs every 30s - notifying every single failed poll would be a
+// notification every 30s during any real outage). Mirrors addonHealthCheck's
+// "went offline / came back" edge-trigger pattern.
+async function notifyProxyHealthChange(prisma, accountId, isOk, errorMessage) {
+  try {
+    const { notifyPushForType } = require('./pushNotifications')
+    await notifyPushForType(prisma, accountId, 'notifyOnProxyHealth', {
+      title: isOk ? '✅ AIOStreams proxy reachable again' : '⚠️ AIOStreams proxy unreachable',
+      body: isOk ? 'Now Playing polling has recovered.' : (errorMessage || 'Now Playing polling can\'t reach AIOStreams.'),
+      icon: '/android-chrome-192x192.png',
+      url: '/health',
+    })
+  } catch {}
+}
+
 async function pollOnce(prisma, accountId, config) {
   heartbeat('pollOnce:start', { accountId })
+  const wasOk = lastPollStatus.ok
   try {
     await retryMissingPosters(prisma, accountId)
     const stats = await fetchProxyStats(config.baseUrl, config.username, config.password)
     const now = new Date()
+    const ignoredIps = new Set(getIgnoredIps())
     // Track which (aiostreamsUser, clientIp, url) combos are active this poll
     const seenKeys = new Set()
 
@@ -367,6 +410,13 @@ async function pollOnce(prisma, accountId, config) {
         const url = conn.url
         if (!clientIp || !url) {
           heartbeat('pollOnce:skipped_malformed_connection', { user: user.username, conn })
+          continue
+        }
+        // Skip the server's own proxied requests (see getIgnoredIps) - never a
+        // real user watch, and recording it spawns phantom sessions +
+        // notifications + duplicate Now Playing cards.
+        if (ignoredIps.has(clientIp)) {
+          heartbeat('pollOnce:skipped_ignored_ip', { clientIp })
           continue
         }
 
@@ -485,9 +535,13 @@ async function pollOnce(prisma, accountId, config) {
       activeSeen: seenKeys.size,
       closed: toClose.length,
     })
+    lastPollStatus = { ok: true, at: now, error: null }
+    if (wasOk === false) await notifyProxyHealthChange(prisma, accountId, true, null)
   } catch (error) {
     heartbeat('pollOnce:error', { message: error.message, stack: error.stack })
     console.warn('[ProxyStreamMonitor] pollOnce failed:', error.message)
+    lastPollStatus = { ok: false, at: new Date(), error: error.message }
+    if (wasOk !== false) await notifyProxyHealthChange(prisma, accountId, false, error.message)
   }
 }
 
@@ -511,5 +565,6 @@ module.exports = {
   clearProxyStreamMonitor,
   parseDisplayName,
   resolveUserForActiveConnection,
+  getProxyMonitorStatus,
   CHECK_INTERVAL_MS,
 }

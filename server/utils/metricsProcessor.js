@@ -15,6 +15,22 @@ const { postDiscord } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
 const { notifyPushForType } = require('./pushNotifications')
 
+// Real completion for a library item: did playback reach (near) the end?
+// From the item's own position vs runtime (state.timeOffset / state.duration),
+// the same fields the duration logic reads. Returns true (finished), false
+// (real position but well short), or null (no position/runtime data to judge).
+// Unlike duration-crediting, this is safe to read at any single point - a
+// position near the end IS "finished" regardless of when it got there, so no
+// first-observation caveat applies here. 90% threshold accounts for end
+// credits / a few unwatched trailing seconds.
+const COMPLETE_RATIO = 0.9
+function computeCompleted(state) {
+  const pos = Number(state?.timeOffset ?? NaN)
+  const dur = Number(state?.duration ?? NaN)
+  if (Number.isNaN(pos) || Number.isNaN(dur) || dur <= 0 || pos <= 0) return null
+  return pos / dur >= COMPLETE_RATIO
+}
+
 /**
  * Extract season/episode from video_id
  * Handles various formats:
@@ -64,6 +80,14 @@ function extractSeasonEpisode(videoId) {
  * either real timeWatched, or progress that's a meaningful fraction (5%,
  * same threshold used by AIOManager) of the item's actual runtime.
  */
+// When a library item has no duration to compute a real percentage against,
+// this is the minimum absolute progress required to still count as watched.
+// Deliberately generous (5 real minutes) so a legitimately short watch of
+// something whose provider never reports a duration still counts - this
+// exists to reject near-zero/placeholder progress, not to raise the bar for
+// genuine short watches.
+const MIN_PROGRESS_MS_NO_DURATION = 5 * 60 * 1000
+
 function isActuallyWatched(item) {
   const state = item.state || {}
   const timeWatched = Number(state.timeWatched || 0)
@@ -77,7 +101,15 @@ function isActuallyWatched(item) {
     return (progressMs / duration) > 0.05
   }
 
-  return !!(state.video_id && state.video_id.trim() !== '')
+  // No duration to compute a ratio against - require real minimum progress
+  // instead of merely "video_id is present". Confirmed real case
+  // 2026-07-30: ~800 bulk-imported "mark as watched" library entries (a
+  // real video_id, backdated lastWatched, some small/placeholder
+  // overallTimeWatched, but no duration ever recorded) sailed through this
+  // fallback as if they were genuine watches - state.video_id being
+  // non-empty is true for essentially every real library item, so it was
+  // never actually filtering anything.
+  return progressMs >= MIN_PROGRESS_MS_NO_DURATION
 }
 
 // Fires a "watched X" notification (Discord + push) for a brand-new
@@ -199,7 +231,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     const [existing, session] = await Promise.all([
       prisma.episodeWatchHistory.findUnique({
         where: { accountId_userId_videoId: { accountId: accountIdValue, userId, videoId } },
-        select: { durationSeconds: true, debridService: true }
+        select: { durationSeconds: true, debridService: true, episodeName: true, completed: true }
       }),
       prisma.watchSession.findUnique({
         where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId: showId } },
@@ -215,6 +247,27 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     // already-labeled rows would be pure waste.
     const debridService = existing?.debridService
       || await findDebridServiceForWatch(prisma, { accountId: accountIdValue, userId, title: showName, watchedAt, users })
+
+    // Episode title, fetched once per episode (never re-fetched once known -
+    // a title never changes) via the same Cinemeta lookup already used for
+    // Discord "started watching" embeds. Activity's History view previously
+    // had no way to show this at all - it renders straight from this table,
+    // unlike Continue Watching (which reads live provider metadata directly
+    // and could always show it). Best-effort: a lookup failure just leaves
+    // it null, same as debridService above, never blocks the actual watch
+    // record from being written.
+    let episodeName = existing?.episodeName || null
+    if (!episodeName) {
+      try {
+        const { fetchMetadata } = require('./notify')
+        const meta = await fetchMetadata(showId, 'series', videoId)
+        episodeName = meta?.episode?.title || null
+      } catch {}
+    }
+
+    // Real completion - once true, stays true (same as recordMovieWatch).
+    const computedCompleted = computeCompleted(item.state)
+    const completed = existing?.completed === true ? true : computedCompleted
 
     // Upsert the episode watch (updates watchedAt if already exists)
     await prisma.episodeWatchHistory.upsert({
@@ -233,11 +286,13 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
         videoId,
         season,
         episode,
+        episodeName,
         poster,
         profileLabel,
         watchedAt,
         durationSeconds,
-        debridService
+        debridService,
+        completed
       },
       update: {
         watchedAt, // Update watch time if re-watching
@@ -248,7 +303,9 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
         // Only overwrite if we found something this time - never blank out
         // an already-confirmed label just because a later poll's window no
         // longer catches the original proxy session.
-        ...(debridService ? { debridService } : {})
+        ...(debridService ? { debridService } : {}),
+        ...(episodeName ? { episodeName } : {}),
+        ...(completed !== null && completed !== undefined ? { completed } : {})
       }
     })
 
@@ -330,7 +387,7 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
     const [existing, session] = await Promise.all([
       prisma.movieWatchHistory.findUnique({
         where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
-        select: { durationSeconds: true, debridService: true }
+        select: { durationSeconds: true, debridService: true, completed: true }
       }),
       prisma.watchSession.findUnique({
         where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
@@ -338,6 +395,11 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
       })
     ])
     const durationSeconds = Math.max(existing?.durationSeconds || 0, session?.durationSeconds || 0) || undefined
+
+    // Real completion - once true, stays true (finishing can't un-finish; a
+    // later partial re-watch of the same title mustn't flip it back).
+    const computedCompleted = computeCompleted(item.state)
+    const completed = existing?.completed === true ? true : computedCompleted
 
     // See recordEpisodeWatch's matching comment - only look up if not
     // already confirmed.
@@ -362,7 +424,8 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
         profileLabel,
         watchedAt,
         durationSeconds,
-        debridService
+        debridService,
+        completed
       },
       update: {
         watchedAt, // Update watch time if re-watching
@@ -370,7 +433,9 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
         poster, // Update in case poster changed
         profileLabel,
         durationSeconds,
-        ...(debridService ? { debridService } : {})
+        ...(debridService ? { debridService } : {}),
+        // Only write when we have a verdict, and never downgrade a prior true.
+        ...(completed !== null && completed !== undefined ? { completed } : {})
       }
     })
 
@@ -389,6 +454,69 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
       console.warn(`[MetricsProcessor] Error recording movie watch:`, error.message)
     }
     return false
+  }
+}
+
+// Ratio of runtime a movie's position must drop below to count as "restarted".
+const REWATCH_ARM_RATIO = 0.15
+
+/**
+ * Rewatch detection for MOVIES. A small, deliberately isolated state machine
+ * that only ever writes rewatchCount / rewatchArmed on MovieWatchHistory -
+ * never any watch-time, delta, snapshot, or activity field - so it physically
+ * cannot inflate Watch Time (the recurring failure mode this codebase guards
+ * against everywhere else).
+ *
+ * How it works, using the live playback position (state.timeOffset) against
+ * the movie's runtime (state.duration):
+ *   - Only a movie that has ALREADY been completed once can be rewatched, so
+ *     we do nothing until completed === true.
+ *   - "arm" when a finished movie's position dips back near the start
+ *     (<= REWATCH_ARM_RATIO of runtime): the viewer started it over. This runs
+ *     from processLibraryItem, which sees every library item every poll (no
+ *     isActuallyWatched gate), so the low-position moment is observable even
+ *     though recordMovieWatch would early-return on it.
+ *   - "count" when an armed movie's position reaches the end again
+ *     (>= COMPLETE_RATIO): increment rewatchCount and disarm. One increment per
+ *     dip-then-finish cycle - the persistent rewatchArmed flag is what makes it
+ *     edge-triggered rather than firing every poll while near the end.
+ * Series are intentionally out of scope: their timeOffset is per-episode, so a
+ * reset is just the next episode starting, not a rewatch.
+ */
+async function detectMovieRewatch(prisma, accountId, userId, item) {
+  try {
+    if (item.type !== 'movie') return
+    const itemId = item._id || item.id
+    if (!itemId) return
+    const dur = Number(item.state?.duration || 0)
+    const off = Number(item.state?.timeOffset || 0)
+    if (!(dur > 0) || !(off >= 0)) return
+    const ratio = off / dur
+
+    const row = await prisma.movieWatchHistory.findUnique({
+      where: { accountId_userId_itemId: { accountId: accountId || 'default', userId, itemId } },
+      select: { completed: true, rewatchArmed: true }
+    })
+    // Only a previously-finished movie can be rewatched; if there's no row yet
+    // (or it was never completed) there's nothing to detect.
+    if (!row || row.completed !== true) return
+
+    if (!row.rewatchArmed && ratio <= REWATCH_ARM_RATIO) {
+      await prisma.movieWatchHistory.update({
+        where: { accountId_userId_itemId: { accountId: accountId || 'default', userId, itemId } },
+        data: { rewatchArmed: true }
+      })
+    } else if (row.rewatchArmed && ratio >= COMPLETE_RATIO) {
+      await prisma.movieWatchHistory.update({
+        where: { accountId_userId_itemId: { accountId: accountId || 'default', userId, itemId } },
+        data: { rewatchArmed: false, rewatchCount: { increment: 1 } }
+      })
+    }
+  } catch (error) {
+    // Best-effort only - rewatch tracking must never block metrics processing.
+    if (error?.code !== 'P2002') {
+      console.warn(`[MetricsProcessor] Rewatch detection failed for ${userId}/${item?._id || item?.id}:`, error.message)
+    }
   }
 }
 
@@ -535,6 +663,15 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
     // Decide whether to record an activity delta - this part is pure
     // decision-making (reads only), the actual writes happen atomically
     // below.
+    // Highest overallTimeWatched ever recorded for this (user,item) across all
+    // days - the monotonic high-water-mark. Computed once and reused for BOTH
+    // the delta baseline below AND clamping the snapshot write further down, so
+    // the snapshot can never regress it (see the clamp comment at the write).
+    let maxSeenBig = null
+    if (current.overallTimeWatched) {
+      try { maxSeenBig = await getMaxOverallTimeWatched(prisma, accountIdValue, userId, itemId) } catch {}
+    }
+
     let activityDeltaSeconds = null
     if (current.overallTimeWatched && snapshotChanged) {
       let totalDeltaSeconds = 0
@@ -545,8 +682,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         // snapshot - see getMaxOverallTimeWatched's comment for why. Falls
         // back to the plain prior-snapshot comparison only in the
         // practically-unreachable case where the max lookup itself fails.
-        const maxSeen = await getMaxOverallTimeWatched(prisma, accountIdValue, userId, itemId)
-        const deltaBaseline = maxSeen !== null ? maxSeen : BigInt(oldSnapshotValue)
+        const deltaBaseline = maxSeenBig !== null ? maxSeenBig : BigInt(oldSnapshotValue)
         const currOverall = BigInt(current.overallTimeWatched)
         const totalDeltaMs = currOverall - deltaBaseline
 
@@ -640,6 +776,23 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         }))
       }
       if (snapshotChanged && current.overallTimeWatched) {
+        // Clamp the stored overallTimeWatched to the monotonic high-water-mark:
+        // never let a snapshot regress below the max ever seen for this item.
+        // overallTimeWatched is cumulative and only ever grows in reality, so a
+        // DROP is always a data artifact - specifically Nuvio's multi-profile
+        // merge transiently dropping a profile's progress (documented in
+        // CLAUDE.md). Before this clamp, that drop overwrote the snapshot LOWER,
+        // which erased the high-water-mark getMaxOverallTimeWatched relies on -
+        // so when the value recovered, the recovery re-registered as a fresh
+        // delta, over and over (confirmed real case 2026-07-30: the identical
+        // 19104-second delta recorded 8x in one day for one series, inflating
+        // Watch Time Today by 5+ hours). Keeping overallTimeWatched monotonic
+        // makes a drop-then-recover a no-op by construction. timeOffset /
+        // lastWatched / mtime still reflect current (those legitimately move).
+        const currOverallBig = BigInt(current.overallTimeWatched)
+        const overallToStore = (maxSeenBig !== null && maxSeenBig > currOverallBig)
+          ? maxSeenBig.toString()
+          : current.overallTimeWatched
         ops.push(prisma.watchSnapshot.upsert({
           where: {
             accountId_userId_itemId_date: {
@@ -654,13 +807,13 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
             userId,
             itemId,
             date: new Date(todayDate),
-            overallTimeWatched: current.overallTimeWatched,
+            overallTimeWatched: overallToStore,
             timeOffset: current.timeOffset,
             lastWatched: current.lastWatched,
             mtime: current.mtime
           },
           update: {
-            overallTimeWatched: current.overallTimeWatched,
+            overallTimeWatched: overallToStore,
             timeOffset: current.timeOffset,
             lastWatched: current.lastWatched,
             mtime: current.mtime
@@ -698,6 +851,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
       await recordEpisodeWatch(prisma, accountIdValue, userId, item, users)
     } else if (item.type === 'movie') {
       await recordMovieWatch(prisma, accountIdValue, userId, item, users)
+      await detectMovieRewatch(prisma, accountIdValue, userId, item)
     }
 
     return { snapshotCreated, activityCreated }

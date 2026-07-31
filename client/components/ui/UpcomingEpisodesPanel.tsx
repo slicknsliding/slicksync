@@ -5,6 +5,8 @@ import { CalendarDaysIcon, TvIcon, XCircleIcon, SpeakerXMarkIcon, SpeakerWaveIco
 import { Card, MediaDetailModal, ContextMenu, useContextMenu, Modal, Button } from '@/components/ui';
 import { api, UpcomingEpisode, MutedShow } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
+import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
+import { posterUrl } from '@/lib/posterUrl';
 
 // Dashboard "Coming up" calendar: the next upcoming episode for every show
 // someone here is mid-season on. Data is precomputed server-side by the
@@ -37,6 +39,36 @@ function airLabel(iso: string): { text: string; soon: boolean } {
   return { text: air.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), soon: false };
 }
 
+// Day-header label for the full-calendar agenda: relative word (Today/Tomorrow/
+// weekday) plus the concrete date, so scanning down the list still reads like a
+// calendar rather than a pile of "Monday"s across different weeks.
+function dayHeaderLabel(iso: string): { text: string; soon: boolean } {
+  const now = new Date();
+  const air = new Date(iso);
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfAir = new Date(air.getFullYear(), air.getMonth(), air.getDate()).getTime();
+  const days = Math.round((startOfAir - startOfToday) / (24 * 60 * 60 * 1000));
+  const date = air.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  if (days <= 0) return { text: `Today · ${date}`, soon: true };
+  if (days === 1) return { text: `Tomorrow · ${date}`, soon: true };
+  return { text: date, soon: days < 7 };
+}
+
+// Bucket already-air-date-sorted items into per-calendar-day groups (stable
+// order preserved within each day). Keyed on local Y/M/D so "airs today" and
+// "airs tomorrow" split cleanly regardless of the wall-clock time of day.
+function groupByDay(items: UpcomingEpisode[]): { key: string; ts: number; items: UpcomingEpisode[] }[] {
+  const groups = new Map<string, { key: string; ts: number; items: UpcomingEpisode[] }>();
+  for (const it of items) {
+    const air = new Date(it.airDate);
+    const ts = new Date(air.getFullYear(), air.getMonth(), air.getDate()).getTime();
+    const key = String(ts);
+    if (!groups.has(key)) groups.set(key, { key, ts, items: [] });
+    groups.get(key)!.items.push(it);
+  }
+  return [...groups.values()].sort((a, b) => a.ts - b.ts);
+}
+
 // A single row. Extracted so each has its own context-menu hook, otherwise the
 // menu's shared position would jump to whichever row was right-clicked last.
 const UpcomingRow = memo(function UpcomingRow({
@@ -52,6 +84,7 @@ const UpcomingRow = memo(function UpcomingRow({
 }) {
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
   const label = airLabel(item.airDate);
+  const { rpdbEnabled } = usePersonalFeatures();
 
   // Long-press → context menu for touch devices. Cancel on move/scroll so a
   // scroll gesture doesn't get hijacked into a menu open. Track start position
@@ -101,7 +134,7 @@ const UpcomingRow = memo(function UpcomingRow({
         <div className="w-10 h-14 rounded-md overflow-hidden bg-surface-hover flex-shrink-0 flex items-center justify-center">
           {item.poster ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.poster} alt="" className="w-full h-full object-cover" />
+            <img src={posterUrl({ id: item.showId, poster: item.poster }, rpdbEnabled)} alt="" className="w-full h-full object-cover" />
           ) : (
             <TvIcon className="w-5 h-5 text-subtle" />
           )}
@@ -149,6 +182,7 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
   const [detail, setDetail] = useState<UpcomingEpisode | null>(null);
   const [mutedShows, setMutedShows] = useState<MutedShow[]>([]);
   const [isMutedModalOpen, setIsMutedModalOpen] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
   useEffect(() => {
     api.getUpcomingEpisodes()
@@ -195,9 +229,16 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
           <span className="text-xs text-muted sm:hidden">Long-press to hide</span>
           <button
             type="button"
+            onClick={() => setIsCalendarOpen(true)}
+            className="ml-auto text-xs font-medium text-primary hover:underline"
+          >
+            Full calendar
+          </button>
+          <button
+            type="button"
             onClick={openMutedModal}
             title="Manage muted shows"
-            className="ml-auto p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface-hover transition-colors"
+            className="p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface-hover transition-colors"
           >
             <SpeakerXMarkIcon className="w-4 h-4" />
           </button>
@@ -229,6 +270,42 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
           fallbackPoster={detail.poster}
         />
       )}
+
+      {/* Full airing calendar: every tracked show's next episode, grouped by
+          the day it airs. Reuses the same rows (open detail, hide, mute) as the
+          compact dashboard card, but shows the whole agenda rather than the
+          first eight. */}
+      <Modal isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} title="Airing Calendar" size="lg">
+        {items.length === 0 ? (
+          <p className="text-sm text-muted py-4 text-center">Nothing on the calendar right now.</p>
+        ) : (
+          <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+            {groupByDay(items).map((group) => {
+              const header = dayHeaderLabel(group.items[0].airDate);
+              return (
+                <div key={group.key}>
+                  <div className="flex items-center gap-2 mb-1.5 sticky top-0 bg-surface z-10 py-1">
+                    <CalendarDaysIcon className={`w-4 h-4 ${header.soon ? 'text-primary' : 'text-muted'}`} />
+                    <h4 className={`text-sm font-semibold ${header.soon ? 'text-primary' : 'text-default'}`}>{header.text}</h4>
+                    <span className="text-xs text-subtle">{group.items.length} episode{group.items.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+                    {group.items.map((item) => (
+                      <UpcomingRow
+                        key={`${item.showId}-${item.season}-${item.episode}`}
+                        item={item}
+                        onOpen={(it) => { setIsCalendarOpen(false); setDetail(it); }}
+                        onDismiss={handleDismiss}
+                        onMute={handleMute}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Modal>
 
       <Modal isOpen={isMutedModalOpen} onClose={() => setIsMutedModalOpen(false)} title="Muted Shows" size="md">
         {mutedShows.length === 0 ? (

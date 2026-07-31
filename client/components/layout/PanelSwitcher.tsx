@@ -15,6 +15,7 @@ import {
   NewspaperIcon,
   QueueListIcon,
   SwatchIcon,
+  HeartIcon,
 } from '@heroicons/react/24/outline';
 import { Avatar } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
@@ -327,6 +328,19 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                 </a>
                 {showSystemLinks && (
                   <>
+                    <button
+                      onClick={() => { setIsOpen(false); router.push('/health'); }}
+                      className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"
+                      style={{ color: 'var(--color-text)' }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{ background: 'var(--color-surface-hover)' }}
+                      >
+                        <HeartIcon className="nav-item-icon w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                      </div>
+                      <span className="nav-item-label text-sm font-medium">Health</span>
+                    </button>
                     <button
                       onClick={() => { setIsOpen(false); router.push('/tasks'); }}
                       className="nav-item-hover-pill w-full flex items-center gap-3 px-4 py-3 rounded-lg"

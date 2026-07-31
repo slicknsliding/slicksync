@@ -45,7 +45,6 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
             ${{ env.DOCKERHUB_IMAGE_NAME }}
           tags: |
-            type=raw,value=latest
             type=raw,value=private
             type=semver,pattern=private-v{{version}}
           labels: |
@@ -61,6 +60,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             INSTANCE=private
+            APP_VERSION=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

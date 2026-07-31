@@ -124,6 +124,7 @@ model Addon {
   isOnline         Boolean  @default(true)
   lastHealthCheck  DateTime?
   healthCheckError String?
+  healthIgnored    Boolean  @default(false) // hides this addon from the Health page's Attention list/notifications entirely - for a known, accepted offline addon the admin doesn't want repeated pinging about
 
   // Backup fields
   backupAddonId    String?  // Reference to backup addon (another Addon record)
@@ -262,6 +263,7 @@ model VaultEntry {
   lastCheckMessage String?
   lastNotifiedAt   DateTime?
   snoozedUntil     DateTime?                       // expiry-warning alerts suppressed until this date ("Snooze 7 days"); check-failure alerts are unaffected
+  healthIgnored    Boolean   @default(false)        // hides this entry from the Health page's Attention list/notifications entirely (unlike snoozedUntil, not time-bound) - for a known, accepted failure (e.g. an indexer that blocks this host's IP) the admin doesn't want repeated pinging about
   isActive         Boolean   @default(true)
   position         Int       @default(0)             // manual ordering within a category (drag-and-drop)
   createdAt        DateTime  @default(now())
@@ -335,6 +337,9 @@ model EpisodeWatchHistory {
   videoId     String // Full video_id (e.g., "tt8080122:4:6" or "kitsu:46676:1")
   season      Int? // Season number (null if unknown)
   episode     Int? // Episode number (null if unknown)
+  episodeName String? // Episode title from Cinemeta, when known - fetched once via the same lookup used for Discord "started watching" embeds (server/utils/notify.js's fetchMetadata), not on every poll
+  // Real completion for this episode - same semantics as MovieWatchHistory.completed.
+  completed   Boolean?
   poster      String? // Show poster URL
   profileLabel String?
   durationSeconds Int?     // Real duration, backfilled from a matching AIOStreams-proxy WatchSession entry when the two are merged as the same viewing event // Which provider profile this was watched under (e.g. Nuvio profile name), if known
@@ -364,12 +369,65 @@ model MovieWatchHistory {
   profileLabel String?
   durationSeconds Int?     // Real duration, backfilled from a matching AIOStreams-proxy WatchSession entry when the two are merged as the same viewing event // Which provider profile this was watched under (e.g. Nuvio profile name), if known
   debridService String? // See EpisodeWatchHistory.debridService's comment - same field, same rules.
+  // Real completion, from actual playback position vs runtime (state.timeOffset
+  // / state.duration >= ~90%) at write time - the "genuinely finished" vs
+  // "started and dropped" distinction self-reported check-ins (Trakt) can't
+  // make. null = unknown (no position data, or an old row predating this),
+  // true = watched to (near) the end, false = real position data but well
+  // short of the end. Once true it stays true (finishing can't un-finish).
+  completed Boolean?
+  // Rewatch tracking (movies only). rewatchCount is how many times this movie
+  // was watched to the end AGAIN after its first completion. rewatchArmed is
+  // an internal edge-trigger flag: set when a finished movie's playback
+  // position dips back near the start (a rewatch began), cleared when it
+  // reaches the end again (which is when rewatchCount increments). This state
+  // machine is deliberately isolated from all watch-time/delta math - it only
+  // ever touches these two fields - so it can never inflate Watch Time. Series
+  // are excluded: a per-episode position reset there is just normal
+  // episode-to-episode progression, not a rewatch.
+  rewatchCount Int     @default(0)
+  rewatchArmed Boolean @default(false)
   watchedAt DateTime // When this movie was watched
   createdAt DateTime @default(now())
 
   @@index([accountId, userId, watchedAt])
   @@unique([accountId, userId, itemId]) // One entry per movie per user
   @@map("movie_watch_history")
+}
+
+// Sync Guardian: per-user "was this account synced last time we checked"
+// baseline, so a transition from synced -> unsynced that SlickSync itself
+// didn't cause (auto-sync off, no admin action) can be told apart from a
+// user that has simply never been synced (a normal, pre-existing state, not
+// a drift event). See server/utils/syncGuardian.js for the full mechanism -
+// built directly off catching a real revert live on 2026-07-30.
+model UserSyncGuardState {
+  id            String    @id @default(cuid())
+  accountId     String    @default("default")
+  userId        String
+  wasSynced     Boolean   @default(false)
+  lastCheckedAt DateTime?
+
+  @@unique([accountId, userId])
+  @@map("user_sync_guard_state")
+}
+
+// User-curated lists of titles (roadmap #7). Account-scoped, shared across the
+// account's admins (not per-user) - matches how Discover/Groups behave here.
+// itemsJson is a stringified array of { id, type, name, poster?, year? };
+// SQLite has no Json type (see AppAccount note), Postgres mirrors it as text
+// so the router handles both identically.
+model CustomList {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  name        String
+  description String?
+  itemsJson   String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([accountId])
+  @@map("custom_lists")
 }
 
 // Metrics: Watch sessions - tracks individual viewing sessions with start/end times

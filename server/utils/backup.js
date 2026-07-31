@@ -108,54 +108,102 @@ function writeBackupFrequencyDays(days) {
   } catch {}
 }
 
+// Write one export payload to disk + its validation sidecar, notifying on
+// validation failure. Shared by both the single-account (private) and
+// per-account (public) paths below so the write/validate/notify logic lives
+// in exactly one place. `labelSuffix` distinguishes per-account files in
+// public mode (e.g. "-<accountId>"); empty for private mode's single file.
+async function writeBackupFile(prisma, data, labelSuffix = '') {
+  const QUIET = process.env.QUIET === 'true' || process.env.QUIET === '1'
+  const stamp = new Date().toISOString().replace(/[:]/g, '-').split('.')[0]
+  const filename = path.join(BACKUP_DIR, `config-backup${labelSuffix}-${stamp}.json`)
+  fs.writeFileSync(filename, JSON.stringify(data, null, 2), 'utf8')
+  if (!QUIET) console.log(`📦 Backup written: ${filename}`)
+  try {
+    const result = validateBackupData(data)
+    fs.writeFileSync(validationPathFor(filename), JSON.stringify(result, null, 2), 'utf8')
+    if (!QUIET) {
+      console.log(result.valid
+        ? `✅ Backup validated: ${result.counts.users} users, ${result.counts.groups} groups, ${result.counts.addons} addons`
+        : `⚠️ Backup FAILED validation (${result.issues.length} issue(s)): ${filename}`)
+    }
+    if (!result.valid && prisma) {
+      await notifyBackupValidationFailed(prisma, path.basename(filename), result)
+    }
+  } catch (validationErr) {
+    if (!QUIET) console.warn('Backup validation itself failed:', validationErr?.message || validationErr)
+  }
+}
+
 /**
  * Perform a single backup. `prisma` is optional (validation-failure
- * notifications are skipped without it, e.g. if ever called from a context
- * that doesn't have it) but the sidecar validation file is always written.
+ * notifications are skipped without it) but the sidecar validation file is
+ * always written.
+ *
+ * `opts` (optional, backward-compatible - all existing callers pass nothing):
+ *   - INSTANCE_TYPE: when 'public', backs up EVERY account, one file each,
+ *     instead of a single global backup. This is the multi-tenant fix:
+ *     scheduled backups previously only worked for the single private-mode
+ *     account because they self-called the export route with no auth context
+ *     and no way to name a tenant (confirmed in the old code - a bare
+ *     fetch('/config-export') that only succeeded because private mode
+ *     ignores account scoping entirely).
+ *   - buildConfigExportPayload: the direct payload builder extracted from
+ *     publicAuth.js's /config-export route, called per-account with a
+ *     synthetic { appAccountId } - no HTTP hop, no auth token needed.
+ * Note: in public mode, a per-account secret encrypted under that account's
+ * in-memory DEK can only be decrypted while that DEK is cached (i.e. after a
+ * recent login). An unattended backup for an account nobody's logged into
+ * recently still succeeds structurally - the export builder already nulls a
+ * field it can't decrypt rather than failing - it just won't contain those
+ * particular secrets. That's an honest, documented limitation of per-account
+ * encryption, not a bug in this path.
  */
-async function performBackupOnce(prisma) {
+async function performBackupOnce(prisma, opts = {}) {
   ensureBackupDir()
-  const ts = new Date()
-  const stamp = ts.toISOString().replace(/[:]/g, '-').split('.')[0]
-  const filename = path.join(BACKUP_DIR, `config-backup-${stamp}.json`)
+  const QUIET = process.env.QUIET === 'true' || process.env.QUIET === '1'
+  const { INSTANCE_TYPE, buildConfigExportPayload } = opts
 
   try {
-    // call export endpoints on this same server
-    const baseUrl = `http://localhost:${process.env.PORT || 4000}`
+    // Public multi-tenant mode: one backup file per account.
+    if (INSTANCE_TYPE === 'public' && typeof buildConfigExportPayload === 'function' && prisma) {
+      const accounts = await prisma.appAccount.findMany({ select: { id: true } })
+      let ok = 0
+      for (const account of accounts) {
+        try {
+          const data = await buildConfigExportPayload({ appAccountId: account.id })
+          if (data) { await writeBackupFile(prisma, data, `-${account.id}`); ok++ }
+        } catch (perAcctErr) {
+          if (!QUIET) console.warn(`Backup failed for account ${account.id}:`, perAcctErr?.message || perAcctErr)
+        }
+      }
+      if (!QUIET) console.log(`📦 Public-mode backup: ${ok}/${accounts.length} accounts backed up`)
+      return
+    }
+
+    // Private mode (or no builder provided): single global backup. Prefer the
+    // direct builder when available (no HTTP hop), fall back to the legacy
+    // self-fetch for full backward compatibility.
     let data = null
-    try {
-      const rsp = await fetch(`${baseUrl}/api/public-auth/config-export`)
-      if (rsp.ok) data = await rsp.json()
-    } catch {}
+    if (typeof buildConfigExportPayload === 'function') {
+      try { data = await buildConfigExportPayload({ appAccountId: process.env.DEFAULT_ACCOUNT_ID || 'default' }) } catch {}
+    }
     if (!data) {
+      const baseUrl = `http://localhost:${process.env.PORT || 4000}`
       try {
-        const rsp2 = await fetch(`${baseUrl}/api/public-auth/addon-export`)
-        if (rsp2.ok) data = await rsp2.json()
+        const rsp = await fetch(`${baseUrl}/api/public-auth/config-export`)
+        if (rsp.ok) data = await rsp.json()
       } catch {}
+      if (!data) {
+        try {
+          const rsp2 = await fetch(`${baseUrl}/api/public-auth/addon-export`)
+          if (rsp2.ok) data = await rsp2.json()
+        } catch {}
+      }
     }
     if (!data) throw new Error('No export data available')
-    fs.writeFileSync(filename, JSON.stringify(data, null, 2), 'utf8')
-    const QUIET = process.env.QUIET === 'true' || process.env.QUIET === '1'
-    if (!QUIET) console.log(`📦 Backup written: ${filename}`)
-
-    // Confirm the backup we just wrote would actually restore, rather than
-    // finding out mid-emergency - see backupValidation.js's own comment.
-    try {
-      const result = validateBackupData(data)
-      fs.writeFileSync(validationPathFor(filename), JSON.stringify(result, null, 2), 'utf8')
-      if (!QUIET) {
-        console.log(result.valid
-          ? `✅ Backup validated: ${result.counts.users} users, ${result.counts.groups} groups, ${result.counts.addons} addons`
-          : `⚠️ Backup FAILED validation (${result.issues.length} issue(s)): ${filename}`)
-      }
-      if (!result.valid && prisma) {
-        await notifyBackupValidationFailed(prisma, path.basename(filename), result)
-      }
-    } catch (validationErr) {
-      if (!QUIET) console.warn('Backup validation itself failed:', validationErr?.message || validationErr)
-    }
+    await writeBackupFile(prisma, data, '')
   } catch (e) {
-    const QUIET = process.env.QUIET === 'true' || process.env.QUIET === '1'
     if (!QUIET) console.warn('Backup failed:', e?.message || e)
   }
 }
@@ -174,7 +222,7 @@ function clearBackupSchedule() {
  * Schedule backups at specified interval
  * For day-based schedules, runs at midnight
  */
-function scheduleBackups(days, prisma) {
+function scheduleBackups(days, prisma, opts = {}) {
   clearBackupSchedule()
   if (!days || days <= 0) return
 
@@ -196,7 +244,7 @@ function scheduleBackups(days, prisma) {
 
     // Schedule the backup
     backupTimer = setTimeout(async () => {
-      await performBackupOnce(prisma)
+      await performBackupOnce(prisma, opts) // opts carries INSTANCE_TYPE + the per-account payload builder in public mode
       // Schedule the next run
       scheduleNext()
     }, delay)
