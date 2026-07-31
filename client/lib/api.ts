@@ -2197,6 +2197,7 @@ export interface SyncSettings {
   notifyDigestEnabled?: boolean;
   notifyDigestFrequency?: 'daily' | 'weekly';
   accountTimezone?: string;
+  accountTimezoneIsDefault?: boolean;
   vaultCurrency?: string;
   // Personal-features opt-outs (v1.31+). Default true when absent.
   enableWatchlist?: boolean;
@@ -2351,6 +2352,7 @@ export interface HealthStatus {
     offlineCount: number;
     offline: Array<{ id: string; name: string; error: string | null; lastChecked: string | null }>;
     ignored: Array<{ id: string; name: string }>;
+    uptime: Array<{ id: string; name: string; uptime7d: number; uptime30d: number }>;
   };
   vault: {
     total: number;
@@ -2362,6 +2364,7 @@ export interface HealthStatus {
   };
   proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean };
   mismatchCount: number;
+  version: { running: string; latestRelease: string | null; updateAvailable: boolean };
 }
 
 export interface UpcomingEpisode {

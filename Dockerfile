@@ -73,6 +73,13 @@ ARG INSTANCE=public
 ENV INSTANCE=$INSTANCE
 ENV NEXT_PUBLIC_DEBUG=false
 
+# Baked-in build identity (the pushed tag, e.g. "beta-v1.60.52" or "v1.60.0")
+# for the Health page's "what's actually running" display - see the release
+# workflows for where --build-arg APP_VERSION is passed. Defaults to "dev"
+# for a manual/local build with no tag context.
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+
 # Copy built application
 COPY --from=builder --chown=appuser:nodejs /app/package*.json ./
 COPY --from=builder --chown=appuser:nodejs /app/node_modules ./node_modules

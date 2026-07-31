@@ -10,7 +10,7 @@ import { api, HealthStatus } from '@/lib/api';
 import {
   HeartIcon, CheckCircleIcon, ExclamationTriangleIcon, ArrowPathIcon,
   ArrowsRightLeftIcon, PuzzlePieceIcon, ShieldCheckIcon, SignalIcon,
-  EyeSlashIcon, EyeIcon, ChevronDownIcon,
+  EyeSlashIcon, EyeIcon, ChevronDownIcon, TagIcon,
 } from '@heroicons/react/24/outline';
 
 // System Health board: one glanceable page for "is everything actually
@@ -260,6 +260,21 @@ export default function HealthPage() {
                     <p className="text-xs text-subtle">All addon manifests are reachable.</p>
                   )}
                   <IgnoredList items={data.addons.ignored} onUnignore={(id) => toggleAddonIgnored(id, false)} />
+                  {data.addons.uptime.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-default">
+                      <p className="text-[10px] uppercase tracking-wide text-subtle mb-1.5">Uptime</p>
+                      <div className="space-y-1">
+                        {data.addons.uptime.map((a) => (
+                          <div key={a.id} className="flex items-center justify-between gap-2 text-xs">
+                            <span className="text-default truncate">{a.name}</span>
+                            <span className={`flex-shrink-0 font-medium ${a.uptime30d < 99 ? 'text-warning' : 'text-subtle'}`}>
+                              {a.uptime7d.toFixed(1)}% (7d) · {a.uptime30d.toFixed(1)}% (30d)
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CheckCard>
 
                 <CheckCard
@@ -295,6 +310,23 @@ export default function HealthPage() {
                     <IssueRow title="Proxy stats unreachable" detail={data.proxy.error} meta={timeAgo(data.proxy.at)} />
                   ) : (
                     <p className="text-xs text-subtle">Now Playing polling is reaching AIOStreams normally.</p>
+                  )}
+                </CheckCard>
+
+                <CheckCard
+                  icon={<TagIcon className="w-5 h-5" />}
+                  title="Version"
+                  ok={!data.version.updateAvailable}
+                  summary={`Running ${data.version.running}`}
+                >
+                  {data.version.updateAvailable ? (
+                    <IssueRow title={`Update available: ${data.version.latestRelease}`} detail="A newer stable release has been published" />
+                  ) : (
+                    <p className="text-xs text-subtle">
+                      {data.version.latestRelease
+                        ? `Up to date with the latest stable release (${data.version.latestRelease}).`
+                        : "Running the latest build - couldn't reach GitHub to check for a newer stable release."}
+                    </p>
                   )}
                 </CheckCard>
               </div>
