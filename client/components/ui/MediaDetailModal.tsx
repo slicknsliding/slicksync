@@ -386,7 +386,7 @@ export function MediaDetailModal({
       ? `E${String(episode).padStart(2, '0')}`
       : `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
   })();
-  const heroImage = details?.episode?.thumbnail || details?.background || details?.poster || effectiveFallbackPoster;
+  const heroImage = details?.episode?.thumbnail || details?.backdrop || details?.background || details?.poster || effectiveFallbackPoster;
   const overview = details?.episode?.overview || details?.description;
   const trailerId = details?.trailers?.[0];
 
