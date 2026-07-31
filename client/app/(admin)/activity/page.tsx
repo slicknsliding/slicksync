@@ -589,12 +589,6 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
   // the poster art itself (just a count badge there); tapping reveals the
   // full list, so it's discoverable on mobile too, not a desktop-only tooltip.
   const [showWatchers, setShowWatchers] = useState(false);
-  // Single-watcher profile popover - replaces the old always-visible
-  // "Main Profile"/"Test" text badge on the poster art (users found it
-  // cluttered the card). A small dot on the avatar signals a profile is
-  // known; tapping the avatar shows it instead of navigating straight to
-  // the user page.
-  const [showProfile, setShowProfile] = useState(false);
 
   const cardElement = (
     <motion.div
@@ -603,6 +597,20 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
       whileHover={{ y: -4 }}
       className="group relative cursor-pointer"
     >
+      {/* Nuvio profile - a plain static label ABOVE the poster, not on the
+          avatar. Previously a dot on the avatar that opened a popover on
+          tap; that popover was nested inside the poster's own
+          overflow-hidden container, so it visually clipped/cut off no
+          matter how it was sized (confirmed real case). A label outside
+          the poster's bounds, in normal flow, can't be clipped by it. Only
+          shown for a single watcher - the multi-watcher popover below
+          already lists each person's own profile inline. */}
+      {activity.additionalWatchers?.length ? null : activity.profileLabel && (
+        <p className="mb-1 px-1.5 py-0.5 rounded-md bg-surface-hover text-[10px] font-medium text-muted truncate text-center">
+          {activity.profileLabel}
+        </p>
+      )}
+
       {/* Poster Card */}
       <div
         className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl tap-card"
@@ -670,26 +678,6 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
                     {count}
                   </span>
                 </button>
-              ) : activity.profileLabel ? (
-                // Single watcher with a known Nuvio profile - tapping the
-                // avatar shows which profile instead of navigating straight
-                // away; the small dot is the "there's more here" signal.
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const next = !showProfile;
-                    activePopoverClose?.();
-                    setShowProfile(next);
-                    activePopoverClose = next ? () => setShowProfile(false) : null;
-                  }}
-                  className="relative block rounded-full shadow-md shadow-black/40"
-                  title={activity.profileLabel}
-                  aria-label={`Profile: ${activity.profileLabel} — tap for details`}
-                >
-                  <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
-                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-secondary ring-2 ring-slate-900" />
-                </button>
               ) : (
                 <Link
                   href={`/users/${activity.userId}`}
@@ -730,32 +718,14 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
                 </>
               )}
 
-              {count === 1 && activity.profileLabel && showProfile && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowProfile(false); activePopoverClose = null; }} />
-                  {/* Just the profile name, auto-sized to fit it - the
-                      previous version reused the wide (w-44) multi-watcher
-                      popover box for a single short line, which overflowed
-                      past a grid poster card's edges and covered the art. */}
-                  <div
-                    className="absolute top-full right-0 mt-1 z-50 max-w-[160px] whitespace-nowrap truncate px-2.5 py-1.5 rounded-lg bg-slate-900/95 backdrop-blur-sm border border-default shadow-xl text-xs font-medium text-default"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {activity.profileLabel}
-                  </div>
-                </>
-              )}
             </div>
           );
         })()}
 
         {/* Duration badge - top-left. The Nuvio profile name used to sit
-            here too (stacked below duration), but that's now surfaced via
-            the avatar (top-right) instead - a signal dot + tap-to-reveal
-            popover, since the always-visible text badge cluttered the
-            poster art and (before it was moved up here at all) collided
-            with RPDB's own baked-in rating bar at the bottom of the
-            poster. */}
+            here too (stacked below duration) - it's now the small label
+            above the poster entirely (see the top of this card) instead,
+            since the always-visible text badge cluttered the poster art. */}
         {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
           <div className="absolute top-2 left-2">
             <div className={`px-2 py-1 rounded-md text-xs font-medium shadow-lg ${getActivityColor(activity.type)}`}>
