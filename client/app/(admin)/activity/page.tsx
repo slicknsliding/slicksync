@@ -561,6 +561,14 @@ const ActivityCard = memo(function ActivityCard({
   return <TVFocusable onEnterPress={() => onOpenDetails?.(activity)}>{rowElement}</TVFocusable>;
 });
 
+// Only one grid card's watcher/profile popover should ever be open at once,
+// but every ActivityCardGrid instance has its own independent showWatchers/
+// showProfile state with no shared awareness of the others - confirmed real
+// bug, opening a second card's popover left the first one open too. Same
+// module-level "whoever's open, close it first" registry ContextMenu.tsx
+// already uses for right-click menus.
+let activePopoverClose: (() => void) | null = null;
+
 // Grid view activity card component - Cinematic poster design
 const ActivityCardGrid = memo(function ActivityCardGrid({
   activity,
@@ -646,7 +654,13 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
               {count > 1 ? (
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setShowWatchers((v) => !v); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const next = !showWatchers;
+                    activePopoverClose?.();
+                    setShowWatchers(next);
+                    activePopoverClose = next ? () => setShowWatchers(false) : null;
+                  }}
                   className="relative block rounded-full shadow-md shadow-black/40"
                   title={`${count} watched`}
                   aria-label={`${count} people watched — show who`}
@@ -662,10 +676,16 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
                 // away; the small dot is the "there's more here" signal.
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setShowProfile((v) => !v); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const next = !showProfile;
+                    activePopoverClose?.();
+                    setShowProfile(next);
+                    activePopoverClose = next ? () => setShowProfile(false) : null;
+                  }}
                   className="relative block rounded-full shadow-md shadow-black/40"
-                  title={`Watched under ${activity.profileLabel}`}
-                  aria-label={`Watched under ${activity.profileLabel} — tap for details`}
+                  title={activity.profileLabel}
+                  aria-label={`Profile: ${activity.profileLabel} — tap for details`}
                 >
                   <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
                   <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-secondary ring-2 ring-slate-900" />
@@ -684,7 +704,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
                 <>
                   {/* Click-away backdrop so the popover closes on any outside
                       tap without also triggering the card underneath. */}
-                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowWatchers(false); }} />
+                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowWatchers(false); activePopoverClose = null; }} />
                   <div className={popoverClass} onClick={(e) => e.stopPropagation()}>
                     <p className="text-[10px] uppercase tracking-wide text-subtle px-1.5 pb-1">Watched by</p>
                     {watchers.map((w) => (
@@ -712,21 +732,16 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
 
               {count === 1 && activity.profileLabel && showProfile && (
                 <>
-                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowProfile(false); }} />
-                  <div className={popoverClass} onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-2 px-1.5 py-1">
-                      <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="xs" />
-                      <div className="min-w-0">
-                        <Link
-                          href={`/users/${activity.userId}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-xs font-medium text-default hover:text-primary transition-colors truncate block"
-                        >
-                          {activity.userName}
-                        </Link>
-                        <p className="text-[10px] text-subtle truncate">Watched under {activity.profileLabel}</p>
-                      </div>
-                    </div>
+                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowProfile(false); activePopoverClose = null; }} />
+                  {/* Just the profile name, auto-sized to fit it - the
+                      previous version reused the wide (w-44) multi-watcher
+                      popover box for a single short line, which overflowed
+                      past a grid poster card's edges and covered the art. */}
+                  <div
+                    className="absolute top-full right-0 mt-1 z-50 max-w-[160px] whitespace-nowrap truncate px-2.5 py-1.5 rounded-lg bg-slate-900/95 backdrop-blur-sm border border-default shadow-xl text-xs font-medium text-default"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {activity.profileLabel}
                   </div>
                 </>
               )}
