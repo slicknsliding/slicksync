@@ -185,10 +185,14 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
   try {
     // Only process series items with a video_id
     if (item.type !== 'series' || !item.state?.video_id) return
+    // No title at all from the provider's own library (see sessionTracker.js's
+    // matching guard) - nothing accurate to record, skip rather than write a
+    // literal "Unknown Show" history row.
+    if (!item.name || !String(item.name).trim()) return
 
     const videoId = item.state.video_id
     const showId = item._id || item.id
-    const showName = item.name || 'Unknown Show'
+    const showName = item.name
     const poster = await resolveSinglePoster(showId, 'series', item.poster || null)
     const profileLabel = item.state?.nuvioProfile || null
     const { season, episode } = extractSeasonEpisode(videoId)
@@ -341,8 +345,11 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
 
     const itemId = item._id || item.id
     if (!itemId) return false
+    // No title at all from the provider's own library - see the matching
+    // guard in sessionTracker.js/recordEpisodeWatch above.
+    if (!item.name || !String(item.name).trim()) return false
 
-    const itemName = item.name || 'Unknown Movie'
+    const itemName = item.name
     const poster = await resolveSinglePoster(itemId, 'movie', item.poster || null)
     const profileLabel = item.state?.nuvioProfile || null
 
@@ -618,6 +625,13 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
   try {
     const itemId = item._id || item.id
     if (!itemId || !item.type) return { snapshotCreated: false, activityCreated: false }
+    // No title at all from the provider's own library (confirmed real case:
+    // a raw/direct stream with no proper Cinemeta-backed catalog entry lands
+    // in Stremio/Nuvio's library nameless) - skip snapshot/WatchActivity/
+    // history entirely rather than count a placeholder toward Watch Time
+    // Today with nothing real to show for it. Same guard as
+    // sessionTracker.js's own library loop.
+    if (!item.name || !String(item.name).trim()) return { snapshotCreated: false, activityCreated: false }
 
     const accountIdValue = accountId || 'default'
     const timeZone = await resolveAccountTimezone(prisma, accountIdValue)
