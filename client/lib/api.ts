@@ -1717,6 +1717,13 @@ class ApiClient {
       body: JSON.stringify({ url, name }),
     });
   }
+  // Propose titles for a catalog by theme (TMDb keyword search) - read-only,
+  // never adds anything itself. query defaults server-side to the catalog's
+  // own name if omitted.
+  async suggestCatalogTitles(id: string, query?: string) {
+    const qs = query ? `?query=${encodeURIComponent(query)}` : '';
+    return this.fetch<{ suggestions: CatalogSuggestion[]; query: string }>(`/lists/${encodeURIComponent(id)}/suggest${qs}`);
+  }
 
   // System Health board - one aggregated read of Sync/Addons/Vault/Proxy
   // status, all sourced from state existing background monitors already
@@ -2303,6 +2310,14 @@ export interface WatchlistItem {
 }
 
 export interface CustomListItem {
+  id: string;
+  type: 'movie' | 'series';
+  name: string;
+  poster?: string | null;
+  year?: number | string | null;
+}
+
+export interface CatalogSuggestion {
   id: string;
   type: 'movie' | 'series';
   name: string;

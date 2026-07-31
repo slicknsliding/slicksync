@@ -137,4 +137,65 @@ async function importFromMdblist(apiKey, url) {
   return { name: list.name || 'Imported list', items: resolved.filter(Boolean), truncated, totalAvailable: rawItems.length }
 }
 
-module.exports = { detectProvider, importFromTmdb, importFromMdblist, resolveTmdbKey, resolveMdblistKey, MAX_IMPORT_ITEMS }
+// Suggest titles for a catalog by name (e.g. "Halloween", "Christmas
+// Movies") - explicitly a preview, never auto-added. Seeds from TMDb's own
+// keyword taxonomy when the name matches a real keyword ("halloween",
+// "christmas", ...), which is far more precise than a plain text search
+// (keyword-tagged results are actually about that theme, not just titles
+// that happen to contain the word); falls back to a plain title search when
+// nothing matches, so an unusual catalog name still returns *something*
+// rather than an empty result.
+const MAX_SUGGESTIONS = 20
+
+async function suggestTitlesForCatalog(apiKey, query, excludeIds = []) {
+  if (!apiKey) throw new Error('TMDb API key not configured (Settings -> SlickTrax)')
+  const trimmed = String(query || '').trim()
+  if (!trimmed) throw new Error('Nothing to search for - rename the catalog to something like "Halloween" first')
+  const excluded = new Set(excludeIds)
+
+  const kwRsp = await fetch(`https://api.themoviedb.org/3/search/keyword?query=${encodeURIComponent(trimmed)}`)
+  const kwData = kwRsp.ok ? await kwRsp.json() : { results: [] }
+  const keywordId = kwData.results?.[0]?.id || null
+
+  let candidates = []
+  if (keywordId) {
+    const [movieRsp, tvRsp] = await Promise.all([
+      fetch(`https://api.themoviedb.org/3/discover/movie?with_keywords=${keywordId}&sort_by=popularity.desc&api_key=${encodeURIComponent(apiKey)}`),
+      fetch(`https://api.themoviedb.org/3/discover/tv?with_keywords=${keywordId}&sort_by=popularity.desc&api_key=${encodeURIComponent(apiKey)}`),
+    ])
+    const movieData = movieRsp.ok ? await movieRsp.json() : { results: [] }
+    const tvData = tvRsp.ok ? await tvRsp.json() : { results: [] }
+    candidates = [
+      ...(movieData.results || []).map((r) => ({ tmdbId: r.id, type: 'movie', name: r.title, poster: r.poster_path, year: r.release_date?.slice(0, 4) })),
+      ...(tvData.results || []).map((r) => ({ tmdbId: r.id, type: 'series', name: r.name, poster: r.poster_path, year: r.first_air_date?.slice(0, 4) })),
+    ]
+  } else {
+    // No matching TMDb keyword - fall back to a plain title search (movies
+    // only; TV title search is noisier for a theme-driven catalog name).
+    const searchRsp = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(trimmed)}&api_key=${encodeURIComponent(apiKey)}`)
+    const searchData = searchRsp.ok ? await searchRsp.json() : { results: [] }
+    candidates = (searchData.results || []).map((r) => ({ tmdbId: r.id, type: 'movie', name: r.title, poster: r.poster_path, year: r.release_date?.slice(0, 4) }))
+  }
+
+  const capped = candidates.slice(0, MAX_SUGGESTIONS * 2) // headroom for excluded/unresolvable dropouts
+  const resolved = await mapLimit(capped, 8, async (c) => {
+    try {
+      const ext = await fetch(`https://api.themoviedb.org/3/${c.type === 'series' ? 'tv' : 'movie'}/${c.tmdbId}/external_ids?api_key=${encodeURIComponent(apiKey)}`)
+      if (!ext.ok) return null
+      const extData = await ext.json()
+      const imdbId = extData.imdb_id
+      if (!imdbId || excluded.has(imdbId)) return null
+      return {
+        id: imdbId,
+        type: c.type,
+        name: c.name || 'Untitled',
+        poster: c.poster ? `${TMDB_IMG}${c.poster}` : null,
+        year: c.year || null,
+      }
+    } catch { return null }
+  })
+
+  return resolved.filter(Boolean).slice(0, MAX_SUGGESTIONS)
+}
+
+module.exports = { detectProvider, importFromTmdb, importFromMdblist, resolveTmdbKey, resolveMdblistKey, suggestTitlesForCatalog, MAX_IMPORT_ITEMS }
