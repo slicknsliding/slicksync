@@ -10,7 +10,7 @@ import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem, RecommendationRow,
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
-import { posterUrl } from '@/lib/posterUrl';
+import { posterUrl, isRpdbPoster } from '@/lib/posterUrl';
 import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, SparklesIcon, UserIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { toast } from '@/components/ui/Toast';
@@ -202,13 +202,15 @@ const PosterCard = memo(function PosterCard({
           </div>
         )}
 
-        <div className="absolute bottom-1.5 left-1.5 right-1.5">
-          <RatingBadges
-            imdbRating={item.imdbRating}
-            rottenTomatoes={ratings?.rottenTomatoes}
-            metacritic={ratings?.metacritic}
-          />
-        </div>
+        {!isRpdbPoster(item, rpdbEnabled) && (
+          <div className="absolute bottom-1.5 left-1.5 right-1.5">
+            <RatingBadges
+              imdbRating={item.imdbRating}
+              rottenTomatoes={ratings?.rottenTomatoes}
+              metacritic={ratings?.metacritic}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mt-2 space-y-0.5 text-center">
