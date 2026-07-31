@@ -78,6 +78,12 @@ export function MediaDetailModal({
   // - the user asked for it). YouTube's own player chrome still lets either
   // one be muted/unmuted/fullscreened afterward regardless of how it started.
   const [trailerMuted, setTrailerMuted] = useState(false);
+  // Real YouTube IFrame Player API controller, attached to the trailer
+  // iframe once it's playing - needed to call unMute() on fullscreen (see
+  // the effect near trailerId below for why a raw <iframe src> alone can't
+  // do this).
+  const trailerIframeRef = useRef<HTMLIFrameElement>(null);
+  const trailerPlayerRef = useRef<any>(null);
 
   // "More Like This" drill-down - clicking a related poster swaps the
   // modal's effective item in place instead of closing and asking whatever
@@ -403,6 +409,56 @@ export function MediaDetailModal({
   const overview = details?.episode?.overview || details?.description;
   const trailerId = details?.trailers?.[0];
 
+  // Attaches the real YouTube IFrame Player API to the trailer iframe once
+  // it's playing, purely so fullscreen can unmute it - going fullscreen via
+  // the player's own button does NOT unmute a muted embed on its own (a raw
+  // <iframe src> has no way to detect fullscreen or call unMute() at all).
+  // Requires enablejsapi=1 in the iframe's src (see the src below) for the
+  // API to actually take control of an already-existing iframe.
+  useEffect(() => {
+    if (!isTrailerPlaying || !trailerId) return;
+    let cancelled = false;
+
+    function attach() {
+      if (cancelled || !trailerIframeRef.current) return;
+      try {
+        trailerPlayerRef.current = new (window as any).YT.Player(trailerIframeRef.current, {});
+      } catch {}
+    }
+
+    if ((window as any).YT && (window as any).YT.Player) {
+      attach();
+    } else {
+      if (!document.getElementById('youtube-iframe-api')) {
+        const tag = document.createElement('script');
+        tag.id = 'youtube-iframe-api';
+        tag.src = 'https://www.youtube.com/iframe_api';
+        document.body.appendChild(tag);
+      }
+      const previous = (window as any).onYouTubeIframeAPIReady;
+      (window as any).onYouTubeIframeAPIReady = () => {
+        previous?.();
+        attach();
+      };
+    }
+
+    const handleFullscreenChange = () => {
+      if (document.fullscreenElement && document.fullscreenElement === trailerIframeRef.current) {
+        try {
+          trailerPlayerRef.current?.unMute?.();
+          setTrailerMuted(false);
+        } catch {}
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      trailerPlayerRef.current = null;
+    };
+  }, [isTrailerPlaying, trailerId]);
+
   // TV mode: one focus group for the whole modal body, so D-pad navigation
   // moves between the trailer button and the action row by actual on-
   // screen position instead of needing separate scopes stitched together.
@@ -434,7 +490,8 @@ export function MediaDetailModal({
           // Deriving height from width keeps the video itself full-size.
           <div className="relative w-full aspect-video max-h-[60vh] overflow-hidden rounded-t-2xl bg-black">
             <iframe
-              src={`https://www.youtube.com/embed/${trailerId}?autoplay=1${trailerMuted ? '&mute=1' : ''}`}
+              ref={trailerIframeRef}
+              src={`https://www.youtube.com/embed/${trailerId}?autoplay=1${trailerMuted ? '&mute=1' : ''}&enablejsapi=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}`}
               title="Trailer"
               className="w-full h-full"
               allow="autoplay; encrypted-media; picture-in-picture"
