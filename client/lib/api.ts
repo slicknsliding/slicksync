@@ -1719,6 +1719,23 @@ class ApiClient {
     return this.fetch<HealthStatus>('/health');
   }
 
+  // Hides a known, accepted failure from the Health page's Attention list
+  // and its notifications - for something like an indexer that blocks this
+  // server's IP, where the admin doesn't want repeated pinging about it.
+  async setVaultHealthIgnored(id: string, healthIgnored: boolean) {
+    return this.fetch<{ success: boolean }>(`/vault/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ healthIgnored }),
+    });
+  }
+
+  async setAddonHealthIgnored(id: string, healthIgnored: boolean) {
+    return this.fetch<{ success: boolean; data: { id: string; healthIgnored: boolean } }>(`/addons/${id}/health-ignore`, {
+      method: 'PATCH',
+      body: JSON.stringify({ healthIgnored }),
+    });
+  }
+
   async getRecommendations(opts?: { mode?: 'personal' | 'shared'; userId?: string; userId2?: string; type?: 'movie' | 'series' }) {
     const params = new URLSearchParams();
     if (opts?.mode) params.set('mode', opts.mode);
@@ -2175,6 +2192,7 @@ export interface SyncSettings {
   notifyOnVault?: boolean;
   notifyOnAddonHealth?: boolean;
   notifyOnBackup?: boolean;
+  notifyOnProxyHealth?: boolean;
   notifyOnMosaic?: boolean;
   notifyDigestEnabled?: boolean;
   notifyDigestFrequency?: 'daily' | 'weekly';
@@ -2331,14 +2349,16 @@ export interface HealthStatus {
     total: number;
     checked: number;
     offlineCount: number;
-    offline: Array<{ name: string; error: string | null; lastChecked: string | null }>;
+    offline: Array<{ id: string; name: string; error: string | null; lastChecked: string | null }>;
+    ignored: Array<{ id: string; name: string }>;
   };
   vault: {
     total: number;
     failingCount: number;
-    failing: Array<{ name: string; provider: string | null; message: string | null; lastChecked: string | null }>;
+    failing: Array<{ id: string; name: string; provider: string | null; message: string | null; lastChecked: string | null }>;
     expiringCount: number;
-    expiring: Array<{ name: string; provider: string | null; expiresAt: string }>;
+    expiring: Array<{ id: string; name: string; provider: string | null; expiresAt: string }>;
+    ignored: Array<{ id: string; name: string; provider: string | null }>;
   };
   proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean };
   mismatchCount: number;

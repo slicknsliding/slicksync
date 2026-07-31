@@ -182,6 +182,7 @@ export default function SettingsPage() {
     notifyOnVault: false,
     notifyOnAddonHealth: false,
     notifyOnBackup: false,
+    notifyOnProxyHealth: false,
     notifyOnMosaic: false,
     notifyDigestEnabled: false,
     notifyDigestFrequency: 'daily' as 'daily' | 'weekly',
@@ -302,6 +303,7 @@ export default function SettingsPage() {
           notifyOnVault: settings.notifyOnVault || false,
           notifyOnAddonHealth: settings.notifyOnAddonHealth || false,
           notifyOnBackup: settings.notifyOnBackup || false,
+          notifyOnProxyHealth: settings.notifyOnProxyHealth || false,
           notifyOnMosaic: settings.notifyOnMosaic || false,
           notifyDigestEnabled: settings.notifyDigestEnabled || false,
           notifyDigestFrequency: settings.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily',
@@ -428,6 +430,7 @@ export default function SettingsPage() {
       notifyOnVault: false,
       notifyOnAddonHealth: false,
       notifyOnBackup: false,
+      notifyOnProxyHealth: false,
       notifyOnMosaic: false,
       notifyDigestEnabled: false,
       notifyDigestFrequency: 'daily',
@@ -444,6 +447,7 @@ export default function SettingsPage() {
         notifyOnVault: false,
         notifyOnAddonHealth: false,
         notifyOnBackup: false,
+        notifyOnProxyHealth: false,
         notifyOnMosaic: false,
         notifyDigestEnabled: false,
         notifyDigestFrequency: 'daily',
@@ -748,6 +752,17 @@ export default function SettingsPage() {
                     enabled={syncSettings.notifyOnBackup || false}
                     onChange={(v) => handleSaveSetting('notifyOnBackup', v)}
                     label="Toggle backup notifications"
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  label="Proxy connectivity notifications"
+                  description="Notify if the AIOStreams proxy (Now Playing polling) goes unreachable or recovers"
+                >
+                  <ToggleSwitch
+                    enabled={syncSettings.notifyOnProxyHealth || false}
+                    onChange={(v) => handleSaveSetting('notifyOnProxyHealth', v)}
+                    label="Toggle proxy connectivity notifications"
                   />
                 </SettingRow>
 

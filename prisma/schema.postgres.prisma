@@ -89,6 +89,7 @@ model Addon {
   isOnline         Boolean  @default(true)
   lastHealthCheck  DateTime?
   healthCheckError String?
+  healthIgnored    Boolean  @default(false) // hides this addon from the Health page's Attention list/notifications entirely - for a known, accepted offline addon the admin doesn't want repeated pinging about
 
   // Backup fields
   backupAddonId    String?  // Reference to backup addon (another Addon record)
@@ -221,6 +222,7 @@ model VaultEntry {
   lastCheckMessage String?
   lastNotifiedAt   DateTime?
   snoozedUntil     DateTime?
+  healthIgnored    Boolean   @default(false) // hides this entry from the Health page's Attention list/notifications entirely (unlike snoozedUntil, not time-bound)
   isActive         Boolean   @default(true)
   position         Int       @default(0)
   createdAt        DateTime  @default(now())
