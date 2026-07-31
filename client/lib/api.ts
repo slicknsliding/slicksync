@@ -2387,6 +2387,14 @@ export interface HealthStatus {
   proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean };
   mismatchCount: number;
   version: { running: string; latestRelease: string | null; updateAvailable: boolean };
+  timeline: Array<{
+    id: string;
+    source: 'addon' | 'vault' | 'proxy';
+    status: 'up' | 'down';
+    title: string;
+    detail: string | null;
+    at: string;
+  }>;
 }
 
 export interface UpcomingEpisode {
