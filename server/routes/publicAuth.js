@@ -1067,7 +1067,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           }
         }),
         prisma.addon.findMany({ where: whereScope, include: { groupAddons: true } }),
-        INSTANCE_TYPE === 'public' ? prisma.appAccount.findUnique({ where: { id: req.appAccountId }, select: { sync: true } }) : null
+        // Was public-mode only - private-mode config exports/backups never
+        // captured Settings at all as a result (timezone, notification
+        // toggles, safe/unsafe mode, etc. all silently reverted to defaults
+        // on any restore). Now fetched in both modes; the actual secrets
+        // inside (webhookUrl, rpdbApiKey, tmdbApiKey, mdblistApiKey) are
+        // stripped out below before this ever reaches the payload - they
+        // route through the passphrase-encrypted Disaster Recovery Kit
+        // instead, same treatment Vault already gets.
+        prisma.appAccount.findUnique({ where: { id: req.appAccountId }, select: { sync: true } })
       ])
       // Build addon id -> name map for user excludedAddons name resolution
       const addonIdToName = new Map(addons.map(a => [a.id, a.name]))
@@ -1256,6 +1264,17 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         accountSync = { useCustomFields: true }
       }
 
+      // Real live secrets, not preferences - these don't belong in a plain
+      // export someone might casually share while troubleshooting. They're
+      // still fully backed up, just through the Disaster Recovery Kit
+      // (disasterRecoveryKit.js), passphrase-encrypted like Vault secrets.
+      if (accountSync && typeof accountSync === 'object') {
+        delete accountSync.webhookUrl
+        delete accountSync.rpdbApiKey
+        delete accountSync.tmdbApiKey
+        delete accountSync.mdblistApiKey
+      }
+
       const payload = { users: decryptedUsers, groups: cleanedGroups, addons: exportedAddons, sync: accountSync }
       return payload
   }
@@ -1422,13 +1441,28 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
             }
           }
 
-          let valueToStore = parsedSync
+          // Merge onto whatever's already there rather than replacing it
+          // outright - the config export deliberately strips real secrets
+          // (webhookUrl, rpdbApiKey, tmdbApiKey, mdblistApiKey; see
+          // buildConfigExportPayload) so they never end up in a plain
+          // backup file. A naive overwrite here would silently wipe those
+          // secrets off the account on every restore, since the imported
+          // payload never has them to begin with. The Disaster Recovery Kit
+          // restores them separately, after this import, from its own
+          // passphrase-encrypted bundle - see disasterRecoveryKit.js.
+          let existingSync = acct?.sync
+          if (typeof existingSync === 'string') {
+            try { existingSync = JSON.parse(existingSync) } catch { existingSync = null }
+          }
+          const mergedSync = { ...(existingSync && typeof existingSync === 'object' ? existingSync : {}), ...parsedSync }
+
+          let valueToStore = mergedSync
           if (typeof acct?.sync === 'string') {
             // DB expects string (SQLite)
-            valueToStore = JSON.stringify(parsedSync)
+            valueToStore = JSON.stringify(mergedSync)
           } else {
             // DB expects JSON (Postgres)
-            valueToStore = parsedSync
+            valueToStore = mergedSync
           }
           await prisma.appAccount.update({ where: { id: accountId }, data: { sync: valueToStore } })
         }
