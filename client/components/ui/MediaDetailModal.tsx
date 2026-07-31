@@ -73,6 +73,11 @@ export function MediaDetailModal({
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [isTrailerPlaying, setIsTrailerPlaying] = useState(false);
+  // Distinguishes an auto-triggered play (starts muted, per the Settings
+  // toggle) from an explicit "Play Trailer" click (always starts with sound
+  // - the user asked for it). YouTube's own player chrome still lets either
+  // one be muted/unmuted/fullscreened afterward regardless of how it started.
+  const [trailerMuted, setTrailerMuted] = useState(false);
 
   // "More Like This" drill-down - clicking a related poster swaps the
   // modal's effective item in place instead of closing and asking whatever
@@ -146,7 +151,7 @@ export function MediaDetailModal({
   const effectiveFallbackRottenTomatoes = overrideItem ? null : fallbackRottenTomatoes;
   const effectiveFallbackMetacritic = overrideItem ? null : fallbackMetacritic;
 
-  const { enableWatchlist, rpdbEnabled } = usePersonalFeatures();
+  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailerMuted } = usePersonalFeatures();
   const isTV = useIsTV();
 
   // TV mode: the whole modal body (trailer button, Watchlist / Open in
@@ -314,6 +319,7 @@ export function MediaDetailModal({
     setHasFetched(false);
     setIsLoading(true);
     setIsTrailerPlaying(false);
+    setTrailerMuted(false);
 
     let cancelled = false;
     api.getMediaDetails(effectiveId, effectiveType, effectiveVideoId).then((result) => {
@@ -321,6 +327,13 @@ export function MediaDetailModal({
       setDetails(result);
       setIsLoading(false);
       setHasFetched(true);
+      // Auto-start muted the moment a trailer is actually available - no
+      // separate "wait for it to load, then play" step needed since this
+      // runs right where the trailer id first becomes known.
+      if (enableAutoplayTrailerMuted && result?.trailers?.[0]) {
+        setTrailerMuted(true);
+        setIsTrailerPlaying(true);
+      }
     });
 
     return () => {
@@ -421,7 +434,7 @@ export function MediaDetailModal({
           // Deriving height from width keeps the video itself full-size.
           <div className="relative w-full aspect-video max-h-[60vh] overflow-hidden rounded-t-2xl bg-black">
             <iframe
-              src={`https://www.youtube.com/embed/${trailerId}?autoplay=1`}
+              src={`https://www.youtube.com/embed/${trailerId}?autoplay=1${trailerMuted ? '&mute=1' : ''}`}
               title="Trailer"
               className="w-full h-full"
               allow="autoplay; encrypted-media; picture-in-picture"
@@ -465,7 +478,7 @@ export function MediaDetailModal({
               style={{ background: 'linear-gradient(180deg, transparent 40%, var(--color-surface) 100%)' }}
             />
             {trailerId && (isTV ? (
-              <TVFocusable onEnterPress={() => setIsTrailerPlaying(true)} className="absolute inset-0 flex items-center justify-center">
+              <TVFocusable onEnterPress={() => { setTrailerMuted(false); setIsTrailerPlaying(true); }} className="absolute inset-0 flex items-center justify-center">
                 <span
                   className="flex items-center gap-2 px-5 py-2.5 rounded-full font-medium text-sm"
                   style={{ background: 'color-mix(in srgb, var(--color-surface) 60%, transparent)', color: 'white', backdropFilter: 'blur(4px)' }}
@@ -477,7 +490,7 @@ export function MediaDetailModal({
             ) : (
               <button
                 type="button"
-                onClick={() => setIsTrailerPlaying(true)}
+                onClick={() => { setTrailerMuted(false); setIsTrailerPlaying(true); }}
                 className="absolute inset-0 flex items-center justify-center group"
                 aria-label="Play trailer"
               >

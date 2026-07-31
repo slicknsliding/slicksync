@@ -943,13 +943,13 @@ export default function SettingsPage() {
               </SettingRow>
 
               <SettingRow
-                label="Hover-preview trailers"
-                description="Play a muted trailer snippet when you hover a poster, anywhere one opens the detail popup (Discover, Catalogs, Activity, Dashboard, and more). Off: hovering just shows the poster, same as before."
+                label="Autoplay trailer (muted)"
+                description="When you open a title's detail popup, its trailer starts playing automatically with the sound off - unmute or go fullscreen with the player's own controls. Off: the trailer waits for a Play Trailer click, same as before."
               >
                 <ToggleSwitch
-                  enabled={syncSettings.enableHoverPreviewTrailers !== false}
-                  onChange={(v) => { handleSaveSetting('enableHoverPreviewTrailers' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
-                  label="Toggle hover-preview trailers"
+                  enabled={syncSettings.enableAutoplayTrailerMuted !== false}
+                  onChange={(v) => { handleSaveSetting('enableAutoplayTrailerMuted' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle autoplay trailer"
                 />
               </SettingRow>
 
