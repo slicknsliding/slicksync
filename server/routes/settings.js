@@ -384,6 +384,10 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyDigestEnabled: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyDigestEnabled === true : false,
           notifyDigestFrequency: (syncCfg && typeof syncCfg === 'object' && syncCfg.notifyDigestFrequency === 'weekly') ? 'weekly' : 'daily',
           accountTimezone: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE,
+          // True when nobody has ever explicitly saved a timezone - lets the
+          // client silently auto-fill its browser-detected zone once instead
+          // of leaving it on the bare env-var/hardcoded fallback forever.
+          accountTimezoneIsDefault: !(syncCfg && typeof syncCfg === 'object' && typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()),
           vaultCurrency: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD',
           // SlickTrax features (v1.29-v1.30, named "Personal Features" pre-v1.37).
           // All default true so existing installs get the same behavior; a
@@ -425,6 +429,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyDigestEnabled: syncCfg.notifyDigestEnabled === true,
           notifyDigestFrequency: syncCfg.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily',
           accountTimezone: (typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE,
+          accountTimezoneIsDefault: !(typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()),
           vaultCurrency: (typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD',
           enableWatchlist: typeof syncCfg.enableWatchlist === 'boolean' ? syncCfg.enableWatchlist : true,
           enableWatchedIndicators: typeof syncCfg.enableWatchedIndicators === 'boolean' ? syncCfg.enableWatchedIndicators : true,
@@ -435,7 +440,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnMosaic: false, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnMosaic: false, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }

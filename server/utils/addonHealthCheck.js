@@ -353,6 +353,52 @@ async function triggerManualHealthCheck(prisma, accountId = null) {
   await performHealthChecks(prisma, accountId);
 }
 
+// Uptime % over the last `days`, reconstructed from AddonHealthAlert's
+// offline/online TRANSITION events (this table logs edges, not a per-poll
+// status log - see its own schema comment) rather than tracked separately.
+// Needs the state just before the window too, or a window that opens mid-
+// outage would start the calculation assuming "online" and undercount the
+// downtime already in progress.
+async function computeAddonUptime(prisma, accountId, addonId, currentlyOnline, days) {
+  const windowStart = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+  const windowEnd = new Date()
+
+  const [priorAlert, events] = await Promise.all([
+    prisma.addonHealthAlert.findFirst({
+      where: { accountId, addonId, createdAt: { lt: windowStart } },
+      orderBy: { createdAt: 'desc' },
+      select: { event: true },
+    }),
+    prisma.addonHealthAlert.findMany({
+      where: { accountId, addonId, createdAt: { gte: windowStart, lte: windowEnd } },
+      orderBy: { createdAt: 'asc' },
+      select: { event: true, createdAt: true },
+    }),
+  ])
+
+  // No alerts at all in this addon's history (before OR within the window) -
+  // it's been in its current state the whole time, nothing to reconstruct.
+  if (!priorAlert && events.length === 0) return 100
+
+  let online = priorAlert ? priorAlert.event === 'online' : true
+  let cursor = windowStart
+  let downMs = 0
+  for (const ev of events) {
+    if (!online) downMs += ev.createdAt.getTime() - cursor.getTime()
+    online = ev.event === 'online'
+    cursor = ev.createdAt
+  }
+  // Tail segment from the last event (or windowStart, if none fell inside
+  // the window) up to now - trust the addon's own current isOnline for this
+  // segment specifically, since it's a live-checked value more current than
+  // whatever the last alert said (an alert only fires on a state CHANGE, so
+  // it can't tell us anything happened between then and this instant).
+  if (!currentlyOnline) downMs += windowEnd.getTime() - cursor.getTime()
+
+  const totalMs = windowEnd.getTime() - windowStart.getTime()
+  return Math.max(0, Math.min(100, 100 - (downMs / totalMs) * 100))
+}
+
 module.exports = {
   performHealthChecks,
   startHealthCheckScheduler,
@@ -361,4 +407,5 @@ module.exports = {
   getHealthCheckIntervalMinutes,
   checkUrlHealth,
   getDecryptedManifestUrl,
+  computeAddonUptime,
 };
