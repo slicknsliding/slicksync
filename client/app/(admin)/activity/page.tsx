@@ -581,6 +581,12 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
   // the poster art itself (just a count badge there); tapping reveals the
   // full list, so it's discoverable on mobile too, not a desktop-only tooltip.
   const [showWatchers, setShowWatchers] = useState(false);
+  // Single-watcher profile popover - replaces the old always-visible
+  // "Main Profile"/"Test" text badge on the poster art (users found it
+  // cluttered the card). A small dot on the avatar signals a profile is
+  // known; tapping the avatar shows it instead of navigating straight to
+  // the user page.
+  const [showProfile, setShowProfile] = useState(false);
 
   const cardElement = (
     <motion.div
@@ -628,6 +634,13 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             ...(activity.additionalWatchers ?? []),
           ];
           const count = watchers.length;
+          // Mobile-safe popover positioning, shared by both popovers below:
+          // fixed + viewport-centered under `sm` (immune to clipping no
+          // matter which grid card/scroll position triggered it - the old
+          // absolute-anchored-to-a-32px-avatar dropdown could run off the
+          // top/side of a narrow phone screen), reverting to the original
+          // avatar-anchored dropdown at `sm` and up where it already worked.
+          const popoverClass = "fixed inset-x-6 top-1/2 -translate-y-1/2 sm:absolute sm:inset-x-auto sm:top-auto sm:translate-y-0 sm:right-0 sm:mt-1 z-50 w-auto max-w-xs sm:w-44 mx-auto sm:mx-0 rounded-lg bg-slate-900/95 backdrop-blur-sm border border-default shadow-xl p-1.5";
           return (
             <div className="absolute top-2 right-2">
               {count > 1 ? (
@@ -642,6 +655,20 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
                   <span className="absolute -bottom-1 -right-1 min-w-4 h-4 px-1 rounded-full flex items-center justify-center text-[10px] font-bold bg-primary text-white ring-2 ring-slate-900">
                     {count}
                   </span>
+                </button>
+              ) : activity.profileLabel ? (
+                // Single watcher with a known Nuvio profile - tapping the
+                // avatar shows which profile instead of navigating straight
+                // away; the small dot is the "there's more here" signal.
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setShowProfile((v) => !v); }}
+                  className="relative block rounded-full shadow-md shadow-black/40"
+                  title={`Watched under ${activity.profileLabel}`}
+                  aria-label={`Watched under ${activity.profileLabel} — tap for details`}
+                >
+                  <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="sm" />
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-secondary ring-2 ring-slate-900" />
                 </button>
               ) : (
                 <Link
@@ -658,10 +685,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
                   {/* Click-away backdrop so the popover closes on any outside
                       tap without also triggering the card underneath. */}
                   <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowWatchers(false); }} />
-                  <div
-                    className="absolute right-0 mt-1 z-50 w-44 rounded-lg bg-slate-900/95 backdrop-blur-sm border border-default shadow-xl p-1.5"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <div className={popoverClass} onClick={(e) => e.stopPropagation()}>
                     <p className="text-[10px] uppercase tracking-wide text-subtle px-1.5 pb-1">Watched by</p>
                     {watchers.map((w) => (
                       <Link
@@ -671,9 +695,38 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
                         className="flex items-center gap-2 px-1.5 py-1 rounded-md hover:bg-surface-hover transition-colors"
                       >
                         <UserAvatar userId={w.userId} name={w.userName} email={w.userEmail} src={w.userAvatarUrl ?? undefined} size="xs" />
-                        <span className="text-xs text-default truncate">{w.userName}</span>
+                        <span className="text-xs text-default truncate">
+                          {w.userName}
+                          {/* additionalWatchers carries no per-watcher profile
+                              of its own - only the representative activity's
+                              userId has a known profileLabel. */}
+                          {w.userId === activity.userId && activity.profileLabel && (
+                            <span className="text-subtle"> · {activity.profileLabel}</span>
+                          )}
+                        </span>
                       </Link>
                     ))}
+                  </div>
+                </>
+              )}
+
+              {count === 1 && activity.profileLabel && showProfile && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setShowProfile(false); }} />
+                  <div className={popoverClass} onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-2 px-1.5 py-1">
+                      <UserAvatar userId={activity.userId} name={activity.userName} email={activity.userEmail} src={activity.userAvatarUrl ?? undefined} size="xs" />
+                      <div className="min-w-0">
+                        <Link
+                          href={`/users/${activity.userId}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs font-medium text-default hover:text-primary transition-colors truncate block"
+                        >
+                          {activity.userName}
+                        </Link>
+                        <p className="text-[10px] text-subtle truncate">Watched under {activity.profileLabel}</p>
+                      </div>
+                    </div>
                   </div>
                 </>
               )}
@@ -681,29 +734,20 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
           );
         })()}
 
-        {/* Duration + Nuvio profile badges - stacked in the TOP-left corner,
-            not bottom-left. RPDB (when configured, see posterUrl.ts) burns
-            its own rating badge directly into the poster's pixels in the
-            bottom-left corner - an HTML badge placed there too visually
-            collided with it (confirmed real case: the profile tag partially
-            covered RPDB's rating on "The Bear"'s poster). RPDB never puts
-            anything in the top corners, so stacking here instead is safe
-            regardless of whether RPDB is on. */}
-        <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
-          {/* Completion (finished vs dropped) is NOT shown on the poster art
-              anymore (it cluttered) - it's a subtle text marker below the
-              poster instead. */}
-          {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
+        {/* Duration badge - top-left. The Nuvio profile name used to sit
+            here too (stacked below duration), but that's now surfaced via
+            the avatar (top-right) instead - a signal dot + tap-to-reveal
+            popover, since the always-visible text badge cluttered the
+            poster art and (before it was moved up here at all) collided
+            with RPDB's own baked-in rating bar at the bottom of the
+            poster. */}
+        {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
+          <div className="absolute top-2 left-2">
             <div className={`px-2 py-1 rounded-md text-xs font-medium shadow-lg ${getActivityColor(activity.type)}`}>
               {formatDuration(activity.durationSeconds)}
             </div>
-          )}
-          {activity.profileLabel && (
-            <div className="px-2 py-0.5 rounded-md text-[10px] font-medium shadow-lg bg-slate-900/80 text-slate-200 backdrop-blur-sm">
-              {activity.profileLabel}
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Request count badge - bottom right, mirrors the profile badge on
             the opposite corner. The "Proxied · <service>" badge that used to
