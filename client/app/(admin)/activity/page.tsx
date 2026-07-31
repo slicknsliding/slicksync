@@ -1318,7 +1318,17 @@ function NowPlayingItemBody({
         {typeof np.lastPosition === 'number' && typeof np.totalDuration === 'number' && np.totalDuration > 0 && (np.stremioAppUrl || np.nuvioAppUrl) && (
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <span className="text-xs text-subtle">
-              Paused at {formatClock(np.lastPosition / 1000)} of {formatClock(np.totalDuration / 1000)}
+              {/* This position comes from native's last checkpoint (see
+                  proxyNowPlaying.js), which only writes at pause/stop. For a
+                  proxy-confirmed-live entry the proxy itself is proof
+                  playback is still going, so calling this stale number
+                  "Paused at" is actively wrong - confirmed real case: a fast
+                  debrid stream kept climbing toward 15min while this stayed
+                  frozen at a ~3min checkpoint, mislabeled as paused the
+                  whole time. Only call it "Paused" when there's no live
+                  proxy signal contradicting it. */}
+              {np.source === 'aiostreams-proxy' ? 'Last known position' : 'Paused at'}{' '}
+              {formatClock(np.lastPosition / 1000)} of {formatClock(np.totalDuration / 1000)}
               {' '}({Math.round((np.lastPosition / np.totalDuration) * 100)}%)
             </span>
             {np.stremioAppUrl && (
