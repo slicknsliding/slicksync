@@ -134,14 +134,17 @@ Rate limiting actually enabled, strict limits on credential/OAuth endpoints, cor
 **Prerequisites**: Docker + Docker Compose, and a reverse proxy in front for HTTPS (Traefik/Caddy/nginx — SlickSync doesn't terminate TLS itself).
 
 ```bash
-git clone <your-repo-url> slicksync
+git clone https://github.com/slicknsliding/slicksync.git
 cd slicksync
 cp env.example .env
 ```
 
-Set at minimum in `.env`:
+Generate a real secret and set it in `.env` — this is what signs your login sessions, so it needs actual randomness, not just a made-up phrase:
+```bash
+openssl rand -base64 32
 ```
-JWT_SECRET=<any long random string>
+```
+JWT_SECRET=<paste the output above>
 ```
 `ENCRYPTION_KEY` can stay unset — one generates itself on first boot (see Security above).
 
@@ -149,7 +152,11 @@ JWT_SECRET=<any long random string>
 docker compose -f docker-compose.private.yml up -d
 docker compose -f docker-compose.private.yml logs -f   # watch it come up
 ```
+This pulls the pre-built `ghcr.io/slicknsliding/slicksync:private` image — the stable release built from `main`. (There's also a `:beta` image used for testing upcoming changes before they land on `main` — don't use it unless you specifically want to try something not yet released.)
+
 Frontend on `:3000`, API on `:4000` — point your reverse proxy at `:3000` only.
+
+**Verify it's actually up**: `docker exec slicksync sh -c 'echo APP_VERSION=$APP_VERSION'` should print the current release tag (e.g. `v1.61.2`), and `https://your-domain/` should load the login page.
 
 **Updating**: `docker compose -f docker-compose.private.yml pull && docker compose -f docker-compose.private.yml up -d` — your `/app/data` volume (database, encryption key, Vault backups, avatars) survives updates. No `git pull` or rebuild needed since the default config just pulls the published image. (If you switched to the commented-out `build:` block instead, use `git pull && docker compose -f docker-compose.private.yml up -d --build`.)
 
@@ -167,15 +174,17 @@ Private and public are genuinely different modes:
 
 ```bash
 cp env.example .env
+openssl rand -base64 32   # run twice - once for JWT_SECRET, once for ENCRYPTION_KEY
 ```
 ```
-JWT_SECRET=<any long random string>
-ENCRYPTION_KEY=<any 32+ character string>
+JWT_SECRET=<first generated value>
+ENCRYPTION_KEY=<second generated value>
 DATABASE_URL=postgresql://slicksync:slicksync@db:5432/slicksync
 ```
 ```bash
 docker compose -f docker-compose.public.yml up -d
 ```
+Pulls `ghcr.io/slicknsliding/slicksync:public` — same `main`-built release channel as private mode, not `:beta`.
 First visit shows a "Create one" registration link. `/register` generates a random account UUID once — that UUID *is* the login ID, so save it; there's no recovery if it's lost.
 
 **Updating**: `docker compose -f docker-compose.public.yml pull && docker compose -f docker-compose.public.yml up -d`.
