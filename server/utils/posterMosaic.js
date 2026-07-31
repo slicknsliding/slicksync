@@ -23,6 +23,7 @@
 const { Jimp } = require('jimp')
 const { monthBoundsInTimezone } = require('./dateUtils')
 const { postDiscordFile } = require('./notify')
+const { notifyPushForType } = require('./pushNotifications')
 
 const MAX_TILES = 24
 const TILE_W = 200
@@ -110,19 +111,37 @@ async function buildMosaicBuffer(titles) {
 }
 
 /**
- * Builds and posts the mosaic for `yearMonth` to `webhookUrl`. Returns a
- * summary rather than throwing, so both the scheduler and the manual
- * "Generate Now" route can report/log without a try/catch of their own.
+ * Builds and posts the mosaic for `yearMonth`. Returns a summary rather than
+ * throwing, so both the scheduler and the manual "Generate Now" route can
+ * report/log without a try/catch of their own.
+ *
+ * `webhookUrl` is optional - the actual collage image is a Discord-only
+ * capability (posting a file to a webhook), there's no equivalent for web
+ * push (image support there is inconsistent across browsers and unreliable
+ * on iOS specifically). Without a webhook, this skips building the image
+ * entirely and sends a plain push+bell text summary instead, so the feature
+ * still does *something* useful rather than silently requiring Discord.
  */
 async function generateAndPostMosaic(prisma, accountId, webhookUrl, yearMonth, timeZone) {
   const titles = await getMonthTitles(prisma, accountId, yearMonth, timeZone)
   if (titles.length === 0) return { posted: false, reason: 'nothing watched', count: 0 }
 
+  const [y, m] = yearMonth.split('-').map(Number)
+  const label = `${MONTH_NAMES[m - 1]} ${y}`
+
+  if (!webhookUrl) {
+    await notifyPushForType(prisma, accountId, 'notifyOnMosaic', {
+      title: `📊 ${label} recap`,
+      body: `${titles.length} title${titles.length === 1 ? '' : 's'} watched this month.`,
+      icon: '/android-chrome-192x192.png',
+      url: '/metrics',
+    })
+    return { posted: true, reason: null, count: titles.length, month: label }
+  }
+
   const buffer = await buildMosaicBuffer(titles)
   if (!buffer) return { posted: false, reason: 'no posters resolved', count: 0 }
 
-  const [y, m] = yearMonth.split('-').map(Number)
-  const label = `${MONTH_NAMES[m - 1]} ${y}`
   const content = `**${label} — ${titles.length} title${titles.length === 1 ? '' : 's'} watched**`
 
   const ok = await postDiscordFile(webhookUrl, buffer, `slicksync-${yearMonth}.png`, content)
@@ -139,7 +158,7 @@ async function checkAndPostIfNewMonth(prisma, accountId) {
     let cfg = account?.sync
     if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
     cfg = cfg || {}
-    if (cfg.notifyOnMosaic !== true || !cfg.webhookUrl) return
+    if (cfg.notifyOnMosaic !== true) return
 
     const timeZone = await resolveAccountTimezone(prisma, accountId)
     const targetMonth = previousMonthString(getAccountMonthString(new Date(), timeZone))

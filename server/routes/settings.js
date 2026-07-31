@@ -217,9 +217,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     // waiting for the scheduler's own month-rollover check. Defaults to the
     // most recently completed month (same target the scheduler picks);
     // optionally accepts { month: "YYYY-MM" } to regenerate/test a specific
-    // one. Requires notifyOnMosaic's webhook to already be configured -
-    // there's no separate mosaic-only webhook field, same as every other
-    // notification type here.
+    // one. No webhook required - generateAndPostMosaic falls back to a
+    // plain push+bell text summary when cfg.webhookUrl is unset.
     router.post('/mosaic/generate-now', async (req, res) => {
       try {
         const accountId = getAccountId(req) || 'default'
@@ -230,9 +229,6 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         let cfg = acc?.sync
         if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
         cfg = cfg || {}
-        if (!cfg.webhookUrl) {
-          return res.status(400).json({ message: 'Set a Discord webhook URL first (Settings → Notifications)' })
-        }
 
         const timeZone = await resolveAccountTimezone(prisma, accountId)
         const month = (typeof req.body?.month === 'string' && /^\d{4}-\d{2}$/.test(req.body.month))

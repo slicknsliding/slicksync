@@ -373,16 +373,13 @@ export default function SettingsPage() {
   };
 
   const handleGenerateMosaic = async () => {
-    if (!syncSettings.webhookUrl?.trim()) {
-      toast.error('Enter a webhook URL first');
-      return;
-    }
-
     setIsGeneratingMosaic(true);
     try {
       const result = await api.generateMosaicNow();
       if (result.posted) {
-        toast.success(`Posted ${result.month} — ${result.count} title${result.count === 1 ? '' : 's'} to Discord`);
+        toast.success(syncSettings.webhookUrl?.trim()
+          ? `Posted ${result.month} — ${result.count} title${result.count === 1 ? '' : 's'} to Discord`
+          : `Sent ${result.month} recap — ${result.count} title${result.count === 1 ? '' : 's'} watched`);
       } else if (result.reason === 'nothing watched') {
         toast.error('Nothing watched last month - nothing to post');
       } else {
@@ -768,8 +765,9 @@ export default function SettingsPage() {
 
                 <SettingRow
                   label="Monthly poster mosaic"
-                  description="Post a poster collage of everything watched last month to Discord, on the 1st"
-                  disabled={!syncSettings.webhookUrl?.trim()}
+                  description={syncSettings.webhookUrl?.trim()
+                    ? "Post a poster collage of everything watched last month to Discord, on the 1st"
+                    : "Sends a push+bell text recap on the 1st (e.g. \"14 titles watched\") - add a Discord webhook above for the actual poster collage image"}
                 >
                   <div className="flex items-center gap-2">
                     <Button
@@ -777,7 +775,6 @@ export default function SettingsPage() {
                       size="sm"
                       onClick={handleGenerateMosaic}
                       isLoading={isGeneratingMosaic}
-                      disabled={!syncSettings.webhookUrl?.trim()}
                     >
                       Generate now
                     </Button>
