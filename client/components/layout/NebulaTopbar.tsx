@@ -18,6 +18,7 @@ import {
   EnvelopeIcon,
   Bars3Icon,
   XMarkIcon,
+  RectangleStackIcon,
 } from '@heroicons/react/24/outline';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { PanelSwitcher } from './PanelSwitcher';
@@ -47,6 +48,7 @@ const NEBULA_NAV_SECTIONS = [
     items: [
       { href: '/', label: 'Dashboard', icon: HomeIcon },
       { href: '/activity', label: 'Activity', icon: ClockIcon },
+      { href: '/metrics', label: 'Metrics', icon: ChartBarIcon },
       { href: '/users', label: 'Users', icon: UsersIcon },
       { href: '/groups', label: 'Groups', icon: UserGroupIcon },
     ],
@@ -55,8 +57,8 @@ const NEBULA_NAV_SECTIONS = [
     id: 'management',
     items: [
       { href: '/discover', label: 'Discover', icon: MagnifyingGlassIcon },
+      { href: '/lists', label: 'Catalogs', icon: RectangleStackIcon },
       { href: '/addons', label: 'Addons', icon: PuzzlePieceIcon },
-      { href: '/metrics', label: 'Metrics', icon: ChartBarIcon },
       { href: '/vault', label: 'Vault', icon: ShieldCheckIcon },
       { href: '/invitations', label: 'Invitations', icon: EnvelopeIcon },
     ],
@@ -427,6 +429,7 @@ export function NebulaPageHeading({
   subtitle,
   actions,
   stats,
+  leading,
 }: {
   title: string;
   subtitle?: string;
@@ -439,6 +442,12 @@ export function NebulaPageHeading({
       full NebulaStatCard grid when the stats are secondary context, not
       the page's main content (see the Addons page for the first use). */
   stats?: ReactNode;
+  /** Left column content (e.g. a "Back" button) - that column is normally
+      empty space that exists only to keep the title optically centered.
+      Opt-in per page rather than folded into `actions`, since a back
+      control reads as "leave this page" and belongs on the opposite side
+      from Rename/Delete/the bell, not bunched in with them. */
+  leading?: ReactNode;
 }) {
   const isMobile = useIsMobile();
   return (
@@ -448,6 +457,11 @@ export function NebulaPageHeading({
     // title is optically centered. Mobile keeps the compact flex-wrap layout
     // (title on the left, actions can wrap).
     <div className="mb-6 flex items-start justify-between gap-x-4 gap-y-3 flex-wrap md:grid md:grid-cols-[1fr_auto_1fr] md:items-start md:gap-4">
+      {leading && (
+        <div className="order-0 md:col-start-1 flex items-center">
+          {leading}
+        </div>
+      )}
       <div className="order-1 md:col-start-2 md:text-center">
         <h1 className="text-2xl font-bold font-display mb-1 text-default">{title}</h1>
         {subtitle && <p className="text-sm text-muted">{subtitle}</p>}

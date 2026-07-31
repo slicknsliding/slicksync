@@ -5,11 +5,14 @@ import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as Boo
 import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
+import { AddToListButton } from './AddToListButton';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
 import { api, MediaDetails, DiscoverItem } from '@/lib/api';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
+import { posterUrl } from '@/lib/posterUrl';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useDragScroll } from '@/lib/hooks/useDragScroll';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { useFocusable, FocusContext } from '@noriginmedia/norigin-spatial-navigation';
 
@@ -34,6 +37,14 @@ interface MediaDetailModalProps {
   // exist on the detail lookup, so those are unaffected either way.
   fallbackRating?: string | null;
   fallbackReleaseInfo?: string | null;
+  // Same "grid already knows, don't wait on / overwrite it" reasoning as
+  // fallbackRating above, but for OMDb's Rotten Tomatoes/Metacritic scores.
+  // The modal's own detail lookup (Cinemeta) never returns these at all, so
+  // without a caller-supplied value the row falls back to the bare IMDb
+  // number even when the caller already fetched a fuller RatingBadges-style
+  // batch (Discover's useRatingsBatch) for the same item.
+  fallbackRottenTomatoes?: string | null;
+  fallbackMetacritic?: string | null;
   // Fires after the modal's own watchlist toggle succeeds (or fails and
   // reverts), so a caller with its own watchlist list/grid — Discover, in
   // practice — can stay in sync. Without this the modal's add/remove was a
@@ -54,6 +65,8 @@ export function MediaDetailModal({
   fallbackPoster,
   fallbackRating,
   fallbackReleaseInfo,
+  fallbackRottenTomatoes,
+  fallbackMetacritic,
   onWatchlistChange,
 }: MediaDetailModalProps) {
   const [details, setDetails] = useState<MediaDetails | null>(null);
@@ -77,9 +90,48 @@ export function MediaDetailModal({
     imdbRating?: string | null;
     releaseInfo?: string | null;
   } | null>(null);
+  // Cast/crew deep-dive: when a cast member with a TMDb id is clicked, load
+  // their filmography into this panel (optional feature - see discover.js's
+  // /person route; null credits + unavailable=true means no TMDb key is set,
+  // which the render below treats as "feature off" rather than an error).
+  const [personView, setPersonView] = useState<null | {
+    id: number | string;
+    name: string;
+    loading: boolean;
+    credits: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }>;
+    unavailable?: boolean;
+  }>(null);
+
+  const openPerson = useCallback(async (member: { name: string; tmdbId?: number | string | null }) => {
+    if (member.tmdbId == null || member.tmdbId === '') return;
+    setPersonView({ id: member.tmdbId, name: member.name, loading: true, credits: [] });
+    const res = await api.getPersonCredits(member.tmdbId);
+    if (!res) {
+      setPersonView({ id: member.tmdbId, name: member.name, loading: false, credits: [], unavailable: true });
+      return;
+    }
+    setPersonView({ id: member.tmdbId, name: res.person?.name || member.name, loading: false, credits: res.credits });
+  }, []);
+
+  // Mouse grab-drag for the person-filmography row (touch/trackpad scroll it
+  // natively already; this adds the desktop drag affordance it was missing).
+  const creditsDrag = useDragScroll();
+
+  const openCredit = useCallback(async (credit: { tmdbId: number; mediaType: 'movie' | 'tv'; title: string; poster: string | null }) => {
+    // Suppress the click that ends a drag-scroll (otherwise dragging the row
+    // and releasing over a poster would also navigate).
+    if (creditsDrag.isDragging()) return;
+    const res = await api.resolveImdbId(credit.tmdbId, credit.mediaType);
+    if (res?.imdbId) {
+      setOverrideItem({ id: res.imdbId, type: res.type, name: credit.title, poster: credit.poster });
+      setPersonView(null);
+    }
+  }, [creditsDrag]);
+
   useEffect(() => {
     if (!isOpen) return;
     setOverrideItem(null);
+    setPersonView(null);
   }, [isOpen, itemId, itemType, videoId]);
   const effectiveId = overrideItem?.id ?? itemId;
   const effectiveType = overrideItem?.type ?? itemType;
@@ -88,8 +140,13 @@ export function MediaDetailModal({
   const effectiveFallbackPoster = overrideItem?.poster ?? fallbackPoster;
   const effectiveFallbackRating = overrideItem ? (overrideItem.imdbRating ?? null) : fallbackRating;
   const effectiveFallbackReleaseInfo = overrideItem ? (overrideItem.releaseInfo ?? null) : fallbackReleaseInfo;
+  // Drill-down (cast credit) items never carry a Rotten Tomatoes/Metacritic
+  // fallback of their own - details.rottenTomatoes/metacritic (if OMDb ever
+  // starts returning them there) is all a drilled-into item can show.
+  const effectiveFallbackRottenTomatoes = overrideItem ? null : fallbackRottenTomatoes;
+  const effectiveFallbackMetacritic = overrideItem ? null : fallbackMetacritic;
 
-  const { enableWatchlist } = usePersonalFeatures();
+  const { enableWatchlist, rpdbEnabled } = usePersonalFeatures();
   const isTV = useIsTV();
 
   // TV mode: the whole modal body (trailer button, Watchlist / Open in
@@ -311,6 +368,24 @@ export function MediaDetailModal({
   const title = details?.episode?.title
     ? `${details?.title || effectiveFallbackTitle} — ${details.episode.title}`
     : (details?.title || effectiveFallbackTitle);
+  // The title above already shows the episode NAME ("Cape Fear — The Scar"),
+  // but not which episode that is - parsed from videoId (standard Cinemeta
+  // format "tt1234567:season:episode") since the episode metadata endpoint
+  // itself doesn't return the numbers, only title/overview/thumbnail. Kitsu
+  // IDs ("kitsu:50008:4") have no season component, so this only matches the
+  // 3-part numeric form both formats happen to share positionally - safe
+  // since a non-matching id just renders nothing rather than a wrong number.
+  const episodeLabel = (() => {
+    if (!effectiveVideoId || !details?.episode) return null;
+    const parts = effectiveVideoId.split(':');
+    if (parts.length !== 3) return null;
+    const season = parseInt(parts[1], 10);
+    const episode = parseInt(parts[2], 10);
+    if (Number.isNaN(episode)) return null;
+    return Number.isNaN(season) || effectiveVideoId.startsWith('kitsu:')
+      ? `E${String(episode).padStart(2, '0')}`
+      : `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
+  })();
   const heroImage = details?.episode?.thumbnail || details?.background || details?.poster || effectiveFallbackPoster;
   const overview = details?.episode?.overview || details?.description;
   const trailerId = details?.trailers?.[0];
@@ -321,8 +396,20 @@ export function MediaDetailModal({
   const TVScope = isTV ? FocusContext.Provider : Fragment;
   const tvScopeProps = isTV ? { value: modalFocusKey } : {};
 
+  // Stop the trailer THE INSTANT a close is triggered (X/backdrop/Escape all
+  // route through Modal's onClose uniformly), not just when reopening for a
+  // new item. Otherwise the YouTube iframe stays live and keeps decoding
+  // video for the whole ~150ms exit transition, competing with the panel's
+  // own transform/opacity animation for the same compositor - a real,
+  // reported cause of the modal feeling like it lags on close specifically
+  // after watching a trailer.
+  const handleClose = useCallback(() => {
+    setIsTrailerPlaying(false);
+    onClose();
+  }, [onClose]);
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="full" hideCloseButton={isTrailerPlaying}>
+    <Modal isOpen={isOpen} onClose={handleClose} size="full" hideCloseButton={isTrailerPlaying}>
       <TVScope {...(tvScopeProps as any)}>
       <div className="-mx-6 -mt-6" ref={isTV ? modalRef : undefined}>
         {isTrailerPlaying && trailerId ? (
@@ -450,6 +537,11 @@ export function MediaDetailModal({
                   two backends can disagree, and showing a different number
                   than what the user just clicked reads as a bug. */}
               <div className="flex flex-wrap items-center gap-3 text-base text-muted">
+                {episodeLabel && (
+                  <span className="px-2 py-0.5 rounded-md text-sm font-semibold bg-surface-hover text-default border border-default">
+                    {episodeLabel}
+                  </span>
+                )}
                 {(effectiveFallbackReleaseInfo || details.releaseInfo) && <span>{effectiveFallbackReleaseInfo || details.releaseInfo}</span>}
                 {details.runtime && (
                   <span className="flex items-center gap-1.5">
@@ -464,16 +556,16 @@ export function MediaDetailModal({
                     <span className="text-muted font-normal">/10</span>
                   </span>
                 )}
-                {details.rottenTomatoes && (
+                {(effectiveFallbackRottenTomatoes || details.rottenTomatoes) && (
                   <span className="flex items-center gap-1.5 font-medium" style={{ color: '#fa320a' }} title="Rotten Tomatoes">
                     <span aria-hidden>🍅</span>
-                    {details.rottenTomatoes}
+                    {effectiveFallbackRottenTomatoes || details.rottenTomatoes}
                   </span>
                 )}
-                {details.metacritic && (
-                  <span className="flex items-center gap-1.5 font-medium" style={{ color: metacriticTextColor(details.metacritic) }} title="Metacritic score">
+                {(effectiveFallbackMetacritic || details.metacritic) && (
+                  <span className="flex items-center gap-1.5 font-medium" style={{ color: metacriticTextColor(effectiveFallbackMetacritic || details.metacritic || '') }} title="Metacritic score">
                     <span aria-hidden>Ⓜ</span>
-                    {details.metacritic}
+                    {effectiveFallbackMetacritic || details.metacritic}
                   </span>
                 )}
                 {details.imdb_id && (
@@ -589,6 +681,7 @@ export function MediaDetailModal({
                 return (
                   <div className="flex flex-wrap gap-2 items-center">
                     {watchlistBtn}
+                    <AddToListButton item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
                     {stremioBtn}
                     {nuvioBtn}
                   </div>
@@ -624,8 +717,20 @@ export function MediaDetailModal({
                     onPointerUp={handleCastPointerUp}
                     className="flex gap-4 overflow-x-auto pb-1 pr-6 no-scrollbar cursor-grab active:cursor-grabbing select-none"
                   >
-                    {details.cast.slice(0, 10).map((member) => (
-                      <div key={member.name} className="shrink-0 w-24 text-center">
+                    {details.cast.slice(0, 10).map((member) => {
+                      const clickable = member.tmdbId != null && member.tmdbId !== '';
+                      return (
+                      <button
+                        key={member.name}
+                        type="button"
+                        // Only a real click (not a drag) fires - the cast row's
+                        // drag-scroll only captures the pointer after 5px of
+                        // movement, so a stationary click still reaches here.
+                        onClick={() => { if (clickable) openPerson(member); }}
+                        disabled={!clickable}
+                        title={clickable ? `See ${member.name}'s other titles` : member.name}
+                        className={`shrink-0 w-24 text-center ${clickable ? 'cursor-pointer group/cast' : 'cursor-default'}`}
+                      >
                         {member.photo ? (
                           <img
                             src={member.photo}
@@ -634,7 +739,7 @@ export function MediaDetailModal({
                             decoding="async"
                             draggable={false}
                             onDragStart={(e) => e.preventDefault()}
-                            className="w-20 h-20 rounded-full object-cover mx-auto bg-surface-hover pointer-events-none"
+                            className={`w-20 h-20 rounded-full object-cover mx-auto bg-surface-hover pointer-events-none transition-transform ${clickable ? 'group-hover/cast:scale-105 group-hover/cast:ring-2 group-hover/cast:ring-primary' : ''}`}
                           />
                         ) : (
                           <div className="w-20 h-20 rounded-full mx-auto bg-surface-hover flex items-center justify-center text-muted text-xl font-medium">
@@ -642,7 +747,7 @@ export function MediaDetailModal({
                           </div>
                         )}
                         <p
-                          className="mt-2 text-sm font-medium text-default leading-tight"
+                          className={`mt-2 text-sm font-medium leading-tight ${clickable ? 'text-default group-hover/cast:text-primary transition-colors' : 'text-default'}`}
                           style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
                           title={member.name}
                         >
@@ -657,9 +762,71 @@ export function MediaDetailModal({
                             {member.character}
                           </p>
                         )}
-                      </div>
-                    ))}
+                      </button>
+                      );
+                    })}
                   </div>
+
+                  {/* Filmography deep-dive for a clicked cast member. Inline
+                      under the Cast row so it reads as an expansion of it, not
+                      a context switch. Clicking a title resolves its IMDb id
+                      and re-drives the whole modal to that title (setOverrideItem),
+                      same navigation "More Like This" uses. */}
+                  {personView && (
+                    <div className="mt-4 rounded-xl border border-default bg-surface-hover/40 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-semibold text-default">
+                          {personView.name}
+                          <span className="text-muted font-normal"> — more titles</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setPersonView(null)}
+                          className="text-xs text-muted hover:text-default transition-colors"
+                        >
+                          Close
+                        </button>
+                      </div>
+                      {personView.loading ? (
+                        <p className="text-sm text-muted py-4 text-center">Loading filmography…</p>
+                      ) : personView.unavailable ? (
+                        <p className="text-xs text-subtle py-3">
+                          Cast deep-dive needs a TMDb API key (Settings → add one, or set TMDB_API_KEY).
+                        </p>
+                      ) : personView.credits.length === 0 ? (
+                        <p className="text-sm text-muted py-3">No other titles found.</p>
+                      ) : (
+                        <div
+                          ref={creditsDrag.ref}
+                          onPointerDown={creditsDrag.handlers.onPointerDown}
+                          onPointerMove={creditsDrag.handlers.onPointerMove}
+                          onPointerUp={creditsDrag.handlers.onPointerUp}
+                          onPointerLeave={creditsDrag.handlers.onPointerLeave}
+                          className="flex gap-3 overflow-x-auto pb-1 no-scrollbar cursor-grab active:cursor-grabbing select-none"
+                        >
+                          {personView.credits.map((c) => (
+                            <button
+                              key={`${c.mediaType}-${c.tmdbId}`}
+                              type="button"
+                              onClick={() => openCredit(c)}
+                              title={`${c.title}${c.role ? ` · ${c.role}` : ''}`}
+                              className="shrink-0 w-20 text-left group/cred"
+                            >
+                              <div className="aspect-[2/3] rounded-lg overflow-hidden bg-surface border border-default">
+                                {c.poster ? (
+                                  <img src={c.poster} alt={c.title} loading="lazy" decoding="async" draggable={false} className="w-full h-full object-cover transition-transform group-hover/cred:scale-105" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-muted text-xs p-1 text-center">{c.title}</div>
+                                )}
+                              </div>
+                              <p className="mt-1 text-[11px] font-medium text-default leading-tight line-clamp-2 group-hover/cred:text-primary transition-colors">{c.title}</p>
+                              {c.year && <p className="text-[10px] text-subtle">{c.year}</p>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -736,7 +903,7 @@ export function MediaDetailModal({
                             <div className="w-28 h-40 rounded-lg overflow-hidden bg-surface-hover">
                               {item.poster ? (
                                 <img
-                                  src={item.poster}
+                                  src={posterUrl(item, rpdbEnabled)}
                                   alt={item.name}
                                   loading="lazy"
                                   decoding="async"

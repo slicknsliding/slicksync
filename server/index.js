@@ -40,6 +40,9 @@ const watchlistRouter = require('./routes/watchlist');
 const avatarsRouter = require('./routes/avatars');
 const vaultRouter = require('./routes/vault');
 const discoverRouter = require('./routes/discover');
+const listsRouter = require('./routes/lists');
+const healthRouter = require('./routes/health');
+const postersRouter = require('./routes/posters');
 const { makeCreateProvider } = require('./providers');
 
 // Import configuration constants
@@ -246,6 +249,9 @@ app.use('/api/settings', settingsRouter({ prisma, INSTANCE_TYPE, getAccountDek, 
 app.use('/api/push', pushRouter({ prisma, getAccountId }));
 app.use('/api/watchlist', watchlistRouter({ prisma, getAccountId }));
 app.use('/api/discover', discoverRouter({ prisma, getAccountId }));
+app.use('/api/lists', listsRouter({ prisma, getAccountId }));
+app.use('/api/health', healthRouter({ prisma, getAccountId }));
+app.use('/api/poster', postersRouter({ prisma, getAccountId }));
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({
   prisma,
@@ -297,13 +303,27 @@ async function bootstrap() {
     const { scheduleUserExpiration } = require('./utils/userExpiration');
     const { scheduleActivityMonitor } = require('./utils/activityMonitor');
 
-    if (INSTANCE_TYPE !== 'public') {
-      try {
-        ensureBackupDir()
-        scheduleBackups(readBackupFrequencyDays(), prisma)
-      } catch (err) {
-        console.error('⚠️ Failed to initialize backup scheduler:', err)
-      }
+    // Scheduled backups now run in BOTH modes. Public mode backs up every
+    // account individually (see backup.js's performBackupOnce) via the export
+    // builder attached to the public-auth router - previously private-only
+    // because the old self-fetch path had no way to name a tenant.
+    //
+    // Frequency source differs by mode: private reads the schedule.json the
+    // Settings UI writes (per-instance operator choice); public has no such
+    // UI (it's the multi-tenant host's decision, not any single tenant's), so
+    // it takes PUBLIC_BACKUP_FREQUENCY_DAYS from env and defaults to daily -
+    // set it to 0 to disable public backups entirely.
+    try {
+      ensureBackupDir()
+      const backupDays = INSTANCE_TYPE === 'public'
+        ? Number(process.env.PUBLIC_BACKUP_FREQUENCY_DAYS ?? 1)
+        : readBackupFrequencyDays()
+      scheduleBackups(backupDays, prisma, {
+        INSTANCE_TYPE,
+        buildConfigExportPayload: publicAuthRouterInstance.buildConfigExportPayload,
+      })
+    } catch (err) {
+      console.error('⚠️ Failed to initialize backup scheduler:', err)
     }
 
     try {
@@ -410,6 +430,18 @@ async function bootstrap() {
       scheduleMosaicMonitor(prisma, schedulerReq.appAccountId)
     } catch (err) {
       console.error('⚠️ Failed to initialize poster mosaic scheduler:', err)
+    }
+
+    // Schedule Sync Guardian (catches a synced user's addons reverting
+    // outside SlickSync - see utils/syncGuardian.js for the full mechanism)
+    try {
+      const { scheduleSyncGuardian } = require('./utils/syncGuardian')
+      scheduleSyncGuardian(prisma, {
+        getAccountId, decrypt, parseAddonIds, parseProtectedAddons,
+        getDecryptedManifestUrl, canonicalizeManifestUrl, StremioAPIClient, createProvider,
+      }, schedulerReq.appAccountId)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize Sync Guardian:', err)
     }
 
     // Startup repair: reload addons with uninitialized resources/catalogs across all accounts

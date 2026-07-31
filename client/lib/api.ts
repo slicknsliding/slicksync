@@ -1,7 +1,7 @@
 // API client for connecting to SlickSync backend
 // Use relative path if NEXT_PUBLIC_API_URL is not set (Next.js will proxy via rewrites)
 // Otherwise use the explicit URL (useful for production or different ports)
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 interface FetchOptions extends RequestInit {
   token?: string;
@@ -1611,6 +1611,10 @@ class ApiClient {
   async getMetrics(period: string = '30d') {
     return this.fetch<MetricsData>(`/users/metrics?period=${period}`);
   }
+  async getYearInReview(year?: number) {
+    const q = year ? `?year=${year}` : '';
+    return this.fetch<YearInReview>(`/users/year-in-review${q}`);
+  }
 
   async getContinueWatching() {
     return this.fetch<ContinueWatchingItem[]>('/users/continue-watching');
@@ -1668,6 +1672,70 @@ class ApiClient {
   async clearWatchedOverride(itemId: string) {
     return this.fetch<{ success: boolean }>(`/watchlist/mark/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
   }
+
+  // Custom lists — named collections of titles (the tier above the single
+  // watchlist above).
+  async getLists() {
+    return this.fetch<CustomList[]>('/lists');
+  }
+  async createList(name: string, description?: string) {
+    return this.fetch<CustomList>('/lists', {
+      method: 'POST',
+      body: JSON.stringify({ name, description }),
+    });
+  }
+  async updateList(id: string, data: { name?: string; description?: string }) {
+    return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+  async deleteList(id: string) {
+    return this.fetch<{ success: boolean }>(`/lists/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  async addToList(id: string, item: { id: string; type: 'movie' | 'series'; name: string; poster?: string | null; year?: number | string | null }) {
+    return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items`, {
+      method: 'POST',
+      body: JSON.stringify(item),
+    });
+  }
+  async removeFromList(id: string, itemId: string) {
+    return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items/${encodeURIComponent(itemId)}`, {
+      method: 'DELETE',
+    });
+  }
+  // Import a TMDb or MDBList list (auto-detected from the URL) into a new list.
+  async importList(url: string, name?: string) {
+    return this.fetch<CustomList & { truncated: boolean; totalAvailable: number }>('/lists/import', {
+      method: 'POST',
+      body: JSON.stringify({ url, name }),
+    });
+  }
+
+  // System Health board - one aggregated read of Sync/Addons/Vault/Proxy
+  // status, all sourced from state existing background monitors already
+  // maintain (no live calls made by this request itself).
+  async getHealthStatus() {
+    return this.fetch<HealthStatus>('/health');
+  }
+
+  // Hides a known, accepted failure from the Health page's Attention list
+  // and its notifications - for something like an indexer that blocks this
+  // server's IP, where the admin doesn't want repeated pinging about it.
+  async setVaultHealthIgnored(id: string, healthIgnored: boolean) {
+    return this.fetch<{ success: boolean }>(`/vault/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ healthIgnored }),
+    });
+  }
+
+  async setAddonHealthIgnored(id: string, healthIgnored: boolean) {
+    return this.fetch<{ success: boolean; data: { id: string; healthIgnored: boolean } }>(`/addons/${id}/health-ignore`, {
+      method: 'PATCH',
+      body: JSON.stringify({ healthIgnored }),
+    });
+  }
+
   async getRecommendations(opts?: { mode?: 'personal' | 'shared'; userId?: string; userId2?: string; type?: 'movie' | 'series' }) {
     const params = new URLSearchParams();
     if (opts?.mode) params.set('mode', opts.mode);
@@ -1679,6 +1747,25 @@ class ApiClient {
   }
   async getTasteOverlap() {
     return this.fetch<{ pairs: TasteOverlapPair[] }>('/discover/taste-overlap');
+  }
+  // Per-user taste profile (extends the flat overlap into a real profile).
+  async getTasteProfile() {
+    return this.fetch<{ profiles: TasteProfile[] }>('/discover/taste-profile');
+  }
+  // Household picks: unwatched-by-everyone titles in genres the whole house
+  // likes. Empty items when recommendations are off or there's no signal yet.
+  async getHouseholdPicks(type: 'movie' | 'series') {
+    return this.fetch<{ items: DiscoverItem[]; genres: string[]; memberCount: number; sharedAppeal: boolean }>(`/discover/household-picks?type=${type}`);
+  }
+  // Person search (needs a TMDb key): type an actor/director's name, get their
+  // titles of the requested type. Returns null on 503 (no key) so callers hide
+  // the feature. Results carry tmdbId/mediaType for click-through resolution.
+  async searchPerson(query: string, type: 'movie' | 'series') {
+    try {
+      return await this.fetch<{ person: { id: number; name: string; profile: string | null } | null; results: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }> }>(`/discover/search-person?query=${encodeURIComponent(query)}&type=${type}`);
+    } catch {
+      return null;
+    }
   }
   // "More Like This" for the detail popup - real household affinity biases
   // which genre(s) get searched, but every returned item is always a fresh
@@ -1745,6 +1832,27 @@ class ApiClient {
     if (videoId) params.set('videoId', videoId);
     try {
       return await this.fetch<MediaDetails>(`/users/media-details?${params.toString()}`);
+    } catch {
+      return null;
+    }
+  }
+
+  // Cast/crew deep-dive (optional; needs a TMDb key server-side). Returns a
+  // person's filmography, or null when no key is configured (503) so the UI
+  // hides the feature gracefully.
+  async getPersonCredits(personId: number | string) {
+    try {
+      return await this.fetch<{ person: { id: number; name: string | null }; credits: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }> }>(`/discover/person/${personId}`);
+    } catch {
+      return null;
+    }
+  }
+
+  // Resolve a TMDb title to its IMDb id so a person-credit click can open the
+  // existing Cinemeta-backed detail modal. Returns null on any failure.
+  async resolveImdbId(tmdbId: number | string, mediaType: 'movie' | 'tv') {
+    try {
+      return await this.fetch<{ imdbId: string | null; type: 'movie' | 'series' }>(`/discover/imdb-id?tmdbId=${tmdbId}&type=${mediaType}`);
     } catch {
       return null;
     }
@@ -2084,15 +2192,20 @@ export interface SyncSettings {
   notifyOnVault?: boolean;
   notifyOnAddonHealth?: boolean;
   notifyOnBackup?: boolean;
+  notifyOnProxyHealth?: boolean;
   notifyOnMosaic?: boolean;
   notifyDigestEnabled?: boolean;
   notifyDigestFrequency?: 'daily' | 'weekly';
   accountTimezone?: string;
+  accountTimezoneIsDefault?: boolean;
   vaultCurrency?: string;
   // Personal-features opt-outs (v1.31+). Default true when absent.
   enableWatchlist?: boolean;
   enableWatchedIndicators?: boolean;
   enableRecommendations?: boolean;
+  tmdbApiKey?: string;
+  mdblistApiKey?: string;
+  rpdbApiKey?: string;
 }
 
 export interface ThemePref {
@@ -2162,6 +2275,17 @@ export interface TasteOverlapPair {
   shared: TasteOverlapSharedItem[];
 }
 
+export interface TasteProfile {
+  user: TasteOverlapUser;
+  totalSeconds: number;
+  titleCount: number;
+  movieCount: number;
+  seriesCount: number;
+  topTitles: Array<{ key: string; name: string; poster: string | null; type: 'movie' | 'series'; seconds: number }>;
+  topGenres: Array<{ genre: string; count: number }>;
+  tasteTwin: { user: TasteOverlapUser; similarity: number } | null;
+}
+
 export interface WatchlistItem {
   id: string;
   itemId: string;
@@ -2169,6 +2293,78 @@ export interface WatchlistItem {
   name: string;
   poster: string | null;
   addedAt: string;
+}
+
+export interface CustomListItem {
+  id: string;
+  type: 'movie' | 'series';
+  name: string;
+  poster?: string | null;
+  year?: number | string | null;
+}
+
+export interface CustomList {
+  id: string;
+  name: string;
+  description: string | null;
+  items: CustomListItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface YearInReviewTitle {
+  id: string;
+  name: string;
+  poster: string | null;
+  type: 'movie' | 'series';
+  episodeCount?: number;
+  rewatchCount?: number;
+}
+
+export interface YearInReview {
+  year: number;
+  totalWatchTimeSeconds: number;
+  movieWatchTimeSeconds: number;
+  seriesWatchTimeSeconds: number;
+  moviesWatched: number;
+  completedMovies: number;
+  episodesWatched: number;
+  showsWatched: number;
+  byMonth: number[]; // 12 entries, seconds per month (Jan..Dec)
+  busiestMonth: number; // 0-11
+  topShows: YearInReviewTitle[];
+  mostRewatched: YearInReviewTitle[];
+  perUser: Array<{ userId: string; username: string; seconds: number }>;
+  hasData: boolean;
+}
+
+export interface HealthStatus {
+  overall: 'healthy' | 'attention';
+  checkedAt: string;
+  sync: {
+    usersTracked: number;
+    driftCount: number;
+    drifted: Array<{ title: string; body: string; url: string | null; since: string }>;
+  };
+  addons: {
+    total: number;
+    checked: number;
+    offlineCount: number;
+    offline: Array<{ id: string; name: string; error: string | null; lastChecked: string | null }>;
+    ignored: Array<{ id: string; name: string }>;
+    uptime: Array<{ id: string; name: string; uptime7d: number; uptime30d: number }>;
+  };
+  vault: {
+    total: number;
+    failingCount: number;
+    failing: Array<{ id: string; name: string; provider: string | null; message: string | null; lastChecked: string | null }>;
+    expiringCount: number;
+    expiring: Array<{ id: string; name: string; provider: string | null; expiresAt: string }>;
+    ignored: Array<{ id: string; name: string; provider: string | null }>;
+  };
+  proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean };
+  mismatchCount: number;
+  version: { running: string; latestRelease: string | null; updateAvailable: boolean };
 }
 
 export interface UpcomingEpisode {
@@ -2324,7 +2520,7 @@ export interface MediaDetails {
   poster: string | null;
   background: string | null;
   description: string | null;
-  cast: Array<{ name: string; character: string | null; photo: string | null }>;
+  cast: Array<{ name: string; character: string | null; photo: string | null; tmdbId?: number | string | null }>;
   director: string[];
   genres: string[];
   imdbRating: string | null;
@@ -2419,6 +2615,15 @@ export interface MetricsData {
     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };
     videoId: string | null;
     profileLabel?: string | null;
+    // Episode title from Cinemeta, when known - series entries only. See
+    // EpisodeWatchHistory.episodeName in the schema for how this gets filled.
+    episodeName?: string | null;
+    // Real completion: true = genuinely finished (played to ~end), false =
+    // started but dropped, null = unknown. See the schema comment.
+    completed?: boolean | null;
+    // Movies only: times watched to the end AGAIN after first completion
+    // (0 = first watch). See MovieWatchHistory.rewatchCount in the schema.
+    rewatchCount?: number;
     watchedAt: string;
     watchedAtTimestamp: number;
     // Only present when backfilled from a matching native WatchSession -

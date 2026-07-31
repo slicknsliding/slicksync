@@ -22,6 +22,8 @@ import {
   ShieldCheckIcon,
   MagnifyingGlassIcon,
   SwatchIcon,
+  RectangleStackIcon,
+  HeartIcon,
 } from '@heroicons/react/24/outline';
 import { PanelSwitcher } from './PanelSwitcher';
 import { api } from '@/lib/api';
@@ -39,6 +41,7 @@ const navigationSections = [
     items: [
       { name: 'Dashboard', href: '/', icon: HomeIcon },
       { name: 'Discover', href: '/discover', icon: MagnifyingGlassIcon },
+      { name: 'Catalogs', href: '/lists', icon: RectangleStackIcon },
       { name: 'Activity', href: '/activity', icon: ClockIcon },
       { name: 'Metrics', href: '/metrics', icon: ChartBarIcon },
     ],
@@ -58,6 +61,7 @@ const navigationSections = [
     id: 'system',
     label: 'System',
     items: [
+      { name: 'Health', href: '/health', icon: HeartIcon },
       { name: 'Tasks', href: '/tasks', icon: QueueListIcon },
       { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },
       { name: 'Themes', href: '/themes', icon: SwatchIcon },

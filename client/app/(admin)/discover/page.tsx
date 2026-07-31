@@ -6,11 +6,13 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, RatingBadges, ContextMenu, useContextMenu, Badge } from '@/components/ui';
+import { CatalogPickerMenu } from '@/components/ui/AddToListButton';
 import { api, DiscoverItem, RatingsBatchEntry, WatchlistItem, RecommendationRow, User } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
-import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { posterUrl, isRpdbPoster } from '@/lib/posterUrl';
+import { FilmIcon, TvIcon, MagnifyingGlassIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon, XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, SparklesIcon, UserIcon, RectangleStackIcon } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { toast } from '@/components/ui/Toast';
 import { useIsTV } from '@/lib/hooks/useIsTV';
@@ -35,6 +37,27 @@ const GENRES = [
   'Drama', 'Family', 'Fantasy', 'History', 'Horror', 'Music', 'Mystery',
   'Romance', 'Sci-Fi', 'Thriller', 'War', 'Western',
 ];
+
+// Client-side re-sort options for whatever's currently loaded/filtered.
+// "Default" is server/catalog order (Popular/New/Top Rated already are a
+// sort, and Watchlist keeps the order items were added in). The others sort
+// in place — exact for Watchlist and search results (both fully loaded, no
+// pagination), and a "sort what's loaded so far" reorder for infinite-scroll
+// browse mode, same caveat any client-side sort over a paginated API has.
+const SORT_OPTIONS = [
+  { key: 'default', label: 'Default order' },
+  { key: 'title', label: 'Title (A-Z)' },
+  { key: 'year-desc', label: 'Year (Newest)' },
+  { key: 'year-asc', label: 'Year (Oldest)' },
+  { key: 'rating-desc', label: 'Rating (Highest)' },
+] as const;
+type SortKey = typeof SORT_OPTIONS[number]['key'];
+
+function extractYear(releaseInfo: string | null | undefined): number {
+  if (!releaseInfo) return 0;
+  const match = releaseInfo.match(/\d{4}/);
+  return match ? parseInt(match[0], 10) : 0;
+}
 
 const PAGE_SIZE = 100; // Cinemeta serves 100 items per catalog page
 // Some catalog+genre combos have legitimately small pages (e.g. Western +
@@ -92,12 +115,18 @@ const PosterCard = memo(function PosterCard({
   focusable?: boolean;
 }) {
   const [imageError, setImageError] = useState(false);
+  const { rpdbEnabled } = usePersonalFeatures();
+  // Right-click menu's "Add to Catalogs" swaps the menu's own content to the
+  // catalog picker in place (single-panel nav with a Back row) rather than
+  // opening a second flyout - simplest way to fit a multi-catalog picker
+  // into a menu that's otherwise plain one-tap toggle buttons.
+  const [catalogView, setCatalogView] = useState(false);
   // useContextMenu still owns the position calc + preventDefault, but the
   // OPEN state is driven by the parent's isMenuOpen prop so only one card's
   // menu is visible at a time across the whole grid.
   const { position, handleContextMenu, close: closeInternal, setExternalClose } = useContextMenu();
   const controlledOpen = isMenuOpen === true;
-  const close = () => { closeInternal(); onMenuOpenChange?.(false); };
+  const close = () => { closeInternal(); onMenuOpenChange?.(false); setCatalogView(false); };
   // Registers the REAL close (above) for cross-page/cross-section closing -
   // this card's own isMenuOpen is lifted, so closeInternal alone (this hook's
   // unused-for-rendering internal state) wouldn't actually hide anything.
@@ -134,7 +163,7 @@ const PosterCard = memo(function PosterCard({
         {item.poster && !imageError ? (
           <>
             <img
-              src={item.poster}
+              src={posterUrl(item, rpdbEnabled)}
               alt={item.name}
               loading="lazy"
               decoding="async"
@@ -179,13 +208,15 @@ const PosterCard = memo(function PosterCard({
           </div>
         )}
 
-        <div className="absolute bottom-1.5 left-1.5 right-1.5">
-          <RatingBadges
-            imdbRating={item.imdbRating}
-            rottenTomatoes={ratings?.rottenTomatoes}
-            metacritic={ratings?.metacritic}
-          />
-        </div>
+        {!isRpdbPoster(item, rpdbEnabled) && (
+          <div className="absolute bottom-1.5 left-1.5 right-1.5">
+            <RatingBadges
+              imdbRating={item.imdbRating}
+              rottenTomatoes={ratings?.rottenTomatoes}
+              metacritic={ratings?.metacritic}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mt-2 space-y-0.5 text-center">
@@ -199,36 +230,53 @@ const PosterCard = memo(function PosterCard({
 
       {(showWatchlistMenu || showWatchedMenu || showNotInterested) && (
         <ContextMenu isOpen={controlledOpen} position={position} onClose={close}>
-          {showWatchlistMenu && (
-            <button
-              type="button"
-              onClick={() => { close(); onToggleWatchlist(item, !inWatchlist); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-            >
-              {inWatchlist
-                ? <><XCircleIcon className="w-4 h-4" /> Remove from Watchlist</>
-                : <><BookmarkOutlineIcon className="w-4 h-4" /> Add to Watchlist</>}
-            </button>
-          )}
-          {showWatchedMenu && (
-            <button
-              type="button"
-              onClick={() => { close(); onToggleWatched(item, !watched); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-            >
-              {watched
-                ? <><EyeSlashIcon className="w-4 h-4" /> Mark as unwatched</>
-                : <><EyeIcon className="w-4 h-4" /> Mark as watched</>}
-            </button>
-          )}
-          {showNotInterested && (
-            <button
-              type="button"
-              onClick={() => { close(); onMarkNotInterested?.(item); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-            >
-              <HandThumbDownIcon className="w-4 h-4" /> Not interested
-            </button>
+          {catalogView ? (
+            <CatalogPickerMenu
+              item={{ id: item.id, type: item.type, name: item.name, poster: item.poster }}
+              onBack={() => setCatalogView(false)}
+              onDone={close}
+            />
+          ) : (
+            <>
+              {showWatchlistMenu && (
+                <button
+                  type="button"
+                  onClick={() => { close(); onToggleWatchlist(item, !inWatchlist); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+                >
+                  {inWatchlist
+                    ? <><XCircleIcon className="w-4 h-4" /> Remove from Watchlist</>
+                    : <><BookmarkOutlineIcon className="w-4 h-4" /> Add to Watchlist</>}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setCatalogView(true)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+              >
+                <RectangleStackIcon className="w-4 h-4" /> Add to Catalogs
+              </button>
+              {showWatchedMenu && (
+                <button
+                  type="button"
+                  onClick={() => { close(); onToggleWatched(item, !watched); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+                >
+                  {watched
+                    ? <><EyeSlashIcon className="w-4 h-4" /> Mark as unwatched</>
+                    : <><EyeIcon className="w-4 h-4" /> Mark as watched</>}
+                </button>
+              )}
+              {showNotInterested && (
+                <button
+                  type="button"
+                  onClick={() => { close(); onMarkNotInterested?.(item); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+                >
+                  <HandThumbDownIcon className="w-4 h-4" /> Not interested
+                </button>
+              )}
+            </>
           )}
         </ContextMenu>
       )}
@@ -254,6 +302,18 @@ export default function DiscoverPage() {
   const [items, setItems] = useState<DiscoverItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [detailItem, setDetailItem] = useState<DiscoverItem | null>(null);
+  // Person search (TMDb): typing an actor/director's name surfaces their
+  // titles of the current type. Null when there's no key, no query, or no
+  // person match.
+  const [personSearch, setPersonSearch] = useState<{ person: { name: string; profile: string | null } | null; results: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }> } | null>(null);
+  // Titles vs People search mode. These used to run in parallel and render
+  // together (a person's filmography row ABOVE the normal title-search grid)
+  // - for a query that also loosely matched unrelated title names, that read
+  // as "here's stuff this actor hasn't been in" stacked right under their
+  // real filmography. Splitting them into an explicit mode means Titles
+  // search never touches TMDb at all, and People search never shows a single
+  // title-search result that isn't actually a verified credit.
+  const [searchMode, setSearchMode] = useState<'titles' | 'people'>('titles');
   // Which poster's right-click menu is open — shared across the whole page
   // (both the main grid and the For You rows) so opening a second card's
   // menu closes whichever one was open before, same as Continue Watching.
@@ -289,6 +349,10 @@ export default function DiscoverPage() {
   // viewMode/theme choices are.
   const [recRows, setRecRows] = useState<RecommendationRow[]>([]);
   const [recsLoaded, setRecsLoaded] = useState(false);
+  // Household picks: unwatched-by-anyone titles in the whole house's genres.
+  // Household-wide (not tied to the personal/shared user picker), so it only
+  // depends on the type toggle - a lead row above the personalized rows.
+  const [householdPicks, setHouseholdPicks] = useState<{ items: DiscoverItem[]; genres: string[]; memberCount: number; sharedAppeal: boolean } | null>(null);
   const [recMode, setRecMode] = useState<'personal' | 'shared'>('personal');
   const [recUserId, setRecUserId] = useState<string>('');
   const [recUserId2, setRecUserId2] = useState<string>('');
@@ -328,6 +392,16 @@ export default function DiscoverPage() {
       .catch(() => setRecRows([]))
       .finally(() => setRecsLoaded(true));
   }, [source, enableRecommendations, recMode, recUserId, recUserId2, type]);
+  // Household picks - household-wide, so only re-fetch on type change (not on
+  // mode/user-picker changes). Independent of the personal/shared rows below.
+  useEffect(() => {
+    if (source !== 'foryou' || !enableRecommendations) { setHouseholdPicks(null); return; }
+    let cancelled = false;
+    api.getHouseholdPicks(type)
+      .then((r) => { if (!cancelled) setHouseholdPicks(r && r.items.length > 0 ? r : null); })
+      .catch(() => { if (!cancelled) setHouseholdPicks(null); });
+    return () => { cancelled = true; };
+  }, [source, enableRecommendations, type]);
   useEffect(() => { if (recUsers.length > 0) localStorage.setItem('slicksync-foryou-mode', recMode); }, [recMode, recUsers.length]);
   useEffect(() => { if (recUserId) localStorage.setItem('slicksync-foryou-userId', recUserId); }, [recUserId]);
   useEffect(() => { if (recUserId2) localStorage.setItem('slicksync-foryou-userId2', recUserId2); }, [recUserId2]);
@@ -351,6 +425,7 @@ export default function DiscoverPage() {
     if (!enableWatchedIndicators && watchedFilter !== 'all') setWatchedFilter('all');
   }, [enableWatchedIndicators, watchedFilter]);
   const [watchedStatus, setWatchedStatus] = useState<Record<string, boolean>>({});
+  const [sortBy, setSortBy] = useState<SortKey>('default');
 
   // Convert saved WatchlistItem[] into DiscoverItem[] so the same grid + card
   // component renders both sources with no branching in the render tree.
@@ -374,6 +449,24 @@ export default function DiscoverPage() {
   });
   const loading = source === 'watchlist' ? !watchlistLoaded : isLoading;
   const ratingsById = useRatingsBatch(displayedItems.map((i) => i.id));
+  const sortedItems = sortBy === 'default' ? displayedItems : [...displayedItems].sort((a, b) => {
+    if (sortBy === 'title') return a.name.localeCompare(b.name);
+    if (sortBy === 'year-desc') return extractYear(b.releaseInfo) - extractYear(a.releaseInfo);
+    if (sortBy === 'year-asc') return extractYear(a.releaseInfo) - extractYear(b.releaseInfo);
+    const ratingOf = (i: DiscoverItem) => parseFloat(ratingsById[i.id]?.imdbRating || i.imdbRating || '0') || 0;
+    return ratingOf(b) - ratingOf(a);
+  });
+  // Person-credit results have no rating field (TMDb's credits endpoint
+  // doesn't return one here), so 'rating-desc' is meaningless for this list -
+  // the effect below resets away from it when switching into People mode.
+  const sortedPersonResults = !personSearch ? [] : sortBy === 'default' || sortBy === 'rating-desc' ? personSearch.results : [...personSearch.results].sort((a, b) => {
+    if (sortBy === 'title') return a.title.localeCompare(b.title);
+    if (sortBy === 'year-desc') return (parseInt(b.year || '0', 10) || 0) - (parseInt(a.year || '0', 10) || 0);
+    return (parseInt(a.year || '0', 10) || 0) - (parseInt(b.year || '0', 10) || 0);
+  });
+  useEffect(() => {
+    if (searchMode === 'people' && sortBy === 'rating-desc') setSortBy('default');
+  }, [searchMode, sortBy]);
 
   // Debounce typing so search isn't firing a request per keystroke.
   useEffect(() => {
@@ -446,6 +539,17 @@ export default function DiscoverPage() {
     }
   }, []);
 
+  // Open a person-search result: TMDb titles have no tt id, so resolve the
+  // IMDb id first, then open the normal Cinemeta-backed detail modal.
+  const openPersonResult = useCallback(async (r: { tmdbId: number; mediaType: 'movie' | 'tv'; title: string; poster: string | null }) => {
+    const res = await api.resolveImdbId(r.tmdbId, r.mediaType);
+    if (res?.imdbId) {
+      setDetailItem({ id: res.imdbId, type: res.type, name: r.title, poster: r.poster || undefined } as DiscoverItem);
+    } else {
+      toast.error('Couldn\'t open that title');
+    }
+  }, []);
+
   const handleToggleWatchlist = useCallback(async (item: DiscoverItem, next: boolean) => {
     // Optimistic — flip the local set immediately so the badge reacts.
     setWatchlist((prev) => next
@@ -466,11 +570,25 @@ export default function DiscoverPage() {
     }
   }, [refreshWatchlist]);
 
+  // In People mode, a query searches TMDb for a person only - the title
+  // grid/browse fetch below is skipped entirely so there's never a stray
+  // title-search result mixed into someone's filmography.
+  const isPeopleSearch = source === 'discover' && searchMode === 'people' && !!debouncedQuery;
+
   // First-page fetch — reruns whenever type/catalog/genre/search changes.
   // Search hits a different endpoint and doesn't support pagination, so it
   // just replaces items and marks the list as complete.
   useEffect(() => {
     let cancelled = false;
+
+    if (isPeopleSearch) {
+      // People mode: no title fetch at all.
+      setItems([]);
+      setIsLoading(false);
+      setHasMore(false);
+      return;
+    }
+
     setIsLoading(true);
     setSkip(0);
     setHasMore(true);
@@ -493,7 +611,25 @@ export default function DiscoverPage() {
     return () => {
       cancelled = true;
     };
-  }, [type, catalog, genre, debouncedQuery]);
+  }, [type, catalog, genre, debouncedQuery, isPeopleSearch]);
+
+  // People-mode search: only runs when the toggle is explicitly set to
+  // People, never alongside a Titles search.
+  const [personSearchLoading, setPersonSearchLoading] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (isPeopleSearch) {
+      setPersonSearchLoading(true);
+      api.searchPerson(debouncedQuery, type)
+        .then((r) => { if (!cancelled) setPersonSearch(r && r.person && r.results.length > 0 ? r : null); })
+        .catch(() => { if (!cancelled) setPersonSearch(null); })
+        .finally(() => { if (!cancelled) setPersonSearchLoading(false); });
+    } else {
+      setPersonSearch(null);
+      setPersonSearchLoading(false);
+    }
+    return () => { cancelled = true; };
+  }, [isPeopleSearch, debouncedQuery, type]);
 
   // Load the next page and append. No-op if already loading, search-mode
   // (no pagination on Cinemeta's search), or the last page came back short.
@@ -534,7 +670,9 @@ export default function DiscoverPage() {
   const searchConfig: PageToolbarProps['searchConfig'] = {
     value: searchQuery,
     onChange: setSearchQuery,
-    placeholder: `Search ${type === 'movie' ? 'movies' : 'series'}...`,
+    placeholder: searchMode === 'people'
+      ? 'Search for an actor or director...'
+      : `Search ${type === 'movie' ? 'movies' : 'series'}...`,
   };
 
   // TV mode wraps the whole page in the D-pad focus root; PC/mobile get a
@@ -597,6 +735,38 @@ export default function DiscoverPage() {
                 layoutId: 'discover-type-tabs',
               }}
             />
+          )}
+
+          {/* Titles vs People search mode - only relevant to the plain
+              Discover source (Watchlist/For You have no person search).
+              Explicitly separate, not run in parallel: a Titles search never
+              touches TMDb, and a People search only ever shows that person's
+              actual verified credits - no stray title-search result can
+              land next to a filmography it doesn't belong to. */}
+          {!isTV && source === 'discover' && (
+            <div className="flex items-center gap-2 mt-3">
+              <span className="text-xs text-muted">Search:</span>
+              <button
+                type="button"
+                onClick={() => setSearchMode('titles')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                  searchMode === 'titles' ? 'bg-primary text-white' : 'bg-surface-hover text-muted hover:text-default'
+                }`}
+              >
+                <MagnifyingGlassIcon className="w-3.5 h-3.5" />
+                Titles
+              </button>
+              <button
+                type="button"
+                onClick={() => setSearchMode('people')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                  searchMode === 'people' ? 'bg-primary text-white' : 'bg-surface-hover text-muted hover:text-default'
+                }`}
+              >
+                <UserIcon className="w-3.5 h-3.5" />
+                People
+              </button>
+            </div>
           )}
         </PageSection>
 
@@ -662,31 +832,55 @@ export default function DiscoverPage() {
                 return isTV ? <TVFocusable onEnterPress={() => setSource('foryou')}>{btn}</TVFocusable> : btn;
               })()}
 
-              {/* Watched filter — right side of the same row, subtle. */}
-              {enableWatchedIndicators && (
-                <div className="ml-auto flex gap-1 items-center">
-                  <span className="text-xs text-muted mr-1 hidden sm:inline">Show:</span>
-                  {([['all', 'All'], ['hide', 'Unwatched'], ['only', 'Watched']] as const).map(([key, label]) => {
-                    const btn = (
-                      <button
-                        type="button"
-                        onClick={() => setWatchedFilter(key)}
-                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                          watchedFilter === key
-                            ? 'bg-primary/20 text-primary'
-                            : 'text-muted hover:text-default'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    );
-                    return isTV ? (
-                      <TVFocusable key={key} onEnterPress={() => setWatchedFilter(key)}>{btn}</TVFocusable>
-                    ) : (
-                      <Fragment key={key}>{btn}</Fragment>
-                    );
-                  })}
+              {/* Watched filter + sort — right side of the same row, stacked
+                  (Show above Sort) rather than crammed side by side. Sort/
+                  watched filter only apply to the flat grid views (Discover
+                  browse+search, Watchlist) - For You renders as personalized
+                  rows, not a single sortable/filterable list. Watched filter
+                  additionally hides in People mode - watchedStatus is keyed
+                  by IMDb id, and person-credit results only carry a TMDb id,
+                  so it could never actually match anything there. */}
+              {source !== 'foryou' && (
+              <div className="ml-auto flex flex-col items-end gap-1.5">
+                {enableWatchedIndicators && searchMode !== 'people' && (
+                  <div className="flex gap-1 items-center">
+                    <span className="text-xs text-muted mr-1 hidden sm:inline">Show:</span>
+                    {([['all', 'All'], ['hide', 'Unwatched'], ['only', 'Watched']] as const).map(([key, label]) => {
+                      const btn = (
+                        <button
+                          type="button"
+                          onClick={() => setWatchedFilter(key)}
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                            watchedFilter === key
+                              ? 'bg-primary/20 text-primary'
+                              : 'text-muted hover:text-default'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                      return isTV ? (
+                        <TVFocusable key={key} onEnterPress={() => setWatchedFilter(key)}>{btn}</TVFocusable>
+                      ) : (
+                        <Fragment key={key}>{btn}</Fragment>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted hidden sm:inline">Sort:</span>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as SortKey)}
+                    aria-label="Sort results"
+                    className="px-2.5 py-1 rounded-md text-xs font-medium bg-surface-hover text-muted hover:text-default border border-default cursor-pointer"
+                  >
+                    {SORT_OPTIONS.filter((opt) => searchMode !== 'people' || opt.key !== 'rating-desc').map((opt) => (
+                      <option key={opt.key} value={opt.key}>{opt.label}</option>
+                    ))}
+                  </select>
                 </div>
+              </div>
               )}
             </div>
           </PageSection>
@@ -883,14 +1077,64 @@ export default function DiscoverPage() {
                 )}
               </div>
             )}
+            {/* Household picks - unwatched by ANYONE, in genres the whole
+                house likes. Lead row, above the personal/shared rows, and
+                independent of them (shows even if the personal picker's own
+                rows are empty). Something single-user Trakt can't do. */}
+            {householdPicks && householdPicks.items.length > 0 && (
+              <div className="mb-8">
+                <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+                  <h3 className="text-base font-semibold font-display text-default">✨ Nobody&apos;s seen it yet</h3>
+                  {householdPicks.sharedAppeal && householdPicks.memberCount > 1 && (
+                    <Badge
+                      variant="primary"
+                      size="sm"
+                      icon={<SparklesIcon className="w-3 h-3" />}
+                      title="In genres shared across multiple household members - broad appeal, and no one's watched it"
+                    >
+                      House pick
+                    </Badge>
+                  )}
+                  <span className="text-xs text-muted">· {householdPicks.genres.join(', ')} the whole house likes</span>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
+                  {householdPicks.items.map((item) => (
+                    <PosterCard
+                      key={item.id}
+                      item={item}
+                      ratings={ratingsById[item.id]}
+                      watched={watchedStatus[item.id]}
+                      inWatchlist={inWatchlistIds.has(item.id)}
+                      showWatchlistMenu={enableWatchlist}
+                      showWatchlistBadge={enableWatchlist}
+                      showWatchedMenu={enableWatchedIndicators}
+                      showWatchedBadge={enableWatchedIndicators}
+                      showNotInterested
+                      onMarkNotInterested={handleMarkNotInterested}
+                      onOpenDetails={setDetailItem}
+                      onToggleWatchlist={handleToggleWatchlist}
+                      onToggleWatched={handleToggleWatched}
+                      isMenuOpen={openMenuKey === item.id}
+                      onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                      focusable={isTV}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {!recsLoaded ? (
               <div className="flex items-center justify-center py-24 text-muted">
                 <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
               </div>
             ) : recRows.length === 0 ? (
-              <div className="text-center py-24 text-muted">
-                <p>No recommendations yet — watch a few things first, and we&apos;ll suggest more.</p>
-              </div>
+              // Only show the empty message when there's ALSO no household-
+              // picks row above - otherwise the page isn't actually empty.
+              !householdPicks || householdPicks.items.length === 0 ? (
+                <div className="text-center py-24 text-muted">
+                  <p>No recommendations yet — watch a few things first, and we&apos;ll suggest more.</p>
+                </div>
+              ) : null
             ) : (
               <div className="space-y-8">
                 {recRows.map((row) => (
@@ -953,6 +1197,63 @@ export default function DiscoverPage() {
           </PageSection>
         ) : (
         <PageSection delay={0.1}>
+          {source === 'discover' && searchMode === 'people' ? (
+            // People mode: exclusively a person's own verified TMDb credits -
+            // never a title-search result mixed in (see the searchMode
+            // comment above for why that combination was removed).
+            <>
+              {!debouncedQuery ? (
+                <div className="text-center py-24 text-muted">
+                  <UserIcon className="w-10 h-10 mx-auto mb-3 text-subtle" />
+                  <p>Type an actor or director&apos;s name to see what they&apos;ve been in.</p>
+                </div>
+              ) : personSearchLoading ? (
+                <div className="flex items-center justify-center py-24 text-muted">
+                  <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : !personSearch || !personSearch.person || personSearch.results.length === 0 ? (
+                <div className="text-center py-24 text-muted">
+                  <UserIcon className="w-10 h-10 mx-auto mb-3 text-subtle" />
+                  <p>No match for &quot;{debouncedQuery}&quot; — or nothing of that type ({type === 'series' ? 'series' : 'movies'}) in their credits.</p>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    {personSearch.person.profile && (
+                      <img src={personSearch.person.profile} alt={personSearch.person.name} className="w-8 h-8 rounded-full object-cover" />
+                    )}
+                    <h3 className="text-base font-semibold font-display text-default">
+                      {personSearch.person.name}
+                      <span className="text-muted font-normal"> — {type === 'series' ? 'series' : 'movies'} they&apos;re in</span>
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
+                    {sortedPersonResults.map((r) => (
+                      <button
+                        key={`${r.mediaType}-${r.tmdbId}`}
+                        type="button"
+                        onClick={() => openPersonResult(r)}
+                        title={`${r.title}${r.role ? ` · ${r.role}` : ''}`}
+                        className="text-left group/pr"
+                      >
+                        <div className="aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-lg">
+                          {r.poster ? (
+                            <img src={r.poster} alt={r.title} loading="lazy" className="w-full h-full object-cover transition-transform group-hover/pr:scale-105" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-muted text-xs p-2 text-center">{r.title}</div>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs font-medium text-default leading-tight line-clamp-2 group-hover/pr:text-primary transition-colors text-center">{r.title}</p>
+                        {r.year && <p className="text-[10px] text-subtle text-center">{r.year}</p>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+          <>
+
           {loading ? (
             <div className="flex items-center justify-center py-24 text-muted">
               <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -973,7 +1274,7 @@ export default function DiscoverPage() {
           ) : (
             <>
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
-                {displayedItems.map((item) => (
+                {sortedItems.map((item) => (
                   <PosterCard
                     key={item.id}
                     item={item}
@@ -1015,6 +1316,8 @@ export default function DiscoverPage() {
               )}
             </>
           )}
+          </>
+          )}
         </PageSection>
         )}
       </div>
@@ -1031,6 +1334,8 @@ export default function DiscoverPage() {
           fallbackPoster={detailItem.poster}
           fallbackRating={detailItem.imdbRating}
           fallbackReleaseInfo={detailItem.releaseInfo}
+          fallbackRottenTomatoes={ratingsById[detailItem.id]?.rottenTomatoes}
+          fallbackMetacritic={ratingsById[detailItem.id]?.metacritic}
           onWatchlistChange={(id, next) => {
             const item = detailItem;
             setWatchlist((prev) => next

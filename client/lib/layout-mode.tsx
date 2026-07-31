@@ -86,7 +86,7 @@ export function useLayoutMode() {
 // switch to. This is every top-level admin page - full Nebula coverage.
 const NEBULA_ELIGIBLE_PATHS = [
   '/', '/activity', '/users', '/groups', '/addons',
-  '/discover', '/metrics', '/vault', '/invitations', '/tasks', '/settings', '/themes', '/changelog',
+  '/discover', '/lists', '/metrics', '/vault', '/invitations', '/tasks', '/settings', '/themes', '/changelog', '/health',
 ];
 
 // Dynamic detail routes (/users/[id], /groups/[id]) - prefix match since
@@ -98,7 +98,7 @@ const NEBULA_ELIGIBLE_PATHS = [
 // their existing interior content unchanged for now (same "chrome swap
 // first, content styling later" approach Activity's Tasks/Invites/Proxy
 // tabs used) - not the reset it looked like, just previously scoped out.
-const NEBULA_ELIGIBLE_PREFIXES = ['/users/', '/groups/', '/addons/'];
+const NEBULA_ELIGIBLE_PREFIXES = ['/users/', '/groups/', '/addons/', '/lists/'];
 
 export function isNebulaEligiblePath(pathname: string): boolean {
   return NEBULA_ELIGIBLE_PATHS.includes(pathname)
