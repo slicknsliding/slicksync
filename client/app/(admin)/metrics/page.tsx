@@ -1334,6 +1334,7 @@ export default function MetricsPage() {
                         ))}
                       </div>
                     </Card>
+                    </div>
                   )}
                 </div>
 
