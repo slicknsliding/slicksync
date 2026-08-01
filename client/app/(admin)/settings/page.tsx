@@ -311,7 +311,7 @@ export default function SettingsPage() {
           enableWatchlist: settings.enableWatchlist !== false,
           enableWatchedIndicators: settings.enableWatchedIndicators !== false,
           enableRecommendations: settings.enableRecommendations !== false,
-          enableAutoplayTrailer: settings.enableAutoplayTrailer !== false,
+          enableAutoplayTrailer: settings.enableAutoplayTrailer === true,
           autoplayTrailerStartMuted: settings.autoplayTrailerStartMuted !== false,
         });
 
@@ -949,10 +949,10 @@ export default function SettingsPage() {
 
               <SettingRow
                 label="Autoplay trailer"
-                description="When you open a title's detail popup, its trailer starts playing automatically instead of waiting for a Play Trailer click. Off: waits for the click, same as before."
+                description="When you open a title's detail popup, its trailer starts playing automatically instead of waiting for a Play Trailer click. Off by default - turn this on if you want it."
               >
                 <ToggleSwitch
-                  enabled={syncSettings.enableAutoplayTrailer !== false}
+                  enabled={syncSettings.enableAutoplayTrailer === true}
                   onChange={(v) => { handleSaveSetting('enableAutoplayTrailer' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
                   label="Toggle autoplay trailer"
                 />
@@ -961,7 +961,7 @@ export default function SettingsPage() {
               <SettingRow
                 label="Autoplay with sound"
                 description="Whether the autoplayed trailer starts muted (default) or with sound. An explicit Play Trailer click always has sound regardless of this."
-                disabled={syncSettings.enableAutoplayTrailer === false}
+                disabled={syncSettings.enableAutoplayTrailer !== true}
               >
                 <ToggleSwitch
                   enabled={syncSettings.autoplayTrailerStartMuted === false}

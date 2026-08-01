@@ -15,7 +15,10 @@ export interface PersonalFeatures {
   enableWatchedIndicators: boolean;
   enableRecommendations: boolean;
   // Trailer in the detail modal starts playing automatically instead of
-  // waiting for a "Play Trailer" click. Default true (opt-out, not opt-in).
+  // waiting for a "Play Trailer" click. Default false (opt-in, not
+  // opt-out) - unlike the other three SlickTrax flags above, autoplaying
+  // audio/video the instant a modal opens is disruptive enough that it
+  // shouldn't happen until someone explicitly asks for it in Settings.
   enableAutoplayTrailer: boolean;
   // Whether that autoplay starts muted (true, default) or with sound
   // (false) - a separate choice, not decided for the viewer. Only read when
@@ -34,7 +37,7 @@ const DEFAULT: PersonalFeatures = {
   enableWatchlist: true,
   enableWatchedIndicators: true,
   enableRecommendations: true,
-  enableAutoplayTrailer: true,
+  enableAutoplayTrailer: false,
   autoplayTrailerStartMuted: true,
   rpdbEnabled: false,
 };
@@ -56,7 +59,7 @@ async function fetchOnce(): Promise<PersonalFeatures> {
         enableWatchlist: s?.enableWatchlist !== false,
         enableWatchedIndicators: s?.enableWatchedIndicators !== false,
         enableRecommendations: s?.enableRecommendations !== false,
-        enableAutoplayTrailer: s?.enableAutoplayTrailer !== false,
+        enableAutoplayTrailer: s?.enableAutoplayTrailer === true,
         autoplayTrailerStartMuted: s?.autoplayTrailerStartMuted !== false,
         rpdbEnabled: !!(s?.rpdbApiKey && s.rpdbApiKey.trim()),
       };
