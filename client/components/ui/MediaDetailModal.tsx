@@ -170,6 +170,20 @@ export function MediaDetailModal({
   const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted } = usePersonalFeatures();
   const isTV = useIsTV();
 
+  // usePersonalFeatures resolves asynchronously (starts from a default of
+  // true, then updates once the real Settings value loads) - the
+  // item-fetch effect below isn't keyed on these values (that would
+  // needlessly re-fetch/reset an already-playing trailer whenever a
+  // background settings refresh resolves), so it reads these refs instead
+  // of closing over the hook values directly. Otherwise, if getMediaDetails
+  // resolves before usePersonalFeatures does, the autoplay decision would
+  // fire using the stale default and never get re-checked - a real,
+  // confirmed case of the autoplay setting appearing to be ignored.
+  const enableAutoplayTrailerRef = useRef(enableAutoplayTrailer);
+  const autoplayTrailerStartMutedRef = useRef(autoplayTrailerStartMuted);
+  useEffect(() => { enableAutoplayTrailerRef.current = enableAutoplayTrailer; }, [enableAutoplayTrailer]);
+  useEffect(() => { autoplayTrailerStartMutedRef.current = autoplayTrailerStartMuted; }, [autoplayTrailerStartMuted]);
+
   // TV mode: the whole modal body (trailer button, Watchlist / Open in
   // Stremio / Open in Nuvio) is one focus group, so D-pad up/down/left/
   // right moves naturally between them by actual on-screen position - this
@@ -347,8 +361,8 @@ export function MediaDetailModal({
       // "wait for it to load, then play" step needed since this runs right
       // where the trailer id first becomes known.
       const autoTrailerId = result?.trailers?.[0];
-      if (enableAutoplayTrailer && autoTrailerId) {
-        setTrailerSrc(buildTrailerSrc(autoTrailerId, autoplayTrailerStartMuted));
+      if (enableAutoplayTrailerRef.current && autoTrailerId) {
+        setTrailerSrc(buildTrailerSrc(autoTrailerId, autoplayTrailerStartMutedRef.current));
         setIsTrailerPlaying(true);
       }
     });
@@ -491,7 +505,7 @@ export function MediaDetailModal({
   }, [onClose]);
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size="full" hideCloseButton={isTrailerPlaying} backdropImage={heroImage || undefined}>
+    <Modal isOpen={isOpen} onClose={handleClose} size="full" hideCloseButton={isTrailerPlaying} backdropImage={!isTrailerPlaying ? (heroImage || undefined) : undefined}>
       <TVScope {...(tvScopeProps as any)}>
       <div className="-mx-6 -mt-6" ref={isTV ? modalRef : undefined}>
         {isTrailerPlaying && trailerId && trailerSrc ? (
