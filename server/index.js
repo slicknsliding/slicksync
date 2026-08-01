@@ -208,7 +208,7 @@ const { getServerKey, aesGcmEncrypt, aesGcmDecrypt, getAccountDek } = require('.
 
 // Global auth and CSRF gates via middleware factories
 const { createAuthGate, createCsrfGuard } = require('./middleware/auth')
-app.use(createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIsAllowlisted, parseCookies, cookieName, extractBearerToken, issueAccessToken, randomCsrfToken, isProdEnv }))
+app.use(createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIsAllowlisted, parseCookies, cookieName, extractBearerToken, issueAccessToken, randomCsrfToken, isProdEnv, prisma }))
 app.use(createCsrfGuard({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, pathIsAllowlisted, parseCookies, cookieName }))
 
 if (INSTANCE_TYPE !== 'public' && !PRIVATE_AUTH_ENABLED) {
@@ -259,6 +259,7 @@ app.use('/api/watchlist', watchlistRouter({ prisma, getAccountId }));
 app.use('/api/discover', discoverRouter({ prisma, getAccountId }));
 app.use('/api/lists', listsRouter({ prisma, getAccountId }));
 app.use('/api/health', healthRouter({ prisma, getAccountId }));
+app.use('/api/superadmin', require('./routes/superadmin')({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }));
 app.use('/api/poster', postersRouter({ prisma, getAccountId }));
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({
@@ -450,6 +451,15 @@ async function bootstrap() {
       }, schedulerReq.appAccountId)
     } catch (err) {
       console.error('⚠️ Failed to initialize Sync Guardian:', err)
+    }
+
+    // Schedule DB size sampling for the Tasks page's storage chart
+    // (private/SQLite-mode only - no-ops itself if DATABASE_URL isn't file:)
+    try {
+      const { scheduleDbSizeMonitor } = require('./utils/dbSizeMonitor')
+      scheduleDbSizeMonitor(prisma, schedulerReq.appAccountId || DEFAULT_ACCOUNT_ID)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize DB size monitor:', err)
     }
 
     // Startup repair: reload addons with uninitialized resources/catalogs across all accounts

@@ -14,6 +14,14 @@ export interface PersonalFeatures {
   enableWatchlist: boolean;
   enableWatchedIndicators: boolean;
   enableRecommendations: boolean;
+  // Trailer in the detail modal starts playing automatically instead of
+  // waiting for a "Play Trailer" click. Default true (opt-out, not opt-in).
+  enableAutoplayTrailer: boolean;
+  // Whether that autoplay starts muted (true, default) or with sound
+  // (false) - a separate choice, not decided for the viewer. Only read when
+  // enableAutoplayTrailer is on; an explicit "Play Trailer" click always
+  // starts with sound regardless of this.
+  autoplayTrailerStartMuted: boolean;
   // Whether an RPDB (RatingPosterDB) key is configured - callers use this to
   // decide whether to route a title's poster through /api/poster/{imdbId}
   // instead of its own stored poster. Deliberately just a boolean: the raw
@@ -26,6 +34,8 @@ const DEFAULT: PersonalFeatures = {
   enableWatchlist: true,
   enableWatchedIndicators: true,
   enableRecommendations: true,
+  enableAutoplayTrailer: true,
+  autoplayTrailerStartMuted: true,
   rpdbEnabled: false,
 };
 
@@ -46,6 +56,8 @@ async function fetchOnce(): Promise<PersonalFeatures> {
         enableWatchlist: s?.enableWatchlist !== false,
         enableWatchedIndicators: s?.enableWatchedIndicators !== false,
         enableRecommendations: s?.enableRecommendations !== false,
+        enableAutoplayTrailer: s?.enableAutoplayTrailer !== false,
+        autoplayTrailerStartMuted: s?.autoplayTrailerStartMuted !== false,
         rpdbEnabled: !!(s?.rpdbApiKey && s.rpdbApiKey.trim()),
       };
       inFlight = null;

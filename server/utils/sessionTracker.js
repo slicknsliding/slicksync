@@ -397,6 +397,15 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     const itemId = item._id || item.id
     if (!itemId) continue
 
+    // Skip entirely when the provider's own library has no title for this
+    // item - confirmed real case: a raw/direct stream (no proper Cinemeta-
+    // backed catalog entry) lands in Stremio/Nuvio's library with an empty
+    // name, and this used to fall through to a WatchSession/History row
+    // literally titled "Unknown" with no poster, still counted in Watch
+    // Time Today. There's nothing accurate to show for it - skip rather
+    // than record a placeholder that pollutes the feed and the stats.
+    if (!item.name || !String(item.name).trim()) continue
+
     // Check if item has watch progress or recent activity
     const state = item.state || {}
 

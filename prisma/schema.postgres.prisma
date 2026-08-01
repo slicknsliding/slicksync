@@ -145,6 +145,11 @@ model AppAccount {
   apiKeyHash   String? // Encrypted API key
   aiometadataManifestUrl String? // User-editable AIOMetadata addon manifest URL, used to look up posters for AIOStreams-proxy-detected Now Playing entries that have no WatchSession match
   avatarUrl    String? // Admin's own profile picture: full URL or /uploads/avatars/<file> for uploaded images
+  // Below three fields back the superadmin panel (server/routes/superadmin.js) -
+  // operator-only cross-account visibility/moderation for public mode.
+  createdAt   DateTime  @default(now())
+  lastLoginAt DateTime?
+  disabled    Boolean   @default(false) // login blocked when true; data untouched
 
   // Relationships
   invitations Invitation[]

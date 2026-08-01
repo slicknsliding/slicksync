@@ -177,5 +177,28 @@ module.exports = ({ prisma, getAccountId }) => {
     }
   });
 
+  // GET /api/lists/:id/suggest?query= — propose titles for this catalog by
+  // theme (TMDb keyword search, seeded from the catalog's own name unless
+  // ?query= overrides it). Read-only: returns candidates for the caller to
+  // review and add one-by-one via the existing POST .../items - nothing is
+  // ever added automatically by this endpoint itself.
+  router.get('/:id/suggest', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
+      if (!existing) return res.status(404).json({ error: 'List not found' });
+
+      const { suggestTitlesForCatalog, resolveTmdbKey } = require('../utils/listImport');
+      const key = await resolveTmdbKey(prisma, getAccountId, req);
+      const query = (typeof req.query.query === 'string' && req.query.query.trim()) ? req.query.query.trim() : existing.name;
+      const existingIds = parseItems(existing.itemsJson).map((i) => i.id);
+      const suggestions = await suggestTitlesForCatalog(key, query, existingIds);
+      res.json({ suggestions, query });
+    } catch (e) {
+      console.error('Error suggesting catalog titles:', e);
+      res.status(400).json({ error: e?.message || 'Failed to suggest titles' });
+    }
+  });
+
   return router;
 };

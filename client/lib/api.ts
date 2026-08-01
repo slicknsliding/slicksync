@@ -935,6 +935,10 @@ class ApiClient {
     return this.fetch<BackupFile[]>('/settings/backups');
   }
 
+  async getDbSizeReport() {
+    return this.fetch<DbSizeReport>('/settings/db-size');
+  }
+
   async downloadBackup(filename: string) {
     const response = await fetch(`${API_BASE}/settings/backups/${encodeURIComponent(filename)}/download`, {
       credentials: 'include',
@@ -1713,6 +1717,13 @@ class ApiClient {
       body: JSON.stringify({ url, name }),
     });
   }
+  // Propose titles for a catalog by theme (TMDb keyword search) - read-only,
+  // never adds anything itself. query defaults server-side to the catalog's
+  // own name if omitted.
+  async suggestCatalogTitles(id: string, query?: string) {
+    const qs = query ? `?query=${encodeURIComponent(query)}` : '';
+    return this.fetch<{ suggestions: CatalogSuggestion[]; query: string }>(`/lists/${encodeURIComponent(id)}/suggest${qs}`);
+  }
 
   // System Health board - one aggregated read of Sync/Addons/Vault/Proxy
   // status, all sourced from state existing background monitors already
@@ -2205,6 +2216,8 @@ export interface SyncSettings {
   enableWatchlist?: boolean;
   enableWatchedIndicators?: boolean;
   enableRecommendations?: boolean;
+  enableAutoplayTrailer?: boolean;
+  autoplayTrailerStartMuted?: boolean;
   tmdbApiKey?: string;
   mdblistApiKey?: string;
   rpdbApiKey?: string;
@@ -2305,6 +2318,14 @@ export interface CustomListItem {
   year?: number | string | null;
 }
 
+export interface CatalogSuggestion {
+  id: string;
+  type: 'movie' | 'series';
+  name: string;
+  poster?: string | null;
+  year?: number | string | null;
+}
+
 export interface CustomList {
   id: string;
   name: string;
@@ -2367,6 +2388,14 @@ export interface HealthStatus {
   proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean };
   mismatchCount: number;
   version: { running: string; latestRelease: string | null; updateAvailable: boolean };
+  timeline: Array<{
+    id: string;
+    source: 'addon' | 'vault' | 'proxy';
+    status: 'up' | 'down';
+    title: string;
+    detail: string | null;
+    at: string;
+  }>;
 }
 
 export interface UpcomingEpisode {
@@ -2411,6 +2440,14 @@ export interface BackupFile {
   size: number;
   createdAt: string;
   validation?: BackupValidation | null;
+}
+
+export interface DbSizeReport {
+  supported: boolean;
+  currentBytes?: number | null;
+  growthBytesPerDay?: number | null;
+  projectedDaysUntilFull?: number | null;
+  samples?: Array<{ bytes: number; createdAt: string }>;
 }
 
 export interface DisasterRecoveryKit {
@@ -2521,6 +2558,12 @@ export interface MediaDetails {
   title: string | null;
   poster: string | null;
   background: string | null;
+  // TMDb backdrop (server/routes/users.js's /media-details) - preferred over
+  // `background` (Cinemeta's own field) when available, generally higher
+  // quality/more consistently present. Free at any TMDb tier, unlike RPDB's
+  // equivalent which needs a paid Tier 2+ key. Null when no TMDb key is
+  // configured or TMDb has nothing for this title.
+  backdrop: string | null;
   description: string | null;
   cast: Array<{ name: string; character: string | null; photo: string | null; tmdbId?: number | string | null }>;
   director: string[];

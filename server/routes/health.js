@@ -18,7 +18,7 @@ module.exports = ({ prisma, getAccountId }) => {
 
       const { getVersionStatus } = require('../utils/versionCheck');
 
-      const [addons, vaultEntries, driftNotifications, mismatchCount, users, version] = await Promise.all([
+      const [addons, vaultEntries, driftNotifications, mismatchCount, users, version, addonEvents, vaultProxyEvents] = await Promise.all([
         prisma.addon.findMany({
           where: { accountId },
           select: { id: true, name: true, isOnline: true, lastHealthCheck: true, healthCheckError: true, healthIgnored: true },
@@ -34,7 +34,51 @@ module.exports = ({ prisma, getAccountId }) => {
         prisma.notification.count({ where: { accountId, type: 'mismatch' } }),
         prisma.user.findMany({ where: { accountId, isActive: true }, select: { id: true } }),
         getVersionStatus(),
+        // Unified incident timeline, part 1: addon offline/online edge events
+        // (AddonHealthAlert already logs exactly this - see the model's own
+        // comment). Not filtered by healthIgnored - an ignored addon's past
+        // history is still real history, only its CURRENT status stops
+        // counting toward Attention.
+        prisma.addonHealthAlert.findMany({
+          where: { accountId },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        }),
+        // Unified incident timeline, part 2: Vault and Proxy don't have a
+        // dedicated event-log table the way addons do, but notifyPushForType
+        // already persists a bell Notification row for every vault/proxy
+        // health transition (see pushNotifications.js) - reusing that instead
+        // of building a second logging mechanism for the same kind of event.
+        prisma.notification.findMany({
+          where: { accountId, type: { in: ['vault', 'proxy'] } },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        }),
       ]);
+
+      const timeline = [
+        ...addonEvents.map((e) => ({
+          id: e.id,
+          source: 'addon',
+          status: e.event === 'offline' ? 'down' : 'up',
+          title: e.event === 'offline' ? `${e.addonName} went offline` : `${e.addonName} came back online`,
+          detail: e.errorMessage || null,
+          at: e.createdAt,
+        })),
+        ...vaultProxyEvents.map((n) => ({
+          id: n.id,
+          source: n.type,
+          // Proxy has a real ✅ recovery notification (proxyStreamMonitor.js);
+          // Vault only ever alerts on failure/expiry (⚠️/⏰ - vaultMonitor.js
+          // has no "back to ok" counterpart), so this correctly shows as
+          // "down" for every vault event - an accurate reflection of what's
+          // actually tracked, not a gap in this timeline.
+          status: n.title.startsWith('✅') ? 'up' : 'down',
+          title: n.title,
+          detail: n.body || null,
+          at: n.createdAt,
+        })),
+      ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 50);
 
       // Addons - healthIgnored entries never show as Attention or count
       // toward `overall`. The ignored list itself is independent of current
@@ -107,6 +151,7 @@ module.exports = ({ prisma, getAccountId }) => {
         proxy,
         mismatchCount,
         version,
+        timeline,
       });
     } catch (error) {
       console.error('Error building health status:', error);
