@@ -18,6 +18,11 @@ interface ModalProps {
    * would otherwise sit on top of. The caller is responsible for providing
    * another way to close (backdrop click and Escape still work). */
   hideCloseButton?: boolean;
+  /** Optional ambient art behind the whole panel (e.g. a title's backdrop),
+   * not just a header strip - a large, blurred, dimmed version fading into
+   * the panel's normal surface color. Unmounts with the rest of the modal
+   * on close, nothing extra needed there. Omit for the plain solid panel. */
+  backdropImage?: string;
 }
 
 const sizeStyles = {
@@ -36,7 +41,7 @@ const sizeMaxWidthPx = {
   full: '896px',
 };
 
-export function Modal({ isOpen, onClose, title, description, size = 'md', children, hideCloseButton = false }: ModalProps) {
+export function Modal({ isOpen, onClose, title, description, size = 'md', children, hideCloseButton = false, backdropImage }: ModalProps) {
   return (
     <Transition show={isOpen} as={Fragment}>
       <Dialog onClose={onClose} className="relative z-50">
@@ -86,6 +91,29 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
                 maxWidth: sizeMaxWidthPx[size],
               }}
             >
+              {/* Ambient backdrop art - z-0, sits behind the header/content
+                  below (both explicitly z-10) rather than relying on default
+                  paint order, which would otherwise put this absolutely-
+                  positioned layer above their static-flow content. Sized to
+                  the panel itself (capped at max-h-[85vh] above), not the
+                  scrollable content, so the fade-to-solid point stays fixed
+                  regardless of how long the content is. */}
+              {backdropImage && (
+                <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden="true">
+                  <img
+                    src={backdropImage}
+                    alt=""
+                    decoding="async"
+                    className="absolute inset-0 w-full h-full object-cover scale-110"
+                    style={{ filter: 'blur(32px) brightness(0.55)' }}
+                  />
+                  <div
+                    className="absolute inset-0"
+                    style={{ background: 'linear-gradient(180deg, transparent 0%, var(--color-surface) 65%)' }}
+                  />
+                </div>
+              )}
+
               {/* Close button - unconditional (not tied to title/description) and
                   positioned on the panel itself, not inside the scrollable content,
                   so it stays put regardless of what's rendered below (a custom
@@ -105,7 +133,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
               {/* Header */}
               {(title || description) && (
                 <div
-                  className="px-6 pt-6 pb-4 pr-14 shrink-0"
+                  className="relative z-10 px-6 pt-6 pb-4 pr-14 shrink-0"
                   style={{ borderBottom: '1px solid var(--color-surface-border)' }}
                 >
                   {title && (
@@ -125,7 +153,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
               )}
 
               {/* Content */}
-              <div className="p-6 overflow-y-auto">
+              <div className="relative z-10 p-6 overflow-y-auto">
                 {children}
               </div>
             </DialogPanel>

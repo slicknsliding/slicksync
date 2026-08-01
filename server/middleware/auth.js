@@ -1,7 +1,7 @@
 // Auth and CSRF middlewares (factory-style for DI/testing)
-module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIsAllowlisted, parseCookies, cookieName, extractBearerToken, issueAccessToken, randomCsrfToken, isProdEnv, jsonwebtoken }) {
+module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIsAllowlisted, parseCookies, cookieName, extractBearerToken, issueAccessToken, randomCsrfToken, isProdEnv, jsonwebtoken, prisma }) {
   const jwt = jsonwebtoken || require('jsonwebtoken')
-  return function authGate(req, res, next) {
+  return async function authGate(req, res, next) {
     if (INSTANCE_TYPE !== 'public' && !PRIVATE_AUTH_ENABLED) return next();
     if (req.method === 'OPTIONS') return next();
 
@@ -21,6 +21,19 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
           try {
             const rj = jwt.verify(refreshCookie, JWT_SECRET);
             if (rj && rj.accId) {
+              // Superadmin-disable check: only hit on the (relatively rare)
+              // access-token-expiry renewal, not every request - bounds a
+              // disabled account's already-open session to at most one
+              // access-token lifetime (30d) rather than the full 365d
+              // refresh token, without a DB read on every single request.
+              if (INSTANCE_TYPE === 'public' && prisma) {
+                try {
+                  const acct = await prisma.appAccount.findUnique({ where: { id: rj.accId }, select: { disabled: true } });
+                  if (acct?.disabled) {
+                    return res.status(403).json({ message: 'This account has been disabled' });
+                  }
+                } catch {}
+              }
               const newAt = issueAccessToken(rj.accId);
               res.cookie(cookieName('sfm_at'), newAt, {
                 httpOnly: true,

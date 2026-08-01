@@ -186,6 +186,13 @@ model AppAccount {
   apiKeyHash   String? // Encrypted API key
   aiometadataManifestUrl String? // User-editable AIOMetadata addon manifest URL, used to look up posters for AIOStreams-proxy-detected Now Playing entries that have no WatchSession match
   avatarUrl    String? // Admin's own profile picture: full URL or /uploads/avatars/<file> for uploaded images
+  // Below three fields exist for the superadmin panel (public multi-tenant
+  // mode) - meaningless but harmless on this private, single-account
+  // deployment. createdAt backfills to now() for the one pre-existing row on
+  // first migration, not the account's real original creation date.
+  createdAt   DateTime  @default(now())
+  lastLoginAt DateTime?
+  disabled    Boolean   @default(false) // login blocked when true; data untouched (see server/routes/superadmin.js)
 
   // Relationships
   invitations Invitation[]
@@ -661,6 +668,21 @@ model AddonHealthAlert {
 
   @@index([accountId, createdAt])
   @@map("addon_health_alerts")
+}
+
+// Periodic sample of the SQLite DB file's own size, for the Tasks page's
+// size-over-time chart - private-mode only (public mode runs Postgres, which
+// has no single file to stat). Read-only reporting: no action is ever taken
+// on this data, it exists purely to catch a runaway table before disk fills
+// up on a small VPS.
+model DbSizeSample {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  bytes     BigInt
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@map("db_size_samples")
 }
 
 // Generic persistent in-app notification - the durable backing store for the
