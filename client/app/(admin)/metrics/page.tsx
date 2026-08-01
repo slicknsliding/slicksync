@@ -1182,7 +1182,14 @@ export default function MetricsPage() {
               </PageSection>
 
               <PageSection>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                {/* Masonry (CSS columns), not a grid - these cards vary a lot
+                    in height (Addons' uptime list, the incident timeline),
+                    and a strict 2-col grid sizes every row to its tallest
+                    cell, which left large dead gaps under the shorter card
+                    in that row. break-inside-avoid-column keeps each card
+                    from being split across the column break. */}
+                <div className="columns-1 md:columns-2 gap-4">
+                  <div className="mb-4 break-inside-avoid-column">
                   <HealthCheckCard
                     icon={<ArrowsRightLeftIcon className="w-5 h-5" />}
                     title="Sync"
@@ -1199,7 +1206,9 @@ export default function MetricsPage() {
                       <p className="text-xs text-subtle">No accounts have drifted from their group&apos;s addons.</p>
                     )}
                   </HealthCheckCard>
+                  </div>
 
+                  <div className="mb-4 break-inside-avoid-column">
                   <HealthCheckCard
                     icon={<PuzzlePieceIcon className="w-5 h-5" />}
                     title="Addons"
@@ -1232,7 +1241,9 @@ export default function MetricsPage() {
                       </div>
                     )}
                   </HealthCheckCard>
+                  </div>
 
+                  <div className="mb-4 break-inside-avoid-column">
                   <HealthCheckCard
                     icon={<ShieldCheckIcon className="w-5 h-5" />}
                     title="Vault"
@@ -1253,7 +1264,9 @@ export default function MetricsPage() {
                     )}
                     <HealthIgnoredList items={healthData.vault.ignored} onUnignore={(id) => toggleVaultIgnored(id, false)} />
                   </HealthCheckCard>
+                  </div>
 
+                  <div className="mb-4 break-inside-avoid-column">
                   <HealthCheckCard
                     icon={<SignalIcon className="w-5 h-5" />}
                     title="Proxy"
@@ -1268,7 +1281,9 @@ export default function MetricsPage() {
                       <p className="text-xs text-subtle">Now Playing polling is reaching AIOStreams normally.</p>
                     )}
                   </HealthCheckCard>
+                  </div>
 
+                  <div className="mb-4 break-inside-avoid-column">
                   <HealthCheckCard
                     icon={<TagIcon className="w-5 h-5" />}
                     title="Version"
@@ -1285,15 +1300,14 @@ export default function MetricsPage() {
                       </p>
                     )}
                   </HealthCheckCard>
+                  </div>
 
                   {/* Unified incident timeline: every offline/online addon
                       transition plus every vault/proxy health notification,
                       in one feed - answers "when did this actually start"
-                      without digging through three separate places. Sits in
-                      the grid next to Version rather than as a separate
-                      full-width block, which just stretched a short list
-                      across the whole page width. */}
+                      without digging through three separate places. */}
                   {healthData.timeline.length > 0 && (
+                    <div className="mb-4 break-inside-avoid-column">
                     <Card padding="lg">
                       <div className="flex items-center gap-2.5 mb-3">
                         <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary/10 text-primary">
