@@ -311,7 +311,7 @@ export default function SettingsPage() {
           enableWatchlist: settings.enableWatchlist !== false,
           enableWatchedIndicators: settings.enableWatchedIndicators !== false,
           enableRecommendations: settings.enableRecommendations !== false,
-          enableAutoplayTrailer: settings.enableAutoplayTrailer !== false,
+          enableAutoplayTrailer: settings.enableAutoplayTrailer === true,
           autoplayTrailerStartMuted: settings.autoplayTrailerStartMuted !== false,
         });
 
@@ -920,7 +920,7 @@ export default function SettingsPage() {
               >
                 <ToggleSwitch
                   enabled={syncSettings.enableWatchlist !== false}
-                  onChange={(v) => { handleSaveSetting('enableWatchlist' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  onChange={async (v) => { await handleSaveSetting('enableWatchlist' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
                   label="Toggle Watchlist"
                 />
               </SettingRow>
@@ -931,7 +931,7 @@ export default function SettingsPage() {
               >
                 <ToggleSwitch
                   enabled={syncSettings.enableWatchedIndicators !== false}
-                  onChange={(v) => { handleSaveSetting('enableWatchedIndicators' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  onChange={async (v) => { await handleSaveSetting('enableWatchedIndicators' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
                   label="Toggle watched indicators"
                 />
               </SettingRow>
@@ -942,18 +942,18 @@ export default function SettingsPage() {
               >
                 <ToggleSwitch
                   enabled={syncSettings.enableRecommendations !== false}
-                  onChange={(v) => { handleSaveSetting('enableRecommendations' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  onChange={async (v) => { await handleSaveSetting('enableRecommendations' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
                   label="Toggle recommendations"
                 />
               </SettingRow>
 
               <SettingRow
                 label="Autoplay trailer"
-                description="When you open a title's detail popup, its trailer starts playing automatically instead of waiting for a Play Trailer click. Off: waits for the click, same as before."
+                description="When you open a title's detail popup, its trailer starts playing automatically instead of waiting for a Play Trailer click. Off by default - turn this on if you want it."
               >
                 <ToggleSwitch
-                  enabled={syncSettings.enableAutoplayTrailer !== false}
-                  onChange={(v) => { handleSaveSetting('enableAutoplayTrailer' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  enabled={syncSettings.enableAutoplayTrailer === true}
+                  onChange={async (v) => { await handleSaveSetting('enableAutoplayTrailer' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
                   label="Toggle autoplay trailer"
                 />
               </SettingRow>
@@ -961,11 +961,11 @@ export default function SettingsPage() {
               <SettingRow
                 label="Autoplay with sound"
                 description="Whether the autoplayed trailer starts muted (default) or with sound. An explicit Play Trailer click always has sound regardless of this."
-                disabled={syncSettings.enableAutoplayTrailer === false}
+                disabled={syncSettings.enableAutoplayTrailer !== true}
               >
                 <ToggleSwitch
                   enabled={syncSettings.autoplayTrailerStartMuted === false}
-                  onChange={(v) => { handleSaveSetting('autoplayTrailerStartMuted' as keyof SyncSettings, !v); invalidatePersonalFeatures(); }}
+                  onChange={async (v) => { await handleSaveSetting('autoplayTrailerStartMuted' as keyof SyncSettings, !v); invalidatePersonalFeatures(); }}
                   label="Toggle autoplay trailer sound"
                 />
               </SettingRow>
@@ -1024,7 +1024,7 @@ export default function SettingsPage() {
                   type="text"
                   value={syncSettings.rpdbApiKey || ''}
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, rpdbApiKey: e.target.value }))}
-                  onBlur={() => { handleSaveSetting('rpdbApiKey' as keyof SyncSettings, syncSettings.rpdbApiKey); invalidatePersonalFeatures(); }}
+                  onBlur={async () => { await handleSaveSetting('rpdbApiKey' as keyof SyncSettings, syncSettings.rpdbApiKey); invalidatePersonalFeatures(); }}
                   placeholder="RPDB API key"
                   autoComplete="off"
                   spellCheck={false}
