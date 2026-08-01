@@ -609,3 +609,84 @@ model ProxyStreamSession {
   @@index([accountId, aiostreamsUser, isActive])
   @@map("proxy_stream_sessions")
 }
+
+// Remembers which managed user a client IP resolved to the last time there
+// was a REAL signal (a unique direct/email match, or a native title match) -
+// used as the tiebreaker for FUTURE ambiguous proxy attributions from the
+// same IP, instead of a fixed AIOSTREAMS_FALLBACK_USER_IDS order. See
+// proxyNowPlaying.js's disambiguateMatch.
+model ProxyUserIpAffinity {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  clientIp    String
+  userId      String
+  confirmedAt DateTime @default(now())
+
+  @@unique([accountId, clientIp])
+  @@map("proxy_user_ip_affinity")
+}
+
+// Persistent bell notifications - the durable event store written from the
+// same dispatch path as push/Discord. read/readAt are server-side so read
+// state is consistent across devices.
+model Notification {
+  id        String    @id @default(cuid())
+  accountId String    @default("default")
+  type      String
+  title     String
+  body      String
+  poster    String?
+  url       String?
+  data      String?
+  dedupeKey String?
+  read      Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([accountId, dedupeKey])
+  @@index([accountId, createdAt])
+  @@map("notifications")
+}
+
+model NotificationDigestEntry {
+  id        String   @id @default(cuid())
+  accountId String
+  category  String
+  summary   String
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@map("notification_digest_entry")
+}
+
+// A whole-show opt-out from upcoming-episode tracking - stops all Coming Up
+// entries and new-episode alerts for a show until unmuted.
+model MutedShow {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  showId    String
+  showName  String?
+  poster    String?
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, showId])
+  @@map("muted_show")
+}
+
+// Side table for multi-provider account merge (see server/utils/userMerge.js).
+// userId is the SURVIVING User row from a merge; every existing
+// single-provider user is completely unaffected (zero rows here normally).
+model UserProviderCredential {
+  id                String   @id @default(cuid())
+  userId            String
+  providerType      String
+  stremioAuthKey    String?
+  nuvioRefreshToken String?
+  nuvioUserId       String?
+  donorId           String?
+  mergeArchivePath  String?
+  createdAt         DateTime @default(now())
+
+  @@unique([userId, providerType])
+  @@map("user_provider_credentials")
+}
