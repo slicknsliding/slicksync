@@ -21,7 +21,11 @@ interface ModalProps {
   /** Optional ambient art behind the whole panel (e.g. a title's backdrop),
    * not just a header strip - a large, blurred, dimmed version fading into
    * the panel's normal surface color. Unmounts with the rest of the modal
-   * on close, nothing extra needed there. Omit for the plain solid panel. */
+   * on close, nothing extra needed there. Omit for the plain solid panel.
+   * Caller should omit this while playing a trailer/video in the same
+   * modal - blurring a large layer is real rasterization cost, and doing
+   * it at the same moment a video is trying to start competes for the
+   * same paint/compositing budget (confirmed real perceived slowdown). */
   backdropImage?: string;
 }
 
@@ -105,7 +109,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
                     alt=""
                     decoding="async"
                     className="absolute inset-0 w-full h-full object-cover scale-110"
-                    style={{ filter: 'blur(32px) brightness(0.55)' }}
+                    style={{ filter: 'blur(20px) brightness(0.55)' }}
                   />
                   <div
                     className="absolute inset-0"

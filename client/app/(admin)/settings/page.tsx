@@ -308,6 +308,11 @@ export default function SettingsPage() {
           tmdbApiKey: settings.tmdbApiKey || '',
           mdblistApiKey: settings.mdblistApiKey || '',
           rpdbApiKey: settings.rpdbApiKey || '',
+          enableWatchlist: settings.enableWatchlist !== false,
+          enableWatchedIndicators: settings.enableWatchedIndicators !== false,
+          enableRecommendations: settings.enableRecommendations !== false,
+          enableAutoplayTrailer: settings.enableAutoplayTrailer !== false,
+          autoplayTrailerStartMuted: settings.autoplayTrailerStartMuted !== false,
         });
 
         // Nobody has ever explicitly saved a timezone for this account - the
