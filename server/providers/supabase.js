@@ -19,68 +19,150 @@ function headers(accessToken) {
   }
 }
 
-async function supabaseGet(table, params, accessToken) {
-  const query = Object.entries(params)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join('&')
-  const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`
-  const res = await fetch(url, { headers: headers(accessToken) })
-  if (!res.ok) {
-    console.error(`Supabase GET ${table} failed (${res.status})`)
-    const err = new Error('Provider request failed')
-    err.status = res.status
+// --- Resilience: concurrency cap + circuit breaker for Nuvio's backend ---
+// Confirmed real incident: Nuvio's own Supabase backend degraded (429s
+// escalating to 504/524 gateway timeouts), and with no timeout and no
+// concurrency limit, requests from the once-a-minute sync poller (one per
+// connected Nuvio user) piled up faster than they could ever clear,
+// eventually starving the whole Node process - including its own internal
+// proxy for completely unrelated requests like /api/users. A single
+// external dependency going down should never be able to take unrelated
+// features (Stremio, the admin panel's own basic endpoints) down with it.
+// Two layers, both shared across every call below since they all hit the
+// same backend:
+//   1. Concurrency cap - bounds how many Nuvio requests can be in flight at
+//      once, no matter how many users/poll cycles want one right now. Caps
+//      worst-case resource usage regardless of how bad or long the outage is.
+//   2. Circuit breaker - once several calls in a row have failed, stop even
+//      attempting new ones for a cooldown window instead of continuing to
+//      queue against a backend that's clearly down. Fails instantly during
+//      the cooldown (no network attempt, no timeout wait), and gives
+//      Nuvio's own backend room to recover instead of adding to its load.
+const SUPABASE_TIMEOUT_MS = 15000
+const MAX_CONCURRENT = 8
+const FAILURE_THRESHOLD = 5
+const CIRCUIT_COOLDOWN_MS = 30000
+
+let activeCount = 0
+const waitQueue = []
+let consecutiveFailures = 0
+let circuitOpenUntil = 0
+
+function acquireSlot() {
+  if (activeCount < MAX_CONCURRENT) {
+    activeCount++
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => waitQueue.push(resolve))
+}
+
+// Hands the freed slot directly to the next waiter rather than
+// decrementing-then-incrementing, so activeCount never dips below what's
+// actually in flight the moment a waiter is ready to run.
+function releaseSlot() {
+  const next = waitQueue.shift()
+  if (next) next()
+  else activeCount--
+}
+
+async function withResilience(label, fn) {
+  if (Date.now() < circuitOpenUntil) {
+    console.error(`Supabase call skipped, circuit open (${label})`)
+    const err = new Error('Nuvio backend unavailable - too many recent failures')
+    err.status = 503
     throw err
   }
-  return await res.json()
+  await acquireSlot()
+  try {
+    const result = await fn()
+    consecutiveFailures = 0
+    return result
+  } catch (e) {
+    consecutiveFailures++
+    if (consecutiveFailures >= FAILURE_THRESHOLD) {
+      circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS
+      consecutiveFailures = 0
+      console.error(`Supabase circuit opened for ${CIRCUIT_COOLDOWN_MS / 1000}s after ${FAILURE_THRESHOLD} consecutive failures`)
+    }
+    throw e
+  } finally {
+    releaseSlot()
+  }
+}
+
+async function supabaseGet(table, params, accessToken) {
+  return withResilience(`GET ${table}`, async () => {
+    const query = Object.entries(params)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&')
+    const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`
+    const res = await fetch(url, { headers: headers(accessToken), signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS) })
+    if (!res.ok) {
+      console.error(`Supabase GET ${table} failed (${res.status})`)
+      const err = new Error('Provider request failed')
+      err.status = res.status
+      throw err
+    }
+    return await res.json()
+  })
 }
 
 async function supabasePost(table, rows, accessToken) {
-  const url = `${SUPABASE_URL}/rest/v1/${table}`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: headers(accessToken),
-    body: JSON.stringify(rows)
+  return withResilience(`POST ${table}`, async () => {
+    const url = `${SUPABASE_URL}/rest/v1/${table}`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: headers(accessToken),
+      body: JSON.stringify(rows),
+      signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS)
+    })
+    if (!res.ok) {
+      console.error(`Supabase POST ${table} failed (${res.status})`)
+      const err = new Error('Provider request failed')
+      err.status = res.status
+      throw err
+    }
+    return await res.json()
   })
-  if (!res.ok) {
-    console.error(`Supabase POST ${table} failed (${res.status})`)
-    const err = new Error('Provider request failed')
-    err.status = res.status
-    throw err
-  }
-  return await res.json()
 }
 
 async function supabaseDelete(table, params, accessToken) {
-  const query = Object.entries(params)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join('&')
-  const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`
-  const res = await fetch(url, {
-    method: 'DELETE',
-    headers: headers(accessToken)
+  return withResilience(`DELETE ${table}`, async () => {
+    const query = Object.entries(params)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&')
+    const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: headers(accessToken),
+      signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS)
+    })
+    if (!res.ok) {
+      console.error(`Supabase DELETE ${table} failed (${res.status})`)
+      const err = new Error('Provider request failed')
+      err.status = res.status
+      throw err
+    }
   })
-  if (!res.ok) {
-    console.error(`Supabase DELETE ${table} failed (${res.status})`)
-    const err = new Error('Provider request failed')
-    err.status = res.status
-    throw err
-  }
 }
 
 async function supabaseRpc(fn, body, accessToken) {
-  const url = `${SUPABASE_URL}/rest/v1/rpc/${fn}`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: headers(accessToken),
-    body: JSON.stringify(body)
+  return withResilience(`RPC ${fn}`, async () => {
+    const url = `${SUPABASE_URL}/rest/v1/rpc/${fn}`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: headers(accessToken),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS)
+    })
+    if (!res.ok) {
+      console.error(`Supabase RPC ${fn} failed (${res.status})`)
+      const err = new Error('Provider request failed')
+      err.status = res.status
+      throw err
+    }
+    return await res.json()
   })
-  if (!res.ok) {
-    console.error(`Supabase RPC ${fn} failed (${res.status})`)
-    const err = new Error('Provider request failed')
-    err.status = res.status
-    throw err
-  }
-  return await res.json()
 }
 
 module.exports = { supabaseGet, supabasePost, supabaseDelete, supabaseRpc, SUPABASE_URL, SUPABASE_ANON_KEY }
