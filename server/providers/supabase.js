@@ -19,12 +19,21 @@ function headers(accessToken) {
   }
 }
 
+// Bounds every outbound call to Nuvio's Supabase backend - confirmed real
+// incident: when that backend degrades (rate-limiting into outright gateway
+// timeouts), fetch() has no default timeout, so calls just hang instead of
+// failing fast. Enough of those piling up starved the whole Node process,
+// including its own internal proxy to unrelated endpoints like /api/users -
+// an external provider's outage should never be able to take down the admin
+// panel's own basic functionality.
+const SUPABASE_TIMEOUT_MS = 15000
+
 async function supabaseGet(table, params, accessToken) {
   const query = Object.entries(params)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&')
   const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`
-  const res = await fetch(url, { headers: headers(accessToken) })
+  const res = await fetch(url, { headers: headers(accessToken), signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS) })
   if (!res.ok) {
     console.error(`Supabase GET ${table} failed (${res.status})`)
     const err = new Error('Provider request failed')
@@ -39,7 +48,8 @@ async function supabasePost(table, rows, accessToken) {
   const res = await fetch(url, {
     method: 'POST',
     headers: headers(accessToken),
-    body: JSON.stringify(rows)
+    body: JSON.stringify(rows),
+    signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS)
   })
   if (!res.ok) {
     console.error(`Supabase POST ${table} failed (${res.status})`)
@@ -57,7 +67,8 @@ async function supabaseDelete(table, params, accessToken) {
   const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`
   const res = await fetch(url, {
     method: 'DELETE',
-    headers: headers(accessToken)
+    headers: headers(accessToken),
+    signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS)
   })
   if (!res.ok) {
     console.error(`Supabase DELETE ${table} failed (${res.status})`)
@@ -72,7 +83,8 @@ async function supabaseRpc(fn, body, accessToken) {
   const res = await fetch(url, {
     method: 'POST',
     headers: headers(accessToken),
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS)
   })
   if (!res.ok) {
     console.error(`Supabase RPC ${fn} failed (${res.status})`)
