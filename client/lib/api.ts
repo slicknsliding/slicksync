@@ -179,11 +179,19 @@ class ApiClient {
         // Attach the original error data for easier access
         apiError.data = errorData;
 
-        // Global 401 Redirect handler for client-side
+        // Global 401 Redirect handler for client-side. Excludes /superadmin
+        // same as /login - it's a public page with its own entirely separate
+        // auth (a distinct sfm_superadmin cookie, never a tenant login), but
+        // global providers that wrap every page (ThemeProvider fetching
+        // /settings/theme-pref in particular) still fire their own
+        // tenant-scoped requests there and 401 - without this exclusion that
+        // 401 hijacked the page to /login?mode=admin before the superadmin
+        // login form ever got a chance to render.
         if (
           response.status === 401 &&
           typeof window !== 'undefined' &&
-          !window.location.pathname.startsWith('/login')
+          !window.location.pathname.startsWith('/login') &&
+          !window.location.pathname.startsWith('/superadmin')
         ) {
           // Do not redirect if the failure happened during an active auth attempt/management
           const isAuthEndpoint = [
