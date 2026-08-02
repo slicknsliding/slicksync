@@ -14,6 +14,20 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
     if (token) {
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
+        // Checked on every request (not just refresh-renewal) for public
+        // instances specifically - superadmin's "Disable" is meant to be an
+        // immediate kill switch, and at the 50-account cap this instance
+        // mode is bounded to, one extra indexed lookup per request is
+        // negligible. Private mode has no concept of "disabled" at all, so
+        // it's never touched here.
+        if (INSTANCE_TYPE === 'public' && prisma) {
+          try {
+            const acct = await prisma.appAccount.findUnique({ where: { id: decoded.accId }, select: { disabled: true } });
+            if (acct?.disabled) {
+              return res.status(401).json({ message: 'This account has been disabled' });
+            }
+          } catch {}
+        }
         req.appAccountId = decoded.accId;
         return next();
       } catch (e) {
@@ -30,7 +44,7 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
                 try {
                   const acct = await prisma.appAccount.findUnique({ where: { id: rj.accId }, select: { disabled: true } });
                   if (acct?.disabled) {
-                    return res.status(403).json({ message: 'This account has been disabled' });
+                    return res.status(401).json({ message: 'This account has been disabled' });
                   }
                 } catch {}
               }
