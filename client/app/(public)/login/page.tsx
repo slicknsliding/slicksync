@@ -61,6 +61,12 @@ function LoginContent() {
   const [nuvioCopied, setNuvioCopied] = useState(false);
   const nuvioPollIntervalRef = useRef<number | null>(null);
   const nuvioTimerIntervalRef = useRef<number | null>(null);
+  // Guards the auto-generate effect below against retry-storming: on a
+  // failed generate (network hiccup, rate limit), isNuvioGenerating resets
+  // to false while nuvioCode stays empty, so without this the effect's own
+  // dependency change re-fires it immediately, forever, with no backoff -
+  // confirmed hitting the rate limiter within seconds while testing this.
+  const nuvioAutoStartedRef = useRef(false);
 
   // Check if auth is required for private instance
   useEffect(() => {
@@ -346,10 +352,19 @@ function LoginContent() {
   }, [isNuvioGenerating, router, startNuvioCountdown, stopNuvioPolling, mode, loginNuvio, userOAuth]);
 
   // Auto-generate Nuvio OAuth session when its tab is selected (admin's own
-  // tab, or the user-mode equivalent)
+  // tab, or the user-mode equivalent). Fires at most once per tab-selection -
+  // see nuvioAutoStartedRef's own comment for why a plain !nuvioCode check
+  // isn't safe here. A failed attempt leaves the manual "Generate a new
+  // code" button (rendered below whenever nuvioError is set) as the retry
+  // path instead.
   useEffect(() => {
     const shouldStart = (mode === 'admin' && adminLoginType === 'nuvio') || (mode === 'user' && userLoginType === 'nuvio');
-    if (shouldStart && !nuvioCode && !isNuvioGenerating) {
+    if (!shouldStart) {
+      nuvioAutoStartedRef.current = false;
+      return;
+    }
+    if (!nuvioCode && !isNuvioGenerating && !nuvioAutoStartedRef.current) {
+      nuvioAutoStartedRef.current = true;
       handleStartNuvioOAuth();
     }
   }, [mode, adminLoginType, userLoginType, nuvioCode, isNuvioGenerating, handleStartNuvioOAuth]);
@@ -863,7 +878,7 @@ function LoginContent() {
                         </p>
                       )}
 
-                      {nuvioTimeLeft === 'Expired' && !isNuvioGenerating && (
+                      {(nuvioTimeLeft === 'Expired' || nuvioError) && !isNuvioGenerating && (
                         <button
                           type="button"
                           onClick={handleStartNuvioOAuth}
@@ -1146,7 +1161,7 @@ function LoginContent() {
                     </p>
                   )}
 
-                  {nuvioTimeLeft === 'Expired' && !isNuvioGenerating && (
+                  {(nuvioTimeLeft === 'Expired' || nuvioError) && !isNuvioGenerating && (
                     <button
                       type="button"
                       onClick={handleStartNuvioOAuth}
