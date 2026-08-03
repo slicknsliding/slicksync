@@ -1,0 +1,64 @@
+name: Update Docker Pulls Badge
+
+# Docker Hub's public repository API (pull_count) works fine when called
+# directly, but shields.io's dynamic docker/pulls badge routes every viewer's
+# page load through shields.io's own shared proxy, which gets rate-limited
+# by Docker Hub from the sheer aggregate volume across every project using
+# that badge. Decoupling "when we fetch" from "when someone views the badge"
+# fixes this structurally: this job fetches the count on its own low-frequency
+# schedule from a GitHub Actions runner (a completely different, far less
+# contested source than shields.io's pool) and publishes a small pre-computed
+# JSON file that the README's badge reads via shields.io's static "endpoint"
+# type - no live Docker Hub call happens when someone actually views the badge.
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-badge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Docker Hub pull count
+        id: pulls
+        run: |
+          COUNT=$(curl -sS "https://hub.docker.com/v2/repositories/slicknsliding/slicksync/" | jq -r '.pull_count // 0')
+          if ! [[ "$COUNT" =~ ^[0-9]+$ ]]; then
+            echo "Unexpected response fetching pull_count, skipping update"
+            exit 1
+          fi
+          if [ "$COUNT" -ge 1000000 ]; then
+            LABEL=$(awk "BEGIN { printf \"%.1fM\", $COUNT/1000000 }")
+          elif [ "$COUNT" -ge 1000 ]; then
+            LABEL=$(awk "BEGIN { printf \"%.1fk\", $COUNT/1000 }")
+          else
+            LABEL="$COUNT"
+          fi
+          echo "label=$LABEL" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout badges branch
+        uses: actions/checkout@v4
+        with:
+          ref: badges
+
+      - name: Write badge JSON
+        run: |
+          cat > docker-pulls.json <<EOF
+          {"schemaVersion": 1, "label": "docker pulls", "message": "${{ steps.pulls.outputs.label }}", "color": "2496ED"}
+          EOF
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- docker-pulls.json; then
+            echo "No change, skipping commit"
+            exit 0
+          fi
+          git add docker-pulls.json
+          git commit -m "chore: update docker pulls badge (${{ steps.pulls.outputs.label }})"
+          git push origin badges
