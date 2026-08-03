@@ -4,16 +4,19 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
   return async function authGate(req, res, next) {
     if (INSTANCE_TYPE !== 'public' && !PRIVATE_AUTH_ENABLED) return next();
     if (req.method === 'OPTIONS') return next();
-    // Allowlisted paths (superadmin, login/register, invite, etc.) run their
-    // own auth or need none at all, and must never be gated by a tenant
-    // account's JWT/disabled state - checked unconditionally here, before any
-    // token is even looked at. Previously this was only consulted when there
-    // was NO token or the token failed to verify; a browser carrying a still-
-    // valid access-token cookie for a since-disabled tenant account hit the
-    // disabled-check below on every request regardless of path, which blocked
-    // /api/superadmin/login itself (operator access must survive disabling
-    // any/all tenant accounts - it's a completely separate auth system).
-    if (pathIsAllowlisted(req.path)) return next();
+    // Allowlisted-ness only matters for the disabled-account check below, NOT
+    // for whether a valid token gets processed at all. An earlier version of
+    // this fix skipped the whole token block for allowlisted paths, which
+    // broke /api/ext/*'s own dual-auth design (its middleware does
+    // `if (req.appAccountId) return next()`, falling back to requiring a
+    // real API key otherwise) - every session-authenticated request stopped
+    // getting req.appAccountId at all, so it always fell through to the API-
+    // key path and 401'd, breaking the account-info topbar/modal for every
+    // logged-in user. The actual fix superadmin's lockout needed was
+    // narrower: /api/superadmin/login must never be blocked by a disabled
+    // TENANT account's still-valid cookie - it doesn't need the token
+    // skipped, just the disabled-check.
+    const allowlisted = pathIsAllowlisted(req.path);
 
     const cookies = parseCookies(req);
     const accessCookie = cookies[cookieName('sfm_at')] || cookies['sfm_at'];
@@ -29,8 +32,10 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
         // immediate kill switch, and at the 50-account cap this instance
         // mode is bounded to, one extra indexed lookup per request is
         // negligible. Private mode has no concept of "disabled" at all, so
-        // it's never touched here.
-        if (INSTANCE_TYPE === 'public' && prisma) {
+        // it's never touched here. Skipped entirely on allowlisted paths -
+        // those run their own auth (or none) and must never be blocked by a
+        // tenant account's state, see the comment above.
+        if (!allowlisted && INSTANCE_TYPE === 'public' && prisma) {
           try {
             const acct = await prisma.appAccount.findUnique({ where: { id: decoded.accId }, select: { disabled: true } });
             if (acct?.disabled) {
@@ -50,7 +55,7 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
               // disabled account's already-open session to at most one
               // access-token lifetime (30d) rather than the full 365d
               // refresh token, without a DB read on every single request.
-              if (INSTANCE_TYPE === 'public' && prisma) {
+              if (!allowlisted && INSTANCE_TYPE === 'public' && prisma) {
                 try {
                   const acct = await prisma.appAccount.findUnique({ where: { id: rj.accId }, select: { disabled: true } });
                   if (acct?.disabled) {
@@ -83,14 +88,14 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
           } catch {}
         }
         // If token verification fails and path is NOT allowlisted, 401
-        if (!pathIsAllowlisted(req.path)) {
+        if (!allowlisted) {
           return res.status(401).json({ message: 'Invalid or expired token' });
         }
       }
     }
 
     // If no token (or failed token) but path is allowlisted, allow access
-    if (pathIsAllowlisted(req.path)) return next();
+    if (allowlisted) return next();
 
     // Otherwise, authentication required
     return res.status(401).json({ message: 'Authentication required' });
