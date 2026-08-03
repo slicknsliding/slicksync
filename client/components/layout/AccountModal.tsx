@@ -163,7 +163,10 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                 <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: hasUuid ? 'var(--color-success)' : 'var(--color-text-subtle)' }} />
                     <span className="text-sm" style={{ color: 'var(--color-text)' }}>
-                        UUID: {hasUuid ? <span className="font-mono text-xs opacity-70">{accountInfo.uuid}</span> : <span style={{ color: 'var(--color-text-muted)' }}>Not set</span>}
+                        {/* Full value lives on the Settings page now (with a copy
+                            button) - this is just the linking-status indicator that
+                            decides which buttons render below, not a lookup spot. */}
+                        UUID: {hasUuid ? <span style={{ color: 'var(--color-success)' }}>Set</span> : <span style={{ color: 'var(--color-text-muted)' }}>Not set</span>}
                     </span>
                 </div>
                 <div className="flex items-center gap-2">

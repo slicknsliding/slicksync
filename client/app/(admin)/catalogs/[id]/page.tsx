@@ -27,7 +27,7 @@ const SORT_OPTIONS = [
 type SortKey = typeof SORT_OPTIONS[number]['key'];
 
 // A list's own page (roadmap #7 follow-up) - opening a list is a destination,
-// not a transient popup, so it gets a real route (/lists/[id]) with a URL you
+// not a transient popup, so it gets a real route (/catalogs/[id]) with a URL you
 // can bookmark/share/back-button out of, same as /groups/[id] or /users/[id].
 // Individual titles inside still open the shared MediaDetailModal - that part
 // IS a quick preview, unlike the list itself.
@@ -93,7 +93,7 @@ export default function ListDetailPage() {
     try {
       await api.deleteList(list.id);
       toast.success(`Deleted "${list.name}"`);
-      router.push('/lists');
+      router.push('/catalogs');
     } catch { toast.error('Failed to delete'); }
   };
 
@@ -147,12 +147,12 @@ export default function ListDetailPage() {
   const title = isLoading ? 'Loading…' : notFound ? 'Catalog not found' : (list?.name || 'Catalog');
   const subtitle = isLoading ? '' : notFound ? '' : `${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}`;
 
-  // Explicit navigation to /lists (not router.back()) - back should always
+  // Explicit navigation to /catalogs (not router.back()) - back should always
   // land on the Catalogs index in one hop, regardless of how this page was
   // reached, per feedback that clicking "Catalogs" in the nav to get back felt
   // like backtracking.
   const backButton = (
-    <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/lists')}>
+    <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={() => router.push('/catalogs')}>
       Back
     </Button>
   );
@@ -189,7 +189,7 @@ export default function ListDetailPage() {
         <Header
           title={
             <Breadcrumbs
-              items={[{ label: 'Catalogs', href: '/lists' }, { label: title }]}
+              items={[{ label: 'Catalogs', href: '/catalogs' }, { label: title }]}
               className="text-xl font-semibold"
             />
           }
@@ -209,7 +209,7 @@ export default function ListDetailPage() {
             <Card padding="lg" className="text-center">
               <RectangleStackIcon className="w-10 h-10 mx-auto text-subtle mb-3" />
               <p className="text-sm text-muted">This catalog doesn&apos;t exist (it may have been deleted).</p>
-              <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push('/lists')}>Back to Catalogs</Button>
+              <Button variant="secondary" size="sm" className="mt-4" onClick={() => router.push('/catalogs')}>Back to Catalogs</Button>
             </Card>
           ) : isLoading ? (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">

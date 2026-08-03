@@ -107,7 +107,9 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
       if (userAuth) {
         try {
           const data = JSON.parse(userAuth);
-          if (data.userId && data.authKey) {
+          // Nuvio sessions have no client-held authKey (see useUserAuth.tsx) -
+          // userId + provider:'nuvio' is a valid session on its own.
+          if (data.userId && (data.authKey || data.provider === 'nuvio')) {
             window.location.href = '/user';
             return;
           }
@@ -235,7 +237,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                 {isAdmin ? (userInfo?.username || 'Admin Panel') : (userInfo?.username || 'User Panel')}
               </p>
               <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
-                {isAdmin ? (userInfo?.email || 'Administrator') : (userInfo?.email || 'Stremio User')}
+                {isAdmin ? (userInfo?.email || 'Administrator') : (userInfo?.email || 'Signed in')}
               </p>
             </div>
 

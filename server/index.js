@@ -202,6 +202,12 @@ const pollLimiter = rateLimit({
 app.use('/api/nuvio/poll-oauth', pollLimiter);
 app.use('/api/auth/nuvio-poll-oauth', pollLimiter);
 app.use('/api/public-auth/nuvio-poll-oauth', pollLimiter);
+// User-panel Nuvio login (publicLibrary.js) - same shape as the admin/
+// account-level Nuvio OAuth mounts above, for the same public, pre-auth
+// device-code flow.
+app.use('/api/public-library/generate-oauth-nuvio', authLimiter);
+app.use('/api/public-library/authenticate-nuvio', authLimiter);
+app.use('/api/public-library/poll-oauth-nuvio', pollLimiter);
 
 app.use(express.json({ limit: '10mb' }));
 
