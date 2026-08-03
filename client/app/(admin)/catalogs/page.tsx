@@ -14,7 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 // Custom Lists (roadmap #7): named collections of titles. Create/rename/delete
-// a list here; click one to open its own page at /lists/[id] (a real page, not
+// a list here; click one to open its own page at /catalogs/[id] (a real page, not
 // a popup - browsing a list's contents is a destination, not a transient
 // action). Titles are ADDED to a list from the "Add to list" control on a
 // title's detail modal elsewhere.
@@ -50,7 +50,7 @@ export default function ListsPage() {
       setNewName('');
       setShowCreate(false);
       toast.success(`Created "${name}"`);
-      router.push(`/lists/${list.id}`);
+      router.push(`/catalogs/${list.id}`);
     } catch { toast.error('Failed to create catalog'); }
   };
 
@@ -80,7 +80,7 @@ export default function ListsPage() {
           ? `Imported ${list.items.length} of ${list.totalAvailable} titles (capped at ${list.items.length})`
           : `Imported "${list.name}" (${list.items.length} title${list.items.length !== 1 ? 's' : ''})`
       );
-      router.push(`/lists/${list.id}`);
+      router.push(`/catalogs/${list.id}`);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to import catalog');
     } finally {
@@ -144,7 +144,7 @@ export default function ListsPage() {
                 <Card key={list.id} padding="md" className="group">
                   <button
                     type="button"
-                    onClick={() => router.push(`/lists/${list.id}`)}
+                    onClick={() => router.push(`/catalogs/${list.id}`)}
                     className="w-full text-left"
                   >
                     {/* Poster strip: up to 4 covers, or a placeholder. */}

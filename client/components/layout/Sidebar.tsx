@@ -40,7 +40,7 @@ const navigationSections = [
     items: [
       { name: 'Dashboard', href: '/', icon: HomeIcon },
       { name: 'Discover', href: '/discover', icon: MagnifyingGlassIcon },
-      { name: 'Catalogs', href: '/lists', icon: RectangleStackIcon },
+      { name: 'Catalogs', href: '/catalogs', icon: RectangleStackIcon },
       { name: 'Activity', href: '/activity', icon: ClockIcon },
       { name: 'Metrics', href: '/metrics', icon: ChartBarIcon },
     ],
