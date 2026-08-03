@@ -275,7 +275,7 @@ function LoginContent() {
     setIsNuvioGenerating(true);
     setNuvioError(null);
     try {
-      const result = await api.startNuvioAdminOAuth();
+      const result = mode === 'admin' ? await api.startNuvioAdminOAuth() : await userOAuth.createNuvio();
       setNuvioCode(result.code);
       setNuvioWebUrl(result.webUrl);
       setNuvioExpiresAt(result.expiresAt);
@@ -287,11 +287,13 @@ function LoginContent() {
       const intervalMs = Math.max(2, result.pollIntervalSeconds || 3) * 1000;
       nuvioPollIntervalRef.current = window.setInterval(async () => {
         try {
-          const poll = await api.pollNuvioAdminOAuth({
-            code: result.code,
-            deviceNonce: result.deviceNonce,
-            anonToken: result.anonToken,
-          });
+          const poll = mode === 'admin'
+            ? await api.pollNuvioAdminOAuth({
+                code: result.code,
+                deviceNonce: result.deviceNonce,
+                anonToken: result.anonToken,
+              })
+            : await userOAuth.pollNuvio(result.code, result.deviceNonce, result.anonToken);
           // Status is opaque (passed through from Nuvio's own session state) -
           // 'pending' means keep waiting; anything else, attempt the login.
           if (poll.status === 'pending') return;
@@ -341,7 +343,7 @@ function LoginContent() {
     } finally {
       setIsNuvioGenerating(false);
     }
-  }, [isNuvioGenerating, router, startNuvioCountdown, stopNuvioPolling, mode, loginNuvio]);
+  }, [isNuvioGenerating, router, startNuvioCountdown, stopNuvioPolling, mode, loginNuvio, userOAuth]);
 
   // Auto-generate Nuvio OAuth session when its tab is selected (admin's own
   // tab, or the user-mode equivalent)
