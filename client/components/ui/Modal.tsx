@@ -126,7 +126,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
               {!hideCloseButton && (
               <button
                 onClick={onClose}
-                className="absolute top-3 right-3 z-10 p-2 rounded-lg backdrop-blur-sm transition-colors"
+                className="absolute top-3 right-3 z-20 p-2 rounded-lg backdrop-blur-sm transition-colors"
                 style={{ color: 'var(--color-textMuted)', background: 'color-mix(in srgb, var(--color-surface) 70%, transparent)' }}
                 aria-label="Close"
               >
