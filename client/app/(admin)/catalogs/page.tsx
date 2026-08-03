@@ -10,7 +10,7 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList } from '@/lib/api';
 import {
-  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon,
+  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, Squares2X2Icon,
 } from '@heroicons/react/24/outline';
 
 // Custom Lists (roadmap #7): named collections of titles. Create/rename/delete
@@ -121,6 +121,9 @@ export default function ListsPage() {
               </h3>
             </div>
             <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" leftIcon={<Squares2X2Icon className="w-4 h-4" />} onClick={() => router.push('/catalogs/nuvio-collections')}>
+                Nuvio Collections
+              </Button>
               <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={() => setShowImport(true)}>
                 Import
               </Button>

@@ -461,6 +461,32 @@ class ApiClient {
     return normalized as StremioAddon[];
   }
 
+  // Nuvio Collections (admin) — pull/edit/push a Nuvio profile's own
+  // home-screen Collections. Distinct from this app's local "Catalogs".
+  async getNuvioProfiles(userId: string) {
+    return this.fetch<{ profiles: NuvioProfile[] }>(`/users/${encodeURIComponent(userId)}/nuvio-profiles`);
+  }
+
+  async getNuvioCollections(userId: string, profileId: number) {
+    return this.fetch<{ collections: NuvioCollection[] }>(
+      `/users/${encodeURIComponent(userId)}/nuvio-collections/${profileId}`
+    );
+  }
+
+  async setNuvioCollections(userId: string, profileId: number, collections: NuvioCollection[]) {
+    return this.fetch<{ success: boolean; collections: NuvioCollection[] }>(
+      `/users/${encodeURIComponent(userId)}/nuvio-collections/${profileId}`,
+      { method: 'PUT', body: JSON.stringify({ collections }) }
+    );
+  }
+
+  async getNuvioCatalogPreview(userId: string, addonUrl: string, type: string, catalogId: string) {
+    const params = new URLSearchParams({ addonUrl, type, catalogId });
+    return this.fetch<{ items: { id: string; type: string; name: string; poster: string | null }[] }>(
+      `/users/${encodeURIComponent(userId)}/nuvio-catalog-preview?${params.toString()}`
+    );
+  }
+
   // Import user addons to a new group (copied from old UI)
   async importUserAddons(id: string) {
     // Fetch live addons from Stremio for this user first
@@ -2186,6 +2212,7 @@ export interface VelocityData {
 
 export interface StremioAddon {
   transportUrl: string;
+  name?: string;
   manifest: {
     id: string;
     name: string;
@@ -2194,6 +2221,7 @@ export interface StremioAddon {
     logo?: string;
     resources: string[];
     types: string[];
+    catalogs?: { id: string; type: string; name?: string }[];
   };
 }
 
@@ -2348,6 +2376,46 @@ export interface CustomList {
   items: CustomListItem[];
   createdAt: string;
   updatedAt: string;
+}
+
+// Nuvio's own native "Collections" (home-screen folder/catalog-source
+// organizer), pulled/pushed live from the account itself — not this app's
+// local CustomList above. Index signatures preserve fields this app's v1
+// editor doesn't expose (pinToTop, viewMode, coverImageUrl, etc.) untouched
+// through a load-edit-save round trip, rather than silently dropping a real
+// user's existing settings for those.
+export interface NuvioProfile {
+  id: string;
+  user_id: string;
+  profile_index: number;
+  name: string;
+  avatar_color_hex?: string | null;
+  uses_primary_addons?: boolean;
+  uses_primary_plugins?: boolean;
+  avatar_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NuvioCatalogSource {
+  addonId: string;
+  type: string;
+  catalogId: string;
+  [key: string]: any;
+}
+
+export interface NuvioCollectionFolder {
+  id: string;
+  title: string;
+  catalogSources?: NuvioCatalogSource[];
+  [key: string]: any;
+}
+
+export interface NuvioCollection {
+  id: string;
+  title: string;
+  folders?: NuvioCollectionFolder[];
+  [key: string]: any;
 }
 
 export interface YearInReviewTitle {

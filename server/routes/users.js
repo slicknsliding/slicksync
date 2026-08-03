@@ -2330,6 +2330,118 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   });
 
+  // --- Nuvio Collections (admin) - the home-screen folder/catalog-source
+  // organizer in the real Nuvio app, not to be confused with this app's own
+  // local "Catalogs" lists. Lives here alongside stremio-addons above since
+  // it's the same "look up a managed User, get a provider, call a method"
+  // shape as every other per-user provider passthrough in this file.
+
+  // List a Nuvio account's profiles (Netflix-style sub-profiles on one login).
+  router.get('/:id/nuvio-profiles', async (req, res) => {
+    try {
+      const { id } = req.params
+      const user = await prisma.user.findFirst({ where: { id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+      if (user.providerType !== 'nuvio') {
+        return res.status(400).json({ message: 'User is not connected to Nuvio' })
+      }
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) {
+        return res.status(400).json({ message: 'User is not connected to Nuvio' })
+      }
+      const profiles = await provider.getProfiles()
+      res.json({ profiles })
+    } catch (error) {
+      console.error('Error fetching Nuvio profiles:', error)
+      res.status(500).json({ message: 'Failed to fetch Nuvio profiles', error: error.message })
+    }
+  });
+
+  // Get a profile's Collections.
+  router.get('/:id/nuvio-collections/:profileId', async (req, res) => {
+    try {
+      const { id, profileId } = req.params
+      const user = await prisma.user.findFirst({ where: { id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+      if (user.providerType !== 'nuvio') {
+        return res.status(400).json({ message: 'User is not connected to Nuvio' })
+      }
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) {
+        return res.status(400).json({ message: 'User is not connected to Nuvio' })
+      }
+      const collections = await provider.getCollections(Number(profileId))
+      res.json({ collections })
+    } catch (error) {
+      console.error('Error fetching Nuvio collections:', error)
+      res.status(500).json({ message: 'Failed to fetch Nuvio collections', error: error.message })
+    }
+  });
+
+  // Replace a profile's Collections - full overwrite, matches
+  // sync_push_collections' own semantics (no partial-update RPC exists).
+  router.put('/:id/nuvio-collections/:profileId', async (req, res) => {
+    try {
+      const { id, profileId } = req.params
+      const { collections } = req.body || {}
+      if (!Array.isArray(collections)) {
+        return res.status(400).json({ message: 'collections array is required' })
+      }
+      const user = await prisma.user.findFirst({ where: { id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+      if (user.providerType !== 'nuvio') {
+        return res.status(400).json({ message: 'User is not connected to Nuvio' })
+      }
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) {
+        return res.status(400).json({ message: 'User is not connected to Nuvio' })
+      }
+      await provider.setCollections(Number(profileId), collections)
+      res.json({ success: true, collections })
+    } catch (error) {
+      console.error('Error saving Nuvio collections:', error)
+      res.status(500).json({ message: 'Failed to save Nuvio collections', error: error.message })
+    }
+  });
+
+  // Live preview of what a catalog actually contains, for the Collections
+  // source picker - a thin proxy over the addon's own standard
+  // {transportUrl}/catalog/{type}/{catalogId}.json endpoint. Doesn't need
+  // createProvider/auth at all: addon catalogs are public data, and this
+  // isn't scoped to any specific user's account. addonUrl must be one of
+  // this user's own installed addons' transportUrl (not validated against
+  // that list server-side - same trust level as the addon URLs already
+  // stored for this user, which the admin who added them controls).
+  router.get('/:id/nuvio-catalog-preview', async (req, res) => {
+    try {
+      const { addonUrl, type, catalogId } = req.query
+      if (!addonUrl || !type || !catalogId) {
+        return res.status(400).json({ message: 'addonUrl, type, and catalogId are required' })
+      }
+      const base = String(addonUrl).replace(/\/manifest\.json$/, '').replace(/\/$/, '')
+      const url = `${base}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}.json`
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 8000)
+      let data
+      try {
+        const resp = await fetch(url, { signal: controller.signal })
+        if (!resp.ok) return res.status(502).json({ message: `Addon returned ${resp.status}` })
+        data = await resp.json()
+      } finally {
+        clearTimeout(timeout)
+      }
+      const metas = Array.isArray(data?.metas) ? data.metas : []
+      res.json({
+        items: metas.slice(0, 25).map((m) => ({
+          id: m.id, type: m.type, name: m.name, poster: m.poster || null
+        }))
+      })
+    } catch (error) {
+      console.error('Error fetching Nuvio catalog preview:', error)
+      res.status(500).json({ message: 'Failed to fetch catalog preview', error: error.message })
+    }
+  });
+
   // Get user's desired addons (group addons + protected addons)
   router.get('/:id/desired-addons', async (req, res) => {
     try {
