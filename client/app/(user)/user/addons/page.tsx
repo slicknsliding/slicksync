@@ -19,7 +19,8 @@ import { UserPageHeader } from '@/components/user/UserPageContainer';
 type TabType = 'group' | 'stremio';
 
 export default function UserAddonsPage() {
-  const { userId, authKey, isReady } = useUserAuthHeaders();
+  const { userId, authKey, provider, isReady } = useUserAuthHeaders();
+  const providerLabel = provider === 'nuvio' ? 'Nuvio' : 'Stremio';
   const [groupAddons, setGroupAddons] = useState<GroupAddon[]>([]);
   const [stremioAddons, setStremioAddons] = useState<StremioAddon[]>([]);
   const [excludedIds, setExcludedIds] = useState<string[]>([]);
@@ -112,7 +113,7 @@ export default function UserAddonsPage() {
     <div className="p-8">
       <UserPageHeader
         title="Addons"
-        subtitle="Manage your Stremio addons"
+        subtitle={`Manage your ${providerLabel} addons`}
       />
 
       {/* Tabs */}
@@ -140,7 +141,7 @@ export default function UserAddonsPage() {
             color: activeTab === 'stremio' ? 'white' : 'var(--color-text-muted)',
           }}
         >
-          Stremio Addons ({stremioAddons.length})
+          {providerLabel} Addons ({stremioAddons.length})
         </button>
       </motion.div>
 
@@ -287,7 +288,7 @@ export default function UserAddonsPage() {
               style={{ background: 'var(--color-primary-muted)' }}
             >
               <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                <strong style={{ color: 'var(--color-text)' }}>Tip:</strong> Excluded addons won't be synced to your Stremio account. 
+                <strong style={{ color: 'var(--color-text)' }}>Tip:</strong> Excluded addons won't be synced to your {providerLabel} account.
                 Use this if you want to opt-out of specific group addons.
               </p>
             </motion.div>
@@ -295,7 +296,7 @@ export default function UserAddonsPage() {
         </motion.div>
       )}
 
-      {/* Stremio Addons */}
+      {/* Provider Addons */}
       {!loading && activeTab === 'stremio' && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -309,10 +310,10 @@ export default function UserAddonsPage() {
                 style={{ color: 'var(--color-text-subtle)' }}
               />
               <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
-                No Stremio addons
+                No {providerLabel} addons
               </h3>
               <p style={{ color: 'var(--color-text-muted)' }}>
-                Addons installed in your Stremio account will appear here
+                Addons installed in your {providerLabel} account will appear here
               </p>
             </div>
           ) : (

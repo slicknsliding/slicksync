@@ -17,6 +17,7 @@ import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
 import { userLibrary, LibraryItem } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { ViewModeToggle } from '@/components/ui';
+import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 
 type ViewMode = 'grid' | 'list';
 
@@ -110,7 +111,7 @@ function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, can
             onClick={(e) => e.stopPropagation()}
             className="absolute top-2 right-2 p-1.5 rounded-full transition-opacity opacity-80 hover:opacity-100"
             style={{ background: 'rgba(0,0,0,0.7)' }}
-            title="Open in Stremio"
+            title="Open"
           >
             <PlayIcon className="w-4 h-4 text-white" />
           </a>
@@ -247,7 +248,7 @@ function LibraryListItem({ item, isSelected, isDeleting, onToggle, onDelete, can
             href={stremioLink}
             className="p-2 rounded-lg transition-colors"
             style={{ background: 'var(--color-surface-elevated)', color: 'var(--color-text-muted)' }}
-            title="Open in Stremio"
+            title="Open"
           >
             <PlayIcon className="w-4 h-4" />
           </a>
@@ -445,11 +446,12 @@ export default function UserLibraryPage() {
     }
   };
 
-  // Open in Stremio
+  // Open in the user's own provider app
   const getStremioLink = (item: LibraryItem): string | null => {
     const itemId = item._id;
     if (!itemId) return null;
-    return `stremio://detail/${item.type || 'movie'}/${itemId}`;
+    const type = item.type === 'series' ? 'series' : 'movie';
+    return provider === 'nuvio' ? buildNuvioAppUrl(itemId, type) : buildStremioAppUrl(itemId, type);
   };
 
   return (

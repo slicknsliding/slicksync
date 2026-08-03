@@ -28,6 +28,7 @@ import { userShares, userLibrary, Share, GroupMember } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { toast } from '@/components/ui/Toast';
 import { ViewModeToggle } from '@/components/ui';
+import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 
 type TabType = 'received' | 'sent';
 type ViewMode = 'grid' | 'list';
@@ -35,7 +36,7 @@ type ViewMode = 'grid' | 'list';
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 export default function UserSharesPage() {
-  const { userId, userInfo } = useUserAuth();
+  const { userId, userInfo, provider } = useUserAuth();
   const { authKey } = useUserAuthHeaders();
   const [sentShares, setSentShares] = useState<Share[]>([]);
   const [receivedShares, setReceivedShares] = useState<Share[]>([]);
@@ -341,7 +342,9 @@ export default function UserSharesPage() {
   const renderShareCard = (share: Share, type: 'sent' | 'received') => {
     const isSelected = selectedShares.has(share.id);
     const inLibrary = isInLibrary(share.itemId);
-    const stremioLink = `stremio://detail/${share.itemType || 'movie'}/${share.itemId}`;
+    const stremioLink = provider === 'nuvio'
+      ? buildNuvioAppUrl(share.itemId, share.itemType === 'series' ? 'series' : 'movie')
+      : buildStremioAppUrl(share.itemId, share.itemType === 'series' ? 'series' : 'movie');
 
     return (
       <motion.div
@@ -392,7 +395,7 @@ export default function UserSharesPage() {
             onClick={(e) => e.stopPropagation()}
             className="absolute top-2 left-2 p-1.5 rounded-full transition-opacity opacity-80 hover:opacity-100"
             style={{ background: 'rgba(0,0,0,0.7)' }}
-            title="Open in Stremio"
+            title="Open"
           >
             <PlayIcon className="w-4 h-4 text-white" />
           </a>
@@ -474,7 +477,9 @@ export default function UserSharesPage() {
   const renderShareRow = (share: Share, type: 'sent' | 'received') => {
     const isSelected = selectedShares.has(share.id);
     const inLibrary = isInLibrary(share.itemId);
-    const stremioLink = `stremio://detail/${share.itemType || 'movie'}/${share.itemId}`;
+    const stremioLink = provider === 'nuvio'
+      ? buildNuvioAppUrl(share.itemId, share.itemType === 'series' ? 'series' : 'movie')
+      : buildStremioAppUrl(share.itemId, share.itemType === 'series' ? 'series' : 'movie');
 
     return (
       <motion.div
@@ -509,7 +514,7 @@ export default function UserSharesPage() {
             onClick={(e) => e.stopPropagation()}
             className="absolute top-1 right-1 p-1 rounded-full"
             style={{ background: 'rgba(0,0,0,0.7)' }}
-            title="Open in Stremio"
+            title="Open"
           >
             <PlayIcon className="w-3 h-3 text-white" />
           </a>

@@ -237,7 +237,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                 {isAdmin ? (userInfo?.username || 'Admin Panel') : (userInfo?.username || 'User Panel')}
               </p>
               <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
-                {isAdmin ? (userInfo?.email || 'Administrator') : (userInfo?.email || 'Stremio User')}
+                {isAdmin ? (userInfo?.email || 'Administrator') : (userInfo?.email || 'Signed in')}
               </p>
             </div>
 

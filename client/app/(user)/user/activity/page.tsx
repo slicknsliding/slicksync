@@ -512,7 +512,8 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
 });
 
 export default function UserActivityPage() {
-  const { userId, userInfo } = useUserAuth();
+  const { userId, userInfo, provider } = useUserAuth();
+  const providerLabel = provider === 'nuvio' ? 'Nuvio' : 'Stremio';
   const { authKey, isReady } = useUserAuthHeaders();
   const [activityData, setActivityData] = useState<UserActivityData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -903,7 +904,7 @@ export default function UserActivityPage() {
                 <p style={{ color: 'var(--color-text-muted)' }}>
                   {searchQuery
                     ? `No activity matches "${searchQuery}". Try a different search term.`
-                    : 'Start watching content on Stremio to see activity here'}
+                    : `Start watching content on ${providerLabel} to see activity here`}
                 </p>
               </motion.div>
             )}
