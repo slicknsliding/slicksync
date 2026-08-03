@@ -276,6 +276,7 @@ export default function SettingsPage() {
   // Account/avatar state
   const [accountInfo, setAccountInfo] = useState<AccountStats | null>(null);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
+  const [uuidCopied, setUuidCopied] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
@@ -529,6 +530,48 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+
+        {/* Account ID - public-mode login is a UUID with no recovery flow
+            (per the register page's own warning), and there was previously
+            nowhere to look it back up short of the Account dropdown modal.
+            Always findable here for troubleshooting/support. */}
+        {isPublicInstance && accountInfo?.uuid && (
+          <PageSection delay={0.03} className="mb-6">
+            <Card padding="lg">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
+                  <KeyIcon className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold font-display text-default">Account ID</h3>
+                  <p className="text-xs text-muted">Your login UUID - keep this handy for support/troubleshooting</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex-1 px-4 py-3 rounded-xl text-sm font-mono truncate bg-bg border border-surface-border text-default">
+                  {accountInfo.uuid}
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(accountInfo.uuid!);
+                    setUuidCopied(true);
+                    toast.success('Account ID copied to clipboard');
+                    setTimeout(() => setUuidCopied(false), 2000);
+                  }}
+                >
+                  {uuidCopied ? (
+                    <CheckIcon className="w-4 h-4" />
+                  ) : (
+                    <ClipboardDocumentIcon className="w-4 h-4" />
+                  )}
+                </Button>
+              </div>
+            </Card>
+          </PageSection>
+        )}
 
         {/* Privacy & Display */}
         <PageSection delay={0.05} className="mb-6">
