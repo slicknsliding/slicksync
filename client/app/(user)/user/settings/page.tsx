@@ -149,8 +149,9 @@ const ThemeCard = memo(function ThemeCard({
 });
 
 export default function UserSettingsPage() {
-  const { userInfo, refreshUserInfo } = useUserAuth();
+  const { userInfo, refreshUserInfo, provider } = useUserAuth();
   const { userId, authKey, isReady } = useUserAuthHeaders();
+  const providerLabel = provider === 'nuvio' ? 'Nuvio' : 'Stremio';
   const { themeId, setTheme } = useTheme();
   
   // Activity visibility
@@ -892,8 +893,8 @@ export default function UserSettingsPage() {
           style={{ background: 'var(--color-primary-muted)' }}
         >
           <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            <strong style={{ color: 'var(--color-text)' }}>Note:</strong> Profile information is synced from your Stremio account. 
-            To change your username or email, update them in the Stremio app.
+            <strong style={{ color: 'var(--color-text)' }}>Note:</strong> Profile information is synced from your {providerLabel} account.
+            To change your username or email, update them in the {providerLabel} app.
           </p>
         </motion.div>
       </div>

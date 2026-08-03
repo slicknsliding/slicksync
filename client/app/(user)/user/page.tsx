@@ -88,7 +88,8 @@ function StatCard({ label, value, icon, color = 'var(--color-primary)', delay = 
 }
 
 export default function UserHomePage() {
-  const { userId, userInfo } = useUserAuth();
+  const { userId, userInfo, provider } = useUserAuth();
+  const providerLabel = provider === 'nuvio' ? 'Nuvio' : 'Stremio';
   const { authKey, isReady } = useUserAuthHeaders();
   
   const [activityData, setActivityData] = useState<UserActivityData | null>(null);
@@ -605,7 +606,7 @@ export default function UserHomePage() {
             No activity data yet
           </h3>
           <p style={{ color: 'var(--color-text-muted)' }}>
-            Start watching content on Stremio to see your stats here
+            Start watching content on {providerLabel} to see your stats here
           </p>
         </motion.div>
       )}

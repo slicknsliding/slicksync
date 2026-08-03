@@ -268,11 +268,12 @@ export function useUserAuth() {
 
 // Helper hook to get auth headers for API calls
 export function useUserAuthHeaders() {
-  const { userId, authKey } = useUserAuth();
+  const { userId, authKey, provider } = useUserAuth();
 
   return {
     userId,
     authKey,
+    provider,
     isReady: !!userId,
   };
 }
