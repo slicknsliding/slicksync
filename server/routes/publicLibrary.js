@@ -217,6 +217,31 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     }
   }
 
+  // Shared identity-only gate for routes whose actual data is 100%
+  // SlickSync's own DB (no live provider content call needed) - branches
+  // between getPublicUser (Stremio authKey) and getPublicUserNuvio
+  // (stored refresh token) so each call site doesn't hand-roll the same
+  // branch. Throws with .message set to what the caller should return as
+  // the error body (matches this file's existing per-route wording).
+  async function verifyProviderIdentity(user, authKey, req) {
+    if (user.providerType === 'nuvio') {
+      if (!user.nuvioRefreshToken || !user.nuvioUserId) {
+        throw new Error('Authentication required');
+      }
+      const mockReq = { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID };
+      const storedRefreshToken = decrypt(user.nuvioRefreshToken, mockReq);
+      return await getPublicUserNuvio(user.nuvioUserId, storedRefreshToken, req);
+    }
+    if (!authKey) {
+      throw new Error('Authentication required');
+    }
+    try {
+      return await getPublicUser(authKey, req);
+    } catch (e) {
+      throw new Error('Invalid auth key');
+    }
+  }
+
   // Helper to get or create user from Stremio auth (kept for backward compatibility if needed elsewhere)
   async function getOrCreatePublicUser(authKey, req) {
     try {
@@ -782,19 +807,26 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     try {
       const { userId, activityVisibility } = req.body;
       const authKey = getAuthKey(req);
-      
-      if (!userId || !authKey) {
-        return res.status(400).json({ error: 'User ID and auth key are required' });
+
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
       }
 
       if (!activityVisibility || !['public', 'private'].includes(activityVisibility)) {
         return res.status(400).json({ error: 'Invalid activityVisibility value. Must be "public" or "private".' });
       }
 
-      // Validate user using getPublicUser (checks existence, active status, and group membership)
-      const user = await getPublicUser(authKey, req);
+      const targetUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, accountId: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
+      });
+      if (!targetUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
 
-      
+      // Validate the caller's identity (checks existence, active status, and group membership)
+      const user = await verifyProviderIdentity(targetUser, authKey, req);
+
       // Verify the userId matches the authenticated user
       if (user.id !== userId) {
         return res.status(403).json({ error: 'Access denied: Cannot update another user\'s visibility' });
@@ -1845,7 +1877,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           id: true,
           accountId: true,
           isActive: true,
-          stremioAuthKey: true
+          stremioAuthKey: true,
+          providerType: true,
+          nuvioRefreshToken: true,
+          nuvioUserId: true
         }
       });
 
@@ -1853,15 +1888,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(404).json({ error: 'User not found or inactive' });
       }
 
-      // Verify auth key
-      if (!authKey) {
-        return res.status(401).json({ error: 'Authentication required' });
-      }
-
       try {
-        await getPublicUser(authKey, req);
+        await verifyProviderIdentity(user, authKey, req);
       } catch (e) {
-        return res.status(401).json({ error: 'Invalid auth key' });
+        return res.status(401).json({ error: e.message });
       }
 
       // Generate new API key
@@ -1904,7 +1934,11 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         select: {
           id: true,
           apiKey: true,
-          stremioAuthKey: true
+          stremioAuthKey: true,
+          accountId: true,
+          providerType: true,
+          nuvioRefreshToken: true,
+          nuvioUserId: true
         }
       });
 
@@ -1912,15 +1946,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(404).json({ error: 'User not found' });
       }
 
-      // Verify auth key
-      if (!authKey) {
-        return res.status(401).json({ error: 'Authentication required' });
-      }
-
       try {
-        await getPublicUser(authKey, req);
+        await verifyProviderIdentity(user, authKey, req);
       } catch (e) {
-        return res.status(401).json({ error: 'Invalid auth key' });
+        return res.status(401).json({ error: e.message });
       }
 
       if (!user.apiKey) {
@@ -1962,7 +1991,11 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         select: {
           id: true,
           apiKey: true,
-          stremioAuthKey: true
+          stremioAuthKey: true,
+          accountId: true,
+          providerType: true,
+          nuvioRefreshToken: true,
+          nuvioUserId: true
         }
       });
 
@@ -1970,15 +2003,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(404).json({ error: 'User not found' });
       }
 
-      // Verify auth key
-      if (!authKey) {
-        return res.status(401).json({ error: 'Authentication required' });
-      }
-
       try {
-        await getPublicUser(authKey, req);
+        await verifyProviderIdentity(user, authKey, req);
       } catch (e) {
-        return res.status(401).json({ error: 'Invalid auth key' });
+        return res.status(401).json({ error: e.message });
       }
 
       res.json({ hasKey: !!user.apiKey });
@@ -2008,7 +2036,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           colorIndex: true,
           accountId: true,
           isActive: true,
-          stremioAuthKey: true
+          stremioAuthKey: true,
+          providerType: true,
+          nuvioRefreshToken: true,
+          nuvioUserId: true
         }
       });
 
@@ -2016,13 +2047,25 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(404).json({ error: 'User not found or inactive' });
       }
 
-      // Verify auth key
-      if (!authKey) {
-        return res.status(401).json({ error: 'Authentication required' });
-      }
-
+      // Auth gate here is identity-check only (the actual data below is
+      // 100% SlickSync's own DB - WatchActivity, library cache - never a
+      // live provider call), same live-identity-proof either provider uses
+      // elsewhere in this file.
+      const isNuvio = user.providerType === 'nuvio';
       try {
-        await getPublicUser(authKey, req);
+        if (isNuvio) {
+          if (!user.nuvioRefreshToken || !user.nuvioUserId) {
+            return res.status(401).json({ error: 'Authentication required' });
+          }
+          const mockReq = { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID };
+          const storedRefreshToken = decrypt(user.nuvioRefreshToken, mockReq);
+          await getPublicUserNuvio(user.nuvioUserId, storedRefreshToken, req);
+        } else {
+          if (!authKey) {
+            return res.status(401).json({ error: 'Authentication required' });
+          }
+          await getPublicUser(authKey, req);
+        }
       } catch (e) {
         return res.status(401).json({ error: 'Invalid auth key' });
       }
@@ -2437,13 +2480,10 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       if (!userId) {
         return res.status(400).json({ error: 'User ID is required' });
       }
-      if (!authKey) {
-        return res.status(401).json({ error: 'Authentication required' });
-      }
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, username: true, email: true, accountId: true, isActive: true }
+        select: { id: true, username: true, email: true, accountId: true, isActive: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
       });
 
       if (!user || !user.isActive) {
@@ -2451,9 +2491,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
 
       try {
-        await getPublicUser(authKey, req);
+        await verifyProviderIdentity(user, authKey, req);
       } catch (e) {
-        return res.status(401).json({ error: 'Invalid auth key' });
+        return res.status(401).json({ error: e.message });
       }
 
       const accountId = user.accountId || DEFAULT_ACCOUNT_ID;
@@ -2663,25 +2703,20 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(400).json({ error: 'User ID is required' });
       }
 
-      // Verify auth key
-      if (!authKey) {
-        return res.status(401).json({ error: 'Authentication required' });
-      }
-
-      try {
-        await getPublicUser(authKey, req);
-      } catch (e) {
-        return res.status(401).json({ error: 'Invalid auth key' });
-      }
-
       // Get user
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, accountId: true, isActive: true }
+        select: { id: true, accountId: true, isActive: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
       });
 
       if (!user || !user.isActive) {
         return res.status(404).json({ error: 'User not found or inactive' });
+      }
+
+      try {
+        await verifyProviderIdentity(user, authKey, req);
+      } catch (e) {
+        return res.status(401).json({ error: e.message });
       }
 
       const shares = getShares(user.accountId, userId);
@@ -2702,25 +2737,20 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(400).json({ error: 'User ID is required' });
       }
 
-      // Verify auth key
-      if (!authKey) {
-        return res.status(401).json({ error: 'Authentication required' });
-      }
-
-      try {
-        await getPublicUser(authKey, req);
-      } catch (e) {
-        return res.status(401).json({ error: 'Invalid auth key' });
-      }
-
       // Get user
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, accountId: true, isActive: true }
+        select: { id: true, accountId: true, isActive: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
       });
 
       if (!user || !user.isActive) {
         return res.status(404).json({ error: 'User not found or inactive' });
+      }
+
+      try {
+        await verifyProviderIdentity(user, authKey, req);
+      } catch (e) {
+        return res.status(401).json({ error: e.message });
       }
 
       const groupMembers = await getGroupMembers(prisma, user.accountId, userId);
