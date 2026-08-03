@@ -529,7 +529,13 @@ export default function DashboardPage() {
     setError(null);
     try {
       const [stats, metrics, addons] = await Promise.all([
-        api.getAccountStats(),
+        // Separately caught - a fresh account has no API key configured
+        // yet, so this legitimately 401s on every first visit. That's not a
+        // real failure (totalUsers/totalGroups/totalAddons below all already
+        // fall back gracefully to null), and shouldn't block metrics/addons
+        // from loading or put a scary "Failed to load dashboard data" banner
+        // in front of a brand new signup.
+        api.getAccountStats().catch(() => null),
         api.getMetrics('7d'),
         api.getAddons(),
       ]);

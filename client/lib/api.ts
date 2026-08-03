@@ -193,14 +193,21 @@ class ApiClient {
           !window.location.pathname.startsWith('/login') &&
           !window.location.pathname.startsWith('/superadmin')
         ) {
-          // Do not redirect if the failure happened during an active auth attempt/management
+          // Do not redirect if the failure happened during an active auth attempt/management,
+          // or came from /ext/* - that prefix runs its own API-key auth (see server/routes/
+          // externalApi.js), entirely separate from the tenant session cookie. getAccountStats()
+          // hits /ext/account on every Dashboard/Settings/topbar/sidebar mount, and a brand new
+          // account has no API key configured yet - a legitimate, expected 401 that has nothing
+          // to do with whether the tenant session itself is valid. Treating it as "logged out"
+          // force-redirected a freshly registered (and fully signed-in) account straight back to
+          // the login page.
           const isAuthEndpoint = [
             '/auth/login',
             '/auth/stremio-login',
             '/auth/private-login',
             '/auth/unlink-stremio',
             '/auth/set-credentials'
-          ].some(route => endpoint.startsWith(route));
+          ].some(route => endpoint.startsWith(route)) || endpoint.startsWith('/ext/');
 
           if (!isAuthEndpoint) {
             this.clearToken();
