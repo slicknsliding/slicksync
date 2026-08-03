@@ -181,6 +181,16 @@ app.use('/api/auth/nuvio-start-oauth', authLimiter);
 app.use('/api/public-auth/nuvio-start-oauth', authLimiter);
 app.use('/api/auth/nuvio-login', authLimiter);
 app.use('/api/public-auth/nuvio-login', authLimiter);
+// UUID/password login+register and the superadmin operator login - only
+// the generic 4000-req/15min-per-IP limiter covered these before, which is
+// several requests a second and does nothing to slow down someone
+// hammering account credentials or the single shared superadmin password
+// (no MFA on that one - this limiter is its only throttle).
+app.use('/api/auth/login', authLimiter);
+app.use('/api/public-auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/public-auth/register', authLimiter);
+app.use('/api/superadmin/login', authLimiter);
 
 // Higher-frequency limiter for OAuth polling (device-code flow polls every few seconds)
 const pollLimiter = rateLimit({

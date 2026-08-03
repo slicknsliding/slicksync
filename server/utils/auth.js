@@ -14,17 +14,25 @@ function pathIsAllowlisted(path) {
     '/api/auth/login',
     '/api/auth/register',
     '/api/auth/generate-uuid',
-    '/api/public-auth',
+    // NOT a bare '/api/public-auth' prefix - that used to sit here and,
+    // since this function matches by startsWith, silently allowlisted every
+    // OTHER route on this same router too ('/me', '/logout', '/config-export',
+    // '/reset', '/account', ...), skipping req.appAccountId assignment for
+    // all of them. That broke "stay signed in after register/login" - the
+    // dashboard's own /me call came back with no account id and the client
+    // treated it as logged out. Every actually-public sub-path needs its own
+    // explicit entry here, same as the '/api/auth/*' ones below.
     '/api/public-auth/login',
     '/api/public-auth/register',
     '/api/public-auth/generate-uuid',
     '/api/public-auth/stremio-login',
+    '/api/public-auth/nuvio-start-oauth',
+    '/api/public-auth/nuvio-poll-oauth',
+    '/api/public-auth/nuvio-login',
     '/api/auth/stremio-login',
     '/api/auth/nuvio-start-oauth',
     '/api/auth/nuvio-poll-oauth',
     '/api/auth/nuvio-login',
-    // '/api/public-auth/nuvio-*' variants are covered by the blanket
-    // '/api/public-auth' prefix entry above already.
     '/api/public-auth/private-login', // Private instance username/password login
     '/api/auth/private-login', // Private instance username/password login (alt path)
     '/api/public-auth/suggest-uuid',
