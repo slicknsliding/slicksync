@@ -93,6 +93,23 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
 
   router.post('/accounts/:id/disable', requireSuperAdmin, async (req, res) => {
     try {
+      const target = await prisma.appAccount.findUnique({ where: { id: req.params.id }, select: { disabled: true } });
+      if (!target) return res.status(404).json({ message: 'Account not found' });
+      // Not a hard block - operator access (this panel) is architecturally
+      // separate from tenant accounts and can never be locked out by this,
+      // even at zero enabled tenants. This is purely a "did you mean to do
+      // that" guard so disabling every tenant isn't a silent one-click
+      // accident; passing confirm=true (the UI does this on a second click)
+      // proceeds anyway.
+      if (!target.disabled && req.query.confirm !== 'true') {
+        const enabledCount = await prisma.appAccount.count({ where: { disabled: false } });
+        if (enabledCount <= 1) {
+          return res.status(409).json({
+            message: 'This is the last enabled account. Disabling it will leave none active - resubmit with confirm=true to proceed anyway.',
+            requiresConfirmation: true,
+          });
+        }
+      }
       const account = await prisma.appAccount.update({ where: { id: req.params.id }, data: { disabled: true } });
       res.json({ id: account.id, disabled: true });
     } catch (e) {
