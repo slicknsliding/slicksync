@@ -580,10 +580,15 @@ async function getPreviousSnapshot(prisma, accountId, userId, itemId, today, tim
  * accepted tradeoff consistent with this app's existing "one History row
  * per title, a rewatch moves the card rather than duplicating it" design.
  */
-async function getMaxOverallTimeWatched(prisma, accountId, userId, itemId) {
+async function getMaxOverallTimeWatched(prisma, accountId, userId, itemId, videoId = null) {
   try {
     const snapshots = await prisma.watchSnapshot.findMany({
-      where: { accountId: accountId || 'default', userId, itemId },
+      // Scoped to the same episode (videoId) when known - a series' overallTimeWatched
+      // is only genuinely monotonic WITHIN one episode (see the episode-change
+      // handling in processLibraryItem for why mixing episodes here reintroduces
+      // the exact bug this function was built to prevent, just from the other
+      // direction). videoId is null for movies, where this scoping is a no-op.
+      where: { accountId: accountId || 'default', userId, itemId, videoId },
       select: { overallTimeWatched: true }
     })
     let max = null
@@ -644,6 +649,10 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
     const current = {
       overallTimeWatched: item.state?.overallTimeWatched ? String(item.state.overallTimeWatched) : null,
       timeOffset: item.state?.timeOffset ? String(item.state.timeOffset) : null,
+      // Which episode this poll's overallTimeWatched/timeOffset actually
+      // describes. For a series, item is one row per SHOW (itemId stays
+      // constant across episodes) - video_id is what actually changes.
+      videoId: item.state?.video_id || null,
       lastWatched: item.state?.lastWatched ? new Date(item.state.lastWatched) : null,
       mtime: item._mtime ? new Date(item._mtime) : null
     }
@@ -666,12 +675,29 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
     // Store the old snapshot value for delta calculation
     const oldSnapshotValue = latestSnapshot?.overallTimeWatched || null
 
+    // A series' overallTimeWatched is only monotonic WITHIN one episode -
+    // Nuvio's own position for the show resets to a small value every time
+    // the viewer advances to a new episode (confirmed: nuvio.js maps a
+    // series' progress row to overallTimeWatched = p.position, the same
+    // per-episode value as timeOffset, not a true lifetime counter the way
+    // Stremio's is - see CLAUDE.md's Watch tracking notes). Without this
+    // check, the code below treated that legitimate reset as either a
+    // regression to reject (silently dropping the new episode's watch time
+    // entirely, since it never exceeds the old episode's higher max) or a
+    // multi-profile-merge glitch to clamp back up (see the clamp comment
+    // further down) - both wrong here. video_id changing between polls for
+    // the same itemId (itemId stays the show's base ID for series, per
+    // getBaseItemId's own comment) is what actually distinguishes a real
+    // episode change from either of those.
+    const previousVideoId = latestSnapshot?.videoId || null
+    const episodeChanged = !!(current.videoId && previousVideoId && current.videoId !== previousVideoId)
+
     let snapshotCreated = false
     let activityCreated = false
 
     // Check if current library value differs from latest snapshot
-    const snapshotChanged = !latestSnapshot || 
-      !latestSnapshot.overallTimeWatched || 
+    const snapshotChanged = !latestSnapshot ||
+      !latestSnapshot.overallTimeWatched ||
       BigInt(latestSnapshot.overallTimeWatched) !== BigInt(current.overallTimeWatched || '0')
 
     // Decide whether to record an activity delta - this part is pure
@@ -681,16 +707,19 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
     // days - the monotonic high-water-mark. Computed once and reused for BOTH
     // the delta baseline below AND clamping the snapshot write further down, so
     // the snapshot can never regress it (see the clamp comment at the write).
+    // Scoped to the current episode (videoId) - see getMaxOverallTimeWatched's
+    // own comment for why mixing episodes here would reintroduce this same
+    // class of bug from the other direction.
     let maxSeenBig = null
     if (current.overallTimeWatched) {
-      try { maxSeenBig = await getMaxOverallTimeWatched(prisma, accountIdValue, userId, itemId) } catch {}
+      try { maxSeenBig = await getMaxOverallTimeWatched(prisma, accountIdValue, userId, itemId, current.videoId) } catch {}
     }
 
     let activityDeltaSeconds = null
     if (current.overallTimeWatched && snapshotChanged) {
       let totalDeltaSeconds = 0
 
-      if (oldSnapshotValue) {
+      if (oldSnapshotValue && !episodeChanged) {
         // Existing item: calculate delta from the highest overallTimeWatched
         // ever recorded for this item, not just the single most recent
         // snapshot - see getMaxOverallTimeWatched's comment for why. Falls
@@ -705,10 +734,11 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
           totalDeltaSeconds = Number(totalDeltaMs / 1000n)
         }
       } else {
-        // First-time ever seeing this item (no prior snapshot exists): we
-        // have no real baseline to compute an incremental delta against.
-        // overallTimeWatched can represent CUMULATIVE watch time across
-        // many past sessions/episodes, not "new today" - treating the
+        // Either first-time ever seeing this item (no prior snapshot exists),
+        // or a new episode just started (episodeChanged) - either way,
+        // oldSnapshotValue isn't a valid baseline for THIS observation's
+        // delta. overallTimeWatched can represent CUMULATIVE watch time
+        // across many past sessions/episodes, not "new today" - treating the
         // whole absolute value as today's delta produced wildly inflated
         // one-time entries (confirmed: a 16.5-hour single entry for one
         // series, created in a single instant). Just establish the
@@ -791,18 +821,22 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
       }
       if (snapshotChanged && current.overallTimeWatched) {
         // Clamp the stored overallTimeWatched to the monotonic high-water-mark:
-        // never let a snapshot regress below the max ever seen for this item.
-        // overallTimeWatched is cumulative and only ever grows in reality, so a
-        // DROP is always a data artifact - specifically Nuvio's multi-profile
-        // merge transiently dropping a profile's progress (documented in
-        // CLAUDE.md). Before this clamp, that drop overwrote the snapshot LOWER,
-        // which erased the high-water-mark getMaxOverallTimeWatched relies on -
-        // so when the value recovered, the recovery re-registered as a fresh
-        // delta, over and over (confirmed real case 2026-07-30: the identical
-        // 19104-second delta recorded 8x in one day for one series, inflating
-        // Watch Time Today by 5+ hours). Keeping overallTimeWatched monotonic
-        // makes a drop-then-recover a no-op by construction. timeOffset /
-        // lastWatched / mtime still reflect current (those legitimately move).
+        // never let a snapshot regress below the max ever seen for THIS episode
+        // (maxSeenBig is scoped by videoId above). WITHIN one episode,
+        // overallTimeWatched only ever grows in reality, so a same-episode drop
+        // is always a data artifact - specifically Nuvio's multi-profile merge
+        // transiently dropping a profile's progress (documented in CLAUDE.md).
+        // Before this clamp, that drop overwrote the snapshot LOWER, which erased
+        // the high-water-mark getMaxOverallTimeWatched relies on - so when the
+        // value recovered, the recovery re-registered as a fresh delta, over and
+        // over (confirmed real case 2026-07-30: the identical 19104-second delta
+        // recorded 8x in one day for one series, inflating Watch Time Today by
+        // 5+ hours). Keeping overallTimeWatched monotonic per-episode makes a
+        // drop-then-recover a no-op by construction, while a genuine episode
+        // change (different videoId) naturally clamps against nothing (no prior
+        // snapshot exists yet for the new episode) and stores the new value as
+        //-is. timeOffset / lastWatched / mtime still reflect current (those
+        // legitimately move).
         const currOverallBig = BigInt(current.overallTimeWatched)
         const overallToStore = (maxSeenBig !== null && maxSeenBig > currOverallBig)
           ? maxSeenBig.toString()
@@ -823,12 +857,14 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
             date: new Date(todayDate),
             overallTimeWatched: overallToStore,
             timeOffset: current.timeOffset,
+            videoId: current.videoId,
             lastWatched: current.lastWatched,
             mtime: current.mtime
           },
           update: {
             overallTimeWatched: overallToStore,
             timeOffset: current.timeOffset,
+            videoId: current.videoId,
             lastWatched: current.lastWatched,
             mtime: current.mtime
           }

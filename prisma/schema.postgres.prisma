@@ -259,10 +259,11 @@ model WatchSnapshot {
   id                 String    @id @default(cuid())
   accountId          String    @default("default")
   userId             String
-  itemId             String // Library item ID (e.g., "tt123456" or "tt123456:1:5" for episodes)
+  itemId             String // Library item ID - the base show ID for series, not per-episode (episode identity lives in videoId below)
   date               DateTime  @db.Date // Date of snapshot (YYYY-MM-DD)
   overallTimeWatched BigInt? // Total watch time in milliseconds
   timeOffset         BigInt? // Current time offset in milliseconds
+  videoId            String? // For series: which episode this snapshot's overallTimeWatched/timeOffset actually describes (e.g. "tt123456:1:5") - see getMaxOverallTimeWatched's comment for why this matters
   lastWatched        DateTime? // Last watched timestamp
   mtime              DateTime? // Library item modification time
   createdAt          DateTime  @default(now())
