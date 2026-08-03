@@ -43,11 +43,15 @@ interface LibraryCardItemProps {
   isDeleting: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  // Nuvio's API has no library-removal capability (see server/providers/
+  // nuvio.js's removeLibraryItem stub) - defaults true so every existing
+  // Stremio call site is unaffected.
+  canDelete?: boolean;
   stremioLink: string | null;
   watchTime: string | null;
 }
 
-function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, stremioLink, watchTime }: LibraryCardItemProps) {
+function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, canDelete = true, stremioLink, watchTime }: LibraryCardItemProps) {
   const [imageError, setImageError] = useState(false);
   
   return (
@@ -113,24 +117,26 @@ function LibraryCardItem({ item, isSelected, isDeleting, onToggle, onDelete, str
         )}
 
         {/* Delete button - shows on hover */}
-        <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            disabled={isDeleting}
-            className="p-2 rounded-full transition-all"
-            style={{ background: 'rgba(239, 68, 68, 0.9)' }}
-            title="Delete"
-          >
-            {isDeleting ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <TrashIcon className="w-4 h-4 text-white" />
-            )}
-          </button>
-        </div>
+        {canDelete && (
+          <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              disabled={isDeleting}
+              className="p-2 rounded-full transition-all"
+              style={{ background: 'rgba(239, 68, 68, 0.9)' }}
+              title="Delete"
+            >
+              {isDeleting ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <TrashIcon className="w-4 h-4 text-white" />
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Content Info - Below the poster */}
@@ -166,11 +172,12 @@ interface LibraryListItemProps {
   isDeleting: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  canDelete?: boolean;
   stremioLink: string | null;
   watchTime: string | null;
 }
 
-function LibraryListItem({ item, isSelected, isDeleting, onToggle, onDelete, stremioLink, watchTime }: LibraryListItemProps) {
+function LibraryListItem({ item, isSelected, isDeleting, onToggle, onDelete, canDelete = true, stremioLink, watchTime }: LibraryListItemProps) {
   const [imageError, setImageError] = useState(false);
   
   return (
@@ -245,19 +252,21 @@ function LibraryListItem({ item, isSelected, isDeleting, onToggle, onDelete, str
             <PlayIcon className="w-4 h-4" />
           </a>
         )}
-        <button
-          onClick={() => onDelete()}
-          disabled={isDeleting}
-          className="p-2 rounded-lg transition-all"
-          style={{ background: 'var(--color-error-muted)', color: 'var(--color-error)' }}
-          title="Delete"
-        >
-          {isDeleting ? (
-            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-          ) : (
-            <TrashIcon className="w-4 h-4" />
-          )}
-        </button>
+        {canDelete && (
+          <button
+            onClick={() => onDelete()}
+            disabled={isDeleting}
+            className="p-2 rounded-lg transition-all"
+            style={{ background: 'var(--color-error-muted)', color: 'var(--color-error)' }}
+            title="Delete"
+          >
+            {isDeleting ? (
+              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <TrashIcon className="w-4 h-4" />
+            )}
+          </button>
+        )}
       </div>
 
       {/* Selection indicator */}
@@ -289,8 +298,13 @@ function getWatchDate(item: LibraryItem): Date | null {
 }
 
 export default function UserLibraryPage() {
-  const { userId } = useUserAuth();
+  const { userId, provider } = useUserAuth();
   const { authKey, isReady } = useUserAuthHeaders();
+  // Nuvio's API has no library-removal capability - hide the delete
+  // controls entirely for a Nuvio-provider user rather than show them and
+  // fail (the server already guards this too, see publicLibrary.js's
+  // DELETE /library/:itemId).
+  const canDeleteLibraryItems = provider !== 'nuvio';
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -487,18 +501,20 @@ export default function UserLibraryPage() {
             >
               Clear
             </button>
-            <button
-              onClick={handleDeleteSelected}
-              disabled={deletingIds.size > 0}
-              className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
-              style={{
-                background: 'var(--color-error)',
-                color: 'white',
-              }}
-            >
-              <TrashIcon className="w-4 h-4" />
-              Delete
-            </button>
+            {canDeleteLibraryItems && (
+              <button
+                onClick={handleDeleteSelected}
+                disabled={deletingIds.size > 0}
+                className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
+                style={{
+                  background: 'var(--color-error)',
+                  color: 'white',
+                }}
+              >
+                <TrashIcon className="w-4 h-4" />
+                Delete
+              </button>
+            )}
           </div>
         )}
 
@@ -509,8 +525,9 @@ export default function UserLibraryPage() {
         />
       </motion.div>
 
-      {/* Select all / Deselect all */}
-      {filteredLibrary.length > 0 && (
+      {/* Select all / Deselect all - selection only exists to enable bulk
+          delete above, which isn't available for Nuvio users */}
+      {canDeleteLibraryItems && filteredLibrary.length > 0 && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -583,6 +600,7 @@ export default function UserLibraryPage() {
                   isDeleting={deletingIds.has(item._id)}
                   onToggle={() => handleItemToggle(item._id)}
                   onDelete={() => handleDeleteItem(item._id)}
+                  canDelete={canDeleteLibraryItems}
                   stremioLink={getStremioLink(item)}
                   watchTime={formatWatchTime(item.state?.overallTimeWatched)}
                 />
@@ -600,6 +618,7 @@ export default function UserLibraryPage() {
                   isDeleting={deletingIds.has(item._id)}
                   onToggle={() => handleItemToggle(item._id)}
                   onDelete={() => handleDeleteItem(item._id)}
+                  canDelete={canDeleteLibraryItems}
                   stremioLink={getStremioLink(item)}
                   watchTime={formatWatchTime(item.state?.overallTimeWatched)}
                 />
