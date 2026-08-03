@@ -4,6 +4,16 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
   return async function authGate(req, res, next) {
     if (INSTANCE_TYPE !== 'public' && !PRIVATE_AUTH_ENABLED) return next();
     if (req.method === 'OPTIONS') return next();
+    // Allowlisted paths (superadmin, login/register, invite, etc.) run their
+    // own auth or need none at all, and must never be gated by a tenant
+    // account's JWT/disabled state - checked unconditionally here, before any
+    // token is even looked at. Previously this was only consulted when there
+    // was NO token or the token failed to verify; a browser carrying a still-
+    // valid access-token cookie for a since-disabled tenant account hit the
+    // disabled-check below on every request regardless of path, which blocked
+    // /api/superadmin/login itself (operator access must survive disabling
+    // any/all tenant accounts - it's a completely separate auth system).
+    if (pathIsAllowlisted(req.path)) return next();
 
     const cookies = parseCookies(req);
     const accessCookie = cookies[cookieName('sfm_at')] || cookies['sfm_at'];

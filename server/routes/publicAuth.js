@@ -207,9 +207,14 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       // Exists so a public instance can be opened up gradually (start small,
       // watch real memory/CPU for a week or two, raise it) instead of
       // committing to a number on day one with no way to pump the brakes.
+      // Counts only enabled accounts - a disabled (retired/moderated) account
+      // shouldn't permanently occupy a cap slot forever; otherwise the only
+      // way to free room back up is superadmin manually deleting it, or in
+      // the worst case (cap hit, operator locked out some other way) wiping
+      // the whole database, which is exactly what this cap exists to avoid.
       const maxAccounts = parseInt(process.env.MAX_PUBLIC_ACCOUNTS || '0', 10);
       if (maxAccounts > 0) {
-        const currentCount = await prisma.appAccount.count();
+        const currentCount = await prisma.appAccount.count({ where: { disabled: false } });
         if (currentCount >= maxAccounts) {
           return res.status(503).json({ message: 'Registration is temporarily full. Please try again later.' });
         }

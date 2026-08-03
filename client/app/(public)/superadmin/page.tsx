@@ -86,18 +86,25 @@ export default function SuperAdminPage() {
     setAccounts([]);
   };
 
-  const handleToggleDisabled = async (account: SuperAdminAccount) => {
+  const handleToggleDisabled = async (account: SuperAdminAccount, confirmed = false) => {
     setBusyId(account.id);
     try {
-      const res = await fetch(`${API_BASE}/superadmin/accounts/${account.id}/${account.disabled ? 'enable' : 'disable'}`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed');
+      const url = `${API_BASE}/superadmin/accounts/${account.id}/${account.disabled ? 'enable' : 'disable'}${confirmed ? '?confirm=true' : ''}`;
+      const res = await fetch(url, { method: 'POST', credentials: 'include' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 409 && data.requiresConfirmation) {
+          if (window.confirm(data.message || 'This is the last enabled account. Disable it anyway?')) {
+            return await handleToggleDisabled(account, true);
+          }
+          return;
+        }
+        throw new Error(data.message || 'Failed');
+      }
       setAccounts((prev) => prev.map((a) => (a.id === account.id ? { ...a, disabled: !a.disabled } : a)));
       toast.success(account.disabled ? 'Account re-enabled' : 'Account disabled');
-    } catch {
-      toast.error('Failed to update account');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update account');
     } finally {
       setBusyId(null);
     }
