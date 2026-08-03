@@ -315,6 +315,46 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
       return items
     },
 
+    // --- Profiles / Collections (admin-only, Nuvio Collections manager) ---
+
+    // Nuvio accounts can have multiple profiles (see getLibrary()'s own
+    // comment above) - this was previously only ever used internally for
+    // the library merge fan-out. Exposed as its own method now that an
+    // admin-facing profile picker needs the raw list.
+    async getProfiles() {
+      const accessToken = await ensureAuth()
+      const rows = await supabaseRpc('sync_pull_profiles', {}, accessToken)
+      return Array.isArray(rows) ? rows : []
+    },
+
+    // profileId here is Nuvio's own profile_index (an integer, e.g. 1) -
+    // NOT the profile row's id (a UUID). Easy to mix up since getProfiles()
+    // returns both on the same row.
+    async getCollections(profileId) {
+      const accessToken = await ensureAuth()
+      const rows = await supabaseRpc('sync_pull_collections', { p_profile_id: profileId }, accessToken)
+      const raw = rows?.[0]?.collections_json
+      if (!raw) return []
+      // Confirmed against the real API (via two independent third-party
+      // tools built against it): collections_json comes back either
+      // already-parsed or still a JSON string depending on how the RPC's
+      // return type gets decoded - handle both rather than assume one.
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw) } catch { return [] }
+      }
+      return Array.isArray(raw) ? raw : []
+    },
+
+    // Full replace, matching sync_push_collections' own semantics - there is
+    // no partial-update RPC, so callers must always push the complete array.
+    async setCollections(profileId, collections) {
+      const accessToken = await ensureAuth()
+      await supabaseRpc('sync_push_collections', {
+        p_profile_id: profileId,
+        p_collections_json: JSON.stringify(collections)
+      }, accessToken)
+    },
+
     // Library writes — no-op; returns null to signal "not supported". Callers guard via providerType.
     // Capability flag: Nuvio library is read-only in this implementation
     supportsLibraryWrite: false,
