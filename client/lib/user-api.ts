@@ -155,6 +155,31 @@ export const userOAuth = {
       body: JSON.stringify({ code }),
     });
   },
+
+  /**
+   * Start Nuvio's device-code login flow. Unlike Stremio's simple 2-step
+   * link (code -> authKey), Nuvio needs a 3-step anon-Supabase-session
+   * dance - the caller must hold onto anonToken/deviceNonce and pass them
+   * back into pollNuvio/exchangeNuvio.
+   */
+  async createNuvio(): Promise<{
+    code: string; webUrl: string; expiresAt: string; pollIntervalSeconds: number;
+    anonToken: string; deviceNonce: string;
+  }> {
+    return request('/public-library/generate-oauth-nuvio', { method: 'POST' });
+  },
+
+  /**
+   * Poll a Nuvio login session for approval status.
+   */
+  async pollNuvio(code: string, deviceNonce: string, anonToken: string): Promise<{
+    success: boolean; status?: string; expiresAt?: string; pollIntervalSeconds?: number; error?: string;
+  }> {
+    return request('/public-library/poll-oauth-nuvio', {
+      method: 'POST',
+      body: JSON.stringify({ code, deviceNonce, anonToken }),
+    });
+  },
 };
 
 // User Authentication API
@@ -245,6 +270,88 @@ export const userAuth = {
       userId: response.userId,
       error: response.error,
       errorCode: response.errorCode,
+    };
+  },
+
+  /**
+   * Exchange a completed Nuvio device-code login for a session (mirrors
+   * `authenticate` above, but Nuvio's exchange result - not a client-held
+   * credential - is itself the proof of identity).
+   */
+  async authenticateNuvio(code: string, deviceNonce: string, anonToken: string): Promise<{
+    success: boolean;
+    userId: string;
+    userInfo: UserInfo;
+    error?: string;
+    errorCode?: string;
+  }> {
+    const response = await request<{
+      success: boolean;
+      user?: {
+        id: string;
+        username: string;
+        email: string;
+        colorIndex?: number;
+        createdAt?: string;
+        expiresAt?: string;
+      };
+      error?: string;
+      message?: string;
+    }>('/public-library/authenticate-nuvio', {
+      method: 'POST',
+      body: JSON.stringify({ code, deviceNonce, anonToken }),
+    });
+
+    if (response.success && response.user) {
+      return {
+        success: true,
+        userId: response.user.id,
+        userInfo: {
+          id: response.user.id,
+          username: response.user.username,
+          email: response.user.email,
+          colorIndex: response.user.colorIndex,
+          activityVisibility: 'private',
+          createdAt: response.user.createdAt || new Date().toISOString(),
+          expiresAt: response.user.expiresAt,
+        },
+      };
+    }
+
+    return {
+      success: false,
+      userId: '',
+      userInfo: {} as UserInfo,
+      error: response.message || response.error || 'Authentication failed',
+      errorCode: response.error,
+    };
+  },
+
+  /**
+   * Re-validate a Nuvio user's stored session (mirrors `validate` above).
+   */
+  async validateNuvio(userId: string): Promise<{
+    valid: boolean;
+    userId?: string;
+    error?: string;
+    errorCode?: string;
+  }> {
+    const response = await request<{
+      valid?: boolean;
+      success?: boolean;
+      user?: { id: string };
+      error?: string;
+      message?: string;
+    }>('/public-library/validate-nuvio', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    });
+
+    return {
+      valid: response.valid ?? response.success ?? false,
+      userId: response.user?.id,
+      error: response.message || response.error,
+      errorCode: response.error,
     };
   },
 

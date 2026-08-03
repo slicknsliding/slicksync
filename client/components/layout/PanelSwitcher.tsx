@@ -107,7 +107,9 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
       if (userAuth) {
         try {
           const data = JSON.parse(userAuth);
-          if (data.userId && data.authKey) {
+          // Nuvio sessions have no client-held authKey (see useUserAuth.tsx) -
+          // userId + provider:'nuvio' is a valid session on its own.
+          if (data.userId && (data.authKey || data.provider === 'nuvio')) {
             window.location.href = '/user';
             return;
           }
