@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Card, Button, Modal, MediaDetailModal, Badge } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
@@ -636,6 +637,40 @@ export default function NuvioCollectionsPage() {
         </PageSection>
       </div>
       </div>
+
+      {/* Floating save bar - fixed to the viewport so it's reachable without
+          scrolling back to the header, however far down a long Collections
+          list (some real accounts have 10+ folders) you've scrolled while
+          editing. The header's own Save button stays too (muscle memory /
+          consistency with every other detail page), this is purely an
+          always-reachable second entry point for the exact same action. */}
+      <AnimatePresence>
+        {isDirty && selectedProfileIndex !== null && (
+          <motion.div
+            initial={{ opacity: 0, y: 100 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 100 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50"
+          >
+            <div className="flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl bg-surface border border-default backdrop-blur-xl">
+              <span className="text-sm text-warning">Unsaved changes</span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCollections(JSON.parse(savedSnapshot))}
+                  disabled={saving}
+                >
+                  Discard
+                </Button>
+                <Button variant="primary" size="sm" onClick={handleSave} isLoading={saving}>
+                  Save changes
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Delete confirmation */}
       <Modal isOpen={!!deleting} onClose={() => setDeleting(null)} title={deleting?.kind === 'folder' ? 'Delete folder' : 'Delete collection'} size="sm">
