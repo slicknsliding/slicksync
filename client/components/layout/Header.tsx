@@ -10,6 +10,13 @@ interface HeaderProps {
   title: React.ReactNode;
   subtitle?: string;
   actions?: React.ReactNode;
+  // Rendered in the left grid column, opposite `actions` - the title stays
+  // centered either way (see the 3-column grid comment below). Mirrors
+  // NebulaPageHeading's own `leading` prop for the same reason: a control
+  // that reads as "go somewhere else" (a back button, or an unrelated
+  // entry point like Nuvio Collections on the Catalogs page) belongs on
+  // the opposite side from page-specific actions like Rename/Delete/Save.
+  leading?: React.ReactNode;
   activities?: any[];
   inviteHistory?: any[];
   taskHistory?: any[];
@@ -17,12 +24,13 @@ interface HeaderProps {
   isMobileMenuOpen?: boolean;
 }
 
-export function Header({ 
-  title, 
-  subtitle, 
-  actions, 
-  activities = [], 
-  inviteHistory = [], 
+export function Header({
+  title,
+  subtitle,
+  actions,
+  leading,
+  activities = [],
+  inviteHistory = [],
   taskHistory = [],
   onMenuClick: onMenuClickProp,
   isMobileMenuOpen: isMobileMenuOpenProp
@@ -59,6 +67,14 @@ export function Header({
           stays in normal document flow, so page content below it reflows
           around whatever height it ends up at instead of getting covered. */}
       <div className="px-4 md:px-6 lg:px-8 py-3 md:py-4 flex items-center justify-between gap-x-4 gap-y-2 flex-wrap md:grid md:grid-cols-[1fr_auto_1fr]">
+        {/* Leading - left column, opposite `actions`. Empty when not passed,
+            so every existing page (no leading) renders exactly as before. */}
+        {leading ? (
+          <div className="flex items-center md:col-start-1 md:justify-self-start order-first md:order-none">
+            {leading}
+          </div>
+        ) : null}
+
         {/* Mobile Menu Button & Title section */}
         <div className="flex items-center gap-3 md:col-start-2 md:justify-self-center md:text-center">
           {/* Hamburger - only show on mobile */}
