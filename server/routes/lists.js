@@ -243,5 +243,27 @@ module.exports = ({ prisma, getAccountId }) => {
     }
   });
 
+  // POST /api/lists/:id/export-mdblist — create a brand-new MDBList list
+  // from this catalog's current items. One-way: this app can create the
+  // list, but wiring it into a Stremio/Nuvio addon (e.g. AIOMetadata) as a
+  // catalog source is a manual step in that addon's own config afterward.
+  router.post('/:id/export-mdblist', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
+      if (!existing) return res.status(404).json({ error: 'List not found' });
+      const items = parseItems(existing.itemsJson);
+      if (items.length === 0) return res.status(422).json({ error: 'This catalog has no titles to export' });
+
+      const { exportListToMdblist, resolveMdblistKey } = require('../utils/listImport');
+      const key = await resolveMdblistKey(prisma, getAccountId, req);
+      const result = await exportListToMdblist(key, existing.name, items);
+      res.json(result);
+    } catch (e) {
+      console.error('Error exporting list to MDBList:', e);
+      res.status(400).json({ error: e?.message || 'Failed to export to MDBList' });
+    }
+  });
+
   return router;
 };

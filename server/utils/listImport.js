@@ -198,4 +198,46 @@ async function suggestTitlesForCatalog(apiKey, query, excludeIds = []) {
   return resolved.filter(Boolean).slice(0, MAX_SUGGESTIONS)
 }
 
-module.exports = { detectProvider, importFromTmdb, importFromMdblist, resolveTmdbKey, resolveMdblistKey, suggestTitlesForCatalog, MAX_IMPORT_ITEMS }
+// Export a local CustomList's items as a brand-new MDBList list - the
+// inverse of importFromMdblist above, using the same create-list +
+// add-items pair confirmed live against MDBList's own OpenAPI spec
+// (https://api.mdblist.com/schema/): POST /lists/user/add creates the list,
+// POST /lists/{id}/items/add populates it (movies/shows split by imdb id).
+// The list is created private by default - purely a mechanical copy of this
+// app's own catalog, not something meant to be discoverable on MDBList.
+async function exportListToMdblist(apiKey, listName, items) {
+  if (!apiKey) throw new Error('MDBList API key not configured (Settings -> SlickTrax)')
+
+  const createRsp = await fetch(`https://api.mdblist.com/lists/user/add?apikey=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: listName, private: true }),
+  })
+  if (!createRsp.ok) throw new Error('Failed to create the MDBList list')
+  const createdRaw = await createRsp.json()
+  const created = Array.isArray(createdRaw) ? createdRaw[0] : createdRaw
+  const listId = created?.id
+  if (!listId) throw new Error('MDBList did not return a list id')
+
+  const movies = items.filter((i) => i.type === 'movie').map((i) => ({ imdb: i.id }))
+  const shows = items.filter((i) => i.type === 'series').map((i) => ({ imdb: i.id }))
+
+  const addRsp = await fetch(`https://api.mdblist.com/lists/${listId}/items/add?apikey=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ movies, shows }),
+  })
+  if (!addRsp.ok) throw new Error('List created, but failed to add items to it')
+  const addResult = await addRsp.json()
+
+  return {
+    id: listId,
+    name: created?.name || listName,
+    slug: created?.slug || null,
+    added: typeof addResult?.added === 'number' ? addResult.added : null,
+    existing: typeof addResult?.existing === 'number' ? addResult.existing : null,
+    notFound: typeof addResult?.not_found === 'number' ? addResult.not_found : null,
+  }
+}
+
+module.exports = { detectProvider, importFromTmdb, importFromMdblist, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, suggestTitlesForCatalog, MAX_IMPORT_ITEMS }
