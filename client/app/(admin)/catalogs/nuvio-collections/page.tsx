@@ -1265,9 +1265,14 @@ export default function NuvioCollectionsPage() {
         const isLoadingPreview = folderDetail ? previewLoadingIds.has(folderDetail.folderId) : false;
 
         const hero = items[0];
+        // hero.poster is string | null (see PreviewFolderItems), not
+        // string | undefined - <img src> only accepts the latter (a
+        // previous string | null here broke a production build the same
+        // way, see posterUrl.ts's own comment on this exact gotcha).
+        const modalHeroPoster = (folderDetail && folderCoverOverrides[folderDetail.folderId]) || hero?.poster || undefined;
 
         return (
-          <Modal isOpen={!!folderDetail} onClose={() => setFolderDetail(null)} size="lg" backdropImage={folderCoverOverrides[folderDetail?.folderId || ''] || hero?.poster || undefined}>
+          <Modal isOpen={!!folderDetail} onClose={() => setFolderDetail(null)} size="lg" backdropImage={modalHeroPoster}>
             {activeFolder && folderDetail && (
               <div className="space-y-4">
                   <div className="flex items-start gap-3">
@@ -1277,9 +1282,9 @@ export default function NuvioCollectionsPage() {
                       onClick={() => setCoverPickerFolder({ collectionId: folderDetail.collectionId, folderId: folderDetail.folderId })}
                       className="relative shrink-0 w-14 h-14 rounded-xl overflow-hidden border border-default hover:border-primary/50 transition-colors bg-surface-hover"
                     >
-                      {folderCoverOverrides[folderDetail.folderId] || hero?.poster ? (
+                      {modalHeroPoster ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={folderCoverOverrides[folderDetail.folderId] || hero?.poster} alt="" className="w-full h-full object-cover" />
+                        <img src={modalHeroPoster} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <PhotoIcon className="w-5 h-5 text-subtle" />

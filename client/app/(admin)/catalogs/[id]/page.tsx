@@ -477,17 +477,18 @@ export default function ListDetailPage() {
             Full-bleed object-cover, not the index card's object-contain -
             this banner runs the full page width, so contain-fitting a
             portrait poster left a thin sliver of image floating in a mostly
-            empty strip ("looks ridiculous" - confirmed real feedback). A
-            wide banner is a backdrop/mood-setter, not a place that needs to
-            show every pixel of the poster, so cropping to fill reads as an
-            intentional hero image instead - object-position top keeps a
-            poster's usual most-interesting content (faces, title art)
-            in frame instead of centering into empty lower-poster space. */}
+            empty strip ("looks ridiculous" - confirmed real feedback). The
+            cover can be a portrait poster or a landscape backdrop (any URL/
+            upload via AvatarPickerModal), so there's no single safe edge to
+            anchor to - object-position center crops evenly on both axes
+            instead of object-top, which chopped landscape backdrops down to
+            a sliver of empty sky. A taller banner (vs. the original h-32/40)
+            also cuts less of either source out. */}
         {list && (list.coverImageUrl || list.coverColorIndex !== null) && (
-          <div className="mb-6 h-32 md:h-40 rounded-xl overflow-hidden bg-black">
+          <div className="mb-6 h-40 md:h-56 rounded-xl overflow-hidden bg-black">
             {list.coverImageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={list.coverImageUrl} alt="" className="w-full h-full object-cover object-top" />
+              <img src={list.coverImageUrl} alt="" className="w-full h-full object-cover object-center" />
             ) : (
               <div className="w-full h-full" style={coverColorStyle(list.coverColorIndex!)} />
             )}
