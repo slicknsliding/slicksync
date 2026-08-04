@@ -24,7 +24,7 @@ import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import {
   RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon, SparklesIcon, PhotoIcon,
-  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon,
+  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
@@ -168,6 +168,12 @@ export default function ListDetailPage() {
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ name: string; slug: string | null; url: string | null; added: number | null; existing: number | null; notFound: number | null } | null>(null);
+  // Refresh from source - two-step (preview diff, then apply) since
+  // wholesale-replacing itemsJson would silently wipe any titles added or
+  // removed by hand since the original import.
+  const [refreshDiff, setRefreshDiff] = useState<{ added: number; removed: number; unchanged: number } | null>(null);
+  const [loadingRefreshDiff, setLoadingRefreshDiff] = useState(false);
+  const [applyingRefresh, setApplyingRefresh] = useState(false);
   // Bulk select - mirrors the Set<string> + floating-action-bar pattern from
   // users/page.tsx. Entering select mode hides PosterCard's own badges/menu
   // on every card (see CatalogGridCard below) so a tap toggles selection
@@ -245,6 +251,37 @@ export default function ListDetailPage() {
       toast.error(e?.message || 'Failed to export to MDBList');
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Step 1: fetch the diff without applying it, opens the confirm modal.
+  const handleOpenRefresh = async () => {
+    if (!list) return;
+    setLoadingRefreshDiff(true);
+    try {
+      const result = await api.refreshList(list.id, false);
+      setRefreshDiff({ added: result.added, removed: result.removed, unchanged: result.unchanged });
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to check the source list');
+    } finally {
+      setLoadingRefreshDiff(false);
+    }
+  };
+
+  // Step 2: actually replace the catalog's items with the source's current
+  // contents.
+  const handleApplyRefresh = async () => {
+    if (!list) return;
+    setApplyingRefresh(true);
+    try {
+      const updated = await api.refreshList(list.id, true);
+      setList(updated);
+      setRefreshDiff(null);
+      toast.success(`Refreshed "${list.name}" from source`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to refresh from source');
+    } finally {
+      setApplyingRefresh(false);
     }
   };
 
@@ -379,6 +416,11 @@ export default function ListDetailPage() {
       <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
         Suggest titles
       </Button>
+      {list.importSourceUrl && (
+        <Button variant="secondary" size="sm" leftIcon={<ArrowPathIcon className="w-4 h-4" />} onClick={handleOpenRefresh} isLoading={loadingRefreshDiff}>
+          Refresh
+        </Button>
+      )}
       <Button variant="secondary" size="sm" leftIcon={<PhotoIcon className="w-4 h-4" />} onClick={() => setShowCoverPicker(true)}>
         Cover art
       </Button>
@@ -640,6 +682,27 @@ export default function ListDetailPage() {
             )}
             <div className="flex justify-end pt-2">
               <Button variant="ghost" size="sm" onClick={() => setExportResult(null)}>Close</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Refresh from source - never a silent replace. Shows exactly what
+          the re-pull found before touching anything; applying wholesale-
+          replaces itemsJson, so titles added/removed by hand since import
+          are lost either way, but at least never as a surprise. */}
+      <Modal isOpen={!!refreshDiff} onClose={() => setRefreshDiff(null)} title="Refresh from source" size="sm">
+        {refreshDiff && (
+          <div className="space-y-4">
+            <p className="text-sm text-default">
+              The source list currently has <span className="font-semibold">{refreshDiff.added}</span> new title{refreshDiff.added !== 1 ? 's' : ''} and is missing <span className="font-semibold">{refreshDiff.removed}</span> title{refreshDiff.removed !== 1 ? 's' : ''} this catalog has ({refreshDiff.unchanged} unchanged).
+            </p>
+            <p className="text-xs text-muted">
+              Applying replaces this catalog&apos;s titles with the source list&apos;s current contents. Any titles you&apos;ve added or removed by hand since importing will be lost.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" size="sm" onClick={() => setRefreshDiff(null)}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={handleApplyRefresh} isLoading={applyingRefresh}>Apply</Button>
             </div>
           </div>
         )}
