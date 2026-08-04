@@ -431,19 +431,21 @@ export default function ListDetailPage() {
 
         {/* Cover banner - only rendered once a custom cover is actually set;
             this page never had a collage/placeholder here before, so there's
-            nothing to "fall back" to otherwise (unlike the index card). */}
+            nothing to "fall back" to otherwise (unlike the index card).
+            Full-bleed object-cover, not the index card's object-contain -
+            this banner runs the full page width, so contain-fitting a
+            portrait poster left a thin sliver of image floating in a mostly
+            empty strip ("looks ridiculous" - confirmed real feedback). A
+            wide banner is a backdrop/mood-setter, not a place that needs to
+            show every pixel of the poster, so cropping to fill reads as an
+            intentional hero image instead - object-position top keeps a
+            poster's usual most-interesting content (faces, title art)
+            in frame instead of centering into empty lower-poster space. */}
         {list && (list.coverImageUrl || list.coverColorIndex !== null) && (
-          <div className="mb-6 h-32 md:h-40 rounded-xl overflow-hidden">
+          <div className="mb-6 h-32 md:h-40 rounded-xl overflow-hidden bg-black">
             {list.coverImageUrl ? (
-              // object-contain (not cover) - see the same fix's comment on
-              // the Catalogs index card for why a poster-shaped image can't
-              // just fill this wide/short banner directly.
-              <div className="relative w-full h-full bg-black">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={list.coverImageUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-40" />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={list.coverImageUrl} alt="" className="relative w-full h-full object-contain" />
-              </div>
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={list.coverImageUrl} alt="" className="w-full h-full object-cover object-top" />
             ) : (
               <div className="w-full h-full" style={coverColorStyle(list.coverColorIndex!)} />
             )}
