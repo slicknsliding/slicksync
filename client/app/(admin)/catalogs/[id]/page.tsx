@@ -23,7 +23,7 @@ import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import {
   RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon, SparklesIcon, PhotoIcon,
-  CheckCircleIcon, XCircleIcon,
+  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon,
 } from '@heroicons/react/24/outline';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
@@ -173,6 +173,9 @@ export default function ListDetailPage() {
   // pattern Discover uses for its own grid.
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
+  const [showExportConfirm, setShowExportConfirm] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportResult, setExportResult] = useState<{ name: string; slug: string | null; added: number | null; existing: number | null; notFound: number | null } | null>(null);
   // Bulk select - mirrors the Set<string> + floating-action-bar pattern from
   // users/page.tsx. Entering select mode hides PosterCard's own badges/menu
   // on every card (see CatalogGridCard below) so a tap toggles selection
@@ -236,6 +239,21 @@ export default function ListDetailPage() {
     if ('colorIndex' in data) patch.coverColorIndex = data.colorIndex ?? null;
     const updated = await api.updateList(list.id, patch);
     setList(updated);
+  };
+
+  const handleExportToMdblist = async () => {
+    if (!list) return;
+    setExporting(true);
+    try {
+      const result = await api.exportListToMdblist(list.id);
+      setShowExportConfirm(false);
+      setExportResult(result);
+      toast.success(`Exported "${list.name}" to MDBList`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to export to MDBList');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleRemoveItem = async (item: CustomListItem) => {
@@ -371,6 +389,16 @@ export default function ListDetailPage() {
       </Button>
       <Button variant="secondary" size="sm" leftIcon={<PencilSquareIcon className="w-4 h-4" />} onClick={() => { setRenameValue(list.name); setRenaming(true); }}>
         Rename
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
+        onClick={() => setShowExportConfirm(true)}
+        disabled={list.items.length === 0}
+        title={list.items.length === 0 ? 'Add titles first' : undefined}
+      >
+        Export to MDBList
       </Button>
       <Button variant="danger" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setDeleting(true)}>
         Delete
@@ -558,6 +586,41 @@ export default function ListDetailPage() {
         variant="danger"
         isLoading={isBulkDeleting}
       />
+
+      <ConfirmModal
+        isOpen={showExportConfirm}
+        onClose={() => setShowExportConfirm(false)}
+        onConfirm={handleExportToMdblist}
+        title="Export to MDBList"
+        description={`This creates a new, separate MDBList list from "${list?.name}"'s ${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}. SlickSync can create the list, but adding it as a catalog inside an addon (e.g. AIOMetadata) is a manual step in that addon's own settings afterward.`}
+        confirmText={exporting ? 'Exporting...' : 'Export'}
+        isLoading={exporting}
+      />
+
+      {/* Export result - no guessed public-list link (MDBList's URL shape for
+          a freshly created list isn't confirmed), just what the API actually
+          returned plus a link to the account's own MDBList dashboard. */}
+      <Modal isOpen={!!exportResult} onClose={() => setExportResult(null)} title="Exported to MDBList" size="sm">
+        {exportResult && (
+          <div className="space-y-3">
+            <p className="text-sm text-default">Created <span className="font-semibold">{exportResult.name}</span> on MDBList.</p>
+            <div className="text-xs text-muted space-y-1">
+              <p>{exportResult.added ?? '?'} added{exportResult.existing ? `, ${exportResult.existing} already existed` : ''}{exportResult.notFound ? `, ${exportResult.notFound} not found on MDBList` : ''}.</p>
+            </div>
+            <a
+              href="https://mdblist.com/lists"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary hover:underline inline-block"
+            >
+              Open your MDBList lists →
+            </a>
+            <div className="flex justify-end pt-2">
+              <Button variant="ghost" size="sm" onClick={() => setExportResult(null)}>Close</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal isOpen={renaming} onClose={() => setRenaming(false)} title="Rename list" size="sm">
         <div className="space-y-4">

@@ -1759,6 +1759,15 @@ class ApiClient {
       body: JSON.stringify({ orderedIds }),
     });
   }
+  // Creates a brand-new MDBList list from this catalog's current items -
+  // does not touch the catalog itself, and doesn't wire the result into any
+  // addon (that's a manual step in the addon's own config afterward).
+  async exportListToMdblist(id: string) {
+    return this.fetch<{ id: string; name: string; slug: string | null; added: number | null; existing: number | null; notFound: number | null }>(
+      `/lists/${encodeURIComponent(id)}/export-mdblist`,
+      { method: 'POST' }
+    );
+  }
   // Import a TMDb or MDBList list (auto-detected from the URL) into a new list.
   async importList(url: string, name?: string) {
     return this.fetch<CustomList & { truncated: boolean; totalAvailable: number }>('/lists/import', {
