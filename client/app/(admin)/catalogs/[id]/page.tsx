@@ -603,7 +603,7 @@ export default function ListDetailPage() {
         onClose={() => setShowExportConfirm(false)}
         onConfirm={handleExportToMdblist}
         title="Export to MDBList"
-        description={`This creates a new, separate MDBList list from "${list?.name}"'s ${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}. SlickSync can create the list, but adding it as a catalog inside an addon (e.g. AIOMetadata) is a manual step in that addon's own settings afterward.`}
+        description={`This creates a new, separate MDBList list from "${list?.name}"'s ${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}. SlickSync can create the list, but adding it as a catalog inside an addon (e.g. AIOMetadata) is a manual step in that addon's own settings afterward. It's a one-time copy either way — later changes to this Catalog won't reach the exported list, and vice versa.`}
         confirmText={exporting ? 'Exporting...' : 'Export'}
         isLoading={exporting}
       />

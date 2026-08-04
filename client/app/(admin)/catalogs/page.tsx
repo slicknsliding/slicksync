@@ -317,6 +317,7 @@ export default function ListsPage() {
             />
             <p className="text-xs text-subtle mt-1.5">
               Supports MDBList and TMDb lists (movies only for TMDb). Requires an API key in Settings → SlickTrax.
+              This copies the list&apos;s current titles once — later changes to the source list won&apos;t appear here automatically.
             </p>
           </div>
           <div>
