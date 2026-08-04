@@ -370,8 +370,14 @@ export default function NuvioCollectionsPage() {
         )}
 
         <PageSection>
+          {/* One row, not a picker followed by a card that just repeats the
+              picker: account select, profile select (only shown when
+              there's a real choice or it's loading), and the Nuvio badge
+              all live together here - a separate "confirmation" card
+              below used to restate the same account info a second time
+              for no reason. */}
           <Card padding="lg" className="mb-6">
-            <div className="flex flex-wrap gap-4 items-end">
+            <div className="flex flex-wrap gap-3 items-end">
               <div className="flex-1 min-w-[220px]">
                 <label className="block text-xs font-medium text-muted mb-1.5">Nuvio account</label>
                 <select
@@ -385,34 +391,32 @@ export default function NuvioCollectionsPage() {
                     <option key={u.id} value={u.id}>{u.name || u.email || u.id}</option>
                   ))}
                 </select>
-                {!usersLoading && nuvioUsers.length === 0 && (
-                  <p className="text-xs text-subtle mt-1.5">No Nuvio-connected users yet.</p>
-                )}
               </div>
 
-              {selectedUserId && profiles.length > 1 && (
-                <div className="flex-1 min-w-[180px]">
+              {selectedUserId && (profiles.length > 1 || profilesLoading) && (
+                <div className="w-[200px]">
                   <label className="block text-xs font-medium text-muted mb-1.5">Profile</label>
                   <select
                     value={selectedProfileIndex ?? ''}
                     onChange={(e) => handleSelectProfile(selectedUserId, Number(e.target.value))}
+                    disabled={profilesLoading}
                     className="input-base px-3 py-2 w-full appearance-none pr-10 text-sm"
                   >
-                    <option value="" disabled>Select a profile...</option>
+                    <option value="" disabled>{profilesLoading ? 'Loading...' : 'Select a profile...'}</option>
                     {profiles.map((p) => (
                       <option key={p.profile_index} value={p.profile_index}>{p.name || `Profile ${p.profile_index}`}</option>
                     ))}
                   </select>
                 </div>
               )}
+
+              {selectedUser && (
+                <Badge variant="nuvio" size="sm" className="mb-2.5">Nuvio</Badge>
+              )}
             </div>
 
-            {selectedUser && (
-              <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg border border-default bg-subtle">
-                <Badge variant="nuvio" size="sm">Nuvio</Badge>
-                <p className="text-sm text-default truncate">{selectedUser.name || selectedUser.email}</p>
-                {profilesLoading && <p className="text-xs text-muted">Loading profiles...</p>}
-              </div>
+            {!usersLoading && nuvioUsers.length === 0 && (
+              <p className="text-xs text-subtle mt-2">No Nuvio-connected users yet.</p>
             )}
           </Card>
 

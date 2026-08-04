@@ -3,14 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
-import { Card, Button, Modal, PosterThumb, Badge } from '@/components/ui';
+import { Card, Button, Modal, PosterThumb } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList } from '@/lib/api';
 import {
-  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, Squares2X2Icon, ChevronRightIcon,
+  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 
 // Custom Lists (roadmap #7): named collections of titles. Create/rename/delete
@@ -99,18 +99,42 @@ export default function ListsPage() {
 
   const heading = { title: 'Catalogs', subtitle: 'Your custom collections of movies and shows.' };
 
+  // Nuvio Collections entry point - deliberately not a card in the page
+  // body (was too easy to miss as a full-width button there, then too
+  // long as a full-width card). Lives in the header's `leading` slot
+  // instead - opposite side from the bell/actions, compact, always visible
+  // regardless of scroll position. Colors mirror the app's existing
+  // two-tone Nuvio identity (Badge's `nuvio` variant) rather than the
+  // generic primary/secondary palette, since this manages a connected
+  // Nuvio account's own real external data, not a local catalog.
+  const nuvioCollectionsButton = (
+    <button
+      type="button"
+      onClick={() => router.push('/catalogs/nuvio-collections')}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-transform hover:scale-105"
+      style={{
+        background: 'linear-gradient(115deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
+        color: 'rgb(186, 208, 240)',
+        border: '1px solid rgba(186, 208, 240, 0.25)',
+      }}
+    >
+      Nuvio Collections
+    </button>
+  );
+
   return (
     <>
       {layoutMode !== 'nebula' && (
         <Header
           title={<Breadcrumbs items={[{ label: 'Catalogs' }]} className="text-xl font-semibold" />}
           subtitle={heading.subtitle}
+          leading={nuvioCollectionsButton}
         />
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
-        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} />}
+        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={nuvioCollectionsButton} />}
 
         <PageSection>
           <div className="flex items-center justify-between mb-4">
@@ -129,40 +153,6 @@ export default function ListsPage() {
               </Button>
             </div>
           </div>
-
-          {/* Nuvio Collections entry point - deliberately NOT another small
-              toolbar button. This manages a connected Nuvio account's own
-              real, live home-screen data (via sync_pull/push_collections),
-              a fundamentally different kind of thing from the local
-              catalogs below it, so it gets its own visually distinct,
-              full-width card rather than blending into the catalog grid or
-              getting lost next to Import/New catalog. Colors mirror the
-              app's existing two-tone Nuvio identity (Badge's `nuvio`
-              variant) rather than the generic primary/secondary palette. */}
-          <button
-            type="button"
-            onClick={() => router.push('/catalogs/nuvio-collections')}
-            className="group w-full flex items-center gap-4 p-4 mb-4 rounded-2xl border transition-all text-left hover:-translate-y-0.5"
-            style={{
-              background: 'linear-gradient(115deg, rgba(56, 89, 158, 0.16) 0%, rgba(56, 89, 158, 0.16) 50%, rgba(255, 152, 0, 0.08) 50%, rgba(255, 152, 0, 0.08) 100%)',
-              borderColor: 'rgba(186, 208, 240, 0.25)',
-            }}
-          >
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: 'linear-gradient(115deg, #38599E 0%, #38599E 50%, #FF9800 50%, #FF9800 100%)' }}
-            >
-              <Squares2X2Icon className="w-6 h-6 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold font-display text-default">Nuvio Collections</h3>
-                <Badge variant="nuvio" size="sm">Nuvio</Badge>
-              </div>
-              <p className="text-sm text-muted">Organize a connected Nuvio account&apos;s own home-screen collections and folders</p>
-            </div>
-            <ChevronRightIcon className="w-5 h-5 text-subtle shrink-0 transition-transform group-hover:translate-x-0.5" />
-          </button>
 
           {loaded && lists.length === 0 && (
             <Card padding="lg" className="text-center">
