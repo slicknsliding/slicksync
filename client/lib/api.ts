@@ -1775,6 +1775,15 @@ class ApiClient {
       body: JSON.stringify({ url, name }),
     });
   }
+  // Re-pull an already-imported catalog's own source URL. Without `apply`,
+  // only returns the added/removed/unchanged diff so the caller can show a
+  // confirm step before this destructively replaces the catalog's items.
+  async refreshList(id: string, apply = false) {
+    return this.fetch<CustomList & { added: number; removed: number; unchanged: number; applied?: boolean }>(
+      `/lists/${encodeURIComponent(id)}/refresh`,
+      { method: 'POST', body: JSON.stringify({ apply }) }
+    );
+  }
   // Propose titles for a catalog by theme (TMDb keyword search) - read-only,
   // never adds anything itself. query defaults server-side to the catalog's
   // own name if omitted.
@@ -2393,6 +2402,7 @@ export interface CustomList {
   items: CustomListItem[];
   coverImageUrl: string | null;
   coverColorIndex: number | null;
+  importSourceUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
