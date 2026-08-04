@@ -67,12 +67,14 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
 
   router.get('/session', requireSuperAdmin, (req, res) => res.json({ signedIn: true }));
 
-  // GET /accounts - every tenant account, coarse counts only.
+  // GET /accounts - every tenant account, coarse counts only. email is
+  // deliberately NOT selected - the UI never rendered it, so fetching it at
+  // all was unnecessary exposure of PII that isn't needed for moderation.
   router.get('/accounts', requireSuperAdmin, async (req, res) => {
     try {
       const accounts = await prisma.appAccount.findMany({
         select: {
-          id: true, uuid: true, email: true, createdAt: true, lastLoginAt: true, disabled: true,
+          id: true, uuid: true, createdAt: true, lastLoginAt: true, disabled: true,
         },
         orderBy: { createdAt: 'desc' },
       });
@@ -126,56 +128,138 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
     }
   });
 
-  // DELETE /accounts/:id - irreversible. AppAccount.accountId is an
-  // application-level scope field, not an enforced FK (confirmed: only
-  // Invitation has a real onDelete:Cascade relation back to AppAccount), so
-  // every accountId-scoped table needs to be cleared explicitly or it's left
-  // as orphaned data - this list is every model with an accountId field in
-  // the public (Postgres) schema as of this writing.
+  // Shared by the single-account DELETE route and bulk-delete below.
+  // AppAccount.accountId is an application-level scope field, not an
+  // enforced FK (confirmed: only Invitation has a real onDelete:Cascade
+  // relation back to AppAccount), so every accountId-scoped table needs to
+  // be cleared explicitly or it's left as orphaned data - this list is every
+  // model with an accountId field in the public (Postgres) schema as of this
+  // writing. Throws if the account doesn't exist; caller decides how to
+  // report that (404 for a single id, per-id failure entry for bulk).
+  async function deleteAccountCascade(accountId) {
+    const existing = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { id: true } });
+    if (!existing) {
+      const err = new Error('Account not found');
+      err.notFound = true;
+      throw err;
+    }
+    const where = { accountId };
+    await prisma.$transaction([
+      prisma.addonHealthAlert.deleteMany({ where }),
+      prisma.addonSnapshot.deleteMany({ where }),
+      prisma.customList.deleteMany({ where }),
+      prisma.dismissedContinueWatching.deleteMany({ where }),
+      prisma.dismissedUpcomingEpisode.deleteMany({ where }),
+      prisma.episodeAlert.deleteMany({ where }),
+      prisma.episodeWatchHistory.deleteMany({ where }),
+      prisma.inviteRequest.deleteMany({ where }),
+      prisma.manualWatchOverride.deleteMany({ where }),
+      prisma.movieWatchHistory.deleteMany({ where }),
+      prisma.notInterestedItem.deleteMany({ where }),
+      prisma.proxyStreamSession.deleteMany({ where }),
+      prisma.pushSubscription.deleteMany({ where }),
+      prisma.showEpisodeAlertState.deleteMany({ where }),
+      prisma.userSyncGuardState.deleteMany({ where }),
+      prisma.vaultEntry.deleteMany({ where }),
+      prisma.watchActivity.deleteMany({ where }),
+      prisma.watchSession.deleteMany({ where }),
+      prisma.watchSnapshot.deleteMany({ where }),
+      prisma.watchlistItem.deleteMany({ where }),
+      // Invitation already cascades from AppAccount, but clearing it
+      // explicitly here too keeps this list self-contained/order-independent.
+      prisma.invitation.deleteMany({ where }),
+      // Group/Addon last among the "structural" tables - GroupAddon has no
+      // accountId of its own, it cascades automatically off these two.
+      prisma.group.deleteMany({ where }),
+      prisma.addon.deleteMany({ where }),
+      prisma.user.deleteMany({ where }),
+      prisma.appAccount.delete({ where: { id: accountId } }),
+    ]);
+  }
+
+  // DELETE /accounts/:id - irreversible.
   router.delete('/accounts/:id', requireSuperAdmin, async (req, res) => {
-    const accountId = req.params.id;
     try {
-      const existing = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { id: true } });
-      if (!existing) return res.status(404).json({ message: 'Account not found' });
-
-      const where = { accountId };
-      await prisma.$transaction([
-        prisma.addonHealthAlert.deleteMany({ where }),
-        prisma.addonSnapshot.deleteMany({ where }),
-        prisma.customList.deleteMany({ where }),
-        prisma.dismissedContinueWatching.deleteMany({ where }),
-        prisma.dismissedUpcomingEpisode.deleteMany({ where }),
-        prisma.episodeAlert.deleteMany({ where }),
-        prisma.episodeWatchHistory.deleteMany({ where }),
-        prisma.inviteRequest.deleteMany({ where }),
-        prisma.manualWatchOverride.deleteMany({ where }),
-        prisma.movieWatchHistory.deleteMany({ where }),
-        prisma.notInterestedItem.deleteMany({ where }),
-        prisma.proxyStreamSession.deleteMany({ where }),
-        prisma.pushSubscription.deleteMany({ where }),
-        prisma.showEpisodeAlertState.deleteMany({ where }),
-        prisma.userSyncGuardState.deleteMany({ where }),
-        prisma.vaultEntry.deleteMany({ where }),
-        prisma.watchActivity.deleteMany({ where }),
-        prisma.watchSession.deleteMany({ where }),
-        prisma.watchSnapshot.deleteMany({ where }),
-        prisma.watchlistItem.deleteMany({ where }),
-        // Invitation already cascades from AppAccount, but clearing it
-        // explicitly here too keeps this list self-contained/order-independent.
-        prisma.invitation.deleteMany({ where }),
-        // Group/Addon last among the "structural" tables - GroupAddon has no
-        // accountId of its own, it cascades automatically off these two.
-        prisma.group.deleteMany({ where }),
-        prisma.addon.deleteMany({ where }),
-        prisma.user.deleteMany({ where }),
-        prisma.appAccount.delete({ where: { id: accountId } }),
-      ]);
-
-      res.json({ deleted: true, id: accountId });
+      await deleteAccountCascade(req.params.id);
+      res.json({ deleted: true, id: req.params.id });
     } catch (e) {
+      if (e.notFound) return res.status(404).json({ message: 'Account not found' });
       console.error('[Superadmin] Failed to delete account:', e?.message);
       res.status(500).json({ message: 'Failed to delete account', error: e?.message });
     }
+  });
+
+  // Bulk variants - each id validated/parsed the same way; a normalized
+  // string array, capped generously against an accidental huge payload.
+  function parseBulkIds(req, res) {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : null;
+    if (!ids || ids.length === 0) {
+      res.status(400).json({ message: 'ids must be a non-empty array' });
+      return null;
+    }
+    if (ids.length > 200) {
+      res.status(400).json({ message: 'Too many accounts in one request (max 200)' });
+      return null;
+    }
+    return [...new Set(ids)];
+  }
+
+  router.post('/accounts/bulk-disable', requireSuperAdmin, async (req, res) => {
+    const ids = parseBulkIds(req, res);
+    if (!ids) return;
+    try {
+      // Same "don't silently disable every account" guard as the single-
+      // account route, just checked against the WHOLE selection at once:
+      // would disabling every id here leave zero enabled accounts overall?
+      if (req.query.confirm !== 'true') {
+        const stillEnabledAfter = await prisma.appAccount.count({ where: { disabled: false, id: { notIn: ids } } });
+        if (stillEnabledAfter === 0) {
+          return res.status(409).json({
+            message: 'This would disable every remaining enabled account - resubmit with confirm=true to proceed anyway.',
+            requiresConfirmation: true,
+          });
+        }
+      }
+      const result = await prisma.appAccount.updateMany({ where: { id: { in: ids } }, data: { disabled: true } });
+      res.json({ disabled: result.count });
+    } catch (e) {
+      console.error('[Superadmin] Bulk disable failed:', e?.message);
+      res.status(500).json({ message: 'Bulk disable failed' });
+    }
+  });
+
+  router.post('/accounts/bulk-enable', requireSuperAdmin, async (req, res) => {
+    const ids = parseBulkIds(req, res);
+    if (!ids) return;
+    try {
+      const result = await prisma.appAccount.updateMany({ where: { id: { in: ids } }, data: { disabled: false } });
+      res.json({ enabled: result.count });
+    } catch (e) {
+      console.error('[Superadmin] Bulk enable failed:', e?.message);
+      res.status(500).json({ message: 'Bulk enable failed' });
+    }
+  });
+
+  // POST not DELETE - a bulk delete needs a body (the id list), which DELETE
+  // requests can carry but many proxies/clients handle unreliably.
+  router.post('/accounts/bulk-delete', requireSuperAdmin, async (req, res) => {
+    const ids = parseBulkIds(req, res);
+    if (!ids) return;
+    let deleted = 0;
+    const failed = [];
+    // Sequential, not Promise.all - each account's own cascade is already a
+    // multi-table transaction; running many of those concurrently against
+    // the same connection pool risks exhausting it for no real benefit here
+    // (this is an infrequent operator action, not a hot path).
+    for (const id of ids) {
+      try {
+        await deleteAccountCascade(id);
+        deleted++;
+      } catch (e) {
+        failed.push(id);
+      }
+    }
+    res.json({ deleted, failed });
   });
 
   return router;

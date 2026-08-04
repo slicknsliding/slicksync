@@ -4,14 +4,21 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Card, Button, Modal, PosterThumb } from '@/components/ui';
+import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList } from '@/lib/api';
 import {
-  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon,
+  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon,
 } from '@heroicons/react/24/outline';
+
+// Matches AvatarPickerModal's own color-swatch formula exactly, so a
+// catalog's solid-color cover reads as the same color the picker showed.
+function coverColorStyle(colorIndex: number): React.CSSProperties {
+  return { background: `color-mix(in srgb, var(--color-${colorIndex < 4 ? 'primary' : 'secondary'}) ${100 - (colorIndex % 4) * 25}%, white)` };
+}
 
 // Custom Lists (roadmap #7): named collections of titles. Create/rename/delete
 // a list here; click one to open its own page at /catalogs/[id] (a real page, not
@@ -33,6 +40,7 @@ export default function ListsPage() {
   const [importUrl, setImportUrl] = useState('');
   const [importName, setImportName] = useState('');
   const [importing, setImporting] = useState(false);
+  const [coverPicker, setCoverPicker] = useState<CustomList | null>(null);
 
   const load = useCallback(() => {
     api.getLists()
@@ -97,7 +105,62 @@ export default function ListsPage() {
     catch { toast.error('Failed to delete'); load(); }
   };
 
+  // AvatarPickerModal's onSave only includes the key(s) for the tab that was
+  // actually saved (color tab sends both colorIndex + a clearing avatarUrl,
+  // URL/upload tabs send only avatarUrl) - forward exactly that presence
+  // through to the PATCH so the untouched field is left alone server-side.
+  const handleCoverSave = async (data: { avatarUrl?: string | null; colorIndex?: number }) => {
+    if (!coverPicker) return;
+    const patch: { coverImageUrl?: string | null; coverColorIndex?: number | null } = {};
+    if ('avatarUrl' in data) patch.coverImageUrl = data.avatarUrl ?? null;
+    if ('colorIndex' in data) patch.coverColorIndex = data.colorIndex ?? null;
+    const updated = await api.updateList(coverPicker.id, patch);
+    setLists((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
+  };
+
   const heading = { title: 'Catalogs', subtitle: 'Your custom collections of movies and shows.' };
+
+  // Nuvio Collections entry point - deliberately not a card in the page
+  // body (was too easy to miss as a full-width button there, then too
+  // long as a full-width card). Lives in the header's `leading` slot
+  // instead - opposite side from the bell/actions, compact, always visible
+  // regardless of scroll position. Colors mirror the app's existing
+  // two-tone Nuvio identity (Badge's `nuvio` variant) rather than the
+  // generic primary/secondary palette, since this manages a connected
+  // Nuvio account's own real external data, not a local catalog.
+  const nuvioCollectionsButton = (
+    <button
+      type="button"
+      onClick={() => router.push('/catalogs/nuvio-collections')}
+      className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-base font-semibold transition-transform hover:scale-105 nav-item-hover-pill"
+      style={{
+        // Two backgrounds stacked on the same declaration: the two-tone
+        // Nuvio fill paints inside the border (padding-box), the theme's
+        // own primary/secondary gradient paints only the border ring itself
+        // (border-box) - same gradient NebulaGlassStripe uses for the top
+        // accent elsewhere, here going the full way around the pill instead
+        // of just across the top. border-image can't do this on a
+        // rounded-full shape (it ignores border-radius); this dual-
+        // background technique does.
+        //
+        // The fill MUST be opaque, not the original rgba(...0.22)/rgba(...0.10)
+        // - CSS paints padding-box on top of border-box, but a translucent
+        // padding-box layer lets the border-box gradient bleed through the
+        // ENTIRE fill (not just the 1.5px ring), which is exactly the "whole
+        // pill turned into a purple/teal wash" bug this replaced. color-mix
+        // pre-blends the same tint against the page background instead,
+        // producing an opaque color that looks the same as the old
+        // translucent one but actually blocks what's behind it.
+        background:
+          'linear-gradient(115deg, color-mix(in srgb, rgb(56, 89, 158) 22%, var(--color-bg)) 0%, color-mix(in srgb, rgb(56, 89, 158) 22%, var(--color-bg)) 50%, color-mix(in srgb, rgb(255, 152, 0) 10%, var(--color-bg)) 50%, color-mix(in srgb, rgb(255, 152, 0) 10%, var(--color-bg)) 100%) padding-box, ' +
+          'linear-gradient(90deg, var(--color-primary), var(--color-secondary)) border-box',
+        color: 'rgb(186, 208, 240)',
+        border: '1.5px solid transparent',
+      }}
+    >
+      Nuvio Collections
+    </button>
+  );
 
   return (
     <>
@@ -105,12 +168,13 @@ export default function ListsPage() {
         <Header
           title={<Breadcrumbs items={[{ label: 'Catalogs' }]} className="text-xl font-semibold" />}
           subtitle={heading.subtitle}
+          leading={nuvioCollectionsButton}
         />
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
-        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} />}
+        {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={nuvioCollectionsButton} />}
 
         <PageSection>
           <div className="flex items-center justify-between mb-4">
@@ -147,22 +211,52 @@ export default function ListsPage() {
                     onClick={() => router.push(`/catalogs/${list.id}`)}
                     className="w-full text-left"
                   >
-                    {/* Poster strip: up to 4 covers, or a placeholder. */}
-                    <div className="flex gap-1 mb-3 h-24">
-                      {list.items.length === 0 ? (
-                        <div className="flex-1 rounded-md bg-surface-hover flex items-center justify-center">
-                          <RectangleStackIcon className="w-6 h-6 text-subtle" />
-                        </div>
-                      ) : (
-                        list.items.slice(0, 4).map((it) => (
-                          <PosterThumb key={it.id} item={it} className="flex-1 h-full" />
-                        ))
-                      )}
-                    </div>
+                    {/* Custom cover (image or solid color) takes over the whole
+                        strip; otherwise the up-to-4-poster collage / empty
+                        placeholder from before. h-40 (was h-24) on the image
+                        variant specifically - object-contain on a 2:3 poster
+                        needs real height to read as anything but a tiny
+                        centered sliver; the other two variants match it so
+                        cards in the same grid row stay the same height. */}
+                    {list.coverImageUrl ? (
+                      // object-contain (not cover) - a tall poster jammed into
+                      // this wide/short strip via object-cover crops down to
+                      // an unrecognizable sliver of the middle of the image.
+                      // The blurred duplicate behind it fills the letterbox
+                      // bars instead of leaving them flat black.
+                      <div className="relative mb-3 h-40 rounded-md overflow-hidden bg-black">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={list.coverImageUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-40" />
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={list.coverImageUrl} alt="" className="relative w-full h-full object-contain" />
+                      </div>
+                    ) : list.coverColorIndex !== null && list.coverColorIndex !== undefined ? (
+                      <div className="mb-3 h-40 rounded-md" style={coverColorStyle(list.coverColorIndex)} />
+                    ) : (
+                      <div className="flex gap-1 mb-3 h-40">
+                        {list.items.length === 0 ? (
+                          <div className="flex-1 rounded-md bg-surface-hover flex items-center justify-center">
+                            <RectangleStackIcon className="w-6 h-6 text-subtle" />
+                          </div>
+                        ) : (
+                          list.items.slice(0, 4).map((it) => (
+                            <PosterThumb key={it.id} item={it} className="flex-1 h-full" />
+                          ))
+                        )}
+                      </div>
+                    )}
                     <p className="text-sm font-semibold text-default truncate">{list.name}</p>
                     <p className="text-xs text-muted">{list.items.length} title{list.items.length !== 1 ? 's' : ''}</p>
                   </button>
                   <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      title="Cover art"
+                      onClick={() => setCoverPicker(list)}
+                      className="p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface-hover transition-colors"
+                    >
+                      <PhotoIcon className="w-4 h-4" />
+                    </button>
                     <button
                       type="button"
                       title="Rename"
@@ -273,6 +367,19 @@ export default function ListsPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Cover art - same picker Settings/Users/Groups already use for
+          avatars, repurposed for a catalog's own cover. */}
+      {coverPicker && (
+        <AvatarPickerModal
+          isOpen={!!coverPicker}
+          onClose={() => setCoverPicker(null)}
+          name={coverPicker.name}
+          currentAvatarUrl={coverPicker.coverImageUrl}
+          currentColorIndex={coverPicker.coverColorIndex ?? 0}
+          onSave={handleCoverSave}
+        />
+      )}
     </>
   );
 }

@@ -466,7 +466,7 @@ export function NebulaPageHeading({
         <h1 className="text-2xl font-bold font-display mb-1 text-default">{title}</h1>
         {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
       </div>
-      <div className="flex items-center gap-2 flex-wrap w-full md:w-auto order-2 md:order-3 md:col-start-3 md:justify-self-end">
+      <div className="flex items-center justify-end gap-2 flex-wrap w-full md:w-auto order-2 md:order-3 md:col-start-3 md:justify-self-end">
         {/* Desktop only - mobile gets a fixed top-right copy in NebulaTopbar
             instead (see above for why). w-full on mobile is load-bearing:
             flex-wrap only kicks in once this div's own width is bounded -
@@ -477,8 +477,24 @@ export function NebulaPageHeading({
             off the right edge requiring a horizontal scroll to reach
             Delete. md:w-auto reverts to natural sizing in the desktop grid
             cell, where justify-self-end still needs it hugging content
-            width. */}
+            width.
+            justify-end (Tailwind justify-content: flex-end) is the actual
+            fix for elements not reaching the true right edge - justify-self
+            -end above only positions THIS div within its own grid cell; it
+            says nothing about how ITS OWN children pack inside it, which
+            defaulted to flex-start (hugging this div's left edge) even
+            though the div itself was correctly flush right - every button/
+            bell inside consistently sat short of the page's actual right
+            margin as a result. */}
         {!isMobile && <NotificationsDropdown />}
+        {/* Zero-height, full-width flex item forces a line-break: the bell
+            (above) always lands on its own line, `actions` (below) always
+            starts a fresh line under it - deliberate and consistent across
+            every page using this heading, not just an incidental wrap on
+            pages with enough buttons to run out of room. Harmless on pages
+            with no actions (nothing follows it to wrap) and on mobile
+            (bell isn't rendered here at all, see the fixed copy above). */}
+        {!isMobile && <div className="basis-full h-0" aria-hidden />}
         {actions}
       </div>
       {stats && (
