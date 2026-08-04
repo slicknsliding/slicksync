@@ -601,7 +601,7 @@ export default function GroupsPage() {
       {/* Floating Add Button - Mobile Only */}
       <button
         onClick={() => setIsCreateModalOpen(true)}
-        className="lg:hidden fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg bg-surface border border-default"
+        className="lg:hidden fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg bg-surface border border-default nav-item-hover-pill"
         style={{ boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)' }}
       >
         <PlusIcon className="w-6 h-6" />

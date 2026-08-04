@@ -176,7 +176,7 @@ export function FilterTabs({
                   transition-colors duration-150 ease-out
                   ${isActive
                     ? 'text-primary'
-                    : 'text-muted hover:text-default'
+                    : 'text-muted nav-item-hover-pill'
                   }
                 `}
                 style={isOver ? { boxShadow: '0 0 0 2px var(--color-primary)', background: 'var(--color-primary-muted)', borderRadius: '0.5rem' } : undefined}

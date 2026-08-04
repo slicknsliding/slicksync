@@ -67,6 +67,12 @@ function LoginContent() {
   // dependency change re-fires it immediately, forever, with no backoff -
   // confirmed hitting the rate limiter within seconds while testing this.
   const nuvioAutoStartedRef = useRef(false);
+  // Same guard, same reason, for the Stremio auto-generate effect further
+  // down - a failed generateOAuthLink() leaves oauthLink empty and
+  // isGenerating false, so the effect would otherwise re-fire immediately
+  // with no backoff. The always-visible "Refresh" button below is the
+  // manual retry path once auto-generate has given up for this tab-visit.
+  const stremioAutoStartedRef = useRef(false);
 
   // Check if auth is required for private instance
   useEffect(() => {
@@ -234,11 +240,18 @@ function LoginContent() {
     }
   }, [isGenerating, mode]);
 
-  // Auto-generate OAuth link
+  // Auto-generate OAuth link. Fires at most once per tab-selection - see
+  // stremioAutoStartedRef's own comment for why a plain !oauthLink check
+  // isn't safe here.
   useEffect(() => {
     // Generate if user mode on the stremio tab, OR admin mode on its stremio tab
     const shouldGenerate = (mode === 'user' && userLoginType === 'stremio') || (mode === 'admin' && adminLoginType === 'stremio');
-    if (shouldGenerate && !oauthLink && !isGenerating) {
+    if (!shouldGenerate) {
+      stremioAutoStartedRef.current = false;
+      return;
+    }
+    if (!oauthLink && !isGenerating && !stremioAutoStartedRef.current) {
+      stremioAutoStartedRef.current = true;
       generateOAuthLink();
     }
   }, [mode, adminLoginType, userLoginType, oauthLink, isGenerating, generateOAuthLink]);

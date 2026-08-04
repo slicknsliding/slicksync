@@ -22,6 +22,8 @@ module.exports = ({ prisma, getAccountId }) => {
     name: list.name,
     description: list.description || null,
     items: parseItems(list.itemsJson),
+    coverImageUrl: list.coverImageUrl || null,
+    coverColorIndex: list.coverColorIndex ?? null,
     createdAt: list.createdAt,
     updatedAt: list.updatedAt,
   });
@@ -106,15 +108,20 @@ module.exports = ({ prisma, getAccountId }) => {
     }
   });
 
-  // PATCH /api/lists/:id — rename / re-describe. { name?, description? }
+  // PATCH /api/lists/:id — rename / re-describe / set cover art.
+  // { name?, description?, coverImageUrl?, coverColorIndex? } - cover fields
+  // accept `null` explicitly to clear back to the auto-collage fallback.
   router.patch('/:id', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';
       const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
       if (!existing) return res.status(404).json({ error: 'List not found' });
+      const body = req.body || {};
       const data = {};
-      if (typeof req.body?.name === 'string' && req.body.name.trim()) data.name = req.body.name.trim();
-      if (typeof req.body?.description === 'string') data.description = req.body.description.trim() || null;
+      if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim();
+      if (typeof body.description === 'string') data.description = body.description.trim() || null;
+      if ('coverImageUrl' in body) data.coverImageUrl = body.coverImageUrl ? String(body.coverImageUrl) : null;
+      if ('coverColorIndex' in body) data.coverColorIndex = body.coverColorIndex === null || body.coverColorIndex === undefined ? null : Number(body.coverColorIndex);
       const list = await prisma.customList.update({ where: { id: existing.id }, data });
       res.json(shape(list));
     } catch (e) {
@@ -177,6 +184,42 @@ module.exports = ({ prisma, getAccountId }) => {
     }
   });
 
+  // PATCH /api/lists/:id/items/reorder — persist a manual drag-reorder.
+  // { orderedIds: string[] } must contain EXACTLY the list's current item
+  // ids (same set, any order) - rejected otherwise, since itemsJson is one
+  // opaque JSON blob with no relational position column to reconcile a
+  // partial/stale reorder against (e.g. a client that missed a concurrent
+  // add/remove in another tab).
+  router.patch('/:id/items/reorder', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
+      if (!existing) return res.status(404).json({ error: 'List not found' });
+      const orderedIds = Array.isArray(req.body?.orderedIds) ? req.body.orderedIds.map(String) : null;
+      if (!orderedIds) return res.status(400).json({ error: 'orderedIds must be an array' });
+
+      const items = parseItems(existing.itemsJson);
+      const currentIds = new Set(items.map((i) => i.id));
+      const sameSet = orderedIds.length === items.length
+        && new Set(orderedIds).size === items.length
+        && orderedIds.every((id) => currentIds.has(id));
+      if (!sameSet) {
+        return res.status(400).json({ error: 'orderedIds must match the list\'s current items exactly (it may have changed since you loaded it)' });
+      }
+
+      const byId = new Map(items.map((i) => [i.id, i]));
+      const reordered = orderedIds.map((id) => byId.get(id));
+      const list = await prisma.customList.update({
+        where: { id: existing.id },
+        data: { itemsJson: JSON.stringify(reordered) },
+      });
+      res.json(shape(list));
+    } catch (e) {
+      console.error('Error reordering custom list items:', e);
+      res.status(500).json({ error: 'Failed to reorder items' });
+    }
+  });
+
   // GET /api/lists/:id/suggest?query= — propose titles for this catalog by
   // theme (TMDb keyword search, seeded from the catalog's own name unless
   // ?query= overrides it). Read-only: returns candidates for the caller to
@@ -197,6 +240,28 @@ module.exports = ({ prisma, getAccountId }) => {
     } catch (e) {
       console.error('Error suggesting catalog titles:', e);
       res.status(400).json({ error: e?.message || 'Failed to suggest titles' });
+    }
+  });
+
+  // POST /api/lists/:id/export-mdblist — create a brand-new MDBList list
+  // from this catalog's current items. One-way: this app can create the
+  // list, but wiring it into a Stremio/Nuvio addon (e.g. AIOMetadata) as a
+  // catalog source is a manual step in that addon's own config afterward.
+  router.post('/:id/export-mdblist', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
+      if (!existing) return res.status(404).json({ error: 'List not found' });
+      const items = parseItems(existing.itemsJson);
+      if (items.length === 0) return res.status(422).json({ error: 'This catalog has no titles to export' });
+
+      const { exportListToMdblist, resolveMdblistKey } = require('../utils/listImport');
+      const key = await resolveMdblistKey(prisma, getAccountId, req);
+      const result = await exportListToMdblist(key, existing.name, items);
+      res.json(result);
+    } catch (e) {
+      console.error('Error exporting list to MDBList:', e);
+      res.status(400).json({ error: e?.message || 'Failed to export to MDBList' });
     }
   });
 

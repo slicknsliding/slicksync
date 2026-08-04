@@ -461,6 +461,32 @@ class ApiClient {
     return normalized as StremioAddon[];
   }
 
+  // Nuvio Collections (admin) — pull/edit/push a Nuvio profile's own
+  // home-screen Collections. Distinct from this app's local "Catalogs".
+  async getNuvioProfiles(userId: string) {
+    return this.fetch<{ profiles: NuvioProfile[] }>(`/users/${encodeURIComponent(userId)}/nuvio-profiles`);
+  }
+
+  async getNuvioCollections(userId: string, profileId: number) {
+    return this.fetch<{ collections: NuvioCollection[] }>(
+      `/users/${encodeURIComponent(userId)}/nuvio-collections/${profileId}`
+    );
+  }
+
+  async setNuvioCollections(userId: string, profileId: number, collections: NuvioCollection[]) {
+    return this.fetch<{ success: boolean; collections: NuvioCollection[] }>(
+      `/users/${encodeURIComponent(userId)}/nuvio-collections/${profileId}`,
+      { method: 'PUT', body: JSON.stringify({ collections }) }
+    );
+  }
+
+  async getNuvioCatalogPreview(userId: string, addonUrl: string, type: string, catalogId: string) {
+    const params = new URLSearchParams({ addonUrl, type, catalogId });
+    return this.fetch<{ items: { id: string; type: string; name: string; poster: string | null }[] }>(
+      `/users/${encodeURIComponent(userId)}/nuvio-catalog-preview?${params.toString()}`
+    );
+  }
+
   // Import user addons to a new group (copied from old UI)
   async importUserAddons(id: string) {
     // Fetch live addons from Stremio for this user first
@@ -1705,7 +1731,7 @@ class ApiClient {
       body: JSON.stringify({ name, description }),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -1724,6 +1750,23 @@ class ApiClient {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items/${encodeURIComponent(itemId)}`, {
       method: 'DELETE',
     });
+  }
+  // Persist a manual drag-reorder - orderedIds must be the list's current
+  // item ids, same set, in the new order (server rejects a stale/partial set).
+  async reorderListItems(id: string, orderedIds: string[]) {
+    return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items/reorder`, {
+      method: 'PATCH',
+      body: JSON.stringify({ orderedIds }),
+    });
+  }
+  // Creates a brand-new MDBList list from this catalog's current items -
+  // does not touch the catalog itself, and doesn't wire the result into any
+  // addon (that's a manual step in the addon's own config afterward).
+  async exportListToMdblist(id: string) {
+    return this.fetch<{ id: string; name: string; slug: string | null; url: string | null; added: number | null; existing: number | null; notFound: number | null }>(
+      `/lists/${encodeURIComponent(id)}/export-mdblist`,
+      { method: 'POST' }
+    );
   }
   // Import a TMDb or MDBList list (auto-detected from the URL) into a new list.
   async importList(url: string, name?: string) {
@@ -2186,6 +2229,7 @@ export interface VelocityData {
 
 export interface StremioAddon {
   transportUrl: string;
+  name?: string;
   manifest: {
     id: string;
     name: string;
@@ -2194,6 +2238,7 @@ export interface StremioAddon {
     logo?: string;
     resources: string[];
     types: string[];
+    catalogs?: { id: string; type: string; name?: string; extra?: { name: string; options?: string[]; isRequired?: boolean }[] }[];
   };
 }
 
@@ -2346,8 +2391,56 @@ export interface CustomList {
   name: string;
   description: string | null;
   items: CustomListItem[];
+  coverImageUrl: string | null;
+  coverColorIndex: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// Nuvio's own native "Collections" (home-screen folder/catalog-source
+// organizer), pulled/pushed live from the account itself — not this app's
+// local CustomList above. Index signatures preserve fields this app's v1
+// editor doesn't expose (pinToTop, viewMode, coverImageUrl, etc.) untouched
+// through a load-edit-save round trip, rather than silently dropping a real
+// user's existing settings for those.
+export interface NuvioProfile {
+  id: string;
+  user_id: string;
+  profile_index: number;
+  name: string;
+  avatar_color_hex?: string | null;
+  uses_primary_addons?: boolean;
+  uses_primary_plugins?: boolean;
+  avatar_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NuvioCatalogSource {
+  addonId: string;
+  type: string;
+  catalogId: string;
+  // Present when this source is one broad catalog filtered down to a
+  // specific genre (the catalog's own "genre" extra parameter value) -
+  // most addons expose genres as a filter on one catalog, not as separate
+  // catalogs per genre. "none" (as seen on real, non-genre-filtered
+  // sources) or absent both mean "no genre filter."
+  genre?: string;
+  [key: string]: any;
+}
+
+export interface NuvioCollectionFolder {
+  id: string;
+  title: string;
+  catalogSources?: NuvioCatalogSource[];
+  [key: string]: any;
+}
+
+export interface NuvioCollection {
+  id: string;
+  title: string;
+  folders?: NuvioCollectionFolder[];
+  [key: string]: any;
 }
 
 export interface YearInReviewTitle {
