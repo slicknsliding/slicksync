@@ -9,6 +9,7 @@ import {
   DndContext, closestCenter, SortableContext, useSortable, useSortableSensors, CSS,
 } from '@/components/ui';
 import { rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { restrictToParentElement } from '@dnd-kit/modifiers';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -102,29 +103,20 @@ function CatalogGridCard({
         onOpenDetails={() => (selectMode ? onToggleSelect() : onOpenDetails())}
         onToggleWatchlist={(_, next) => onToggleWatchlist(next)}
         onToggleWatched={(_, next) => onToggleWatched(next)}
+        // Removal now lives in PosterCard's own long-press/right-click menu
+        // (see its own comment on onRemoveFromCatalog) instead of a separate
+        // always-visible X button - that button sat in the same top-right
+        // corner as the watched badge and read as a confusing double-icon.
+        // Hidden during select mode, same as the other menu items, since a
+        // tap there toggles selection instead.
+        onRemoveFromCatalog={selectMode ? undefined : onRemove}
         isMenuOpen={isMenuOpen}
         onMenuOpenChange={onMenuOpenChange}
       />
-      {selectMode ? (
+      {selectMode && (
         <div className="absolute top-1.5 left-1.5 z-20">
           <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} visible />
         </div>
-      ) : (
-        // Remove-from-this-catalog - deliberately kept as its own always-
-        // there hover affordance rather than folded into PosterCard's own
-        // (Discover-owned) context menu, which has no notion of "this
-        // specific catalog". Shares the same top-right corner as PosterCard's
-        // watched badge - on hover it renders on top of it, which reads fine
-        // since the badge is decorative and this is a deliberate action.
-        <button
-          type="button"
-          title="Remove from catalog"
-          onClick={onRemove}
-          className="absolute top-1.5 right-1.5 z-10 flex items-center justify-center rounded-full bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ width: 24, height: 24 }}
-        >
-          <XMarkIcon className="w-3.5 h-3.5" />
-        </button>
       )}
     </div>
   );
@@ -521,7 +513,14 @@ export default function ListDetailPage() {
               {!selectMode && sortBy !== 'default' && (
                 <p className="text-xs text-subtle mb-3">Switch to List order to drag-reorder titles.</p>
               )}
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              {/* restrictToParentElement clamps the dragged card's translate
+                  to the grid's own bounds - without it, dragging a card far
+                  right/down moves it (via CSS transform) past the grid's
+                  edge, which the browser treats as real overflowing content
+                  and grows the page's scrollable width to fit, making the
+                  whole page appear wider than it is and pushing later cards
+                  off-screen until the drag ends. */}
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToParentElement]}>
                 <SortableContext items={sortedItems.map((i) => i.id)} strategy={rectSortingStrategy}>
                   <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
                     {sortedItems.map((item) => (
