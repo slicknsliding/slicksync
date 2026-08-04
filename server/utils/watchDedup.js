@@ -53,18 +53,34 @@ function findSharedEmailUserIds(users) {
  * date is normalized to a UTC day string so mid-day rows from independent
  * polls of the same play land in the same bucket.
  *
- * @param {Array<{userId: string, itemId: string, date: Date|string, watchTimeSeconds: number}>} rows
+ * Field names default to the WatchActivity table's own shape so the three
+ * existing call sites need no changes; `opts` lets a differently-shaped
+ * row (e.g. episode/movie History rows, which use `watchedAt`/
+ * `durationSeconds` and key on `showId`+`videoId` rather than a bare
+ * `itemId`) reuse the same identity-aware logic instead of only being
+ * covered by a same-second timestamp coincidence, which a same-email
+ * Nuvio/Stremio pair's rows don't reliably land in (confirmed real case:
+ * two rows for the same episode, ~42 minutes apart, both survived the
+ * same-second check untouched - see metricsBuilder.js's own
+ * dedupCrossUserSameSecond and its comment for that narrower heuristic).
+ *
+ * @param {Array<Record<string, any>>} rows
  * @param {Set<string>} sharedEmailUserIds  from findSharedEmailUserIds
+ * @param {{ itemKey?: (row: any) => string, dateField?: string, durationField?: string }} [opts]
  */
-function dedupWatchActivityBySharedEmail(rows, sharedEmailUserIds) {
+function dedupWatchActivityBySharedEmail(rows, sharedEmailUserIds, opts = {}) {
   if (!sharedEmailUserIds || sharedEmailUserIds.size === 0) return rows
 
-  // Group by (itemId, day-bucket) and separate shared-email rows from the
+  const itemKey = opts.itemKey || ((r) => r.itemId)
+  const dateField = opts.dateField || 'date'
+  const durationField = opts.durationField || 'watchTimeSeconds'
+
+  // Group by (item, day-bucket) and separate shared-email rows from the
   // rest. Only the shared-email group needs a decision; unshared users
   // pass through untouched.
   const dayKey = (r) => {
-    const d = new Date(r.date)
-    return `${r.itemId}::${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`
+    const d = new Date(r[dateField])
+    return `${itemKey(r)}::${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`
   }
   const groups = new Map()
   for (const r of rows) {
@@ -84,7 +100,7 @@ function dedupWatchActivityBySharedEmail(rows, sharedEmailUserIds) {
 
     // Sum shared-email rows per user; keep only the user with the max sum.
     const sums = new Map()
-    for (const r of shared) sums.set(r.userId, (sums.get(r.userId) || 0) + (r.watchTimeSeconds || 0))
+    for (const r of shared) sums.set(r.userId, (sums.get(r.userId) || 0) + (r[durationField] || 0))
     let winner = null
     let winnerSum = -1
     for (const [uid, s] of sums) {
