@@ -10,7 +10,7 @@ import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { posterUrl, isRpdbPoster } from '@/lib/posterUrl';
 import {
   FilmIcon, TvIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon,
-  XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, RectangleStackIcon,
+  XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, RectangleStackIcon, TrashIcon,
 } from '@heroicons/react/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -49,6 +49,13 @@ export interface PosterCardProps {
   /** SlickTrax feedback - only meaningful on recommendation-style rows. */
   showNotInterested?: boolean;
   onMarkNotInterested?: (item: PosterCardItem) => void;
+  /** Catalogs-only "remove from this catalog" menu entry - opt-in (undefined
+   *  on every other caller, e.g. Discover), so this stays out of the menu
+   *  everywhere it isn't relevant. Replaced an always-visible X button that
+   *  sat in the same top-right corner as the watched badge above, reading as
+   *  a confusing double-icon; long-press/right-click already opens this
+   *  same menu, so removal lives there instead. */
+  onRemoveFromCatalog?: (item: PosterCardItem) => void;
   /** Only-one-menu-open-at-a-time state, lifted to the parent so opening
    *  a second card's menu closes the previous card's. */
   isMenuOpen?: boolean;
@@ -72,6 +79,7 @@ export const PosterCard = memo(function PosterCard({
   showWatchlistBadge = true,
   showNotInterested = false,
   onMarkNotInterested,
+  onRemoveFromCatalog,
   isMenuOpen,
   onMenuOpenChange,
   focusable = false,
@@ -190,7 +198,7 @@ export const PosterCard = memo(function PosterCard({
         )}
       </div>
 
-      {(showWatchlistMenu || showWatchedMenu || showNotInterested) && (
+      {(showWatchlistMenu || showWatchedMenu || showNotInterested || onRemoveFromCatalog) && (
         <ContextMenu isOpen={controlledOpen} position={position} onClose={close}>
           {catalogView ? (
             <CatalogPickerMenu
@@ -236,6 +244,15 @@ export const PosterCard = memo(function PosterCard({
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
                 >
                   <HandThumbDownIcon className="w-4 h-4" /> Not interested
+                </button>
+              )}
+              {onRemoveFromCatalog && (
+                <button
+                  type="button"
+                  onClick={() => { close(); onRemoveFromCatalog(item); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-surface-hover transition-colors"
+                >
+                  <TrashIcon className="w-4 h-4" /> Remove from catalog
                 </button>
               )}
             </>
