@@ -142,8 +142,17 @@ export default function ListsPage() {
         // of just across the top. border-image can't do this on a
         // rounded-full shape (it ignores border-radius); this dual-
         // background technique does.
+        //
+        // The fill MUST be opaque, not the original rgba(...0.22)/rgba(...0.10)
+        // - CSS paints padding-box on top of border-box, but a translucent
+        // padding-box layer lets the border-box gradient bleed through the
+        // ENTIRE fill (not just the 1.5px ring), which is exactly the "whole
+        // pill turned into a purple/teal wash" bug this replaced. color-mix
+        // pre-blends the same tint against the page background instead,
+        // producing an opaque color that looks the same as the old
+        // translucent one but actually blocks what's behind it.
         background:
-          'linear-gradient(115deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%) padding-box, ' +
+          'linear-gradient(115deg, color-mix(in srgb, rgb(56, 89, 158) 22%, var(--color-bg)) 0%, color-mix(in srgb, rgb(56, 89, 158) 22%, var(--color-bg)) 50%, color-mix(in srgb, rgb(255, 152, 0) 10%, var(--color-bg)) 50%, color-mix(in srgb, rgb(255, 152, 0) 10%, var(--color-bg)) 100%) padding-box, ' +
           'linear-gradient(90deg, var(--color-primary), var(--color-secondary)) border-box',
         color: 'rgb(186, 208, 240)',
         border: '1.5px solid transparent',
@@ -204,23 +213,27 @@ export default function ListsPage() {
                   >
                     {/* Custom cover (image or solid color) takes over the whole
                         strip; otherwise the up-to-4-poster collage / empty
-                        placeholder from before. */}
+                        placeholder from before. h-40 (was h-24) on the image
+                        variant specifically - object-contain on a 2:3 poster
+                        needs real height to read as anything but a tiny
+                        centered sliver; the other two variants match it so
+                        cards in the same grid row stay the same height. */}
                     {list.coverImageUrl ? (
                       // object-contain (not cover) - a tall poster jammed into
                       // this wide/short strip via object-cover crops down to
                       // an unrecognizable sliver of the middle of the image.
                       // The blurred duplicate behind it fills the letterbox
                       // bars instead of leaving them flat black.
-                      <div className="relative mb-3 h-24 rounded-md overflow-hidden bg-black">
+                      <div className="relative mb-3 h-40 rounded-md overflow-hidden bg-black">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={list.coverImageUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-40" />
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={list.coverImageUrl} alt="" className="relative w-full h-full object-contain" />
                       </div>
                     ) : list.coverColorIndex !== null && list.coverColorIndex !== undefined ? (
-                      <div className="mb-3 h-24 rounded-md" style={coverColorStyle(list.coverColorIndex)} />
+                      <div className="mb-3 h-40 rounded-md" style={coverColorStyle(list.coverColorIndex)} />
                     ) : (
-                      <div className="flex gap-1 mb-3 h-24">
+                      <div className="flex gap-1 mb-3 h-40">
                         {list.items.length === 0 ? (
                           <div className="flex-1 rounded-md bg-surface-hover flex items-center justify-center">
                             <RectangleStackIcon className="w-6 h-6 text-subtle" />
