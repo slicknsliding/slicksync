@@ -479,6 +479,14 @@ export function NebulaPageHeading({
             cell, where justify-self-end still needs it hugging content
             width. */}
         {!isMobile && <NotificationsDropdown />}
+        {/* Zero-height, full-width flex item forces a line-break: the bell
+            (above) always lands on its own line, `actions` (below) always
+            starts a fresh line under it - deliberate and consistent across
+            every page using this heading, not just an incidental wrap on
+            pages with enough buttons to run out of room. Harmless on pages
+            with no actions (nothing follows it to wrap) and on mobile
+            (bell isn't rendered here at all, see the fixed copy above). */}
+        {!isMobile && <div className="basis-full h-0" aria-hidden />}
         {actions}
       </div>
       {stats && (

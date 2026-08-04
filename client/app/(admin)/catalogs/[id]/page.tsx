@@ -379,44 +379,34 @@ export default function ListDetailPage() {
   // "leave this list" reads as a different kind of action from "edit it".
   // The sidebar Header below has no such left column, so it keeps Back
   // bundled with the other actions - there's nothing to separate it from.
-  //
-  // All 5 buttons stay inline (reverted the "..." overflow menu - not what
-  // was wanted). Instead, a zero-height `basis-full` spacer as the first
-  // child forces a flexbox line-break: NebulaPageHeading renders the bell
-  // immediately before `{actions}` in one `flex-wrap` container, so
-  // everything before this spacer (the bell) is pushed onto its own line
-  // above everything after it (all 5 buttons) - deliberately, not as a
-  // wrap side-effect of the row simply running out of space. Inert in the
-  // sidebar Header's non-wrapping actions row below (detailActions), so no
-  // separate handling needed there.
+  // The bell now always renders on its own line above whatever this
+  // returns (NebulaPageHeading's own line-break spacer), so all 5 buttons
+  // can stay inline here with no page-specific layout trick needed.
   const editActions = list && !isLoading && !notFound ? (
-    <>
-      <div className="basis-full h-0" aria-hidden />
-      <div className="flex items-center gap-2">
-        <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
-          Suggest titles
-        </Button>
-        <Button variant="secondary" size="sm" leftIcon={<PhotoIcon className="w-4 h-4" />} onClick={() => setShowCoverPicker(true)}>
-          Cover art
-        </Button>
-        <Button variant="secondary" size="sm" leftIcon={<PencilSquareIcon className="w-4 h-4" />} onClick={() => { setRenameValue(list.name); setRenaming(true); }}>
-          Rename
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
-          onClick={() => setShowExportConfirm(true)}
-          disabled={list.items.length === 0}
-          title={list.items.length === 0 ? 'Add titles first' : undefined}
-        >
-          Export to MDBList
-        </Button>
-        <Button variant="danger" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setDeleting(true)}>
-          Delete
-        </Button>
-      </div>
-    </>
+    <div className="flex items-center gap-2">
+      <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
+        Suggest titles
+      </Button>
+      <Button variant="secondary" size="sm" leftIcon={<PhotoIcon className="w-4 h-4" />} onClick={() => setShowCoverPicker(true)}>
+        Cover art
+      </Button>
+      <Button variant="secondary" size="sm" leftIcon={<PencilSquareIcon className="w-4 h-4" />} onClick={() => { setRenameValue(list.name); setRenaming(true); }}>
+        Rename
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
+        onClick={() => setShowExportConfirm(true)}
+        disabled={list.items.length === 0}
+        title={list.items.length === 0 ? 'Add titles first' : undefined}
+      >
+        Export to MDBList
+      </Button>
+      <Button variant="danger" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setDeleting(true)}>
+        Delete
+      </Button>
+    </div>
   ) : null;
 
   const detailActions = editActions ? (
