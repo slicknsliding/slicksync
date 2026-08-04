@@ -4,14 +4,21 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Card, Button, Modal, PosterThumb } from '@/components/ui';
+import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList } from '@/lib/api';
 import {
-  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon,
+  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon,
 } from '@heroicons/react/24/outline';
+
+// Matches AvatarPickerModal's own color-swatch formula exactly, so a
+// catalog's solid-color cover reads as the same color the picker showed.
+function coverColorStyle(colorIndex: number): React.CSSProperties {
+  return { background: `color-mix(in srgb, var(--color-${colorIndex < 4 ? 'primary' : 'secondary'}) ${100 - (colorIndex % 4) * 25}%, white)` };
+}
 
 // Custom Lists (roadmap #7): named collections of titles. Create/rename/delete
 // a list here; click one to open its own page at /catalogs/[id] (a real page, not
@@ -33,6 +40,7 @@ export default function ListsPage() {
   const [importUrl, setImportUrl] = useState('');
   const [importName, setImportName] = useState('');
   const [importing, setImporting] = useState(false);
+  const [coverPicker, setCoverPicker] = useState<CustomList | null>(null);
 
   const load = useCallback(() => {
     api.getLists()
@@ -95,6 +103,19 @@ export default function ListsPage() {
     setDeleting(null);
     try { await api.deleteList(list.id); toast.success(`Deleted "${list.name}"`); }
     catch { toast.error('Failed to delete'); load(); }
+  };
+
+  // AvatarPickerModal's onSave only includes the key(s) for the tab that was
+  // actually saved (color tab sends both colorIndex + a clearing avatarUrl,
+  // URL/upload tabs send only avatarUrl) - forward exactly that presence
+  // through to the PATCH so the untouched field is left alone server-side.
+  const handleCoverSave = async (data: { avatarUrl?: string | null; colorIndex?: number }) => {
+    if (!coverPicker) return;
+    const patch: { coverImageUrl?: string | null; coverColorIndex?: number | null } = {};
+    if ('avatarUrl' in data) patch.coverImageUrl = data.avatarUrl ?? null;
+    if ('colorIndex' in data) patch.coverColorIndex = data.colorIndex ?? null;
+    const updated = await api.updateList(coverPicker.id, patch);
+    setLists((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
   };
 
   const heading = { title: 'Catalogs', subtitle: 'Your custom collections of movies and shows.' };
@@ -171,22 +192,41 @@ export default function ListsPage() {
                     onClick={() => router.push(`/catalogs/${list.id}`)}
                     className="w-full text-left"
                   >
-                    {/* Poster strip: up to 4 covers, or a placeholder. */}
-                    <div className="flex gap-1 mb-3 h-24">
-                      {list.items.length === 0 ? (
-                        <div className="flex-1 rounded-md bg-surface-hover flex items-center justify-center">
-                          <RectangleStackIcon className="w-6 h-6 text-subtle" />
-                        </div>
-                      ) : (
-                        list.items.slice(0, 4).map((it) => (
-                          <PosterThumb key={it.id} item={it} className="flex-1 h-full" />
-                        ))
-                      )}
-                    </div>
+                    {/* Custom cover (image or solid color) takes over the whole
+                        strip; otherwise the up-to-4-poster collage / empty
+                        placeholder from before. */}
+                    {list.coverImageUrl ? (
+                      <div className="mb-3 h-24 rounded-md overflow-hidden">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={list.coverImageUrl} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ) : list.coverColorIndex !== null && list.coverColorIndex !== undefined ? (
+                      <div className="mb-3 h-24 rounded-md" style={coverColorStyle(list.coverColorIndex)} />
+                    ) : (
+                      <div className="flex gap-1 mb-3 h-24">
+                        {list.items.length === 0 ? (
+                          <div className="flex-1 rounded-md bg-surface-hover flex items-center justify-center">
+                            <RectangleStackIcon className="w-6 h-6 text-subtle" />
+                          </div>
+                        ) : (
+                          list.items.slice(0, 4).map((it) => (
+                            <PosterThumb key={it.id} item={it} className="flex-1 h-full" />
+                          ))
+                        )}
+                      </div>
+                    )}
                     <p className="text-sm font-semibold text-default truncate">{list.name}</p>
                     <p className="text-xs text-muted">{list.items.length} title{list.items.length !== 1 ? 's' : ''}</p>
                   </button>
                   <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      title="Cover art"
+                      onClick={() => setCoverPicker(list)}
+                      className="p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface-hover transition-colors"
+                    >
+                      <PhotoIcon className="w-4 h-4" />
+                    </button>
                     <button
                       type="button"
                       title="Rename"
@@ -297,6 +337,19 @@ export default function ListsPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Cover art - same picker Settings/Users/Groups already use for
+          avatars, repurposed for a catalog's own cover. */}
+      {coverPicker && (
+        <AvatarPickerModal
+          isOpen={!!coverPicker}
+          onClose={() => setCoverPicker(null)}
+          name={coverPicker.name}
+          currentAvatarUrl={coverPicker.coverImageUrl}
+          currentColorIndex={coverPicker.coverColorIndex ?? 0}
+          onSave={handleCoverSave}
+        />
+      )}
     </>
   );
 }

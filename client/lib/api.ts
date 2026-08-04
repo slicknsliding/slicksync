@@ -1731,7 +1731,7 @@ class ApiClient {
       body: JSON.stringify({ name, description }),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -2374,6 +2374,8 @@ export interface CustomList {
   name: string;
   description: string | null;
   items: CustomListItem[];
+  coverImageUrl: string | null;
+  coverColorIndex: number | null;
   createdAt: string;
   updatedAt: string;
 }
