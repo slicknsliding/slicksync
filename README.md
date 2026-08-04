@@ -19,6 +19,7 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 - [Activity & Now Playing](#-activity--now-playing)
 - [Discover & Media Details](#-discover--media-details)
 - [Catalogs](#-catalogs)
+- [Nuvio Collections](#️-nuvio-collections)
 - [SlickTrax](#-slicktrax)
 - [Vault](#-vault)
 - [Notifications](#-notifications)
@@ -66,9 +67,19 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 
 ### 📚 Catalogs
 Named collections of titles, separate from the Watchlist — build a "Halloween Marathon" or "Kids' Night" list and share the idea, not just watch it alone.
-- Create, rename, delete; add titles from any poster's right-click menu or its detail popup.
-- **Import** an existing list straight from a **MDBList** or **TMDb** list URL (TMDb import is movies-only; MDBList supports both).
+- Create, rename, delete; add titles from any poster's right-click menu or its detail popup, remove one via the same long-press/right-click menu on any item already in a catalog.
+- **Watchlist/watched badges** and the same right-click quick-actions as Discover, right on every catalog's poster grid.
+- **Custom cover art** — upload an image or pick a color, shown on the Catalogs index in place of the default poster collage.
+- **Bulk select** and real drag-and-drop reordering for a catalog's items.
+- **Import** an existing list straight from a **MDBList** or **TMDb** list URL (TMDb import is movies-only; MDBList supports both) — or go the other way and **export** a catalog to a brand-new MDBList list.
 - Sort by title, year, or rating; each entry opens the same rich detail popup as everywhere else.
+
+### 🗂️ Nuvio Collections
+Organize a Nuvio account's own home-screen collections — the folders and catalog sources Nuvio itself shows a user — directly from SlickSync instead of hand-editing them in the Nuvio app.
+- Build folders of catalog sources, drag to reorder folders and sources within them.
+- Start from a template (Streaming Services, Genres) instead of building from scratch.
+- **Layout preview** — see exactly how a collection will lay out before saving.
+- **Copy a whole collection between profiles** on the same account.
 
 ### ✨ SlickTrax
 Built-in Trakt-alternative — no external service, no tokens.
@@ -186,6 +197,8 @@ docker compose -f docker-compose.public.yml up -d
 ```
 Pulls `ghcr.io/slicknsliding/slicksync:public` — same `main`-built release channel as private mode, not `:beta`. Also mirrored to Docker Hub as `slicknsliding/slicksync:public`.
 First visit shows a "Create one" registration link. `/register` generates a random account UUID once — that UUID *is* the login ID, so save it; there's no recovery if it's lost.
+
+A **Superadmin** panel (`/superadmin`) lets the operator search tenant accounts, bulk enable/disable/delete them, and see a health summary with an abandoned-account flag — without ever exposing a tenant's own credentials or private data.
 
 **Updating**: `docker compose -f docker-compose.public.yml pull && docker compose -f docker-compose.public.yml up -d`.
 </details>
