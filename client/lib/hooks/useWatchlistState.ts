@@ -35,7 +35,7 @@ export function useWatchlistState() {
   const toggleWatchlist = useCallback(async (item: WatchlistToggleItem, next: boolean) => {
     // Optimistic — flip the local set immediately so the badge reacts.
     setWatchlist((prev) => next
-      ? [...prev, { id: item.id, itemId: item.id, itemType: item.type, name: item.name, poster: item.poster, addedAt: new Date().toISOString() }]
+      ? [...prev, { id: item.id, itemId: item.id, itemType: item.type, name: item.name, poster: item.poster ?? null, addedAt: new Date().toISOString() }]
       : prev.filter((w) => w.itemId !== item.id));
     try {
       if (next) {
@@ -57,7 +57,7 @@ export function useWatchlistState() {
   // toggleWatchlist, this doesn't call the API itself.
   const applyWatchlistChange = useCallback((id: string, item: WatchlistToggleItem, next: boolean) => {
     setWatchlist((prev) => next
-      ? (prev.some((w) => w.itemId === id) ? prev : [...prev, { id, itemId: id, itemType: item.type, name: item.name, poster: item.poster, addedAt: new Date().toISOString() }])
+      ? (prev.some((w) => w.itemId === id) ? prev : [...prev, { id, itemId: id, itemType: item.type, name: item.name, poster: item.poster ?? null, addedAt: new Date().toISOString() }])
       : prev.filter((w) => w.itemId !== id));
   }, []);
 
