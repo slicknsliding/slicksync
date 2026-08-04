@@ -9,15 +9,12 @@ import {
   ArrowRightOnRectangleIcon,
   ChevronDownIcon,
   ArrowsRightLeftIcon,
-  ClipboardDocumentIcon,
-  CheckIcon,
   Cog6ToothIcon,
   NewspaperIcon,
   QueueListIcon,
   SwatchIcon,
 } from '@heroicons/react/24/outline';
 import { Avatar } from '@/components/ui';
-import { toast } from '@/components/ui/Toast';
 import { AccountModal } from './AccountModal';
 import { useLayoutMode } from '@/lib/layout-mode';
 
@@ -62,7 +59,6 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
   const router = useRouter();
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -87,16 +83,6 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, []);
-
-  const handleCopyUuid = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!userInfo?.uuid) return;
-
-    navigator.clipboard.writeText(userInfo.uuid);
-    setCopied(true);
-    toast.success('UUID copied to clipboard');
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const handleSwitchPanel = async () => {
     if (mode === 'admin') {
@@ -383,40 +369,6 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
                     </button>
                   </>
                 )}
-              </>
-            )}
-
-            {/* Copy UUID Button (Admin Mode / Public Instance / Has UUID only) */}
-            {isAdmin && isPublicInstance && userInfo?.uuid && (
-              <>
-                <div className="h-px" style={{ background: 'var(--color-surface-border)' }} />
-                <button
-                  onClick={handleCopyUuid}
-                  className="w-full flex items-center gap-3 px-4 py-3 transition-all duration-200"
-                  style={{ color: 'var(--color-text)' }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--color-surface-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                  }}
-                >
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center bg-surface-hover"
-                  >
-                    {copied ? (
-                      <CheckIcon className="w-4 h-4 text-success" />
-                    ) : (
-                      <ClipboardDocumentIcon className="w-4 h-4 text-muted" />
-                    )}
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-medium">Copy Account UUID</p>
-                    <p className="text-[10px] font-mono opacity-50 truncate" style={{ maxWidth: '180px' }}>
-                      {userInfo.uuid}
-                    </p>
-                  </div>
-                </button>
               </>
             )}
 
