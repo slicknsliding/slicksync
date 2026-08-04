@@ -515,7 +515,17 @@ export function MediaDetailModal({
           // squished the container into a much wider-than-16:9 box and the
           // player letterboxed down to a thin strip in the middle of it.
           // Deriving height from width keeps the video itself full-size.
-          <div className="relative w-full aspect-video max-h-[60vh] overflow-hidden rounded-t-2xl bg-black">
+          //
+          // max-w-[calc(60vh*16/9)] (not max-h-[60vh] directly on this box) -
+          // capping height alone while width stays w-full breaks the
+          // aspect-video ratio on a wide viewport (size="full" modal), which
+          // recreated the exact letterboxing this was meant to avoid:
+          // YouTube's player still renders the real 16:9 video inside a now
+          // too-wide box, adding its own black bars to compensate. Capping
+          // width to the aspect-consistent value for a 60vh-tall box instead
+          // lets aspect-video derive an exactly-60vh height with no conflict,
+          // centered via mx-auto (the modal's own surface fills the sides).
+          <div className="relative w-full max-w-[calc(60vh*16/9)] aspect-video mx-auto overflow-hidden rounded-t-2xl bg-black">
             <iframe
               ref={trailerIframeRef}
               src={trailerSrc}
@@ -531,17 +541,17 @@ export function MediaDetailModal({
               className="absolute bottom-0 left-0 right-0 h-12 pointer-events-none"
               style={{ background: 'linear-gradient(180deg, transparent, var(--color-surface))' }}
             />
-            {/* Positioned low and to the right, clear of YouTube's own
-                top-right controls (volume/CC/settings) - roughly level with
-                YouTube's own bottom-row icons (share/save), past the right
-                edge of its scrub bar. YouTube's own overlay isn't something
-                we control, so this is an approximation, not a guarantee.
-                Goes back to the poster/details view, not a full close -
-                backdrop click and Escape still fully close the modal. */}
+            {/* Positioned low and to the right, in the gradient fade zone
+                below YouTube's own bottom-row icons (share/save) rather than
+                overlapping them - past the right edge of its scrub bar.
+                YouTube's own overlay isn't something we control, so this is
+                an approximation, not a guarantee. Goes back to the poster/
+                details view, not a full close - backdrop click and Escape
+                still fully close the modal. */}
             <button
               type="button"
               onClick={() => setIsTrailerPlaying(false)}
-              className="absolute bottom-9 right-2 z-10 p-1 rounded-md transition-colors"
+              className="absolute bottom-2 right-2 z-10 p-1 rounded-md transition-colors"
               style={{ color: 'white', background: 'rgba(0,0,0,0.6)' }}
               aria-label="Back to details"
             >
