@@ -229,14 +229,20 @@ async function exportListToMdblist(apiKey, listName, items) {
   })
   if (!addRsp.ok) throw new Error('List created, but failed to add items to it')
   const addResult = await addRsp.json()
+  // Confirmed live against a real MDBList account this session: each of
+  // added/existing/not_found is itself an object broken down by media type
+  // ({movies, shows, seasons, episodes}), not a flat number - summing
+  // movies+shows here (seasons/episodes don't apply, this app only ever
+  // sends whole movies/shows).
+  const sumMoviesAndShows = (obj) => (Number(obj?.movies) || 0) + (Number(obj?.shows) || 0)
 
   return {
     id: listId,
     name: created?.name || listName,
     slug: created?.slug || null,
-    added: typeof addResult?.added === 'number' ? addResult.added : null,
-    existing: typeof addResult?.existing === 'number' ? addResult.existing : null,
-    notFound: typeof addResult?.not_found === 'number' ? addResult.not_found : null,
+    added: sumMoviesAndShows(addResult?.added),
+    existing: sumMoviesAndShows(addResult?.existing),
+    notFound: sumMoviesAndShows(addResult?.not_found),
   }
 }
 
