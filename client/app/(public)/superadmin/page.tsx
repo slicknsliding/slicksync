@@ -23,6 +23,21 @@ interface SuperAdminAccount {
   userCount: number;
   groupCount: number;
   addonCount: number;
+  // Row count across key account-scoped tables (users/groups/addons/
+  // catalogs/watch sessions/vault entries) - a proxy for "how much data
+  // does this account hold" for spotting heavy vs. empty accounts. Not a
+  // byte-accurate size - public mode is one shared Postgres database, not
+  // a file per account, so there's no real per-account disk size to report.
+  resourceRowCount: number;
+}
+
+interface AuditLogEntry {
+  id: string;
+  action: 'disable' | 'enable' | 'delete';
+  targetAccountId: string;
+  targetAccountUuid: string | null;
+  bulk: boolean;
+  createdAt: string;
 }
 
 function isAbandoned(a: SuperAdminAccount): boolean {
@@ -49,6 +64,9 @@ export default function SuperAdminPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
+  const [showAuditLog, setShowAuditLog] = useState(false);
+  const [loadingAuditLog, setLoadingAuditLog] = useState(false);
 
   const filteredAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -87,6 +105,28 @@ export default function SuperAdminPage() {
       })
       .catch(() => setSignedIn(false));
   }, [loadAccounts]);
+
+  // Lazy-loaded on first expand, not on page load - this is a secondary,
+  // occasionally-checked view, no reason to pay for it on every visit.
+  const loadAuditLog = useCallback(async () => {
+    setLoadingAuditLog(true);
+    try {
+      const res = await fetch(`${API_BASE}/superadmin/audit-log`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to load audit log');
+      const data = await res.json();
+      setAuditLog(data.entries || []);
+    } catch {
+      toast.error('Failed to load audit log');
+    } finally {
+      setLoadingAuditLog(false);
+    }
+  }, []);
+
+  const toggleAuditLog = () => {
+    const next = !showAuditLog;
+    setShowAuditLog(next);
+    if (next && auditLog.length === 0) loadAuditLog();
+  };
 
   const handleLogin = async () => {
     if (!password.trim()) return;
@@ -332,6 +372,7 @@ export default function SuperAdminPage() {
                       </div>
                       <p className="text-xs text-muted mt-0.5">
                         {a.userCount} user{a.userCount !== 1 ? 's' : ''} · {a.groupCount} group{a.groupCount !== 1 ? 's' : ''} · {a.addonCount} addon{a.addonCount !== 1 ? 's' : ''}
+                        <span className="text-subtle" title="Row count across users/groups/addons/catalogs/watch sessions/vault entries - a usage proxy, not a byte-accurate size"> · {a.resourceRowCount} record{a.resourceRowCount !== 1 ? 's' : ''} total</span>
                       </p>
                       <p className="text-xs text-subtle mt-0.5">
                         Registered {new Date(a.createdAt).toLocaleDateString()} · Last login {a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString() : 'never'}
@@ -356,6 +397,41 @@ export default function SuperAdminPage() {
             )}
           </div>
         </Card>
+
+        {/* Operator action trail - who got disabled/enabled/deleted and
+            when. Collapsed by default and lazy-loaded, same reasoning as
+            above. Never shows anything from inside a tenant's own data. */}
+        <div className="mt-6">
+          <button
+            type="button"
+            onClick={toggleAuditLog}
+            className="text-sm font-medium text-muted hover:text-default transition-colors"
+          >
+            {showAuditLog ? '▾' : '▸'} Audit log
+          </button>
+          {showAuditLog && (
+            <Card padding="none" className="mt-2">
+              {loadingAuditLog ? (
+                <p className="text-sm text-muted p-6 text-center">Loading...</p>
+              ) : auditLog.length === 0 ? (
+                <p className="text-sm text-muted p-6 text-center">No operator actions recorded yet.</p>
+              ) : (
+                <div className="divide-y divide-default">
+                  {auditLog.map((e) => (
+                    <div key={e.id} className="flex items-center justify-between gap-4 p-3 text-sm">
+                      <div className="min-w-0">
+                        <span className="font-mono text-default truncate">{e.targetAccountUuid || e.targetAccountId}</span>
+                        <span className="text-muted"> — {e.action}</span>
+                        {e.bulk && <Badge variant="muted" size="sm" className="ml-2">Bulk</Badge>}
+                      </div>
+                      <span className="text-xs text-subtle shrink-0">{new Date(e.createdAt).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          )}
+        </div>
       </div>
 
       {/* Floating bulk-action bar - same pattern used across the rest of the
