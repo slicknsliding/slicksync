@@ -22,8 +22,9 @@ import {
 import {
   ArrowLeftIcon, PlusIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon,
   ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
-  DocumentDuplicateIcon, PhotoIcon,
+  DocumentDuplicateIcon, PhotoIcon, ExclamationTriangleIcon, MapPinIcon,
 } from '@heroicons/react/24/outline';
+import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 
 // Starter templates - genre folders built from each catalog's own "genre"
@@ -138,11 +139,12 @@ type PreviewFolderItems = { id: string; type: string; name: string; poster: stri
 // safely because useSortableSensors' PointerSensor has an 8px activation
 // distance, so a plain click never crosses the threshold to start a drag.
 function FolderTile({
-  folder, previewItems, previewLoading, onOpen, onDelete,
+  folder, previewItems, previewLoading, hasBrokenSource, onOpen, onDelete,
 }: {
   folder: NuvioCollectionFolder;
   previewItems?: PreviewFolderItems;
   previewLoading: boolean;
+  hasBrokenSource: boolean;
   onOpen: () => void;
   onDelete: () => void;
 }) {
@@ -195,8 +197,20 @@ function FolderTile({
               against any poster's own colors. */}
           <div className="absolute inset-x-0 bottom-0 bg-black/85 px-2.5 py-2">
             <p className="text-sm font-semibold text-white truncate">{folder.title}</p>
-            <p className="text-xs text-white/80">{sourceCount} source{sourceCount !== 1 ? 's' : ''}</p>
+            <p className="text-xs text-white/80 flex items-center gap-1">
+              {sourceCount} source{sourceCount !== 1 ? 's' : ''}
+              {hasBrokenSource && <span className="text-warning font-medium">· needs attention</span>}
+            </p>
           </div>
+
+          {/* Always visible, not hover-only - a broken source is worth
+              noticing at a glance, same reasoning as the old tiny preview
+              icon that got missed entirely. */}
+          {hasBrokenSource && (
+            <div title="A source in this folder no longer resolves" className="absolute top-1.5 left-1.5 p-1.5 rounded-lg bg-warning/90 text-black">
+              <ExclamationTriangleIcon className="w-4 h-4" />
+            </div>
+          )}
         </div>
       </button>
       <button
@@ -220,8 +234,8 @@ function FolderTile({
 // collection reordering its folders independently of every other one.
 function CollectionSection({
   collection, cIndex, collectionsLength, otherProfilesCount,
-  previewByFolder, previewLoadingIds,
-  onRename, onReorder, onDelete, onCopy, onAddFolder, onOpenFolder, onDeleteFolder, onFolderDragEnd, onEditCover,
+  previewByFolder, previewLoadingIds, brokenFolderIds,
+  onRename, onReorder, onDelete, onCopy, onAddFolder, onOpenFolder, onDeleteFolder, onFolderDragEnd, onEditCover, onTogglePin,
 }: {
   collection: NuvioCollection;
   cIndex: number;
@@ -229,6 +243,7 @@ function CollectionSection({
   otherProfilesCount: number;
   previewByFolder: Record<string, PreviewFolderItems>;
   previewLoadingIds: Set<string>;
+  brokenFolderIds: Set<string>;
   onRename: (title: string) => void;
   onReorder: (dir: -1 | 1) => void;
   onDelete: () => void;
@@ -238,11 +253,14 @@ function CollectionSection({
   onDeleteFolder: (folderId: string) => void;
   onFolderDragEnd: (event: DragEndEvent) => void;
   onEditCover: () => void;
+  onTogglePin: () => void;
 }) {
   const sensors = useSortableSensors();
   const folders = collection.folders || [];
   const iconButtonClass = 'p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface-hover transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted';
   const coverImageUrl = typeof collection.coverImageUrl === 'string' ? collection.coverImageUrl : null;
+  const isPinned = !!collection.pinToTop;
+  const brokenFolderCount = folders.filter((f) => brokenFolderIds.has(f.id)).length;
 
   return (
     <Card padding="lg" className="mb-4">
@@ -271,7 +289,18 @@ function CollectionSection({
           onChange={(e) => onRename(e.target.value)}
           className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-transparent text-base font-semibold text-default border border-transparent hover:border-default focus:border-primary focus:outline-none"
         />
-        <span className="text-xs text-subtle shrink-0 mr-1">{folders.length} folder{folders.length !== 1 ? 's' : ''}</span>
+        <span className="text-xs text-subtle shrink-0 mr-1">
+          {folders.length} folder{folders.length !== 1 ? 's' : ''}
+          {brokenFolderCount > 0 && <span className="text-warning ml-1">· {brokenFolderCount} need{brokenFolderCount === 1 ? 's' : ''} attention</span>}
+        </span>
+        <button
+          type="button"
+          title={isPinned ? 'Pinned to top of the Nuvio home screen - click to unpin' : 'Pin to top of the Nuvio home screen'}
+          onClick={onTogglePin}
+          className={isPinned ? 'p-1.5 rounded-lg text-primary hover:bg-surface-hover transition-colors' : iconButtonClass}
+        >
+          {isPinned ? <MapPinIconSolid className="w-4 h-4" /> : <MapPinIcon className="w-4 h-4" />}
+        </button>
         <button type="button" title={otherProfilesCount === 0 ? 'No other profiles on this account' : 'Copy to another profile'} onClick={onCopy} disabled={otherProfilesCount === 0} className={iconButtonClass}>
           <DocumentDuplicateIcon className="w-4 h-4" />
         </button>
@@ -301,6 +330,7 @@ function CollectionSection({
                   folder={folder}
                   previewItems={previewByFolder[folder.id]}
                   previewLoading={previewLoadingIds.has(folder.id)}
+                  hasBrokenSource={brokenFolderIds.has(folder.id)}
                   onOpen={() => onOpenFolder(folder.id)}
                   onDelete={() => onDeleteFolder(folder.id)}
                 />
@@ -411,8 +441,24 @@ export default function NuvioCollectionsPage() {
     return {
       addonName: addon?.name || addon?.manifest?.name || source.addonId,
       catalogName: catalog?.name || source.catalogId,
+      // False when the addon was removed, or is still installed but no
+      // longer exposes this catalog (renamed/removed catalog id) - a real
+      // failure mode since a source is only ever a bare {addonId,
+      // catalogId} pointer, nothing here validates it stays resolvable
+      // over time. Only meaningful once `addons` has actually loaded -
+      // during the loading window itself, treat every source as fine
+      // rather than flashing a false "broken" state before data arrives.
+      found: addonsLoading || !!catalog,
     };
-  }, [addons]);
+  }, [addons, addonsLoading]);
+
+  // A folder is broken if ANY of its sources no longer resolve - checked
+  // once per folder (not per source) since that's the granularity the grid
+  // tile and collection-level indicators need.
+  const folderHasBrokenSource = useCallback((folder: NuvioCollectionFolder) => {
+    if (addonsLoading) return false;
+    return (folder.catalogSources || []).some((s) => !describeSource(s).found);
+  }, [addonsLoading, describeSource]);
 
   useEffect(() => {
     api.getUsers()
@@ -668,6 +714,20 @@ export default function NuvioCollectionsPage() {
     }));
   };
 
+  // Which folders have at least one source that no longer resolves - a
+  // Set (not a per-folder callback prop) so CollectionSection/FolderTile
+  // stay plain data-in components, computed once per addons/collections
+  // change instead of re-walking every folder's sources on every render.
+  const brokenFolderIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of collections) {
+      for (const f of (c.folders || [])) {
+        if (folderHasBrokenSource(f)) ids.add(f.id);
+      }
+    }
+    return ids;
+  }, [collections, folderHasBrokenSource]);
+
   // --- Copy a Collection to another profile ---
 
   const otherProfiles = profiles.filter((p) => p.profile_index !== selectedProfileIndex);
@@ -812,6 +872,7 @@ export default function NuvioCollectionsPage() {
                       otherProfilesCount={otherProfiles.length}
                       previewByFolder={previewByFolder}
                       previewLoadingIds={previewLoadingIds}
+                      brokenFolderIds={brokenFolderIds}
                       onRename={(title) => updateCollection(collection.id, { title })}
                       onReorder={(dir) => reorderCollection(cIndex, dir)}
                       onDelete={() => setDeleting({ kind: 'collection', collectionId: collection.id })}
@@ -821,6 +882,7 @@ export default function NuvioCollectionsPage() {
                       onDeleteFolder={(folderId) => setDeleting({ kind: 'folder', collectionId: collection.id, folderId })}
                       onFolderDragEnd={handleFolderDragEnd(collection.id)}
                       onEditCover={() => setCoverPickerCollection(collection)}
+                      onTogglePin={() => updateCollection(collection.id, { pinToTop: !collection.pinToTop })}
                     />
                   ))
                 ) : (
@@ -870,6 +932,14 @@ export default function NuvioCollectionsPage() {
                           </button>
                           <button
                             type="button"
+                            title={collection.pinToTop ? 'Pinned to top of the Nuvio home screen - click to unpin' : 'Pin to top of the Nuvio home screen'}
+                            onClick={() => updateCollection(collection.id, { pinToTop: !collection.pinToTop })}
+                            className={collection.pinToTop ? 'p-1 text-primary' : 'p-1 text-subtle hover:text-default'}
+                          >
+                            {collection.pinToTop ? <MapPinIconSolid className="w-3.5 h-3.5" /> : <MapPinIcon className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            type="button"
                             title={otherProfiles.length === 0 ? 'No other profiles on this account' : 'Copy to another profile'}
                             onClick={() => setCopyTarget(collection)}
                             disabled={otherProfiles.length === 0}
@@ -896,7 +966,13 @@ export default function NuvioCollectionsPage() {
                                   <button type="button" onClick={() => toggleExpanded(folder.id)} className="p-1 text-subtle hover:text-default">
                                     {expanded[folder.id] ? <ChevronDownIcon className="w-3.5 h-3.5" /> : <ChevronRightIcon className="w-3.5 h-3.5" />}
                                   </button>
-                                  <FolderIcon className="w-4 h-4 text-subtle shrink-0" />
+                                  {brokenFolderIds.has(folder.id) ? (
+                                    <span title="A source in this folder no longer resolves" className="shrink-0">
+                                      <ExclamationTriangleIcon className="w-4 h-4 text-warning" />
+                                    </span>
+                                  ) : (
+                                    <FolderIcon className="w-4 h-4 text-subtle shrink-0" />
+                                  )}
                                   <input
                                     value={folder.title}
                                     onChange={(e) => updateFolder(collection.id, folder.id, { title: e.target.value })}
@@ -917,12 +993,17 @@ export default function NuvioCollectionsPage() {
                                 {expanded[folder.id] && (
                                   <div className="mt-2 pl-6 space-y-1.5">
                                     {(folder.catalogSources || []).map((source, sIndex) => {
-                                      const { addonName, catalogName } = describeSource(source);
+                                      const { addonName, catalogName, found } = describeSource(source);
                                       const genreSuffix = source.genre && source.genre !== 'none' ? ` — ${source.genre}` : '';
                                       return (
                                         <div key={sIndex} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-md bg-surface-hover">
+                                          {!found && <ExclamationTriangleIcon className="w-3.5 h-3.5 text-warning shrink-0" />}
                                           <span className="flex-1 truncate text-default">
-                                            {catalogName}{genreSuffix} <span className="text-subtle">· {addonName} ({source.type})</span>
+                                            {found ? (
+                                              <>{catalogName}{genreSuffix} <span className="text-subtle">· {addonName} ({source.type})</span></>
+                                            ) : (
+                                              <span className="text-warning">Source not found <span className="text-subtle">· addon removed or catalog no longer exists</span></span>
+                                            )}
                                           </span>
                                           <button type="button" onClick={() => removeSource(collection.id, folder.id, sIndex)} className="text-subtle hover:text-error shrink-0">
                                             <TrashIcon className="w-3 h-3" />
@@ -1199,13 +1280,21 @@ export default function NuvioCollectionsPage() {
                     ) : (
                       <div className="space-y-1.5 mb-2">
                         {(activeFolder.catalogSources || []).map((source, sIndex) => {
-                          const { addonName, catalogName } = describeSource(source);
+                          const { addonName, catalogName, found } = describeSource(source);
                           const genreSuffix = source.genre && source.genre !== 'none' ? ` — ${source.genre}` : '';
                           return (
                             <div key={sIndex} className="flex items-center gap-3 text-sm px-3 py-2.5 rounded-xl bg-surface-hover">
-                              <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${source.type === 'movie' ? 'bg-primary' : 'bg-secondary'}`} />
+                              {found ? (
+                                <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${source.type === 'movie' ? 'bg-primary' : 'bg-secondary'}`} />
+                              ) : (
+                                <ExclamationTriangleIcon className="w-4 h-4 text-warning shrink-0" />
+                              )}
                               <span className="flex-1 truncate text-default">
-                                {catalogName}{genreSuffix} <span className="text-subtle text-xs">· {addonName} ({source.type})</span>
+                                {found ? (
+                                  <>{catalogName}{genreSuffix} <span className="text-subtle text-xs">· {addonName} ({source.type})</span></>
+                                ) : (
+                                  <span className="text-warning">Source not found <span className="text-subtle text-xs">· addon removed or catalog no longer exists</span></span>
+                                )}
                               </span>
                               <button type="button" onClick={() => removeSource(folderDetail.collectionId, folderDetail.folderId, sIndex)} className="p-1.5 rounded-lg text-subtle hover:text-error hover:bg-surface shrink-0">
                                 <TrashIcon className="w-4 h-4" />
