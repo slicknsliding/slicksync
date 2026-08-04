@@ -10,7 +10,6 @@ services:
       - db
     ports:
       - "3000:3000"
-      - "4000:4000"
 
   db:
     image: postgres:16-alpine
