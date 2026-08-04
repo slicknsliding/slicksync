@@ -70,6 +70,11 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
   // GET /accounts - every tenant account, coarse counts only. email is
   // deliberately NOT selected - the UI never rendered it, so fetching it at
   // all was unnecessary exposure of PII that isn't needed for moderation.
+  // resourceRowCount is a row-count-across-key-tables proxy for "how much
+  // data does this account hold" - not a byte-accurate disk size (public
+  // mode is one shared Postgres database, not a file per account, so there
+  // is no real per-account file size to report), but enough to tell a
+  // heavily-used account apart from an empty or abandoned one.
   router.get('/accounts', requireSuperAdmin, async (req, res) => {
     try {
       const accounts = await prisma.appAccount.findMany({
@@ -79,12 +84,19 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
         orderBy: { createdAt: 'desc' },
       });
       const counted = await Promise.all(accounts.map(async (a) => {
-        const [userCount, groupCount, addonCount] = await Promise.all([
-          prisma.user.count({ where: { accountId: a.id } }),
-          prisma.group.count({ where: { accountId: a.id } }),
-          prisma.addon.count({ where: { accountId: a.id } }),
+        const where = { accountId: a.id };
+        const [userCount, groupCount, addonCount, customListCount, watchSessionCount, vaultEntryCount] = await Promise.all([
+          prisma.user.count({ where }),
+          prisma.group.count({ where }),
+          prisma.addon.count({ where }),
+          prisma.customList.count({ where }),
+          prisma.watchSession.count({ where }),
+          prisma.vaultEntry.count({ where }),
         ]);
-        return { ...a, userCount, groupCount, addonCount };
+        return {
+          ...a, userCount, groupCount, addonCount,
+          resourceRowCount: userCount + groupCount + addonCount + customListCount + watchSessionCount + vaultEntryCount,
+        };
       }));
       res.json({ total: counted.length, accounts: counted });
     } catch (e) {
@@ -93,9 +105,38 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
     }
   });
 
+  // GET /audit-log - operator action trail, most recent first. Never shows
+  // anything from inside a tenant's own data, only the fact/timestamp of an
+  // operator action against that account - same privacy boundary as the
+  // rest of this panel.
+  router.get('/audit-log', requireSuperAdmin, async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+      const entries = await prisma.superadminAuditLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      });
+      res.json({ entries });
+    } catch (e) {
+      console.error('[Superadmin] Failed to load audit log:', e?.message);
+      res.status(500).json({ message: 'Failed to load audit log' });
+    }
+  });
+
+  async function logAction(action, targetAccountId, targetAccountUuid, bulk = false) {
+    try {
+      await prisma.superadminAuditLog.create({
+        data: { action, targetAccountId, targetAccountUuid: targetAccountUuid || null, bulk },
+      });
+    } catch (e) {
+      // Never let audit logging itself block or fail the real action.
+      console.error('[Superadmin] Failed to write audit log entry:', e?.message);
+    }
+  }
+
   router.post('/accounts/:id/disable', requireSuperAdmin, async (req, res) => {
     try {
-      const target = await prisma.appAccount.findUnique({ where: { id: req.params.id }, select: { disabled: true } });
+      const target = await prisma.appAccount.findUnique({ where: { id: req.params.id }, select: { disabled: true, uuid: true } });
       if (!target) return res.status(404).json({ message: 'Account not found' });
       // Not a hard block - operator access (this panel) is architecturally
       // separate from tenant accounts and can never be locked out by this,
@@ -113,6 +154,7 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
         }
       }
       const account = await prisma.appAccount.update({ where: { id: req.params.id }, data: { disabled: true } });
+      await logAction('disable', account.id, target.uuid);
       res.json({ id: account.id, disabled: true });
     } catch (e) {
       res.status(404).json({ message: 'Account not found' });
@@ -122,6 +164,7 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
   router.post('/accounts/:id/enable', requireSuperAdmin, async (req, res) => {
     try {
       const account = await prisma.appAccount.update({ where: { id: req.params.id }, data: { disabled: false } });
+      await logAction('enable', account.id, account.uuid);
       res.json({ id: account.id, disabled: false });
     } catch (e) {
       res.status(404).json({ message: 'Account not found' });
@@ -136,8 +179,8 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
   // model with an accountId field in the public (Postgres) schema as of this
   // writing. Throws if the account doesn't exist; caller decides how to
   // report that (404 for a single id, per-id failure entry for bulk).
-  async function deleteAccountCascade(accountId) {
-    const existing = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { id: true } });
+  async function deleteAccountCascade(accountId, bulk = false) {
+    const existing = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { id: true, uuid: true } });
     if (!existing) {
       const err = new Error('Account not found');
       err.notFound = true;
@@ -175,12 +218,13 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
       prisma.user.deleteMany({ where }),
       prisma.appAccount.delete({ where: { id: accountId } }),
     ]);
+    await logAction('delete', existing.id, existing.uuid, bulk);
   }
 
   // DELETE /accounts/:id - irreversible.
   router.delete('/accounts/:id', requireSuperAdmin, async (req, res) => {
     try {
-      await deleteAccountCascade(req.params.id);
+      await deleteAccountCascade(req.params.id, false);
       res.json({ deleted: true, id: req.params.id });
     } catch (e) {
       if (e.notFound) return res.status(404).json({ message: 'Account not found' });
@@ -220,7 +264,9 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
           });
         }
       }
+      const targets = await prisma.appAccount.findMany({ where: { id: { in: ids } }, select: { id: true, uuid: true } });
       const result = await prisma.appAccount.updateMany({ where: { id: { in: ids } }, data: { disabled: true } });
+      await Promise.all(targets.map((t) => logAction('disable', t.id, t.uuid, true)));
       res.json({ disabled: result.count });
     } catch (e) {
       console.error('[Superadmin] Bulk disable failed:', e?.message);
@@ -232,7 +278,9 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
     const ids = parseBulkIds(req, res);
     if (!ids) return;
     try {
+      const targets = await prisma.appAccount.findMany({ where: { id: { in: ids } }, select: { id: true, uuid: true } });
       const result = await prisma.appAccount.updateMany({ where: { id: { in: ids } }, data: { disabled: false } });
+      await Promise.all(targets.map((t) => logAction('enable', t.id, t.uuid, true)));
       res.json({ enabled: result.count });
     } catch (e) {
       console.error('[Superadmin] Bulk enable failed:', e?.message);
@@ -253,7 +301,7 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
     // (this is an infrequent operator action, not a hot path).
     for (const id of ids) {
       try {
-        await deleteAccountCascade(id);
+        await deleteAccountCascade(id, true);
         deleted++;
       } catch (e) {
         failed.push(id);
