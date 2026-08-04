@@ -23,7 +23,7 @@ import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import {
   RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon, SparklesIcon, PhotoIcon,
-  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, EllipsisVerticalIcon,
+  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon,
 } from '@heroicons/react/24/outline';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
@@ -174,7 +174,6 @@ export default function ListDetailPage() {
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ name: string; slug: string | null; url: string | null; added: number | null; existing: number | null; notFound: number | null } | null>(null);
   // Bulk select - mirrors the Set<string> + floating-action-bar pattern from
@@ -380,54 +379,44 @@ export default function ListDetailPage() {
   // "leave this list" reads as a different kind of action from "edit it".
   // The sidebar Header below has no such left column, so it keeps Back
   // bundled with the other actions - there's nothing to separate it from.
-  // Only Cover art + Delete stay inline (most visually significant / most
-  // final) - Suggest titles, Rename, and Export to MDBList moved into the
-  // "..." overflow below. Five buttons all rendered inline crowded this row
-  // badly once Export to MDBList was added, forcing a wrap that pushed the
-  // bell into an awkward spot above it.
+  //
+  // All 5 buttons stay inline (reverted the "..." overflow menu - not what
+  // was wanted). Instead, a zero-height `basis-full` spacer as the first
+  // child forces a flexbox line-break: NebulaPageHeading renders the bell
+  // immediately before `{actions}` in one `flex-wrap` container, so
+  // everything before this spacer (the bell) is pushed onto its own line
+  // above everything after it (all 5 buttons) - deliberately, not as a
+  // wrap side-effect of the row simply running out of space. Inert in the
+  // sidebar Header's non-wrapping actions row below (detailActions), so no
+  // separate handling needed there.
   const editActions = list && !isLoading && !notFound ? (
-    <div className="flex items-center gap-2">
-      <Button variant="secondary" size="sm" leftIcon={<PhotoIcon className="w-4 h-4" />} onClick={() => setShowCoverPicker(true)}>
-        Cover art
-      </Button>
-      <div className="relative">
-        <Button variant="secondary" size="sm" onClick={() => setShowMoreMenu((v) => !v)} aria-label="More actions">
-          <EllipsisVerticalIcon className="w-4 h-4" />
+    <>
+      <div className="basis-full h-0" aria-hidden />
+      <div className="flex items-center gap-2">
+        <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
+          Suggest titles
         </Button>
-        {showMoreMenu && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
-            <div className="absolute right-0 mt-2 w-56 z-50 rounded-xl bg-surface border border-default shadow-xl p-1.5">
-              <button
-                type="button"
-                onClick={() => { setShowMoreMenu(false); handleOpenSuggest(); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover rounded-lg transition-colors"
-              >
-                <SparklesIcon className="w-4 h-4" /> Suggest titles
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowMoreMenu(false); setRenameValue(list.name); setRenaming(true); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover rounded-lg transition-colors"
-              >
-                <PencilSquareIcon className="w-4 h-4" /> Rename
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowMoreMenu(false); setShowExportConfirm(true); }}
-                disabled={list.items.length === 0}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <ArrowUpTrayIcon className="w-4 h-4" /> Export to MDBList
-              </button>
-            </div>
-          </>
-        )}
+        <Button variant="secondary" size="sm" leftIcon={<PhotoIcon className="w-4 h-4" />} onClick={() => setShowCoverPicker(true)}>
+          Cover art
+        </Button>
+        <Button variant="secondary" size="sm" leftIcon={<PencilSquareIcon className="w-4 h-4" />} onClick={() => { setRenameValue(list.name); setRenaming(true); }}>
+          Rename
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
+          onClick={() => setShowExportConfirm(true)}
+          disabled={list.items.length === 0}
+          title={list.items.length === 0 ? 'Add titles first' : undefined}
+        >
+          Export to MDBList
+        </Button>
+        <Button variant="danger" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setDeleting(true)}>
+          Delete
+        </Button>
       </div>
-      <Button variant="danger" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setDeleting(true)}>
-        Delete
-      </Button>
-    </div>
+    </>
   ) : null;
 
   const detailActions = editActions ? (
