@@ -111,7 +111,7 @@ export default function ListsPage() {
     <button
       type="button"
       onClick={() => router.push('/catalogs/nuvio-collections')}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-transform hover:scale-105"
+      className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-base font-semibold transition-transform hover:scale-105"
       style={{
         background: 'linear-gradient(115deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
         color: 'rgb(186, 208, 240)',
