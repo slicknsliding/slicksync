@@ -132,7 +132,7 @@ export default function ListsPage() {
     <button
       type="button"
       onClick={() => router.push('/catalogs/nuvio-collections')}
-      className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-base font-semibold transition-transform hover:scale-105"
+      className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-base font-semibold transition-transform hover:scale-105 nav-item-hover-pill"
       style={{
         // Two backgrounds stacked on the same declaration: the two-tone
         // Nuvio fill paints inside the border (padding-box), the theme's
