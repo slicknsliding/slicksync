@@ -139,12 +139,13 @@ type PreviewFolderItems = { id: string; type: string; name: string; poster: stri
 // safely because useSortableSensors' PointerSensor has an 8px activation
 // distance, so a plain click never crosses the threshold to start a drag.
 function FolderTile({
-  folder, previewItems, previewLoading, hasBrokenSource, onOpen, onDelete,
+  folder, previewItems, previewLoading, hasBrokenSource, coverOverride, onOpen, onDelete,
 }: {
   folder: NuvioCollectionFolder;
   previewItems?: PreviewFolderItems;
   previewLoading: boolean;
   hasBrokenSource: boolean;
+  coverOverride?: string;
   onOpen: () => void;
   onDelete: () => void;
 }) {
@@ -157,6 +158,7 @@ function FolderTile({
   const sourceCount = (folder.catalogSources || []).length;
   const items = previewItems || [];
   const hero = items[0];
+  const heroPoster = coverOverride || hero?.poster;
 
   return (
     <div ref={setNodeRef} style={style} className={`relative group ${isDragging ? 'opacity-50' : ''}`}>
@@ -168,7 +170,10 @@ function FolderTile({
         {...listeners}
       >
         <div className="relative aspect-[4/3] bg-surface-hover">
-          {sourceCount === 0 || items.length === 0 ? (
+          {heroPoster ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={heroPoster} alt="" className="w-full h-full object-cover" />
+          ) : sourceCount === 0 || items.length === 0 ? (
             <div className="w-full h-full flex items-center justify-center">
               {previewLoading ? (
                 <div className="w-5 h-5 border-2 border-subtle border-t-transparent rounded-full animate-spin" />
@@ -176,9 +181,6 @@ function FolderTile({
                 <FolderIcon className="w-8 h-8 text-subtle" />
               )}
             </div>
-          ) : hero?.poster ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={hero.poster} alt="" className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-xs text-subtle p-2 text-center">{hero?.name}</div>
           )}
@@ -234,7 +236,7 @@ function FolderTile({
 // collection reordering its folders independently of every other one.
 function CollectionSection({
   collection, cIndex, collectionsLength, otherProfilesCount,
-  previewByFolder, previewLoadingIds, brokenFolderIds,
+  previewByFolder, previewLoadingIds, brokenFolderIds, folderCoverOverrides,
   onRename, onReorder, onDelete, onCopy, onAddFolder, onOpenFolder, onDeleteFolder, onFolderDragEnd, onEditCover, onTogglePin,
 }: {
   collection: NuvioCollection;
@@ -244,6 +246,7 @@ function CollectionSection({
   previewByFolder: Record<string, PreviewFolderItems>;
   previewLoadingIds: Set<string>;
   brokenFolderIds: Set<string>;
+  folderCoverOverrides: Record<string, string>;
   onRename: (title: string) => void;
   onReorder: (dir: -1 | 1) => void;
   onDelete: () => void;
@@ -331,6 +334,7 @@ function CollectionSection({
                   previewItems={previewByFolder[folder.id]}
                   previewLoading={previewLoadingIds.has(folder.id)}
                   hasBrokenSource={brokenFolderIds.has(folder.id)}
+                  coverOverride={folderCoverOverrides[folder.id]}
                   onOpen={() => onOpenFolder(folder.id)}
                   onDelete={() => onDeleteFolder(folder.id)}
                 />
@@ -405,6 +409,12 @@ export default function NuvioCollectionsPage() {
   // open - clicking a grid tile opens this instead of the old always-
   // expanded inline nested list.
   const [folderDetail, setFolderDetail] = useState<{ collectionId: string; folderId: string } | null>(null);
+  // Sources and Preview are tabs, not stacked sections - a folder with a
+  // lot of preview posters otherwise pushed Sources far enough down that
+  // reaching "Add source" needed scrolling every time, the actual place
+  // most of the editing happens. Defaults to Sources for exactly that
+  // reason; Preview is one click away, not the default landing view.
+  const [folderDetailTab, setFolderDetailTab] = useState<'sources' | 'preview'>('sources');
 
   // List mode only - the original per-collection "Preview layout" button
   // (all folders at once). Reads straight from the same ambient
@@ -425,6 +435,36 @@ export default function NuvioCollectionsPage() {
   // fields - see the big comment above this component) so it's worth a
   // real editor, reusing the same AvatarPickerModal Catalogs already uses.
   const [coverPickerCollection, setCoverPickerCollection] = useState<NuvioCollection | null>(null);
+
+  // Per-folder cover override - unlike Collection.coverImageUrl, there is
+  // no confirmed real Nuvio-native field for a folder's own cover (research
+  // this session only turned up collection-level fields: pinToTop,
+  // coverImageUrl, viewMode, tileShape, focusGifEnabled). Rather than invent
+  // an unofficial field and push it into the real synced Collection object
+  // (risking Nuvio's own backend mangling or silently dropping it),
+  // this is stored client-side only, keyed by folder id, and purely changes
+  // which poster the grid tile/modal picks instead of the ambient
+  // auto-selected first preview item. Never sent to setNuvioCollections.
+  const FOLDER_COVER_STORAGE_KEY = 'slicksync-nuvio-folder-covers';
+  const [folderCoverOverrides, setFolderCoverOverrides] = useState<Record<string, string>>({});
+  const [coverPickerFolder, setCoverPickerFolder] = useState<{ collectionId: string; folderId: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FOLDER_COVER_STORAGE_KEY);
+      if (raw) setFolderCoverOverrides(JSON.parse(raw));
+    } catch { /* ignore - falls back to auto-selected covers */ }
+  }, []);
+
+  const setFolderCoverOverride = (folderId: string, url: string | null) => {
+    setFolderCoverOverrides((prev) => {
+      const next = { ...prev };
+      if (url) next[folderId] = url;
+      else delete next[folderId];
+      try { localStorage.setItem(FOLDER_COVER_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   const isDirty = JSON.stringify(collections) !== savedSnapshot;
   const nuvioUsers = useMemo(() => users.filter((u) => u.providerType === 'nuvio'), [users]);
@@ -873,12 +913,13 @@ export default function NuvioCollectionsPage() {
                       previewByFolder={previewByFolder}
                       previewLoadingIds={previewLoadingIds}
                       brokenFolderIds={brokenFolderIds}
+                      folderCoverOverrides={folderCoverOverrides}
                       onRename={(title) => updateCollection(collection.id, { title })}
                       onReorder={(dir) => reorderCollection(cIndex, dir)}
                       onDelete={() => setDeleting({ kind: 'collection', collectionId: collection.id })}
                       onCopy={() => setCopyTarget(collection)}
                       onAddFolder={() => addFolder(collection.id)}
-                      onOpenFolder={(folderId) => setFolderDetail({ collectionId: collection.id, folderId })}
+                      onOpenFolder={(folderId) => { setFolderDetail({ collectionId: collection.id, folderId }); setFolderDetailTab('sources'); }}
                       onDeleteFolder={(folderId) => setDeleting({ kind: 'folder', collectionId: collection.id, folderId })}
                       onFolderDragEnd={handleFolderDragEnd(collection.id)}
                       onEditCover={() => setCoverPickerCollection(collection)}
@@ -1226,88 +1267,124 @@ export default function NuvioCollectionsPage() {
         const hero = items[0];
 
         return (
-          <Modal isOpen={!!folderDetail} onClose={() => setFolderDetail(null)} size="lg" backdropImage={hero?.poster || undefined}>
+          <Modal isOpen={!!folderDetail} onClose={() => setFolderDetail(null)} size="lg" backdropImage={folderCoverOverrides[folderDetail?.folderId || ''] || hero?.poster || undefined}>
             {activeFolder && folderDetail && (
-              <div className="space-y-5">
-                  <input
-                    value={activeFolder.title}
-                    onChange={(e) => updateFolder(folderDetail.collectionId, folderDetail.folderId, { title: e.target.value })}
-                    placeholder="Folder title"
-                    className="w-full bg-transparent text-2xl font-display font-semibold text-default border-b border-transparent hover:border-default focus:border-primary focus:outline-none pb-1"
-                  />
-
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-xs font-semibold uppercase tracking-wide text-subtle">Preview</h4>
-                      {items.length > 0 && <span className="text-xs text-subtle">{items.length} title{items.length !== 1 ? 's' : ''}</span>}
-                    </div>
-                    {(activeFolder.catalogSources || []).length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-default py-6 text-center">
-                        <p className="text-sm text-muted">No sources yet - add one below to see a preview here.</p>
-                      </div>
-                    ) : isLoadingPreview ? (
-                      <div className="flex flex-wrap gap-2.5">
-                        {[...Array(6)].map((_, i) => <div key={i} className="w-20 aspect-[2/3] rounded-lg bg-surface-hover animate-pulse" />)}
-                      </div>
-                    ) : items.length === 0 ? (
-                      <p className="text-sm text-subtle">No preview available for this folder&apos;s sources.</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2.5">
-                        {items.map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => setDetail(item)}
-                            title={item.name}
-                            className="group w-20 shrink-0 aspect-[2/3] rounded-lg overflow-hidden bg-surface-hover ring-1 ring-transparent hover:ring-primary/60 transition-all hover:scale-[1.03]"
-                          >
-                            {item.poster ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={item.poster} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-[10px] text-subtle p-1.5 text-center leading-tight">{item.name}</div>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+              <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      title="Folder cover"
+                      onClick={() => setCoverPickerFolder({ collectionId: folderDetail.collectionId, folderId: folderDetail.folderId })}
+                      className="relative shrink-0 w-14 h-14 rounded-xl overflow-hidden border border-default hover:border-primary/50 transition-colors bg-surface-hover"
+                    >
+                      {folderCoverOverrides[folderDetail.folderId] || hero?.poster ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={folderCoverOverrides[folderDetail.folderId] || hero?.poster} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <PhotoIcon className="w-5 h-5 text-subtle" />
+                        </div>
+                      )}
+                    </button>
+                    <input
+                      value={activeFolder.title}
+                      onChange={(e) => updateFolder(folderDetail.collectionId, folderDetail.folderId, { title: e.target.value })}
+                      placeholder="Folder title"
+                      className="flex-1 bg-transparent text-2xl font-display font-semibold text-default border-b border-transparent hover:border-default focus:border-primary focus:outline-none pb-1 mt-2"
+                    />
                   </div>
 
-                  <div>
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-subtle mb-2">Sources</h4>
-                    {(activeFolder.catalogSources || []).length === 0 ? (
-                      <p className="text-sm text-subtle mb-2">No sources in this folder.</p>
-                    ) : (
-                      <div className="space-y-1.5 mb-2">
-                        {(activeFolder.catalogSources || []).map((source, sIndex) => {
-                          const { addonName, catalogName, found } = describeSource(source);
-                          const genreSuffix = source.genre && source.genre !== 'none' ? ` — ${source.genre}` : '';
-                          return (
-                            <div key={sIndex} className="flex items-center gap-3 text-sm px-3 py-2.5 rounded-xl bg-surface-hover">
-                              {found ? (
-                                <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${source.type === 'movie' ? 'bg-primary' : 'bg-secondary'}`} />
-                              ) : (
-                                <ExclamationTriangleIcon className="w-4 h-4 text-warning shrink-0" />
-                              )}
-                              <span className="flex-1 truncate text-default">
+                  {/* Tabs, not stacked sections - a folder with a lot of
+                      preview posters otherwise pushed "Add source" far
+                      enough down that reaching it needed scrolling every
+                      single time. */}
+                  <div className="flex gap-1 p-1 rounded-xl bg-surface-hover w-fit">
+                    <button
+                      type="button"
+                      onClick={() => setFolderDetailTab('sources')}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${folderDetailTab === 'sources' ? 'bg-surface text-default shadow-sm' : 'text-muted hover:text-default'}`}
+                    >
+                      Sources{(activeFolder.catalogSources || []).length > 0 ? ` (${(activeFolder.catalogSources || []).length})` : ''}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFolderDetailTab('preview')}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${folderDetailTab === 'preview' ? 'bg-surface text-default shadow-sm' : 'text-muted hover:text-default'}`}
+                    >
+                      Preview
+                    </button>
+                  </div>
+
+                  {folderDetailTab === 'sources' ? (
+                    <div>
+                      {(activeFolder.catalogSources || []).length === 0 ? (
+                        <p className="text-sm text-subtle mb-2">No sources in this folder.</p>
+                      ) : (
+                        <div className="space-y-1.5 mb-2">
+                          {(activeFolder.catalogSources || []).map((source, sIndex) => {
+                            const { addonName, catalogName, found } = describeSource(source);
+                            const genreSuffix = source.genre && source.genre !== 'none' ? ` — ${source.genre}` : '';
+                            return (
+                              <div key={sIndex} className="flex items-center gap-3 text-sm px-3 py-2.5 rounded-xl bg-surface-hover">
                                 {found ? (
-                                  <>{catalogName}{genreSuffix} <span className="text-subtle text-xs">· {addonName} ({source.type})</span></>
+                                  <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${source.type === 'movie' ? 'bg-primary' : 'bg-secondary'}`} />
                                 ) : (
-                                  <span className="text-warning">Source not found <span className="text-subtle text-xs">· addon removed or catalog no longer exists</span></span>
+                                  <ExclamationTriangleIcon className="w-4 h-4 text-warning shrink-0" />
                                 )}
-                              </span>
-                              <button type="button" onClick={() => removeSource(folderDetail.collectionId, folderDetail.folderId, sIndex)} className="p-1.5 rounded-lg text-subtle hover:text-error hover:bg-surface shrink-0">
-                                <TrashIcon className="w-4 h-4" />
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    <Button variant="ghost" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => openPicker(folderDetail.collectionId, folderDetail.folderId)}>
-                      Add source
-                    </Button>
-                  </div>
+                                <span className="flex-1 truncate text-default">
+                                  {found ? (
+                                    <>{catalogName}{genreSuffix} <span className="text-subtle text-xs">· {addonName} ({source.type})</span></>
+                                  ) : (
+                                    <span className="text-warning">Source not found <span className="text-subtle text-xs">· addon removed or catalog no longer exists</span></span>
+                                  )}
+                                </span>
+                                <button type="button" onClick={() => removeSource(folderDetail.collectionId, folderDetail.folderId, sIndex)} className="p-1.5 rounded-lg text-subtle hover:text-error hover:bg-surface shrink-0">
+                                  <TrashIcon className="w-4 h-4" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <Button variant="ghost" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => openPicker(folderDetail.collectionId, folderDetail.folderId)}>
+                        Add source
+                      </Button>
+                    </div>
+                  ) : (
+                    <div>
+                      {items.length > 0 && <p className="text-xs text-subtle mb-2">{items.length} title{items.length !== 1 ? 's' : ''}</p>}
+                      {(activeFolder.catalogSources || []).length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-default py-6 text-center">
+                          <p className="text-sm text-muted">No sources yet - add one from the Sources tab to see a preview here.</p>
+                        </div>
+                      ) : isLoadingPreview ? (
+                        <div className="flex flex-wrap gap-2.5">
+                          {[...Array(6)].map((_, i) => <div key={i} className="w-20 aspect-[2/3] rounded-lg bg-surface-hover animate-pulse" />)}
+                        </div>
+                      ) : items.length === 0 ? (
+                        <p className="text-sm text-subtle">No preview available for this folder&apos;s sources.</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2.5">
+                          {items.map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => setDetail(item)}
+                              title={item.name}
+                              className="group w-20 shrink-0 aspect-[2/3] rounded-lg overflow-hidden bg-surface-hover ring-1 ring-transparent hover:ring-primary/60 transition-all hover:scale-[1.03]"
+                            >
+                              {item.poster ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={item.poster} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-[10px] text-subtle p-1.5 text-center leading-tight">{item.name}</div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex justify-end pt-2 border-t border-default">
                     <Button variant="ghost" size="sm" onClick={() => setFolderDetail(null)}>Done</Button>
@@ -1385,6 +1462,26 @@ export default function NuvioCollectionsPage() {
           }}
         />
       )}
+
+      {/* Folder cover override - client-side only, see
+          folderCoverOverrides' own comment for why this never touches the
+          real synced Collection data. */}
+      {coverPickerFolder && (() => {
+        const folder = collections.find((c) => c.id === coverPickerFolder.collectionId)?.folders?.find((f) => f.id === coverPickerFolder.folderId);
+        return (
+          <AvatarPickerModal
+            isOpen={!!coverPickerFolder}
+            onClose={() => setCoverPickerFolder(null)}
+            name={folder?.title || 'Folder'}
+            currentAvatarUrl={folderCoverOverrides[coverPickerFolder.folderId] || null}
+            onSave={async (data) => {
+              if (!('avatarUrl' in data)) { setCoverPickerFolder(null); return; }
+              setFolderCoverOverride(coverPickerFolder.folderId, data.avatarUrl ?? null);
+              setCoverPickerFolder(null);
+            }}
+          />
+        );
+      })()}
 
       {/* Copy a Collection to another profile - writes immediately on
           confirm (see handleCopyTo's own comment for why). */}
