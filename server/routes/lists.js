@@ -22,6 +22,8 @@ module.exports = ({ prisma, getAccountId }) => {
     name: list.name,
     description: list.description || null,
     items: parseItems(list.itemsJson),
+    coverImageUrl: list.coverImageUrl || null,
+    coverColorIndex: list.coverColorIndex ?? null,
     createdAt: list.createdAt,
     updatedAt: list.updatedAt,
   });
@@ -106,15 +108,20 @@ module.exports = ({ prisma, getAccountId }) => {
     }
   });
 
-  // PATCH /api/lists/:id — rename / re-describe. { name?, description? }
+  // PATCH /api/lists/:id — rename / re-describe / set cover art.
+  // { name?, description?, coverImageUrl?, coverColorIndex? } - cover fields
+  // accept `null` explicitly to clear back to the auto-collage fallback.
   router.patch('/:id', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';
       const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
       if (!existing) return res.status(404).json({ error: 'List not found' });
+      const body = req.body || {};
       const data = {};
-      if (typeof req.body?.name === 'string' && req.body.name.trim()) data.name = req.body.name.trim();
-      if (typeof req.body?.description === 'string') data.description = req.body.description.trim() || null;
+      if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim();
+      if (typeof body.description === 'string') data.description = body.description.trim() || null;
+      if ('coverImageUrl' in body) data.coverImageUrl = body.coverImageUrl ? String(body.coverImageUrl) : null;
+      if ('coverColorIndex' in body) data.coverColorIndex = body.coverColorIndex === null || body.coverColorIndex === undefined ? null : Number(body.coverColorIndex);
       const list = await prisma.customList.update({ where: { id: existing.id }, data });
       res.json(shape(list));
     } catch (e) {

@@ -379,13 +379,15 @@ model UserSyncGuardState {
 // as text (not Json) to mirror the SQLite schema so the router handles both
 // identically.
 model CustomList {
-  id          String   @id @default(cuid())
-  accountId   String   @default("default")
-  name        String
-  description String?
-  itemsJson   String   @default("[]")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  accountId        String   @default("default")
+  name             String
+  description      String?
+  itemsJson        String   @default("[]")
+  coverImageUrl    String?
+  coverColorIndex  Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@index([accountId])
   @@map("custom_lists")
