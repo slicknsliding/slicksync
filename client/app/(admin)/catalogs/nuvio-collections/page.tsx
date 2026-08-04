@@ -14,6 +14,7 @@ import {
 import {
   ArrowLeftIcon, PlusIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon,
   ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
+  EyeIcon, DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
 
 // Starter templates - genre folders built from each catalog's own "genre"
@@ -102,6 +103,19 @@ function moveItem<T>(arr: T[], index: number, dir: -1 | 1): T[] {
   return next;
 }
 
+// Fresh ids for the collection and every folder inside it, so pasting a
+// copy into a target profile never collides with (or aliases) the source's
+// own ids. catalogSources carry no id of their own - copied as-is.
+function deepCopyCollection(c: NuvioCollection): NuvioCollection {
+  return {
+    ...c,
+    id: newId(),
+    folders: (c.folders || []).map((f) => ({ ...f, id: newId(), catalogSources: [...(f.catalogSources || [])] })),
+  };
+}
+
+type PreviewFolderItems = { id: string; type: string; name: string; poster: string | null }[];
+
 export default function NuvioCollectionsPage() {
   const { layoutMode } = useLayoutMode();
   const router = useRouter();
@@ -132,6 +146,18 @@ export default function NuvioCollectionsPage() {
   const [pickerPreview, setPickerPreview] = useState<{ id: string; type: string; name: string; poster: string | null }[]>([]);
   const [pickerPreviewLoading, setPickerPreviewLoading] = useState(false);
   const [detail, setDetail] = useState<{ id: string; type: string; name: string; poster?: string | null } | null>(null);
+
+  // Layout preview - read-only, no setCollections call anywhere in this
+  // flow, so it can't touch the unsaved-changes/dirty-state guard at all.
+  const [previewCollection, setPreviewCollection] = useState<NuvioCollection | null>(null);
+  const [previewByFolder, setPreviewByFolder] = useState<Record<string, PreviewFolderItems>>({});
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  // Copy a Collection to another profile - writes immediately (not staged
+  // in local `collections` state) since there's no "current session" for a
+  // profile you're not actively viewing to hold a draft in.
+  const [copyTarget, setCopyTarget] = useState<NuvioCollection | null>(null);
+  const [copyingToIndex, setCopyingToIndex] = useState<number | null>(null);
 
   const isDirty = JSON.stringify(collections) !== savedSnapshot;
   const nuvioUsers = useMemo(() => users.filter((u) => u.providerType === 'nuvio'), [users]);
@@ -332,6 +358,65 @@ export default function NuvioCollectionsPage() {
     setPickerTarget(null);
   };
 
+  // --- Layout preview ---
+  // Reuses the exact getNuvioCatalogPreview call the source picker already
+  // makes (no new server route) - batches it across every source in every
+  // folder, de-duped by item id within each folder.
+  const openPreview = useCallback(async (collection: NuvioCollection) => {
+    setPreviewCollection(collection);
+    setPreviewByFolder({});
+    setPreviewLoading(true);
+    try {
+      const entries = await Promise.all((collection.folders || []).map(async (folder) => {
+        const results = await Promise.all((folder.catalogSources || []).map(async (source) => {
+          const addon = addons.find((a) => a.manifest?.id === source.addonId);
+          if (!addon?.transportUrl || !selectedUserId) return [];
+          try {
+            const r = await api.getNuvioCatalogPreview(selectedUserId, addon.transportUrl, source.type, source.catalogId);
+            return r.items || [];
+          } catch {
+            return [];
+          }
+        }));
+        const seen = new Set<string>();
+        const merged: PreviewFolderItems = [];
+        for (const items of results) {
+          for (const item of items) {
+            if (seen.has(item.id)) continue;
+            seen.add(item.id);
+            merged.push(item);
+          }
+        }
+        return [folder.id, merged] as const;
+      }));
+      setPreviewByFolder(Object.fromEntries(entries));
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [addons, selectedUserId]);
+
+  // --- Copy a Collection to another profile ---
+
+  const otherProfiles = profiles.filter((p) => p.profile_index !== selectedProfileIndex);
+
+  const handleCopyTo = useCallback(async (targetProfileIndex: number) => {
+    if (!copyTarget || !selectedUserId) return;
+    setCopyingToIndex(targetProfileIndex);
+    try {
+      const r = await api.getNuvioCollections(selectedUserId, targetProfileIndex);
+      const targetCollections = r.collections || [];
+      const updated = [...targetCollections, deepCopyCollection(copyTarget)];
+      await api.setNuvioCollections(selectedUserId, targetProfileIndex, updated);
+      const targetName = profiles.find((p) => p.profile_index === targetProfileIndex)?.name || `Profile ${targetProfileIndex}`;
+      toast.success(`Copied "${copyTarget.title}" to ${targetName}`);
+      setCopyTarget(null);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to copy Collection');
+    } finally {
+      setCopyingToIndex(null);
+    }
+  }, [copyTarget, selectedUserId, profiles]);
+
   // --- Layout ---
 
   const backButton = (
@@ -458,6 +543,24 @@ export default function NuvioCollectionsPage() {
                             className="flex-1 px-2 py-1 rounded-lg bg-transparent text-sm font-semibold text-default border border-transparent hover:border-default focus:border-primary focus:outline-none"
                           />
                           <span className="text-xs text-subtle shrink-0">{(collection.folders || []).length} folder{(collection.folders || []).length !== 1 ? 's' : ''}</span>
+                          <button
+                            type="button"
+                            title="Preview layout"
+                            onClick={() => openPreview(collection)}
+                            disabled={(collection.folders || []).every((f) => (f.catalogSources || []).length === 0)}
+                            className="p-1 text-subtle hover:text-default disabled:opacity-30"
+                          >
+                            <EyeIcon className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            title={otherProfiles.length === 0 ? 'No other profiles on this account' : 'Copy to another profile'}
+                            onClick={() => setCopyTarget(collection)}
+                            disabled={otherProfiles.length === 0}
+                            className="p-1 text-subtle hover:text-default disabled:opacity-30"
+                          >
+                            <DocumentDuplicateIcon className="w-3.5 h-3.5" />
+                          </button>
                           <button type="button" onClick={() => reorderCollection(cIndex, -1)} disabled={cIndex === 0} className="p-1 text-subtle hover:text-default disabled:opacity-30">
                             <ArrowUpIcon className="w-3.5 h-3.5" />
                           </button>
@@ -675,6 +778,84 @@ export default function NuvioCollectionsPage() {
               </div>
             </>
           )}
+        </div>
+      </Modal>
+
+      {/* Layout preview - read-only. Each folder renders as its own
+          horizontal poster row, reusing the same tile markup as the source
+          picker's own preview above. */}
+      <Modal isOpen={!!previewCollection} onClose={() => setPreviewCollection(null)} title={`Preview: ${previewCollection?.title || ''}`} size="lg">
+        <div className="space-y-4">
+          {previewLoading ? (
+            <div className="space-y-3">
+              {[...Array(2)].map((_, i) => (
+                <div key={i} className="flex gap-2">
+                  {[...Array(6)].map((__, j) => <div key={j} className="w-16 aspect-[2/3] rounded-md bg-surface-hover animate-pulse" />)}
+                </div>
+              ))}
+            </div>
+          ) : (previewCollection?.folders || []).length === 0 ? (
+            <p className="text-sm text-muted text-center py-6">This collection has no folders yet.</p>
+          ) : (
+            (previewCollection?.folders || []).map((folder) => {
+              const items = previewByFolder[folder.id] || [];
+              return (
+                <div key={folder.id}>
+                  <p className="text-xs font-medium text-muted mb-1.5">{folder.title} <span className="text-subtle">({items.length})</span></p>
+                  {(folder.catalogSources || []).length === 0 ? (
+                    <p className="text-xs text-subtle">No sources in this folder.</p>
+                  ) : items.length === 0 ? (
+                    <p className="text-xs text-subtle">No preview available for this folder&apos;s sources.</p>
+                  ) : (
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {items.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setDetail(item)}
+                          title={item.name}
+                          className="w-16 shrink-0 aspect-[2/3] rounded-md overflow-hidden bg-surface-hover"
+                        >
+                          {item.poster ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={item.poster} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-[10px] text-subtle p-1 text-center">{item.name}</div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </Modal>
+
+      {/* Copy a Collection to another profile - writes immediately on
+          confirm (see handleCopyTo's own comment for why). */}
+      <Modal isOpen={!!copyTarget} onClose={() => setCopyTarget(null)} title={`Copy "${copyTarget?.title || ''}" to...`} size="sm">
+        <div className="space-y-2">
+          {otherProfiles.length === 0 ? (
+            <p className="text-sm text-muted">No other profiles on this account.</p>
+          ) : (
+            otherProfiles.map((p) => (
+              <button
+                key={p.profile_index}
+                type="button"
+                onClick={() => handleCopyTo(p.profile_index)}
+                disabled={copyingToIndex !== null}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-default hover:border-primary/50 text-left text-sm text-default transition-colors disabled:opacity-50"
+              >
+                <span>{p.name || `Profile ${p.profile_index}`}</span>
+                {copyingToIndex === p.profile_index && <span className="text-xs text-subtle">Copying...</span>}
+              </button>
+            ))
+          )}
+          <div className="flex justify-end pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setCopyTarget(null)}>Cancel</Button>
+          </div>
         </div>
       </Modal>
 
