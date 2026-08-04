@@ -14,12 +14,14 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { useDefaultViewMode } from '@/lib/viewMode';
+import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import { toast } from '@/components/ui/Toast';
 import {
   api, User, StremioAddon, NuvioProfile, NuvioCollection, NuvioCollectionFolder, NuvioCatalogSource,
 } from '@/lib/api';
 import {
-  ArrowLeftIcon, PlusIcon, TrashIcon,
+  ArrowLeftIcon, PlusIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon,
   ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
   DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
@@ -123,11 +125,13 @@ function deepCopyCollection(c: NuvioCollection): NuvioCollection {
 
 type PreviewFolderItems = { id: string; type: string; name: string; poster: string | null }[];
 
-// One grid tile: an up-to-4-poster collage built from the folder's own
-// cached preview (ambient - no click needed, which is the actual fix for
-// "the preview icon is too small") with the title/source-count overlaid at
-// the bottom, matching the same collage+overlay language Catalogs' own
-// index cards already use. Delete sits as an absolutely-positioned sibling
+// One grid tile: a single hero poster from the folder's own cached preview
+// (ambient - no click needed, which is the actual fix for "the preview icon
+// is too small") with the title/source-count on a solid bottom band for
+// real contrast regardless of the poster's own colors, and a hover overlay
+// that clearly labels the tile as a preview (per feedback: the old 2x2
+// multi-poster collage read as "too busy," and it wasn't obvious this tile
+// was even clickable). Delete sits as an absolutely-positioned sibling
 // button, not nested inside the clickable tile, so a click on it never also
 // counts as a click on the tile (see CatalogGridCard in catalogs/[id] for
 // the same structure) - drag reorder and the open-folder click coexist
@@ -150,6 +154,7 @@ function FolderTile({
   };
   const sourceCount = (folder.catalogSources || []).length;
   const items = previewItems || [];
+  const hero = items[0];
 
   return (
     <div ref={setNodeRef} style={style} className={`relative group ${isDragging ? 'opacity-50' : ''}`}>
@@ -169,26 +174,28 @@ function FolderTile({
                 <FolderIcon className="w-8 h-8 text-subtle" />
               )}
             </div>
+          ) : hero?.poster ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={hero.poster} alt="" className="w-full h-full object-cover" />
           ) : (
-            <div className="grid grid-cols-2 grid-rows-2 gap-px w-full h-full">
-              {[0, 1, 2, 3].map((i) => {
-                const item = items[i];
-                return item ? (
-                  <div key={item.id} className="relative overflow-hidden bg-surface-hover">
-                    {item.poster ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.poster} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-[8px] text-subtle p-0.5 text-center leading-tight">{item.name}</div>
-                    )}
-                  </div>
-                ) : <div key={i} className="bg-surface-hover" />;
-              })}
-            </div>
+            <div className="w-full h-full flex items-center justify-center text-xs text-subtle p-2 text-center">{hero?.name}</div>
           )}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent px-2.5 pt-8 pb-2">
-            <p className="text-xs font-semibold text-white truncate">{folder.title}</p>
-            <p className="text-[10px] text-white/70">{sourceCount} source{sourceCount !== 1 ? 's' : ''}</p>
+
+          {/* Hover overlay - explicit "Preview" label + icon, so the tile
+              unambiguously reads as clickable instead of relying on the
+              cursor alone. */}
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-colors flex items-center justify-center">
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center gap-1.5 text-white">
+              <EyeIcon className="w-6 h-6" />
+              <span className="text-xs font-semibold">Preview</span>
+            </div>
+          </div>
+
+          {/* Solid band (not just a gradient) so title/count stay readable
+              against any poster's own colors. */}
+          <div className="absolute inset-x-0 bottom-0 bg-black/85 px-2.5 py-2">
+            <p className="text-sm font-semibold text-white truncate">{folder.title}</p>
+            <p className="text-xs text-white/80">{sourceCount} source{sourceCount !== 1 ? 's' : ''}</p>
           </div>
         </div>
       </button>
@@ -296,6 +303,14 @@ function CollectionSection({
 export default function NuvioCollectionsPage() {
   const { layoutMode } = useLayoutMode();
   const router = useRouter();
+  // Shared app-wide grid/list preference (Settings -> Themes), same hook
+  // Activity/Addons/Users/etc. already use - defaults to 'grid' when unset.
+  const { viewMode, setViewMode } = useDefaultViewMode();
+  // List mode only: which collection/folder rows are expanded, mirroring
+  // the original inline nested-list UX exactly (grid mode has no notion of
+  // "expanded" - each folder is its own always-visible tile).
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const toggleExpanded = (id: string) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const [users, setUsers] = useState<User[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
@@ -337,6 +352,14 @@ export default function NuvioCollectionsPage() {
   // open - clicking a grid tile opens this instead of the old always-
   // expanded inline nested list.
   const [folderDetail, setFolderDetail] = useState<{ collectionId: string; folderId: string } | null>(null);
+
+  // List mode only - the original per-collection "Preview layout" button
+  // (all folders at once). Reads straight from the same ambient
+  // previewByFolder cache the grid tiles already populate - no separate
+  // fetch-on-click needed the way the pre-redesign version had, since the
+  // prefetch effect above already loads every folder's preview regardless
+  // of which view mode is active.
+  const [previewCollection, setPreviewCollection] = useState<NuvioCollection | null>(null);
 
   // Copy a Collection to another profile - writes immediately (not staged
   // in local `collections` state) since there's no "current session" for a
@@ -523,6 +546,15 @@ export default function NuvioCollectionsPage() {
     setCollections((prev) => prev.map((c) => (c.id !== collectionId ? c : {
       ...c,
       folders: (c.folders || []).filter((f) => f.id !== folderId),
+    })));
+  };
+
+  // List mode only - grid mode reorders folders via drag-and-drop
+  // (handleFolderDragEnd) instead.
+  const reorderFolder = (collectionId: string, index: number, dir: -1 | 1) => {
+    setCollections((prev) => prev.map((c) => (c.id !== collectionId ? c : {
+      ...c,
+      folders: moveItem(c.folders || [], index, dir),
     })));
   };
 
@@ -724,9 +756,10 @@ export default function NuvioCollectionsPage() {
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
                   <p className="text-sm text-muted">{collections.length} collection{collections.length !== 1 ? 's' : ''}{isDirty && <span className="text-warning ml-2">(unsaved changes)</span>}</p>
                   <div className="flex items-center gap-2">
+                    <ViewModeToggle mode={viewMode} onChange={setViewMode} showLabels={false} />
                     <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setTemplatesOpen(true)}>
                       Use a template
                     </Button>
@@ -741,7 +774,7 @@ export default function NuvioCollectionsPage() {
                     <RectangleStackIcon className="w-10 h-10 mx-auto text-subtle mb-3" />
                     <p className="text-sm text-muted">No collections yet on this profile.</p>
                   </Card>
-                ) : (
+                ) : viewMode === 'grid' ? (
                   collections.map((collection, cIndex) => (
                     <CollectionSection
                       key={collection.id}
@@ -761,6 +794,113 @@ export default function NuvioCollectionsPage() {
                       onFolderDragEnd={handleFolderDragEnd(collection.id)}
                     />
                   ))
+                ) : (
+                  // Original list layout, unchanged - kept for anyone who
+                  // preferred it, per explicit request. Folder/source
+                  // reorder uses the up/down arrows (reorderFolder) here
+                  // instead of grid mode's drag-and-drop, and the
+                  // collection-level "Preview layout" eye button reads from
+                  // the same ambient previewByFolder cache grid mode's
+                  // tiles use rather than doing its own fetch.
+                  <div className="space-y-3">
+                    {collections.map((collection, cIndex) => (
+                      <Card key={collection.id} padding="md">
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => toggleExpanded(collection.id)} className="p-1 text-subtle hover:text-default">
+                            {expanded[collection.id] ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
+                          </button>
+                          <input
+                            value={collection.title}
+                            onChange={(e) => updateCollection(collection.id, { title: e.target.value })}
+                            className="flex-1 px-2 py-1 rounded-lg bg-transparent text-sm font-semibold text-default border border-transparent hover:border-default focus:border-primary focus:outline-none"
+                          />
+                          <span className="text-xs text-subtle shrink-0">{(collection.folders || []).length} folder{(collection.folders || []).length !== 1 ? 's' : ''}</span>
+                          <button
+                            type="button"
+                            title="Preview layout"
+                            onClick={() => setPreviewCollection(collection)}
+                            disabled={(collection.folders || []).every((f) => (f.catalogSources || []).length === 0)}
+                            className="p-1 text-subtle hover:text-default disabled:opacity-30"
+                          >
+                            <EyeIcon className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            title={otherProfiles.length === 0 ? 'No other profiles on this account' : 'Copy to another profile'}
+                            onClick={() => setCopyTarget(collection)}
+                            disabled={otherProfiles.length === 0}
+                            className="p-1 text-subtle hover:text-default disabled:opacity-30"
+                          >
+                            <DocumentDuplicateIcon className="w-3.5 h-3.5" />
+                          </button>
+                          <button type="button" onClick={() => reorderCollection(cIndex, -1)} disabled={cIndex === 0} className="p-1 text-subtle hover:text-default disabled:opacity-30">
+                            <ArrowUpIcon className="w-3.5 h-3.5" />
+                          </button>
+                          <button type="button" onClick={() => reorderCollection(cIndex, 1)} disabled={cIndex === collections.length - 1} className="p-1 text-subtle hover:text-default disabled:opacity-30">
+                            <ArrowDownIcon className="w-3.5 h-3.5" />
+                          </button>
+                          <button type="button" onClick={() => setDeleting({ kind: 'collection', collectionId: collection.id })} className="p-1 text-subtle hover:text-error">
+                            <TrashIcon className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {expanded[collection.id] && (
+                          <div className="mt-3 pl-6 space-y-2 border-l border-default">
+                            {(collection.folders || []).map((folder, fIndex) => (
+                              <div key={folder.id} className="rounded-lg border border-default p-2.5 bg-subtle">
+                                <div className="flex items-center gap-2">
+                                  <button type="button" onClick={() => toggleExpanded(folder.id)} className="p-1 text-subtle hover:text-default">
+                                    {expanded[folder.id] ? <ChevronDownIcon className="w-3.5 h-3.5" /> : <ChevronRightIcon className="w-3.5 h-3.5" />}
+                                  </button>
+                                  <FolderIcon className="w-4 h-4 text-subtle shrink-0" />
+                                  <input
+                                    value={folder.title}
+                                    onChange={(e) => updateFolder(collection.id, folder.id, { title: e.target.value })}
+                                    className="flex-1 px-2 py-1 rounded-lg bg-transparent text-sm text-default border border-transparent hover:border-default focus:border-primary focus:outline-none"
+                                  />
+                                  <span className="text-xs text-subtle shrink-0">{(folder.catalogSources || []).length} source{(folder.catalogSources || []).length !== 1 ? 's' : ''}</span>
+                                  <button type="button" onClick={() => reorderFolder(collection.id, fIndex, -1)} disabled={fIndex === 0} className="p-1 text-subtle hover:text-default disabled:opacity-30">
+                                    <ArrowUpIcon className="w-3 h-3" />
+                                  </button>
+                                  <button type="button" onClick={() => reorderFolder(collection.id, fIndex, 1)} disabled={fIndex === (collection.folders || []).length - 1} className="p-1 text-subtle hover:text-default disabled:opacity-30">
+                                    <ArrowDownIcon className="w-3 h-3" />
+                                  </button>
+                                  <button type="button" onClick={() => setDeleting({ kind: 'folder', collectionId: collection.id, folderId: folder.id })} className="p-1 text-subtle hover:text-error">
+                                    <TrashIcon className="w-3 h-3" />
+                                  </button>
+                                </div>
+
+                                {expanded[folder.id] && (
+                                  <div className="mt-2 pl-6 space-y-1.5">
+                                    {(folder.catalogSources || []).map((source, sIndex) => {
+                                      const { addonName, catalogName } = describeSource(source);
+                                      const genreSuffix = source.genre && source.genre !== 'none' ? ` — ${source.genre}` : '';
+                                      return (
+                                        <div key={sIndex} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-md bg-surface-hover">
+                                          <span className="flex-1 truncate text-default">
+                                            {catalogName}{genreSuffix} <span className="text-subtle">· {addonName} ({source.type})</span>
+                                          </span>
+                                          <button type="button" onClick={() => removeSource(collection.id, folder.id, sIndex)} className="text-subtle hover:text-error shrink-0">
+                                            <TrashIcon className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                    <Button variant="ghost" size="sm" leftIcon={<PlusIcon className="w-3.5 h-3.5" />} onClick={() => openPicker(collection.id, folder.id)}>
+                                      Add source
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                            <Button variant="ghost" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => addFolder(collection.id)}>
+                              Add folder
+                            </Button>
+                          </div>
+                        )}
+                      </Card>
+                    ))}
+                  </div>
                 )}
               </>
             )
@@ -1038,6 +1178,55 @@ export default function NuvioCollectionsPage() {
           </Modal>
         );
       })()}
+
+      {/* List mode only - the original per-collection preview, reading
+          straight from the ambient previewByFolder cache (see
+          previewCollection's own comment above). */}
+      <Modal isOpen={!!previewCollection} onClose={() => setPreviewCollection(null)} title={`Preview: ${previewCollection?.title || ''}`} size="lg">
+        <div className="space-y-4">
+          {(previewCollection?.folders || []).length === 0 ? (
+            <p className="text-sm text-muted text-center py-6">This collection has no folders yet.</p>
+          ) : (
+            (previewCollection?.folders || []).map((folder) => {
+              const items = previewByFolder[folder.id] || [];
+              const loading = previewLoadingIds.has(folder.id);
+              return (
+                <div key={folder.id}>
+                  <p className="text-xs font-medium text-muted mb-1.5">{folder.title} <span className="text-subtle">({items.length})</span></p>
+                  {(folder.catalogSources || []).length === 0 ? (
+                    <p className="text-xs text-subtle">No sources in this folder.</p>
+                  ) : loading ? (
+                    <div className="flex gap-2">
+                      {[...Array(6)].map((_, i) => <div key={i} className="w-16 aspect-[2/3] rounded-md bg-surface-hover animate-pulse" />)}
+                    </div>
+                  ) : items.length === 0 ? (
+                    <p className="text-xs text-subtle">No preview available for this folder&apos;s sources.</p>
+                  ) : (
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {items.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setDetail(item)}
+                          title={item.name}
+                          className="w-16 shrink-0 aspect-[2/3] rounded-md overflow-hidden bg-surface-hover"
+                        >
+                          {item.poster ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={item.poster} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-[10px] text-subtle p-1 text-center">{item.name}</div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </Modal>
 
       {/* Copy a Collection to another profile - writes immediately on
           confirm (see handleCopyTo's own comment for why). */}
