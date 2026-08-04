@@ -82,6 +82,20 @@ export default function NuvioCollectionsPage() {
   const nuvioUsers = useMemo(() => users.filter((u) => u.providerType === 'nuvio'), [users]);
   const selectedUser = nuvioUsers.find((u) => u.id === selectedUserId) || null;
 
+  // Sources are stored as bare {addonId, type, catalogId} - resolves to a
+  // real, readable name using the addon manifests already loaded for the
+  // source picker, instead of showing raw ids like "aio-metadata ·
+  // mdblist.88328". Falls back to the raw id only when the addon/catalog
+  // can no longer be found (e.g. the addon was since removed).
+  const describeSource = useCallback((source: NuvioCatalogSource) => {
+    const addon = addons.find((a) => a.manifest?.id === source.addonId);
+    const catalog = addon?.manifest?.catalogs?.find((c) => c.id === source.catalogId && c.type === source.type);
+    return {
+      addonName: addon?.name || addon?.manifest?.name || source.addonId,
+      catalogName: catalog?.name || source.catalogId,
+    };
+  }, [addons]);
+
   useEffect(() => {
     api.getUsers()
       .then((r) => setUsers(Array.isArray(r) ? r : []))
@@ -403,14 +417,19 @@ export default function NuvioCollectionsPage() {
 
                                 {expanded[folder.id] && (
                                   <div className="mt-2 pl-6 space-y-1.5">
-                                    {(folder.catalogSources || []).map((source, sIndex) => (
-                                      <div key={sIndex} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-md bg-surface-hover">
-                                        <span className="flex-1 truncate text-default">{source.addonId} · {source.catalogId} <span className="text-subtle">({source.type})</span></span>
-                                        <button type="button" onClick={() => removeSource(collection.id, folder.id, sIndex)} className="text-subtle hover:text-error shrink-0">
-                                          <TrashIcon className="w-3 h-3" />
-                                        </button>
-                                      </div>
-                                    ))}
+                                    {(folder.catalogSources || []).map((source, sIndex) => {
+                                      const { addonName, catalogName } = describeSource(source);
+                                      return (
+                                        <div key={sIndex} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-md bg-surface-hover">
+                                          <span className="flex-1 truncate text-default">
+                                            {catalogName} <span className="text-subtle">· {addonName} ({source.type})</span>
+                                          </span>
+                                          <button type="button" onClick={() => removeSource(collection.id, folder.id, sIndex)} className="text-subtle hover:text-error shrink-0">
+                                            <TrashIcon className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
                                     <Button variant="ghost" size="sm" leftIcon={<PlusIcon className="w-3.5 h-3.5" />} onClick={() => openPicker(collection.id, folder.id)}>
                                       Add source
                                     </Button>
