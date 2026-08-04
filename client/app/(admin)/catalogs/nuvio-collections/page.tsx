@@ -13,8 +13,73 @@ import {
 } from '@/lib/api';
 import {
   ArrowLeftIcon, PlusIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon,
-  ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon,
+  ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
 } from '@heroicons/react/24/outline';
+
+// Starter templates - matched by catalog NAME, never by catalog id. A
+// catalog id like "mdblist.88328" is specific to whichever mdblist list
+// one particular AIOMetadata setup happens to have configured under that
+// number; it has no meaning on a different account, even one running the
+// exact same addon. Name-matching is the only thing that's actually
+// portable between accounts, which is the whole point of a template -
+// a newbie with their own installed addon(s) should get real, working
+// folders built from what THEY have, not somebody else's account-specific
+// ids.
+interface CollectionTemplate {
+  id: string;
+  title: string;
+  description: string;
+  folders: { title: string; keywords: string[] }[];
+}
+
+const COLLECTION_TEMPLATES: CollectionTemplate[] = [
+  {
+    id: 'streaming-services',
+    title: 'Streaming Services',
+    description: "One folder per major streaming service, matched against your installed addons' own catalogs.",
+    folders: [
+      { title: 'Netflix', keywords: ['netflix'] },
+      { title: 'Prime Video', keywords: ['prime video', 'prime'] },
+      { title: 'Disney+', keywords: ['disney'] },
+      { title: 'HBO Max', keywords: ['hbo', 'max'] },
+      { title: 'Apple TV+', keywords: ['apple tv', 'apple'] },
+      { title: 'Paramount+', keywords: ['paramount'] },
+      { title: 'Hulu', keywords: ['hulu'] },
+      { title: 'Peacock', keywords: ['peacock'] },
+      { title: 'Crunchyroll', keywords: ['crunchyroll'] },
+    ],
+  },
+  {
+    id: 'genres',
+    title: 'Genres',
+    description: "One folder per common genre, matched against your installed addons' own catalogs.",
+    folders: [
+      { title: 'Action', keywords: ['action'] },
+      { title: 'Comedy', keywords: ['comedy'] },
+      { title: 'Drama', keywords: ['drama'] },
+      { title: 'Horror', keywords: ['horror'] },
+      { title: 'Sci-Fi', keywords: ['sci-fi', 'science fiction'] },
+      { title: 'Animation', keywords: ['animation', 'anime'] },
+      { title: 'Documentary', keywords: ['documentary'] },
+      { title: 'Thriller', keywords: ['thriller'] },
+      { title: 'Romance', keywords: ['romance'] },
+    ],
+  },
+];
+
+function matchCatalogsForKeywords(keywords: string[], addons: StremioAddon[]): NuvioCatalogSource[] {
+  const matches: NuvioCatalogSource[] = [];
+  for (const addon of addons) {
+    const addonId = addon.manifest?.id || addon.transportUrl;
+    for (const cat of addon.manifest?.catalogs || []) {
+      const name = (cat.name || cat.id || '').toLowerCase();
+      if (keywords.some((k) => name.includes(k))) {
+        matches.push({ addonId, type: cat.type, catalogId: cat.id });
+      }
+    }
+  }
+  return matches;
+}
 
 // Nuvio's own native "Collections" - the home-screen folder/catalog-source
 // organizer in the real Nuvio app, live-synced against the account itself
@@ -70,6 +135,7 @@ export default function NuvioCollectionsPage() {
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [deleting, setDeleting] = useState<{ kind: 'collection' | 'folder'; collectionId: string; folderId?: string } | null>(null);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
 
   const [pickerTarget, setPickerTarget] = useState<PickerTarget>(null);
   const [pickerAddonId, setPickerAddonId] = useState<string | null>(null);
@@ -166,6 +232,22 @@ export default function NuvioCollectionsPage() {
 
   const addCollection = () => {
     setCollections((prev) => [...prev, { id: newId(), title: 'New Collection', folders: [] }]);
+  };
+
+  // Builds folders only for template slots that actually matched something
+  // real in this account's own installed addons - never an empty/fake
+  // placeholder folder just because the template listed it.
+  const applyTemplate = (template: CollectionTemplate) => {
+    const folders = template.folders
+      .map((slot) => ({ id: newId(), title: slot.title, catalogSources: matchCatalogsForKeywords(slot.keywords, addons) }))
+      .filter((f) => f.catalogSources.length > 0);
+    if (folders.length === 0) {
+      toast.error('No matching catalogs found in your installed addons for this template');
+      return;
+    }
+    setCollections((prev) => [...prev, { id: newId(), title: template.title, folders }]);
+    setTemplatesOpen(false);
+    toast.success(`Added "${template.title}" (${folders.length} of ${template.folders.length} folders matched)`);
   };
 
   const updateCollection = (id: string, patch: Partial<NuvioCollection>) => {
@@ -354,9 +436,14 @@ export default function NuvioCollectionsPage() {
               <>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm text-muted">{collections.length} collection{collections.length !== 1 ? 's' : ''}{isDirty && <span className="text-warning ml-2">(unsaved changes)</span>}</p>
-                  <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={addCollection}>
-                    Add collection
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setTemplatesOpen(true)}>
+                      Use a template
+                    </Button>
+                    <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={addCollection}>
+                      Add collection
+                    </Button>
+                  </div>
                 </div>
 
                 {collections.length === 0 ? (
@@ -476,6 +563,37 @@ export default function NuvioCollectionsPage() {
               Delete
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Starter templates - previews real match counts against this
+          account's own installed addons before anything is added, so
+          there's never a surprise empty folder. */}
+      <Modal isOpen={templatesOpen} onClose={() => setTemplatesOpen(false)} title="Use a template" size="lg">
+        <div className="space-y-3">
+          <p className="text-sm text-muted">
+            Folders are only added where a real match is found in your installed addons - nothing is guessed or left empty.
+          </p>
+          {addonsLoading && <p className="text-sm text-muted">Loading your installed addons...</p>}
+          {!addonsLoading && COLLECTION_TEMPLATES.map((template) => {
+            const matchedFolders = template.folders.filter((slot) => matchCatalogsForKeywords(slot.keywords, addons).length > 0);
+            return (
+              <Card key={template.id} padding="md">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-default">{template.title}</p>
+                    <p className="text-xs text-muted">{template.description}</p>
+                    <p className="text-xs text-subtle mt-1">
+                      {matchedFolders.length} of {template.folders.length} folders match your installed addons
+                    </p>
+                  </div>
+                  <Button variant="secondary" size="sm" onClick={() => applyTemplate(template)} disabled={matchedFolders.length === 0}>
+                    Add
+                  </Button>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       </Modal>
 
