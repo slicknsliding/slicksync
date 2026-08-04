@@ -2221,7 +2221,7 @@ export interface StremioAddon {
     logo?: string;
     resources: string[];
     types: string[];
-    catalogs?: { id: string; type: string; name?: string }[];
+    catalogs?: { id: string; type: string; name?: string; extra?: { name: string; options?: string[]; isRequired?: boolean }[] }[];
   };
 }
 
@@ -2401,6 +2401,12 @@ export interface NuvioCatalogSource {
   addonId: string;
   type: string;
   catalogId: string;
+  // Present when this source is one broad catalog filtered down to a
+  // specific genre (the catalog's own "genre" extra parameter value) -
+  // most addons expose genres as a filter on one catalog, not as separate
+  // catalogs per genre. "none" (as seen on real, non-genre-filtered
+  // sources) or absent both mean "no genre filter."
+  genre?: string;
   [key: string]: any;
 }
 

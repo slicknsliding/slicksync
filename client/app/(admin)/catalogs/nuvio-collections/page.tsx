@@ -16,65 +16,54 @@ import {
   ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
 } from '@heroicons/react/24/outline';
 
-// Starter templates - matched by catalog NAME, never by catalog id. A
-// catalog id like "mdblist.88328" is specific to whichever mdblist list
-// one particular AIOMetadata setup happens to have configured under that
-// number; it has no meaning on a different account, even one running the
-// exact same addon. Name-matching is the only thing that's actually
-// portable between accounts, which is the whole point of a template -
-// a newbie with their own installed addon(s) should get real, working
-// folders built from what THEY have, not somebody else's account-specific
-// ids.
-interface CollectionTemplate {
-  id: string;
+// Starter templates - genre folders built from each catalog's own "genre"
+// extra parameter, not from separate per-genre catalogs. Confirmed two ways
+// this session: real installed addons expose genre as a filter VALUE on one
+// broad catalog (manifest.catalogs[].extra: [{name:'genre', options:[...]}])
+// rather than one catalog per genre, and real Collections data already
+// carries a `genre` field on each catalogSource entry for exactly this
+// reason. An earlier version of this feature matched by catalog NAME
+// keywords instead (e.g. hunting for a catalog literally named "Action" or
+// "Netflix") - that failed against a real test account (0 of 9 folders
+// matched) because AIOMetadata's actual catalogs are generic/aggregated
+// ("Mix Of Movies", "TMDB + TVDB"), and "streaming service" folders in a
+// real account turned out to be hand-curated mdblist picks with no signal
+// in the catalog name at all - not something automatable, so that template
+// was dropped rather than shipped as something that mostly shows "0
+// matches."
+interface GenreTemplateSlot {
   title: string;
-  description: string;
-  folders: { title: string; keywords: string[] }[];
+  aliases: string[]; // matched case-insensitively against a catalog's own genre option value
 }
 
-const COLLECTION_TEMPLATES: CollectionTemplate[] = [
-  {
-    id: 'streaming-services',
-    title: 'Streaming Services',
-    description: "One folder per major streaming service, matched against your installed addons' own catalogs.",
-    folders: [
-      { title: 'Netflix', keywords: ['netflix'] },
-      { title: 'Prime Video', keywords: ['prime video', 'prime'] },
-      { title: 'Disney+', keywords: ['disney'] },
-      { title: 'HBO Max', keywords: ['hbo', 'max'] },
-      { title: 'Apple TV+', keywords: ['apple tv', 'apple'] },
-      { title: 'Paramount+', keywords: ['paramount'] },
-      { title: 'Hulu', keywords: ['hulu'] },
-      { title: 'Peacock', keywords: ['peacock'] },
-      { title: 'Crunchyroll', keywords: ['crunchyroll'] },
-    ],
-  },
-  {
-    id: 'genres',
-    title: 'Genres',
-    description: "One folder per common genre, matched against your installed addons' own catalogs.",
-    folders: [
-      { title: 'Action', keywords: ['action'] },
-      { title: 'Comedy', keywords: ['comedy'] },
-      { title: 'Drama', keywords: ['drama'] },
-      { title: 'Horror', keywords: ['horror'] },
-      { title: 'Sci-Fi', keywords: ['sci-fi', 'science fiction'] },
-      { title: 'Animation', keywords: ['animation', 'anime'] },
-      { title: 'Documentary', keywords: ['documentary'] },
-      { title: 'Thriller', keywords: ['thriller'] },
-      { title: 'Romance', keywords: ['romance'] },
-    ],
-  },
-];
+const GENRE_TEMPLATE: { id: string; title: string; description: string; genres: GenreTemplateSlot[] } = {
+  id: 'genres',
+  title: 'Genres',
+  description: "One folder per genre, using each matching catalog's own genre filter - not a separate catalog per genre.",
+  genres: [
+    { title: 'Action', aliases: ['action'] },
+    { title: 'Comedy', aliases: ['comedy'] },
+    { title: 'Drama', aliases: ['drama'] },
+    { title: 'Horror', aliases: ['horror'] },
+    { title: 'Sci-Fi', aliases: ['sci-fi', 'science fiction'] },
+    { title: 'Animation', aliases: ['animation', 'anime'] },
+    { title: 'Documentary', aliases: ['documentary'] },
+    { title: 'Thriller', aliases: ['thriller'] },
+    { title: 'Romance', aliases: ['romance'] },
+  ],
+};
 
-function matchCatalogsForKeywords(keywords: string[], addons: StremioAddon[]): NuvioCatalogSource[] {
+function matchGenreSources(aliases: string[], addons: StremioAddon[]): NuvioCatalogSource[] {
   const matches: NuvioCatalogSource[] = [];
   for (const addon of addons) {
     const addonId = addon.manifest?.id || addon.transportUrl;
     for (const cat of addon.manifest?.catalogs || []) {
-      const name = (cat.name || cat.id || '').toLowerCase();
-      if (keywords.some((k) => name.includes(k))) {
-        matches.push({ addonId, type: cat.type, catalogId: cat.id });
+      const genreExtra = cat.extra?.find((e) => e.name === 'genre');
+      const matchedOption = (genreExtra?.options || []).find((opt) =>
+        aliases.some((a) => opt.toLowerCase() === a || opt.toLowerCase().includes(a))
+      );
+      if (matchedOption) {
+        matches.push({ addonId, type: cat.type, catalogId: cat.id, genre: matchedOption });
       }
     }
   }
@@ -234,20 +223,20 @@ export default function NuvioCollectionsPage() {
     setCollections((prev) => [...prev, { id: newId(), title: 'New Collection', folders: [] }]);
   };
 
-  // Builds folders only for template slots that actually matched something
-  // real in this account's own installed addons - never an empty/fake
-  // placeholder folder just because the template listed it.
-  const applyTemplate = (template: CollectionTemplate) => {
-    const folders = template.folders
-      .map((slot) => ({ id: newId(), title: slot.title, catalogSources: matchCatalogsForKeywords(slot.keywords, addons) }))
+  // Builds folders only for genre slots that actually matched a real
+  // genre-filterable catalog in this account's own installed addons - never
+  // an empty/fake placeholder folder just because the template listed it.
+  const applyGenreTemplate = () => {
+    const folders = GENRE_TEMPLATE.genres
+      .map((slot) => ({ id: newId(), title: slot.title, catalogSources: matchGenreSources(slot.aliases, addons) }))
       .filter((f) => f.catalogSources.length > 0);
     if (folders.length === 0) {
-      toast.error('No matching catalogs found in your installed addons for this template');
+      toast.error('No genre-filterable catalogs found in your installed addons');
       return;
     }
-    setCollections((prev) => [...prev, { id: newId(), title: template.title, folders }]);
+    setCollections((prev) => [...prev, { id: newId(), title: GENRE_TEMPLATE.title, folders }]);
     setTemplatesOpen(false);
-    toast.success(`Added "${template.title}" (${folders.length} of ${template.folders.length} folders matched)`);
+    toast.success(`Added "${GENRE_TEMPLATE.title}" (${folders.length} of ${GENRE_TEMPLATE.genres.length} folders matched)`);
   };
 
   const updateCollection = (id: string, patch: Partial<NuvioCollection>) => {
@@ -506,10 +495,11 @@ export default function NuvioCollectionsPage() {
                                   <div className="mt-2 pl-6 space-y-1.5">
                                     {(folder.catalogSources || []).map((source, sIndex) => {
                                       const { addonName, catalogName } = describeSource(source);
+                                      const genreSuffix = source.genre && source.genre !== 'none' ? ` — ${source.genre}` : '';
                                       return (
                                         <div key={sIndex} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-md bg-surface-hover">
                                           <span className="flex-1 truncate text-default">
-                                            {catalogName} <span className="text-subtle">· {addonName} ({source.type})</span>
+                                            {catalogName}{genreSuffix} <span className="text-subtle">· {addonName} ({source.type})</span>
                                           </span>
                                           <button type="button" onClick={() => removeSource(collection.id, folder.id, sIndex)} className="text-subtle hover:text-error shrink-0">
                                             <TrashIcon className="w-3 h-3" />
@@ -575,25 +565,25 @@ export default function NuvioCollectionsPage() {
             Folders are only added where a real match is found in your installed addons - nothing is guessed or left empty.
           </p>
           {addonsLoading && <p className="text-sm text-muted">Loading your installed addons...</p>}
-          {!addonsLoading && COLLECTION_TEMPLATES.map((template) => {
-            const matchedFolders = template.folders.filter((slot) => matchCatalogsForKeywords(slot.keywords, addons).length > 0);
+          {!addonsLoading && (() => {
+            const matchedGenres = GENRE_TEMPLATE.genres.filter((slot) => matchGenreSources(slot.aliases, addons).length > 0);
             return (
-              <Card key={template.id} padding="md">
+              <Card padding="md">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-default">{template.title}</p>
-                    <p className="text-xs text-muted">{template.description}</p>
+                    <p className="text-sm font-semibold text-default">{GENRE_TEMPLATE.title}</p>
+                    <p className="text-xs text-muted">{GENRE_TEMPLATE.description}</p>
                     <p className="text-xs text-subtle mt-1">
-                      {matchedFolders.length} of {template.folders.length} folders match your installed addons
+                      {matchedGenres.length} of {GENRE_TEMPLATE.genres.length} genres match your installed addons
                     </p>
                   </div>
-                  <Button variant="secondary" size="sm" onClick={() => applyTemplate(template)} disabled={matchedFolders.length === 0}>
+                  <Button variant="secondary" size="sm" onClick={applyGenreTemplate} disabled={matchedGenres.length === 0}>
                     Add
                   </Button>
                 </div>
               </Card>
             );
-          })}
+          })()}
         </div>
       </Modal>
 
