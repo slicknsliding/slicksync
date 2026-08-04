@@ -240,6 +240,10 @@ async function exportListToMdblist(apiKey, listName, items) {
     id: listId,
     name: created?.name || listName,
     slug: created?.slug || null,
+    // Confirmed live: the create response returns this directly (e.g.
+    // https://mdblist.com/lists/{username}/{slug}) - no need to guess the
+    // username or construct it ourselves.
+    url: created?.url || null,
     added: sumMoviesAndShows(addResult?.added),
     existing: sumMoviesAndShows(addResult?.existing),
     notFound: sumMoviesAndShows(addResult?.not_found),

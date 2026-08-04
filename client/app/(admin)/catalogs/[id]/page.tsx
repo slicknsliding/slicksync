@@ -23,7 +23,7 @@ import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import {
   RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon, SparklesIcon, PhotoIcon,
-  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon,
+  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, EllipsisVerticalIcon,
 } from '@heroicons/react/24/outline';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
@@ -174,8 +174,9 @@ export default function ListDetailPage() {
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<{ name: string; slug: string | null; added: number | null; existing: number | null; notFound: number | null } | null>(null);
+  const [exportResult, setExportResult] = useState<{ name: string; slug: string | null; url: string | null; added: number | null; existing: number | null; notFound: number | null } | null>(null);
   // Bulk select - mirrors the Set<string> + floating-action-bar pattern from
   // users/page.tsx. Entering select mode hides PosterCard's own badges/menu
   // on every card (see CatalogGridCard below) so a tap toggles selection
@@ -379,27 +380,50 @@ export default function ListDetailPage() {
   // "leave this list" reads as a different kind of action from "edit it".
   // The sidebar Header below has no such left column, so it keeps Back
   // bundled with the other actions - there's nothing to separate it from.
+  // Only Cover art + Delete stay inline (most visually significant / most
+  // final) - Suggest titles, Rename, and Export to MDBList moved into the
+  // "..." overflow below. Five buttons all rendered inline crowded this row
+  // badly once Export to MDBList was added, forcing a wrap that pushed the
+  // bell into an awkward spot above it.
   const editActions = list && !isLoading && !notFound ? (
     <div className="flex items-center gap-2">
-      <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
-        Suggest titles
-      </Button>
       <Button variant="secondary" size="sm" leftIcon={<PhotoIcon className="w-4 h-4" />} onClick={() => setShowCoverPicker(true)}>
         Cover art
       </Button>
-      <Button variant="secondary" size="sm" leftIcon={<PencilSquareIcon className="w-4 h-4" />} onClick={() => { setRenameValue(list.name); setRenaming(true); }}>
-        Rename
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
-        onClick={() => setShowExportConfirm(true)}
-        disabled={list.items.length === 0}
-        title={list.items.length === 0 ? 'Add titles first' : undefined}
-      >
-        Export to MDBList
-      </Button>
+      <div className="relative">
+        <Button variant="secondary" size="sm" onClick={() => setShowMoreMenu((v) => !v)} aria-label="More actions">
+          <EllipsisVerticalIcon className="w-4 h-4" />
+        </Button>
+        {showMoreMenu && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
+            <div className="absolute right-0 mt-2 w-56 z-50 rounded-xl bg-surface border border-default shadow-xl p-1.5">
+              <button
+                type="button"
+                onClick={() => { setShowMoreMenu(false); handleOpenSuggest(); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover rounded-lg transition-colors"
+              >
+                <SparklesIcon className="w-4 h-4" /> Suggest titles
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowMoreMenu(false); setRenameValue(list.name); setRenaming(true); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover rounded-lg transition-colors"
+              >
+                <PencilSquareIcon className="w-4 h-4" /> Rename
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowMoreMenu(false); setShowExportConfirm(true); }}
+                disabled={list.items.length === 0}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ArrowUpTrayIcon className="w-4 h-4" /> Export to MDBList
+              </button>
+            </div>
+          </>
+        )}
+      </div>
       <Button variant="danger" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setDeleting(true)}>
         Delete
       </Button>
@@ -440,8 +464,15 @@ export default function ListDetailPage() {
         {list && (list.coverImageUrl || list.coverColorIndex !== null) && (
           <div className="mb-6 h-32 md:h-40 rounded-xl overflow-hidden">
             {list.coverImageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={list.coverImageUrl} alt="" className="w-full h-full object-cover" />
+              // object-contain (not cover) - see the same fix's comment on
+              // the Catalogs index card for why a poster-shaped image can't
+              // just fill this wide/short banner directly.
+              <div className="relative w-full h-full bg-black">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={list.coverImageUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-40" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={list.coverImageUrl} alt="" className="relative w-full h-full object-contain" />
+              </div>
             ) : (
               <div className="w-full h-full" style={coverColorStyle(list.coverColorIndex!)} />
             )}
@@ -597,24 +628,36 @@ export default function ListDetailPage() {
         isLoading={exporting}
       />
 
-      {/* Export result - no guessed public-list link (MDBList's URL shape for
-          a freshly created list isn't confirmed), just what the API actually
-          returned plus a link to the account's own MDBList dashboard. */}
+      {/* Export result - links straight to the real created list. MDBList's
+          create-list response includes the actual public URL directly
+          (confirmed live this session), so there's no guessing at a
+          username/slug format here. */}
       <Modal isOpen={!!exportResult} onClose={() => setExportResult(null)} title="Exported to MDBList" size="sm">
         {exportResult && (
           <div className="space-y-3">
             <p className="text-sm text-default">Created <span className="font-semibold">{exportResult.name}</span> on MDBList.</p>
             <div className="text-xs text-muted space-y-1">
-              <p>{exportResult.added ?? '?'} added{exportResult.existing ? `, ${exportResult.existing} already existed` : ''}{exportResult.notFound ? `, ${exportResult.notFound} not found on MDBList` : ''}.</p>
+              <p>{exportResult.added ?? 0} added{exportResult.existing ? `, ${exportResult.existing} already existed` : ''}{exportResult.notFound ? `, ${exportResult.notFound} not found on MDBList` : ''}.</p>
             </div>
-            <a
-              href="https://mdblist.com/lists"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-primary hover:underline inline-block"
-            >
-              Open your MDBList lists →
-            </a>
+            {exportResult.url ? (
+              <a
+                href={exportResult.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary hover:underline inline-block"
+              >
+                Open &quot;{exportResult.name}&quot; on MDBList →
+              </a>
+            ) : (
+              <a
+                href="https://mdblist.com/lists"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary hover:underline inline-block"
+              >
+                Open your MDBList lists →
+              </a>
+            )}
             <div className="flex justify-end pt-2">
               <Button variant="ghost" size="sm" onClick={() => setExportResult(null)}>Close</Button>
             </div>

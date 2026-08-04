@@ -1763,7 +1763,7 @@ class ApiClient {
   // does not touch the catalog itself, and doesn't wire the result into any
   // addon (that's a manual step in the addon's own config afterward).
   async exportListToMdblist(id: string) {
-    return this.fetch<{ id: string; name: string; slug: string | null; added: number | null; existing: number | null; notFound: number | null }>(
+    return this.fetch<{ id: string; name: string; slug: string | null; url: string | null; added: number | null; existing: number | null; notFound: number | null }>(
       `/lists/${encodeURIComponent(id)}/export-mdblist`,
       { method: 'POST' }
     );

@@ -134,9 +134,19 @@ export default function ListsPage() {
       onClick={() => router.push('/catalogs/nuvio-collections')}
       className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-base font-semibold transition-transform hover:scale-105"
       style={{
-        background: 'linear-gradient(115deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
+        // Two backgrounds stacked on the same declaration: the two-tone
+        // Nuvio fill paints inside the border (padding-box), the theme's
+        // own primary/secondary gradient paints only the border ring itself
+        // (border-box) - same gradient NebulaGlassStripe uses for the top
+        // accent elsewhere, here going the full way around the pill instead
+        // of just across the top. border-image can't do this on a
+        // rounded-full shape (it ignores border-radius); this dual-
+        // background technique does.
+        background:
+          'linear-gradient(115deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%) padding-box, ' +
+          'linear-gradient(90deg, var(--color-primary), var(--color-secondary)) border-box',
         color: 'rgb(186, 208, 240)',
-        border: '1px solid rgba(186, 208, 240, 0.25)',
+        border: '1.5px solid transparent',
       }}
     >
       Nuvio Collections
@@ -196,9 +206,16 @@ export default function ListsPage() {
                         strip; otherwise the up-to-4-poster collage / empty
                         placeholder from before. */}
                     {list.coverImageUrl ? (
-                      <div className="mb-3 h-24 rounded-md overflow-hidden">
+                      // object-contain (not cover) - a tall poster jammed into
+                      // this wide/short strip via object-cover crops down to
+                      // an unrecognizable sliver of the middle of the image.
+                      // The blurred duplicate behind it fills the letterbox
+                      // bars instead of leaving them flat black.
+                      <div className="relative mb-3 h-24 rounded-md overflow-hidden bg-black">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={list.coverImageUrl} alt="" className="w-full h-full object-cover" />
+                        <img src={list.coverImageUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-40" />
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={list.coverImageUrl} alt="" className="relative w-full h-full object-contain" />
                       </div>
                     ) : list.coverColorIndex !== null && list.coverColorIndex !== undefined ? (
                       <div className="mb-3 h-24 rounded-md" style={coverColorStyle(list.coverColorIndex)} />
