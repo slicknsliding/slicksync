@@ -1751,6 +1751,14 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+  // Persist a manual drag-reorder - orderedIds must be the list's current
+  // item ids, same set, in the new order (server rejects a stale/partial set).
+  async reorderListItems(id: string, orderedIds: string[]) {
+    return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items/reorder`, {
+      method: 'PATCH',
+      body: JSON.stringify({ orderedIds }),
+    });
+  }
   // Import a TMDb or MDBList list (auto-detected from the URL) into a new list.
   async importList(url: string, name?: string) {
     return this.fetch<CustomList & { truncated: boolean; totalAvailable: number }>('/lists/import', {

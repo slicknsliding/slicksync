@@ -184,6 +184,42 @@ module.exports = ({ prisma, getAccountId }) => {
     }
   });
 
+  // PATCH /api/lists/:id/items/reorder — persist a manual drag-reorder.
+  // { orderedIds: string[] } must contain EXACTLY the list's current item
+  // ids (same set, any order) - rejected otherwise, since itemsJson is one
+  // opaque JSON blob with no relational position column to reconcile a
+  // partial/stale reorder against (e.g. a client that missed a concurrent
+  // add/remove in another tab).
+  router.patch('/:id/items/reorder', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
+      if (!existing) return res.status(404).json({ error: 'List not found' });
+      const orderedIds = Array.isArray(req.body?.orderedIds) ? req.body.orderedIds.map(String) : null;
+      if (!orderedIds) return res.status(400).json({ error: 'orderedIds must be an array' });
+
+      const items = parseItems(existing.itemsJson);
+      const currentIds = new Set(items.map((i) => i.id));
+      const sameSet = orderedIds.length === items.length
+        && new Set(orderedIds).size === items.length
+        && orderedIds.every((id) => currentIds.has(id));
+      if (!sameSet) {
+        return res.status(400).json({ error: 'orderedIds must match the list\'s current items exactly (it may have changed since you loaded it)' });
+      }
+
+      const byId = new Map(items.map((i) => [i.id, i]));
+      const reordered = orderedIds.map((id) => byId.get(id));
+      const list = await prisma.customList.update({
+        where: { id: existing.id },
+        data: { itemsJson: JSON.stringify(reordered) },
+      });
+      res.json(shape(list));
+    } catch (e) {
+      console.error('Error reordering custom list items:', e);
+      res.status(500).json({ error: 'Failed to reorder items' });
+    }
+  });
+
   // GET /api/lists/:id/suggest?query= — propose titles for this catalog by
   // theme (TMDb keyword search, seeded from the catalog's own name unless
   // ?query= overrides it). Read-only: returns candidates for the caller to
