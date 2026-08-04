@@ -165,9 +165,9 @@ docker compose -f docker-compose.private.yml logs -f   # watch it come up
 ```
 This pulls the pre-built `ghcr.io/slicknsliding/slicksync:private` image — the stable release built from `main`. (There's also a `:beta` image used for testing upcoming changes before they land on `main` — don't use it unless you specifically want to try something not yet released.) The same image is also published to Docker Hub as `slicknsliding/slicksync:private`, if you'd rather pull from there.
 
-Frontend on `:3000`, API on `:4000` — point your reverse proxy at `:3000` only.
+Frontend and API are both served through `:3000` — the frontend proxies `/api`, `/uploads`, and `/invite` requests to the API internally, so only `:3000` needs a port mapping or a reverse proxy pointed at it.
 
-**Verify it's actually up**: `docker exec slicksync sh -c 'echo APP_VERSION=$APP_VERSION'` should print the current release tag (e.g. `v1.61.2`), and `https://your-domain/` should load the login page.
+**Verify it's actually up**: `docker exec slicksync sh -c 'echo APP_VERSION=$APP_VERSION'` should print the current release tag (e.g. `v1.64.0`), and `https://your-domain/` should load the login page.
 
 **Updating**: `docker compose -f docker-compose.private.yml pull && docker compose -f docker-compose.private.yml up -d` — your `/app/data` volume (database, encryption key, Vault backups, avatars) survives updates. No `git pull` or rebuild needed since the default config just pulls the published image. (If you switched to the commented-out `build:` block instead, use `git pull && docker compose -f docker-compose.private.yml up -d --build`.)
 
