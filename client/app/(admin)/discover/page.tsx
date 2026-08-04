@@ -419,7 +419,7 @@ export default function DiscoverPage() {
                     type="button"
                     onClick={() => setType(key)}
                     className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
-                      type === key ? 'bg-primary text-white' : 'bg-surface-hover text-muted hover:text-default'
+                      type === key ? 'bg-primary text-white' : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10'
                     }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -457,7 +457,7 @@ export default function DiscoverPage() {
                 type="button"
                 onClick={() => setSearchMode('titles')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                  searchMode === 'titles' ? 'bg-primary text-white' : 'bg-surface-hover text-muted hover:text-default'
+                  searchMode === 'titles' ? 'bg-primary text-white' : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10'
                 }`}
               >
                 <MagnifyingGlassIcon className="w-3.5 h-3.5" />
@@ -467,7 +467,7 @@ export default function DiscoverPage() {
                 type="button"
                 onClick={() => setSearchMode('people')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                  searchMode === 'people' ? 'bg-primary text-white' : 'bg-surface-hover text-muted hover:text-default'
+                  searchMode === 'people' ? 'bg-primary text-white' : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10'
                 }`}
               >
                 <UserIcon className="w-3.5 h-3.5" />
@@ -495,7 +495,7 @@ export default function DiscoverPage() {
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       source === 'discover'
                         ? 'bg-primary text-white'
-                        : 'bg-surface-hover text-muted hover:text-default'
+                        : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10'
                     }`}
                   >
                     Discover
@@ -511,7 +511,7 @@ export default function DiscoverPage() {
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       source === 'watchlist'
                         ? 'bg-primary text-white'
-                        : 'bg-surface-hover text-muted hover:text-default'
+                        : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10'
                     }`}
                   >
                     ★ Watchlist
@@ -530,7 +530,7 @@ export default function DiscoverPage() {
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       source === 'foryou'
                         ? 'bg-primary text-white'
-                        : 'bg-surface-hover text-muted hover:text-default'
+                        : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10'
                     }`}
                   >
                     ✨ For You
@@ -580,7 +580,7 @@ export default function DiscoverPage() {
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as SortKey)}
                     aria-label="Sort results"
-                    className="px-2.5 py-1 rounded-md text-xs font-medium bg-surface-hover text-muted hover:text-default border border-default cursor-pointer"
+                    className="px-2.5 py-1 rounded-md text-xs font-medium bg-surface-hover text-muted hover:text-default hover:bg-primary/10 border border-default cursor-pointer"
                   >
                     {SORT_OPTIONS.filter((opt) => searchMode !== 'people' || opt.key !== 'rating-desc').map((opt) => (
                       <option key={opt.key} value={opt.key}>{opt.label}</option>
@@ -608,7 +608,7 @@ export default function DiscoverPage() {
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       catalog === c.key
                         ? 'bg-primary text-white'
-                        : 'bg-surface-hover text-muted hover:text-default'
+                        : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10'
                     }`}
                   >
                     {c.label}
@@ -640,7 +640,7 @@ export default function DiscoverPage() {
                         className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
                           genre === g.key
                             ? 'bg-primary text-white border-transparent'
-                            : 'bg-surface-hover text-muted hover:text-default border-default'
+                            : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10 border-default'
                         }`}
                       >
                         {g.label}
@@ -661,7 +661,7 @@ export default function DiscoverPage() {
                   className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
                     genre
                       ? 'bg-primary text-white border-transparent'
-                      : 'bg-surface-hover text-muted hover:text-default border-default'
+                      : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10 border-default'
                   }`}
                 >
                   <option value="">All genres</option>
@@ -695,7 +695,7 @@ export default function DiscoverPage() {
                       className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                         recMode === m
                           ? 'bg-primary text-white'
-                          : 'bg-surface-hover text-muted hover:text-default'
+                          : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10'
                       }`}
                     >
                       {m === 'personal' ? 'Personal' : 'Shared with…'}
@@ -717,7 +717,7 @@ export default function DiscoverPage() {
                           className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
                             recUserId === u.id
                               ? 'bg-primary text-white border-transparent'
-                              : 'bg-surface-hover text-muted hover:text-default border-default'
+                              : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10 border-default'
                           }`}
                         >
                           {u.name || u.username}
@@ -755,7 +755,7 @@ export default function DiscoverPage() {
                               className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
                                 recUserId2 === u.id
                                   ? 'bg-primary text-white border-transparent'
-                                  : 'bg-surface-hover text-muted hover:text-default border-default'
+                                  : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10 border-default'
                               }`}
                             >
                               {u.name || u.username}
