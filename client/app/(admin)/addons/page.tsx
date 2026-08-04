@@ -127,7 +127,7 @@ function TagPill({
           ? 'bg-primary text-white border-transparent'
           : tinted
             ? 'border-transparent'
-            : 'bg-surface-hover text-muted hover:text-default hover:bg-primary/10 border-default'
+            : 'bg-surface-hover text-muted nav-item-hover-pill border-default'
       }`}
       style={{
         ...(isOver ? { boxShadow: '0 0 0 2px var(--color-primary)', background: 'var(--color-primary-muted)' } : {}),
@@ -730,7 +730,7 @@ export default function AddonsPage() {
             <button
               type="button"
               onClick={() => setIsAddingTag(true)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-default text-muted hover:text-default hover:border-primary hover:bg-primary/10 transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-default text-muted nav-item-hover-pill transition-colors"
             >
               <PlusIcon className="w-3.5 h-3.5" />
               New Tag
@@ -1043,7 +1043,7 @@ export default function AddonsPage() {
       {/* Floating Add Button - Mobile Only */}
       <button
         onClick={() => setIsAddModalOpen(true)}
-        className="lg:hidden fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg bg-surface border border-default transition-colors hover:bg-primary hover:text-white hover:border-transparent"
+        className="lg:hidden fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full flex items-center justify-center shadow-lg bg-surface border border-default nav-item-hover-pill"
         style={{ boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)' }}
       >
         <PlusIcon className="w-6 h-6" />
