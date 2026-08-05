@@ -1440,6 +1440,8 @@ export default function NuvioCollectionsPage() {
           name={coverPickerCollection.title}
           currentAvatarUrl={typeof coverPickerCollection.coverImageUrl === 'string' ? coverPickerCollection.coverImageUrl : null}
           nuvioCoversUserId={selectedUserId || undefined}
+          title="Cover Photo"
+          previewShape="rect"
           onSave={async (data) => {
             if (!('avatarUrl' in data)) { setCoverPickerCollection(null); return; }
             updateCollection(coverPickerCollection.id, { coverImageUrl: data.avatarUrl ?? null });
@@ -1459,6 +1461,8 @@ export default function NuvioCollectionsPage() {
             name={folder?.title || 'Folder'}
             currentAvatarUrl={typeof folder?.coverImageUrl === 'string' ? folder.coverImageUrl : null}
             nuvioCoversUserId={selectedUserId || undefined}
+            title="Cover Photo"
+            previewShape="rect"
             onSave={async (data) => {
               if (!('avatarUrl' in data)) { setCoverPickerFolder(null); return; }
               updateFolder(coverPickerFolder.collectionId, coverPickerFolder.folderId, { coverImageUrl: data.avatarUrl ?? null });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon, ArrowPathIcon, LockClosedIcon, ExclamationTriangleIcon, ArrowUpCircleIcon } from '@heroicons/react/24/outline';
 import { Badge, Button, Avatar } from '@/components/ui';
@@ -33,6 +34,7 @@ const DISMISSED_STORAGE_KEY = 'notifications-dismissed-ids';
 const READ_STORAGE_KEY = 'notifications-read-ids';
 
 export function NotificationsDropdown({ activities = [], inviteHistory = [], taskHistory = [] }: NotificationsDropdownProps) {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -95,6 +97,31 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     if (typeof window !== 'undefined') {
       localStorage.setItem(READ_STORAGE_KEY, JSON.stringify(Array.from(next)));
     }
+  };
+
+  // Where tapping a notification should land. Stored bell notifications
+  // (activity/sync/invite/vault/task/proxy/update) already carry a real
+  // url from the server (notificationStore.js's createNotification) -
+  // episode/addon items are built client-side from their own dedicated
+  // tables and never had one, so they get a sensible fixed fallback
+  // instead. 'request'/'user' rows have their own Accept/Reject buttons
+  // and navigating away on a stray tap would be actively unhelpful.
+  const getNotificationUrl = (n: NotificationItem): string | null => {
+    if (n.data?.url) return n.data.url;
+    switch (n.type) {
+      case 'addon': return '/addons';
+      case 'episode': return '/';
+      case 'mismatch': return '/activity';
+      default: return null;
+    }
+  };
+
+  const handleNotificationClick = (notification: NotificationItem) => {
+    const url = getNotificationUrl(notification);
+    if (!url) return;
+    persistReadIds(new Set(readIds).add(notification.id));
+    setIsOpen(false);
+    router.push(url);
   };
 
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
@@ -607,7 +634,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                           key={notification.id}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
-                          className="p-4 hover:bg-surface-hover transition-colors duration-500 cursor-pointer"
+                          onClick={() => handleNotificationClick(notification)}
+                          className={`p-4 hover:bg-surface-hover transition-colors duration-500 ${getNotificationUrl(notification) ? 'cursor-pointer' : ''}`}
                           // Explicit value for BOTH states (not undefined for
                           // "read") - the underlying read state was already
                           // updating instantly on "Mark all read" (confirmed:

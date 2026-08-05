@@ -842,6 +842,8 @@ export default function ListDetailPage() {
           name={list.name}
           currentAvatarUrl={list.coverImageUrl}
           currentColorIndex={list.coverColorIndex ?? 0}
+          title="Cover Photo"
+          previewShape="rect"
           onSave={handleCoverSave}
         />
       )}

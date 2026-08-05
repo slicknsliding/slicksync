@@ -23,6 +23,12 @@ interface AvatarPickerModalProps {
   // (Users/Groups/Catalogs avatars) - that gallery is Nuvio-cover-art
   // specific, not a generic avatar source.
   nuvioCoversUserId?: string;
+  // This component is reused for both circular person/account avatars and
+  // rectangular cover art (Catalogs, Nuvio Collections/folders) - the
+  // "Change Avatar" title and round preview only make sense for the former.
+  // Cover-art callers pass a real title and 'rect' here instead.
+  title?: string;
+  previewShape?: 'circle' | 'rect';
 }
 
 type Tab = 'color' | 'url' | 'upload' | 'nuvio';
@@ -35,6 +41,8 @@ export function AvatarPickerModal({
   currentColorIndex,
   onSave,
   nuvioCoversUserId,
+  title = 'Change Avatar',
+  previewShape = 'circle',
 }: AvatarPickerModalProps) {
   const [tab, setTab] = useState<Tab>(currentAvatarUrl ? 'url' : 'color');
   const [urlInput, setUrlInput] = useState(currentAvatarUrl || '');
@@ -156,16 +164,27 @@ export function AvatarPickerModal({
   });
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Change Avatar" size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title={title} size="md">
       <div className="space-y-4">
-        <div className="flex justify-center mb-2">
-          <Avatar
-            name={name}
-            src={tab === 'color' ? undefined : (previewUrl || undefined)}
-            colorIndex={selectedColor}
-            size="2xl"
-          />
-        </div>
+        {previewShape === 'circle' ? (
+          <div className="flex justify-center mb-2">
+            <Avatar
+              name={name}
+              src={tab === 'color' ? undefined : (previewUrl || undefined)}
+              colorIndex={selectedColor}
+              size="2xl"
+            />
+          </div>
+        ) : (
+          <div className="w-full aspect-video rounded-xl overflow-hidden bg-surface-hover mb-2">
+            {tab !== 'color' && previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full" style={tab === 'color' ? { background: `color-mix(in srgb, var(--color-${selectedColor < 4 ? 'primary' : 'secondary'}) ${100 - (selectedColor % 4) * 25}%, white)` } : undefined} />
+            )}
+          </div>
+        )}
 
         <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
           {tabs.map((t) => (

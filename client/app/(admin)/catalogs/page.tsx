@@ -378,6 +378,8 @@ export default function ListsPage() {
           name={coverPicker.name}
           currentAvatarUrl={coverPicker.coverImageUrl}
           currentColorIndex={coverPicker.coverColorIndex ?? 0}
+          title="Cover Photo"
+          previewShape="rect"
           onSave={handleCoverSave}
         />
       )}
