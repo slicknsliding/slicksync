@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
-import { Card, Button, Modal, PosterThumb } from '@/components/ui';
+import { Card, Button, Modal, PosterThumb, Badge } from '@/components/ui';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
@@ -11,8 +11,9 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList } from '@/lib/api';
 import {
-  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon,
+  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon, MapPinIcon,
 } from '@heroicons/react/24/outline';
+import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly, so a
 // catalog's solid-color cover reads as the same color the picker showed.
@@ -94,6 +95,13 @@ export default function ListsPage() {
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleTogglePin = async (list: CustomList) => {
+    const next = !list.pinned;
+    setLists((prev) => prev.map((l) => (l.id === list.id ? { ...l, pinned: next } : l)));
+    try { await api.updateList(list.id, { pinned: next }); }
+    catch { toast.error('Failed to update'); setLists((prev) => prev.map((l) => (l.id === list.id ? { ...l, pinned: !next } : l))); }
   };
 
   const handleDelete = async () => {
@@ -202,82 +210,151 @@ export default function ListsPage() {
             </Card>
           )}
 
-          {lists.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {lists.map((list) => (
-                <Card key={list.id} padding="md" className="group">
-                  <button
-                    type="button"
-                    onClick={() => router.push(`/catalogs/${list.id}`)}
-                    className="w-full text-left"
-                  >
-                    {/* Custom cover (image or solid color) takes over the whole
-                        strip; otherwise the up-to-4-poster collage / empty
-                        placeholder from before. h-40 (was h-24) on the image
-                        variant specifically - object-contain on a 2:3 poster
-                        needs real height to read as anything but a tiny
-                        centered sliver; the other two variants match it so
-                        cards in the same grid row stay the same height. */}
-                    {list.coverImageUrl ? (
-                      // object-contain (not cover) - a tall poster jammed into
-                      // this wide/short strip via object-cover crops down to
-                      // an unrecognizable sliver of the middle of the image.
-                      // The blurred duplicate behind it fills the letterbox
-                      // bars instead of leaving them flat black.
-                      <div className="relative mb-3 h-40 rounded-md overflow-hidden bg-black">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={list.coverImageUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-40" />
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={list.coverImageUrl} alt="" className="relative w-full h-full object-contain" />
-                      </div>
-                    ) : list.coverColorIndex !== null && list.coverColorIndex !== undefined ? (
-                      <div className="mb-3 h-40 rounded-md" style={coverColorStyle(list.coverColorIndex)} />
-                    ) : (
-                      <div className="flex gap-1 mb-3 h-40">
-                        {list.items.length === 0 ? (
-                          <div className="flex-1 rounded-md bg-surface-hover flex items-center justify-center">
-                            <RectangleStackIcon className="w-6 h-6 text-subtle" />
+          {lists.length > 0 && (() => {
+            // At most one hero - the pinned catalog with the most recent
+            // activity if more than one happens to be pinned (see the
+            // pinned field's own schema comment).
+            const pinned = lists.filter((l) => l.pinned).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+            const hero = pinned[0] || null;
+            const rest = hero ? lists.filter((l) => l.id !== hero.id) : lists;
+
+            // Action row is always visible (not hover-only) - hover has no
+            // touch equivalent, so the original opacity-0 group-hover
+            // treatment made Cover art/Rename/Delete completely unreachable
+            // on mobile. Small enough not to compete with the title/count.
+            const actionRow = (list: CustomList, size: 'sm' | 'lg') => (
+              <div className={`flex items-center gap-1 ${size === 'lg' ? 'bg-black/40 backdrop-blur-sm rounded-lg p-1' : ''}`}>
+                <button
+                  type="button"
+                  title={list.pinned ? 'Unpin from top' : 'Pin to top'}
+                  onClick={(e) => { e.stopPropagation(); handleTogglePin(list); }}
+                  className={`p-1.5 rounded-lg transition-colors ${list.pinned ? 'text-primary' : `${size === 'lg' ? 'text-white/80 hover:text-white' : 'text-muted hover:text-default'} hover:bg-surface-hover`}`}
+                >
+                  {list.pinned ? <MapPinIconSolid className="w-4 h-4" /> : <MapPinIcon className="w-4 h-4" />}
+                </button>
+                <button
+                  type="button"
+                  title="Cover art"
+                  onClick={(e) => { e.stopPropagation(); setCoverPicker(list); }}
+                  className={`p-1.5 rounded-lg transition-colors ${size === 'lg' ? 'text-white/80 hover:text-white' : 'text-muted hover:text-default'} hover:bg-surface-hover`}
+                >
+                  <PhotoIcon className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  title="Rename"
+                  onClick={(e) => { e.stopPropagation(); setRenaming(list); setRenameValue(list.name); }}
+                  className={`p-1.5 rounded-lg transition-colors ${size === 'lg' ? 'text-white/80 hover:text-white' : 'text-muted hover:text-default'} hover:bg-surface-hover`}
+                >
+                  <PencilSquareIcon className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  title="Delete catalog"
+                  onClick={(e) => { e.stopPropagation(); setDeleting(list); }}
+                  className={`p-1.5 rounded-lg transition-colors hover:text-error ${size === 'lg' ? 'text-white/80' : 'text-muted'} hover:bg-surface-hover`}
+                >
+                  <TrashIcon className="w-4 h-4" />
+                </button>
+              </div>
+            );
+
+            return (
+              <div className="space-y-4">
+                {hero && (
+                  <Card padding="none" className="overflow-hidden">
+                    <button type="button" onClick={() => router.push(`/catalogs/${hero.id}`)} className="w-full text-left block relative group">
+                      <div className="relative h-48 md:h-72 bg-black">
+                        {hero.coverImageUrl ? (
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={hero.coverImageUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-40" />
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={hero.coverImageUrl} alt="" className="relative w-full h-full object-contain" />
+                          </>
+                        ) : hero.coverColorIndex !== null && hero.coverColorIndex !== undefined ? (
+                          <div className="w-full h-full" style={coverColorStyle(hero.coverColorIndex)} />
+                        ) : hero.items.length > 0 ? (
+                          <div className="flex gap-1 w-full h-full">
+                            {hero.items.slice(0, 4).map((it) => (
+                              <PosterThumb key={it.id} item={it} className="flex-1 h-full" />
+                            ))}
                           </div>
                         ) : (
-                          list.items.slice(0, 4).map((it) => (
-                            <PosterThumb key={it.id} item={it} className="flex-1 h-full" />
-                          ))
+                          <div className="w-full h-full flex items-center justify-center">
+                            <RectangleStackIcon className="w-10 h-10 text-subtle" />
+                          </div>
                         )}
+                        <div className="absolute inset-0" style={{ background: 'linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 45%)' }} />
+                        <div className="absolute top-3 right-3">{actionRow(hero, 'lg')}</div>
+                        <div className="absolute bottom-0 left-0 right-0 p-4 md:p-5">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="primary" size="sm">Featured</Badge>
+                          </div>
+                          <p className="text-xl md:text-2xl font-display font-semibold text-white truncate">{hero.name}</p>
+                          <p className="text-sm text-white/70">{hero.items.length} title{hero.items.length !== 1 ? 's' : ''}</p>
+                        </div>
                       </div>
-                    )}
-                    <p className="text-sm font-semibold text-default truncate">{list.name}</p>
-                    <p className="text-xs text-muted">{list.items.length} title{list.items.length !== 1 ? 's' : ''}</p>
-                  </button>
-                  <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      type="button"
-                      title="Cover art"
-                      onClick={() => setCoverPicker(list)}
-                      className="p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface-hover transition-colors"
-                    >
-                      <PhotoIcon className="w-4 h-4" />
                     </button>
-                    <button
-                      type="button"
-                      title="Rename"
-                      onClick={() => { setRenaming(list); setRenameValue(list.name); }}
-                      className="p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface-hover transition-colors"
-                    >
-                      <PencilSquareIcon className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      title="Delete catalog"
-                      onClick={() => setDeleting(list)}
-                      className="p-1.5 rounded-lg text-muted hover:text-error hover:bg-surface-hover transition-colors"
-                    >
-                      <TrashIcon className="w-4 h-4" />
-                    </button>
+                  </Card>
+                )}
+
+                {rest.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {rest.map((list) => (
+                      <Card key={list.id} padding="md">
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/catalogs/${list.id}`)}
+                          className="w-full text-left"
+                        >
+                          {/* Custom cover (image or solid color) takes over the whole
+                              strip; otherwise the up-to-4-poster collage / empty
+                              placeholder from before. h-40 (was h-24) on the image
+                              variant specifically - object-contain on a 2:3 poster
+                              needs real height to read as anything but a tiny
+                              centered sliver; the other two variants match it so
+                              cards in the same grid row stay the same height. */}
+                          {list.coverImageUrl ? (
+                            // object-contain (not cover) - a tall poster jammed into
+                            // this wide/short strip via object-cover crops down to
+                            // an unrecognizable sliver of the middle of the image.
+                            // The blurred duplicate behind it fills the letterbox
+                            // bars instead of leaving them flat black.
+                            <div className="relative mb-3 h-40 rounded-md overflow-hidden bg-black">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={list.coverImageUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-40" />
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={list.coverImageUrl} alt="" className="relative w-full h-full object-contain" />
+                            </div>
+                          ) : list.coverColorIndex !== null && list.coverColorIndex !== undefined ? (
+                            <div className="mb-3 h-40 rounded-md" style={coverColorStyle(list.coverColorIndex)} />
+                          ) : (
+                            <div className="flex gap-1 mb-3 h-40">
+                              {list.items.length === 0 ? (
+                                <div className="flex-1 rounded-md bg-surface-hover flex items-center justify-center">
+                                  <RectangleStackIcon className="w-6 h-6 text-subtle" />
+                                </div>
+                              ) : (
+                                list.items.slice(0, 4).map((it) => (
+                                  <PosterThumb key={it.id} item={it} className="flex-1 h-full" />
+                                ))
+                              )}
+                            </div>
+                          )}
+                          <p className="text-sm font-semibold text-default truncate">{list.name}</p>
+                          <p className="text-xs text-muted">{list.items.length} title{list.items.length !== 1 ? 's' : ''}</p>
+                        </button>
+                        <div className="flex items-center gap-1 mt-2">
+                          {actionRow(list, 'sm')}
+                        </div>
+                      </Card>
+                    ))}
                   </div>
-                </Card>
-              ))}
-            </div>
-          )}
+                )}
+              </div>
+            );
+          })()}
         </PageSection>
       </div>
       </div>

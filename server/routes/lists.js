@@ -25,6 +25,7 @@ module.exports = ({ prisma, getAccountId }) => {
     coverImageUrl: list.coverImageUrl || null,
     coverColorIndex: list.coverColorIndex ?? null,
     importSourceUrl: list.importSourceUrl || null,
+    pinned: !!list.pinned,
     createdAt: list.createdAt,
     updatedAt: list.updatedAt,
   });
@@ -167,6 +168,7 @@ module.exports = ({ prisma, getAccountId }) => {
       if (typeof body.description === 'string') data.description = body.description.trim() || null;
       if ('coverImageUrl' in body) data.coverImageUrl = body.coverImageUrl ? String(body.coverImageUrl) : null;
       if ('coverColorIndex' in body) data.coverColorIndex = body.coverColorIndex === null || body.coverColorIndex === undefined ? null : Number(body.coverColorIndex);
+      if ('pinned' in body) data.pinned = !!body.pinned;
       const list = await prisma.customList.update({ where: { id: existing.id }, data });
       res.json(shape(list));
     } catch (e) {
