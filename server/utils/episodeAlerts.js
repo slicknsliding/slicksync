@@ -220,11 +220,20 @@ async function checkForNewEpisodes(prisma) {
     return value
   }
 
+  const omdbKeyByAccount = new Map()
+  async function omdbKeyFor(accountId) {
+    if (omdbKeyByAccount.has(accountId)) return omdbKeyByAccount.get(accountId)
+    const { resolveOmdbKeyForAccount } = require('./listImport')
+    const value = await resolveOmdbKeyForAccount(prisma, accountId)
+    omdbKeyByAccount.set(accountId, value)
+    return value
+  }
+
   let alertsFired = 0
   for (const show of shows.values()) {
     if (mutedKeys.has(`${show.accountId}::${show.showId}`)) continue
     try {
-      const metadata = await fetchMetadata(show.showId, 'series', show.videoId)
+      const metadata = await fetchMetadata(show.showId, 'series', show.videoId, await omdbKeyFor(show.accountId))
       if (!metadata?.allEpisodes?.length) continue
 
       const todayDayNumber = await todayDayNumberFor(show.accountId)

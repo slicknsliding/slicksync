@@ -1191,6 +1191,25 @@ export default function MetricsPage() {
                 <div className="columns-1 md:columns-2 gap-4">
                   <div className="mb-4 break-inside-avoid-column">
                   <HealthCheckCard
+                    icon={<TagIcon className="w-5 h-5" />}
+                    title="Version"
+                    ok={!healthData.version.updateAvailable}
+                    summary={`Running ${healthData.version.running}`}
+                  >
+                    {healthData.version.updateAvailable ? (
+                      <HealthIssueRow title={`Update available: ${healthData.version.latestRelease}`} detail="A newer stable release has been published" />
+                    ) : (
+                      <p className="text-xs text-subtle">
+                        {healthData.version.latestRelease
+                          ? `Up to date with the latest stable release (${healthData.version.latestRelease}).`
+                          : "Running the latest build - couldn't reach GitHub to check for a newer stable release."}
+                      </p>
+                    )}
+                  </HealthCheckCard>
+                  </div>
+
+                  <div className="mb-4 break-inside-avoid-column">
+                  <HealthCheckCard
                     icon={<ArrowsRightLeftIcon className="w-5 h-5" />}
                     title="Sync"
                     ok={healthData.sync.driftCount === 0}
@@ -1279,25 +1298,6 @@ export default function MetricsPage() {
                       <HealthIssueRow title="Proxy stats unreachable" detail={healthData.proxy.error} meta={healthTimeAgo(healthData.proxy.at)} />
                     ) : (
                       <p className="text-xs text-subtle">Now Playing polling is reaching AIOStreams normally.</p>
-                    )}
-                  </HealthCheckCard>
-                  </div>
-
-                  <div className="mb-4 break-inside-avoid-column">
-                  <HealthCheckCard
-                    icon={<TagIcon className="w-5 h-5" />}
-                    title="Version"
-                    ok={!healthData.version.updateAvailable}
-                    summary={`Running ${healthData.version.running}`}
-                  >
-                    {healthData.version.updateAvailable ? (
-                      <HealthIssueRow title={`Update available: ${healthData.version.latestRelease}`} detail="A newer stable release has been published" />
-                    ) : (
-                      <p className="text-xs text-subtle">
-                        {healthData.version.latestRelease
-                          ? `Up to date with the latest stable release (${healthData.version.latestRelease}).`
-                          : "Running the latest build - couldn't reach GitHub to check for a newer stable release."}
-                      </p>
                     )}
                   </HealthCheckCard>
                   </div>

@@ -1018,9 +1018,24 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     ])
 
     // Apply the cross-user library-sync dedup BEFORE user lookup / mapping
-    // so we never build activity entries for phantom rows in the first place.
-    const episodeHistory = dedupCrossUserSameSecond(episodeHistoryRaw, 'episode')
-    const movieHistory = dedupCrossUserSameSecond(movieHistoryRaw, 'movie')
+    // so we never build activity entries for phantom rows in the first
+    // place. Same-second coincidence catches most cases, but a shared-email
+    // Nuvio/Stremio pair's replicated rows aren't guaranteed to land in the
+    // exact same second (confirmed real case: ~42 minutes apart) - the
+    // identity-aware dedupWatchActivityBySharedEmail (already used for the
+    // WatchActivity aggregates, see its own comment) catches those too.
+    const { findSharedEmailUserIds, dedupWatchActivityBySharedEmail } = require('./watchDedup')
+    const sharedEmailUserIds = findSharedEmailUserIds(allUsers)
+    const episodeHistory = dedupWatchActivityBySharedEmail(
+      dedupCrossUserSameSecond(episodeHistoryRaw, 'episode'),
+      sharedEmailUserIds,
+      { itemKey: (r) => `${r.showId}::${r.videoId || ''}`, dateField: 'watchedAt', durationField: 'durationSeconds' }
+    )
+    const movieHistory = dedupWatchActivityBySharedEmail(
+      dedupCrossUserSameSecond(movieHistoryRaw, 'movie'),
+      sharedEmailUserIds,
+      { itemKey: (r) => r.itemId, dateField: 'watchedAt', durationField: 'durationSeconds' }
+    )
 
     // Build user lookup and skip entries for users that no longer exist
     // (deleted/recreated connection) instead of falling back to showing

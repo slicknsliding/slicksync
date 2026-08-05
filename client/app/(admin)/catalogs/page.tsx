@@ -132,7 +132,7 @@ export default function ListsPage() {
     <button
       type="button"
       onClick={() => router.push('/catalogs/nuvio-collections')}
-      className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-base font-semibold transition-transform hover:scale-105 nav-item-hover-pill"
+      className="flex items-center gap-2 px-6 py-3.5 ml-[92px] rounded-full text-lg font-semibold transition-transform hover:scale-105 nav-item-hover-pill"
       style={{
         // Two backgrounds stacked on the same declaration: the two-tone
         // Nuvio fill paints inside the border (padding-box), the theme's
@@ -317,6 +317,7 @@ export default function ListsPage() {
             />
             <p className="text-xs text-subtle mt-1.5">
               Supports MDBList and TMDb lists (movies only for TMDb). Requires an API key in Settings → SlickTrax.
+              This copies the list&apos;s current titles once — later changes to the source list won&apos;t appear here automatically.
             </p>
           </div>
           <div>

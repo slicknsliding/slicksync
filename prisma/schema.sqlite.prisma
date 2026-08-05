@@ -200,6 +200,21 @@ model AppAccount {
   @@map("app_accounts")
 }
 
+// Operator action trail for the superadmin panel - meaningless but harmless
+// on this private deployment, same as the three AppAccount fields above.
+// See schema.postgres.prisma's copy of this model for the real doc comment.
+model SuperadminAuditLog {
+  id                String   @id @default(cuid())
+  action            String
+  targetAccountId   String
+  targetAccountUuid String?
+  bulk              Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("superadmin_audit_log")
+}
+
 model Invitation {
   id                     String    @id @default(cuid())
   accountId              String
@@ -433,6 +448,10 @@ model CustomList {
   itemsJson        String   @default("[]")
   coverImageUrl    String?
   coverColorIndex  Int?
+  // The TMDb/MDBList URL this catalog was imported from, if any - null for
+  // a catalog built by hand. Lets "Refresh from source" re-pull the same
+  // list later without asking the user to paste the URL again.
+  importSourceUrl  String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

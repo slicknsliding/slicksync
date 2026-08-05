@@ -24,6 +24,7 @@ module.exports = ({ prisma, getAccountId }) => {
     items: parseItems(list.itemsJson),
     coverImageUrl: list.coverImageUrl || null,
     coverColorIndex: list.coverColorIndex ?? null,
+    importSourceUrl: list.importSourceUrl || null,
     createdAt: list.createdAt,
     updatedAt: list.updatedAt,
   });
@@ -99,12 +100,56 @@ module.exports = ({ prisma, getAccountId }) => {
 
       const name = (req.body?.name || '').trim() || result.name;
       const list = await prisma.customList.create({
-        data: { accountId, name, itemsJson: JSON.stringify(result.items) },
+        data: { accountId, name, itemsJson: JSON.stringify(result.items), importSourceUrl: url },
       });
       res.status(201).json({ ...shape(list), truncated: !!result.truncated, totalAvailable: result.totalAvailable });
     } catch (e) {
       console.error('Error importing list:', e);
       res.status(400).json({ error: e?.message || 'Failed to import list' });
+    }
+  });
+
+  // POST /api/lists/:id/refresh — re-pull this catalog's own
+  // importSourceUrl and replace its items with the source's current
+  // contents. { apply?: boolean } - without apply, only returns the diff
+  // (added/removed/unchanged counts) so the client can show a confirm step
+  // before committing; wholesale replace is destructive to any titles
+  // added/removed by hand since the original import, so this is never a
+  // silent operation.
+  router.post('/:id/refresh', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
+      if (!existing) return res.status(404).json({ error: 'List not found' });
+      if (!existing.importSourceUrl) return res.status(400).json({ error: 'This catalog wasn\'t imported from a list, so there\'s no source to refresh from.' });
+
+      const { detectProvider, importFromTmdb, importFromMdblist, resolveTmdbKey, resolveMdblistKey } = require('../utils/listImport');
+      const provider = detectProvider(existing.importSourceUrl);
+      if (!provider) return res.status(400).json({ error: 'The source URL saved for this catalog is no longer recognized' });
+
+      let result;
+      if (provider === 'tmdb') {
+        const key = await resolveTmdbKey(prisma, getAccountId, req);
+        result = await importFromTmdb(key, existing.importSourceUrl);
+      } else {
+        const key = await resolveMdblistKey(prisma, getAccountId, req);
+        result = await importFromMdblist(key, existing.importSourceUrl);
+      }
+
+      const currentIds = new Set(parseItems(existing.itemsJson).map((i) => i.id));
+      const freshIds = new Set(result.items.map((i) => i.id));
+      const added = result.items.filter((i) => !currentIds.has(i.id)).length;
+      const removed = [...currentIds].filter((id) => !freshIds.has(id)).length;
+      const unchanged = result.items.length - added;
+
+      if (req.body?.apply) {
+        const list = await prisma.customList.update({ where: { id: existing.id }, data: { itemsJson: JSON.stringify(result.items) } });
+        return res.json({ ...shape(list), added, removed, unchanged });
+      }
+      res.json({ ...shape(existing), added, removed, unchanged, applied: false });
+    } catch (e) {
+      console.error('Error refreshing list:', e);
+      res.status(400).json({ error: e?.message || 'Failed to refresh list from source' });
     }
   });
 

@@ -153,6 +153,16 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
         window.location.href = '/login?mode=admin&linkStremio=1';
     };
 
+    // Link Nuvio — same idea as handleLinkStremio, the login page's admin
+    // Nuvio tab (server/routes/publicAuth.js's /auth/nuvio-login) already
+    // does the actual account-linking; this button was simply never added
+    // here. Note the real precondition that route enforces: it requires a
+    // managed User with this same email already connected to Nuvio - unlike
+    // Stremio linking, it can't create that link from a bare login alone.
+    const handleLinkNuvio = () => {
+        window.location.href = '/login?mode=admin&linkNuvio=1';
+    };
+
     const renderMain = () => (
         <div className="space-y-3">
             {/* Current status */}
@@ -246,6 +256,25 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                     <div className="text-left">
                         <p className="text-sm font-medium">Link Stremio</p>
                         <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Connect your Stremio account</p>
+                    </div>
+                </button>
+            )}
+
+            {/* UUID-only: link Nuvio - requires a managed user with this
+                same email already connected to Nuvio, unlike Stremio's
+                linking which can create that link from a bare login. */}
+            {hasUuid && !hasStremio && (
+                <button
+                    onClick={handleLinkNuvio}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200"
+                    style={{ backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text)', border: '1px solid var(--color-surface-border)' }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-primary)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-surface-border)'; }}
+                >
+                    <LinkIcon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
+                    <div className="text-left">
+                        <p className="text-sm font-medium">Link Nuvio</p>
+                        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Connect your Nuvio account (requires a managed user with this email already connected to Nuvio)</p>
                     </div>
                 </button>
             )}

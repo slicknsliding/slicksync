@@ -35,7 +35,9 @@ function LoginContent() {
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminLoginType, setAdminLoginType] = useState<'credentials' | 'stremio' | 'nuvio'>(
-    searchParams.get('linkStremio') === '1' && initialMode === 'admin' ? 'stremio' : 'credentials'
+    searchParams.get('linkStremio') === '1' && initialMode === 'admin' ? 'stremio'
+      : searchParams.get('linkNuvio') === '1' && initialMode === 'admin' ? 'nuvio'
+      : 'credentials'
   );
   // User-mode's own provider tab - separate from adminLoginType since a
   // managed User has no "credentials" option (no UUID/password), just

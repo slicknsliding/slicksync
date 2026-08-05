@@ -49,6 +49,14 @@ async function resolveKeyFromSettings(prisma, getAccountId, req, settingsField, 
 const resolveTmdbKey = (prisma, getAccountId, req) => resolveKeyFromSettings(prisma, getAccountId, req, 'tmdbApiKey', 'TMDB_API_KEY')
 const resolveMdblistKey = (prisma, getAccountId, req) => resolveKeyFromSettings(prisma, getAccountId, req, 'mdblistApiKey', 'MDBLIST_API_KEY')
 
+// accountId-direct variant (no req/getAccountId) for background jobs that
+// already have (prisma, accountId) in scope from their own per-account
+// loop, rather than an Express request.
+async function resolveOmdbKeyForAccount(prisma, accountId) {
+  return resolveKeyFromSettings(prisma, () => accountId, null, 'omdbApiKey', 'OMDB_API_KEY')
+}
+const resolveOmdbKey = (prisma, getAccountId, req) => resolveKeyFromSettings(prisma, getAccountId, req, 'omdbApiKey', 'OMDB_API_KEY')
+
 function detectProvider(url) {
   try {
     const host = new URL(url).hostname.replace(/^www\./, '')
@@ -250,4 +258,4 @@ async function exportListToMdblist(apiKey, listName, items) {
   }
 }
 
-module.exports = { detectProvider, importFromTmdb, importFromMdblist, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, suggestTitlesForCatalog, MAX_IMPORT_ITEMS }
+module.exports = { detectProvider, importFromTmdb, importFromMdblist, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, suggestTitlesForCatalog, MAX_IMPORT_ITEMS }

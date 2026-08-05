@@ -12,13 +12,22 @@
 // a real concern at this scale. Misses (title not found, or found but with
 // no RT/Metacritic data) are cached too, so a title OMDb doesn't have data
 // for isn't re-requested on every poster render until the TTL expires.
-const OMDB_API_KEY = process.env.OMDB_API_KEY || null
+const ENV_OMDB_API_KEY = process.env.OMDB_API_KEY || null
 
 const omdbCache = new Map()
 const OMDB_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
-async function fetchOmdbRatings(imdbId) {
-  if (!OMDB_API_KEY || !imdbId || !/^tt\d+$/.test(imdbId)) return null
+// apiKey is per-account (Settings, resolved via resolveOmdbKey in
+// listImport.js) - callers that can cheaply reach prisma+accountId should
+// resolve and pass their own, same as RPDB/MDBList/TMDB already do,
+// instead of every account on a shared instance quietly drawing down
+// whoever's key happens to be sitting in the instance-level .env. Falls
+// back to that env key for callers not yet threading one through (still
+// correct, just not account-isolated) - the cache stores only public
+// rating data, so it's safe to share across whichever key fetched it.
+async function fetchOmdbRatings(imdbId, apiKey) {
+  const key = apiKey || ENV_OMDB_API_KEY
+  if (!key || !imdbId || !/^tt\d+$/.test(imdbId)) return null
 
   const cached = omdbCache.get(imdbId)
   if (cached && (Date.now() - cached.at) < OMDB_CACHE_TTL_MS) {
@@ -29,7 +38,7 @@ async function fetchOmdbRatings(imdbId) {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 5000)
 
-    const response = await fetch(`https://www.omdbapi.com/?i=${encodeURIComponent(imdbId)}&apikey=${OMDB_API_KEY}`, {
+    const response = await fetch(`https://www.omdbapi.com/?i=${encodeURIComponent(imdbId)}&apikey=${key}`, {
       signal: controller.signal
     })
     clearTimeout(timeoutId)

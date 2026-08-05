@@ -280,7 +280,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ error: 'itemId and type are required' })
       }
 
-      const metadata = await fetchMetadata(itemId, type, videoId || null)
+      const { resolveOmdbKey } = require('../utils/listImport')
+      const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
+      const metadata = await fetchMetadata(itemId, type, videoId || null, omdbApiKey)
       if (!metadata) {
         return res.status(404).json({ error: 'No metadata found for this item' })
       }
@@ -325,8 +327,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       const uniqueIds = [...new Set(imdbIds)].filter(id => typeof id === 'string' && /^tt\d+$/.test(id)).slice(0, RATINGS_BATCH_MAX)
 
+      const { resolveOmdbKey } = require('../utils/listImport')
+      const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
       const results = await Promise.all(uniqueIds.map(async (id) => {
-        const ratings = await fetchOmdbRatings(id)
+        const ratings = await fetchOmdbRatings(id, omdbApiKey)
         return [id, ratings]
       }))
 

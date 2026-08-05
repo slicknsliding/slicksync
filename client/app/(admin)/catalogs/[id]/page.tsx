@@ -24,7 +24,7 @@ import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import {
   RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon, SparklesIcon, PhotoIcon,
-  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon,
+  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
@@ -168,6 +168,12 @@ export default function ListDetailPage() {
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ name: string; slug: string | null; url: string | null; added: number | null; existing: number | null; notFound: number | null } | null>(null);
+  // Refresh from source - two-step (preview diff, then apply) since
+  // wholesale-replacing itemsJson would silently wipe any titles added or
+  // removed by hand since the original import.
+  const [refreshDiff, setRefreshDiff] = useState<{ added: number; removed: number; unchanged: number } | null>(null);
+  const [loadingRefreshDiff, setLoadingRefreshDiff] = useState(false);
+  const [applyingRefresh, setApplyingRefresh] = useState(false);
   // Bulk select - mirrors the Set<string> + floating-action-bar pattern from
   // users/page.tsx. Entering select mode hides PosterCard's own badges/menu
   // on every card (see CatalogGridCard below) so a tap toggles selection
@@ -245,6 +251,37 @@ export default function ListDetailPage() {
       toast.error(e?.message || 'Failed to export to MDBList');
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Step 1: fetch the diff without applying it, opens the confirm modal.
+  const handleOpenRefresh = async () => {
+    if (!list) return;
+    setLoadingRefreshDiff(true);
+    try {
+      const result = await api.refreshList(list.id, false);
+      setRefreshDiff({ added: result.added, removed: result.removed, unchanged: result.unchanged });
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to check the source list');
+    } finally {
+      setLoadingRefreshDiff(false);
+    }
+  };
+
+  // Step 2: actually replace the catalog's items with the source's current
+  // contents.
+  const handleApplyRefresh = async () => {
+    if (!list) return;
+    setApplyingRefresh(true);
+    try {
+      const updated = await api.refreshList(list.id, true);
+      setList(updated);
+      setRefreshDiff(null);
+      toast.success(`Refreshed "${list.name}" from source`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to refresh from source');
+    } finally {
+      setApplyingRefresh(false);
     }
   };
 
@@ -379,6 +416,11 @@ export default function ListDetailPage() {
       <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
         Suggest titles
       </Button>
+      {list.importSourceUrl && (
+        <Button variant="secondary" size="sm" leftIcon={<ArrowPathIcon className="w-4 h-4" />} onClick={handleOpenRefresh} isLoading={loadingRefreshDiff}>
+          Refresh
+        </Button>
+      )}
       <Button variant="secondary" size="sm" leftIcon={<PhotoIcon className="w-4 h-4" />} onClick={() => setShowCoverPicker(true)}>
         Cover art
       </Button>
@@ -431,19 +473,38 @@ export default function ListDetailPage() {
 
         {/* Cover banner - only rendered once a custom cover is actually set;
             this page never had a collage/placeholder here before, so there's
-            nothing to "fall back" to otherwise (unlike the index card). */}
+            nothing to "fall back" to otherwise (unlike the index card).
+            The cover can be anything a user pastes/uploads via
+            AvatarPickerModal - a portrait poster, a landscape backdrop, at
+            any resolution - so a single object-cover <img> stretched to
+            this banner's full page width forces one of two bad outcomes:
+            contain-fit leaves a thin sliver in an empty strip ("looks
+            ridiculous" - confirmed feedback), while cover-fit on a
+            moderate-res poster upscales it 2x+ to fill the width and comes
+            out visibly blurry (also confirmed - same complaint, different
+            image). Fixed both at once the way Modal.tsx's own
+            backdropImage already does: a blurred, scaled-up copy fills the
+            full box (its own softness is invisible under blur(24px), same
+            as Modal), while a second copy sits on top at its natural size
+            (max-h/max-w-full only, no forced stretch) - crisp because it's
+            never upscaled past its own resolution, however small. */}
         {list && (list.coverImageUrl || list.coverColorIndex !== null) && (
-          <div className="mb-6 h-32 md:h-40 rounded-xl overflow-hidden">
+          <div className="relative mb-6 h-40 md:h-56 rounded-xl overflow-hidden bg-black">
             {list.coverImageUrl ? (
-              // object-contain (not cover) - see the same fix's comment on
-              // the Catalogs index card for why a poster-shaped image can't
-              // just fill this wide/short banner directly.
-              <div className="relative w-full h-full bg-black">
+              <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={list.coverImageUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-40" />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={list.coverImageUrl} alt="" className="relative w-full h-full object-contain" />
-              </div>
+                <img
+                  src={list.coverImageUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover scale-110"
+                  style={{ filter: 'blur(24px) brightness(0.55)' }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={list.coverImageUrl} alt="" className="relative max-h-full max-w-full object-contain" />
+                </div>
+              </>
             ) : (
               <div className="w-full h-full" style={coverColorStyle(list.coverColorIndex!)} />
             )}
@@ -601,7 +662,7 @@ export default function ListDetailPage() {
         onClose={() => setShowExportConfirm(false)}
         onConfirm={handleExportToMdblist}
         title="Export to MDBList"
-        description={`This creates a new, separate MDBList list from "${list?.name}"'s ${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}. SlickSync can create the list, but adding it as a catalog inside an addon (e.g. AIOMetadata) is a manual step in that addon's own settings afterward.`}
+        description={`This creates a new, separate MDBList list from "${list?.name}"'s ${list?.items.length || 0} title${list?.items.length !== 1 ? 's' : ''}. SlickSync can create the list, but adding it as a catalog inside an addon (e.g. AIOMetadata) is a manual step in that addon's own settings afterward. It's a one-time copy either way — later changes to this Catalog won't reach the exported list, and vice versa.`}
         confirmText={exporting ? 'Exporting...' : 'Export'}
         isLoading={exporting}
       />
@@ -638,6 +699,27 @@ export default function ListDetailPage() {
             )}
             <div className="flex justify-end pt-2">
               <Button variant="ghost" size="sm" onClick={() => setExportResult(null)}>Close</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Refresh from source - never a silent replace. Shows exactly what
+          the re-pull found before touching anything; applying wholesale-
+          replaces itemsJson, so titles added/removed by hand since import
+          are lost either way, but at least never as a surprise. */}
+      <Modal isOpen={!!refreshDiff} onClose={() => setRefreshDiff(null)} title="Refresh from source" size="sm">
+        {refreshDiff && (
+          <div className="space-y-4">
+            <p className="text-sm text-default">
+              The source list currently has <span className="font-semibold">{refreshDiff.added}</span> new title{refreshDiff.added !== 1 ? 's' : ''} and is missing <span className="font-semibold">{refreshDiff.removed}</span> title{refreshDiff.removed !== 1 ? 's' : ''} this catalog has ({refreshDiff.unchanged} unchanged).
+            </p>
+            <p className="text-xs text-muted">
+              Applying replaces this catalog&apos;s titles with the source list&apos;s current contents. Any titles you&apos;ve added or removed by hand since importing will be lost.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" size="sm" onClick={() => setRefreshDiff(null)}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={handleApplyRefresh} isLoading={applyingRefresh}>Apply</Button>
             </div>
           </div>
         )}
