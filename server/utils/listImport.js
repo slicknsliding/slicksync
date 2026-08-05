@@ -177,8 +177,8 @@ function extractDecadeRange(query) {
   return { start: startYear, end: startYear + 9 }
 }
 
-async function lookupTmdbKeywordId(text) {
-  const rsp = await fetch(`https://api.themoviedb.org/3/search/keyword?query=${encodeURIComponent(text)}`)
+async function lookupTmdbKeywordId(text, apiKey) {
+  const rsp = await fetch(`https://api.themoviedb.org/3/search/keyword?query=${encodeURIComponent(text)}&api_key=${encodeURIComponent(apiKey)}`)
   const data = rsp.ok ? await rsp.json() : { results: [] }
   return data.results?.[0]?.id || null
 }
@@ -222,7 +222,7 @@ async function suggestTitlesForCatalog(apiKey, query, excludeIds = []) {
   if (decadeRange) {
     candidates = await discoverByDecade(decadeRange, apiKey)
   } else {
-    let keywordId = await lookupTmdbKeywordId(trimmed)
+    let keywordId = await lookupTmdbKeywordId(trimmed, apiKey)
     if (!keywordId) {
       // Full phrase didn't match a real keyword - strip generic filler
       // words ("30 days of halloween" -> "halloween") and retry, longest
@@ -234,7 +234,7 @@ async function suggestTitlesForCatalog(apiKey, query, excludeIds = []) {
         .filter((w) => w && !GENERIC_WORDS.has(w) && !/^\d+$/.test(w))
         .sort((a, b) => b.length - a.length)
       for (const word of significant) {
-        keywordId = await lookupTmdbKeywordId(word)
+        keywordId = await lookupTmdbKeywordId(word, apiKey)
         if (keywordId) break
       }
     }
