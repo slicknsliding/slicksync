@@ -266,6 +266,85 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   }
 
+  // TMDb "part of a collection" lookup (e.g. Dune (2021) -> Dune Collection
+  // -> [Dune, Dune: Part Two, ...]) - movies only, TMDb has no equivalent
+  // grouping for TV. Same find-by-imdb-id + backdrop's own key resolution,
+  // then one extra call for the movie's own belongs_to_collection field,
+  // then one more for the collection's full parts list. Each part only
+  // carries a TMDb id, and this app routes everything by IMDb id, so each
+  // part needs its own external_ids lookup too - capped at 12 to bound the
+  // worst case (a long-running franchise) to a handful of requests, all
+  // cached together under a long TTL since a collection's lineup is static
+  // apart from a genuinely new sequel releasing.
+  const collectionCache = new Map()
+  const COLLECTION_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+  const COLLECTION_MAX_PARTS = 12
+  async function fetchTmdbCollection(imdbId, itemType, req) {
+    if (!imdbId || !/^tt\d+$/.test(imdbId) || itemType !== 'movie') return null
+    const cached = collectionCache.get(imdbId)
+    if (cached && (Date.now() - cached.at) < COLLECTION_CACHE_TTL_MS) return cached.value
+    const key = await resolveTmdbKeyForBackdrop(req)
+    if (!key) return null
+    try {
+      const findRsp = await fetch(`https://api.themoviedb.org/3/find/${imdbId}?api_key=${encodeURIComponent(key)}&external_source=imdb_id`)
+      if (!findRsp.ok) return null
+      const findData = await findRsp.json()
+      const movieHit = (findData.movie_results || [])[0]
+      if (!movieHit?.id) {
+        collectionCache.set(imdbId, { value: null, at: Date.now() })
+        return null
+      }
+
+      const movieRsp = await fetch(`https://api.themoviedb.org/3/movie/${movieHit.id}?api_key=${encodeURIComponent(key)}`)
+      if (!movieRsp.ok) return null
+      const movieData = await movieRsp.json()
+      const collectionRef = movieData.belongs_to_collection
+      if (!collectionRef?.id) {
+        collectionCache.set(imdbId, { value: null, at: Date.now() })
+        return null
+      }
+
+      const collRsp = await fetch(`https://api.themoviedb.org/3/collection/${collectionRef.id}?api_key=${encodeURIComponent(key)}`)
+      if (!collRsp.ok) return null
+      const collData = await collRsp.json()
+      const parts = (collData.parts || [])
+        .filter((p) => p.id !== movieHit.id)
+        .sort((a, b) => (a.release_date || '9999').localeCompare(b.release_date || '9999'))
+        .slice(0, COLLECTION_MAX_PARTS)
+
+      const partsWithImdbIds = await Promise.all(parts.map(async (p) => {
+        try {
+          const extRsp = await fetch(`https://api.themoviedb.org/3/movie/${p.id}/external_ids?api_key=${encodeURIComponent(key)}`)
+          if (!extRsp.ok) return null
+          const extData = await extRsp.json()
+          if (!extData.imdb_id) return null
+          return {
+            id: extData.imdb_id,
+            title: p.title,
+            poster: p.poster_path ? `https://image.tmdb.org/t/p/w342${p.poster_path}` : null,
+            releaseYear: p.release_date ? p.release_date.slice(0, 4) : null,
+          }
+        } catch {
+          return null
+        }
+      }))
+
+      const value = {
+        id: collectionRef.id,
+        name: collectionRef.name,
+        parts: partsWithImdbIds.filter(Boolean),
+      }
+      // A collection with no OTHER resolvable entries isn't worth showing -
+      // same "don't render a section that can't do anything" rule as
+      // everywhere else in this app.
+      const finalValue = value.parts.length > 0 ? value : null
+      collectionCache.set(imdbId, { value: finalValue, at: Date.now() })
+      return finalValue
+    } catch {
+      return null
+    }
+  }
+
   // GET /users/media-details - Cinemeta detail lookup for the Activity page's
   // poster-click modal (cast, rating, genres, etc). Must be before /:id route.
   router.get('/media-details', async (req, res) => {
@@ -295,8 +374,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // opening animation on mobile. Stripped at the response boundary only -
       // fetchMetadata's cache entry (shared with Continue Watching) still has it.
       const { allEpisodes, ...detailsForClient } = metadata
-      const backdrop = await fetchTmdbBackdrop(itemId, req)
-      res.json({ ...detailsForClient, backdrop })
+      const [backdrop, collection] = await Promise.all([
+        fetchTmdbBackdrop(itemId, req),
+        fetchTmdbCollection(itemId, type, req),
+      ])
+      res.json({ ...detailsForClient, backdrop, collection })
     } catch (error) {
       console.error('Error fetching media details:', error)
       res.status(500).json({ error: 'Failed to fetch media details' })

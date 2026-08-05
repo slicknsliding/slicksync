@@ -291,11 +291,13 @@ async function fetchMetadata(itemId, itemType, videoId, omdbApiKey) {
           // (not an error) when OMDB_API_KEY is unset.
           result.rottenTomatoes = null
           result.metacritic = null
+          result.boxOffice = null
           if (result.imdb_id) {
             const omdbRatings = await fetchOmdbRatings(result.imdb_id, omdbApiKey)
             if (omdbRatings) {
               result.rottenTomatoes = omdbRatings.rottenTomatoes
               result.metacritic = omdbRatings.metacritic
+              result.boxOffice = omdbRatings.boxOffice
             }
           }
 

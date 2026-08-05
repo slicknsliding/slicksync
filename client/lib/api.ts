@@ -2733,6 +2733,9 @@ export interface MediaDetails {
   releaseInfo: string | null;
   country: string | null;
   awards: string | null;
+  // OMDb's own field, distinct from Awards - a movie's theatrical gross.
+  // Virtually always null for TV (no theatrical release to report).
+  boxOffice: string | null;
   imdb_id: string | null;
   moviedb_id: number | null;
   trailers: string[];
@@ -2742,6 +2745,13 @@ export interface MediaDetails {
     overview: string | null;
     thumbnail: string | null;
   };
+  // TMDb "belongs_to_collection" grouping (e.g. Dune -> Dune Collection) -
+  // movies only, null for TV and for any movie not part of one.
+  collection?: {
+    id: number;
+    name: string;
+    parts: Array<{ id: string; title: string; poster: string | null; releaseYear: string | null }>;
+  } | null;
 }
 
 export interface MetricsData {

@@ -63,13 +63,16 @@ async function fetchOmdbRatings(imdbId, apiKey) {
       : (data.Metascore && data.Metascore !== 'N/A' ? data.Metascore : null)
 
     const imdbRating = data.imdbRating && data.imdbRating !== 'N/A' ? data.imdbRating : null
+    // Movies only in practice - OMDb returns "N/A" for virtually every TV
+    // series (no theatrical release to report a gross for).
+    const boxOffice = data.BoxOffice && data.BoxOffice !== 'N/A' ? data.BoxOffice : null
 
-    if (!rottenTomatoes && !metacritic && !imdbRating) {
+    if (!rottenTomatoes && !metacritic && !imdbRating && !boxOffice) {
       omdbCache.set(imdbId, { value: null, at: Date.now() })
       return null
     }
 
-    const result = { imdbRating, rottenTomatoes, metacritic }
+    const result = { imdbRating, rottenTomatoes, metacritic, boxOffice }
     omdbCache.set(imdbId, { value: result, at: Date.now() })
     return result
   } catch {
