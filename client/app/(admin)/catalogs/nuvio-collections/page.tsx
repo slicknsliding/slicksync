@@ -86,11 +86,31 @@ const GENRE_TEMPLATE: { id: string; title: string; description: string; genres: 
   ],
 };
 
+// A catalog's `genre` extra having an option that matches an alias isn't
+// enough on its own - confirmed live against a real account: AIOMetadata
+// exposes MDBList's full ~40-item generic genre taxonomy (down to junk like
+// "Home and Garden", "Talk Show", "Donghua") on catalogs that are actually
+// small, static, hand-curated lists ("Nostalgic Movies of the 80s & 90s",
+// "Movie Collections", "Kids + 90s Kids") that don't meaningfully filter by
+// genre at all. The result: unrelated genre folders (Action, Adventure,
+// Fantasy) all pulled from the same static list and showed the identical
+// top item as their hero poster, while genres poorly represented in that
+// list (Anime) came back with sources attached but zero real items. Both
+// tells are cheap to detect from the manifest alone, with no extra network
+// calls: the catalog id is literally "mdblist.<id>" (MDBList-backed static
+// lists always self-identify this way), or the catalog is `type: "all"`
+// (a mixed-media curated/merged catalog, never how a real per-type
+// genre-browsable catalog - Cinemeta's included - is shaped).
+function isReliableGenreCatalog(cat: { id: string; type: string }): boolean {
+  return !cat.id.includes('mdblist') && cat.type !== 'all';
+}
+
 function matchGenreSources(aliases: string[], addons: StremioAddon[]): NuvioCatalogSource[] {
   const matches: NuvioCatalogSource[] = [];
   for (const addon of addons) {
     const addonId = addon.manifest?.id || addon.transportUrl;
     for (const cat of addon.manifest?.catalogs || []) {
+      if (!isReliableGenreCatalog(cat)) continue;
       const genreExtra = cat.extra?.find((e) => e.name === 'genre');
       const matchedOption = (genreExtra?.options || []).find((opt) =>
         aliases.some((a) => opt.toLowerCase() === a || opt.toLowerCase().includes(a))
