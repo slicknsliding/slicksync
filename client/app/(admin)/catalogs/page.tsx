@@ -13,7 +13,7 @@ import { api, CustomList } from '@/lib/api';
 import {
   RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon, MapPinIcon,
 } from '@heroicons/react/24/outline';
-import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
+import { MapPinIcon as MapPinIconSolid, PlayIcon } from '@heroicons/react/24/solid';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly, so a
 // catalog's solid-color cover reads as the same color the picker showed.
@@ -140,33 +140,33 @@ export default function ListsPage() {
     <button
       type="button"
       onClick={() => router.push('/catalogs/nuvio-collections')}
-      className="flex items-center gap-2 px-6 py-3.5 ml-[92px] rounded-full text-lg font-semibold transition-transform hover:scale-105 nav-item-hover-pill"
+      className="flex items-center gap-3 pl-3 pr-6 py-2.5 ml-[92px] rounded-full transition-transform hover:scale-105"
       style={{
-        // Two backgrounds stacked on the same declaration: the two-tone
-        // Nuvio fill paints inside the border (padding-box), the theme's
-        // own primary/secondary gradient paints only the border ring itself
-        // (border-box) - same gradient NebulaGlassStripe uses for the top
-        // accent elsewhere, here going the full way around the pill instead
-        // of just across the top. border-image can't do this on a
-        // rounded-full shape (it ignores border-radius); this dual-
-        // background technique does.
-        //
-        // The fill MUST be opaque, not the original rgba(...0.22)/rgba(...0.10)
-        // - CSS paints padding-box on top of border-box, but a translucent
-        // padding-box layer lets the border-box gradient bleed through the
-        // ENTIRE fill (not just the 1.5px ring), which is exactly the "whole
-        // pill turned into a purple/teal wash" bug this replaced. color-mix
-        // pre-blends the same tint against the page background instead,
-        // producing an opaque color that looks the same as the old
-        // translucent one but actually blocks what's behind it.
-        background:
-          'linear-gradient(115deg, color-mix(in srgb, rgb(56, 89, 158) 22%, var(--color-bg)) 0%, color-mix(in srgb, rgb(56, 89, 158) 22%, var(--color-bg)) 50%, color-mix(in srgb, rgb(255, 152, 0) 10%, var(--color-bg)) 50%, color-mix(in srgb, rgb(255, 152, 0) 10%, var(--color-bg)) 100%) padding-box, ' +
-          'linear-gradient(90deg, var(--color-primary), var(--color-secondary)) border-box',
-        color: 'rgb(186, 208, 240)',
-        border: '1.5px solid transparent',
+        // A logo lockup (icon chip + wordmark), same shape as the app's own
+        // Sidebar branding, sized up and given real breathing room per
+        // feedback that the old plain-text pill read as an afterthought.
+        // Dark fill + amber glow (rather than the theme's own primary/
+        // secondary gradient) so this reads as Nuvio's own identity, not a
+        // generic SlickSync nav pill - same reasoning as Badge's dedicated
+        // `nuvio` variant elsewhere.
+        background: 'linear-gradient(180deg, rgba(12,8,4,0.92), rgba(24,14,4,0.92))',
+        border: '1.5px solid rgba(255,152,0,0.55)',
+        boxShadow: '0 0 20px -4px rgba(255,152,0,0.45)',
       }}
     >
-      Nuvio Collections
+      <span
+        className="flex items-center justify-center rounded-2xl shrink-0"
+        style={{
+          width: 44,
+          height: 44,
+          background: 'linear-gradient(135deg, #2E9FE0 0%, #6C5CE7 55%, #C24FE0 100%)',
+        }}
+      >
+        <PlayIcon className="w-5 h-5 text-white ml-0.5" />
+      </span>
+      <span className="font-display font-bold text-xl tracking-tight" style={{ color: 'rgb(147, 197, 253)' }}>
+        Nuvio Collections
+      </span>
     </button>
   );
 
