@@ -1,4 +1,5 @@
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const { StremioAPIClient } = require('stremio-api-client');
 const { validateStremioAuthKey } = require('../utils/stremio');
 const { startNuvioTvLogin, pollNuvioTvLogin, exchangeNuvioTvLogin, refreshNuvioToken, isTokenExpired } = require('../providers/nuvioAuth');
@@ -11,7 +12,7 @@ const { getAccountDateString, resolveAccountTimezone } = require('../utils/dateU
  * Public Library Router - Allows users to access their library via OAuth
  * without requiring account authentication. Addons added are marked as protected.
  */
-module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibrary, setCachedLibrary }) => {
+module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibrary, setCachedLibrary, JWT_SECRET }) => {
   const { findLatestEpisode } = require('../utils/libraryHelpers')
   const { getShares, getGroupMembers } = require('../utils/sharesManager')
   const { getAccountId } = require('../utils/helpers')
@@ -217,6 +218,31 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     }
   }
 
+  // Nuvio session token - issued once at /authenticate-nuvio (and reissued
+  // on every /validate-nuvio), carried by the client exactly like the
+  // Stremio authKey (same x-stremio-auth header/query/body slot, read via
+  // getAuthKey below - the field name is a historical artifact of Stremio
+  // being first, but it's genuinely provider-agnostic: "the caller's own
+  // bearer credential, whichever provider they are"). This is what
+  // verifyProviderIdentity's Nuvio branch checks below - it's the fix for a
+  // real gap: Nuvio previously had NOTHING here, re-validating the TARGET
+  // user's own stored refresh token against Nuvio's backend instead of
+  // anything the CALLER possesses, so a bare userId (visible to other
+  // household members, or an admin) was sufficient to act as anyone.
+  const NUVIO_SESSION_TTL = '90d'
+  function issueNuvioSessionToken(userId) {
+    return jwt.sign({ sub: userId, provider: 'nuvio' }, JWT_SECRET, { expiresIn: NUVIO_SESSION_TTL })
+  }
+  function verifyNuvioSessionToken(token, expectedUserId) {
+    let decoded
+    try {
+      decoded = jwt.verify(token, JWT_SECRET)
+    } catch (e) {
+      return false
+    }
+    return decoded?.provider === 'nuvio' && decoded?.sub === expectedUserId
+  }
+
   // Shared identity-only gate for routes whose actual data is 100%
   // SlickSync's own DB (no live provider content call needed) - branches
   // between getPublicUser (Stremio authKey) and getPublicUserNuvio
@@ -225,6 +251,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
   // the error body (matches this file's existing per-route wording).
   async function verifyProviderIdentity(user, authKey, req) {
     if (user.providerType === 'nuvio') {
+      if (!authKey || !verifyNuvioSessionToken(authKey, user.id)) {
+        throw new Error('Authentication required');
+      }
       if (!user.nuvioRefreshToken || !user.nuvioUserId) {
         throw new Error('Authentication required');
       }
@@ -607,6 +636,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
 
       res.json({
         success: true,
+        sessionToken: issueNuvioSessionToken(fullUser.id),
         user: {
           id: fullUser.id,
           username: fullUser.username,
@@ -656,6 +686,18 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(400).json({ error: 'User ID is required' });
       }
 
+      // This is the route a restored (page-reload) session validates
+      // through, using only whatever's in localStorage - so it's the same
+      // real attack surface as /delete-account etc: without this check, a
+      // bare userId (planted into any browser's localStorage) was
+      // sufficient to "restore" a session as anyone. Require the caller's
+      // own previously-issued session token, same as every other
+      // identity-sensitive Nuvio route.
+      const callerToken = getAuthKey(req);
+      if (!callerToken || !verifyNuvioSessionToken(callerToken, userId)) {
+        return res.status(401).json({ error: 'Validation failed', message: 'Invalid or expired Nuvio session' });
+      }
+
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: { nuvioRefreshToken: true, nuvioUserId: true, accountId: true }
@@ -683,6 +725,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       res.json({
         success: true,
         valid: true,
+        sessionToken: issueNuvioSessionToken(validatedUser.id),
         user: { id: validatedUser.id, username: validatedUser.username, email: validatedUser.email }
       });
     } catch (error) {
@@ -719,16 +762,65 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     try {
       const { userId } = req.query;
       const authKey = getAuthKey(req);
-      
+
       if (!userId && !authKey) {
         return res.status(400).json({ error: 'User ID or auth key is required' });
       }
 
       let user;
-      if (authKey) {
-        // Get user from auth key (getPublicUser doesn't return activityVisibility, so fetch it separately)
+      if (userId) {
+        // Real fields needed by verifyProviderIdentity's Nuvio branch,
+        // fetched up front - was previously "if authKey present, treat it
+        // as a Stremio key" with no regard for the target's actual
+        // provider, which broke the moment Nuvio calls started sending
+        // their own (non-Stremio) session token in the same slot, and
+        // separately never verified anything for the no-authKey path at
+        // all (a bare userId was accepted outright).
+        const foundUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            accountId: true,
+            providerType: true,
+            nuvioRefreshToken: true,
+            nuvioUserId: true,
+            isActive: true,
+            activityVisibility: true,
+            colorIndex: true,
+            createdAt: true,
+            expiresAt: true,
+            discordWebhookUrl: true,
+            notifyOnWatch: true
+          }
+        });
+
+        if (!foundUser) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+        if (!foundUser.isActive) {
+          return res.status(403).json({ error: 'User account is disabled' });
+        }
+
+        try {
+          await verifyProviderIdentity(foundUser, authKey, req);
+        } catch (e) {
+          return res.status(401).json({ error: e?.message || 'Authentication required' });
+        }
+
+        // Check if user belongs to at least one active group
+        const { getGroupMembers } = require('../utils/sharesManager');
+        const groupMembers = await getGroupMembers(prisma, foundUser.accountId, foundUser.id);
+        if (groupMembers.length === 0) {
+          return res.status(403).json({ error: 'User is not part of any group' });
+        }
+
+        user = foundUser;
+      } else if (authKey) {
+        // Legacy fallback for a caller with only a Stremio authKey and no
+        // userId at all.
         const publicUser = await getPublicUser(authKey, req);
-        // Fetch full user data including activityVisibility
         const fullUser = await prisma.user.findUnique({
           where: { id: publicUser.id },
           select: {
@@ -747,42 +839,6 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
           return res.status(404).json({ error: 'User not found' });
         }
         user = fullUser;
-      } else if (userId) {
-        // Get user from userId - need to validate they exist and are active
-        const foundUser = await prisma.user.findUnique({
-          where: { id: userId },
-          select: {
-            id: true,
-            username: true,
-            email: true,
-            accountId: true,
-            stremioAuthKey: true,
-            isActive: true,
-            activityVisibility: true,
-            colorIndex: true,
-            createdAt: true,
-            expiresAt: true,
-            discordWebhookUrl: true,
-            notifyOnWatch: true
-          }
-        });
-
-        if (!foundUser) {
-          return res.status(404).json({ error: 'User not found' });
-        }
-
-        if (!foundUser.isActive) {
-          return res.status(403).json({ error: 'User account is disabled' });
-        }
-
-        // Check if user belongs to at least one active group
-        const { getGroupMembers } = require('../utils/sharesManager');
-        const groupMembers = await getGroupMembers(prisma, foundUser.accountId, foundUser.id);
-        if (groupMembers.length === 0) {
-          return res.status(403).json({ error: 'User is not part of any group' });
-        }
-
-        user = foundUser;
       }
 
       res.json({
@@ -1353,32 +1409,18 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         return res.status(404).json({ error: 'User not found or inactive' });
       }
 
-      const isNuvio = fullUser.providerType === 'nuvio';
       const userAccountId = fullUser.accountId || DEFAULT_ACCOUNT_ID;
 
-      // Validate user exists, is active, and is in a group - live-checked
-      // either way (Stremio's authKey re-validated on every call, Nuvio's
-      // stored refresh token re-verified via getPublicUserNuvio).
+      // Validate the CALLER's own identity - was previously falling back to
+      // the target's own stored credential (Stremio authKey decrypted from
+      // the DB, or Nuvio's stored refresh token) whenever the request
+      // didn't supply one, which verifies the target against themselves
+      // and proves nothing about who's actually calling. Nuvio always
+      // sends its own session token now (see verifyProviderIdentity), so
+      // this fallback is no longer needed for either provider.
       let validatedUser;
       try {
-        if (isNuvio) {
-          if (!fullUser.nuvioRefreshToken || !fullUser.nuvioUserId) {
-            return res.status(400).json({ error: 'User not connected to Nuvio' });
-          }
-          const mockReq = { appAccountId: userAccountId };
-          const storedRefreshToken = decrypt(fullUser.nuvioRefreshToken, mockReq);
-          validatedUser = await getPublicUserNuvio(fullUser.nuvioUserId, storedRefreshToken, req);
-        } else {
-          let authKeyToValidate = authKey;
-          if (!authKeyToValidate) {
-            if (!fullUser.stremioAuthKey) {
-              return res.status(400).json({ error: 'User not connected to Stremio' });
-            }
-            const mockReq = { appAccountId: userAccountId };
-            authKeyToValidate = decrypt(fullUser.stremioAuthKey, mockReq);
-          }
-          validatedUser = await getPublicUser(authKeyToValidate, req);
-        }
+        validatedUser = await verifyProviderIdentity(fullUser, authKey, req);
       } catch (error) {
         const errorMsg = error?.message || String(error || '');
         if (errorMsg === 'USER_NOT_FOUND') {
@@ -2049,25 +2091,14 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
 
       // Auth gate here is identity-check only (the actual data below is
       // 100% SlickSync's own DB - WatchActivity, library cache - never a
-      // live provider call), same live-identity-proof either provider uses
-      // elsewhere in this file.
-      const isNuvio = user.providerType === 'nuvio';
+      // live provider call). Routed through the shared verifyProviderIdentity
+      // (fixed to actually check the caller's own credential for Nuvio too,
+      // not just the target's own stored token) instead of a hand-rolled
+      // copy of the same logic.
       try {
-        if (isNuvio) {
-          if (!user.nuvioRefreshToken || !user.nuvioUserId) {
-            return res.status(401).json({ error: 'Authentication required' });
-          }
-          const mockReq = { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID };
-          const storedRefreshToken = decrypt(user.nuvioRefreshToken, mockReq);
-          await getPublicUserNuvio(user.nuvioUserId, storedRefreshToken, req);
-        } else {
-          if (!authKey) {
-            return res.status(401).json({ error: 'Authentication required' });
-          }
-          await getPublicUser(authKey, req);
-        }
+        await verifyProviderIdentity(user, authKey, req);
       } catch (e) {
-        return res.status(401).json({ error: 'Invalid auth key' });
+        return res.status(401).json({ error: e?.message || 'Invalid auth key' });
       }
 
       // Fetch watch activity for this user (using WatchActivity table like old slicksync)
@@ -2589,15 +2620,18 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       const effectiveProvider = provider || user.providerType || 'stremio'
 
       if (effectiveProvider === 'nuvio') {
+        // Real proof of possession, not just "does the TARGET's own stored
+        // token still work upstream" (that was the bug: it verifies the
+        // target user's session, not the caller's - anyone who knew a
+        // userId could delete anyone's account). Caller must present their
+        // own session token, issued at login/validate, proving THEY are
+        // this exact user.
+        const nuvioToken = getAuthKey(req)
+        if (!nuvioToken || !verifyNuvioSessionToken(nuvioToken, userId)) {
+          return res.status(401).json({ error: 'Invalid or expired Nuvio session', message: 'Invalid or expired Nuvio session - please sign in again before deleting your account' })
+        }
         if (!user.nuvioRefreshToken || !user.nuvioUserId) {
           return res.status(403).json({ error: 'USER_NOT_FOUND', message: 'Unable to verify your Nuvio session' })
-        }
-        const mockReq = { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID }
-        const storedRefreshToken = decrypt(user.nuvioRefreshToken, mockReq)
-        try {
-          await refreshNuvioToken(storedRefreshToken)
-        } catch {
-          return res.status(401).json({ error: 'Invalid or expired Nuvio session', message: 'Invalid or expired Nuvio session - please sign in again before deleting your account' })
         }
       } else {
         const authKey = getAuthKey(req)
