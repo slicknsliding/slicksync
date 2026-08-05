@@ -25,10 +25,15 @@ interface AvatarPickerModalProps {
   nuvioCoversUserId?: string;
   // This component is reused for both circular person/account avatars and
   // rectangular cover art (Catalogs, Nuvio Collections/folders) - the
-  // "Change Avatar" title and round preview only make sense for the former.
-  // Cover-art callers pass a real title and 'rect' here instead.
+  // "Change Avatar" title and round preview only made sense for the former.
+  // Cover-art callers pass '' (no title bar at all - the redesigned rect
+  // preview + tabs already read as a cover picker with no label needed)
+  // and 'rect' here instead.
   title?: string;
   previewShape?: 'circle' | 'rect';
+  // Cover pickers need real room - a big preview, a legible grid of Nuvio
+  // covers - the original 'md' avatar-picker size was cramped for that.
+  size?: 'md' | 'lg' | 'xl';
 }
 
 type Tab = 'color' | 'url' | 'upload' | 'nuvio';
@@ -43,6 +48,7 @@ export function AvatarPickerModal({
   nuvioCoversUserId,
   title = 'Change Avatar',
   previewShape = 'circle',
+  size = 'md',
 }: AvatarPickerModalProps) {
   const [tab, setTab] = useState<Tab>(currentAvatarUrl ? 'url' : 'color');
   const [urlInput, setUrlInput] = useState(currentAvatarUrl || '');
@@ -163,8 +169,14 @@ export function AvatarPickerModal({
     color: active ? 'white' : 'var(--color-textMuted)',
   });
 
+  // The Nuvio Covers grid needs real room to actually be pickable from - a
+  // 3-across grid of tiny thumbnails at modal-md width was the "how could
+  // anyone choose from that" complaint this whole size/layout pass exists
+  // to fix. More columns only at the wider sizes cover callers actually use.
+  const nuvioGridCols = size === 'xl' ? 'grid-cols-4' : size === 'lg' ? 'grid-cols-3' : 'grid-cols-2';
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title} size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title={title} size={size}>
       <div className="space-y-4">
         {previewShape === 'circle' ? (
           <div className="flex justify-center mb-2">
@@ -176,12 +188,16 @@ export function AvatarPickerModal({
             />
           </div>
         ) : (
-          <div className="w-full aspect-video rounded-xl overflow-hidden bg-surface-hover mb-2">
+          <div className={`w-full ${size === 'md' ? 'aspect-video' : 'aspect-[21/9]'} rounded-xl overflow-hidden bg-surface-hover mb-2 border border-default`}>
             {tab !== 'color' && previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={previewUrl} alt="" className="w-full h-full object-cover" />
+            ) : tab === 'color' ? (
+              <div className="w-full h-full" style={{ background: `color-mix(in srgb, var(--color-${selectedColor < 4 ? 'primary' : 'secondary'}) ${100 - (selectedColor % 4) * 25}%, white)` }} />
             ) : (
-              <div className="w-full h-full" style={tab === 'color' ? { background: `color-mix(in srgb, var(--color-${selectedColor < 4 ? 'primary' : 'secondary'}) ${100 - (selectedColor % 4) * 25}%, white)` } : undefined} />
+              <div className="w-full h-full flex items-center justify-center text-xs text-subtle">
+                {name}
+              </div>
             )}
           </div>
         )}
@@ -270,52 +286,66 @@ export function AvatarPickerModal({
         {tab === 'nuvio' && nuvioCoversUserId && (
           <div className="space-y-3">
             <p className="text-xs text-muted">
-              Browsing nuvio.tv's community-submitted covers. Pick one to fill in the Image URL tab, then Save there.
+              Browsing nuvio.tv's community-submitted covers - hover one to preview it up top, click to use it.
             </p>
 
-            <div className="flex flex-wrap gap-1.5">
-              {(['all', 'landscape', 'portrait'] as const).map((o) => (
-                <button
-                  key={o}
-                  type="button"
-                  onClick={() => setNuvioOrientation(o)}
-                  className={`${filterButtonClass(nuvioOrientation === o)} capitalize`}
-                  style={filterButtonStyle(nuvioOrientation === o)}
-                >
-                  {o}
-                </button>
-              ))}
-              <span className="w-px my-0.5" style={{ background: 'var(--color-surface-border)' }} />
-              {(['all', 'gif', 'jpg', 'png'] as const).map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setNuvioFormat(f)}
-                  className={`${filterButtonClass(nuvioFormat === f)} uppercase`}
-                  style={filterButtonStyle(nuvioFormat === f)}
-                >
-                  {f === 'all' ? 'All formats' : f}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
+              <div className="flex gap-1">
+                {(['all', 'landscape', 'portrait'] as const).map((o) => (
+                  <button
+                    key={o}
+                    type="button"
+                    onClick={() => setNuvioOrientation(o)}
+                    className={`${filterButtonClass(nuvioOrientation === o)} capitalize`}
+                    style={filterButtonStyle(nuvioOrientation === o)}
+                  >
+                    {o}
+                  </button>
+                ))}
+              </div>
+              <span className="w-px h-5" style={{ background: 'var(--color-surface-border)' }} />
+              <div className="flex gap-1">
+                {(['all', 'gif', 'jpg', 'png'] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setNuvioFormat(f)}
+                    className={`${filterButtonClass(nuvioFormat === f)} uppercase`}
+                    style={filterButtonStyle(nuvioFormat === f)}
+                  >
+                    {f === 'all' ? 'All formats' : f}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {nuvioCoversError ? (
               <p className="text-xs text-error py-4 text-center">{nuvioCoversError}</p>
             ) : (
-              <div className="grid grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-1">
+              <div className={`grid ${nuvioGridCols} gap-3 max-h-[28rem] overflow-y-auto pr-1`}>
                 {nuvioCovers.map((cover) => (
                   <button
                     key={cover.id}
                     type="button"
                     onClick={() => handlePickNuvioCover(cover)}
+                    onMouseEnter={() => setPreviewUrl(cover.image_url)}
+                    onMouseLeave={() => setPreviewUrl(urlInput || null)}
                     title={cover.title || 'Use this cover'}
-                    className="relative aspect-video rounded-lg overflow-hidden border border-default hover:border-primary transition-colors bg-surface-hover"
+                    className="group relative aspect-video rounded-lg overflow-hidden border-2 border-default hover:border-primary transition-colors bg-surface-hover"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={cover.image_url} alt={cover.title || ''} className="w-full h-full object-cover" loading="lazy" />
+                    {cover.title && (
+                      <div
+                        className="absolute inset-x-0 bottom-0 px-2 py-1 text-[11px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ background: 'linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 100%)' }}
+                      >
+                        {cover.title}
+                      </div>
+                    )}
                   </button>
                 ))}
-                {nuvioCoversLoading && Array.from({ length: 6 }).map((_, i) => (
+                {nuvioCoversLoading && Array.from({ length: size === 'md' ? 4 : 8 }).map((_, i) => (
                   <div key={`skeleton-${i}`} className="aspect-video rounded-lg bg-surface-hover animate-pulse" />
                 ))}
               </div>

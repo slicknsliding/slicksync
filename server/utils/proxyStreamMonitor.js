@@ -22,6 +22,22 @@ const { notifyPushForType } = require('./pushNotifications')
 
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
+// Synthetic identity for usenet streams in the SAME ProxyStreamSession
+// table/unique-key/notification pipeline the regular proxy connections use
+// (accountId, aiostreamsUser, clientIp, url) - no schema change needed.
+// Usenet's own live-stream data (see fetchUsenetLiveStreams) carries NO
+// user identity at all, unlike proxy connections (which come back tagged
+// per aiostreamsUser) - so every usenet stream resolves through
+// resolveUserForActiveConnection's existing AIOSTREAMS_FALLBACK_USER_IDS
+// path, exactly like any other "proxy activity AIOStreams can't attribute"
+// case already does. url is repurposed to hold the stream's nzbHash - a
+// stable per-title identity, unlike a mutable byte-range URL - and IS
+// unique per concurrent usenet stream, so multiple simultaneous usenet
+// watches still get distinct rows; they just can't be told apart by WHO
+// is watching which one without a configured fallback user id.
+const USENET_SYNTHETIC_USER = '__usenet__'
+const USENET_SYNTHETIC_IP = 'usenet'
+
 let pollTimer = null
 let cachedCookie = null
 // Last poll outcome, for the health board (server/routes/health.js) - this
@@ -129,6 +145,38 @@ async function fetchProxyStats(baseUrl, username, password) {
   }
 
   return res.json()
+}
+
+// Live usenet streams (filename/bytes-served/rate, no user identity - see
+// this function's caller for how that's handled). Backend-only endpoint on
+// very recent AIOStreams builds (nightly/main as of 2026-08-01) - their own
+// dashboard PAGE for it was reverted the same day, but the API route
+// itself wasn't, confirmed via a live authenticated request against it.
+// Returns null (not a throw) on 404 so an instance running an older/stable
+// AIOStreams build - which is most self-hosters right now - just never
+// sees usenet entries, with zero impact on the proxy polling this rides
+// alongside. Shares the same session cookie as /proxy/stats since both
+// sit behind the same dashboard auth.
+async function fetchUsenetLiveStreams(baseUrl, username, password) {
+  if (!cachedCookie) {
+    cachedCookie = await loginToAiostreams(baseUrl, username, password)
+  }
+  let res = await fetch(`${baseUrl}/api/v1/dashboard/usenet/live`, {
+    headers: { Cookie: cachedCookie },
+  })
+  if (res.status === 401) {
+    cachedCookie = await loginToAiostreams(baseUrl, username, password)
+    res = await fetch(`${baseUrl}/api/v1/dashboard/usenet/live`, {
+      headers: { Cookie: cachedCookie },
+    })
+  }
+  if (res.status === 404) return null // older AIOStreams build - no usenet-live route at all
+  if (!res.ok) {
+    throw new Error(`AIOStreams /dashboard/usenet/live failed: ${res.status} ${res.statusText}`)
+  }
+  const data = await res.json()
+  // createResponse() envelope: { success, data: { live, pool, cache, streams } }
+  return data?.data?.streams ?? data?.streams ?? null
 }
 
 
@@ -477,6 +525,65 @@ async function pollOnce(prisma, accountId, config) {
           await maybeNotifyStart(prisma, accountId, notifyWebhook, notifyUsers, user.username, row.id, displayName)
         }
       }
+    }
+
+    // Usenet live streams - same shape of work as the proxy loop above, just
+    // a different source and synthetic identity (see the constants' own
+    // comment for why). Isolated in its own try/catch so an older AIOStreams
+    // build (no /dashboard/usenet/live route - fetchUsenetLiveStreams
+    // returns null for that, not a throw) or any other failure here never
+    // touches the proxy polling it rides alongside.
+    try {
+      const usenetStreams = await fetchUsenetLiveStreams(config.baseUrl, config.username, config.password)
+      for (const stream of usenetStreams ?? []) {
+        if (!stream?.nzbHash) continue
+        const clientIp = USENET_SYNTHETIC_IP
+        const url = stream.nzbHash
+        const key = `${USENET_SYNTHETIC_USER}:::${clientIp}:::${url}`
+        seenKeys.add(key)
+
+        const displayName = parseDisplayName(stream.filename)
+
+        const existingRow = await prisma.proxyStreamSession.findUnique({
+          where: { accountId_aiostreamsUser_clientIp_url: { accountId, aiostreamsUser: USENET_SYNTHETIC_USER, clientIp, url } },
+          select: { id: true, isActive: true },
+        })
+        const isReactivation = existingRow && existingRow.isActive === false
+
+        const row = await prisma.proxyStreamSession.upsert({
+          where: {
+            accountId_aiostreamsUser_clientIp_url: { accountId, aiostreamsUser: USENET_SYNTHETIC_USER, clientIp, url },
+          },
+          create: {
+            accountId,
+            aiostreamsUser: USENET_SYNTHETIC_USER,
+            clientIp,
+            url,
+            filename: stream.filename ?? null,
+            displayName,
+            requestCount: 1,
+            startTime: new Date(stream.openedAt),
+            lastSeenAt: now,
+            isActive: true,
+          },
+          update: {
+            lastSeenAt: now,
+            isActive: true,
+            endTime: null,
+            ...(isReactivation ? { startTime: new Date(stream.openedAt) } : {}),
+          },
+        })
+
+        if (!row.metadataMatchedAt) {
+          await attemptPosterLookup(prisma, row.id, displayName)
+        }
+        if (notifyActivity && !existingRow) {
+          await maybeNotifyStart(prisma, accountId, notifyWebhook, notifyUsers, USENET_SYNTHETIC_USER, row.id, displayName)
+        }
+      }
+      heartbeat('pollOnce:usenet_done', { seen: (usenetStreams ?? []).length })
+    } catch (error) {
+      heartbeat('pollOnce:usenet_error', { message: error.message })
     }
 
     // Anything previously active that AIOStreams no longer lists: mark ended
