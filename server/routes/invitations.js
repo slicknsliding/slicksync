@@ -878,32 +878,15 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
         return res.status(404).json({ error: 'No user found with this email address' })
       }
 
-      // For each user, remove them from all groups and delete them
+      // For each user, cascade-delete their own data (watch history, group
+      // membership, etc.) - not just the bare User row. This used to only
+      // remove group membership and delete(User), silently orphaning every
+      // userId-scoped table (WatchSnapshot, EpisodeWatchHistory,
+      // MovieWatchHistory, WatchSession, ...) forever, despite this page
+      // telling people "all associated data will be permanently deleted."
+      const { deleteUserCascade } = require('../utils/accountDeletion')
       for (const user of users) {
-        // Get all groups that contain this user
-        const groups = await prisma.group.findMany({
-          where: {
-            userIds: {
-              contains: user.id
-            }
-          }
-        })
-
-        // Remove user from all groups
-        for (const group of groups) {
-          const userIds = group.userIds ? JSON.parse(group.userIds) : []
-          const updatedUserIds = userIds.filter((id) => id !== user.id)
-          await prisma.group.update({
-            where: { id: group.id },
-            data: { userIds: JSON.stringify(updatedUserIds) }
-          })
-        }
-
-        // Delete the user
-        await prisma.user.delete({
-          where: { id: user.id }
-        })
-
+        await deleteUserCascade(prisma, user.id)
         console.log(`✅ Deleted user via opt-out: ${user.email} (${user.id})`)
       }
 

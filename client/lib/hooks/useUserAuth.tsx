@@ -30,6 +30,7 @@ interface UserAuthContextType {
   loginNuvio: (code: string, deviceNonce: string, anonToken: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   refreshUserInfo: () => Promise<void>;
+  deleteAccount: () => Promise<{ success: boolean; error?: string }>;
 }
 
 const UserAuthContext = createContext<UserAuthContextType | null>(null);
@@ -236,6 +237,23 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
     }
   }, [userId, provider, authKey]);
 
+  // Self-service "delete my account" - permanently removes only this user's
+  // own row and data. logout()'s local cleanup runs regardless of provider
+  // since there's nothing left server-side to keep a session valid against.
+  const deleteAccount = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    if (!userId || !provider) {
+      return { success: false, error: 'Not signed in' };
+    }
+    try {
+      await userAuth.deleteAccount(userId, provider, authKey || undefined);
+      logout();
+      return { success: true };
+    } catch (err) {
+      const errorMsg = err instanceof UserApiError ? err.message : 'Failed to delete account';
+      return { success: false, error: errorMsg };
+    }
+  }, [userId, provider, authKey, logout]);
+
   const value: UserAuthContextType = {
     isAuthenticated: !!userId && (provider === 'nuvio' || !!authKey),
     isLoading,
@@ -249,6 +267,7 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
     loginNuvio,
     logout,
     refreshUserInfo,
+    deleteAccount,
   };
 
   return (

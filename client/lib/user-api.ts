@@ -356,6 +356,23 @@ export const userAuth = {
   },
 
   /**
+   * Self-service "delete my account" - permanently removes this user and
+   * their own data (watch history, watchlist state, group membership).
+   * Does NOT touch account-wide resources (Vault, Catalogs, other users) -
+   * that's the separate admin-level Settings > Danger Zone delete. Re-proves
+   * the live session server-side, so Stremio users must pass their current
+   * authKey; Nuvio users are re-validated by userId alone (mirrors validate/
+   * validateNuvio above).
+   */
+  async deleteAccount(userId: string, provider: 'stremio' | 'nuvio', authKey?: string): Promise<{ deleted: boolean }> {
+    return request('/public-library/delete-account', {
+      method: 'POST',
+      body: JSON.stringify({ userId, provider }),
+      authKey,
+    });
+  },
+
+  /**
    * Get current user's info
    */
   async getUserInfo(userId: string, authKey?: string): Promise<UserInfo> {

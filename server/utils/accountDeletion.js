@@ -50,4 +50,61 @@ async function deleteAccountCascade(prisma, accountId) {
   return existing;
 }
 
-module.exports = { deleteAccountCascade };
+// Cascade-deletes a single managed User and only the rows scoped to their
+// own userId - NOT the shared account-level resources (Vault, Catalogs,
+// Groups/Addons themselves) that deleteAccountCascade above wipes for the
+// whole tenant. This is the self-service "delete my account" a managed
+// User can trigger from their own User panel, distinct from an admin
+// wiping their entire AppAccount. Every model below genuinely has a
+// userId field (confirmed against both prisma schemas) - models that are
+// account-wide/shared (WatchlistItem, NotInterestedItem,
+// ManualWatchOverride, DismissedUpcomingEpisode, ShowEpisodeAlertState,
+// Vault, CustomList, Notification, PushSubscription, etc.) are
+// deliberately left untouched here.
+async function deleteUserCascade(prisma, userId) {
+  const existing = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, accountId: true } })
+  if (!existing) {
+    const err = new Error('User not found')
+    err.notFound = true
+    throw err
+  }
+
+  // Group membership lives as a JSON-string userIds array on Group, not a
+  // relational FK - strip this user out of every group in their account
+  // before deleting them, so no group is left pointing at a dangling id.
+  const groups = await prisma.group.findMany({
+    where: { accountId: existing.accountId },
+    select: { id: true, userIds: true }
+  })
+  const groupUpdates = []
+  for (const group of groups) {
+    let ids = []
+    try { ids = group.userIds ? JSON.parse(group.userIds) : [] } catch { ids = [] }
+    if (ids.includes(userId)) {
+      groupUpdates.push(
+        prisma.group.update({
+          where: { id: group.id },
+          data: { userIds: JSON.stringify(ids.filter((id) => id !== userId)) }
+        })
+      )
+    }
+  }
+
+  const where = { userId }
+  await prisma.$transaction([
+    ...groupUpdates,
+    prisma.watchSnapshot.deleteMany({ where }),
+    prisma.watchActivity.deleteMany({ where }),
+    prisma.episodeWatchHistory.deleteMany({ where }),
+    prisma.movieWatchHistory.deleteMany({ where }),
+    prisma.userSyncGuardState.deleteMany({ where }),
+    prisma.watchSession.deleteMany({ where }),
+    prisma.dismissedContinueWatching.deleteMany({ where }),
+    prisma.proxyUserIpAffinity.deleteMany({ where }),
+    prisma.userProviderCredential.deleteMany({ where }),
+    prisma.user.delete({ where: { id: userId } }),
+  ])
+  return existing
+}
+
+module.exports = { deleteAccountCascade, deleteUserCascade };
