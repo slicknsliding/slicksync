@@ -181,10 +181,15 @@ type PreviewFolderItems = { id: string; type: string; name: string; poster: stri
 // safely because useSortableSensors' PointerSensor has an 8px activation
 // distance, so a plain click never crosses the threshold to start a drag.
 function FolderTile({
-  folder, previewItems, previewLoading, hasBrokenSource, coverOverride, onOpen, onDelete,
+  folder, previewItems, heroItem, previewLoading, hasBrokenSource, coverOverride, onOpen, onDelete,
 }: {
   folder: NuvioCollectionFolder;
   previewItems?: PreviewFolderItems;
+  // Which item to show as the tile's hero poster - defaults to the
+  // folder's own top item (items[0]), but CollectionSection may override
+  // this to dedup heroes across folders in the same collection (see its
+  // heroOverrideByFolder comment for why that matters).
+  heroItem?: PreviewFolderItems[number] | null;
   previewLoading: boolean;
   hasBrokenSource: boolean;
   coverOverride?: string;
@@ -199,7 +204,7 @@ function FolderTile({
   };
   const sourceCount = (folder.catalogSources || []).length;
   const items = previewItems || [];
-  const hero = items[0];
+  const hero = heroItem !== undefined ? heroItem : items[0];
   const heroPoster = coverOverride || hero?.poster;
 
   return (
@@ -380,6 +385,27 @@ function CollectionSection({
   const isPinned = !!collection.pinToTop;
   const brokenFolderCount = folders.filter((f) => brokenFolderIds.has(f.id) || (f.catalogSources || []).length === 0).length;
 
+  // A genre template's folders often share sources (Cinemeta's own "Popular"
+  // catalog, filtered per-genre) - confirmed live, its single most-popular
+  // title is frequently tagged with more than one genre (a blockbuster
+  // topping both the Action and Adventure charts at once, for example), so
+  // the raw #1 item can legitimately be identical across folders even
+  // though each folder's full list differs beyond that. Picking each
+  // folder's hero in order and skipping any title already claimed by an
+  // earlier folder in this same collection keeps every tile's cover
+  // visually distinct without touching the real, correct underlying data.
+  const heroOverrideByFolder = useMemo(() => {
+    const used = new Set<string>();
+    const map: Record<string, PreviewFolderItems[number] | null> = {};
+    for (const f of folders) {
+      const items = previewByFolder[f.id] || [];
+      const pick = items.find((it) => !used.has(it.id)) || items[0] || null;
+      if (pick) used.add(pick.id);
+      map[f.id] = pick;
+    }
+    return map;
+  }, [folders, previewByFolder]);
+
   return (
     <Card padding="lg" className="mb-4">
       <div className="flex items-center gap-2 mb-4">
@@ -426,6 +452,7 @@ function CollectionSection({
                   key={folder.id}
                   folder={folder}
                   previewItems={previewByFolder[folder.id]}
+                  heroItem={heroOverrideByFolder[folder.id]}
                   previewLoading={previewLoadingIds.has(folder.id)}
                   hasBrokenSource={brokenFolderIds.has(folder.id)}
                   coverOverride={typeof folder.coverImageUrl === 'string' ? folder.coverImageUrl : undefined}
