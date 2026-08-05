@@ -68,7 +68,7 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 - Deep links use each provider's real format (`stremio:///detail/...`, `nuvio://meta?...`) — no guessing, no account-specific data in the link.
 - Continue Watching row on the Dashboard — drag to scroll, right-click/long-press to remove.
 - Right-click (desktop) or long-press (mobile) any poster for a quick-action menu — Add to Watchlist, Add to Catalogs, Mark Watched — without opening the detail popup first.
-- Rating badges on every poster card (IMDb/RT/Metacritic) can be turned off instance-wide in Settings if you'd rather browse without scores in view.
+- Rating badges on every poster card (IMDb/RT/Metacritic) are off by default — opt in from Settings if you want scores visible before opening a title.
 
 ### 📚 Catalogs
 Named collections of titles, separate from the Watchlist — build a "Halloween Marathon" or "Kids' Night" list and share the idea, not just watch it alone.
