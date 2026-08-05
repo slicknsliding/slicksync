@@ -21,6 +21,7 @@ interface AccountModalProps {
     accountInfo: {
         uuid?: string | null;
         email?: string | null;
+        linkedProvider?: 'stremio' | 'nuvio' | null;
     };
     onAccountUpdated: () => void;
 }
@@ -56,6 +57,12 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
     const hasUuid = !!accountInfo.uuid;
     const hasStremio = !!accountInfo.email;
     const hasBoth = hasUuid && hasStremio;
+    // Stremio and Nuvio admin-login both write to the same shared `email`
+    // column - there's only one "linked identity" slot, so hasStremio really
+    // means "some provider is linked". linkedProvider says which one.
+    // Fallback to 'stremio' for accounts linked before this field existed.
+    const linkedProvider: 'stremio' | 'nuvio' = accountInfo.linkedProvider === 'nuvio' ? 'nuvio' : 'stremio';
+    const providerLabel = linkedProvider === 'nuvio' ? 'Nuvio' : 'Stremio';
 
     const resetState = () => {
         setView('main');
@@ -88,7 +95,7 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
             setResultMessage(result.message);
             setView('success');
             onAccountUpdated();
-            toast.success('Stremio unlinked — UUID only');
+            toast.success(`${providerLabel} unlinked — UUID only`);
         } catch (err: any) {
             setError(err.message || 'Failed to unlink Stremio');
         } finally {
@@ -105,7 +112,7 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
             setResultMessage(result.message);
             setView('success');
             onAccountUpdated();
-            toast.success('UUID removed — Stremio only');
+            toast.success(`UUID removed — ${providerLabel} only`);
         } catch (err: any) {
             setError(err.message || 'Failed to remove UUID');
         } finally {
@@ -180,9 +187,21 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                     </span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: hasStremio ? 'var(--color-success)' : 'var(--color-text-subtle)' }} />
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: (hasStremio && linkedProvider === 'stremio') ? 'var(--color-success)' : 'var(--color-text-subtle)' }} />
                     <span className="text-sm" style={{ color: 'var(--color-text)' }}>
-                        Stremio: {hasStremio ? (
+                        Stremio: {(hasStremio && linkedProvider === 'stremio') ? (
+                            <span className="opacity-70">
+                                {accountInfo.email}
+                            </span>
+                        ) : (
+                            <span style={{ color: 'var(--color-text-muted)' }}>Unlinked</span>
+                        )}
+                    </span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: (hasStremio && linkedProvider === 'nuvio') ? 'var(--color-success)' : 'var(--color-text-subtle)' }} />
+                    <span className="text-sm" style={{ color: 'var(--color-text)' }}>
+                        Nuvio: {(hasStremio && linkedProvider === 'nuvio') ? (
                             <span className="opacity-70">
                                 {accountInfo.email}
                             </span>
@@ -205,7 +224,7 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                     >
                         <ShieldCheckIcon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
                         <div className="text-left">
-                            <p className="text-sm font-medium">Keep Stremio Only</p>
+                            <p className="text-sm font-medium">Keep {providerLabel} Only</p>
                             <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Remove UUID & password</p>
                         </div>
                     </button>
@@ -220,7 +239,7 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                         <KeyIcon className="w-5 h-5" style={{ color: 'var(--color-warning)' }} />
                         <div className="text-left">
                             <p className="text-sm font-medium">Keep UUID Only</p>
-                            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Unlink Stremio account</p>
+                            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Unlink {providerLabel} account</p>
                         </div>
                     </button>
                 </>
@@ -252,7 +271,7 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                     onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-primary)'; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-surface-border)'; }}
                 >
-                    <LinkIcon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
+                    <LinkIcon className="w-5 h-5 shrink-0" style={{ color: 'var(--color-primary)' }} />
                     <div className="text-left">
                         <p className="text-sm font-medium">Link Stremio</p>
                         <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Connect your Stremio account</p>
@@ -264,19 +283,24 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                 same email already connected to Nuvio, unlike Stremio's
                 linking which can create that link from a bare login. */}
             {hasUuid && !hasStremio && (
-                <button
-                    onClick={handleLinkNuvio}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200"
-                    style={{ backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text)', border: '1px solid var(--color-surface-border)' }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-primary)'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-surface-border)'; }}
-                >
-                    <LinkIcon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
-                    <div className="text-left">
-                        <p className="text-sm font-medium">Link Nuvio</p>
-                        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Connect your Nuvio account (requires a managed user with this email already connected to Nuvio)</p>
-                    </div>
-                </button>
+                <>
+                    <button
+                        onClick={handleLinkNuvio}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200"
+                        style={{ backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text)', border: '1px solid var(--color-surface-border)' }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-primary)'; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-surface-border)'; }}
+                    >
+                        <LinkIcon className="w-5 h-5 shrink-0" style={{ color: 'var(--color-primary)' }} />
+                        <div className="text-left">
+                            <p className="text-sm font-medium">Link Nuvio</p>
+                            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Sign in to the admin dashboard with Nuvio instead of a password</p>
+                        </div>
+                    </button>
+                    <p className="text-xs px-1" style={{ color: 'var(--color-text-subtle)' }}>
+                        Requires a managed user with this same email already connected to Nuvio.
+                    </p>
+                </>
             )}
 
             {/* Change password (always shown when UUID exists) */}
@@ -308,7 +332,7 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                 <div>
                     <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>Keep UUID Only</p>
                     <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                        This will unlink your Stremio account. You&apos;ll only be able to log in with your UUID and password.
+                        This will unlink your {providerLabel} account. You&apos;ll only be able to log in with your UUID and password.
                     </p>
                     <p className="text-xs mt-2 font-mono" style={{ color: 'var(--color-text-muted)' }}>
                         Your UUID: {accountInfo.uuid}
@@ -374,9 +398,9 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
             >
                 <ShieldCheckIcon className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--color-primary)' }} />
                 <div>
-                    <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>Keep Stremio Only</p>
+                    <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>Keep {providerLabel} Only</p>
                     <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                        This will remove your UUID and password. You&apos;ll only be able to log in via Stremio ({accountInfo.email}).
+                        This will remove your UUID and password. You&apos;ll only be able to log in via {providerLabel} ({accountInfo.email}).
                     </p>
                 </div>
             </div>
@@ -537,7 +561,7 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
         switch (view) {
             case 'main': return 'Account';
             case 'unlink-stremio': return 'Keep UUID Only';
-            case 'unlink-uuid': return 'Keep Stremio Only';
+            case 'unlink-uuid': return `Keep ${providerLabel} Only`;
             case 'set-credentials': return hasUuid ? 'Change Password' : 'Add Credentials';
             case 'link-stremio': return 'Link Stremio';
             case 'success': return 'Success';

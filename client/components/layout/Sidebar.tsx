@@ -154,7 +154,7 @@ function NavSection({ label, children, delay = 0 }: NavSectionProps) {
 export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [accountInfo, setAccountInfo] = useState<{ username?: string; email?: string | null; uuid?: string | null; avatarUrl?: string | null } | null>(null);
+  const [accountInfo, setAccountInfo] = useState<{ username?: string; email?: string | null; uuid?: string | null; linkedProvider?: 'stremio' | 'nuvio' | null; avatarUrl?: string | null } | null>(null);
 
   const isPublicInstance = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') === 'public';
 
@@ -167,6 +167,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           username: isPublicInstance ? (uuid || email || 'Admin') : 'Administrator',
           email: email,
           uuid: uuid,
+          linkedProvider: stats.linkedProvider || null,
           avatarUrl: stats.avatarUrl || null,
         });
       })

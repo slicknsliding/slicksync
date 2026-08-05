@@ -365,10 +365,15 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
     // exact Bearer token; param names/values - sort, orientation, format -
     // confirmed by watching the real UI's own network requests, not
     // guessed).
-    async getCommunityCovers({ sort = 'recent', orientation = 'all', format = 'all', page = 1, limit = 24 } = {}) {
+    async getCommunityCovers({ sort = 'recent', orientation = 'all', format = 'all', page = 1, limit = 24, search = '' } = {}) {
       const accessToken = await ensureAuth()
       const params = new URLSearchParams({ sort, orientation, page: String(page), limit: String(limit) })
       if (format && format !== 'all') params.set('format', format)
+      // Real server-side search - confirmed live against nuvio.tv/api/covers
+      // (nuvio.tv's own search box in the UI doesn't fire an observable
+      // request, but the API itself supports it; ?search= filters
+      // pagination.total correctly and returns 0 results for garbage terms).
+      if (search && search.trim()) params.set('search', search.trim())
       const res = await fetch(`https://nuvio.tv/api/covers?${params}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })

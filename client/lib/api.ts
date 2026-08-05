@@ -480,13 +480,14 @@ class ApiClient {
     );
   }
 
-  async getNuvioCommunityCovers(userId: string, opts: { sort?: string; orientation?: string; format?: string; page?: number; limit?: number } = {}) {
+  async getNuvioCommunityCovers(userId: string, opts: { sort?: string; orientation?: string; format?: string; page?: number; limit?: number; search?: string } = {}) {
     const params = new URLSearchParams();
     if (opts.sort) params.set('sort', opts.sort);
     if (opts.orientation) params.set('orientation', opts.orientation);
     if (opts.format) params.set('format', opts.format);
     if (opts.page) params.set('page', String(opts.page));
     if (opts.limit) params.set('limit', String(opts.limit));
+    if (opts.search) params.set('search', opts.search);
     const qs = params.toString();
     return this.fetch<NuvioCommunityCoversResponse>(
       `/users/${encodeURIComponent(userId)}/nuvio-covers${qs ? `?${qs}` : ''}`
@@ -2278,6 +2279,7 @@ export interface AccountStats {
   pendingInvites: number;
   uuid?: string | null;
   email?: string | null;
+  linkedProvider?: 'stremio' | 'nuvio' | null;
   avatarUrl?: string | null;
 }
 

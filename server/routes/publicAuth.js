@@ -469,7 +469,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           if (currentAccount.email == null) {
             account = await prisma.appAccount.update({
               where: { id: currentAccount.id },
-              data: { email }
+              data: { email, linkedProvider: 'stremio' }
             })
           } else {
             account = currentAccount
@@ -508,7 +508,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           if (!validation.valid) {
             await prisma.appAccount.update({
               where: { id: account.id },
-              data: { email: null }
+              data: { email: null, linkedProvider: null }
             })
             account = null
           }
@@ -523,14 +523,14 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
               const newUuid = await generateUniqueAccountUuid()
               await prisma.appAccount.update({
                 where: { id: legacyAccount.id },
-                data: { uuid: newUuid, email: null }
+                data: { uuid: newUuid, email: null, linkedProvider: null }
               })
               account = null
             } else {
               const newUuid = await generateUniqueAccountUuid()
               account = await prisma.appAccount.update({
                 where: { id: legacyAccount.id },
-                data: { uuid: newUuid, email }
+                data: { uuid: newUuid, email, linkedProvider: 'stremio' }
               })
             }
           }
@@ -542,7 +542,8 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
             data: {
               uuid: null,
               email,
-              passwordHash: null
+              passwordHash: null,
+              linkedProvider: 'stremio'
             }
           })
           isNewAccount = true
@@ -550,7 +551,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           // Account exists but email was unlinked - set it now
           account = await prisma.appAccount.update({
             where: { id: account.id },
-            data: { email }
+            data: { email, linkedProvider: 'stremio' }
           })
         }
 
@@ -770,7 +771,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           if (currentAccount.email == null) {
             account = await prisma.appAccount.update({
               where: { id: currentAccount.id },
-              data: { email }
+              data: { email, linkedProvider: 'nuvio' }
             })
           } else {
             account = currentAccount
@@ -807,7 +808,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           if (!validation.valid) {
             await prisma.appAccount.update({
               where: { id: account.id },
-              data: { email: null }
+              data: { email: null, linkedProvider: null }
             })
             account = null
           }
@@ -818,14 +819,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
             data: {
               uuid: null,
               email,
-              passwordHash: null
+              passwordHash: null,
+              linkedProvider: 'nuvio'
             }
           })
           isNewAccount = true
         } else if (account.email == null) {
           account = await prisma.appAccount.update({
             where: { id: account.id },
-            data: { email }
+            data: { email, linkedProvider: 'nuvio' }
           })
         }
 
@@ -926,7 +928,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
 
       await prisma.appAccount.update({
         where: { id: accountId },
-        data: { email: null }
+        data: { email: null, linkedProvider: null }
       })
 
       return res.json({ message: 'Stremio account unlinked successfully. You can now log in with your UUID and password.', uuid: account.uuid })
