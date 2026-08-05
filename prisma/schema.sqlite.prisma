@@ -457,6 +457,13 @@ model CustomList {
   // a catalog built by hand. Lets "Refresh from source" re-pull the same
   // list later without asking the user to paste the URL again.
   importSourceUrl  String?
+  // Opt-in daily re-pull of importSourceUrl (see scheduleCatalogAutoRefresh) -
+  // meaningless without importSourceUrl set, so the scheduler always checks
+  // both. Off by default even for imported catalogs: replacing items
+  // unattended is a bigger behavior change than the existing manual
+  // "Refresh" button, which always shows a diff before applying.
+  autoRefresh      Boolean  @default(false)
+  lastAutoRefreshAt DateTime?
   // Featured/hero treatment on the Catalogs index page - at most meaningful
   // for one catalog at a time (the client only ever shows the first pinned
   // one as the hero), but not DB-enforced as singular; a second pin just

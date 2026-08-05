@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import {
   Card, Button, Modal, ConfirmModal, MediaDetailModal, PosterCard, PosterCardItem,
-  SelectionCheckbox, SelectAllCheckbox,
+  SelectionCheckbox, SelectAllCheckbox, ToggleSwitch,
   DndContext, closestCenter, SortableContext, useSortable, useSortableSensors, CSS,
 } from '@/components/ui';
 import { rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
@@ -282,6 +282,22 @@ export default function ListDetailPage() {
       toast.error(e?.message || 'Failed to refresh from source');
     } finally {
       setApplyingRefresh(false);
+    }
+  };
+
+  const [savingAutoRefresh, setSavingAutoRefresh] = useState(false);
+  const handleToggleAutoRefresh = async () => {
+    if (!list || savingAutoRefresh) return;
+    const next = !list.autoRefresh;
+    setSavingAutoRefresh(true);
+    try {
+      const updated = await api.updateList(list.id, { autoRefresh: next });
+      setList(updated);
+      toast.success(next ? 'This catalog will now refresh from its source daily' : 'Daily auto-refresh turned off');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to update auto-refresh');
+    } finally {
+      setSavingAutoRefresh(false);
     }
   };
 
@@ -717,6 +733,17 @@ export default function ListDetailPage() {
             <p className="text-xs text-muted">
               Applying replaces this catalog&apos;s titles with the source list&apos;s current contents. Any titles you&apos;ve added or removed by hand since importing will be lost.
             </p>
+            <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-surface-hover">
+              <div>
+                <p className="text-sm font-medium text-default">Auto-refresh daily</p>
+                <p className="text-xs text-muted">
+                  {list?.autoRefresh && list.lastAutoRefreshAt
+                    ? `Last auto-refreshed ${new Date(list.lastAutoRefreshAt).toLocaleDateString()}`
+                    : 'Automatically re-pull and apply, once a day, no confirmation'}
+                </p>
+              </div>
+              <ToggleSwitch checked={!!list?.autoRefresh} onChange={handleToggleAutoRefresh} disabled={savingAutoRefresh} />
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" size="sm" onClick={() => setRefreshDiff(null)}>Cancel</Button>
               <Button variant="primary" size="sm" onClick={handleApplyRefresh} isLoading={applyingRefresh}>Apply</Button>

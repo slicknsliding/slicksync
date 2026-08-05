@@ -451,6 +451,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize vault monitor:', err)
     }
 
+    // Schedule catalog auto-refresh (daily re-pull of imported catalogs
+    // that opted in to autoRefresh)
+    try {
+      const { scheduleCatalogAutoRefresh } = require('./utils/catalogAutoRefresh')
+      scheduleCatalogAutoRefresh(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize catalog auto-refresh:', err)
+    }
+
     // Schedule new-episode alerts (Cinemeta episode-list polling for shows
     // with recent watch history, every 6h)
     try {
