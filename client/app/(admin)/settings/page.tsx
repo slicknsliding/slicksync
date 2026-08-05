@@ -182,6 +182,7 @@ export default function SettingsPage() {
     notifyOnAddonHealth: false,
     notifyOnBackup: false,
     notifyOnProxyHealth: false,
+    notifyOnUpdateAvailable: false,
     notifyOnMosaic: false,
     notifyDigestEnabled: false,
     notifyDigestFrequency: 'daily' as 'daily' | 'weekly',
@@ -304,6 +305,7 @@ export default function SettingsPage() {
           notifyOnAddonHealth: settings.notifyOnAddonHealth || false,
           notifyOnBackup: settings.notifyOnBackup || false,
           notifyOnProxyHealth: settings.notifyOnProxyHealth || false,
+          notifyOnUpdateAvailable: settings.notifyOnUpdateAvailable || false,
           notifyOnMosaic: settings.notifyOnMosaic || false,
           notifyDigestEnabled: settings.notifyDigestEnabled || false,
           notifyDigestFrequency: settings.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily',
@@ -454,6 +456,7 @@ export default function SettingsPage() {
       notifyOnAddonHealth: false,
       notifyOnBackup: false,
       notifyOnProxyHealth: false,
+      notifyOnUpdateAvailable: false,
       notifyOnMosaic: false,
       notifyDigestEnabled: false,
       notifyDigestFrequency: 'daily',
@@ -471,6 +474,7 @@ export default function SettingsPage() {
         notifyOnAddonHealth: false,
         notifyOnBackup: false,
         notifyOnProxyHealth: false,
+        notifyOnUpdateAvailable: false,
         notifyOnMosaic: false,
         notifyDigestEnabled: false,
         notifyDigestFrequency: 'daily',
@@ -781,6 +785,17 @@ export default function SettingsPage() {
                     enabled={syncSettings.notifyOnProxyHealth || false}
                     onChange={(v) => handleSaveSetting('notifyOnProxyHealth', v)}
                     label="Toggle proxy connectivity notifications"
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  label="Update available notifications"
+                  description="Notify when a newer stable SlickSync release is published (checked every 6h) - also always visible on Metrics > Health regardless of this toggle"
+                >
+                  <ToggleSwitch
+                    enabled={syncSettings.notifyOnUpdateAvailable || false}
+                    onChange={(v) => handleSaveSetting('notifyOnUpdateAvailable', v)}
+                    label="Toggle update available notifications"
                   />
                 </SettingRow>
 

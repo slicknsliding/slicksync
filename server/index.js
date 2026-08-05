@@ -421,6 +421,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize episode alerts:', err)
     }
 
+    // Schedule update-available notifications (every 6h - matches
+    // getVersionStatus's own GitHub-API cache TTL) - opt-in, off by default.
+    try {
+      const { scheduleUpdateCheckNotifier } = require('./utils/updateCheckNotifier')
+      scheduleUpdateCheckNotifier(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize update-check notifier:', err)
+    }
+
     // Schedule notification digest sends (hourly check, actual send gated by
     // each account's daily/weekly cadence) - opt-in, off by default.
     try {

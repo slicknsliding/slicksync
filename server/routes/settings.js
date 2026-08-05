@@ -392,6 +392,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnAddonHealth: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnAddonHealth === true : false,
           notifyOnBackup: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnBackup === true : false,
           notifyOnProxyHealth: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnProxyHealth === true : false,
+          notifyOnUpdateAvailable: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnUpdateAvailable === true : false,
           notifyOnMosaic: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnMosaic === true : false,
           notifyDigestEnabled: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyDigestEnabled === true : false,
           notifyDigestFrequency: (syncCfg && typeof syncCfg === 'object' && syncCfg.notifyDigestFrequency === 'weekly') ? 'weekly' : 'daily',
@@ -444,6 +445,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnAddonHealth: syncCfg.notifyOnAddonHealth === true,
           notifyOnBackup: syncCfg.notifyOnBackup === true,
           notifyOnProxyHealth: syncCfg.notifyOnProxyHealth === true,
+          notifyOnUpdateAvailable: syncCfg.notifyOnUpdateAvailable === true,
           notifyOnMosaic: syncCfg.notifyOnMosaic === true,
           notifyDigestEnabled: syncCfg.notifyDigestEnabled === true,
           notifyDigestFrequency: syncCfg.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily',
@@ -462,7 +464,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnMosaic: false, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnMosaic: false, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -470,7 +472,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnMosaic, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnMosaic, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -530,6 +532,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnAddonHealth: notifyOnAddonHealth !== undefined ? !!notifyOnAddonHealth : ((baseCfg.notifyOnAddonHealth !== undefined) ? baseCfg.notifyOnAddonHealth : false),
           notifyOnBackup: notifyOnBackup !== undefined ? !!notifyOnBackup : ((baseCfg.notifyOnBackup !== undefined) ? baseCfg.notifyOnBackup : false),
           notifyOnProxyHealth: notifyOnProxyHealth !== undefined ? !!notifyOnProxyHealth : ((baseCfg.notifyOnProxyHealth !== undefined) ? baseCfg.notifyOnProxyHealth : false),
+          notifyOnUpdateAvailable: notifyOnUpdateAvailable !== undefined ? !!notifyOnUpdateAvailable : ((baseCfg.notifyOnUpdateAvailable !== undefined) ? baseCfg.notifyOnUpdateAvailable : false),
           notifyOnMosaic: notifyOnMosaic !== undefined ? !!notifyOnMosaic : ((baseCfg.notifyOnMosaic !== undefined) ? baseCfg.notifyOnMosaic : false),
           notifyDigestEnabled: notifyDigestEnabled !== undefined ? !!notifyDigestEnabled : ((baseCfg.notifyDigestEnabled !== undefined) ? baseCfg.notifyDigestEnabled : false),
           notifyDigestFrequency: notifyDigestFrequency === 'weekly' ? 'weekly' : (notifyDigestFrequency === 'daily' ? 'daily' : (baseCfg.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily')),
@@ -592,6 +595,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (notifyOnAddonHealth !== undefined) partial.notifyOnAddonHealth = !!notifyOnAddonHealth
       if (notifyOnBackup !== undefined) partial.notifyOnBackup = !!notifyOnBackup
       if (notifyOnProxyHealth !== undefined) partial.notifyOnProxyHealth = !!notifyOnProxyHealth
+      if (notifyOnUpdateAvailable !== undefined) partial.notifyOnUpdateAvailable = !!notifyOnUpdateAvailable
       if (notifyOnMosaic !== undefined) partial.notifyOnMosaic = !!notifyOnMosaic
       if (notifyDigestEnabled !== undefined) partial.notifyDigestEnabled = !!notifyDigestEnabled
       if (notifyDigestFrequency !== undefined) partial.notifyDigestFrequency = notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily'

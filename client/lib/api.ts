@@ -2282,6 +2282,7 @@ export interface SyncSettings {
   notifyOnAddonHealth?: boolean;
   notifyOnBackup?: boolean;
   notifyOnProxyHealth?: boolean;
+  notifyOnUpdateAvailable?: boolean;
   notifyOnMosaic?: boolean;
   notifyDigestEnabled?: boolean;
   notifyDigestFrequency?: 'daily' | 'weekly';
