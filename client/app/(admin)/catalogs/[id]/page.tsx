@@ -781,11 +781,11 @@ export default function ListDetailPage() {
 
       {/* Suggest titles - purely a review step. Opening this never adds
           anything; only "Add selected" below does. */}
-      <Modal isOpen={suggesting} onClose={() => setSuggesting(false)} title={`Suggest titles for "${list?.name || ''}"`} size="lg">
+      <Modal isOpen={suggesting} onClose={() => setSuggesting(false)} title={`Suggest titles for "${list?.name || ''}"`} size="xl">
         <div className="space-y-4">
           {loadingSuggestions ? (
-            <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
-              {[...Array(10)].map((_, i) => (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+              {[...Array(8)].map((_, i) => (
                 <div key={i} className="aspect-[2/3] rounded-md bg-surface-hover animate-pulse" />
               ))}
             </div>
@@ -798,7 +798,7 @@ export default function ListDetailPage() {
               <p className="text-xs text-muted">
                 {selectedSuggestionIds.size} of {suggestions.length} selected — uncheck anything that doesn&apos;t belong, nothing is added until you confirm.
               </p>
-              <div className="grid grid-cols-4 sm:grid-cols-5 gap-3 max-h-[50vh] overflow-y-auto pr-1">
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 max-h-[65vh] overflow-y-auto pr-1">
                 {suggestions.map((s) => {
                   const checked = selectedSuggestionIds.has(s.id);
                   return (
@@ -812,20 +812,22 @@ export default function ListDetailPage() {
                           return next;
                         });
                       }}
-                      className={`relative text-left rounded-md overflow-hidden aspect-[2/3] bg-surface-hover border-2 transition-colors ${checked ? 'border-primary' : 'border-transparent'}`}
+                      className="text-left group"
                     >
-                      {s.poster ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={s.poster} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs text-subtle p-1 text-center">{s.name}</div>
-                      )}
-                      <div className={`absolute inset-0 transition-colors ${checked ? 'bg-primary/20' : 'bg-black/0 hover:bg-black/20'}`} />
-                      <div className={`absolute top-1 right-1 w-4 h-4 rounded-sm border flex items-center justify-center ${checked ? 'bg-primary border-primary' : 'bg-black/50 border-white/60'}`}>
-                        {checked && <span className="text-white text-[10px] leading-none">✓</span>}
+                      <div className={`relative rounded-md overflow-hidden aspect-[2/3] bg-surface-hover border-2 transition-colors ${checked ? 'border-primary' : 'border-transparent group-hover:border-default'}`}>
+                        {s.poster ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={s.poster} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-xs text-subtle p-1 text-center">{s.name}</div>
+                        )}
+                        <div className={`absolute inset-0 transition-colors ${checked ? 'bg-primary/20' : 'bg-black/0 group-hover:bg-black/10'}`} />
+                        <div className={`absolute top-1.5 right-1.5 w-5 h-5 rounded-sm border flex items-center justify-center ${checked ? 'bg-primary border-primary' : 'bg-black/50 border-white/60'}`}>
+                          {checked && <span className="text-white text-xs leading-none">✓</span>}
+                        </div>
                       </div>
-                      <p className="absolute bottom-0 inset-x-0 px-1 py-0.5 text-[10px] text-white bg-gradient-to-t from-black/80 to-transparent truncate">
-                        {s.name}{s.year ? ` (${s.year})` : ''}
+                      <p className="mt-1.5 text-xs text-default leading-snug line-clamp-2">
+                        {s.name}{s.year ? <span className="text-subtle"> ({s.year})</span> : ''}
                       </p>
                     </button>
                   );
