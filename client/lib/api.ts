@@ -480,6 +480,19 @@ class ApiClient {
     );
   }
 
+  async getNuvioCommunityCovers(userId: string, opts: { sort?: string; orientation?: string; format?: string; page?: number; limit?: number } = {}) {
+    const params = new URLSearchParams();
+    if (opts.sort) params.set('sort', opts.sort);
+    if (opts.orientation) params.set('orientation', opts.orientation);
+    if (opts.format) params.set('format', opts.format);
+    if (opts.page) params.set('page', String(opts.page));
+    if (opts.limit) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    return this.fetch<NuvioCommunityCoversResponse>(
+      `/users/${encodeURIComponent(userId)}/nuvio-covers${qs ? `?${qs}` : ''}`
+    );
+  }
+
   async getNuvioCatalogPreview(userId: string, addonUrl: string, type: string, catalogId: string) {
     const params = new URLSearchParams({ addonUrl, type, catalogId });
     return this.fetch<{ items: { id: string; type: string; name: string; poster: string | null }[] }>(
@@ -2460,6 +2473,20 @@ export interface NuvioCollection {
   title: string;
   folders?: NuvioCollectionFolder[];
   [key: string]: any;
+}
+
+export interface NuvioCommunityCover {
+  id: number;
+  image_url: string;
+  mime_type: string;
+  orientation: 'landscape' | 'portrait' | string;
+  title: string;
+  likes_count: number;
+}
+
+export interface NuvioCommunityCoversResponse {
+  items: NuvioCommunityCover[];
+  pagination: { page: number; limit: number; total: number; hasNextPage: boolean };
 }
 
 export interface YearInReviewTitle {

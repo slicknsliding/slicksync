@@ -2408,6 +2408,37 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   });
 
+  // Browse nuvio.tv's own public "Community Covers" gallery, for picking a
+  // Collection/folder cover directly instead of hunting down a URL
+  // elsewhere first. Read-only passthrough - see getCommunityCovers's own
+  // comment in providers/nuvio.js for the real endpoint/params this proxies.
+  router.get('/:id/nuvio-covers', async (req, res) => {
+    try {
+      const { id } = req.params
+      const user = await prisma.user.findFirst({ where: { id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+      if (user.providerType !== 'nuvio') {
+        return res.status(400).json({ message: 'User is not connected to Nuvio' })
+      }
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider || !provider.getCommunityCovers) {
+        return res.status(400).json({ message: 'User is not connected to Nuvio' })
+      }
+      const { sort, orientation, format, page, limit } = req.query
+      const data = await provider.getCommunityCovers({
+        sort: typeof sort === 'string' ? sort : undefined,
+        orientation: typeof orientation === 'string' ? orientation : undefined,
+        format: typeof format === 'string' ? format : undefined,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Math.min(Number(limit), 48) : undefined,
+      })
+      res.json(data)
+    } catch (error) {
+      console.error('Error fetching Nuvio community covers:', error)
+      res.status(500).json({ message: 'Failed to fetch Nuvio community covers', error: error.message })
+    }
+  });
+
   // Live preview of what a catalog actually contains, for the Collections
   // source picker - a thin proxy over the addon's own standard
   // {transportUrl}/catalog/{type}/{catalogId}.json endpoint. Doesn't need
