@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
+import { Avatar } from '@/components/ui/Avatar';
 import {
   Card, Button, Modal, MediaDetailModal, Badge,
   DndContext, closestCenter, SortableContext, useSortable, useSortableSensors, CSS,
@@ -870,55 +871,83 @@ export default function NuvioCollectionsPage() {
         )}
 
         <PageSection>
-          {/* One row, not a picker followed by a card that just repeats the
-              picker: account select, profile select (only shown when
-              there's a real choice or it's loading), and the Nuvio badge
-              all live together here - a separate "confirmation" card
-              below used to restate the same account info a second time
-              for no reason. */}
-          <Card padding="lg" className="mb-6">
-            <div className="flex flex-wrap gap-3 items-end">
-              <div className="flex-1 min-w-[220px]">
-                <label className="block text-xs font-medium text-muted mb-1.5">Nuvio account</label>
-                <select
-                  value={selectedUserId}
-                  onChange={(e) => handleSelectUser(e.target.value)}
-                  disabled={usersLoading}
-                  className="input-base px-3 py-2 w-full appearance-none pr-10 text-sm"
-                >
-                  <option value="">{usersLoading ? 'Loading...' : 'Select a Nuvio user...'}</option>
-                  {nuvioUsers.map((u) => (
-                    <option key={u.id} value={u.id}>{u.name || u.email || u.id}</option>
+          {/* Grid of Nuvio-connected users, same card-grid pattern as
+              Users/Groups, instead of a dropdown - picking an account you
+              manage shouldn't feel different here than anywhere else in
+              the app. Once one's picked, collapses to a compact summary
+              strip (avatar + name + Switch account) so the page doesn't
+              keep spending a full grid's worth of vertical space once
+              you're actually working on that account's collections. */}
+          {!selectedUserId ? (
+            <Card padding="lg" className="mb-6">
+              <label className="block text-xs font-medium text-muted mb-3">Nuvio account</label>
+              {usersLoading ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="h-20 rounded-xl bg-surface-hover animate-pulse" />
                   ))}
-                </select>
-              </div>
-
-              {selectedUserId && (profiles.length > 1 || profilesLoading) && (
-                <div className="w-[200px]">
-                  <label className="block text-xs font-medium text-muted mb-1.5">Profile</label>
-                  <select
-                    value={selectedProfileIndex ?? ''}
-                    onChange={(e) => handleSelectProfile(selectedUserId, Number(e.target.value))}
-                    disabled={profilesLoading}
-                    className="input-base px-3 py-2 w-full appearance-none pr-10 text-sm"
-                  >
-                    <option value="" disabled>{profilesLoading ? 'Loading...' : 'Select a profile...'}</option>
-                    {profiles.map((p) => (
-                      <option key={p.profile_index} value={p.profile_index}>{p.name || `Profile ${p.profile_index}`}</option>
-                    ))}
-                  </select>
+                </div>
+              ) : nuvioUsers.length === 0 ? (
+                <p className="text-xs text-subtle">No Nuvio-connected users yet.</p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {nuvioUsers.map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => handleSelectUser(u.id)}
+                      className="flex items-center gap-3 p-3 rounded-xl border border-default hover:border-primary/50 bg-subtle hover:bg-surface-hover transition-colors text-left"
+                    >
+                      <Avatar name={u.name || u.email || u.id} email={u.email} size="md" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-default truncate">{u.name || u.email || u.id}</p>
+                        {u.email && u.name && <p className="text-xs text-subtle truncate">{u.email}</p>}
+                        <Badge variant="nuvio" size="sm" className="mt-1">Nuvio</Badge>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               )}
+            </Card>
+          ) : (
+            <Card padding="lg" className="mb-6">
+              <div className="flex flex-wrap gap-3 items-end">
+                <button
+                  type="button"
+                  onClick={() => handleSelectUser('')}
+                  className="flex items-center gap-3 pr-3 rounded-xl hover:bg-surface-hover transition-colors text-left"
+                  title="Switch account"
+                >
+                  <Avatar name={selectedUser?.name || selectedUser?.email || selectedUserId} email={selectedUser?.email} size="md" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-default truncate">{selectedUser?.name || selectedUser?.email || selectedUserId}</p>
+                    <p className="text-xs text-primary">Switch account</p>
+                  </div>
+                </button>
 
-              {selectedUser && (
-                <Badge variant="nuvio" size="sm" className="mb-2.5">Nuvio</Badge>
-              )}
-            </div>
+                {(profiles.length > 1 || profilesLoading) && (
+                  <div className="w-[200px]">
+                    <label className="block text-xs font-medium text-muted mb-1.5">Profile</label>
+                    <select
+                      value={selectedProfileIndex ?? ''}
+                      onChange={(e) => handleSelectProfile(selectedUserId, Number(e.target.value))}
+                      disabled={profilesLoading}
+                      className="input-base px-3 py-2 w-full appearance-none pr-10 text-sm"
+                    >
+                      <option value="" disabled>{profilesLoading ? 'Loading...' : 'Select a profile...'}</option>
+                      {profiles.map((p) => (
+                        <option key={p.profile_index} value={p.profile_index}>{p.name || `Profile ${p.profile_index}`}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-            {!usersLoading && nuvioUsers.length === 0 && (
-              <p className="text-xs text-subtle mt-2">No Nuvio-connected users yet.</p>
-            )}
-          </Card>
+                {selectedUser && (
+                  <Badge variant="nuvio" size="sm" className="mb-2.5">Nuvio</Badge>
+                )}
+              </div>
+            </Card>
+          )}
 
           {selectedProfileIndex !== null && (
             collectionsLoading ? (
