@@ -251,6 +251,7 @@ export const userAuth = {
   async validate(authKey: string, userId: string): Promise<{
     valid: boolean;
     userId?: string;
+    sessionToken?: string;
     error?: string;
     errorCode?: string;
   }> {
