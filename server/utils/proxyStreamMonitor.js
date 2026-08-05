@@ -351,7 +351,7 @@ async function notifyProxyHealthChange(prisma, accountId, isOk, errorMessage) {
       title: isOk ? '✅ AIOStreams proxy reachable again' : '⚠️ AIOStreams proxy unreachable',
       body: isOk ? 'Now Playing polling has recovered.' : (errorMessage || 'Now Playing polling can\'t reach AIOStreams.'),
       icon: '/android-chrome-192x192.png',
-      url: '/health',
+      url: '/metrics?tab=health',
     })
   } catch {}
 }
