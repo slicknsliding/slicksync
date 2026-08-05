@@ -24,7 +24,7 @@ import {
   ArrowLeftIcon, PlusIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon,
   ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
   DocumentDuplicateIcon, PhotoIcon, ExclamationTriangleIcon, MapPinIcon,
-  EllipsisVerticalIcon, PencilSquareIcon, FilmIcon, TvIcon,
+  EllipsisVerticalIcon, PencilSquareIcon, FilmIcon, TvIcon, InformationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -973,6 +973,14 @@ export default function NuvioCollectionsPage() {
               </div>
             ) : (
               <>
+                <div className="flex items-start gap-2 mb-4 p-3 rounded-lg bg-subtle border border-default">
+                  <InformationCircleIcon className="w-4 h-4 text-muted shrink-0 mt-0.5" />
+                  <p className="text-xs text-muted">
+                    Some folders may use TMDb-sourced templates (created in the Nuvio app or on nuvio.tv) rather than an addon catalog.
+                    Those need a TMDb API key set in the <span className="text-default">Nuvio app&apos;s own Settings</span> — separate from SlickSync&apos;s — or they won&apos;t render on-device.
+                  </p>
+                </div>
+
                 <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
                   <p className="text-sm text-muted">{collections.length} collection{collections.length !== 1 ? 's' : ''}{isDirty && <span className="text-warning ml-2">(unsaved changes)</span>}</p>
                   <div className="flex items-center gap-2">
