@@ -31,6 +31,11 @@ export interface PersonalFeatures {
   // key stays server-side / confined to the Settings page's own edit form,
   // never round-tripped into this shared cache other components read.
   rpdbEnabled: boolean;
+  // IMDb/Rotten Tomatoes/Metacritic badges on every poster card. Default
+  // true (opt-out, like Watchlist/Watched/Recommendations) - some people
+  // find a wall of rating numbers cluttered or just don't want scores
+  // shaping what they pick before they've read anything about a title.
+  enablePosterRatings: boolean;
 }
 
 const DEFAULT: PersonalFeatures = {
@@ -40,6 +45,7 @@ const DEFAULT: PersonalFeatures = {
   enableAutoplayTrailer: false,
   autoplayTrailerStartMuted: true,
   rpdbEnabled: false,
+  enablePosterRatings: true,
 };
 
 // One in-flight promise + one cached value shared across every hook
@@ -62,6 +68,7 @@ async function fetchOnce(): Promise<PersonalFeatures> {
         enableAutoplayTrailer: s?.enableAutoplayTrailer === true,
         autoplayTrailerStartMuted: s?.autoplayTrailerStartMuted !== false,
         rpdbEnabled: !!(s?.rpdbApiKey && s.rpdbApiKey.trim()),
+        enablePosterRatings: s?.enablePosterRatings !== false,
       };
       inFlight = null;
       return cached;

@@ -2311,6 +2311,7 @@ export interface SyncSettings {
   enableRecommendations?: boolean;
   enableAutoplayTrailer?: boolean;
   autoplayTrailerStartMuted?: boolean;
+  enablePosterRatings?: boolean;
   tmdbApiKey?: string;
   mdblistApiKey?: string;
   rpdbApiKey?: string;
