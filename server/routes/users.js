@@ -2450,12 +2450,20 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   // stored for this user, which the admin who added them controls).
   router.get('/:id/nuvio-catalog-preview', async (req, res) => {
     try {
-      const { addonUrl, type, catalogId } = req.query
+      const { addonUrl, type, catalogId, genre } = req.query
       if (!addonUrl || !type || !catalogId) {
         return res.status(400).json({ message: 'addonUrl, type, and catalogId are required' })
       }
       const base = String(addonUrl).replace(/\/manifest\.json$/, '').replace(/\/$/, '')
-      const url = `${base}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}.json`
+      // Stremio addon protocol: extra properties (genre, skip, ...) go in
+      // their own URL segment as key=value, e.g. .../genre=Family.json - NOT
+      // a query string. Without this, a genre-filtered catalog source (the
+      // whole point of the Genres template - see matchGenreSources) fetched
+      // its addon's default/unfiltered listing instead, so every genre
+      // folder sharing a catalog (e.g. Cinemeta Popular) showed the exact
+      // same top result as its hero poster, regardless of genre.
+      const extraSegment = genre && genre !== 'none' ? `/genre=${encodeURIComponent(String(genre))}` : ''
+      const url = `${base}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${extraSegment}.json`
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 8000)
       let data

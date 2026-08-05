@@ -23,7 +23,7 @@ import {
   ArrowLeftIcon, PlusIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon,
   ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
   DocumentDuplicateIcon, PhotoIcon, ExclamationTriangleIcon, MapPinIcon,
-  EllipsisVerticalIcon, PencilSquareIcon,
+  EllipsisVerticalIcon, PencilSquareIcon, FilmIcon, TvIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -568,7 +568,7 @@ export default function NuvioCollectionsPage() {
         const addon = addons.find((a) => a.manifest?.id === source.addonId);
         if (!addon?.transportUrl || !selectedUserId) return [];
         try {
-          const r = await api.getNuvioCatalogPreview(selectedUserId, addon.transportUrl, source.type, source.catalogId);
+          const r = await api.getNuvioCatalogPreview(selectedUserId, addon.transportUrl, source.type, source.catalogId, source.genre);
           return r.items || [];
         } catch {
           return [];
@@ -1351,7 +1351,17 @@ export default function NuvioCollectionsPage() {
                             return (
                               <div key={sIndex} className="flex items-center gap-3 text-sm px-3 py-2.5 rounded-xl bg-surface-hover">
                                 {found ? (
-                                  <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${source.type === 'movie' ? 'bg-primary' : 'bg-secondary'}`} />
+                                  // An icon, not a color dot - primary/secondary
+                                  // render too similarly in this theme to tell
+                                  // movie/series apart by color alone, and the
+                                  // type is already spelled out in the text
+                                  // beside it anyway, so make the redundant
+                                  // indicator at least legible on its own.
+                                  source.type === 'movie' ? (
+                                    <FilmIcon className="w-4 h-4 text-subtle shrink-0" />
+                                  ) : (
+                                    <TvIcon className="w-4 h-4 text-subtle shrink-0" />
+                                  )
                                 ) : (
                                   <ExclamationTriangleIcon className="w-4 h-4 text-warning shrink-0" />
                                 )}
