@@ -230,6 +230,19 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         data: { uuid, passwordHash },
       });
 
+      // Operator-only registration alert - deliberately a separate,
+      // optional Discord webhook rather than the app's normal push/bell
+      // notifyPushForType path, since that's all account-scoped and
+      // Superadmin isn't tied to any account (see superadmin.js's own
+      // comment on why). Fire-and-forget: never blocks/fails registration
+      // itself, and carries only the fact a new account registered - no
+      // uuid, no data from inside the account (same privacy boundary as
+      // the rest of the Superadmin panel).
+      if (process.env.SUPERADMIN_NOTIFY_WEBHOOK_URL) {
+        const { postDiscord } = require('../utils/notify');
+        postDiscord(process.env.SUPERADMIN_NOTIFY_WEBHOOK_URL, '🆕 A new SlickSync account just registered.').catch(() => {});
+      }
+
       // Set access/refresh and CSRF cookies
       const at = issueAccessToken(account.id);
       const rt = issueRefreshToken(account.id);
