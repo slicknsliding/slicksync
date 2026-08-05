@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.65.1",
+    "date": "2026-08-05",
+    "title": "feat: self-service account deletion for public instances",
+    "features": [
+      "Settings > Danger Zone (public multi-tenant mode only) now has a Delete Account option - permanently deletes your account and everything tied to it (users, groups, addons, catalogs, watch history, Vault entries, settings). Requires an explicit confirmation that spells out exactly what happens before anything is deleted, with no undo afterward."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.65.0",
     "date": "2026-08-05",
     "title": "feat: real Nuvio Collection cover art, Superadmin audit log, per-account API keys",
