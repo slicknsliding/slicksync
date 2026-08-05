@@ -2424,13 +2424,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!provider || !provider.getCommunityCovers) {
         return res.status(400).json({ message: 'User is not connected to Nuvio' })
       }
-      const { sort, orientation, format, page, limit } = req.query
+      const { sort, orientation, format, page, limit, search } = req.query
       const data = await provider.getCommunityCovers({
         sort: typeof sort === 'string' ? sort : undefined,
         orientation: typeof orientation === 'string' ? orientation : undefined,
         format: typeof format === 'string' ? format : undefined,
         page: page ? Number(page) : undefined,
         limit: limit ? Math.min(Number(limit), 48) : undefined,
+        search: typeof search === 'string' ? search : undefined,
       })
       res.json(data)
     } catch (error) {

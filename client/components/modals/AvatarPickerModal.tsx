@@ -33,7 +33,10 @@ interface AvatarPickerModalProps {
   previewShape?: 'circle' | 'rect';
   // Cover pickers need real room - a big preview, a legible grid of Nuvio
   // covers - the original 'md' avatar-picker size was cramped for that.
-  size?: 'md' | 'lg' | 'xl';
+  // 'full' (896px, Modal's own largest size) is for the Nuvio Collections
+  // folder-cover entry point specifically - genuinely the primary place
+  // people browse this gallery, so it gets the roomiest treatment.
+  size?: 'md' | 'lg' | 'xl' | 'full';
 }
 
 type Tab = 'color' | 'url' | 'upload' | 'nuvio';
@@ -65,14 +68,10 @@ export function AvatarPickerModal({
   const [nuvioHasMore, setNuvioHasMore] = useState(false);
   const [nuvioOrientation, setNuvioOrientation] = useState<'all' | 'landscape' | 'portrait'>('all');
   const [nuvioFormat, setNuvioFormat] = useState<'all' | 'gif' | 'jpg' | 'png'>('all');
-  // Client-side, not a server search param - nuvio.tv's own search box on
-  // the live site never fired a distinct network request under observation
-  // (possibly broken there, possibly debounced far longer than tested), so
-  // rather than guess an unverified query param that could silently return
-  // wrong/no results, this filters whatever pages are already loaded by
-  // title. See the auto-load effect below for why a search term also pulls
-  // in a few more pages automatically instead of only ever searching the
-  // first 24 items.
+  // Real server-side search - confirmed live against nuvio.tv/api/covers
+  // (its own site search box never fires an observable request under the
+  // live UI, but the underlying API accepts ?search= and filters
+  // pagination.total correctly, with 0 results for garbage terms).
   const [nuvioSearch, setNuvioSearch] = useState('');
 
   const loadNuvioCovers = useCallback(async (page: number, replace: boolean) => {
@@ -82,6 +81,7 @@ export function AvatarPickerModal({
     try {
       const data = await api.getNuvioCommunityCovers(nuvioCoversUserId, {
         sort: 'recent', orientation: nuvioOrientation, format: nuvioFormat, page, limit: 24,
+        search: nuvioSearch.trim() || undefined,
       });
       setNuvioCovers((prev) => (replace ? data.items : [...prev, ...data.items]));
       setNuvioHasMore(!!data.pagination?.hasNextPage);
@@ -91,33 +91,17 @@ export function AvatarPickerModal({
     } finally {
       setNuvioCoversLoading(false);
     }
-  }, [nuvioCoversUserId, nuvioOrientation, nuvioFormat]);
+  }, [nuvioCoversUserId, nuvioOrientation, nuvioFormat, nuvioSearch]);
 
-  // (Re)load whenever the tab is opened or a filter changes - not on every
-  // render, and never for callers without nuvioCoversUserId at all.
+  // (Re)load whenever the tab opens or a filter/search changes - debounced
+  // so search doesn't fire a request per keystroke. Not on every render,
+  // and never for callers without nuvioCoversUserId at all.
   useEffect(() => {
-    if (tab === 'nuvio' && nuvioCoversUserId) {
-      loadNuvioCovers(1, true);
-      setNuvioSearch('');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, nuvioOrientation, nuvioFormat, nuvioCoversUserId]);
-
-  const filteredNuvioCovers = nuvioSearch.trim()
-    ? nuvioCovers.filter((c) => c.title?.toLowerCase().includes(nuvioSearch.trim().toLowerCase()))
-    : nuvioCovers;
-
-  // Debounced auto-load-more while actively searching - filtering only
-  // pulls from whatever's already fetched, so a search for something not
-  // among the first page(s) would otherwise look like "no results" even
-  // though it might be a few pages further in. Capped at 8 total pages
-  // (~192 covers) so a genuinely rare search term doesn't quietly page
-  // through the entire catalog in the background.
-  useEffect(() => {
-    if (!nuvioSearch.trim() || nuvioCoversLoading || !nuvioHasMore || filteredNuvioCovers.length >= 6 || nuvioPage >= 8) return;
-    const t = setTimeout(() => loadNuvioCovers(nuvioPage + 1, false), 400);
+    if (tab !== 'nuvio' || !nuvioCoversUserId) return;
+    const t = setTimeout(() => loadNuvioCovers(1, true), nuvioSearch.trim() ? 350 : 0);
     return () => clearTimeout(t);
-  }, [nuvioSearch, nuvioCoversLoading, nuvioHasMore, filteredNuvioCovers.length, nuvioPage, loadNuvioCovers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, nuvioOrientation, nuvioFormat, nuvioSearch, nuvioCoversUserId]);
 
   const handlePickNuvioCover = (cover: NuvioCommunityCover) => {
     setUrlInput(cover.image_url);
@@ -199,7 +183,7 @@ export function AvatarPickerModal({
   // 3-across grid of tiny thumbnails at modal-md width was the "how could
   // anyone choose from that" complaint this whole size/layout pass exists
   // to fix. More columns only at the wider sizes cover callers actually use.
-  const nuvioGridCols = size === 'xl' ? 'grid-cols-4' : size === 'lg' ? 'grid-cols-3' : 'grid-cols-2';
+  const nuvioGridCols = size === 'full' ? 'grid-cols-5' : size === 'xl' ? 'grid-cols-4' : size === 'lg' ? 'grid-cols-3' : 'grid-cols-2';
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size={size}>
@@ -356,11 +340,11 @@ export function AvatarPickerModal({
 
             {nuvioCoversError ? (
               <p className="text-xs text-error py-4 text-center">{nuvioCoversError}</p>
-            ) : filteredNuvioCovers.length === 0 && nuvioSearch.trim() && !nuvioCoversLoading ? (
-              <p className="text-xs text-muted py-4 text-center">No covers matching &quot;{nuvioSearch.trim()}&quot; in what's loaded so far.</p>
+            ) : nuvioCovers.length === 0 && nuvioSearch.trim() && !nuvioCoversLoading ? (
+              <p className="text-xs text-muted py-4 text-center">No covers matching &quot;{nuvioSearch.trim()}&quot;.</p>
             ) : (
-              <div className={`grid ${nuvioGridCols} gap-3 max-h-[28rem] overflow-y-auto pr-1`}>
-                {filteredNuvioCovers.map((cover) => (
+              <div className={`grid ${nuvioGridCols} gap-3 ${size === 'full' ? 'max-h-[38rem]' : 'max-h-[28rem]'} overflow-y-auto pr-1`}>
+                {nuvioCovers.map((cover) => (
                   <button
                     key={cover.id}
                     type="button"
@@ -382,7 +366,7 @@ export function AvatarPickerModal({
                     )}
                   </button>
                 ))}
-                {nuvioCoversLoading && Array.from({ length: size === 'md' ? 4 : 8 }).map((_, i) => (
+                {nuvioCoversLoading && Array.from({ length: size === 'full' ? 10 : size === 'md' ? 4 : 8 }).map((_, i) => (
                   <div key={`skeleton-${i}`} className="aspect-video rounded-lg bg-surface-hover animate-pulse" />
                 ))}
               </div>

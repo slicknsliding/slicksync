@@ -23,7 +23,7 @@ import {
   ArrowLeftIcon, PlusIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon,
   ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
   DocumentDuplicateIcon, PhotoIcon, ExclamationTriangleIcon, MapPinIcon,
-  EllipsisVerticalIcon,
+  EllipsisVerticalIcon, PencilSquareIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -1288,18 +1288,27 @@ export default function NuvioCollectionsPage() {
                   <div className="flex items-start gap-3">
                     <button
                       type="button"
-                      title="Folder cover"
+                      title="Change folder cover"
                       onClick={() => setCoverPickerFolder({ collectionId: folderDetail.collectionId, folderId: folderDetail.folderId })}
-                      className="relative shrink-0 w-14 h-14 rounded-xl overflow-hidden border border-default hover:border-primary/50 transition-colors bg-surface-hover"
+                      className="group relative shrink-0 w-20 h-20 rounded-xl overflow-hidden border border-default hover:border-primary/50 transition-colors bg-surface-hover"
                     >
                       {modalHeroPoster ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={modalHeroPoster} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <PhotoIcon className="w-5 h-5 text-subtle" />
+                          <PhotoIcon className="w-6 h-6 text-subtle" />
                         </div>
                       )}
+                      {/* Always-visible, not hover-only - a hover cue alone
+                          is invisible on touch devices with no way to
+                          discover the thumbnail is clickable. */}
+                      <div
+                        className="absolute bottom-1 right-1 w-6 h-6 rounded-full flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform"
+                        style={{ background: 'var(--color-primary)' }}
+                      >
+                        <PencilSquareIcon className="w-3.5 h-3.5 text-white" />
+                      </div>
                     </button>
                     <input
                       value={activeFolder.title}
@@ -1472,7 +1481,7 @@ export default function NuvioCollectionsPage() {
             nuvioCoversUserId={selectedUserId || undefined}
             title=""
             previewShape="rect"
-            size="xl"
+            size="full"
             onSave={async (data) => {
               if (!('avatarUrl' in data)) { setCoverPickerFolder(null); return; }
               updateFolder(coverPickerFolder.collectionId, coverPickerFolder.folderId, { coverImageUrl: data.avatarUrl ?? null });
