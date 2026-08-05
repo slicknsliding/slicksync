@@ -17,6 +17,19 @@ const ENV_OMDB_API_KEY = process.env.OMDB_API_KEY || null
 const omdbCache = new Map()
 const OMDB_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
+// OMDb's own "test your key" confirmation page/email shows a full URL like
+// http://www.omdbapi.com/?i=tt3896198&apikey=<key> - easy to paste that
+// whole thing into Settings instead of just the key (confirmed real case).
+// Pulled in raw, that breaks the request URL below silently (no ratings,
+// no error). Extract the real key if that happened, rather than sending an
+// unusable value on every request forever.
+function normalizeOmdbApiKey(raw) {
+  if (!raw) return raw
+  const trimmed = String(raw).trim()
+  const match = trimmed.match(/[?&]apikey=([^&\s]+)/i)
+  return match ? match[1] : trimmed
+}
+
 // apiKey is per-account (Settings, resolved via resolveOmdbKey in
 // listImport.js) - callers that can cheaply reach prisma+accountId should
 // resolve and pass their own, same as RPDB/MDBList/TMDB already do,
@@ -26,7 +39,7 @@ const OMDB_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 // correct, just not account-isolated) - the cache stores only public
 // rating data, so it's safe to share across whichever key fetched it.
 async function fetchOmdbRatings(imdbId, apiKey) {
-  const key = apiKey || ENV_OMDB_API_KEY
+  const key = normalizeOmdbApiKey(apiKey || ENV_OMDB_API_KEY)
   if (!key || !imdbId || !/^tt\d+$/.test(imdbId)) return null
 
   const cached = omdbCache.get(imdbId)
@@ -38,7 +51,7 @@ async function fetchOmdbRatings(imdbId, apiKey) {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 5000)
 
-    const response = await fetch(`https://www.omdbapi.com/?i=${encodeURIComponent(imdbId)}&apikey=${key}`, {
+    const response = await fetch(`https://www.omdbapi.com/?i=${encodeURIComponent(imdbId)}&apikey=${encodeURIComponent(key)}`, {
       signal: controller.signal
     })
     clearTimeout(timeoutId)
@@ -80,4 +93,4 @@ async function fetchOmdbRatings(imdbId, apiKey) {
   }
 }
 
-module.exports = { fetchOmdbRatings }
+module.exports = { fetchOmdbRatings, normalizeOmdbApiKey }
