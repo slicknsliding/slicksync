@@ -65,6 +65,15 @@ export function AvatarPickerModal({
   const [nuvioHasMore, setNuvioHasMore] = useState(false);
   const [nuvioOrientation, setNuvioOrientation] = useState<'all' | 'landscape' | 'portrait'>('all');
   const [nuvioFormat, setNuvioFormat] = useState<'all' | 'gif' | 'jpg' | 'png'>('all');
+  // Client-side, not a server search param - nuvio.tv's own search box on
+  // the live site never fired a distinct network request under observation
+  // (possibly broken there, possibly debounced far longer than tested), so
+  // rather than guess an unverified query param that could silently return
+  // wrong/no results, this filters whatever pages are already loaded by
+  // title. See the auto-load effect below for why a search term also pulls
+  // in a few more pages automatically instead of only ever searching the
+  // first 24 items.
+  const [nuvioSearch, setNuvioSearch] = useState('');
 
   const loadNuvioCovers = useCallback(async (page: number, replace: boolean) => {
     if (!nuvioCoversUserId) return;
@@ -89,9 +98,26 @@ export function AvatarPickerModal({
   useEffect(() => {
     if (tab === 'nuvio' && nuvioCoversUserId) {
       loadNuvioCovers(1, true);
+      setNuvioSearch('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, nuvioOrientation, nuvioFormat, nuvioCoversUserId]);
+
+  const filteredNuvioCovers = nuvioSearch.trim()
+    ? nuvioCovers.filter((c) => c.title?.toLowerCase().includes(nuvioSearch.trim().toLowerCase()))
+    : nuvioCovers;
+
+  // Debounced auto-load-more while actively searching - filtering only
+  // pulls from whatever's already fetched, so a search for something not
+  // among the first page(s) would otherwise look like "no results" even
+  // though it might be a few pages further in. Capped at 8 total pages
+  // (~192 covers) so a genuinely rare search term doesn't quietly page
+  // through the entire catalog in the background.
+  useEffect(() => {
+    if (!nuvioSearch.trim() || nuvioCoversLoading || !nuvioHasMore || filteredNuvioCovers.length >= 6 || nuvioPage >= 8) return;
+    const t = setTimeout(() => loadNuvioCovers(nuvioPage + 1, false), 400);
+    return () => clearTimeout(t);
+  }, [nuvioSearch, nuvioCoversLoading, nuvioHasMore, filteredNuvioCovers.length, nuvioPage, loadNuvioCovers]);
 
   const handlePickNuvioCover = (cover: NuvioCommunityCover) => {
     setUrlInput(cover.image_url);
@@ -289,6 +315,15 @@ export function AvatarPickerModal({
               Browsing nuvio.tv's community-submitted covers - hover one to preview it up top, click to use it.
             </p>
 
+            <input
+              type="text"
+              value={nuvioSearch}
+              onChange={(e) => setNuvioSearch(e.target.value)}
+              placeholder="Search by title (e.g. Netflix)..."
+              className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
+              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+            />
+
             <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
               <div className="flex gap-1">
                 {(['all', 'landscape', 'portrait'] as const).map((o) => (
@@ -321,9 +356,11 @@ export function AvatarPickerModal({
 
             {nuvioCoversError ? (
               <p className="text-xs text-error py-4 text-center">{nuvioCoversError}</p>
+            ) : filteredNuvioCovers.length === 0 && nuvioSearch.trim() && !nuvioCoversLoading ? (
+              <p className="text-xs text-muted py-4 text-center">No covers matching &quot;{nuvioSearch.trim()}&quot; in what's loaded so far.</p>
             ) : (
               <div className={`grid ${nuvioGridCols} gap-3 max-h-[28rem] overflow-y-auto pr-1`}>
-                {nuvioCovers.map((cover) => (
+                {filteredNuvioCovers.map((cover) => (
                   <button
                     key={cover.id}
                     type="button"
