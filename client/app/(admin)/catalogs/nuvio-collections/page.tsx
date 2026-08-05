@@ -236,7 +236,7 @@ function FolderTile({
 // collection reordering its folders independently of every other one.
 function CollectionSection({
   collection, cIndex, collectionsLength, otherProfilesCount,
-  previewByFolder, previewLoadingIds, brokenFolderIds, folderCoverOverrides,
+  previewByFolder, previewLoadingIds, brokenFolderIds,
   onRename, onReorder, onDelete, onCopy, onAddFolder, onOpenFolder, onDeleteFolder, onFolderDragEnd, onEditCover, onTogglePin,
 }: {
   collection: NuvioCollection;
@@ -246,7 +246,6 @@ function CollectionSection({
   previewByFolder: Record<string, PreviewFolderItems>;
   previewLoadingIds: Set<string>;
   brokenFolderIds: Set<string>;
-  folderCoverOverrides: Record<string, string>;
   onRename: (title: string) => void;
   onReorder: (dir: -1 | 1) => void;
   onDelete: () => void;
@@ -334,7 +333,7 @@ function CollectionSection({
                   previewItems={previewByFolder[folder.id]}
                   previewLoading={previewLoadingIds.has(folder.id)}
                   hasBrokenSource={brokenFolderIds.has(folder.id)}
-                  coverOverride={folderCoverOverrides[folder.id]}
+                  coverOverride={typeof folder.coverImageUrl === 'string' ? folder.coverImageUrl : undefined}
                   onOpen={() => onOpenFolder(folder.id)}
                   onDelete={() => onDeleteFolder(folder.id)}
                 />
@@ -436,35 +435,16 @@ export default function NuvioCollectionsPage() {
   // real editor, reusing the same AvatarPickerModal Catalogs already uses.
   const [coverPickerCollection, setCoverPickerCollection] = useState<NuvioCollection | null>(null);
 
-  // Per-folder cover override - unlike Collection.coverImageUrl, there is
-  // no confirmed real Nuvio-native field for a folder's own cover (research
-  // this session only turned up collection-level fields: pinToTop,
-  // coverImageUrl, viewMode, tileShape, focusGifEnabled). Rather than invent
-  // an unofficial field and push it into the real synced Collection object
-  // (risking Nuvio's own backend mangling or silently dropping it),
-  // this is stored client-side only, keyed by folder id, and purely changes
-  // which poster the grid tile/modal picks instead of the ambient
-  // auto-selected first preview item. Never sent to setNuvioCollections.
-  const FOLDER_COVER_STORAGE_KEY = 'slicksync-nuvio-folder-covers';
-  const [folderCoverOverrides, setFolderCoverOverrides] = useState<Record<string, string>>({});
+  // Per-folder cover - coverImageUrl is a real field on the folder object
+  // itself (confirmed via a real exported Collections JSON: each folder has
+  // its own coverImageUrl, alongside tileShape/focusGifUrl/hideTitle - not
+  // just a collection-level field). Read/write it the same way the
+  // collection-level cover already does, straight on the folder object via
+  // updateFolder, so it round-trips through setNuvioCollections like every
+  // other real field here. (An earlier version of this stored the override
+  // client-side only in localStorage on the mistaken assumption that no such
+  // field existed - fixed once the real field turned up.)
   const [coverPickerFolder, setCoverPickerFolder] = useState<{ collectionId: string; folderId: string } | null>(null);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(FOLDER_COVER_STORAGE_KEY);
-      if (raw) setFolderCoverOverrides(JSON.parse(raw));
-    } catch { /* ignore - falls back to auto-selected covers */ }
-  }, []);
-
-  const setFolderCoverOverride = (folderId: string, url: string | null) => {
-    setFolderCoverOverrides((prev) => {
-      const next = { ...prev };
-      if (url) next[folderId] = url;
-      else delete next[folderId];
-      try { localStorage.setItem(FOLDER_COVER_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  };
 
   const isDirty = JSON.stringify(collections) !== savedSnapshot;
   const nuvioUsers = useMemo(() => users.filter((u) => u.providerType === 'nuvio'), [users]);
@@ -913,7 +893,6 @@ export default function NuvioCollectionsPage() {
                       previewByFolder={previewByFolder}
                       previewLoadingIds={previewLoadingIds}
                       brokenFolderIds={brokenFolderIds}
-                      folderCoverOverrides={folderCoverOverrides}
                       onRename={(title) => updateCollection(collection.id, { title })}
                       onReorder={(dir) => reorderCollection(cIndex, dir)}
                       onDelete={() => setDeleting({ kind: 'collection', collectionId: collection.id })}
@@ -1269,7 +1248,7 @@ export default function NuvioCollectionsPage() {
         // string | undefined - <img src> only accepts the latter (a
         // previous string | null here broke a production build the same
         // way, see posterUrl.ts's own comment on this exact gotcha).
-        const modalHeroPoster = (folderDetail && folderCoverOverrides[folderDetail.folderId]) || hero?.poster || undefined;
+        const modalHeroPoster = (typeof activeFolder?.coverImageUrl === 'string' ? activeFolder.coverImageUrl : null) || hero?.poster || undefined;
 
         return (
           <Modal isOpen={!!folderDetail} onClose={() => setFolderDetail(null)} size="lg" backdropImage={modalHeroPoster}>
@@ -1468,9 +1447,8 @@ export default function NuvioCollectionsPage() {
         />
       )}
 
-      {/* Folder cover override - client-side only, see
-          folderCoverOverrides' own comment for why this never touches the
-          real synced Collection data. */}
+      {/* Folder cover - real Nuvio-native field (folder.coverImageUrl), same
+          as the collection-level cover above. */}
       {coverPickerFolder && (() => {
         const folder = collections.find((c) => c.id === coverPickerFolder.collectionId)?.folders?.find((f) => f.id === coverPickerFolder.folderId);
         return (
@@ -1478,10 +1456,10 @@ export default function NuvioCollectionsPage() {
             isOpen={!!coverPickerFolder}
             onClose={() => setCoverPickerFolder(null)}
             name={folder?.title || 'Folder'}
-            currentAvatarUrl={folderCoverOverrides[coverPickerFolder.folderId] || null}
+            currentAvatarUrl={typeof folder?.coverImageUrl === 'string' ? folder.coverImageUrl : null}
             onSave={async (data) => {
               if (!('avatarUrl' in data)) { setCoverPickerFolder(null); return; }
-              setFolderCoverOverride(coverPickerFolder.folderId, data.avatarUrl ?? null);
+              updateFolder(coverPickerFolder.collectionId, coverPickerFolder.folderId, { coverImageUrl: data.avatarUrl ?? null });
               setCoverPickerFolder(null);
             }}
           />
