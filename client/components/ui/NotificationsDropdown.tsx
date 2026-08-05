@@ -107,6 +107,12 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   // instead. 'request'/'user' rows have their own Accept/Reject buttons
   // and navigating away on a stray tap would be actively unhelpful.
   const getNotificationUrl = (n: NotificationItem): string | null => {
+    // Rewrites a stale url baked into an already-persisted notification row
+    // from before a route moved - the server-side generator was fixed, but
+    // that only affects notifications created from here on; anything
+    // already in the table (and anyone's local read/dismissed state keyed
+    // off it) still has the old value.
+    if (n.data?.url === '/health') return '/metrics?tab=health';
     if (n.data?.url) return n.data.url;
     switch (n.type) {
       case 'addon': return '/addons';
