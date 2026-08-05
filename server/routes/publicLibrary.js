@@ -2563,6 +2563,68 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
     }
   });
 
+  // Self-service "delete my account" - a managed User removing only their
+  // own row and the data scoped to their own userId (watch history,
+  // watchlist-adjacent per-user state, group membership). Deliberately NOT
+  // gated to public instance mode like Settings' admin-level delete-account
+  // (that one wipes the WHOLE shared tenant, which only makes sense to
+  // offer in public multi-tenant mode) - this only ever touches one user's
+  // own data, which is meaningful in private mode too (e.g. a former
+  // household member who no longer wants their history around). Unlike most
+  // of this router's other mutations, this re-proves the live session right
+  // here before doing anything irreversible, rather than trusting a bare
+  // userId - same checks /validate and /validate-nuvio already do.
+  router.post('/delete-account', async (req, res) => {
+    try {
+      const { userId, provider } = req.body || {}
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required', message: 'User ID is required' })
+      }
+
+      const user = await prisma.user.findUnique({ where: { id: userId } })
+      if (!user) {
+        return res.status(404).json({ error: 'User not found', message: 'User not found' })
+      }
+
+      const effectiveProvider = provider || user.providerType || 'stremio'
+
+      if (effectiveProvider === 'nuvio') {
+        if (!user.nuvioRefreshToken || !user.nuvioUserId) {
+          return res.status(403).json({ error: 'USER_NOT_FOUND', message: 'Unable to verify your Nuvio session' })
+        }
+        const mockReq = { appAccountId: user.accountId || DEFAULT_ACCOUNT_ID }
+        const storedRefreshToken = decrypt(user.nuvioRefreshToken, mockReq)
+        try {
+          await refreshNuvioToken(storedRefreshToken)
+        } catch {
+          return res.status(401).json({ error: 'Invalid or expired Nuvio session', message: 'Invalid or expired Nuvio session - please sign in again before deleting your account' })
+        }
+      } else {
+        const authKey = getAuthKey(req)
+        if (!authKey) {
+          return res.status(400).json({ error: 'Auth key is required', message: 'Auth key is required' })
+        }
+        let validated
+        try {
+          validated = await getPublicUser(authKey, req)
+        } catch {
+          return res.status(401).json({ error: 'Invalid or expired Stremio session', message: 'Invalid or expired Stremio session - please sign in again before deleting your account' })
+        }
+        if (validated.id !== userId) {
+          return res.status(403).json({ error: 'Session mismatch', message: 'This Stremio session does not match this account' })
+        }
+      }
+
+      const { deleteUserCascade } = require('../utils/accountDeletion')
+      await deleteUserCascade(prisma, userId)
+      res.json({ deleted: true })
+    } catch (error) {
+      if (error?.notFound) return res.status(404).json({ error: 'User not found', message: 'User not found' })
+      console.error('Error deleting user account:', error)
+      res.status(500).json({ error: 'Failed to delete account', message: error?.message || 'Failed to delete account' })
+    }
+  })
+
   // Sync user's addons (public endpoint)
   router.post('/sync', async (req, res) => {
     try {
