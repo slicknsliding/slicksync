@@ -474,21 +474,37 @@ export default function ListDetailPage() {
         {/* Cover banner - only rendered once a custom cover is actually set;
             this page never had a collage/placeholder here before, so there's
             nothing to "fall back" to otherwise (unlike the index card).
-            Full-bleed object-cover, not the index card's object-contain -
-            this banner runs the full page width, so contain-fitting a
-            portrait poster left a thin sliver of image floating in a mostly
-            empty strip ("looks ridiculous" - confirmed real feedback). The
-            cover can be a portrait poster or a landscape backdrop (any URL/
-            upload via AvatarPickerModal), so there's no single safe edge to
-            anchor to - object-position center crops evenly on both axes
-            instead of object-top, which chopped landscape backdrops down to
-            a sliver of empty sky. A taller banner (vs. the original h-32/40)
-            also cuts less of either source out. */}
+            The cover can be anything a user pastes/uploads via
+            AvatarPickerModal - a portrait poster, a landscape backdrop, at
+            any resolution - so a single object-cover <img> stretched to
+            this banner's full page width forces one of two bad outcomes:
+            contain-fit leaves a thin sliver in an empty strip ("looks
+            ridiculous" - confirmed feedback), while cover-fit on a
+            moderate-res poster upscales it 2x+ to fill the width and comes
+            out visibly blurry (also confirmed - same complaint, different
+            image). Fixed both at once the way Modal.tsx's own
+            backdropImage already does: a blurred, scaled-up copy fills the
+            full box (its own softness is invisible under blur(24px), same
+            as Modal), while a second copy sits on top at its natural size
+            (max-h/max-w-full only, no forced stretch) - crisp because it's
+            never upscaled past its own resolution, however small. */}
         {list && (list.coverImageUrl || list.coverColorIndex !== null) && (
-          <div className="mb-6 h-40 md:h-56 rounded-xl overflow-hidden bg-black">
+          <div className="relative mb-6 h-40 md:h-56 rounded-xl overflow-hidden bg-black">
             {list.coverImageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={list.coverImageUrl} alt="" className="w-full h-full object-cover object-center" />
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={list.coverImageUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover scale-110"
+                  style={{ filter: 'blur(24px) brightness(0.55)' }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={list.coverImageUrl} alt="" className="relative max-h-full max-w-full object-contain" />
+                </div>
+              </>
             ) : (
               <div className="w-full h-full" style={coverColorStyle(list.coverColorIndex!)} />
             )}
