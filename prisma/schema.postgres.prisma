@@ -157,6 +157,23 @@ model AppAccount {
   @@map("app_accounts")
 }
 
+// Operator action trail for the superadmin panel - who got disabled/
+// enabled/deleted and when. Not a real relation to AppAccount.id: a
+// "delete" entry must survive the account it describes actually being
+// deleted, so the account's id/uuid are captured as a point-in-time
+// snapshot here, not a live foreign key.
+model SuperadminAuditLog {
+  id                String   @id @default(cuid())
+  action            String // 'disable' | 'enable' | 'delete'
+  targetAccountId   String
+  targetAccountUuid String?
+  bulk              Boolean  @default(false) // true if this was part of a bulk-* operation, not a single-account one
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("superadmin_audit_log")
+}
+
 model Invitation {
   id                     String    @id @default(cuid())
   accountId              String
@@ -386,6 +403,10 @@ model CustomList {
   itemsJson        String   @default("[]")
   coverImageUrl    String?
   coverColorIndex  Int?
+  // The TMDb/MDBList URL this catalog was imported from, if any - null for
+  // a catalog built by hand. Lets "Refresh from source" re-pull the same
+  // list later without asking the user to paste the URL again.
+  importSourceUrl  String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

@@ -65,6 +65,15 @@ const NEBULA_NAV_SECTIONS = [
   },
 ];
 
+// Matches Sidebar.tsx's isItemActive exactly - a sub-route (e.g.
+// /catalogs/[id] or /catalogs/nuvio-collections) should keep its parent nav
+// item ("Catalogs") lit up too, not just an exact pathname match. "/" stays
+// exact-only or every route would light up Dashboard.
+function isNavItemActive(pathname: string, href: string) {
+  if (href === '/') return pathname === '/';
+  return pathname === href || pathname.startsWith(href + '/');
+}
+
 export function NebulaTopbar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -344,7 +353,7 @@ export function NebulaTopbar() {
               className={isTV ? 'flex flex-nowrap items-center gap-1.5 w-full overflow-x-auto no-scrollbar px-1 -mx-1 nebula-nav-row' : 'flex flex-nowrap items-center gap-2 w-full overflow-x-auto no-scrollbar px-1 -mx-1 nebula-nav-row'}
             >
               {section.items.map((link) => {
-                const isActive = pathname === link.href;
+                const isActive = isNavItemActive(pathname, link.href);
                 const Icon = link.icon;
                 const navLink = (
                   <Link
