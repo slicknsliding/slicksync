@@ -251,6 +251,7 @@ export const userAuth = {
   async validate(authKey: string, userId: string): Promise<{
     valid: boolean;
     userId?: string;
+    sessionToken?: string;
     error?: string;
     errorCode?: string;
   }> {
@@ -282,11 +283,13 @@ export const userAuth = {
     success: boolean;
     userId: string;
     userInfo: UserInfo;
+    sessionToken: string;
     error?: string;
     errorCode?: string;
   }> {
     const response = await request<{
       success: boolean;
+      sessionToken?: string;
       user?: {
         id: string;
         username: string;
@@ -302,10 +305,11 @@ export const userAuth = {
       body: JSON.stringify({ code, deviceNonce, anonToken }),
     });
 
-    if (response.success && response.user) {
+    if (response.success && response.user && response.sessionToken) {
       return {
         success: true,
         userId: response.user.id,
+        sessionToken: response.sessionToken,
         userInfo: {
           id: response.user.id,
           username: response.user.username,
@@ -322,6 +326,7 @@ export const userAuth = {
       success: false,
       userId: '',
       userInfo: {} as UserInfo,
+      sessionToken: '',
       error: response.message || response.error || 'Authentication failed',
       errorCode: response.error,
     };
@@ -329,30 +334,57 @@ export const userAuth = {
 
   /**
    * Re-validate a Nuvio user's stored session (mirrors `validate` above).
+   * Requires the caller's own previously-issued session token - proof of
+   * possession, not just a bare userId (which used to be sufficient to
+   * "restore" a session as literally anyone, since nothing checked the
+   * caller actually held any credential of their own). Returns a freshly
+   * reissued token on success (sliding expiry), same pattern as
+   * refreshUserInfo elsewhere in this file.
    */
-  async validateNuvio(userId: string): Promise<{
+  async validateNuvio(userId: string, sessionToken?: string): Promise<{
     valid: boolean;
     userId?: string;
+    sessionToken?: string;
     error?: string;
     errorCode?: string;
   }> {
     const response = await request<{
       valid?: boolean;
       success?: boolean;
+      sessionToken?: string;
       user?: { id: string };
       error?: string;
       message?: string;
     }>('/public-library/validate-nuvio', {
       method: 'POST',
       body: JSON.stringify({ userId }),
+      authKey: sessionToken,
     });
 
     return {
       valid: response.valid ?? response.success ?? false,
       userId: response.user?.id,
+      sessionToken: response.sessionToken,
       error: response.message || response.error,
       errorCode: response.error,
     };
+  },
+
+  /**
+   * Self-service "delete my account" - permanently removes this user and
+   * their own data (watch history, watchlist state, group membership).
+   * Does NOT touch account-wide resources (Vault, Catalogs, other users) -
+   * that's the separate admin-level Settings > Danger Zone delete. Re-proves
+   * the live session server-side, so Stremio users must pass their current
+   * authKey; Nuvio users are re-validated by userId alone (mirrors validate/
+   * validateNuvio above).
+   */
+  async deleteAccount(userId: string, provider: 'stremio' | 'nuvio', authKey?: string): Promise<{ deleted: boolean }> {
+    return request('/public-library/delete-account', {
+      method: 'POST',
+      body: JSON.stringify({ userId, provider }),
+      authKey,
+    });
   },
 
   /**

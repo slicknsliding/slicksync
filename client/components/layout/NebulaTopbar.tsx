@@ -127,7 +127,7 @@ export function NebulaTopbar() {
   // equivalent of the sidebar's bottom "Administrator" panel switcher at
   // all, so there was no way to see who's logged in, switch to the User
   // panel, or log out from this layout.
-  const [accountInfo, setAccountInfo] = useState<{ username?: string; email?: string | null; uuid?: string | null; avatarUrl?: string | null } | null>(null);
+  const [accountInfo, setAccountInfo] = useState<{ username?: string; email?: string | null; uuid?: string | null; linkedProvider?: 'stremio' | 'nuvio' | null; avatarUrl?: string | null } | null>(null);
   const isPublicInstance = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') === 'public';
 
   useEffect(() => {
@@ -139,6 +139,7 @@ export function NebulaTopbar() {
           username: isPublicInstance ? (uuid || email || 'Admin') : 'Administrator',
           email,
           uuid,
+          linkedProvider: stats.linkedProvider || null,
           avatarUrl: stats.avatarUrl || null,
         });
       })

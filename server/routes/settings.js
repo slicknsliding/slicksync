@@ -6,6 +6,7 @@ const { decrypt, encrypt } = require('../utils/encryption')
 const { DEFAULT_ACCOUNT_ID, DEFAULT_ACCOUNT_UUID } = require('../utils/config')
 const { postDiscord } = require('../utils/notify')
 const { DEFAULT_TIMEZONE } = require('../utils/dateUtils')
+const { normalizeOmdbApiKey } = require('../utils/omdb')
 
 module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }) => {
   const router = express.Router();
@@ -392,6 +393,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnAddonHealth: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnAddonHealth === true : false,
           notifyOnBackup: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnBackup === true : false,
           notifyOnProxyHealth: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnProxyHealth === true : false,
+          notifyOnUpdateAvailable: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnUpdateAvailable === true : false,
           notifyOnMosaic: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnMosaic === true : false,
           notifyDigestEnabled: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyDigestEnabled === true : false,
           notifyDigestFrequency: (syncCfg && typeof syncCfg === 'object' && syncCfg.notifyDigestFrequency === 'weekly') ? 'weekly' : 'daily',
@@ -414,6 +416,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // default; explicitly turning it on in Settings is the ask.
           enableAutoplayTrailer: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableAutoplayTrailer === 'boolean') ? syncCfg.enableAutoplayTrailer : false,
           autoplayTrailerStartMuted: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.autoplayTrailerStartMuted === 'boolean') ? syncCfg.autoplayTrailerStartMuted : true,
+          enablePosterRatings: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enablePosterRatings === 'boolean') ? syncCfg.enablePosterRatings : false,
           tmdbApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.tmdbApiKey === 'string') ? syncCfg.tmdbApiKey : '',
           mdblistApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.mdblistApiKey === 'string') ? syncCfg.mdblistApiKey : '',
           rpdbApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.rpdbApiKey === 'string') ? syncCfg.rpdbApiKey : '',
@@ -444,6 +447,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnAddonHealth: syncCfg.notifyOnAddonHealth === true,
           notifyOnBackup: syncCfg.notifyOnBackup === true,
           notifyOnProxyHealth: syncCfg.notifyOnProxyHealth === true,
+          notifyOnUpdateAvailable: syncCfg.notifyOnUpdateAvailable === true,
           notifyOnMosaic: syncCfg.notifyOnMosaic === true,
           notifyDigestEnabled: syncCfg.notifyDigestEnabled === true,
           notifyDigestFrequency: syncCfg.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily',
@@ -455,6 +459,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           enableRecommendations: typeof syncCfg.enableRecommendations === 'boolean' ? syncCfg.enableRecommendations : true,
           enableAutoplayTrailer: typeof syncCfg.enableAutoplayTrailer === 'boolean' ? syncCfg.enableAutoplayTrailer : false,
           autoplayTrailerStartMuted: typeof syncCfg.autoplayTrailerStartMuted === 'boolean' ? syncCfg.autoplayTrailerStartMuted : true,
+          enablePosterRatings: typeof syncCfg.enablePosterRatings === 'boolean' ? syncCfg.enablePosterRatings : false,
           tmdbApiKey: typeof syncCfg.tmdbApiKey === 'string' ? syncCfg.tmdbApiKey : '',
           mdblistApiKey: typeof syncCfg.mdblistApiKey === 'string' ? syncCfg.mdblistApiKey : '',
           rpdbApiKey: typeof syncCfg.rpdbApiKey === 'string' ? syncCfg.rpdbApiKey : '',
@@ -462,7 +467,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnMosaic: false, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnMosaic: false, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -470,7 +475,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnMosaic, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnMosaic, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -530,6 +535,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnAddonHealth: notifyOnAddonHealth !== undefined ? !!notifyOnAddonHealth : ((baseCfg.notifyOnAddonHealth !== undefined) ? baseCfg.notifyOnAddonHealth : false),
           notifyOnBackup: notifyOnBackup !== undefined ? !!notifyOnBackup : ((baseCfg.notifyOnBackup !== undefined) ? baseCfg.notifyOnBackup : false),
           notifyOnProxyHealth: notifyOnProxyHealth !== undefined ? !!notifyOnProxyHealth : ((baseCfg.notifyOnProxyHealth !== undefined) ? baseCfg.notifyOnProxyHealth : false),
+          notifyOnUpdateAvailable: notifyOnUpdateAvailable !== undefined ? !!notifyOnUpdateAvailable : ((baseCfg.notifyOnUpdateAvailable !== undefined) ? baseCfg.notifyOnUpdateAvailable : false),
           notifyOnMosaic: notifyOnMosaic !== undefined ? !!notifyOnMosaic : ((baseCfg.notifyOnMosaic !== undefined) ? baseCfg.notifyOnMosaic : false),
           notifyDigestEnabled: notifyDigestEnabled !== undefined ? !!notifyDigestEnabled : ((baseCfg.notifyDigestEnabled !== undefined) ? baseCfg.notifyDigestEnabled : false),
           notifyDigestFrequency: notifyDigestFrequency === 'weekly' ? 'weekly' : (notifyDigestFrequency === 'daily' ? 'daily' : (baseCfg.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily')),
@@ -540,6 +546,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           enableRecommendations: enableRecommendations !== undefined ? !!enableRecommendations : (typeof baseCfg.enableRecommendations === 'boolean' ? baseCfg.enableRecommendations : true),
           enableAutoplayTrailer: enableAutoplayTrailer !== undefined ? !!enableAutoplayTrailer : (typeof baseCfg.enableAutoplayTrailer === 'boolean' ? baseCfg.enableAutoplayTrailer : false),
           autoplayTrailerStartMuted: autoplayTrailerStartMuted !== undefined ? !!autoplayTrailerStartMuted : (typeof baseCfg.autoplayTrailerStartMuted === 'boolean' ? baseCfg.autoplayTrailerStartMuted : true),
+          enablePosterRatings: enablePosterRatings !== undefined ? !!enablePosterRatings : (typeof baseCfg.enablePosterRatings === 'boolean' ? baseCfg.enablePosterRatings : false),
           // Optional TMDb API key for the cast/crew deep-dive. Trimmed; empty
           // string clears it (falls back to the TMDB_API_KEY env var, if any).
           tmdbApiKey: tmdbApiKey !== undefined ? (typeof tmdbApiKey === 'string' ? tmdbApiKey.trim() : '') : (baseCfg.tmdbApiKey || ''),
@@ -554,7 +561,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // Rotten Tomatoes/Metacritic ratings; per-account like the three
           // above it, so one account's key/quota isn't silently shared by
           // every other account on this instance.
-          omdbApiKey: omdbApiKey !== undefined ? (typeof omdbApiKey === 'string' ? omdbApiKey.trim() : '') : (baseCfg.omdbApiKey || ''),
+          omdbApiKey: omdbApiKey !== undefined ? (typeof omdbApiKey === 'string' ? normalizeOmdbApiKey(omdbApiKey.trim()) : '') : (baseCfg.omdbApiKey || ''),
         }
 
         try {
@@ -592,6 +599,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (notifyOnAddonHealth !== undefined) partial.notifyOnAddonHealth = !!notifyOnAddonHealth
       if (notifyOnBackup !== undefined) partial.notifyOnBackup = !!notifyOnBackup
       if (notifyOnProxyHealth !== undefined) partial.notifyOnProxyHealth = !!notifyOnProxyHealth
+      if (notifyOnUpdateAvailable !== undefined) partial.notifyOnUpdateAvailable = !!notifyOnUpdateAvailable
       if (notifyOnMosaic !== undefined) partial.notifyOnMosaic = !!notifyOnMosaic
       if (notifyDigestEnabled !== undefined) partial.notifyDigestEnabled = !!notifyDigestEnabled
       if (notifyDigestFrequency !== undefined) partial.notifyDigestFrequency = notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily'
@@ -602,10 +610,11 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (enableRecommendations !== undefined) partial.enableRecommendations = !!enableRecommendations
       if (enableAutoplayTrailer !== undefined) partial.enableAutoplayTrailer = !!enableAutoplayTrailer
       if (autoplayTrailerStartMuted !== undefined) partial.autoplayTrailerStartMuted = !!autoplayTrailerStartMuted
+      if (enablePosterRatings !== undefined) partial.enablePosterRatings = !!enablePosterRatings
       if (tmdbApiKey !== undefined) partial.tmdbApiKey = typeof tmdbApiKey === 'string' ? tmdbApiKey.trim() : ''
       if (mdblistApiKey !== undefined) partial.mdblistApiKey = typeof mdblistApiKey === 'string' ? mdblistApiKey.trim() : ''
       if (rpdbApiKey !== undefined) partial.rpdbApiKey = typeof rpdbApiKey === 'string' ? rpdbApiKey.trim() : ''
-      if (omdbApiKey !== undefined) partial.omdbApiKey = typeof omdbApiKey === 'string' ? omdbApiKey.trim() : ''
+      if (omdbApiKey !== undefined) partial.omdbApiKey = typeof omdbApiKey === 'string' ? normalizeOmdbApiKey(omdbApiKey.trim()) : ''
 
       const nextCfg = { ...base, ...partial }
 
@@ -893,6 +902,30 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       return res.json({ message: 'Health check started' });
     } catch (e) {
       return res.status(500).json({ message: 'Failed to start health check', error: e?.message });
+    }
+  });
+
+  // POST /settings/delete-account - self-service, irreversible. Public
+  // multi-tenant mode only: private mode's "account" is the whole shared
+  // instance, not a personal one a user should be able to wipe from a
+  // settings toggle. Always deletes req.appAccountId (the caller's own,
+  // resolved by the auth middleware from their session) - never an id from
+  // the request body, so there is no way to target another account.
+  router.post('/delete-account', async (req, res) => {
+    try {
+      if (INSTANCE_TYPE !== 'public') {
+        return res.status(403).json({ message: 'Self-service account deletion is only available in public (multi-tenant) mode.' });
+      }
+      if (!req.appAccountId) {
+        return res.status(401).json({ message: 'Not signed in' });
+      }
+      const { deleteAccountCascade } = require('../utils/accountDeletion');
+      await deleteAccountCascade(prisma, req.appAccountId);
+      return res.json({ deleted: true });
+    } catch (e) {
+      if (e.notFound) return res.status(404).json({ message: 'Account not found' });
+      console.error('[Settings] Failed to delete account:', e?.message);
+      return res.status(500).json({ message: 'Failed to delete account' });
     }
   });
 

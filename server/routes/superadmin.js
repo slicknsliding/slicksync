@@ -171,53 +171,13 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
     }
   });
 
-  // Shared by the single-account DELETE route and bulk-delete below.
-  // AppAccount.accountId is an application-level scope field, not an
-  // enforced FK (confirmed: only Invitation has a real onDelete:Cascade
-  // relation back to AppAccount), so every accountId-scoped table needs to
-  // be cleared explicitly or it's left as orphaned data - this list is every
-  // model with an accountId field in the public (Postgres) schema as of this
-  // writing. Throws if the account doesn't exist; caller decides how to
-  // report that (404 for a single id, per-id failure entry for bulk).
+  // Shared by the single-account DELETE route and bulk-delete below (and,
+  // via the extracted utility, by Settings' self-service delete too - see
+  // server/utils/accountDeletion.js for the actual cascade/table list).
+  // This wrapper just adds the operator audit-log entry on top.
+  const { deleteAccountCascade: cascadeDeleteAccount } = require('../utils/accountDeletion');
   async function deleteAccountCascade(accountId, bulk = false) {
-    const existing = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { id: true, uuid: true } });
-    if (!existing) {
-      const err = new Error('Account not found');
-      err.notFound = true;
-      throw err;
-    }
-    const where = { accountId };
-    await prisma.$transaction([
-      prisma.addonHealthAlert.deleteMany({ where }),
-      prisma.addonSnapshot.deleteMany({ where }),
-      prisma.customList.deleteMany({ where }),
-      prisma.dismissedContinueWatching.deleteMany({ where }),
-      prisma.dismissedUpcomingEpisode.deleteMany({ where }),
-      prisma.episodeAlert.deleteMany({ where }),
-      prisma.episodeWatchHistory.deleteMany({ where }),
-      prisma.inviteRequest.deleteMany({ where }),
-      prisma.manualWatchOverride.deleteMany({ where }),
-      prisma.movieWatchHistory.deleteMany({ where }),
-      prisma.notInterestedItem.deleteMany({ where }),
-      prisma.proxyStreamSession.deleteMany({ where }),
-      prisma.pushSubscription.deleteMany({ where }),
-      prisma.showEpisodeAlertState.deleteMany({ where }),
-      prisma.userSyncGuardState.deleteMany({ where }),
-      prisma.vaultEntry.deleteMany({ where }),
-      prisma.watchActivity.deleteMany({ where }),
-      prisma.watchSession.deleteMany({ where }),
-      prisma.watchSnapshot.deleteMany({ where }),
-      prisma.watchlistItem.deleteMany({ where }),
-      // Invitation already cascades from AppAccount, but clearing it
-      // explicitly here too keeps this list self-contained/order-independent.
-      prisma.invitation.deleteMany({ where }),
-      // Group/Addon last among the "structural" tables - GroupAddon has no
-      // accountId of its own, it cascades automatically off these two.
-      prisma.group.deleteMany({ where }),
-      prisma.addon.deleteMany({ where }),
-      prisma.user.deleteMany({ where }),
-      prisma.appAccount.delete({ where: { id: accountId } }),
-    ]);
+    const existing = await cascadeDeleteAccount(prisma, accountId);
     await logAction('delete', existing.id, existing.uuid, bulk);
   }
 

@@ -1100,7 +1100,7 @@ export default function TasksPage() {
               </div>
               <div>
                 <h3 className="text-base font-semibold font-display text-default">Library</h3>
-                <p className="text-xs text-muted">Export a user's Stremio library</p>
+                <p className="text-xs text-muted">Export a user's Stremio or Nuvio library</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-3 items-center">

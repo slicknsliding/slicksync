@@ -60,6 +60,7 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 ### 🎞️ Discover & Media Details
 - Click any poster for cast, rating, genres, director, runtime, and awards (Cinemeta) — plus an inline YouTube trailer.
 - Rotten Tomatoes/Metacritic ratings via an optional (free) OMDb key — like RPDB/MDBList/TMDb, your own key in Settings is used first, falling back to the instance's shared key only if you haven't set one.
+- **Box office figures** (OMDb) and **"Part of the X Collection"** franchise grouping (TMDb) on the detail popup — the collection row is a collapsed-by-default disclosure with its own drag-to-scroll, same treatment as More Like This, so a long-running franchise doesn't dominate the popup by default.
 - **Cast & crew deep-dive** — click any actor/director on a detail popup to see their real filmography (optional TMDb key) and jump straight into any of it.
 - **Discover**: browse Popular / New / Top Rated, genre filter, infinite scroll, "Open in Stremio/Nuvio" on every result. Sort by title, year, or rating; filter to unwatched/watched only.
 - **People search** — a separate mode from title search, so looking up an actor/director shows only their verified credits, never an unrelated title that happened to loosely match the name.
@@ -67,6 +68,7 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 - Deep links use each provider's real format (`stremio:///detail/...`, `nuvio://meta?...`) — no guessing, no account-specific data in the link.
 - Continue Watching row on the Dashboard — drag to scroll, right-click/long-press to remove.
 - Right-click (desktop) or long-press (mobile) any poster for a quick-action menu — Add to Watchlist, Add to Catalogs, Mark Watched — without opening the detail popup first.
+- Rating badges on every poster card (IMDb/RT/Metacritic) are off by default — opt in from Settings if you want scores visible before opening a title.
 
 ### 📚 Catalogs
 Named collections of titles, separate from the Watchlist — build a "Halloween Marathon" or "Kids' Night" list and share the idea, not just watch it alone.
@@ -75,15 +77,18 @@ Named collections of titles, separate from the Watchlist — build a "Halloween 
 - **Custom cover art** — upload an image or pick a color, shown on the Catalogs index in place of the default poster collage.
 - **Bulk select** and real drag-and-drop reordering for a catalog's items.
 - **Import** an existing list straight from a **MDBList** or **TMDb** list URL (TMDb import is movies-only; MDBList supports both) — or go the other way and **export** a catalog to a brand-new MDBList list.
-- **Refresh** an imported catalog against its original source URL any time, with a diff preview before applying — a manual, one-time re-sync, not a live/automatic one.
+- **Refresh** an imported catalog against its original source URL any time, with a diff preview before applying, or opt a catalog into **daily auto-refresh** so it stays in sync with its source with no manual click.
+- **Suggest Titles** — match a catalog's own name (e.g. "Halloween", "90s Movies", "30 Days of Halloween") against TMDb's real keyword taxonomy and release-date ranges, review a batch of matching posters, and add only what you keep. Requires a (free) TMDb key.
 - Sort by title, year, or rating; each entry opens the same rich detail popup as everywhere else.
 
 ### 🗂️ Nuvio Collections
 Organize a Nuvio account's own home-screen collections — the folders and catalog sources Nuvio itself shows a user — directly from SlickSync instead of hand-editing them in the Nuvio app.
 - Build folders of catalog sources, drag to reorder folders and sources within them; grid or list view.
 - Start from a template (Streaming Services, Genres) instead of building from scratch.
-- **Cover art** for a collection and for each folder inside it individually — writes to the real field the Nuvio app itself reads, not just a SlickSync-side preview.
-- **Broken-source detection** flags a folder whose catalog source no longer resolves (an addon removed, a catalog renamed), and **pin** any collection to the top of the Nuvio home screen.
+- **Cover art** for a collection and for each folder inside it individually — pick a URL/GIF or browse nuvio.tv's own public **Community Covers** gallery (with search and infinite scroll) directly from the picker; writes to the real field the Nuvio app itself reads, not just a SlickSync-side preview.
+- **Broken-source detection** flags a folder whose catalog source no longer resolves (an addon removed, a catalog renamed) — and separately flags a folder with **zero sources attached**, since that saves and syncs fine but silently never renders on-device.
+- **Genres template** builds one folder per genre from your account's own installed addons, skipping static/curated catalogs that only claim to support genre filtering (confirmed live: without this, unrelated genres could end up showing the exact same cover).
+- **pin** any collection to the top of the Nuvio home screen.
 - A folder's editor is split into Sources and Preview tabs — no scrolling one long panel to switch between adding sources and seeing the result.
 - **Layout preview** — see exactly how a collection will lay out before saving.
 - **Copy a whole collection between profiles** on the same account.
@@ -143,7 +148,8 @@ One page answering "is everything actually working right now" — Sync drift, ad
 Scheduled + on-demand config backups (validated for real restorability, not just valid JSON) and a separate **Disaster Recovery Kit** — the same export plus every Vault secret, re-encrypted under a passphrase you choose, fully portable to a brand-new instance.
 
 ### 🛡️ Security
-Rate limiting actually enabled, strict limits on credential/OAuth endpoints, correct `trust proxy` hop count, no hardcoded default key, and a self-generating anti-lockout encryption key with decrypt-only fallback on rotation. Every external API key (RPDB, MDBList, TMDb, OMDb) resolves an account's own Settings key first — a shared instance-wide key in `.env` is only ever a fallback for accounts that haven't set their own.
+Rate limiting actually enabled (including a separate per-account limit on public-mode API traffic), strict limits on credential/OAuth endpoints, correct `trust proxy` hop count, no hardcoded default key, and a self-generating anti-lockout encryption key with decrypt-only fallback on rotation. Every external API key (RPDB, MDBList, TMDb, OMDb) resolves an account's own Settings key first — a shared instance-wide key in `.env` is only ever a fallback for accounts that haven't set their own.
+- Nuvio's self-service identity checks (view/delete) verify a real signed session token belonging to the caller, not just a client-supplied user id.
 - **Self-service data export** — Settings → Privacy has a Download button exporting your own movie/episode watch history plus the household watchlist as JSON, no admin needed.
 - **Self-service account deletion**, at two distinct scopes: an admin can wipe their entire account and everything tied to it (public multi-tenant mode), and separately, any managed user can delete just their own data (watch history, watchlist state, group membership) from their own User panel — without touching shared addons, groups, or anyone else's data — in both private and public instance mode.
 

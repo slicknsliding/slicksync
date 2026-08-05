@@ -480,8 +480,23 @@ class ApiClient {
     );
   }
 
-  async getNuvioCatalogPreview(userId: string, addonUrl: string, type: string, catalogId: string) {
+  async getNuvioCommunityCovers(userId: string, opts: { sort?: string; orientation?: string; format?: string; page?: number; limit?: number; search?: string } = {}) {
+    const params = new URLSearchParams();
+    if (opts.sort) params.set('sort', opts.sort);
+    if (opts.orientation) params.set('orientation', opts.orientation);
+    if (opts.format) params.set('format', opts.format);
+    if (opts.page) params.set('page', String(opts.page));
+    if (opts.limit) params.set('limit', String(opts.limit));
+    if (opts.search) params.set('search', opts.search);
+    const qs = params.toString();
+    return this.fetch<NuvioCommunityCoversResponse>(
+      `/users/${encodeURIComponent(userId)}/nuvio-covers${qs ? `?${qs}` : ''}`
+    );
+  }
+
+  async getNuvioCatalogPreview(userId: string, addonUrl: string, type: string, catalogId: string, genre?: string) {
     const params = new URLSearchParams({ addonUrl, type, catalogId });
+    if (genre && genre !== 'none') params.set('genre', genre);
     return this.fetch<{ items: { id: string; type: string; name: string; poster: string | null }[] }>(
       `/users/${encodeURIComponent(userId)}/nuvio-catalog-preview?${params.toString()}`
     );
@@ -925,6 +940,13 @@ class ApiClient {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+  }
+
+  // Self-service, irreversible, public-instance-only - see the server
+  // route's own comment for why this never accepts an id (always the
+  // caller's own account, resolved server-side from the session).
+  async deleteMyAccount() {
+    return this.fetch<{ deleted: boolean }>('/settings/delete-account', { method: 'POST' });
   }
 
   async testWebhook(webhookUrl: string) {
@@ -1731,7 +1753,7 @@ class ApiClient {
       body: JSON.stringify({ name, description }),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -2258,6 +2280,7 @@ export interface AccountStats {
   pendingInvites: number;
   uuid?: string | null;
   email?: string | null;
+  linkedProvider?: 'stremio' | 'nuvio' | null;
   avatarUrl?: string | null;
 }
 
@@ -2275,6 +2298,7 @@ export interface SyncSettings {
   notifyOnAddonHealth?: boolean;
   notifyOnBackup?: boolean;
   notifyOnProxyHealth?: boolean;
+  notifyOnUpdateAvailable?: boolean;
   notifyOnMosaic?: boolean;
   notifyDigestEnabled?: boolean;
   notifyDigestFrequency?: 'daily' | 'weekly';
@@ -2287,6 +2311,7 @@ export interface SyncSettings {
   enableRecommendations?: boolean;
   enableAutoplayTrailer?: boolean;
   autoplayTrailerStartMuted?: boolean;
+  enablePosterRatings?: boolean;
   tmdbApiKey?: string;
   mdblistApiKey?: string;
   rpdbApiKey?: string;
@@ -2404,6 +2429,9 @@ export interface CustomList {
   coverImageUrl: string | null;
   coverColorIndex: number | null;
   importSourceUrl: string | null;
+  autoRefresh: boolean;
+  lastAutoRefreshAt: string | null;
+  pinned: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -2452,6 +2480,20 @@ export interface NuvioCollection {
   title: string;
   folders?: NuvioCollectionFolder[];
   [key: string]: any;
+}
+
+export interface NuvioCommunityCover {
+  id: number;
+  image_url: string;
+  mime_type: string;
+  orientation: 'landscape' | 'portrait' | string;
+  title: string;
+  likes_count: number;
+}
+
+export interface NuvioCommunityCoversResponse {
+  items: NuvioCommunityCover[];
+  pagination: { page: number; limit: number; total: number; hasNextPage: boolean };
 }
 
 export interface YearInReviewTitle {
@@ -2694,6 +2736,9 @@ export interface MediaDetails {
   releaseInfo: string | null;
   country: string | null;
   awards: string | null;
+  // OMDb's own field, distinct from Awards - a movie's theatrical gross.
+  // Virtually always null for TV (no theatrical release to report).
+  boxOffice: string | null;
   imdb_id: string | null;
   moviedb_id: number | null;
   trailers: string[];
@@ -2703,6 +2748,13 @@ export interface MediaDetails {
     overview: string | null;
     thumbnail: string | null;
   };
+  // TMDb "belongs_to_collection" grouping (e.g. Dune -> Dune Collection) -
+  // movies only, null for TV and for any movie not part of one.
+  collection?: {
+    id: number;
+    name: string;
+    parts: Array<{ id: string; title: string; poster: string | null; releaseYear: string | null }>;
+  } | null;
 }
 
 export interface MetricsData {

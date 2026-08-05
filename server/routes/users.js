@@ -266,6 +266,85 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   }
 
+  // TMDb "part of a collection" lookup (e.g. Dune (2021) -> Dune Collection
+  // -> [Dune, Dune: Part Two, ...]) - movies only, TMDb has no equivalent
+  // grouping for TV. Same find-by-imdb-id + backdrop's own key resolution,
+  // then one extra call for the movie's own belongs_to_collection field,
+  // then one more for the collection's full parts list. Each part only
+  // carries a TMDb id, and this app routes everything by IMDb id, so each
+  // part needs its own external_ids lookup too - capped at 12 to bound the
+  // worst case (a long-running franchise) to a handful of requests, all
+  // cached together under a long TTL since a collection's lineup is static
+  // apart from a genuinely new sequel releasing.
+  const collectionCache = new Map()
+  const COLLECTION_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+  const COLLECTION_MAX_PARTS = 12
+  async function fetchTmdbCollection(imdbId, itemType, req) {
+    if (!imdbId || !/^tt\d+$/.test(imdbId) || itemType !== 'movie') return null
+    const cached = collectionCache.get(imdbId)
+    if (cached && (Date.now() - cached.at) < COLLECTION_CACHE_TTL_MS) return cached.value
+    const key = await resolveTmdbKeyForBackdrop(req)
+    if (!key) return null
+    try {
+      const findRsp = await fetch(`https://api.themoviedb.org/3/find/${imdbId}?api_key=${encodeURIComponent(key)}&external_source=imdb_id`)
+      if (!findRsp.ok) return null
+      const findData = await findRsp.json()
+      const movieHit = (findData.movie_results || [])[0]
+      if (!movieHit?.id) {
+        collectionCache.set(imdbId, { value: null, at: Date.now() })
+        return null
+      }
+
+      const movieRsp = await fetch(`https://api.themoviedb.org/3/movie/${movieHit.id}?api_key=${encodeURIComponent(key)}`)
+      if (!movieRsp.ok) return null
+      const movieData = await movieRsp.json()
+      const collectionRef = movieData.belongs_to_collection
+      if (!collectionRef?.id) {
+        collectionCache.set(imdbId, { value: null, at: Date.now() })
+        return null
+      }
+
+      const collRsp = await fetch(`https://api.themoviedb.org/3/collection/${collectionRef.id}?api_key=${encodeURIComponent(key)}`)
+      if (!collRsp.ok) return null
+      const collData = await collRsp.json()
+      const parts = (collData.parts || [])
+        .filter((p) => p.id !== movieHit.id)
+        .sort((a, b) => (a.release_date || '9999').localeCompare(b.release_date || '9999'))
+        .slice(0, COLLECTION_MAX_PARTS)
+
+      const partsWithImdbIds = await Promise.all(parts.map(async (p) => {
+        try {
+          const extRsp = await fetch(`https://api.themoviedb.org/3/movie/${p.id}/external_ids?api_key=${encodeURIComponent(key)}`)
+          if (!extRsp.ok) return null
+          const extData = await extRsp.json()
+          if (!extData.imdb_id) return null
+          return {
+            id: extData.imdb_id,
+            title: p.title,
+            poster: p.poster_path ? `https://image.tmdb.org/t/p/w342${p.poster_path}` : null,
+            releaseYear: p.release_date ? p.release_date.slice(0, 4) : null,
+          }
+        } catch {
+          return null
+        }
+      }))
+
+      const value = {
+        id: collectionRef.id,
+        name: collectionRef.name,
+        parts: partsWithImdbIds.filter(Boolean),
+      }
+      // A collection with no OTHER resolvable entries isn't worth showing -
+      // same "don't render a section that can't do anything" rule as
+      // everywhere else in this app.
+      const finalValue = value.parts.length > 0 ? value : null
+      collectionCache.set(imdbId, { value: finalValue, at: Date.now() })
+      return finalValue
+    } catch {
+      return null
+    }
+  }
+
   // GET /users/media-details - Cinemeta detail lookup for the Activity page's
   // poster-click modal (cast, rating, genres, etc). Must be before /:id route.
   router.get('/media-details', async (req, res) => {
@@ -295,8 +374,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // opening animation on mobile. Stripped at the response boundary only -
       // fetchMetadata's cache entry (shared with Continue Watching) still has it.
       const { allEpisodes, ...detailsForClient } = metadata
-      const backdrop = await fetchTmdbBackdrop(itemId, req)
-      res.json({ ...detailsForClient, backdrop })
+      const [backdrop, collection] = await Promise.all([
+        fetchTmdbBackdrop(itemId, req),
+        fetchTmdbCollection(itemId, type, req),
+      ])
+      res.json({ ...detailsForClient, backdrop, collection })
     } catch (error) {
       console.error('Error fetching media details:', error)
       res.status(500).json({ error: 'Failed to fetch media details' })
@@ -2408,6 +2490,38 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   });
 
+  // Browse nuvio.tv's own public "Community Covers" gallery, for picking a
+  // Collection/folder cover directly instead of hunting down a URL
+  // elsewhere first. Read-only passthrough - see getCommunityCovers's own
+  // comment in providers/nuvio.js for the real endpoint/params this proxies.
+  router.get('/:id/nuvio-covers', async (req, res) => {
+    try {
+      const { id } = req.params
+      const user = await prisma.user.findFirst({ where: { id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+      if (user.providerType !== 'nuvio') {
+        return res.status(400).json({ message: 'User is not connected to Nuvio' })
+      }
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider || !provider.getCommunityCovers) {
+        return res.status(400).json({ message: 'User is not connected to Nuvio' })
+      }
+      const { sort, orientation, format, page, limit, search } = req.query
+      const data = await provider.getCommunityCovers({
+        sort: typeof sort === 'string' ? sort : undefined,
+        orientation: typeof orientation === 'string' ? orientation : undefined,
+        format: typeof format === 'string' ? format : undefined,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Math.min(Number(limit), 48) : undefined,
+        search: typeof search === 'string' ? search : undefined,
+      })
+      res.json(data)
+    } catch (error) {
+      console.error('Error fetching Nuvio community covers:', error)
+      res.status(500).json({ message: 'Failed to fetch Nuvio community covers', error: error.message })
+    }
+  });
+
   // Live preview of what a catalog actually contains, for the Collections
   // source picker - a thin proxy over the addon's own standard
   // {transportUrl}/catalog/{type}/{catalogId}.json endpoint. Doesn't need
@@ -2418,12 +2532,20 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   // stored for this user, which the admin who added them controls).
   router.get('/:id/nuvio-catalog-preview', async (req, res) => {
     try {
-      const { addonUrl, type, catalogId } = req.query
+      const { addonUrl, type, catalogId, genre } = req.query
       if (!addonUrl || !type || !catalogId) {
         return res.status(400).json({ message: 'addonUrl, type, and catalogId are required' })
       }
       const base = String(addonUrl).replace(/\/manifest\.json$/, '').replace(/\/$/, '')
-      const url = `${base}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}.json`
+      // Stremio addon protocol: extra properties (genre, skip, ...) go in
+      // their own URL segment as key=value, e.g. .../genre=Family.json - NOT
+      // a query string. Without this, a genre-filtered catalog source (the
+      // whole point of the Genres template - see matchGenreSources) fetched
+      // its addon's default/unfiltered listing instead, so every genre
+      // folder sharing a catalog (e.g. Cinemeta Popular) showed the exact
+      // same top result as its hero poster, regardless of genre.
+      const extraSegment = genre && genre !== 'none' ? `/genre=${encodeURIComponent(String(genre))}` : ''
+      const url = `${base}/catalog/${encodeURIComponent(type)}/${encodeURIComponent(catalogId)}${extraSegment}.json`
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 8000)
       let data

@@ -26,6 +26,7 @@ const BELL_TYPE_BY_TOGGLE = {
   notifyOnVault: 'vault',
   notifyOnBackup: 'task',
   notifyOnProxyHealth: 'proxy',
+  notifyOnUpdateAvailable: 'update',
 }
 
 /**

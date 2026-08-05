@@ -25,6 +25,9 @@ module.exports = ({ prisma, getAccountId }) => {
     coverImageUrl: list.coverImageUrl || null,
     coverColorIndex: list.coverColorIndex ?? null,
     importSourceUrl: list.importSourceUrl || null,
+    autoRefresh: !!list.autoRefresh,
+    lastAutoRefreshAt: list.lastAutoRefreshAt || null,
+    pinned: !!list.pinned,
     createdAt: list.createdAt,
     updatedAt: list.updatedAt,
   });
@@ -121,29 +124,12 @@ module.exports = ({ prisma, getAccountId }) => {
       const accountId = getAccountId(req) || 'default';
       const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
       if (!existing) return res.status(404).json({ error: 'List not found' });
-      if (!existing.importSourceUrl) return res.status(400).json({ error: 'This catalog wasn\'t imported from a list, so there\'s no source to refresh from.' });
 
-      const { detectProvider, importFromTmdb, importFromMdblist, resolveTmdbKey, resolveMdblistKey } = require('../utils/listImport');
-      const provider = detectProvider(existing.importSourceUrl);
-      if (!provider) return res.status(400).json({ error: 'The source URL saved for this catalog is no longer recognized' });
-
-      let result;
-      if (provider === 'tmdb') {
-        const key = await resolveTmdbKey(prisma, getAccountId, req);
-        result = await importFromTmdb(key, existing.importSourceUrl);
-      } else {
-        const key = await resolveMdblistKey(prisma, getAccountId, req);
-        result = await importFromMdblist(key, existing.importSourceUrl);
-      }
-
-      const currentIds = new Set(parseItems(existing.itemsJson).map((i) => i.id));
-      const freshIds = new Set(result.items.map((i) => i.id));
-      const added = result.items.filter((i) => !currentIds.has(i.id)).length;
-      const removed = [...currentIds].filter((id) => !freshIds.has(id)).length;
-      const unchanged = result.items.length - added;
+      const { refreshListFromSourceForAccount } = require('../utils/listImport');
+      const { items, added, removed, unchanged } = await refreshListFromSourceForAccount(prisma, accountId, existing);
 
       if (req.body?.apply) {
-        const list = await prisma.customList.update({ where: { id: existing.id }, data: { itemsJson: JSON.stringify(result.items) } });
+        const list = await prisma.customList.update({ where: { id: existing.id }, data: { itemsJson: JSON.stringify(items) } });
         return res.json({ ...shape(list), added, removed, unchanged });
       }
       res.json({ ...shape(existing), added, removed, unchanged, applied: false });
@@ -167,6 +153,13 @@ module.exports = ({ prisma, getAccountId }) => {
       if (typeof body.description === 'string') data.description = body.description.trim() || null;
       if ('coverImageUrl' in body) data.coverImageUrl = body.coverImageUrl ? String(body.coverImageUrl) : null;
       if ('coverColorIndex' in body) data.coverColorIndex = body.coverColorIndex === null || body.coverColorIndex === undefined ? null : Number(body.coverColorIndex);
+      if ('pinned' in body) data.pinned = !!body.pinned;
+      if ('autoRefresh' in body) {
+        if (body.autoRefresh && !existing.importSourceUrl) {
+          return res.status(400).json({ error: 'This catalog wasn\'t imported from a list, so there\'s no source to auto-refresh from.' });
+        }
+        data.autoRefresh = !!body.autoRefresh;
+      }
       const list = await prisma.customList.update({ where: { id: existing.id }, data });
       res.json(shape(list));
     } catch (e) {
