@@ -223,15 +223,26 @@ function FolderTile({
             <p className="text-sm font-semibold text-white truncate">{folder.title}</p>
             <p className="text-xs text-white/80 flex items-center gap-1">
               {sourceCount} source{sourceCount !== 1 ? 's' : ''}
-              {hasBrokenSource && <span className="text-warning font-medium">· needs attention</span>}
+              {sourceCount === 0 ? (
+                <span className="text-warning font-medium">· won&apos;t appear in Nuvio yet</span>
+              ) : hasBrokenSource && (
+                <span className="text-warning font-medium">· needs attention</span>
+              )}
             </p>
           </div>
 
-          {/* Always visible, not hover-only - a broken source is worth
-              noticing at a glance, same reasoning as the old tiny preview
-              icon that got missed entirely. */}
-          {hasBrokenSource && (
-            <div title="A source in this folder no longer resolves" className="absolute top-1.5 left-1.5 p-1.5 rounded-lg bg-warning/90 text-black">
+          {/* Always visible, not hover-only - a broken or missing source is
+              worth noticing at a glance, same reasoning as the old tiny
+              preview icon that got missed entirely. A folder with zero
+              sources saves fine and round-trips through Nuvio's sync
+              correctly, but Nuvio's own apps silently don't render an empty
+              folder at all - confirmed live, so this needs to be at least as
+              visible as a broken source, not a silent no-op. */}
+          {(hasBrokenSource || sourceCount === 0) && (
+            <div
+              title={sourceCount === 0 ? "This folder has no sources yet - it won't show up in Nuvio until you add at least one" : 'A source in this folder no longer resolves'}
+              className="absolute top-1.5 left-1.5 p-1.5 rounded-lg bg-warning/90 text-black"
+            >
               <ExclamationTriangleIcon className="w-4 h-4" />
             </div>
           )}
@@ -347,7 +358,7 @@ function CollectionSection({
   const sensors = useSortableSensors();
   const folders = collection.folders || [];
   const isPinned = !!collection.pinToTop;
-  const brokenFolderCount = folders.filter((f) => brokenFolderIds.has(f.id)).length;
+  const brokenFolderCount = folders.filter((f) => brokenFolderIds.has(f.id) || (f.catalogSources || []).length === 0).length;
 
   return (
     <Card padding="lg" className="mb-4">
@@ -1075,6 +1086,10 @@ export default function NuvioCollectionsPage() {
                                     <span title="A source in this folder no longer resolves" className="shrink-0">
                                       <ExclamationTriangleIcon className="w-4 h-4 text-warning" />
                                     </span>
+                                  ) : (folder.catalogSources || []).length === 0 ? (
+                                    <span title="This folder has no sources yet - it won't show up in Nuvio until you add at least one" className="shrink-0">
+                                      <ExclamationTriangleIcon className="w-4 h-4 text-warning" />
+                                    </span>
                                   ) : (
                                     <FolderIcon className="w-4 h-4 text-subtle shrink-0" />
                                   )}
@@ -1083,7 +1098,9 @@ export default function NuvioCollectionsPage() {
                                     onChange={(e) => updateFolder(collection.id, folder.id, { title: e.target.value })}
                                     className="flex-1 px-2 py-1 rounded-lg bg-transparent text-sm text-default border border-transparent hover:border-default focus:border-primary focus:outline-none"
                                   />
-                                  <span className="text-xs text-subtle shrink-0">{(folder.catalogSources || []).length} source{(folder.catalogSources || []).length !== 1 ? 's' : ''}</span>
+                                  <span className={`text-xs shrink-0 ${(folder.catalogSources || []).length === 0 ? 'text-warning' : 'text-subtle'}`}>
+                                    {(folder.catalogSources || []).length} source{(folder.catalogSources || []).length !== 1 ? 's' : ''}
+                                  </span>
                                   <button type="button" onClick={() => reorderFolder(collection.id, fIndex, -1)} disabled={fIndex === 0} className="p-1 text-subtle hover:text-default disabled:opacity-30">
                                     <ArrowUpIcon className="w-3 h-3" />
                                   </button>
@@ -1396,7 +1413,12 @@ export default function NuvioCollectionsPage() {
                   {folderDetailTab === 'sources' ? (
                     <div>
                       {(activeFolder.catalogSources || []).length === 0 ? (
-                        <p className="text-sm text-subtle mb-2">No sources in this folder.</p>
+                        <div className="flex items-start gap-2 mb-2 p-3 rounded-lg bg-warning/10 border border-warning/30">
+                          <ExclamationTriangleIcon className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                          <p className="text-sm text-default">
+                            No sources yet — this folder saves fine, but Nuvio won&apos;t show it at all until it has at least one. Add a source below.
+                          </p>
+                        </div>
                       ) : (
                         <div className="space-y-1.5 mb-2">
                           {(activeFolder.catalogSources || []).map((source, sIndex) => {
