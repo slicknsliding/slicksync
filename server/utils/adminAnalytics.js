@@ -142,9 +142,14 @@ async function calculateServerHealth(prisma, accountId) {
     }
   }
   
-  // 2. Check storage utilization
+  // 2. Check storage utilization - scoped to this account's own cache
+  // subdirectory (CACHE_DIR/account-{accountId}/, see libraryCache.js),
+  // not the shared parent directory. In public multi-tenant mode that
+  // parent holds every tenant's cache side by side - walking it
+  // unscoped would show one tenant's admin the storage/file-count
+  // footprint of every OTHER tenant on the shared instance too.
   try {
-    const dataDir = path.join(process.cwd(), 'data', 'libraries')
+    const dataDir = path.join(process.cwd(), 'data', 'libraries', `account-${accountId || 'default'}`)
     let storageSize = 0
     let fileCount = 0
     

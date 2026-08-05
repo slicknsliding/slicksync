@@ -1,5 +1,36 @@
 [
   {
+    "version": "1.66.0",
+    "date": "2026-08-05",
+    "title": "feat: smarter Suggest Titles, self-service deletion, franchise grouping, and a security hardening pass",
+    "features": [
+      "Self-service account deletion, at two scopes: any managed user can delete just their own data from their own User panel, and (public multi-tenant mode) an account owner can delete their entire account and everything tied to it from Settings > Danger Zone. Both require an explicit confirmation spelling out exactly what happens, with no undo afterward.",
+      "Suggest Titles (Catalogs) now handles decade queries (\"90s Movies\") via a real release-date range, and multi-word phrases (\"30 Days of Halloween\") by retrying against the significant word once the full phrase doesn't match a real TMDb keyword - previously both returned nothing. Matches are sorted by rating instead of raw popularity, so a blockbuster's incidental scene (a keyword like \"christmas\" tagged on an action movie for one scene) no longer buries genuinely on-theme titles. The review picker is bigger with visible title captions instead of a cramped grid.",
+      "Catalogs can opt into daily auto-refresh against their original MDBList/TMDb source instead of only refreshing on a manual click.",
+      "Detail modal: TMDb franchise/collection grouping (\"Part of the X Collection\") and OMDb Box Office figures, plus TMDb-powered recommendations layered onto the existing genre-based \"More Like This\". The collection row is collapsed by default with its own drag-to-scroll, matching More Like This instead of always rendering open.",
+      "New \"Poster ratings\" toggle in Settings (off by default) for the IMDb/Rotten Tomatoes/Metacritic badges shown on every poster card in Discover and Catalogs.",
+      "Nuvio Collections: browse nuvio.tv's own public Community Covers gallery (search, infinite scroll, GIF support) directly from the cover/source picker instead of hunting down a URL first. Account and profile pickers redesigned as card grids matching the Users/Groups pattern, with real avatars shown. The Genres template now skips static/curated catalogs that only claim to support genre filtering, and folder covers within a collection no longer duplicate just because two genres share a top-ranked title. A folder with zero sources now warns explicitly instead of silently never rendering on-device.",
+      "Opt-in update-available notifications, and richer incident detail with tap-to-navigate on notifications generally.",
+      "Superadmin: reworked card layout, a growth sparkline, and registration alerts.",
+      "Catalogs: a hero/featured layout, and pin a catalog to the top.",
+      "Now Playing picks up usenet-sourced titles, not just debrid.",
+      "Per-account API rate limiting on public-mode traffic (general and Discover-specific), on top of the existing credential/OAuth endpoint limits."
+    ],
+    "bugFixes": [
+      "Critical: Nuvio's self-service identity verification (view/delete) now checks a real signed session token belonging to the caller, instead of the target account's own stored token - the previous check proved nothing about who was actually asking.",
+      "The Disaster Recovery Kit / config export-import now correctly round-trips a Nuvio refresh token (it previously rode along as raw ciphertext, only working if the encryption key never changed between export and import).",
+      "An OMDb API key pasted as the full confirmation-email test URL (instead of just the key) now self-heals automatically - it silently broke every ratings request before.",
+      "The Health page's storage check no longer leaks cross-tenant cache size/file counts to a tenant admin in public multi-tenant mode - it was walking the shared cache directory instead of just that account's own subdirectory.",
+      "Suggest Titles' keyword lookup was silently missing its API key, so every match was actually a lower-quality plain-title-text coincidence rather than real TMDb genre matching.",
+      "The Library export card on the Tasks page said \"Stremio library\" even though it's always worked for Nuvio users too.",
+      "Genre-filtered folder previews, a mobile tap-highlight that stayed lit after a hover with no click, and general cover-picker cleanup.",
+      "The Link Nuvio icon in the Account modal was a different size than Link Stremio's."
+    ],
+    "miscChores": [
+      "README documents the newly-added features (Suggest Titles, Community Covers, catalog auto-refresh, the Genres template fix, collection grouping, poster ratings toggle) and the hardened Nuvio identity check."
+    ]
+  },
+  {
     "version": "1.65.0",
     "date": "2026-08-05",
     "title": "feat: real Nuvio Collection cover art, Superadmin audit log, per-account API keys",

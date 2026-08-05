@@ -341,6 +341,44 @@ export function MediaDetailModal({
     }
   }, []);
 
+  // Same mouse-drag-scroll treatment, for the "Part of the X Collection" row.
+  const collectionRowRef = useRef<HTMLDivElement>(null);
+  const isCollectionPointerDownRef = useRef(false);
+  const collectionDragStartXRef = useRef(0);
+  const collectionDragStartScrollLeftRef = useRef(0);
+  const hasCapturedCollectionPointerRef = useRef(false);
+
+  const handleCollectionPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || !collectionRowRef.current) return;
+    isCollectionPointerDownRef.current = true;
+    hasCapturedCollectionPointerRef.current = false;
+    collectionDragStartXRef.current = e.clientX;
+    collectionDragStartScrollLeftRef.current = collectionRowRef.current.scrollLeft;
+  }, []);
+
+  const handleCollectionPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse' || !isCollectionPointerDownRef.current || !collectionRowRef.current) return;
+    if ((e.buttons & 1) === 0) {
+      isCollectionPointerDownRef.current = false;
+      return;
+    }
+    const dx = e.clientX - collectionDragStartXRef.current;
+    if (Math.abs(dx) > 5 && !hasCapturedCollectionPointerRef.current) {
+      collectionRowRef.current.setPointerCapture(e.pointerId);
+      hasCapturedCollectionPointerRef.current = true;
+    }
+    collectionRowRef.current.scrollLeft = collectionDragStartScrollLeftRef.current - dx;
+  }, []);
+
+  const handleCollectionPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'mouse') return;
+    isCollectionPointerDownRef.current = false;
+    if (hasCapturedCollectionPointerRef.current) {
+      collectionRowRef.current?.releasePointerCapture(e.pointerId);
+      hasCapturedCollectionPointerRef.current = false;
+    }
+  }, []);
+
   useEffect(() => {
     if (!isOpen || !effectiveId) return;
     // Reset per-item, since the same modal instance is reused across clicks
@@ -391,6 +429,16 @@ export function MediaDetailModal({
   const [similarExpanded, setSimilarExpanded] = useState(false);
   useEffect(() => {
     setSimilarExpanded(false);
+  }, [effectiveId]);
+  // Same collapsed-by-default disclosure treatment as "More Like This" -
+  // "Part of the X Collection" can run to 10+ posters (long-running
+  // franchises) and shouldn't dominate the popup for a title with no other
+  // details worth reading yet. Data (details.collection) already loads
+  // eagerly with the rest of the details fetch, so this only defers the
+  // OPEN state, not the fetch itself.
+  const [collectionExpanded, setCollectionExpanded] = useState(false);
+  useEffect(() => {
+    setCollectionExpanded(false);
   }, [effectiveId]);
   useEffect(() => {
     if (!isOpen || !effectiveId) return;
@@ -942,6 +990,94 @@ export function MediaDetailModal({
                   <FilmIcon className="w-5 h-5 shrink-0 mt-0.5" />
                   {details.awards}
                 </p>
+              )}
+
+              {details.boxOffice && (
+                <p className="text-sm text-muted flex items-start gap-1.5">
+                  <span className="w-5 h-5 shrink-0 mt-0.5 flex items-center justify-center" aria-hidden>💰</span>
+                  Box office: {details.boxOffice}
+                </p>
+              )}
+
+              {/* TMDb "belongs_to_collection" grouping - e.g. Dune (2021) ->
+                  "Part of the Dune Collection" -> the other films in it,
+                  each clickable via the same setOverrideItem navigation
+                  "More Like This" already uses to swap the modal's content
+                  in place. Movies only; null entirely for TV or a movie
+                  not part of one, so this section just doesn't render. */}
+              {details.collection && details.collection.parts.length > 0 && (
+                <div>
+                  {(() => {
+                    const toggleLabel = (
+                      <span className="flex items-center justify-between w-full py-1 text-base text-muted hover:text-default transition-colors">
+                        <span className="flex items-center gap-2">
+                          Part of the {details.collection.name}
+                          <span className="text-xs text-subtle">({details.collection.parts.length})</span>
+                        </span>
+                        <ChevronDownIcon className={`w-4 h-4 transition-transform ${collectionExpanded ? 'rotate-180' : ''}`} />
+                      </span>
+                    );
+                    const onToggle = () => setCollectionExpanded((v) => !v);
+                    return isTV ? (
+                      <TVFocusable onEnterPress={onToggle} className="block w-full">
+                        {toggleLabel}
+                      </TVFocusable>
+                    ) : (
+                      <button type="button" onClick={onToggle} className="block w-full">
+                        {toggleLabel}
+                      </button>
+                    );
+                  })()}
+                  {collectionExpanded && (
+                    <div
+                      ref={collectionRowRef}
+                      onPointerDown={handleCollectionPointerDown}
+                      onPointerMove={handleCollectionPointerMove}
+                      onPointerUp={handleCollectionPointerUp}
+                      className="flex gap-3 overflow-x-auto pb-1 pr-6 mt-2 no-scrollbar cursor-grab active:cursor-grabbing select-none"
+                    >
+                      {details.collection.parts.map((part) => {
+                        const goToPart = () => setOverrideItem({
+                          id: part.id,
+                          type: 'movie',
+                          name: part.title,
+                          poster: part.poster,
+                          releaseInfo: part.releaseYear || undefined,
+                        });
+                        return (
+                          <button
+                            key={part.id}
+                            type="button"
+                            onClick={goToPart}
+                            className="shrink-0 w-28 text-left group tap-card"
+                          >
+                            <div className="w-28 h-40 rounded-lg overflow-hidden bg-surface-hover">
+                              {part.poster ? (
+                                <img
+                                  src={part.poster}
+                                  alt={part.title}
+                                  loading="lazy"
+                                  decoding="async"
+                                  draggable={false}
+                                  onDragStart={(e) => e.preventDefault()}
+                                  className="w-full h-full object-cover pointer-events-none transition-transform group-hover:scale-105"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-muted">
+                                  <FilmIcon className="w-8 h-8" />
+                                </div>
+                              )}
+                            </div>
+                            <p className="mt-1.5 text-sm font-medium text-default leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                              {part.title}
+                            </p>
+                            {part.releaseYear && <p className="text-xs text-subtle">{part.releaseYear}</p>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* SlickTrax "More Like This" - a disclosure, collapsed by

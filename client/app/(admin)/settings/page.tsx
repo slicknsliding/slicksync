@@ -166,6 +166,8 @@ export default function SettingsPage() {
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const isPublicInstance = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') === 'public';
+  const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   
   // Sync settings state
   const [syncSettings, setSyncSettings] = useState<Partial<SyncSettings>>({
@@ -180,6 +182,7 @@ export default function SettingsPage() {
     notifyOnAddonHealth: false,
     notifyOnBackup: false,
     notifyOnProxyHealth: false,
+    notifyOnUpdateAvailable: false,
     notifyOnMosaic: false,
     notifyDigestEnabled: false,
     notifyDigestFrequency: 'daily' as 'daily' | 'weekly',
@@ -302,6 +305,7 @@ export default function SettingsPage() {
           notifyOnAddonHealth: settings.notifyOnAddonHealth || false,
           notifyOnBackup: settings.notifyOnBackup || false,
           notifyOnProxyHealth: settings.notifyOnProxyHealth || false,
+          notifyOnUpdateAvailable: settings.notifyOnUpdateAvailable || false,
           notifyOnMosaic: settings.notifyOnMosaic || false,
           notifyDigestEnabled: settings.notifyDigestEnabled || false,
           notifyDigestFrequency: settings.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily',
@@ -315,6 +319,7 @@ export default function SettingsPage() {
           enableRecommendations: settings.enableRecommendations !== false,
           enableAutoplayTrailer: settings.enableAutoplayTrailer === true,
           autoplayTrailerStartMuted: settings.autoplayTrailerStartMuted !== false,
+          enablePosterRatings: settings.enablePosterRatings === true,
         });
 
         // Nobody has ever explicitly saved a timezone for this account - the
@@ -452,6 +457,7 @@ export default function SettingsPage() {
       notifyOnAddonHealth: false,
       notifyOnBackup: false,
       notifyOnProxyHealth: false,
+      notifyOnUpdateAvailable: false,
       notifyOnMosaic: false,
       notifyDigestEnabled: false,
       notifyDigestFrequency: 'daily',
@@ -469,6 +475,7 @@ export default function SettingsPage() {
         notifyOnAddonHealth: false,
         notifyOnBackup: false,
         notifyOnProxyHealth: false,
+        notifyOnUpdateAvailable: false,
         notifyOnMosaic: false,
         notifyDigestEnabled: false,
         notifyDigestFrequency: 'daily',
@@ -476,6 +483,23 @@ export default function SettingsPage() {
       toast.success('Settings reset to defaults');
     } catch (e: any) {
       toast.error(e.message || 'Failed to reset settings');
+    }
+  };
+
+  // Irreversible - server re-checks public-instance-only and always deletes
+  // the caller's own account (never an id from here). Clears the same
+  // localStorage token NebulaTopbar's own handleLogout does and sends the
+  // browser to /login, since the account (and its session) no longer exists.
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    try {
+      await api.deleteMyAccount();
+      localStorage.removeItem('slicksync-admin-token');
+      toast.success('Account deleted');
+      window.location.href = '/login?mode=admin';
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to delete account');
+      setIsDeletingAccount(false);
     }
   };
 
@@ -766,6 +790,17 @@ export default function SettingsPage() {
                 </SettingRow>
 
                 <SettingRow
+                  label="Update available notifications"
+                  description="Notify when a newer stable SlickSync release is published (checked every 6h) - also always visible on Metrics > Health regardless of this toggle"
+                >
+                  <ToggleSwitch
+                    enabled={syncSettings.notifyOnUpdateAvailable || false}
+                    onChange={(v) => handleSaveSetting('notifyOnUpdateAvailable', v)}
+                    label="Toggle update available notifications"
+                  />
+                </SettingRow>
+
+                <SettingRow
                   label="Monthly poster mosaic"
                   description={syncSettings.webhookUrl?.trim()
                     ? "Post a poster collage of everything watched last month to Discord, on the 1st"
@@ -950,6 +985,17 @@ export default function SettingsPage() {
               </SettingRow>
 
               <SettingRow
+                label="Poster ratings"
+                description="Show IMDb/Rotten Tomatoes/Metacritic score badges on every poster card in Discover and Catalogs. Off by default - turn this on if you want scores visible before opening a title."
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enablePosterRatings === true}
+                  onChange={async (v) => { await handleSaveSetting('enablePosterRatings' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle poster ratings"
+                />
+              </SettingRow>
+
+              <SettingRow
                 label="Autoplay trailer"
                 description="When you open a title's detail popup, its trailer starts playing automatically instead of waiting for a Play Trailer click. Off by default - turn this on if you want it."
               >
@@ -1041,7 +1087,7 @@ export default function SettingsPage() {
               <div className="pt-1">
                 <label className="block text-sm font-medium text-default mb-1.5">OMDb API key <span className="text-subtle font-normal">(optional)</span></label>
                 <p className="text-xs text-muted mb-2">
-                  Adds Rotten Tomatoes/Metacritic ratings. Get a free key at omdbapi.com/apikey.aspx. Leave blank to use the server's own key, if one is configured.
+                  Adds Rotten Tomatoes/Metacritic ratings. Get a free key at omdbapi.com/apikey.aspx. Paste just the key itself, not the test URL OMDb's confirmation email shows (the one starting "http://www.omdbapi.com/?i=..."). Leave blank to use the server's own key, if one is configured.
                 </p>
                 <input
                   type="text"
@@ -1186,6 +1232,26 @@ export default function SettingsPage() {
                   Reset
                 </Button>
               </div>
+
+              {/* Public-mode only - private mode's "account" is the whole
+                  shared instance, not a personal one a user should be able
+                  to wipe from a settings toggle. */}
+              {isPublicInstance && (
+                <div className="flex items-center justify-between p-4 rounded-lg bg-error-muted">
+                  <div>
+                    <p className="font-medium text-sm text-default">Delete Account</p>
+                    <p className="text-xs text-muted">Permanently delete your SlickSync account and all its data</p>
+                  </div>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    leftIcon={<TrashIcon className="w-4 h-4" />}
+                    onClick={() => setIsDeleteAccountModalOpen(true)}
+                  >
+                    Delete Account
+                  </Button>
+                </div>
+              )}
             </div>
           </Card>
         </PageSection>
@@ -1201,6 +1267,19 @@ export default function SettingsPage() {
         description="Are you sure you want to reset all settings to their defaults? This cannot be undone."
         confirmText="Reset Settings"
         variant="danger"
+      />
+
+      {/* Delete Account Confirmation Modal */}
+      <ConfirmModal
+        isOpen={isDeleteAccountModalOpen}
+        onClose={() => setIsDeleteAccountModalOpen(false)}
+        onConfirm={handleDeleteAccount}
+        title="Delete Your Account?"
+        description="This permanently deletes your SlickSync account and every piece of data tied to it: all managed users, groups, addons, catalogs, watch history, Vault entries, and settings. There is no undo, no recovery, and no grace period - deletion happens immediately. If you're sure, click 'Yes, delete everything' below. Otherwise, click 'No, keep my account.'"
+        confirmText="Yes, delete everything"
+        cancelText="No, keep my account"
+        variant="danger"
+        isLoading={isDeletingAccount}
       />
 
       {/* Avatar Picker Modal */}

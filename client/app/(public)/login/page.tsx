@@ -826,8 +826,11 @@ function LoginContent() {
                     /* Admin Nuvio Login UI - same shape as the Stremio panel
                        above, but backed by Nuvio's own device-code fields */
                     <div className="space-y-4">
-                      <p className="text-sm text-center mb-4" style={{ color: 'var(--color-text-muted)' }}>
-                        Link your Nuvio account to your administrator profile.
+                      <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
+                        Sign in to the <strong>admin dashboard</strong> with Nuvio, as an alternative to a UUID and password.
+                      </p>
+                      <p className="text-xs text-center mb-4" style={{ color: 'var(--color-text-subtle)' }}>
+                        Looking to connect a user's Nuvio library instead? Do that from Users, not here.
                       </p>
 
                       <button
@@ -1107,10 +1110,13 @@ function LoginContent() {
                   ) : (
                   <>
                   <p
-                    className="text-sm text-center mb-4"
+                    className="text-sm text-center"
                     style={{ color: 'var(--color-text-muted)' }}
                   >
-                    Sign in with your Nuvio account to access your library and settings.
+                    Sign in with <strong>your own</strong> Nuvio account to watch here and share it with your group.
+                  </p>
+                  <p className="text-xs text-center mb-4" style={{ color: 'var(--color-text-subtle)' }}>
+                    This is for your personal viewing, not for admin dashboard access.
                   </p>
 
                   <button

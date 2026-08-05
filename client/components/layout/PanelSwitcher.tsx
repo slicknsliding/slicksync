@@ -27,6 +27,7 @@ interface PanelSwitcherProps {
     email?: string | null;
     colorIndex?: number;
     uuid?: string | null;
+    linkedProvider?: 'stremio' | 'nuvio' | null;
     avatarUrl?: string | null;
   } | null;
   /** Called when logout is clicked */
@@ -436,6 +437,7 @@ export function PanelSwitcher({ mode, userInfo, onLogout, collapsed = false, var
           accountInfo={{
             uuid: userInfo?.uuid,
             email: userInfo?.email,
+            linkedProvider: userInfo?.linkedProvider,
           }}
           onAccountUpdated={() => {
             // Refresh page to update account info

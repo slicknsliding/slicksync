@@ -311,6 +311,16 @@ export default function MetricsPage() {
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const [period, setPeriod] = useState('30d');
   const [viewMode, setViewMode] = useState<'users' | 'content' | 'admin' | 'health'>('users');
+  // Deep-link support (?tab=health) so a notification tap can land directly
+  // on this tab instead of always the default - read once on mount via
+  // window.location rather than useSearchParams(), which needs a Suspense
+  // boundary this page doesn't otherwise have any reason to add.
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab === 'users' || tab === 'content' || tab === 'admin' || tab === 'health') {
+      setViewMode(tab);
+    }
+  }, []);
   const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -1327,7 +1337,7 @@ export default function MetricsPage() {
                                 <p className="text-sm text-default truncate">{entry.title}</p>
                                 <span className="text-xs text-subtle flex-shrink-0" title={new Date(entry.at).toLocaleString()}>{healthTimeAgo(entry.at)}</span>
                               </div>
-                              {entry.detail && <p className="text-xs text-muted truncate">{entry.detail}</p>}
+                              {entry.detail && <p className="text-xs text-muted break-words">{entry.detail}</p>}
                             </div>
                             <Badge variant="default" size="sm" className="flex-shrink-0 capitalize">{entry.source}</Badge>
                           </div>

@@ -46,6 +46,71 @@ function isAbandoned(a: SuperAdminAccount): boolean {
   return Date.now() - new Date(a.createdAt).getTime() > ABANDONED_AGE_MS;
 }
 
+const NEW_ACCOUNT_AGE_MS = 48 * 60 * 60 * 1000;
+function isRecentlyRegistered(a: SuperAdminAccount): boolean {
+  return Date.now() - new Date(a.createdAt).getTime() < NEW_ACCOUNT_AGE_MS;
+}
+
+// Cumulative registrations by day, straight from each account's own
+// createdAt - no new tracking/table needed, this is real data already on
+// every row fetched for the list above it. Aggregate-only (a count per day),
+// same privacy boundary as the rest of this page.
+function buildGrowthSeries(accounts: SuperAdminAccount[], days: number): { date: string; count: number }[] {
+  const now = new Date();
+  const buckets: { date: string; day: number }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    d.setHours(0, 0, 0, 0);
+    buckets.push({ date: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), day: d.getTime() });
+  }
+  const dayMs = 24 * 60 * 60 * 1000;
+  return buckets.map((b) => ({
+    date: b.date,
+    count: accounts.filter((a) => new Date(a.createdAt).getTime() < b.day + dayMs).length,
+  }));
+}
+
+function GrowthSparkline({ series }: { series: { date: string; count: number }[] }) {
+  if (series.length < 2) return null;
+  const width = 100;
+  const height = 32;
+  const max = Math.max(...series.map((s) => s.count), 1);
+  const min = Math.min(...series.map((s) => s.count));
+  const range = Math.max(max - min, 1);
+  const points = series.map((s, i) => {
+    const x = (i / (series.length - 1)) * width;
+    const y = height - ((s.count - min) / range) * (height - 4) - 2;
+    return `${x},${y}`;
+  });
+  const last = series[series.length - 1];
+  const first = series[0];
+  const delta = last.count - first.count;
+  return (
+    <div className="flex items-center gap-3">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-24 h-8 overflow-visible" preserveAspectRatio="none">
+        <polyline
+          points={points.join(' ')}
+          fill="none"
+          stroke="var(--color-primary)"
+          strokeWidth="2"
+          vectorEffect="non-scaling-stroke"
+        />
+        <circle
+          cx={width}
+          cy={height - ((last.count - min) / range) * (height - 4) - 2}
+          r="2.5"
+          fill="var(--color-primary)"
+        />
+      </svg>
+      <div>
+        <p className="text-sm font-semibold text-default">{last.count} <span className="text-xs font-normal text-muted">total</span></p>
+        <p className="text-xs text-subtle">{delta >= 0 ? '+' : ''}{delta} in {series.length}d</p>
+      </div>
+    </div>
+  );
+}
+
 // Operator-only cross-account panel for public multi-tenant mode. Deliberately
 // its own route with its own auth (a separate sfm_superadmin cookie, never an
 // account login) - see server/routes/superadmin.js for the full reasoning.
@@ -73,6 +138,9 @@ export default function SuperAdminPage() {
     if (!q) return accounts;
     return accounts.filter((a) => (a.uuid || a.id).toLowerCase().includes(q));
   }, [accounts, search]);
+
+  const growthSeries = useMemo(() => buildGrowthSeries(accounts, 30), [accounts]);
+  const recentCount = useMemo(() => accounts.filter(isRecentlyRegistered).length, [accounts]);
 
   // Health summary - counts over ALL accounts, not just the filtered view,
   // so it reads as a stable overview regardless of what's currently searched.
@@ -314,11 +382,28 @@ export default function SuperAdminPage() {
         {/* Health summary - counts only, same privacy boundary as everything
             else on this page (nothing from inside a tenant's own data). */}
         {accounts.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <Card padding="md">
+              <p className="text-xs text-muted mb-2">Growth (30d)</p>
+              <GrowthSparkline series={growthSeries} />
+            </Card>
+            <Card padding="md">
+              <p className="text-xs text-muted mb-1">Active</p>
+              <p className="text-2xl font-semibold text-default">{summary.active}</p>
+            </Card>
+            <Card padding="md">
+              <p className="text-xs text-muted mb-1">Disabled</p>
+              <p className="text-2xl font-semibold text-default">{summary.disabled}</p>
+            </Card>
+            <Card padding="md">
+              <p className="text-xs text-muted mb-1">New (48h)</p>
+              <p className={`text-2xl font-semibold ${recentCount > 0 ? 'text-primary' : 'text-default'}`}>{recentCount}</p>
+            </Card>
+          </div>
+        )}
+
+        {accounts.length > 0 && (summary.neverLoggedIn > 0 || summary.abandoned > 0) && (
           <div className="flex items-center gap-4 flex-wrap mb-4 text-xs text-muted">
-            <span><span className="text-default font-semibold">{summary.active}</span> active</span>
-            <span>·</span>
-            <span><span className="text-default font-semibold">{summary.disabled}</span> disabled</span>
-            <span>·</span>
             <span><span className="text-default font-semibold">{summary.neverLoggedIn}</span> never logged in</span>
             {summary.abandoned > 0 && (
               <>
@@ -361,12 +446,16 @@ export default function SuperAdminPage() {
               <p className="text-sm text-muted p-6 text-center">No accounts match &quot;{search}&quot;.</p>
             ) : (
               filteredAccounts.map((a) => (
-                <div key={a.id} className={`flex items-center justify-between gap-4 p-4 ${selectedIds.has(a.id) ? 'bg-primary-muted' : ''}`}>
+                <div key={a.id} className={`flex items-center justify-between gap-4 p-4 transition-colors ${selectedIds.has(a.id) ? 'bg-primary-muted' : 'hover:bg-surface-hover'}`}>
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <SelectionCheckbox checked={selectedIds.has(a.id)} onChange={() => toggleSelect(a.id)} visible={selectedIds.has(a.id)} />
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-xs font-semibold ${a.disabled ? 'bg-warning/10 text-warning' : 'bg-primary/10 text-primary'}`}>
+                      {(a.uuid || a.id).slice(0, 2).toUpperCase()}
+                    </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-mono text-default truncate">{a.uuid || a.id}</span>
+                        {isRecentlyRegistered(a) && <Badge variant="primary" size="sm">New</Badge>}
                         {a.disabled && <Badge variant="warning" size="sm">Disabled</Badge>}
                         {isAbandoned(a) && <Badge variant="muted" size="sm" title="Registered a while ago, empty, never logged in">Abandoned</Badge>}
                       </div>

@@ -230,6 +230,19 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         data: { uuid, passwordHash },
       });
 
+      // Operator-only registration alert - deliberately a separate,
+      // optional Discord webhook rather than the app's normal push/bell
+      // notifyPushForType path, since that's all account-scoped and
+      // Superadmin isn't tied to any account (see superadmin.js's own
+      // comment on why). Fire-and-forget: never blocks/fails registration
+      // itself, and carries only the fact a new account registered - no
+      // uuid, no data from inside the account (same privacy boundary as
+      // the rest of the Superadmin panel).
+      if (process.env.SUPERADMIN_NOTIFY_WEBHOOK_URL) {
+        const { postDiscord } = require('../utils/notify');
+        postDiscord(process.env.SUPERADMIN_NOTIFY_WEBHOOK_URL, '🆕 A new SlickSync account just registered.').catch(() => {});
+      }
+
       // Set access/refresh and CSRF cookies
       const at = issueAccessToken(account.id);
       const rt = issueRefreshToken(account.id);
@@ -456,7 +469,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           if (currentAccount.email == null) {
             account = await prisma.appAccount.update({
               where: { id: currentAccount.id },
-              data: { email }
+              data: { email, linkedProvider: 'stremio' }
             })
           } else {
             account = currentAccount
@@ -495,7 +508,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           if (!validation.valid) {
             await prisma.appAccount.update({
               where: { id: account.id },
-              data: { email: null }
+              data: { email: null, linkedProvider: null }
             })
             account = null
           }
@@ -510,14 +523,14 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
               const newUuid = await generateUniqueAccountUuid()
               await prisma.appAccount.update({
                 where: { id: legacyAccount.id },
-                data: { uuid: newUuid, email: null }
+                data: { uuid: newUuid, email: null, linkedProvider: null }
               })
               account = null
             } else {
               const newUuid = await generateUniqueAccountUuid()
               account = await prisma.appAccount.update({
                 where: { id: legacyAccount.id },
-                data: { uuid: newUuid, email }
+                data: { uuid: newUuid, email, linkedProvider: 'stremio' }
               })
             }
           }
@@ -529,7 +542,8 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
             data: {
               uuid: null,
               email,
-              passwordHash: null
+              passwordHash: null,
+              linkedProvider: 'stremio'
             }
           })
           isNewAccount = true
@@ -537,7 +551,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           // Account exists but email was unlinked - set it now
           account = await prisma.appAccount.update({
             where: { id: account.id },
-            data: { email }
+            data: { email, linkedProvider: 'stremio' }
           })
         }
 
@@ -757,7 +771,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           if (currentAccount.email == null) {
             account = await prisma.appAccount.update({
               where: { id: currentAccount.id },
-              data: { email }
+              data: { email, linkedProvider: 'nuvio' }
             })
           } else {
             account = currentAccount
@@ -794,7 +808,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           if (!validation.valid) {
             await prisma.appAccount.update({
               where: { id: account.id },
-              data: { email: null }
+              data: { email: null, linkedProvider: null }
             })
             account = null
           }
@@ -805,14 +819,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
             data: {
               uuid: null,
               email,
-              passwordHash: null
+              passwordHash: null,
+              linkedProvider: 'nuvio'
             }
           })
           isNewAccount = true
         } else if (account.email == null) {
           account = await prisma.appAccount.update({
             where: { id: account.id },
-            data: { email }
+            data: { email, linkedProvider: 'nuvio' }
           })
         }
 
@@ -913,7 +928,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
 
       await prisma.appAccount.update({
         where: { id: accountId },
-        data: { email: null }
+        data: { email: null, linkedProvider: null }
       })
 
       return res.json({ message: 'Stremio account unlinked successfully. You can now log in with your UUID and password.', uuid: account.uuid })
@@ -1105,7 +1120,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       // Build addon id -> name map for user excludedAddons name resolution
       const addonIdToName = new Map(addons.map(a => [a.id, a.name]))
 
-      // Decrypt stremioAuthKey for each user before exporting
+      // Decrypt stremioAuthKey AND nuvioRefreshToken for each user before
+      // exporting. nuvioRefreshToken previously rode along un-decrypted via
+      // the {...user} spread below - export never decrypted it, and
+      // config-import never re-encrypted it either, so it only "worked" by
+      // accident when the encryption key hadn't changed between export and
+      // import. A real disaster-recovery restore (new server, new key -
+      // exactly what the Disaster Recovery Kit exists for) would silently
+      // fail to decrypt it, breaking every Nuvio user's connection. Now
+      // handled identically to stremioAuthKey.
       const decryptedUsers = users.map(user => {
         const decryptedUser = { ...user }
         if (user.stremioAuthKey) {
@@ -1114,6 +1137,14 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           } catch (e) {
             console.warn(`Failed to decrypt auth key for user ${user.id}:`, e.message)
             decryptedUser.stremioAuthKey = null
+          }
+        }
+        if (user.nuvioRefreshToken) {
+          try {
+            decryptedUser.nuvioRefreshToken = decrypt(user.nuvioRefreshToken, req)
+          } catch (e) {
+            console.warn(`Failed to decrypt Nuvio refresh token for user ${user.id}:`, e.message)
+            decryptedUser.nuvioRefreshToken = null
           }
         }
         // Normalize excludedAddons to addon NAMES for export (keep JSON string format for compatibility)
@@ -1740,7 +1771,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         }
 
         for (const userData of users) {
-          const { id: _exportUserId, stremioAuthKey, protectedAddons, excludedAddons, ...userFields } = userData;
+          const { id: _exportUserId, stremioAuthKey, nuvioRefreshToken, protectedAddons, excludedAddons, ...userFields } = userData;
 
           // Parse protectedAddons and excludedAddons if they're JSON strings
           const parsedProtectedAddons = (() => {
@@ -1804,6 +1835,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
               ...userFields,
               accountId,
               stremioAuthKey: stremioAuthKey ? encrypt(stremioAuthKey, req) : null,
+              nuvioRefreshToken: nuvioRefreshToken ? encrypt(nuvioRefreshToken, req) : null,
               protectedAddons: normalizedProtectedNames.length > 0 ? JSON.stringify(normalizedProtectedNames) : null,
               excludedAddons: normalizedExcludedIds.length > 0 ? JSON.stringify(normalizedExcludedIds) : null
             }

@@ -355,6 +355,32 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
       }, accessToken)
     },
 
+    // Community Covers - nuvio.tv's own public gallery of user-submitted
+    // cover art (GIFs/JPG/PNG) for Collections/folders/rows, the same place
+    // the account owner found their own GIF covers before SlickSync had
+    // this feature. Same Supabase-issued access token as every other
+    // authenticated call here, just against nuvio.tv's own Next API route
+    // instead of Supabase's REST/RPC endpoints directly - confirmed via a
+    // real authenticated browser session (the endpoint 401s without this
+    // exact Bearer token; param names/values - sort, orientation, format -
+    // confirmed by watching the real UI's own network requests, not
+    // guessed).
+    async getCommunityCovers({ sort = 'recent', orientation = 'all', format = 'all', page = 1, limit = 24, search = '' } = {}) {
+      const accessToken = await ensureAuth()
+      const params = new URLSearchParams({ sort, orientation, page: String(page), limit: String(limit) })
+      if (format && format !== 'all') params.set('format', format)
+      // Real server-side search - confirmed live against nuvio.tv/api/covers
+      // (nuvio.tv's own search box in the UI doesn't fire an observable
+      // request, but the API itself supports it; ?search= filters
+      // pagination.total correctly and returns 0 results for garbage terms).
+      if (search && search.trim()) params.set('search', search.trim())
+      const res = await fetch(`https://nuvio.tv/api/covers?${params}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (!res.ok) throw new Error(`Nuvio covers request failed (${res.status})`)
+      return res.json()
+    },
+
     // Library writes — no-op; returns null to signal "not supported". Callers guard via providerType.
     // Capability flag: Nuvio library is read-only in this implementation
     supportsLibraryWrite: false,

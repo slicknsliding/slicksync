@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Modal, Button } from '@/components/ui';
 import { Avatar } from '@/components/ui/Avatar';
 import { toast } from '@/components/ui/Toast';
-import { api } from '@/lib/api';
+import { api, NuvioCommunityCover } from '@/lib/api';
 
 const COLOR_COUNT = 8;
 
@@ -15,7 +15,31 @@ interface AvatarPickerModalProps {
   currentAvatarUrl?: string | null;
   currentColorIndex?: number;
   onSave: (data: { avatarUrl?: string | null; colorIndex?: number }) => Promise<void>;
+  // Optional - when given a SlickSync-managed Nuvio user's id, an extra
+  // "Nuvio Covers" tab appears, browsing nuvio.tv's own public Community
+  // Covers gallery (GIFs/JPG/PNG) and letting a pick fill the Image URL tab
+  // instead of the caller having to find+paste a URL from that site
+  // manually. Omitted (the default) for every other AvatarPickerModal use
+  // (Users/Groups/Catalogs avatars) - that gallery is Nuvio-cover-art
+  // specific, not a generic avatar source.
+  nuvioCoversUserId?: string;
+  // This component is reused for both circular person/account avatars and
+  // rectangular cover art (Catalogs, Nuvio Collections/folders) - the
+  // "Change Avatar" title and round preview only made sense for the former.
+  // Cover-art callers pass '' (no title bar at all - the redesigned rect
+  // preview + tabs already read as a cover picker with no label needed)
+  // and 'rect' here instead.
+  title?: string;
+  previewShape?: 'circle' | 'rect';
+  // Cover pickers need real room - a big preview, a legible grid of Nuvio
+  // covers - the original 'md' avatar-picker size was cramped for that.
+  // 'full' (896px, Modal's own largest size) is for the Nuvio Collections
+  // folder-cover entry point specifically - genuinely the primary place
+  // people browse this gallery, so it gets the roomiest treatment.
+  size?: 'md' | 'lg' | 'xl' | 'full';
 }
+
+type Tab = 'color' | 'url' | 'upload' | 'nuvio';
 
 export function AvatarPickerModal({
   isOpen,
@@ -24,14 +48,89 @@ export function AvatarPickerModal({
   currentAvatarUrl,
   currentColorIndex,
   onSave,
+  nuvioCoversUserId,
+  title = 'Change Avatar',
+  previewShape = 'circle',
+  size = 'md',
 }: AvatarPickerModalProps) {
-  const [tab, setTab] = useState<'color' | 'url' | 'upload'>(currentAvatarUrl ? 'url' : 'color');
+  const [tab, setTab] = useState<Tab>(currentAvatarUrl ? 'url' : (previewShape === 'rect' ? (nuvioCoversUserId ? 'nuvio' : 'url') : 'color'));
   const [urlInput, setUrlInput] = useState(currentAvatarUrl || '');
   const [selectedColor, setSelectedColor] = useState(currentColorIndex ?? 0);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentAvatarUrl || null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Infinite scroll for the Nuvio Covers grid, same IntersectionObserver
+  // pattern Discover uses - root is the grid's own scrollable div (not the
+  // viewport), since this grid scrolls internally inside a fixed-height
+  // modal rather than the page itself.
+  const nuvioGridContainerRef = useRef<HTMLDivElement | null>(null);
+  const nuvioSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const [nuvioCovers, setNuvioCovers] = useState<NuvioCommunityCover[]>([]);
+  const [nuvioCoversLoading, setNuvioCoversLoading] = useState(false);
+  const [nuvioCoversError, setNuvioCoversError] = useState<string | null>(null);
+  const [nuvioPage, setNuvioPage] = useState(1);
+  const [nuvioHasMore, setNuvioHasMore] = useState(false);
+  const [nuvioOrientation, setNuvioOrientation] = useState<'all' | 'landscape' | 'portrait'>('all');
+  const [nuvioFormat, setNuvioFormat] = useState<'all' | 'gif' | 'jpg' | 'png'>('all');
+  // Real server-side search - confirmed live against nuvio.tv/api/covers
+  // (its own site search box never fires an observable request under the
+  // live UI, but the underlying API accepts ?search= and filters
+  // pagination.total correctly, with 0 results for garbage terms).
+  const [nuvioSearch, setNuvioSearch] = useState('');
+
+  const loadNuvioCovers = useCallback(async (page: number, replace: boolean) => {
+    if (!nuvioCoversUserId) return;
+    setNuvioCoversLoading(true);
+    setNuvioCoversError(null);
+    try {
+      const data = await api.getNuvioCommunityCovers(nuvioCoversUserId, {
+        sort: 'recent', orientation: nuvioOrientation, format: nuvioFormat, page, limit: 24,
+        search: nuvioSearch.trim() || undefined,
+      });
+      setNuvioCovers((prev) => (replace ? data.items : [...prev, ...data.items]));
+      setNuvioHasMore(!!data.pagination?.hasNextPage);
+      setNuvioPage(page);
+    } catch (err: any) {
+      setNuvioCoversError(err.message || 'Failed to load Nuvio covers');
+    } finally {
+      setNuvioCoversLoading(false);
+    }
+  }, [nuvioCoversUserId, nuvioOrientation, nuvioFormat, nuvioSearch]);
+
+  // (Re)load whenever the tab opens or a filter/search changes - debounced
+  // so search doesn't fire a request per keystroke. Not on every render,
+  // and never for callers without nuvioCoversUserId at all.
+  useEffect(() => {
+    if (tab !== 'nuvio' || !nuvioCoversUserId) return;
+    const t = setTimeout(() => loadNuvioCovers(1, true), nuvioSearch.trim() ? 350 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, nuvioOrientation, nuvioFormat, nuvioSearch, nuvioCoversUserId]);
+
+  // Infinite scroll - same IntersectionObserver pattern as Discover's own
+  // browse grid, except root is the grid's own scrollable div rather than
+  // the viewport, since this grid scrolls inside a fixed-height modal.
+  useEffect(() => {
+    if (tab !== 'nuvio') return;
+    const root = nuvioGridContainerRef.current;
+    const sentinel = nuvioSentinelRef.current;
+    if (!root || !sentinel) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting) && nuvioHasMore && !nuvioCoversLoading) {
+        loadNuvioCovers(nuvioPage + 1, false);
+      }
+    }, { root, rootMargin: '200px' });
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, [tab, nuvioHasMore, nuvioCoversLoading, nuvioPage, loadNuvioCovers]);
+
+  const handlePickNuvioCover = (cover: NuvioCommunityCover) => {
+    setUrlInput(cover.image_url);
+    setPreviewUrl(cover.image_url);
+    setTab('url');
+  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -93,31 +192,67 @@ export function AvatarPickerModal({
     }
   };
 
+  // A solid color block as "cover art" doesn't read as a real cover the way
+  // it does as a fallback circular avatar - drop the Color tab entirely for
+  // rect (Catalogs/Nuvio folder cover) callers, not just the circle ones.
+  const tabs: Tab[] = previewShape === 'rect'
+    ? (nuvioCoversUserId ? ['url', 'upload', 'nuvio'] : ['url', 'upload'])
+    : (nuvioCoversUserId ? ['color', 'url', 'upload', 'nuvio'] : ['color', 'url', 'upload']);
+  const tabLabel: Record<Tab, string> = { color: 'color', url: 'Image/GIF URL', upload: 'upload', nuvio: 'Nuvio Covers' };
+
+  const filterButtonClass = (active: boolean) =>
+    `px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${active ? '' : 'hover:bg-surface-hover'}`;
+  const filterButtonStyle = (active: boolean) => ({
+    background: active ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
+    color: active ? 'white' : 'var(--color-textMuted)',
+  });
+
+  // The Nuvio Covers grid needs real room to actually be pickable from - a
+  // 3-across grid of tiny thumbnails at modal-md width was the "how could
+  // anyone choose from that" complaint this whole size/layout pass exists
+  // to fix. More columns only at the wider sizes cover callers actually use.
+  const nuvioGridCols = size === 'full' ? 'grid-cols-5' : size === 'xl' ? 'grid-cols-4' : size === 'lg' ? 'grid-cols-3' : 'grid-cols-2';
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Change Avatar" size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title={title} size={size}>
       <div className="space-y-4">
-        <div className="flex justify-center mb-2">
-          <Avatar
-            name={name}
-            src={tab === 'color' ? undefined : (previewUrl || undefined)}
-            colorIndex={selectedColor}
-            size="2xl"
-          />
-        </div>
+        {previewShape === 'circle' ? (
+          <div className="flex justify-center mb-2">
+            <Avatar
+              name={name}
+              src={tab === 'color' ? undefined : (previewUrl || undefined)}
+              colorIndex={selectedColor}
+              size="2xl"
+            />
+          </div>
+        ) : (
+          <div className={`w-full ${size === 'md' ? 'aspect-video' : 'aspect-[21/9]'} rounded-xl overflow-hidden bg-surface-hover mb-2 border border-default`}>
+            {tab !== 'color' && previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewUrl} alt="" className="w-full h-full object-cover" />
+            ) : tab === 'color' ? (
+              <div className="w-full h-full" style={{ background: `color-mix(in srgb, var(--color-${selectedColor < 4 ? 'primary' : 'secondary'}) ${100 - (selectedColor % 4) * 25}%, white)` }} />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-xs text-subtle">
+                {name}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
-          {(['color', 'url', 'upload'] as const).map((t) => (
+          {tabs.map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setTab(t)}
-              className="flex-1 py-2 text-sm font-medium rounded-lg capitalize transition-all"
+              className="flex-1 py-2 text-sm font-medium rounded-lg capitalize transition-all whitespace-nowrap"
               style={{
                 background: tab === t ? 'var(--color-primary)' : 'transparent',
                 color: tab === t ? 'white' : 'var(--color-textMuted)',
               }}
             >
-              {t === 'url' ? 'Image URL' : t}
+              {tabLabel[t]}
             </button>
           ))}
         </div>
@@ -149,14 +284,17 @@ export function AvatarPickerModal({
           <div className="space-y-3">
             <input
               type="url"
-              placeholder="https://example.com/photo.jpg"
+              placeholder="https://example.com/photo.jpg or .gif"
               value={urlInput}
               onChange={(e) => { setUrlInput(e.target.value); setPreviewUrl(e.target.value); }}
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
               style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             />
+            <p className="text-xs text-center text-muted">
+              A .gif URL plays animated - any direct image link works, static or animated.
+            </p>
             <Button variant="primary" className="w-full" onClick={handleSaveImage} isLoading={isSaving}>
-              Save Image URL
+              Save Image/GIF URL
             </Button>
           </div>
         )}
@@ -178,6 +316,9 @@ export function AvatarPickerModal({
             >
               Choose Image File
             </Button>
+            <p className="text-xs text-center text-muted">
+              JPG, PNG, WEBP, or GIF - animated GIFs stay animated, no re-encoding.
+            </p>
             {previewUrl && urlInput && (
               <Button variant="primary" className="w-full" onClick={handleSaveImage} isLoading={isSaving}>
                 Save Uploaded Image
@@ -186,7 +327,91 @@ export function AvatarPickerModal({
           </div>
         )}
 
-        {currentAvatarUrl && (
+        {tab === 'nuvio' && nuvioCoversUserId && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted">
+              Browsing nuvio.tv's community-submitted covers - hover one to preview it up top, click to use it.
+            </p>
+
+            <input
+              type="text"
+              value={nuvioSearch}
+              onChange={(e) => setNuvioSearch(e.target.value)}
+              placeholder="Search by title (e.g. Netflix)..."
+              className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
+              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+            />
+
+            <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
+              <div className="flex gap-1">
+                {(['all', 'landscape', 'portrait'] as const).map((o) => (
+                  <button
+                    key={o}
+                    type="button"
+                    onClick={() => setNuvioOrientation(o)}
+                    className={`${filterButtonClass(nuvioOrientation === o)} capitalize`}
+                    style={filterButtonStyle(nuvioOrientation === o)}
+                  >
+                    {o}
+                  </button>
+                ))}
+              </div>
+              <span className="w-px h-5" style={{ background: 'var(--color-surface-border)' }} />
+              <div className="flex gap-1">
+                {(['all', 'gif', 'jpg', 'png'] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setNuvioFormat(f)}
+                    className={`${filterButtonClass(nuvioFormat === f)} uppercase`}
+                    style={filterButtonStyle(nuvioFormat === f)}
+                  >
+                    {f === 'all' ? 'All formats' : f}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {nuvioCoversError ? (
+              <p className="text-xs text-error py-4 text-center">{nuvioCoversError}</p>
+            ) : nuvioCovers.length === 0 && nuvioSearch.trim() && !nuvioCoversLoading ? (
+              <p className="text-xs text-muted py-4 text-center">No covers matching &quot;{nuvioSearch.trim()}&quot;.</p>
+            ) : (
+              <div ref={nuvioGridContainerRef} className={`grid ${nuvioGridCols} gap-3 ${size === 'full' ? 'max-h-[38rem]' : 'max-h-[28rem]'} overflow-y-auto pr-1`}>
+                {nuvioCovers.map((cover) => (
+                  <button
+                    key={cover.id}
+                    type="button"
+                    onClick={() => handlePickNuvioCover(cover)}
+                    onMouseEnter={() => setPreviewUrl(cover.image_url)}
+                    onMouseLeave={() => setPreviewUrl(urlInput || null)}
+                    title={cover.title || 'Use this cover'}
+                    className="group relative aspect-video rounded-lg overflow-hidden border-2 border-default hover:border-primary transition-colors bg-surface-hover"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={cover.image_url} alt={cover.title || ''} className="w-full h-full object-cover" loading="lazy" />
+                    {cover.title && (
+                      <div
+                        className="absolute inset-x-0 bottom-0 px-2 py-1 text-[11px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ background: 'linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 100%)' }}
+                      >
+                        {cover.title}
+                      </div>
+                    )}
+                  </button>
+                ))}
+                {nuvioCoversLoading && Array.from({ length: size === 'full' ? 10 : size === 'md' ? 4 : 8 }).map((_, i) => (
+                  <div key={`skeleton-${i}`} className="aspect-video rounded-lg bg-surface-hover animate-pulse" />
+                ))}
+                {/* Infinite-scroll observer target - col-span-full so it
+                    doesn't become a visible grid cell of its own. */}
+                {nuvioHasMore && <div ref={nuvioSentinelRef} aria-hidden className="col-span-full h-px w-full" />}
+              </div>
+            )}
+          </div>
+        )}
+
+        {currentAvatarUrl && tab !== 'nuvio' && (
           <button
             type="button"
             onClick={handleRemoveImage}

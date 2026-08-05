@@ -412,6 +412,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Different bug from the .nav-item-hover-pill one below (that's a custom
+   :hover rule firing on touchstart), but the same class of symptom: the
+   browser's OWN default tap-highlight overlay flashes on tap and can look
+   "stuck" on mobile/WebView, unrelated to any :hover CSS - e.g. the
+   color-swatch buttons in AvatarPickerModal have zero hover styling of
+   their own, yet still appeared to "light up and stay lit" on tap. Every
+   custom active/selected state in this app already has its own explicit
+   ring/scale styling, so the native highlight is pure redundant noise -
+   disable it everywhere. */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* ===== UTILITY CLASSES ===== */
 
 @layer components {

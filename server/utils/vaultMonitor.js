@@ -57,7 +57,13 @@ async function notify({ discordWebhookUrl }, { title, message, entryId }, ctx) {
       title,
       body: message,
       icon: '/android-chrome-192x192.png',
-      url: entryId ? `/vault?edit=${entryId}` : '/vault',
+      // Deliberately the plain list page, not `?edit=${entryId}` - that
+      // deep-links straight into the edit modal with no transition, which
+      // read as a confusing surprise popup rather than a helpful shortcut
+      // (confirmed real feedback). Landing on the list still gets you to
+      // the right place; the entry itself is easy to spot since it's the
+      // one showing the failure.
+      url: '/vault',
     })
   }
 }

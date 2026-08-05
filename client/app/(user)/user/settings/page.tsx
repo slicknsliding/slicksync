@@ -19,7 +19,7 @@ import {
 import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
 import { userAuth, userExport } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
-import { ToggleSwitch, Avatar } from '@/components/ui';
+import { ToggleSwitch, Avatar, ConfirmModal } from '@/components/ui';
 import { useTheme, themeMeta, themeIds, ThemeId } from '@/lib/theme';
 import { toast } from '@/components/ui/Toast';
 
@@ -149,10 +149,27 @@ const ThemeCard = memo(function ThemeCard({
 });
 
 export default function UserSettingsPage() {
-  const { userInfo, refreshUserInfo, provider } = useUserAuth();
+  const { userInfo, refreshUserInfo, provider, deleteAccount } = useUserAuth();
   const { userId, authKey, isReady } = useUserAuthHeaders();
   const providerLabel = provider === 'nuvio' ? 'Nuvio' : 'Stremio';
   const { themeId, setTheme } = useTheme();
+
+  // Self-service "delete my account" - only this user's own data, not the
+  // whole shared instance (that's an admin-only action). Works in both
+  // private and public instance mode.
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    const result = await deleteAccount();
+    if (result.success) {
+      toast.success('Your account was deleted');
+      window.location.href = '/login?mode=user';
+    } else {
+      toast.error(result.error || 'Failed to delete account');
+      setIsDeletingAccount(false);
+    }
+  };
   
   // Activity visibility
   const [updating, setUpdating] = useState(false);
@@ -867,20 +884,27 @@ export default function UserSettingsPage() {
           </div>
 
           <div className="p-6">
-            <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>
-              Need to remove your account? You can request deletion through the invite link you received.
-            </p>
-
-            <a
-              href="/invite/delete"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all"
-              style={{
-                background: 'var(--color-error-muted)',
-                color: 'var(--color-error)',
-              }}
+            <div
+              className="flex items-center justify-between p-4 rounded-lg"
+              style={{ background: 'var(--color-error-muted)' }}
             >
-              Request Account Deletion
-            </a>
+              <div className="flex-1 pr-4">
+                <p className="font-medium text-sm" style={{ color: 'var(--color-text)' }}>Delete My Account</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                  Permanently deletes your own watch history, watchlist, and account - not the shared addons/groups. No undo.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsDeleteModalOpen(true)}
+                className="shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                style={{
+                  background: 'var(--color-error)',
+                  color: 'white',
+                }}
+              >
+                Delete Account
+              </button>
+            </div>
           </div>
         </motion.div>
 
@@ -898,6 +922,18 @@ export default function UserSettingsPage() {
           </p>
         </motion.div>
       </div>
+
+      <ConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleDeleteAccount}
+        title="Delete Your Account?"
+        description={`This permanently deletes your own watch history, watchlist, and account. It does not delete the shared addons, groups, or any other household member's data - only what belongs to you (${userInfo?.username || 'this account'}). There is no undo. If you're sure, click 'Yes, delete my account' below.`}
+        confirmText="Yes, delete my account"
+        cancelText="No, keep my account"
+        variant="danger"
+        isLoading={isDeletingAccount}
+      />
     </div>
   );
 }
