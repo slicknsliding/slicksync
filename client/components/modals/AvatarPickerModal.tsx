@@ -198,7 +198,7 @@ export function AvatarPickerModal({
   const tabs: Tab[] = previewShape === 'rect'
     ? (nuvioCoversUserId ? ['url', 'upload', 'nuvio'] : ['url', 'upload'])
     : (nuvioCoversUserId ? ['color', 'url', 'upload', 'nuvio'] : ['color', 'url', 'upload']);
-  const tabLabel: Record<Tab, string> = { color: 'color', url: 'Image URL', upload: 'upload', nuvio: 'Nuvio Covers' };
+  const tabLabel: Record<Tab, string> = { color: 'color', url: 'Image/GIF URL', upload: 'upload', nuvio: 'Nuvio Covers' };
 
   const filterButtonClass = (active: boolean) =>
     `px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${active ? '' : 'hover:bg-surface-hover'}`;
@@ -284,14 +284,17 @@ export function AvatarPickerModal({
           <div className="space-y-3">
             <input
               type="url"
-              placeholder="https://example.com/photo.jpg"
+              placeholder="https://example.com/photo.jpg or .gif"
               value={urlInput}
               onChange={(e) => { setUrlInput(e.target.value); setPreviewUrl(e.target.value); }}
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
               style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             />
+            <p className="text-xs text-center text-muted">
+              A .gif URL plays animated - any direct image link works, static or animated.
+            </p>
             <Button variant="primary" className="w-full" onClick={handleSaveImage} isLoading={isSaving}>
-              Save Image URL
+              Save Image/GIF URL
             </Button>
           </div>
         )}
