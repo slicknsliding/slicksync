@@ -282,9 +282,11 @@ module.exports = ({ prisma, getAccountId } = {}) => {
       // cached, so repeat calls for the same id are free) — also backfills
       // the name for anything that only came from WatchActivity.
       const { fetchMetadata } = require('../utils/notify')
+      const { resolveOmdbKey } = require('../utils/listImport')
+      const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
       const withGenres = await Promise.all(ranked.map(async (c) => {
         try {
-          const meta = await fetchMetadata(c.id, c.type)
+          const meta = await fetchMetadata(c.id, c.type, null, omdbApiKey)
           return { ...c, name: c.name || meta?.name || null, genres: Array.isArray(meta?.genres) ? meta.genres : [] }
         } catch { return { ...c, genres: [] } }
       }))
@@ -446,8 +448,10 @@ module.exports = ({ prisma, getAccountId } = {}) => {
       const neighbors = affinity.get(seedKey)
 
       const { fetchMetadata } = require('../utils/notify')
+      const { resolveOmdbKey } = require('../utils/listImport')
+      const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
       const genreVotes = new Map()
-      const seedMeta = await fetchMetadata(id, type).catch(() => null)
+      const seedMeta = await fetchMetadata(id, type, null, omdbApiKey).catch(() => null)
       for (const g of (Array.isArray(seedMeta?.genres) ? seedMeta.genres : [])) {
         genreVotes.set(g, (genreVotes.get(g) || 0) + SEED_GENRE_VOTES)
       }
@@ -462,7 +466,7 @@ module.exports = ({ prisma, getAccountId } = {}) => {
           const neighborId = key.slice(key.indexOf(':') + 1)
           const neighborType = key.startsWith('series:') ? 'series' : 'movie'
           try {
-            const meta = await fetchMetadata(neighborId, neighborType)
+            const meta = await fetchMetadata(neighborId, neighborType, null, omdbApiKey)
             for (const g of (Array.isArray(meta?.genres) ? meta.genres : [])) {
               genreVotes.set(g, (genreVotes.get(g) || 0) + 1)
             }
@@ -681,6 +685,8 @@ module.exports = ({ prisma, getAccountId } = {}) => {
       }
 
       const { fetchMetadata } = require('../utils/notify')
+      const { resolveOmdbKey } = require('../utils/listImport')
+      const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
       const TOP_TITLES = 5
       const TOP_TITLES_FOR_GENRES = 6
 
@@ -702,7 +708,7 @@ module.exports = ({ prisma, getAccountId } = {}) => {
           const id = key.slice(key.indexOf(':') + 1)
           const type = key.startsWith('series:') ? 'series' : 'movie'
           try {
-            const meta = await fetchMetadata(id, type)
+            const meta = await fetchMetadata(id, type, null, omdbApiKey)
             for (const g of (Array.isArray(meta?.genres) ? meta.genres : [])) genreVotes.set(g, (genreVotes.get(g) || 0) + 1)
           } catch {}
         }
@@ -756,6 +762,8 @@ module.exports = ({ prisma, getAccountId } = {}) => {
 
       const { buildUserVectors } = require('../utils/recommendationEngine')
       const { fetchMetadata } = require('../utils/notify')
+      const { resolveOmdbKey } = require('../utils/listImport')
+      const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
       const { vectors } = await buildUserVectors(prisma, accountId)
       if (vectors.size === 0) return res.json({ items: [], genres: [], memberCount: 0 })
 
@@ -771,7 +779,7 @@ module.exports = ({ prisma, getAccountId } = {}) => {
           const id = key.slice(key.indexOf(':') + 1)
           const t = key.startsWith('series:') ? 'series' : 'movie'
           try {
-            const meta = await fetchMetadata(id, t)
+            const meta = await fetchMetadata(id, t, null, omdbApiKey)
             for (const g of (Array.isArray(meta?.genres) ? meta.genres : [])) userGenres.add(g)
           } catch {}
         }

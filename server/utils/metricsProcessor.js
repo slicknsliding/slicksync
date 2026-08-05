@@ -264,7 +264,9 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     if (!episodeName) {
       try {
         const { fetchMetadata } = require('./notify')
-        const meta = await fetchMetadata(showId, 'series', videoId)
+        const { resolveOmdbKeyForAccount } = require('./listImport')
+        const omdbApiKey = await resolveOmdbKeyForAccount(prisma, accountId)
+        const meta = await fetchMetadata(showId, 'series', videoId, omdbApiKey)
         episodeName = meta?.episode?.title || null
       } catch {}
     }

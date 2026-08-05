@@ -2290,6 +2290,7 @@ export interface SyncSettings {
   tmdbApiKey?: string;
   mdblistApiKey?: string;
   rpdbApiKey?: string;
+  omdbApiKey?: string;
 }
 
 export interface ThemePref {
