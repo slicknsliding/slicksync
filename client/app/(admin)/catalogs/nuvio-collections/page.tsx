@@ -898,7 +898,7 @@ export default function NuvioCollectionsPage() {
                       onClick={() => handleSelectUser(u.id)}
                       className="flex items-center gap-3 p-3 rounded-xl border border-default hover:border-primary/50 bg-subtle hover:bg-surface-hover transition-colors text-left"
                     >
-                      <Avatar name={u.name || u.email || u.id} email={u.email} size="md" />
+                      <Avatar name={u.name || u.email || u.id} email={u.email} src={u.avatarUrl || undefined} colorIndex={u.colorIndex} size="md" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-default truncate">{u.name || u.email || u.id}</p>
                         {u.email && u.name && <p className="text-xs text-subtle truncate">{u.email}</p>}
@@ -918,7 +918,7 @@ export default function NuvioCollectionsPage() {
                   className="flex items-center gap-3 pr-3 rounded-xl hover:bg-surface-hover transition-colors text-left"
                   title="Switch account"
                 >
-                  <Avatar name={selectedUser?.name || selectedUser?.email || selectedUserId} email={selectedUser?.email} size="md" />
+                  <Avatar name={selectedUser?.name || selectedUser?.email || selectedUserId} email={selectedUser?.email} src={selectedUser?.avatarUrl || undefined} colorIndex={selectedUser?.colorIndex} size="md" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-default truncate">{selectedUser?.name || selectedUser?.email || selectedUserId}</p>
                     <p className="text-xs text-primary">Switch account</p>
@@ -926,19 +926,36 @@ export default function NuvioCollectionsPage() {
                 </button>
 
                 {(profiles.length > 1 || profilesLoading) && (
-                  <div className="w-[200px]">
+                  <div>
                     <label className="block text-xs font-medium text-muted mb-1.5">Profile</label>
-                    <select
-                      value={selectedProfileIndex ?? ''}
-                      onChange={(e) => handleSelectProfile(selectedUserId, Number(e.target.value))}
-                      disabled={profilesLoading}
-                      className="input-base px-3 py-2 w-full appearance-none pr-10 text-sm"
-                    >
-                      <option value="" disabled>{profilesLoading ? 'Loading...' : 'Select a profile...'}</option>
-                      {profiles.map((p) => (
-                        <option key={p.profile_index} value={p.profile_index}>{p.name || `Profile ${p.profile_index}`}</option>
-                      ))}
-                    </select>
+                    {profilesLoading ? (
+                      <div className="flex gap-2">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                          <div key={i} className="h-9 w-24 rounded-lg bg-surface-hover animate-pulse" />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {profiles.map((p) => (
+                          <button
+                            key={p.profile_index}
+                            type="button"
+                            onClick={() => handleSelectProfile(selectedUserId, p.profile_index)}
+                            className={`flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                              selectedProfileIndex === p.profile_index
+                                ? 'border-primary bg-primary/10 text-default'
+                                : 'border-default bg-subtle hover:bg-surface-hover text-subtle hover:text-default'
+                            }`}
+                          >
+                            <span
+                              className="w-5 h-5 rounded-full shrink-0"
+                              style={{ backgroundColor: p.avatar_color_hex || 'var(--color-surface-hover)' }}
+                            />
+                            <span className="truncate max-w-[120px]">{p.name || `Profile ${p.profile_index}`}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
