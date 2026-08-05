@@ -184,9 +184,19 @@ async function lookupTmdbKeywordId(text, apiKey) {
 }
 
 async function discoverByKeyword(keywordId, apiKey) {
+  // Sorted by rating, not raw popularity - confirmed live against the real
+  // "christmas" keyword: TMDb's community tagging attaches it to any film
+  // with so much as a Christmas-set scene (Iron Man 3, Die Hard), and
+  // sorted by popularity.desc those blockbusters buried every actual
+  // Christmas movie under them (top 6 results were all Harry Potter).
+  // vote_average.desc + a vote_count floor (filters out obscure high-rated
+  // flukes with a handful of votes) surfaces genuine, well-regarded genre
+  // entries (It's a Wonderful Life, Klaus, The Nightmare Before Christmas)
+  // mixed with the big franchises instead of drowned out by them.
+  const qualitySort = 'sort_by=vote_average.desc&vote_count.gte=500'
   const [movieRsp, tvRsp] = await Promise.all([
-    fetch(`https://api.themoviedb.org/3/discover/movie?with_keywords=${keywordId}&sort_by=popularity.desc&api_key=${encodeURIComponent(apiKey)}`),
-    fetch(`https://api.themoviedb.org/3/discover/tv?with_keywords=${keywordId}&sort_by=popularity.desc&api_key=${encodeURIComponent(apiKey)}`),
+    fetch(`https://api.themoviedb.org/3/discover/movie?with_keywords=${keywordId}&${qualitySort}&api_key=${encodeURIComponent(apiKey)}`),
+    fetch(`https://api.themoviedb.org/3/discover/tv?with_keywords=${keywordId}&${qualitySort}&api_key=${encodeURIComponent(apiKey)}`),
   ])
   const movieData = movieRsp.ok ? await movieRsp.json() : { results: [] }
   const tvData = tvRsp.ok ? await tvRsp.json() : { results: [] }
