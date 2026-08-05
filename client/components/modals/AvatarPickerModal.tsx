@@ -53,7 +53,7 @@ export function AvatarPickerModal({
   previewShape = 'circle',
   size = 'md',
 }: AvatarPickerModalProps) {
-  const [tab, setTab] = useState<Tab>(currentAvatarUrl ? 'url' : 'color');
+  const [tab, setTab] = useState<Tab>(currentAvatarUrl ? 'url' : (previewShape === 'rect' ? (nuvioCoversUserId ? 'nuvio' : 'url') : 'color'));
   const [urlInput, setUrlInput] = useState(currentAvatarUrl || '');
   const [selectedColor, setSelectedColor] = useState(currentColorIndex ?? 0);
   const [isSaving, setIsSaving] = useState(false);
@@ -169,7 +169,12 @@ export function AvatarPickerModal({
     }
   };
 
-  const tabs: Tab[] = nuvioCoversUserId ? ['color', 'url', 'upload', 'nuvio'] : ['color', 'url', 'upload'];
+  // A solid color block as "cover art" doesn't read as a real cover the way
+  // it does as a fallback circular avatar - drop the Color tab entirely for
+  // rect (Catalogs/Nuvio folder cover) callers, not just the circle ones.
+  const tabs: Tab[] = previewShape === 'rect'
+    ? (nuvioCoversUserId ? ['url', 'upload', 'nuvio'] : ['url', 'upload'])
+    : (nuvioCoversUserId ? ['color', 'url', 'upload', 'nuvio'] : ['color', 'url', 'upload']);
   const tabLabel: Record<Tab, string> = { color: 'color', url: 'Image URL', upload: 'upload', nuvio: 'Nuvio Covers' };
 
   const filterButtonClass = (active: boolean) =>
@@ -285,6 +290,9 @@ export function AvatarPickerModal({
             >
               Choose Image File
             </Button>
+            <p className="text-xs text-center text-muted">
+              JPG, PNG, WEBP, or GIF - animated GIFs stay animated, no re-encoding.
+            </p>
             {previewUrl && urlInput && (
               <Button variant="primary" className="w-full" onClick={handleSaveImage} isLoading={isSaving}>
                 Save Uploaded Image

@@ -494,8 +494,9 @@ class ApiClient {
     );
   }
 
-  async getNuvioCatalogPreview(userId: string, addonUrl: string, type: string, catalogId: string) {
+  async getNuvioCatalogPreview(userId: string, addonUrl: string, type: string, catalogId: string, genre?: string) {
     const params = new URLSearchParams({ addonUrl, type, catalogId });
+    if (genre && genre !== 'none') params.set('genre', genre);
     return this.fetch<{ items: { id: string; type: string; name: string; poster: string | null }[] }>(
       `/users/${encodeURIComponent(userId)}/nuvio-catalog-preview?${params.toString()}`
     );
