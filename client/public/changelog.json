@@ -1,5 +1,123 @@
 [
   {
+    "version": "1.65.0",
+    "date": "2026-08-05",
+    "title": "feat: real Nuvio Collection cover art, Superadmin audit log, per-account API keys",
+    "features": [
+      "Nuvio Collections manager gets a real polish pass: list/grid view toggle, drag-to-reorder folders, broken-source detection that flags folders needing attention, pin a collection to the top of the Nuvio home screen, and copy a whole collection to another profile.",
+      "Cover art for both a Collection and each individual folder inside it (e.g. Netflix, Genres) - upload an image or paste a URL, and it now writes to the real coverImageUrl field the Nuvio app itself reads, not just a SlickSync-side preview.",
+      "The folder editor is split into Sources and Preview tabs instead of one long scrolling panel.",
+      "Catalogs: a Refresh button re-imports a catalog from the MDBList/TMDb URL it was originally imported from, with a diff preview before applying - still a manual, one-time re-sync, not a live/automatic one, and the UI now says so explicitly.",
+      "Superadmin: an audit log of every disable/enable/delete action, and per-account resource usage (row counts) in the account list - all without ever surfacing an account's own credentials or private data.",
+      "The User self-service panel's account modal now offers Link Nuvio alongside the existing Link Stremio option.",
+      "Every external API key (RPDB, MDBList, TMDB, and now OMDb) resolves the account's own Settings key first, falling back to the instance's shared key only if the account hasn't set one - so on a private instance shared with other people, your key and quota are no longer silently used by everyone else on the same deployment. New OMDb API key field in Settings."
+    ],
+    "bugFixes": [
+      "The Activity feed could show a phantom second watcher for a linked, same-email Stremio/Nuvio account pair - a Stremio cloud-sync duplicate, not a real second viewing.",
+      "The top nav's active-page highlight didn't persist when on a sub-route of that page.",
+      "A catalog's cover banner was badly cropped on landscape images and blurry on smaller ones (forced full-width upscaling) - now crops evenly on both axes and stays sharp regardless of the source image's size or shape.",
+      "The trailer player showed visible letterboxing, and its close button sat awkwardly on top of the video controls.",
+      "The Nuvio Collections entry pill on the Catalogs page wasn't visually aligned with the catalog grid below it."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.64.1",
+    "date": "2026-08-04",
+    "title": "fix: dropped an unneeded port mapping, documented real env vars",
+    "features": [],
+    "bugFixes": [
+      "Dropped the unneeded port 4000 mapping from all three compose files - the API was only ever reached via the frontend's own internal proxy, nothing external needs it exposed.",
+      "env.example now documents several real, working env vars that were previously undocumented: RPDB_API_KEY, OMDB_API_KEY, PUBLIC_APP_URL, the general (non-auth) rate limit, and private-instance authentication.",
+      "Removed a duplicate \"Copy Account UUID\" entry from the profile dropdown - Settings' own Account ID section already covers this."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.64.0",
+    "date": "2026-08-04",
+    "title": "feat: Nuvio Collections, a real Catalogs upgrade, and a friendlier Superadmin",
+    "features": [
+      "Nuvio Collections manager - organize a Nuvio account's own home-screen collections directly from SlickSync: build folders of catalog sources, drag to reorder them, start from a template (Streaming Services, Genres), preview exactly how a collection will lay out before saving, and copy a whole collection between profiles.",
+      "Catalogs, upgraded - watchlist/watched badges and right-click quick actions on every poster, the same ones already on Discover's own grid, plus custom cover art (upload an image or pick a color), bulk select with drag-and-drop reorder, and one-click export to a new MDBList list.",
+      "Nuvio login for the User self-service panel - end users can now connect and manage their own Nuvio account from their panel, not just Stremio.",
+      "Superadmin gets real tools - search, bulk select/disable/enable/delete, a health summary strip, and an \"abandoned account\" flag, all without ever surfacing an account's credentials or private data.",
+      "Consistent hover feedback everywhere - every clickable tab, button, and chip across the app now lights up the same way the main navigation already did.",
+      "Notification bell now always sits on its own line above page action buttons, so it never gets crowded out.",
+      "Account ID (UUID) is now always easy to find on the Settings page.",
+      "Self-hosted Docker Pulls badge on the README, fetched on our own schedule instead of an external service that kept rate-limiting it."
+    ],
+    "bugFixes": [
+      "A Catalogs drag-and-drop bug where dragging a poster card far to the right could visually widen the whole page.",
+      "\"Remove from catalog\" moved from a poster's X button into the long-press/right-click menu, so it no longer sits next to (and gets confused with) SlickTrax's own status tag.",
+      "Notification bell and page action buttons were inconsistently aligned on the right edge across pages - now consistent everywhere.",
+      "MDBList export: the added/existing/not-found counts always showed \"?\", and the result link 404'd - both fixed.",
+      "The Nuvio Collections button's colored ring was bleeding color into its entire background instead of staying on the outline.",
+      "SlickTrax toggles (autoplay trailer, watchlist, etc.) silently reverting to \"on\" after a refresh.",
+      "Nuvio series watch time silently stopped tracking after the first episode.",
+      "A failed Stremio/Nuvio login attempt could retry-storm the rate limiter.",
+      "A Nuvio backend (Supabase) outage could starve the whole server and break Users/Groups - now has a concurrency cap and circuit breaker.",
+      "The public (Postgres) instance crashed on Users/Groups from missing schema models.",
+      "Several Superadmin lockout edge cases: a disabled tenant account could lock the operator out, /superadmin bounced to the regular tenant login, and Disable didn't end an already-open session.",
+      "Fresh registration/login bouncing straight back to the sign-in page.",
+      "The modal close (X) button was unclickable when a title header was present."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.63.2",
+    "date": "2026-08-01",
+    "title": "feat: Superadmin panel, Health moves into Metrics, and a real ambient backdrop on the detail modal",
+    "features": [
+      "Superadmin panel for public multi-tenant mode - operator-only view of registered account count, coarse per-account activity and last login, and the ability to disable or delete an account. Never shows passwords, API keys, or anything from inside a tenant's own data. Comes with a soft registration cap (MAX_PUBLIC_ACCOUNTS, unset = unlimited) so a public instance can be opened up gradually instead of committing to a number on day one.",
+      "Health moved into Metrics as a fourth tab, alongside Users/Content/Admin - it's read-only monitoring with no real actions, so it belongs next to Metrics' other tabs rather than as its own standalone page. The DB size/growth dashboard moved in right alongside it, out of Tasks, for the same reason.",
+      "Unified incident timeline on Health - every addon/vault/proxy status change in one feed, answering \"when did this actually start\" without digging through three separate places.",
+      "TMDb backdrop art, now rendered as ambient atmosphere behind the entire detail modal panel rather than a small header strip - the earlier strip-only version got covered by the trailer the instant it autoplayed, so almost nobody ever actually saw it. Opt-in via a free TMDb key, same precedence pattern as MDBList/RPDB (per-account key in Settings beats the instance-wide env var).",
+      "Opt-in seasonal catalog suggestions, seeded from TMDb keywords.",
+      "Trailer autoplay is now two independent choices instead of one conflated setting - whether it autoplays at all, and separately whether it starts muted or with sound. An explicit \"Play Trailer\" click always starts with sound regardless of either setting."
+    ],
+    "bugFixes": [
+      "Unmuting a trailer in fullscreen no longer reloads the iframe and kicks you back out of fullscreen - mute/unmute now goes entirely through the YouTube Player API instead of rewriting the iframe's src.",
+      "Nameless/uncataloged library items (a raw stream Stremio/Nuvio never properly cataloged) no longer create a bogus \"Unknown\" activity or history row.",
+      "A private-mode Settings backup gap, plus a real secret-wipe bug found while fixing it.",
+      "Default View Mode setting moved from Settings to Themes -> Layout, where it fits with the rest of the layout controls."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.61.0",
+    "date": "2026-07-31",
+    "title": "feat: Catalogs, System Health, RPDB posters, and Discord becomes fully optional",
+    "features": [
+      "Catalogs (renamed from Lists) - named collections of titles, separate from the Watchlist. Create/rename/delete, add titles from any poster's right-click menu, sort by title/year/rating. Import an existing list straight from a MDBList or TMDb URL.",
+      "System Health board - one page answering \"is everything actually working right now\": Sync drift, addon reachability, Vault credential checks, AIOStreams proxy connectivity. Ignore a known/accepted failure to drop it out of Attention and its notifications (reversible any time). Addon uptime % over the last 7/30 days. A Version card showing what's actually running and whether a newer stable release exists.",
+      "RPDB poster integration - optional (free-tier API key), rating-embedded poster art across Discover, Catalogs, Activity, and the Airing Calendar.",
+      "People search on Discover - a separate mode from title search, so looking up an actor/director shows only their verified credits, never an unrelated title that loosely matched the name.",
+      "Cast & crew deep-dive - click any actor/director on a detail popup to see their real filmography (optional TMDb key) and jump straight into any of it.",
+      "Sort control on Discover and Catalogs - title, year, or rating.",
+      "Airing Calendar - a date-grouped agenda of upcoming episodes for everything anyone's actively watching, plus a \"Coming Up\" panel on the Dashboard.",
+      "Rewatch tracking for movies, and real completion tracking (finished vs. started-and-dropped) distinct from a raw \"watched\" flag.",
+      "Taste Profiles - a per-user viewing fingerprint (favorite genres, habits) on Metrics.",
+      "Year in Review - a Wrapped-style yearly recap: total watch time, top shows, most-rewatched titles, a by-month chart, per-user breakdown.",
+      "Timezone auto-detect - Settings silently fills in your browser's own timezone the first time anyone visits, no more hunting through a dropdown (still overridable any time).",
+      "Household \"nobody's seen it yet\" row on Discover's For You.",
+      "Notifications: Discord is now fully optional everywhere. Push notifications and the in-app bell are the primary channel for every notification type. New proxy-connectivity alerts for the AIOStreams proxy (Now Playing polling)."
+    ],
+    "bugFixes": [
+      "Now Playing elapsed time freezing at ~3 minutes on fast debrid streams (TorBox/StremThru) that front-load their buffer and generate almost no further proxy traffic.",
+      "A sibling episode's leftover playback position getting credited as fresh watch time on the very next episode (confirmed real case: Episode 2 showed 97% watched within 67 seconds of Episode 1 finishing).",
+      "Year in Review's monthly chart rendering at zero height, and a bucketing bug on non-en-CA ICU locales.",
+      "Cast/crew filmography silently truncated for prolific actors (a search for Tom Cruise was missing most of his career).",
+      "New-episode alerts firing up to ~12 hours before the account's actual calendar day.",
+      "Watch-time inflation from a non-monotonic snapshot read, and under-counting on genuine single-sitting finishes.",
+      "Duplicate rating badges stacking on RPDB-backed posters (RPDB already bakes ratings into the image itself).",
+      "Nuvio profile labels colliding with poster art and rating badges - moved to a small label above the poster instead.",
+      "Mobile-clipped watcher/profile popovers on Activity's grid view, and only one popover ever staying open at a time.",
+      "Detail-modal close lag caused by a trailer that kept playing through the close animation instead of stopping immediately."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.60.0",
     "date": "2026-07-30",
     "title": "feat: account merge/undo, notification digest + persistent bell, Now Playing accuracy overhaul, account-mismatch detection",

@@ -57,6 +57,7 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 
 ### 🎞️ Discover & Media Details
 - Click any poster for cast, rating, genres, director, runtime, and awards (Cinemeta) — plus an inline YouTube trailer.
+- Rotten Tomatoes/Metacritic ratings via an optional (free) OMDb key — like RPDB/MDBList/TMDb, your own key in Settings is used first, falling back to the instance's shared key only if you haven't set one.
 - **Cast & crew deep-dive** — click any actor/director on a detail popup to see their real filmography (optional TMDb key) and jump straight into any of it.
 - **Discover**: browse Popular / New / Top Rated, genre filter, infinite scroll, "Open in Stremio/Nuvio" on every result. Sort by title, year, or rating; filter to unwatched/watched only.
 - **People search** — a separate mode from title search, so looking up an actor/director shows only their verified credits, never an unrelated title that happened to loosely match the name.
@@ -72,12 +73,16 @@ Named collections of titles, separate from the Watchlist — build a "Halloween 
 - **Custom cover art** — upload an image or pick a color, shown on the Catalogs index in place of the default poster collage.
 - **Bulk select** and real drag-and-drop reordering for a catalog's items.
 - **Import** an existing list straight from a **MDBList** or **TMDb** list URL (TMDb import is movies-only; MDBList supports both) — or go the other way and **export** a catalog to a brand-new MDBList list.
+- **Refresh** an imported catalog against its original source URL any time, with a diff preview before applying — a manual, one-time re-sync, not a live/automatic one.
 - Sort by title, year, or rating; each entry opens the same rich detail popup as everywhere else.
 
 ### 🗂️ Nuvio Collections
 Organize a Nuvio account's own home-screen collections — the folders and catalog sources Nuvio itself shows a user — directly from SlickSync instead of hand-editing them in the Nuvio app.
-- Build folders of catalog sources, drag to reorder folders and sources within them.
+- Build folders of catalog sources, drag to reorder folders and sources within them; grid or list view.
 - Start from a template (Streaming Services, Genres) instead of building from scratch.
+- **Cover art** for a collection and for each folder inside it individually — writes to the real field the Nuvio app itself reads, not just a SlickSync-side preview.
+- **Broken-source detection** flags a folder whose catalog source no longer resolves (an addon removed, a catalog renamed), and **pin** any collection to the top of the Nuvio home screen.
+- A folder's editor is split into Sources and Preview tabs — no scrolling one long panel to switch between adding sources and seeing the result.
 - **Layout preview** — see exactly how a collection will lay out before saving.
 - **Copy a whole collection between profiles** on the same account.
 
@@ -136,7 +141,7 @@ One page answering "is everything actually working right now" — Sync drift, ad
 Scheduled + on-demand config backups (validated for real restorability, not just valid JSON) and a separate **Disaster Recovery Kit** — the same export plus every Vault secret, re-encrypted under a passphrase you choose, fully portable to a brand-new instance.
 
 ### 🛡️ Security
-Rate limiting actually enabled, strict limits on credential/OAuth endpoints, correct `trust proxy` hop count, no hardcoded default key, and a self-generating anti-lockout encryption key with decrypt-only fallback on rotation.
+Rate limiting actually enabled, strict limits on credential/OAuth endpoints, correct `trust proxy` hop count, no hardcoded default key, and a self-generating anti-lockout encryption key with decrypt-only fallback on rotation. Every external API key (RPDB, MDBList, TMDb, OMDb) resolves an account's own Settings key first — a shared instance-wide key in `.env` is only ever a fallback for accounts that haven't set their own.
 
 ---
 
@@ -167,7 +172,7 @@ This pulls the pre-built `ghcr.io/slicknsliding/slicksync:private` image — the
 
 Frontend and API are both served through `:3000` — the frontend proxies `/api`, `/uploads`, and `/invite` requests to the API internally, so only `:3000` needs a port mapping or a reverse proxy pointed at it.
 
-**Verify it's actually up**: `docker exec slicksync sh -c 'echo APP_VERSION=$APP_VERSION'` should print the current release tag (e.g. `v1.64.0`), and `https://your-domain/` should load the login page.
+**Verify it's actually up**: `docker exec slicksync sh -c 'echo APP_VERSION=$APP_VERSION'` should print the current release tag (e.g. `v1.65.0`), and `https://your-domain/` should load the login page.
 
 **Updating**: `docker compose -f docker-compose.private.yml pull && docker compose -f docker-compose.private.yml up -d` — your `/app/data` volume (database, encryption key, Vault backups, avatars) survives updates. No `git pull` or rebuild needed since the default config just pulls the published image. (If you switched to the commented-out `build:` block instead, use `git pull && docker compose -f docker-compose.private.yml up -d --build`.)
 
@@ -198,7 +203,7 @@ docker compose -f docker-compose.public.yml up -d
 Pulls `ghcr.io/slicknsliding/slicksync:public` — same `main`-built release channel as private mode, not `:beta`. Also mirrored to Docker Hub as `slicknsliding/slicksync:public`.
 First visit shows a "Create one" registration link. `/register` generates a random account UUID once — that UUID *is* the login ID, so save it; there's no recovery if it's lost.
 
-A **Superadmin** panel (`/superadmin`) lets the operator search tenant accounts, bulk enable/disable/delete them, and see a health summary with an abandoned-account flag — without ever exposing a tenant's own credentials or private data.
+A **Superadmin** panel (`/superadmin`) lets the operator search tenant accounts, bulk enable/disable/delete them, see a health summary with an abandoned-account flag, and review an **audit log** of every disable/enable/delete action taken — without ever exposing a tenant's own credentials or private data.
 
 **Updating**: `docker compose -f docker-compose.public.yml pull && docker compose -f docker-compose.public.yml up -d`.
 </details>
