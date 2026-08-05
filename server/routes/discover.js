@@ -478,6 +478,59 @@ module.exports = ({ prisma, getAccountId } = {}) => {
 
       const items = []
       const seenIds = new Set([id])
+
+      // Real per-title similarity from TMDb's own /recommendations, tried
+      // first - genuinely different from (and usually better than) the
+      // genre-catalog fallback below, which only knows "same genre, sorted
+      // by rating" and has no concept of a specific title actually being
+      // similar to this one. Falls through to nothing (not an error) when
+      // no TMDb key is configured, or TMDb has no IMDb-resolvable results
+      // for an obscure title - the genre-based loop below still fills the
+      // rest either way, so this is additive, never a hard dependency.
+      try {
+        const tmdbKey = await resolveTmdbKey(req)
+        if (tmdbKey) {
+          const findRsp = await fetch(`https://api.themoviedb.org/3/find/${id}?api_key=${encodeURIComponent(tmdbKey)}&external_source=imdb_id`)
+          if (findRsp.ok) {
+            const findData = await findRsp.json()
+            const hit = type === 'movie' ? (findData.movie_results || [])[0] : (findData.tv_results || [])[0]
+            if (hit?.id) {
+              const tmdbType = type === 'movie' ? 'movie' : 'tv'
+              const recRsp = await fetch(`https://api.themoviedb.org/3/${tmdbType}/${hit.id}/recommendations?api_key=${encodeURIComponent(tmdbKey)}`)
+              if (recRsp.ok) {
+                const recData = await recRsp.json()
+                const candidates = (recData.results || []).slice(0, 10)
+                const resolved = await Promise.all(candidates.map(async (c) => {
+                  try {
+                    const extRsp = await fetch(`https://api.themoviedb.org/3/${tmdbType}/${c.id}/external_ids?api_key=${encodeURIComponent(tmdbKey)}`)
+                    if (!extRsp.ok) return null
+                    const extData = await extRsp.json()
+                    if (!extData.imdb_id) return null
+                    return {
+                      id: extData.imdb_id,
+                      type,
+                      name: c.title || c.name || 'Unknown',
+                      poster: c.poster_path ? `https://image.tmdb.org/t/p/w342${c.poster_path}` : null,
+                      releaseInfo: (c.release_date || c.first_air_date) ? (c.release_date || c.first_air_date).slice(0, 4) : null,
+                      imdbRating: c.vote_average ? c.vote_average.toFixed(1) : null,
+                      genres: [],
+                    }
+                  } catch {
+                    return null
+                  }
+                }))
+                for (const r of resolved) {
+                  if (items.length >= MAX_ITEMS) break
+                  if (!r || seenIds.has(r.id) || excludeIds.has(r.id)) continue
+                  seenIds.add(r.id)
+                  items.push(r)
+                }
+              }
+            }
+          }
+        }
+      } catch {}
+
       for (const genre of topGenres) {
         if (items.length >= MAX_ITEMS) break
         let candidates = await fetchCatalog(type, { catalog: 'imdbRating', genre })

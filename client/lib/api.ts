@@ -1753,7 +1753,7 @@ class ApiClient {
       body: JSON.stringify({ name, description }),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -2428,6 +2428,8 @@ export interface CustomList {
   coverImageUrl: string | null;
   coverColorIndex: number | null;
   importSourceUrl: string | null;
+  autoRefresh: boolean;
+  lastAutoRefreshAt: string | null;
   pinned: boolean;
   createdAt: string;
   updatedAt: string;

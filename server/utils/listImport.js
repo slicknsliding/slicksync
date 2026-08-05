@@ -258,4 +258,36 @@ async function exportListToMdblist(apiKey, listName, items) {
   }
 }
 
-module.exports = { detectProvider, importFromTmdb, importFromMdblist, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, suggestTitlesForCatalog, MAX_IMPORT_ITEMS }
+// Shared core of POST /api/lists/:id/refresh, factored out so the manual
+// (human-reviewed diff, opt-in apply) route and the automatic scheduler
+// (server/utils/catalogAutoRefresh.js, always applies - that's the whole
+// point of opting in) both go through the exact same fetch-and-diff logic
+// rather than two copies that could quietly drift apart. accountId-direct
+// (no req) since the scheduler has no Express request to resolve a key
+// from - same pattern as resolveOmdbKeyForAccount above.
+async function refreshListFromSourceForAccount(prisma, accountId, list) {
+  if (!list.importSourceUrl) throw new Error('This catalog wasn\'t imported from a list, so there\'s no source to refresh from.')
+  const provider = detectProvider(list.importSourceUrl)
+  if (!provider) throw new Error('The source URL saved for this catalog is no longer recognized')
+
+  const noReq = () => accountId
+  let result
+  if (provider === 'tmdb') {
+    const key = await resolveTmdbKey(prisma, noReq, null)
+    result = await importFromTmdb(key, list.importSourceUrl)
+  } else {
+    const key = await resolveMdblistKey(prisma, noReq, null)
+    result = await importFromMdblist(key, list.importSourceUrl)
+  }
+
+  const parseItems = (raw) => { try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a : [] } catch { return [] } }
+  const currentIds = new Set(parseItems(list.itemsJson).map((i) => i.id))
+  const freshIds = new Set(result.items.map((i) => i.id))
+  const added = result.items.filter((i) => !currentIds.has(i.id)).length
+  const removed = [...currentIds].filter((id) => !freshIds.has(id)).length
+  const unchanged = result.items.length - added
+
+  return { items: result.items, added, removed, unchanged }
+}
+
+module.exports = { detectProvider, importFromTmdb, importFromMdblist, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, refreshListFromSourceForAccount, suggestTitlesForCatalog, MAX_IMPORT_ITEMS }
