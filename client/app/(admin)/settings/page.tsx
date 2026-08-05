@@ -319,6 +319,7 @@ export default function SettingsPage() {
           enableRecommendations: settings.enableRecommendations !== false,
           enableAutoplayTrailer: settings.enableAutoplayTrailer === true,
           autoplayTrailerStartMuted: settings.autoplayTrailerStartMuted !== false,
+          enablePosterRatings: settings.enablePosterRatings !== false,
         });
 
         // Nobody has ever explicitly saved a timezone for this account - the
@@ -980,6 +981,17 @@ export default function SettingsPage() {
                   enabled={syncSettings.enableRecommendations !== false}
                   onChange={async (v) => { await handleSaveSetting('enableRecommendations' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
                   label="Toggle recommendations"
+                />
+              </SettingRow>
+
+              <SettingRow
+                label="Poster ratings"
+                description="Show IMDb/Rotten Tomatoes/Metacritic score badges on every poster card in Discover and Catalogs. Off: posters render without them everywhere."
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enablePosterRatings !== false}
+                  onChange={async (v) => { await handleSaveSetting('enablePosterRatings' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle poster ratings"
                 />
               </SettingRow>
 

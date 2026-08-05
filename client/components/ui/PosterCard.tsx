@@ -85,7 +85,7 @@ export const PosterCard = memo(function PosterCard({
   focusable = false,
 }: PosterCardProps) {
   const [imageError, setImageError] = useState(false);
-  const { rpdbEnabled } = usePersonalFeatures();
+  const { rpdbEnabled, enablePosterRatings } = usePersonalFeatures();
   // Right-click menu's "Add to Catalogs" swaps the menu's own content to the
   // catalog picker in place (single-panel nav with a Back row) rather than
   // opening a second flyout - simplest way to fit a multi-catalog picker
@@ -178,7 +178,7 @@ export const PosterCard = memo(function PosterCard({
           </div>
         )}
 
-        {!isRpdbPoster(item, rpdbEnabled) && (
+        {enablePosterRatings && !isRpdbPoster(item, rpdbEnabled) && (
           <div className="absolute bottom-1.5 left-1.5 right-1.5">
             <RatingBadges
               imdbRating={item.imdbRating}
