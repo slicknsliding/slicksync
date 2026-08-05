@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -23,6 +23,7 @@ import {
   ArrowLeftIcon, PlusIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon,
   ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
   DocumentDuplicateIcon, PhotoIcon, ExclamationTriangleIcon, MapPinIcon,
+  EllipsisVerticalIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -51,16 +52,36 @@ const GENRE_TEMPLATE: { id: string; title: string; description: string; genres: 
   id: 'genres',
   title: 'Genres',
   description: "One folder per genre, using each matching catalog's own genre filter - not a separate catalog per genre.",
+  // Broader than TMDb's own genre list (the usual source addons draw their
+  // own genre-extra options from) plus a couple of common regional/style
+  // groupings (Anime, Korean) real accounts turned out to actually have as
+  // their own distinct catalogs, not folded into Animation - splitting
+  // those two out matched a real account exactly (13 real matches) where
+  // the earlier combined 9-entry list undershot it. Genres with zero
+  // matching sources on a given account are dropped automatically (see
+  // the filter below), so listing more candidates than any one account
+  // will use is free - it only ever produces MORE useful folders, never
+  // empty ones.
   genres: [
     { title: 'Action', aliases: ['action'] },
+    { title: 'Adventure', aliases: ['adventure'] },
+    { title: 'Animation', aliases: ['animation'] },
+    { title: 'Anime', aliases: ['anime'] },
     { title: 'Comedy', aliases: ['comedy'] },
-    { title: 'Drama', aliases: ['drama'] },
-    { title: 'Horror', aliases: ['horror'] },
-    { title: 'Sci-Fi', aliases: ['sci-fi', 'science fiction'] },
-    { title: 'Animation', aliases: ['animation', 'anime'] },
+    { title: 'Crime', aliases: ['crime'] },
     { title: 'Documentary', aliases: ['documentary'] },
-    { title: 'Thriller', aliases: ['thriller'] },
+    { title: 'Drama', aliases: ['drama'] },
+    { title: 'Family', aliases: ['family'] },
+    { title: 'Fantasy', aliases: ['fantasy'] },
+    { title: 'Horror', aliases: ['horror'] },
+    { title: 'Korean', aliases: ['korean'] },
+    { title: 'Music', aliases: ['music', 'musical'] },
+    { title: 'Mystery', aliases: ['mystery'] },
     { title: 'Romance', aliases: ['romance'] },
+    { title: 'Sci-Fi', aliases: ['sci-fi', 'science fiction'] },
+    { title: 'Thriller', aliases: ['thriller'] },
+    { title: 'War', aliases: ['war'] },
+    { title: 'Western', aliases: ['western'] },
   ],
 };
 
@@ -227,6 +248,72 @@ function FolderTile({
   );
 }
 
+// Labeled dropdown for a collection's own actions (pin/copy/reorder/delete) -
+// replaces a row of bare icon buttons that real feedback confirmed nobody
+// could identify without hovering for a tooltip (no touch equivalent), and
+// which visibly overflowed/got clipped on mobile at typical collection-
+// header widths. One fixed-width trigger button can never overflow the
+// same way a variable-length icon row could.
+function CollectionActionsMenu({
+  isPinned, canMoveUp, canMoveDown, canCopy, onTogglePin, onCopy, onMoveUp, onMoveDown, onDelete,
+}: {
+  isPinned: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  canCopy: boolean;
+  onTogglePin: () => void;
+  onCopy: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [open]);
+
+  const item = (label: string, icon: React.ReactNode, onClick: () => void, opts?: { disabled?: boolean; danger?: boolean }) => (
+    <button
+      type="button"
+      disabled={opts?.disabled}
+      onClick={() => { onClick(); setOpen(false); }}
+      className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left rounded-lg transition-colors disabled:opacity-30 disabled:pointer-events-none ${opts?.danger ? 'text-error hover:bg-error/10' : 'text-default hover:bg-surface-hover'}`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        title="Collection actions"
+        onClick={() => setOpen((v) => !v)}
+        className="p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface-hover transition-colors"
+      >
+        <EllipsisVerticalIcon className="w-5 h-5" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-default bg-surface shadow-xl z-20 p-1.5">
+          {item(isPinned ? 'Unpin from top' : 'Pin to top of home screen', isPinned ? <MapPinIconSolid className="w-4 h-4 text-primary" /> : <MapPinIcon className="w-4 h-4" />, onTogglePin)}
+          {item('Copy to another profile', <DocumentDuplicateIcon className="w-4 h-4" />, onCopy, { disabled: !canCopy })}
+          {item('Move up', <ArrowUpIcon className="w-4 h-4" />, onMoveUp, { disabled: !canMoveUp })}
+          {item('Move down', <ArrowDownIcon className="w-4 h-4" />, onMoveDown, { disabled: !canMoveDown })}
+          <div className="my-1 border-t border-default" />
+          {item('Delete collection', <TrashIcon className="w-4 h-4" />, onDelete, { danger: true })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // One collection: header (rename/reorder/copy/delete, all at a real hit-
 // target size instead of the old cramped w-3.5 icon row) plus a responsive
 // grid of FolderTiles instead of an always-expanded indented list - the
@@ -237,7 +324,7 @@ function FolderTile({
 function CollectionSection({
   collection, cIndex, collectionsLength, otherProfilesCount,
   previewByFolder, previewLoadingIds, brokenFolderIds,
-  onRename, onReorder, onDelete, onCopy, onAddFolder, onOpenFolder, onDeleteFolder, onFolderDragEnd, onEditCover, onTogglePin,
+  onRename, onReorder, onDelete, onCopy, onAddFolder, onOpenFolder, onDeleteFolder, onFolderDragEnd, onTogglePin,
 }: {
   collection: NuvioCollection;
   cIndex: number;
@@ -254,38 +341,23 @@ function CollectionSection({
   onOpenFolder: (folderId: string) => void;
   onDeleteFolder: (folderId: string) => void;
   onFolderDragEnd: (event: DragEndEvent) => void;
-  onEditCover: () => void;
   onTogglePin: () => void;
 }) {
   const sensors = useSortableSensors();
   const folders = collection.folders || [];
-  const iconButtonClass = 'p-1.5 rounded-lg text-muted hover:text-default hover:bg-surface-hover transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted';
-  const coverImageUrl = typeof collection.coverImageUrl === 'string' ? collection.coverImageUrl : null;
   const isPinned = !!collection.pinToTop;
   const brokenFolderCount = folders.filter((f) => brokenFolderIds.has(f.id)).length;
 
   return (
     <Card padding="lg" className="mb-4">
       <div className="flex items-center gap-2 mb-4">
-        {/* Real Nuvio-native field (coverImageUrl) - this is what the
-            actual Nuvio app shows for the collection, not a SlickSync-only
-            cosmetic, so it's worth a real editor rather than the v1 "leave
-            unverifiable app-only fields alone" deferral other fields got. */}
-        <button
-          type="button"
-          title="Collection cover"
-          onClick={onEditCover}
-          className="relative shrink-0 w-10 h-10 rounded-lg overflow-hidden border border-default hover:border-primary/50 transition-colors bg-surface-hover"
-        >
-          {coverImageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={coverImageUrl} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <PhotoIcon className="w-4 h-4 text-subtle" />
-            </div>
-          )}
-        </button>
+        {/* Deliberately no collection-level cover editor here - real
+            feedback was that a cover picker at this level is confusing
+            clutter, since the thing anyone actually wants to customize is
+            each individual FOLDER inside a collection (Netflix, Prime,
+            etc - see FolderTile's own cover picker for that). Removed
+            2026-08-05, not just restyled - a folder-level-only earlier
+            pass here missed the actual ask twice before landing on this. */}
         <input
           value={collection.title}
           onChange={(e) => onRename(e.target.value)}
@@ -295,26 +367,17 @@ function CollectionSection({
           {folders.length} folder{folders.length !== 1 ? 's' : ''}
           {brokenFolderCount > 0 && <span className="text-warning ml-1">· {brokenFolderCount} need{brokenFolderCount === 1 ? 's' : ''} attention</span>}
         </span>
-        <button
-          type="button"
-          title={isPinned ? 'Pinned to top of the Nuvio home screen - click to unpin' : 'Pin to top of the Nuvio home screen'}
-          onClick={onTogglePin}
-          className={isPinned ? 'p-1.5 rounded-lg text-primary hover:bg-surface-hover transition-colors' : iconButtonClass}
-        >
-          {isPinned ? <MapPinIconSolid className="w-4 h-4" /> : <MapPinIcon className="w-4 h-4" />}
-        </button>
-        <button type="button" title={otherProfilesCount === 0 ? 'No other profiles on this account' : 'Copy to another profile'} onClick={onCopy} disabled={otherProfilesCount === 0} className={iconButtonClass}>
-          <DocumentDuplicateIcon className="w-4 h-4" />
-        </button>
-        <button type="button" title="Move up" onClick={() => onReorder(-1)} disabled={cIndex === 0} className={iconButtonClass}>
-          <ArrowUpIcon className="w-4 h-4" />
-        </button>
-        <button type="button" title="Move down" onClick={() => onReorder(1)} disabled={cIndex === collectionsLength - 1} className={iconButtonClass}>
-          <ArrowDownIcon className="w-4 h-4" />
-        </button>
-        <button type="button" title="Delete collection" onClick={onDelete} className={`${iconButtonClass} hover:text-error`}>
-          <TrashIcon className="w-4 h-4" />
-        </button>
+        <CollectionActionsMenu
+          isPinned={isPinned}
+          canMoveUp={cIndex > 0}
+          canMoveDown={cIndex < collectionsLength - 1}
+          canCopy={otherProfilesCount > 0}
+          onTogglePin={onTogglePin}
+          onCopy={onCopy}
+          onMoveUp={() => onReorder(-1)}
+          onMoveDown={() => onReorder(1)}
+          onDelete={onDelete}
+        />
       </div>
 
       {folders.length === 0 ? (
@@ -433,7 +496,6 @@ export default function NuvioCollectionsPage() {
   // field Nuvio's own app reads (unlike most other unedited Collection
   // fields - see the big comment above this component) so it's worth a
   // real editor, reusing the same AvatarPickerModal Catalogs already uses.
-  const [coverPickerCollection, setCoverPickerCollection] = useState<NuvioCollection | null>(null);
 
   // Per-folder cover - coverImageUrl is a real field on the folder object
   // itself (confirmed via a real exported Collections JSON: each folder has
@@ -901,7 +963,6 @@ export default function NuvioCollectionsPage() {
                       onOpenFolder={(folderId) => { setFolderDetail({ collectionId: collection.id, folderId }); setFolderDetailTab('sources'); }}
                       onDeleteFolder={(folderId) => setDeleting({ kind: 'folder', collectionId: collection.id, folderId })}
                       onFolderDragEnd={handleFolderDragEnd(collection.id)}
-                      onEditCover={() => setCoverPickerCollection(collection)}
                       onTogglePin={() => updateCollection(collection.id, { pinToTop: !collection.pinToTop })}
                     />
                   ))
@@ -920,21 +981,6 @@ export default function NuvioCollectionsPage() {
                           <button type="button" onClick={() => toggleExpanded(collection.id)} className="p-1 text-subtle hover:text-default">
                             {expanded[collection.id] ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
                           </button>
-                          <button
-                            type="button"
-                            title="Collection cover"
-                            onClick={() => setCoverPickerCollection(collection)}
-                            className="relative shrink-0 w-7 h-7 rounded-md overflow-hidden border border-default hover:border-primary/50 transition-colors bg-surface-hover"
-                          >
-                            {typeof collection.coverImageUrl === 'string' ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={collection.coverImageUrl} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <PhotoIcon className="w-3.5 h-3.5 text-subtle" />
-                              </div>
-                            )}
-                          </button>
                           <input
                             value={collection.title}
                             onChange={(e) => updateCollection(collection.id, { title: e.target.value })}
@@ -950,32 +996,17 @@ export default function NuvioCollectionsPage() {
                           >
                             <EyeIcon className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            type="button"
-                            title={collection.pinToTop ? 'Pinned to top of the Nuvio home screen - click to unpin' : 'Pin to top of the Nuvio home screen'}
-                            onClick={() => updateCollection(collection.id, { pinToTop: !collection.pinToTop })}
-                            className={collection.pinToTop ? 'p-1 text-primary' : 'p-1 text-subtle hover:text-default'}
-                          >
-                            {collection.pinToTop ? <MapPinIconSolid className="w-3.5 h-3.5" /> : <MapPinIcon className="w-3.5 h-3.5" />}
-                          </button>
-                          <button
-                            type="button"
-                            title={otherProfiles.length === 0 ? 'No other profiles on this account' : 'Copy to another profile'}
-                            onClick={() => setCopyTarget(collection)}
-                            disabled={otherProfiles.length === 0}
-                            className="p-1 text-subtle hover:text-default disabled:opacity-30"
-                          >
-                            <DocumentDuplicateIcon className="w-3.5 h-3.5" />
-                          </button>
-                          <button type="button" onClick={() => reorderCollection(cIndex, -1)} disabled={cIndex === 0} className="p-1 text-subtle hover:text-default disabled:opacity-30">
-                            <ArrowUpIcon className="w-3.5 h-3.5" />
-                          </button>
-                          <button type="button" onClick={() => reorderCollection(cIndex, 1)} disabled={cIndex === collections.length - 1} className="p-1 text-subtle hover:text-default disabled:opacity-30">
-                            <ArrowDownIcon className="w-3.5 h-3.5" />
-                          </button>
-                          <button type="button" onClick={() => setDeleting({ kind: 'collection', collectionId: collection.id })} className="p-1 text-subtle hover:text-error">
-                            <TrashIcon className="w-3.5 h-3.5" />
-                          </button>
+                          <CollectionActionsMenu
+                            isPinned={!!collection.pinToTop}
+                            canMoveUp={cIndex > 0}
+                            canMoveDown={cIndex < collections.length - 1}
+                            canCopy={otherProfiles.length > 0}
+                            onTogglePin={() => updateCollection(collection.id, { pinToTop: !collection.pinToTop })}
+                            onCopy={() => setCopyTarget(collection)}
+                            onMoveUp={() => reorderCollection(cIndex, -1)}
+                            onMoveDown={() => reorderCollection(cIndex, 1)}
+                            onDelete={() => setDeleting({ kind: 'collection', collectionId: collection.id })}
+                          />
                         </div>
 
                         {expanded[collection.id] && (
@@ -1427,29 +1458,6 @@ export default function NuvioCollectionsPage() {
           )}
         </div>
       </Modal>
-
-      {/* Collection cover - coverImageUrl is a real field the Nuvio app
-          itself reads, not a SlickSync-only cosmetic. Only the image tabs
-          matter here (no coverColorIndex-equivalent in Nuvio's real
-          schema), so a "color" pick is simply a no-op - nothing to persist
-          it into. */}
-      {coverPickerCollection && (
-        <AvatarPickerModal
-          isOpen={!!coverPickerCollection}
-          onClose={() => setCoverPickerCollection(null)}
-          name={coverPickerCollection.title}
-          currentAvatarUrl={typeof coverPickerCollection.coverImageUrl === 'string' ? coverPickerCollection.coverImageUrl : null}
-          nuvioCoversUserId={selectedUserId || undefined}
-          title=""
-          previewShape="rect"
-          size="xl"
-          onSave={async (data) => {
-            if (!('avatarUrl' in data)) { setCoverPickerCollection(null); return; }
-            updateCollection(coverPickerCollection.id, { coverImageUrl: data.avatarUrl ?? null });
-            setCoverPickerCollection(null);
-          }}
-        />
-      )}
 
       {/* Folder cover - real Nuvio-native field (folder.coverImageUrl), same
           as the collection-level cover above. */}
