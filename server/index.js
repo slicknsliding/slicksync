@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = rateLimit;
 const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
 // Ensure Prisma uses the right provider at runtime
@@ -236,6 +237,28 @@ if (INSTANCE_TYPE !== 'public' && !PRIVATE_AUTH_ENABLED) {
   })
 }
 
+// Per-account rate limiter, public multi-tenant mode only - private mode's
+// single shared DEFAULT_ACCOUNT_ID makes this redundant with (and strictly
+// worse than) the per-IP limiter above, since every request in private mode
+// carries the same account id regardless of source. In public mode this
+// closes a real gap the per-IP limiter can't: a registered, legitimate-
+// looking account spreading requests across many IPs/devices to evade it.
+// Runs after createAuthGate resolves req.appAccountId from the session
+// cookie, so it's available here; keyGenerator falls back to IP for the
+// handful of pre-account-resolution requests (login/register) that already
+// have their own stricter authLimiter mounted above anyway.
+if (INSTANCE_TYPE === 'public') {
+  const accountLimiter = rateLimit({
+    windowMs: parseInt(process.env.ACCOUNT_RATE_LIMIT_WINDOW_MS || '900000'),
+    max: parseInt(process.env.ACCOUNT_RATE_LIMIT_MAX_REQUESTS || '6000'),
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.appAccountId || ipKeyGenerator(req.ip),
+    message: 'Too many requests from this account, please try again later.',
+  })
+  app.use('/api', accountLimiter)
+}
+
 // Account scoping middleware
 const { createAccountScopingMiddleware } = require('./middleware/accountScoping');
 const accountScopingMiddleware = createAccountScopingMiddleware(prisma);
@@ -272,6 +295,22 @@ app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/settings', settingsRouter({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }));
 app.use('/api/push', pushRouter({ prisma, getAccountId }));
 app.use('/api/watchlist', watchlistRouter({ prisma, getAccountId }));
+// Discover proxies to Cinemeta on every single request (browse/search/
+// people-search/cast lookups) - the one endpoint under the broad account
+// limiter above where a moderate request COUNT still means real, repeated
+// external-API cost per request, not just DB reads. Tighter, per-minute
+// cap, same account-or-IP key.
+if (INSTANCE_TYPE === 'public') {
+  const discoverLimiter = rateLimit({
+    windowMs: 60000,
+    max: parseInt(process.env.DISCOVER_RATE_LIMIT_MAX_REQUESTS || '90'),
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.appAccountId || ipKeyGenerator(req.ip),
+    message: 'Too many Discover requests, please slow down.',
+  })
+  app.use('/api/discover', discoverLimiter)
+}
 app.use('/api/discover', discoverRouter({ prisma, getAccountId }));
 app.use('/api/lists', listsRouter({ prisma, getAccountId }));
 app.use('/api/health', healthRouter({ prisma, getAccountId }));
@@ -289,7 +328,7 @@ app.use('/api/invitations', invitationsRouter({ prisma, getAccountId, INSTANCE_T
 app.use('/invite', invitationsRouter.createPublicRouter({ prisma, encrypt, assignUserToGroup, decrypt }));
 // Public library router (no auth required)
 const { getCachedLibrary, setCachedLibrary } = require('./utils/libraryCache');
-app.use('/api/public-library', publicLibraryRouter({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibrary, setCachedLibrary }));
+app.use('/api/public-library', publicLibraryRouter({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibrary, setCachedLibrary, JWT_SECRET }));
 
 // Addon proxy router (no auth required - UUID serves as bearer token)
 app.use('/proxy', proxyRouter({ prisma, decrypt, getAccountId, getServerKey }));

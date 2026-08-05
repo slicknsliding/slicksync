@@ -7,9 +7,15 @@ const STORAGE_KEY = 'slicksync-user-auth';
 
 type Provider = 'stremio' | 'nuvio';
 
-// authKey is only present for Stremio - Nuvio's credential (a refresh
-// token) is never held client-side, only userId + provider are needed to
-// re-validate later via /validate-nuvio, which takes just userId.
+// authKey holds the caller's own bearer credential for whichever provider:
+// for Stremio, the real Stremio authKey; for Nuvio, a SlickSync-issued
+// session token (never the raw Nuvio refresh token, which stays server-side
+// only) obtained at login/validate. Previously Nuvio held nothing here at
+// all - only userId + provider were needed to re-validate via
+// /validate-nuvio, which meant a bare userId (visible to any other
+// household member, or an admin) was sufficient to "restore" a session as
+// literally anyone. Fixed to require real proof of possession, matching
+// Stremio's existing model.
 interface StoredAuth {
   userId: string;
   provider: Provider;
@@ -67,7 +73,11 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
         // Older sessions predate the provider field - treat as Stremio,
         // same as the server's own `providerType || 'stremio'` default.
         const dataProvider: Provider = data.provider || 'stremio';
-        if (!data.userId || (dataProvider === 'stremio' && !data.authKey)) {
+        // Both providers now require a real caller-held credential to
+        // restore a session - a pre-fix Nuvio session with no stored token
+        // can no longer be silently trusted, so it's dropped here same as
+        // any other invalid stored session (falls through to a fresh login).
+        if (!data.userId || !data.authKey) {
           localStorage.removeItem(STORAGE_KEY);
           setIsLoading(false);
           return;
@@ -75,24 +85,28 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
 
         // Validate the stored session
         const result = dataProvider === 'nuvio'
-          ? await userAuth.validateNuvio(data.userId)
-          : await userAuth.validate(data.authKey!, data.userId);
+          ? await userAuth.validateNuvio(data.userId, data.authKey)
+          : await userAuth.validate(data.authKey, data.userId);
 
         if (result.valid) {
+          // Nuvio reissues a fresh session token on every successful
+          // validate (sliding expiry) - use that going forward, not the
+          // one that was just spent.
+          const currentAuthKey = (dataProvider === 'nuvio' && result.sessionToken) ? result.sessionToken : data.authKey;
           setUserId(data.userId);
           setProvider(dataProvider);
-          setAuthKey(data.authKey || null);
+          setAuthKey(currentAuthKey || null);
           setUserInfo(data.userInfo);
 
           // Refresh user info in background
           try {
-            const freshInfo = await userAuth.getUserInfo(data.userId, data.authKey);
+            const freshInfo = await userAuth.getUserInfo(data.userId, currentAuthKey);
             setUserInfo(freshInfo);
             // Update storage with fresh info
             localStorage.setItem(STORAGE_KEY, JSON.stringify({
               userId: data.userId,
               provider: dataProvider,
-              authKey: data.authKey,
+              authKey: currentAuthKey,
               userInfo: freshInfo,
             }));
           } catch {
@@ -162,9 +176,11 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
     }
   }, []);
 
-  // Login with a completed Nuvio device-code exchange - unlike Stremio,
-  // there's no client-held credential to store; the exchange result
-  // itself is the proof of identity (see getPublicUserNuvio server-side).
+  // Login with a completed Nuvio device-code exchange. The exchange result
+  // proves identity to the SERVER, which issues a SlickSync session token
+  // in response - that token (not the raw Nuvio refresh token, which never
+  // leaves the server) is what's held client-side from here on, the same
+  // role Stremio's authKey plays.
   const loginNuvio = useCallback(async (code: string, deviceNonce: string, anonToken: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
     setError(null);
@@ -173,15 +189,16 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
     try {
       const result = await userAuth.authenticateNuvio(code, deviceNonce, anonToken);
 
-      if (result.success && result.userId && result.userInfo) {
+      if (result.success && result.userId && result.userInfo && result.sessionToken) {
         setUserId(result.userId);
         setProvider('nuvio');
-        setAuthKey(null);
+        setAuthKey(result.sessionToken);
         setUserInfo(result.userInfo);
 
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
           userId: result.userId,
           provider: 'nuvio',
+          authKey: result.sessionToken,
           userInfo: result.userInfo,
         }));
 

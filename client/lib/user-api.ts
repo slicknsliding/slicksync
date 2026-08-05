@@ -282,11 +282,13 @@ export const userAuth = {
     success: boolean;
     userId: string;
     userInfo: UserInfo;
+    sessionToken: string;
     error?: string;
     errorCode?: string;
   }> {
     const response = await request<{
       success: boolean;
+      sessionToken?: string;
       user?: {
         id: string;
         username: string;
@@ -302,10 +304,11 @@ export const userAuth = {
       body: JSON.stringify({ code, deviceNonce, anonToken }),
     });
 
-    if (response.success && response.user) {
+    if (response.success && response.user && response.sessionToken) {
       return {
         success: true,
         userId: response.user.id,
+        sessionToken: response.sessionToken,
         userInfo: {
           id: response.user.id,
           username: response.user.username,
@@ -322,6 +325,7 @@ export const userAuth = {
       success: false,
       userId: '',
       userInfo: {} as UserInfo,
+      sessionToken: '',
       error: response.message || response.error || 'Authentication failed',
       errorCode: response.error,
     };
@@ -329,27 +333,37 @@ export const userAuth = {
 
   /**
    * Re-validate a Nuvio user's stored session (mirrors `validate` above).
+   * Requires the caller's own previously-issued session token - proof of
+   * possession, not just a bare userId (which used to be sufficient to
+   * "restore" a session as literally anyone, since nothing checked the
+   * caller actually held any credential of their own). Returns a freshly
+   * reissued token on success (sliding expiry), same pattern as
+   * refreshUserInfo elsewhere in this file.
    */
-  async validateNuvio(userId: string): Promise<{
+  async validateNuvio(userId: string, sessionToken?: string): Promise<{
     valid: boolean;
     userId?: string;
+    sessionToken?: string;
     error?: string;
     errorCode?: string;
   }> {
     const response = await request<{
       valid?: boolean;
       success?: boolean;
+      sessionToken?: string;
       user?: { id: string };
       error?: string;
       message?: string;
     }>('/public-library/validate-nuvio', {
       method: 'POST',
       body: JSON.stringify({ userId }),
+      authKey: sessionToken,
     });
 
     return {
       valid: response.valid ?? response.success ?? false,
       userId: response.user?.id,
+      sessionToken: response.sessionToken,
       error: response.message || response.error,
       errorCode: response.error,
     };

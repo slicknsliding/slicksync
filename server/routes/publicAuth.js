@@ -1120,7 +1120,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       // Build addon id -> name map for user excludedAddons name resolution
       const addonIdToName = new Map(addons.map(a => [a.id, a.name]))
 
-      // Decrypt stremioAuthKey for each user before exporting
+      // Decrypt stremioAuthKey AND nuvioRefreshToken for each user before
+      // exporting. nuvioRefreshToken previously rode along un-decrypted via
+      // the {...user} spread below - export never decrypted it, and
+      // config-import never re-encrypted it either, so it only "worked" by
+      // accident when the encryption key hadn't changed between export and
+      // import. A real disaster-recovery restore (new server, new key -
+      // exactly what the Disaster Recovery Kit exists for) would silently
+      // fail to decrypt it, breaking every Nuvio user's connection. Now
+      // handled identically to stremioAuthKey.
       const decryptedUsers = users.map(user => {
         const decryptedUser = { ...user }
         if (user.stremioAuthKey) {
@@ -1129,6 +1137,14 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
           } catch (e) {
             console.warn(`Failed to decrypt auth key for user ${user.id}:`, e.message)
             decryptedUser.stremioAuthKey = null
+          }
+        }
+        if (user.nuvioRefreshToken) {
+          try {
+            decryptedUser.nuvioRefreshToken = decrypt(user.nuvioRefreshToken, req)
+          } catch (e) {
+            console.warn(`Failed to decrypt Nuvio refresh token for user ${user.id}:`, e.message)
+            decryptedUser.nuvioRefreshToken = null
           }
         }
         // Normalize excludedAddons to addon NAMES for export (keep JSON string format for compatibility)
@@ -1755,7 +1771,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         }
 
         for (const userData of users) {
-          const { id: _exportUserId, stremioAuthKey, protectedAddons, excludedAddons, ...userFields } = userData;
+          const { id: _exportUserId, stremioAuthKey, nuvioRefreshToken, protectedAddons, excludedAddons, ...userFields } = userData;
 
           // Parse protectedAddons and excludedAddons if they're JSON strings
           const parsedProtectedAddons = (() => {
@@ -1819,6 +1835,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
               ...userFields,
               accountId,
               stremioAuthKey: stremioAuthKey ? encrypt(stremioAuthKey, req) : null,
+              nuvioRefreshToken: nuvioRefreshToken ? encrypt(nuvioRefreshToken, req) : null,
               protectedAddons: normalizedProtectedNames.length > 0 ? JSON.stringify(normalizedProtectedNames) : null,
               excludedAddons: normalizedExcludedIds.length > 0 ? JSON.stringify(normalizedExcludedIds) : null
             }
