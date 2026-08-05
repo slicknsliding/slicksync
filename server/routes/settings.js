@@ -896,5 +896,29 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   });
 
+  // POST /settings/delete-account - self-service, irreversible. Public
+  // multi-tenant mode only: private mode's "account" is the whole shared
+  // instance, not a personal one a user should be able to wipe from a
+  // settings toggle. Always deletes req.appAccountId (the caller's own,
+  // resolved by the auth middleware from their session) - never an id from
+  // the request body, so there is no way to target another account.
+  router.post('/delete-account', async (req, res) => {
+    try {
+      if (INSTANCE_TYPE !== 'public') {
+        return res.status(403).json({ message: 'Self-service account deletion is only available in public (multi-tenant) mode.' });
+      }
+      if (!req.appAccountId) {
+        return res.status(401).json({ message: 'Not signed in' });
+      }
+      const { deleteAccountCascade } = require('../utils/accountDeletion');
+      await deleteAccountCascade(prisma, req.appAccountId);
+      return res.json({ deleted: true });
+    } catch (e) {
+      if (e.notFound) return res.status(404).json({ message: 'Account not found' });
+      console.error('[Settings] Failed to delete account:', e?.message);
+      return res.status(500).json({ message: 'Failed to delete account' });
+    }
+  });
+
   return router;
 };

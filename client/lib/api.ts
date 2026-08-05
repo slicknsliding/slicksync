@@ -927,6 +927,13 @@ class ApiClient {
     });
   }
 
+  // Self-service, irreversible, public-instance-only - see the server
+  // route's own comment for why this never accepts an id (always the
+  // caller's own account, resolved server-side from the session).
+  async deleteMyAccount() {
+    return this.fetch<{ deleted: boolean }>('/settings/delete-account', { method: 'POST' });
+  }
+
   async testWebhook(webhookUrl: string) {
     return this.fetch('/settings/account-sync/test-webhook', {
       method: 'POST',

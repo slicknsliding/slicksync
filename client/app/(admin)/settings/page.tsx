@@ -166,6 +166,8 @@ export default function SettingsPage() {
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const isPublicInstance = (process.env.NEXT_PUBLIC_INSTANCE_TYPE || 'private') === 'public';
+  const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   
   // Sync settings state
   const [syncSettings, setSyncSettings] = useState<Partial<SyncSettings>>({
@@ -476,6 +478,23 @@ export default function SettingsPage() {
       toast.success('Settings reset to defaults');
     } catch (e: any) {
       toast.error(e.message || 'Failed to reset settings');
+    }
+  };
+
+  // Irreversible - server re-checks public-instance-only and always deletes
+  // the caller's own account (never an id from here). Clears the same
+  // localStorage token NebulaTopbar's own handleLogout does and sends the
+  // browser to /login, since the account (and its session) no longer exists.
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    try {
+      await api.deleteMyAccount();
+      localStorage.removeItem('slicksync-admin-token');
+      toast.success('Account deleted');
+      window.location.href = '/login?mode=admin';
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to delete account');
+      setIsDeletingAccount(false);
     }
   };
 
@@ -1186,6 +1205,26 @@ export default function SettingsPage() {
                   Reset
                 </Button>
               </div>
+
+              {/* Public-mode only - private mode's "account" is the whole
+                  shared instance, not a personal one a user should be able
+                  to wipe from a settings toggle. */}
+              {isPublicInstance && (
+                <div className="flex items-center justify-between p-4 rounded-lg bg-error-muted">
+                  <div>
+                    <p className="font-medium text-sm text-default">Delete Account</p>
+                    <p className="text-xs text-muted">Permanently delete your SlickSync account and all its data</p>
+                  </div>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    leftIcon={<TrashIcon className="w-4 h-4" />}
+                    onClick={() => setIsDeleteAccountModalOpen(true)}
+                  >
+                    Delete Account
+                  </Button>
+                </div>
+              )}
             </div>
           </Card>
         </PageSection>
@@ -1201,6 +1240,19 @@ export default function SettingsPage() {
         description="Are you sure you want to reset all settings to their defaults? This cannot be undone."
         confirmText="Reset Settings"
         variant="danger"
+      />
+
+      {/* Delete Account Confirmation Modal */}
+      <ConfirmModal
+        isOpen={isDeleteAccountModalOpen}
+        onClose={() => setIsDeleteAccountModalOpen(false)}
+        onConfirm={handleDeleteAccount}
+        title="Delete Your Account?"
+        description="This permanently deletes your SlickSync account and every piece of data tied to it: all managed users, groups, addons, catalogs, watch history, Vault entries, and settings. There is no undo, no recovery, and no grace period - deletion happens immediately. If you're sure, click 'Yes, delete everything' below. Otherwise, click 'No, keep my account.'"
+        confirmText="Yes, delete everything"
+        cancelText="No, keep my account"
+        variant="danger"
+        isLoading={isDeletingAccount}
       />
 
       {/* Avatar Picker Modal */}
