@@ -1075,7 +1075,7 @@ export default function SettingsPage() {
               <div className="pt-1">
                 <label className="block text-sm font-medium text-default mb-1.5">OMDb API key <span className="text-subtle font-normal">(optional)</span></label>
                 <p className="text-xs text-muted mb-2">
-                  Adds Rotten Tomatoes/Metacritic ratings. Get a free key at omdbapi.com/apikey.aspx. Leave blank to use the server's own key, if one is configured.
+                  Adds Rotten Tomatoes/Metacritic ratings. Get a free key at omdbapi.com/apikey.aspx. Paste just the key itself, not the test URL OMDb's confirmation email shows (the one starting "http://www.omdbapi.com/?i=..."). Leave blank to use the server's own key, if one is configured.
                 </p>
                 <input
                   type="text"

@@ -6,6 +6,7 @@ const { decrypt, encrypt } = require('../utils/encryption')
 const { DEFAULT_ACCOUNT_ID, DEFAULT_ACCOUNT_UUID } = require('../utils/config')
 const { postDiscord } = require('../utils/notify')
 const { DEFAULT_TIMEZONE } = require('../utils/dateUtils')
+const { normalizeOmdbApiKey } = require('../utils/omdb')
 
 module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }) => {
   const router = express.Router();
@@ -557,7 +558,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // Rotten Tomatoes/Metacritic ratings; per-account like the three
           // above it, so one account's key/quota isn't silently shared by
           // every other account on this instance.
-          omdbApiKey: omdbApiKey !== undefined ? (typeof omdbApiKey === 'string' ? omdbApiKey.trim() : '') : (baseCfg.omdbApiKey || ''),
+          omdbApiKey: omdbApiKey !== undefined ? (typeof omdbApiKey === 'string' ? normalizeOmdbApiKey(omdbApiKey.trim()) : '') : (baseCfg.omdbApiKey || ''),
         }
 
         try {
@@ -609,7 +610,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (tmdbApiKey !== undefined) partial.tmdbApiKey = typeof tmdbApiKey === 'string' ? tmdbApiKey.trim() : ''
       if (mdblistApiKey !== undefined) partial.mdblistApiKey = typeof mdblistApiKey === 'string' ? mdblistApiKey.trim() : ''
       if (rpdbApiKey !== undefined) partial.rpdbApiKey = typeof rpdbApiKey === 'string' ? rpdbApiKey.trim() : ''
-      if (omdbApiKey !== undefined) partial.omdbApiKey = typeof omdbApiKey === 'string' ? omdbApiKey.trim() : ''
+      if (omdbApiKey !== undefined) partial.omdbApiKey = typeof omdbApiKey === 'string' ? normalizeOmdbApiKey(omdbApiKey.trim()) : ''
 
       const nextCfg = { ...base, ...partial }
 
