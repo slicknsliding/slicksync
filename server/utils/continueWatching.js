@@ -84,6 +84,8 @@ async function getResumeState(prisma, accountId, userId, itemId, videoId) {
  */
 async function getContinueWatching(prisma, accountId, limit = 8) {
   const accountIdValue = accountId || 'default'
+  const { resolveOmdbKeyForAccount } = require('./listImport')
+  const omdbApiKey = await resolveOmdbKeyForAccount(prisma, accountIdValue)
 
   // Most recently watched episode per (userId, showId) - fetch a reasonable
   // recent window and reduce in JS rather than fighting SQLite/Prisma
@@ -124,7 +126,7 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
     const user = userMap.get(row.userId)
     if (!user) continue
 
-    const metadata = await fetchMetadata(row.showId, 'series', row.videoId)
+    const metadata = await fetchMetadata(row.showId, 'series', row.videoId, omdbApiKey)
     if (!metadata || !metadata.allEpisodes) continue
 
     // If the last-watched episode itself is still partway through, resume
@@ -235,7 +237,7 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
     const resumeState = await getResumeState(prisma, accountIdValue, row.userId, row.itemId, null)
     if (!resumeState.inProgress) continue
 
-    const metadata = await fetchMetadata(row.itemId, 'movie', null)
+    const metadata = await fetchMetadata(row.itemId, 'movie', null, omdbApiKey)
 
     const entry = {
       userId: user.id,

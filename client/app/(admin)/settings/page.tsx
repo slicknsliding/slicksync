@@ -309,6 +309,7 @@ export default function SettingsPage() {
           tmdbApiKey: settings.tmdbApiKey || '',
           mdblistApiKey: settings.mdblistApiKey || '',
           rpdbApiKey: settings.rpdbApiKey || '',
+          omdbApiKey: settings.omdbApiKey || '',
           enableWatchlist: settings.enableWatchlist !== false,
           enableWatchedIndicators: settings.enableWatchedIndicators !== false,
           enableRecommendations: settings.enableRecommendations !== false,
@@ -1027,6 +1028,27 @@ export default function SettingsPage() {
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, rpdbApiKey: e.target.value }))}
                   onBlur={async () => { await handleSaveSetting('rpdbApiKey' as keyof SyncSettings, syncSettings.rpdbApiKey); invalidatePersonalFeatures(); }}
                   placeholder="RPDB API key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* OMDb key - Rotten Tomatoes/Metacritic ratings on posters and
+                  the detail modal, account-scoped like the three keys above
+                  it so this account's OMDb quota isn't shared with everyone
+                  else on the instance. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">OMDb API key <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Adds Rotten Tomatoes/Metacritic ratings. Get a free key at omdbapi.com/apikey.aspx. Leave blank to use the server's own key, if one is configured.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.omdbApiKey || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, omdbApiKey: e.target.value }))}
+                  onBlur={() => handleSaveSetting('omdbApiKey' as keyof SyncSettings, syncSettings.omdbApiKey)}
+                  placeholder="OMDb API key"
                   autoComplete="off"
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"
