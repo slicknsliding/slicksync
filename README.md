@@ -44,6 +44,8 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 - Nuvio refresh tokens encrypted at rest, auto-refreshing access tokens.
 - Provider badge everywhere a user shows up — purple for Stremio, blue/orange split for Nuvio, fixed regardless of theme.
 - Addon import fetches real manifest data for both providers, not just a bare URL+name.
+- **Account merge** — absorb a second provider's identity into one existing user instead of managing them as two separate people, with a preview before merging and a full **Undo** afterward that restores both identities and their original watch history exactly.
+- **Silent account-mismatch detection** — if a title is seen streaming but no connected account ever records it in History, that usually means playback happened on an account not yet added to SlickSync; a notification explains this and points at the fix.
 
 ### 🎬 Activity & Now Playing
 - Live **Now Playing** panel, fed by a 30s poll of AIOStreams' proxy — real-time presence, gone the instant playback stops.
@@ -142,6 +144,8 @@ Scheduled + on-demand config backups (validated for real restorability, not just
 
 ### 🛡️ Security
 Rate limiting actually enabled, strict limits on credential/OAuth endpoints, correct `trust proxy` hop count, no hardcoded default key, and a self-generating anti-lockout encryption key with decrypt-only fallback on rotation. Every external API key (RPDB, MDBList, TMDb, OMDb) resolves an account's own Settings key first — a shared instance-wide key in `.env` is only ever a fallback for accounts that haven't set their own.
+- **Self-service data export** — Settings → Privacy has a Download button exporting your own movie/episode watch history plus the household watchlist as JSON, no admin needed.
+- **Self-service account deletion**, at two distinct scopes: an admin can wipe their entire account and everything tied to it (public multi-tenant mode), and separately, any managed user can delete just their own data (watch history, watchlist state, group membership) from their own User panel — without touching shared addons, groups, or anyone else's data — in both private and public instance mode.
 
 ---
 

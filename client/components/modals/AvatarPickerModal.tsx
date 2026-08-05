@@ -60,6 +60,12 @@ export function AvatarPickerModal({
   const [isUploading, setIsUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentAvatarUrl || null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Infinite scroll for the Nuvio Covers grid, same IntersectionObserver
+  // pattern Discover uses - root is the grid's own scrollable div (not the
+  // viewport), since this grid scrolls internally inside a fixed-height
+  // modal rather than the page itself.
+  const nuvioGridContainerRef = useRef<HTMLDivElement | null>(null);
+  const nuvioSentinelRef = useRef<HTMLDivElement | null>(null);
 
   const [nuvioCovers, setNuvioCovers] = useState<NuvioCommunityCover[]>([]);
   const [nuvioCoversLoading, setNuvioCoversLoading] = useState(false);
@@ -102,6 +108,23 @@ export function AvatarPickerModal({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, nuvioOrientation, nuvioFormat, nuvioSearch, nuvioCoversUserId]);
+
+  // Infinite scroll - same IntersectionObserver pattern as Discover's own
+  // browse grid, except root is the grid's own scrollable div rather than
+  // the viewport, since this grid scrolls inside a fixed-height modal.
+  useEffect(() => {
+    if (tab !== 'nuvio') return;
+    const root = nuvioGridContainerRef.current;
+    const sentinel = nuvioSentinelRef.current;
+    if (!root || !sentinel) return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting) && nuvioHasMore && !nuvioCoversLoading) {
+        loadNuvioCovers(nuvioPage + 1, false);
+      }
+    }, { root, rootMargin: '200px' });
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, [tab, nuvioHasMore, nuvioCoversLoading, nuvioPage, loadNuvioCovers]);
 
   const handlePickNuvioCover = (cover: NuvioCommunityCover) => {
     setUrlInput(cover.image_url);
@@ -351,7 +374,7 @@ export function AvatarPickerModal({
             ) : nuvioCovers.length === 0 && nuvioSearch.trim() && !nuvioCoversLoading ? (
               <p className="text-xs text-muted py-4 text-center">No covers matching &quot;{nuvioSearch.trim()}&quot;.</p>
             ) : (
-              <div className={`grid ${nuvioGridCols} gap-3 ${size === 'full' ? 'max-h-[38rem]' : 'max-h-[28rem]'} overflow-y-auto pr-1`}>
+              <div ref={nuvioGridContainerRef} className={`grid ${nuvioGridCols} gap-3 ${size === 'full' ? 'max-h-[38rem]' : 'max-h-[28rem]'} overflow-y-auto pr-1`}>
                 {nuvioCovers.map((cover) => (
                   <button
                     key={cover.id}
@@ -377,19 +400,10 @@ export function AvatarPickerModal({
                 {nuvioCoversLoading && Array.from({ length: size === 'full' ? 10 : size === 'md' ? 4 : 8 }).map((_, i) => (
                   <div key={`skeleton-${i}`} className="aspect-video rounded-lg bg-surface-hover animate-pulse" />
                 ))}
+                {/* Infinite-scroll observer target - col-span-full so it
+                    doesn't become a visible grid cell of its own. */}
+                {nuvioHasMore && <div ref={nuvioSentinelRef} aria-hidden className="col-span-full h-px w-full" />}
               </div>
-            )}
-
-            {!nuvioCoversError && nuvioHasMore && (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="w-full"
-                onClick={() => loadNuvioCovers(nuvioPage + 1, false)}
-                isLoading={nuvioCoversLoading}
-              >
-                Load more
-              </Button>
             )}
           </div>
         )}
