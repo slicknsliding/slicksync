@@ -944,6 +944,68 @@ export function MediaDetailModal({
                 </p>
               )}
 
+              {details.boxOffice && (
+                <p className="text-sm text-muted flex items-start gap-1.5">
+                  <span className="w-5 h-5 shrink-0 mt-0.5 flex items-center justify-center" aria-hidden>💰</span>
+                  Box office: {details.boxOffice}
+                </p>
+              )}
+
+              {/* TMDb "belongs_to_collection" grouping - e.g. Dune (2021) ->
+                  "Part of the Dune Collection" -> the other films in it,
+                  each clickable via the same setOverrideItem navigation
+                  "More Like This" already uses to swap the modal's content
+                  in place. Movies only; null entirely for TV or a movie
+                  not part of one, so this section just doesn't render. */}
+              {details.collection && details.collection.parts.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-default mb-2">
+                    Part of the {details.collection.name}
+                  </p>
+                  <div className="flex gap-3 overflow-x-auto pb-1 pr-6 no-scrollbar">
+                    {details.collection.parts.map((part) => {
+                      const goToPart = () => setOverrideItem({
+                        id: part.id,
+                        type: 'movie',
+                        name: part.title,
+                        poster: part.poster,
+                        releaseInfo: part.releaseYear || undefined,
+                      });
+                      return (
+                        <button
+                          key={part.id}
+                          type="button"
+                          onClick={goToPart}
+                          className="shrink-0 w-28 text-left group tap-card"
+                        >
+                          <div className="w-28 h-40 rounded-lg overflow-hidden bg-surface-hover">
+                            {part.poster ? (
+                              <img
+                                src={part.poster}
+                                alt={part.title}
+                                loading="lazy"
+                                decoding="async"
+                                draggable={false}
+                                onDragStart={(e) => e.preventDefault()}
+                                className="w-full h-full object-cover pointer-events-none transition-transform group-hover:scale-105"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-muted">
+                                <FilmIcon className="w-8 h-8" />
+                              </div>
+                            )}
+                          </div>
+                          <p className="mt-1.5 text-sm font-medium text-default leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                            {part.title}
+                          </p>
+                          {part.releaseYear && <p className="text-xs text-subtle">{part.releaseYear}</p>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* SlickTrax "More Like This" - a disclosure, collapsed by
                   default, rather than an always-open poster row that made
                   this the tallest section in the whole popup regardless of
