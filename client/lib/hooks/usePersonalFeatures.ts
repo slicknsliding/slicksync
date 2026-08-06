@@ -25,11 +25,15 @@ export interface PersonalFeatures {
   // enableAutoplayTrailer is on; an explicit "Play Trailer" click always
   // starts with sound regardless of this.
   autoplayTrailerStartMuted: boolean;
-  // Whether an RPDB (RatingPosterDB) key is configured - callers use this to
-  // decide whether to route a title's poster through /api/poster/{imdbId}
-  // instead of its own stored poster. Deliberately just a boolean: the raw
-  // key stays server-side / confined to the Settings page's own edit form,
-  // never round-tripped into this shared cache other components read.
+  // Whether to actually route a title's poster through RPDB's rating-
+  // embedded art (/api/poster/{imdbId}) instead of its own stored poster.
+  // Requires BOTH a configured RPDB key AND enablePosterRatings below -
+  // RPDB's whole product is posters with ratings baked into the image, so
+  // turning "Poster ratings" off is expected to hide those too, not just
+  // this app's own overlay badges (confirmed live: a key alone was still
+  // showing rating-embedded posters everywhere with the toggle off).
+  // Deliberately just a boolean: the raw key stays server-side / confined
+  // to the Settings page's own edit form, never round-tripped here.
   rpdbEnabled: boolean;
   // IMDb/Rotten Tomatoes/Metacritic badges on every poster card. Default
   // false (opt-in, like Autoplay trailer) - showing scores before anyone's
@@ -67,7 +71,7 @@ async function fetchOnce(): Promise<PersonalFeatures> {
         enableRecommendations: s?.enableRecommendations !== false,
         enableAutoplayTrailer: s?.enableAutoplayTrailer === true,
         autoplayTrailerStartMuted: s?.autoplayTrailerStartMuted !== false,
-        rpdbEnabled: !!(s?.rpdbApiKey && s.rpdbApiKey.trim()),
+        rpdbEnabled: !!(s?.rpdbApiKey && s.rpdbApiKey.trim()) && s?.enablePosterRatings === true,
         enablePosterRatings: s?.enablePosterRatings === true,
       };
       inFlight = null;
