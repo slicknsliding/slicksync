@@ -25,6 +25,7 @@ import {
   ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
   DocumentDuplicateIcon, PhotoIcon, ExclamationTriangleIcon, MapPinIcon,
   EllipsisVerticalIcon, PencilSquareIcon, FilmIcon, TvIcon, InformationCircleIcon,
+  ArrowDownTrayIcon, ArrowUpTrayIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -716,6 +717,43 @@ export default function NuvioCollectionsPage() {
     setCollections((prev) => [...prev, { id: newId(), title: 'New Collection', folders: [] }]);
   };
 
+  // Export/Import as raw JSON - a manual escape hatch alongside the normal
+  // Nuvio-sync save path (api.setNuvioCollections -> sync_push_collections).
+  // Export downloads exactly the array shape this profile's collections_json
+  // holds; Import stages it into the local draft (fresh ids via
+  // deepCopyCollection, same as "Copy to another profile") so it goes
+  // through the same review + Save button as any other change, rather than
+  // writing straight to the backend unreviewed.
+  const exportCollectionsJson = () => {
+    const profile = profiles.find((p) => p.profile_index === selectedProfileIndex);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const filename = `nuvio-collections-${(profile?.name || 'profile').replace(/[^a-z0-9-]+/gi, '-')}-${stamp}.json`;
+    const blob = new Blob([JSON.stringify(collections, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const list: NuvioCollection[] = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.collections) ? parsed.collections : null);
+      if (!list) throw new Error('Expected a JSON array of collections');
+      const valid = list.filter((c) => c && typeof c === 'object' && typeof c.title === 'string' && Array.isArray(c.folders));
+      if (valid.length === 0) throw new Error('No valid collections found in that file');
+      setCollections((prev) => [...prev, ...valid.map(deepCopyCollection)]);
+      toast.success(`Imported ${valid.length} collection${valid.length !== 1 ? 's' : ''} - review, then Save changes`);
+    } catch (e: any) {
+      toast.error(e.message || 'That file isn\'t valid Collections JSON');
+    }
+  };
+
   // Builds folders only for genre slots that actually matched a real
   // genre-filterable catalog in this account's own installed addons - never
   // an empty/fake placeholder folder just because the template listed it.
@@ -1042,6 +1080,23 @@ export default function NuvioCollectionsPage() {
                 <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
                   <p className="text-sm text-muted">{collections.length} collection{collections.length !== 1 ? 's' : ''}{isDirty && <span className="text-warning ml-2">(unsaved changes)</span>}</p>
                   <div className="flex items-center gap-2">
+                    <input
+                      ref={importFileInputRef}
+                      type="file"
+                      accept="application/json"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImportFile(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <Button variant="ghost" size="sm" leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />} onClick={() => importFileInputRef.current?.click()} title="Import collections from a JSON file - stages them into your draft for review before saving">
+                      Import
+                    </Button>
+                    <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={exportCollectionsJson} disabled={collections.length === 0} title="Download this profile's collections as JSON">
+                      Export
+                    </Button>
                     <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setTemplatesOpen(true)}>
                       Use a template
                     </Button>
