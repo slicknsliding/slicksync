@@ -29,16 +29,25 @@ interface SuperAdminAccount {
   // byte-accurate size - public mode is one shared Postgres database, not
   // a file per account, so there's no real per-account disk size to report.
   resourceRowCount: number;
+  // Self-service nickname the account holder set themselves in their own
+  // Settings - read-only here, purely so accounts are easier to tell apart
+  // than by raw UUID prefix. Superadmin never sets or edits this.
+  displayName: string | null;
+  // Set by the "Force logout" action - server/middleware/auth.js rejects
+  // any token issued before this timestamp. Purely informational here.
+  sessionsRevokedAt: string | null;
 }
 
 interface AuditLogEntry {
   id: string;
-  action: 'disable' | 'enable' | 'delete';
+  action: 'disable' | 'enable' | 'delete' | 'revoke-sessions';
   targetAccountId: string;
   targetAccountUuid: string | null;
   bulk: boolean;
   createdAt: string;
 }
+
+type SortKey = 'createdAt' | 'lastLoginAt' | 'resourceRowCount';
 
 function isAbandoned(a: SuperAdminAccount): boolean {
   if (a.lastLoginAt) return false;
@@ -132,12 +141,32 @@ export default function SuperAdminPage() {
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [loadingAuditLog, setLoadingAuditLog] = useState(false);
+  const [sortBy, setSortBy] = useState<SortKey>('createdAt');
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const filteredAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return accounts;
-    return accounts.filter((a) => (a.uuid || a.id).toLowerCase().includes(q));
-  }, [accounts, search]);
+    const base = !q
+      ? accounts
+      : accounts.filter((a) => (a.uuid || a.id).toLowerCase().includes(q) || (a.displayName || '').toLowerCase().includes(q));
+    const sorted = [...base];
+    if (sortBy === 'resourceRowCount') {
+      sorted.sort((a, b) => b.resourceRowCount - a.resourceRowCount);
+    } else if (sortBy === 'lastLoginAt') {
+      // Never-logged-in accounts sort last, not first (as they would with a
+      // naive null-as-epoch-0 comparison) - "most recently active" is the
+      // useful ordering here, and "never" isn't recent.
+      sorted.sort((a, b) => {
+        if (!a.lastLoginAt && !b.lastLoginAt) return 0;
+        if (!a.lastLoginAt) return 1;
+        if (!b.lastLoginAt) return -1;
+        return new Date(b.lastLoginAt).getTime() - new Date(a.lastLoginAt).getTime();
+      });
+    } else {
+      sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+    return sorted;
+  }, [accounts, search, sortBy]);
 
   const growthSeries = useMemo(() => buildGrowthSeries(accounts, 30), [accounts]);
   const recentCount = useMemo(() => accounts.filter(isRecentlyRegistered).length, [accounts]);
@@ -257,6 +286,26 @@ export default function SuperAdminPage() {
       return next;
     });
   }, []);
+
+  const selectAbandoned = () => {
+    setSelectedIds(new Set(filteredAccounts.filter(isAbandoned).map((a) => a.id)));
+  };
+
+  const handleRevokeSessions = async (account: SuperAdminAccount) => {
+    if (!window.confirm(`Force-logout everyone currently signed into ${account.displayName || account.uuid || account.id}? They'll need to log in again.`)) return;
+    setRevokingId(account.id);
+    try {
+      const res = await fetch(`${API_BASE}/superadmin/accounts/${account.id}/revoke-sessions`, { method: 'POST', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      setAccounts((prev) => prev.map((a) => (a.id === account.id ? { ...a, sessionsRevokedAt: data.sessionsRevokedAt } : a)));
+      toast.success('Active sessions revoked');
+    } catch {
+      toast.error('Failed to revoke sessions');
+    } finally {
+      setRevokingId(null);
+    }
+  };
 
   const handleBulkToggleDisabled = async (disable: boolean, confirmed = false) => {
     if (selectedIds.size === 0) return;
@@ -429,13 +478,27 @@ export default function SuperAdminPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by UUID..."
+              placeholder="Search by UUID or label..."
               className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
             />
           </div>
           {search && (
             <span className="text-xs text-subtle">{filteredAccounts.length} of {accounts.length}</span>
           )}
+          {summary.abandoned > 0 && (
+            <Button variant="ghost" size="sm" onClick={selectAbandoned}>
+              Select {summary.abandoned} abandoned
+            </Button>
+          )}
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortKey)}
+            className="py-2 px-3 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
+          >
+            <option value="createdAt">Newest first</option>
+            <option value="lastLoginAt">Most recently active</option>
+            <option value="resourceRowCount">Heaviest usage first</option>
+          </select>
         </div>
 
         <Card padding="none">
@@ -450,11 +513,18 @@ export default function SuperAdminPage() {
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <SelectionCheckbox checked={selectedIds.has(a.id)} onChange={() => toggleSelect(a.id)} visible={selectedIds.has(a.id)} />
                     <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-xs font-semibold ${a.disabled ? 'bg-warning/10 text-warning' : 'bg-primary/10 text-primary'}`}>
-                      {(a.uuid || a.id).slice(0, 2).toUpperCase()}
+                      {a.displayName ? a.displayName.slice(0, 2).toUpperCase() : (a.uuid || a.id).slice(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-mono text-default truncate">{a.uuid || a.id}</span>
+                        {a.displayName ? (
+                          <>
+                            <span className="text-sm font-semibold text-default truncate" title="Set by the account holder in their own Settings">{a.displayName}</span>
+                            <span className="text-xs text-subtle font-mono truncate">{a.uuid || a.id}</span>
+                          </>
+                        ) : (
+                          <span className="text-sm font-mono text-default truncate">{a.uuid || a.id}</span>
+                        )}
                         {isRecentlyRegistered(a) && <Badge variant="primary" size="sm">New</Badge>}
                         {a.disabled && <Badge variant="warning" size="sm">Disabled</Badge>}
                         {isAbandoned(a) && <Badge variant="muted" size="sm" title="Registered a while ago, empty, never logged in">Abandoned</Badge>}
@@ -469,6 +539,15 @@ export default function SuperAdminPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRevokeSessions(a)}
+                      isLoading={revokingId === a.id}
+                      title="Sign this account out everywhere - they'll need to log in again"
+                    >
+                      Force logout
+                    </Button>
                     <Button
                       variant="secondary"
                       size="sm"
