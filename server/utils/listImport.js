@@ -180,7 +180,16 @@ function extractDecadeRange(query) {
 async function lookupTmdbKeywordId(text, apiKey) {
   const rsp = await fetch(`https://api.themoviedb.org/3/search/keyword?query=${encodeURIComponent(text)}&api_key=${encodeURIComponent(apiKey)}`)
   const data = rsp.ok ? await rsp.json() : { results: [] }
-  return data.results?.[0]?.id || null
+  const results = data.results || []
+  if (results.length === 0) return null
+  // TMDb's keyword search doesn't rank an exact match first - confirmed
+  // live, "horror" returns b-horror, j-horror, horror in that order, so a
+  // blind results[0] picked a niche subgenre keyword with almost no 90s/
+  // quality-filtered matches instead of the real "horror" keyword (1 vs 3
+  // results for the exact same discover query, live-verified). Prefer an
+  // exact case-insensitive name match when the results include one.
+  const exact = results.find((r) => r.name?.toLowerCase() === text.toLowerCase())
+  return (exact || results[0]).id
 }
 
 async function discoverByKeyword(keywordId, apiKey) {
