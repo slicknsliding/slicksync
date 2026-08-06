@@ -2554,7 +2554,10 @@ export interface HealthStatus {
     expiring: Array<{ id: string; name: string; provider: string | null; expiresAt: string }>;
     ignored: Array<{ id: string; name: string; provider: string | null }>;
   };
-  proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean };
+  // null on public multi-tenant instances - the AIOStreams proxy monitor is
+  // a private-mode, single-shared-instance concept with no per-account
+  // Settings field, so there's nothing real to report for a given tenant.
+  proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean } | null;
   mismatchCount: number;
   version: { running: string; latestRelease: string | null; updateAvailable: boolean };
   timeline: Array<{
