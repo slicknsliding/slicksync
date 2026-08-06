@@ -1029,7 +1029,7 @@ export default function SettingsPage() {
 
               <SettingRow
                 label="Poster ratings"
-                description="Show IMDb/Rotten Tomatoes/Metacritic score badges on every poster card in Discover and Catalogs. Off by default - turn this on if you want scores visible before opening a title."
+                description="Show IMDb/Rotten Tomatoes/Metacritic score badges on every poster card in Discover and Catalogs - also the master switch for RPDB's rating-embedded posters below, if you've set a key. Off by default - turn this on if you want scores visible before opening a title."
               >
                 <ToggleSwitch
                   enabled={syncSettings.enablePosterRatings === true}
@@ -1109,7 +1109,7 @@ export default function SettingsPage() {
               <div className="pt-1">
                 <label className="block text-sm font-medium text-default mb-1.5">RPDB API key <span className="text-subtle font-normal">(optional)</span></label>
                 <p className="text-xs text-muted mb-2">
-                  Upgrades posters everywhere to rating-embedded art from RatingPosterDB. The free key works fine. Get one at ratingposterdb.com → API Key. Leave blank to keep today's posters.
+                  Upgrades posters everywhere to rating-embedded art from RatingPosterDB, when Poster ratings above is also on. The free key works fine. Get one at ratingposterdb.com → API Key. Leave blank to keep today's posters.
                 </p>
                 <input
                   type="text"

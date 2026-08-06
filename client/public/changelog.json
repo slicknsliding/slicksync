@@ -1,5 +1,26 @@
 [
   {
+    "version": "1.68.3",
+    "date": "2026-08-06",
+    "title": "fix: Nuvio Collection gif covers not animating; RPDB posters ignoring the Poster ratings toggle",
+    "features": [],
+    "bugFixes": [
+      "Nuvio Collections: a folder cover set to a real .gif URL rendered as a static first frame in the real app instead of animating, since the cover picker never set the focusGifEnabled flag Nuvio needs to actually play it. Now inferred automatically from the URL when you set a cover, and self-healed for existing folders on every save.",
+      "Settings: turning Poster ratings off still left RPDB's rating-embedded poster art showing everywhere if an RPDB key was configured - the two were unrelated switches. Poster ratings is now the master switch for both; the title-detail popup's own ratings text is unaffected either way."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.2",
+    "date": "2026-08-06",
+    "title": "fix: Nuvio Collections never actually synced to the real app - root cause",
+    "features": [],
+    "bugFixes": [
+      "Critical: Nuvio Collections created or edited through SlickSync never appeared on the real Nuvio app, even after a full restart, regardless of the v1.68.1 fix - the actual cause was that collections were being double-JSON-encoded before being sent, so they were stored as a JSON string instead of a real array. Nuvio's app strictly rejects that shape and silently discards the whole update, which is also why SlickSync's own reads never caught it - they already defensively re-parsed a string back into an array. Confirmed live with a raw request trace and fixed at the source; also fixed a related crash when a successful save legitimately returns an empty response."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.1",
     "date": "2026-08-06",
     "title": "fix: production activity sync crash, Nuvio Collection folders not appearing, safer account unlinking",
