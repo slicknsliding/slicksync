@@ -3,14 +3,14 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon, ArrowPathIcon, LockClosedIcon, ExclamationTriangleIcon, ArrowUpCircleIcon } from '@heroicons/react/24/outline';
+import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon, ArrowPathIcon, LockClosedIcon, ExclamationTriangleIcon, ArrowUpCircleIcon, MegaphoneIcon } from '@heroicons/react/24/outline';
 import { Badge, Button, Avatar } from '@/components/ui';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 
 interface NotificationItem {
   id: string;
-  type: 'activity' | 'invite' | 'task' | 'user' | 'request' | 'episode' | 'addon' | 'sync' | 'vault' | 'mismatch' | 'update';
+  type: 'activity' | 'invite' | 'task' | 'user' | 'request' | 'episode' | 'addon' | 'sync' | 'vault' | 'mismatch' | 'update' | 'announcement';
   title: string;
   message: string;
   timestamp: Date;
@@ -480,6 +480,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         return <ExclamationTriangleIcon className="w-4 h-4" />;
       case 'update':
         return <ArrowUpCircleIcon className="w-4 h-4" />;
+      case 'announcement':
+        return <MegaphoneIcon className="w-4 h-4" />;
     }
   };
 
