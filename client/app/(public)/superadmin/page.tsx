@@ -57,6 +57,21 @@ function isRecentlyRegistered(a: SuperAdminAccount): boolean {
   return Date.now() - new Date(a.createdAt).getTime() < NEW_ACCOUNT_AGE_MS;
 }
 
+// Resource quota alerting - flags an account whose resourceRowCount (the
+// same usage proxy the "Heaviest usage first" sort already uses) crosses a
+// superadmin-set threshold. There's no AppAccount for superadmin itself to
+// store a setting on (it's a single shared password, not a tenant), and no
+// push-notification identity to deliver an alert to either - so this lives
+// as a live-computed, in-panel indicator (mirroring the existing
+// "abandoned" pattern exactly: a summary count + quick-select) rather than
+// a push/bell notification, which this instance's notification pipeline has
+// no way to address to "the superadmin" specifically.
+const QUOTA_THRESHOLD_STORAGE_KEY = 'slicksync:superadmin:quotaThreshold';
+const DEFAULT_QUOTA_THRESHOLD = 500;
+function isOverQuota(a: SuperAdminAccount, threshold: number): boolean {
+  return threshold > 0 && a.resourceRowCount >= threshold;
+}
+
 // Cumulative registrations by day, straight from each account's own
 // createdAt - no new tracking/table needed, this is real data already on
 // every row fetched for the list above it. Aggregate-only (a count per day),
@@ -139,6 +154,17 @@ export default function SuperAdminPage() {
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [loadingAuditLog, setLoadingAuditLog] = useState(false);
   const [sortBy, setSortBy] = useState<SortKey>('createdAt');
+  // Lazy-init from localStorage (client-only, safe here since this whole
+  // page is 'use client' and this runs during render on first mount, not SSR).
+  const [quotaThreshold, setQuotaThreshold] = useState<number>(() => {
+    if (typeof window === 'undefined') return DEFAULT_QUOTA_THRESHOLD;
+    const stored = Number(window.localStorage.getItem(QUOTA_THRESHOLD_STORAGE_KEY));
+    return Number.isFinite(stored) && stored > 0 ? stored : DEFAULT_QUOTA_THRESHOLD;
+  });
+  const updateQuotaThreshold = (value: number) => {
+    setQuotaThreshold(value);
+    if (typeof window !== 'undefined') window.localStorage.setItem(QUOTA_THRESHOLD_STORAGE_KEY, String(value));
+  };
 
   const filteredAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -174,7 +200,8 @@ export default function SuperAdminPage() {
     disabled: accounts.filter((a) => a.disabled).length,
     neverLoggedIn: accounts.filter((a) => !a.lastLoginAt).length,
     abandoned: accounts.filter(isAbandoned).length,
-  }), [accounts]);
+    overQuota: accounts.filter((a) => isOverQuota(a, quotaThreshold)).length,
+  }), [accounts, quotaThreshold]);
 
   const loadAccounts = useCallback(async () => {
     setLoadingAccounts(true);
@@ -285,6 +312,10 @@ export default function SuperAdminPage() {
 
   const selectAbandoned = () => {
     setSelectedIds(new Set(filteredAccounts.filter(isAbandoned).map((a) => a.id)));
+  };
+
+  const selectOverQuota = () => {
+    setSelectedIds(new Set(filteredAccounts.filter((a) => isOverQuota(a, quotaThreshold)).map((a) => a.id)));
   };
 
   const handleBulkToggleDisabled = async (disable: boolean, confirmed = false) => {
@@ -431,13 +462,19 @@ export default function SuperAdminPage() {
           </div>
         )}
 
-        {accounts.length > 0 && (summary.neverLoggedIn > 0 || summary.abandoned > 0) && (
+        {accounts.length > 0 && (summary.neverLoggedIn > 0 || summary.abandoned > 0 || summary.overQuota > 0) && (
           <div className="flex items-center gap-4 flex-wrap mb-4 text-xs text-muted">
             <span><span className="text-default font-semibold">{summary.neverLoggedIn}</span> never logged in</span>
             {summary.abandoned > 0 && (
               <>
                 <span>·</span>
                 <span><span className="text-warning font-semibold">{summary.abandoned}</span> abandoned</span>
+              </>
+            )}
+            {summary.overQuota > 0 && (
+              <>
+                <span>·</span>
+                <span><span className="text-error font-semibold">{summary.overQuota}</span> over the {quotaThreshold}-record quota</span>
               </>
             )}
           </div>
@@ -470,6 +507,22 @@ export default function SuperAdminPage() {
               Select {summary.abandoned} abandoned
             </Button>
           )}
+          {summary.overQuota > 0 && (
+            <Button variant="ghost" size="sm" onClick={selectOverQuota}>
+              Select {summary.overQuota} over quota
+            </Button>
+          )}
+          <div className="flex items-center gap-1.5 text-xs text-muted" title="An account at or above this many total records (users/groups/addons/catalogs/watch sessions/vault entries) is flagged as over quota - saved on this device only">
+            <span>Quota</span>
+            <input
+              type="number"
+              min={0}
+              step={50}
+              value={quotaThreshold}
+              onChange={(e) => updateQuotaThreshold(Math.max(0, parseInt(e.target.value, 10) || 0))}
+              className="w-20 py-1.5 px-2 rounded-lg bg-surface-hover text-default text-xs border border-transparent focus:border-primary focus:outline-none"
+            />
+          </div>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as SortKey)}
@@ -508,6 +561,7 @@ export default function SuperAdminPage() {
                         {isRecentlyRegistered(a) && <Badge variant="primary" size="sm">New</Badge>}
                         {a.disabled && <Badge variant="warning" size="sm">Disabled</Badge>}
                         {isAbandoned(a) && <Badge variant="muted" size="sm" title="Registered a while ago, empty, never logged in">Abandoned</Badge>}
+                        {isOverQuota(a, quotaThreshold) && <Badge variant="error" size="sm" title={`At or above the ${quotaThreshold}-record quota`}>Over quota</Badge>}
                       </div>
                       <p className="text-xs text-muted mt-0.5">
                         {a.userCount} user{a.userCount !== 1 ? 's' : ''} · {a.groupCount} group{a.groupCount !== 1 ? 's' : ''} · {a.addonCount} addon{a.addonCount !== 1 ? 's' : ''}
