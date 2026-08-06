@@ -160,7 +160,6 @@ model AppAccount {
   // read-only alongside the UUID, purely so accounts are easier to tell
   // apart than by raw UUID prefix; it's never editable from that panel.
   displayName String?
-  sessionsRevokedAt DateTime? // Superadmin "force logout" - tokens with iat before this are rejected in server/middleware/auth.js, alongside the disabled check
 
   // Relationships
   invitations Invitation[]

@@ -180,7 +180,16 @@ function extractDecadeRange(query) {
 async function lookupTmdbKeywordId(text, apiKey) {
   const rsp = await fetch(`https://api.themoviedb.org/3/search/keyword?query=${encodeURIComponent(text)}&api_key=${encodeURIComponent(apiKey)}`)
   const data = rsp.ok ? await rsp.json() : { results: [] }
-  return data.results?.[0]?.id || null
+  const results = data.results || []
+  if (results.length === 0) return null
+  // TMDb's keyword search doesn't rank an exact match first - confirmed
+  // live, "horror" returns b-horror, j-horror, horror in that order, so a
+  // blind results[0] picked a niche subgenre keyword with almost no 90s/
+  // quality-filtered matches instead of the real "horror" keyword (1 vs 3
+  // results for the exact same discover query, live-verified). Prefer an
+  // exact case-insensitive name match when the results include one.
+  const exact = results.find((r) => r.name?.toLowerCase() === text.toLowerCase())
+  return (exact || results[0]).id
 }
 
 async function discoverByKeyword(keywordId, apiKey) {
@@ -221,6 +230,30 @@ async function discoverByDecade(range, apiKey) {
   ]
 }
 
+// Both a genre keyword AND a decade in the same query ("90s horror movies")
+// - TMDb's discover endpoint takes with_keywords and a date range in the
+// same call, so this is a real intersection, not two separate searches
+// merged after the fact. Confirmed real bug this was written to fix: a
+// decade-only search for this exact query returned Shawshank Redemption,
+// Fight Club, Titanic, Forrest Gump, The Lion King - the most popular 90s
+// titles overall, zero of them horror, because the decade branch used to
+// short-circuit and never even attempt a keyword lookup for "horror".
+async function discoverByKeywordAndDecade(keywordId, range, apiKey) {
+  const qualitySort = 'sort_by=vote_average.desc&vote_count.gte=500'
+  const dateParams = `primary_release_date.gte=${range.start}-01-01&primary_release_date.lte=${range.end}-12-31`
+  const airDateParams = `first_air_date.gte=${range.start}-01-01&first_air_date.lte=${range.end}-12-31`
+  const [movieRsp, tvRsp] = await Promise.all([
+    fetch(`https://api.themoviedb.org/3/discover/movie?with_keywords=${keywordId}&${dateParams}&${qualitySort}&api_key=${encodeURIComponent(apiKey)}`),
+    fetch(`https://api.themoviedb.org/3/discover/tv?with_keywords=${keywordId}&${airDateParams}&${qualitySort}&api_key=${encodeURIComponent(apiKey)}`),
+  ])
+  const movieData = movieRsp.ok ? await movieRsp.json() : { results: [] }
+  const tvData = tvRsp.ok ? await tvRsp.json() : { results: [] }
+  return [
+    ...(movieData.results || []).map((r) => ({ tmdbId: r.id, type: 'movie', name: r.title, poster: r.poster_path, year: r.release_date?.slice(0, 4) })),
+    ...(tvData.results || []).map((r) => ({ tmdbId: r.id, type: 'series', name: r.name, poster: r.poster_path, year: r.first_air_date?.slice(0, 4) })),
+  ]
+}
+
 async function suggestTitlesForCatalog(apiKey, query, excludeIds = []) {
   if (!apiKey) throw new Error('TMDb API key not configured (Settings -> SlickTrax)')
   const trimmed = String(query || '').trim()
@@ -229,35 +262,50 @@ async function suggestTitlesForCatalog(apiKey, query, excludeIds = []) {
 
   let candidates = []
   const decadeRange = extractDecadeRange(trimmed)
-  if (decadeRange) {
-    candidates = await discoverByDecade(decadeRange, apiKey)
-  } else {
-    let keywordId = await lookupTmdbKeywordId(trimmed, apiKey)
+  // Strip the decade token itself ("90s", "1990s") before looking for a
+  // genre/theme keyword in what's left - otherwise a query like "90s horror
+  // movies" would try to look up "90s" as a keyword alongside "horror".
+  const withoutDecade = trimmed.replace(/\b(19|20)?\d0s\b/i, ' ').replace(/\s+/g, ' ').trim()
+  // Original word order preserved (for a real multi-word keyword phrase),
+  // filler words removed. Confirmed real bug: leaving "movies" in for
+  // "90s horror movies" made the phrase lookup match TMDb's "horrormovies"
+  // keyword (a near-empty tag, 0 results after filtering) before the clean
+  // word "horror" ever got a chance - the phrase attempt must be built from
+  // filler-stripped words, not the raw remaining text.
+  const wordsInOrder = withoutDecade.toLowerCase().split(/\s+/).filter((w) => w && !GENERIC_WORDS.has(w) && !/^\d+$/.test(w))
+  const significant = [...wordsInOrder].sort((a, b) => b.length - a.length)
+
+  let keywordId = null
+  if (significant.length > 0) {
+    // Only worth trying as a phrase when there's more than one significant
+    // word - a single word has nothing left to distinguish it from the
+    // per-word retry below, and phrase search is the riskier of the two
+    // (more prone to matching an obscure compound tag over the real one).
+    if (wordsInOrder.length > 1) {
+      keywordId = await lookupTmdbKeywordId(wordsInOrder.join(' '), apiKey)
+    }
     if (!keywordId) {
-      // Full phrase didn't match a real keyword - strip generic filler
-      // words ("30 days of halloween" -> "halloween") and retry, longest
-      // remaining word first so multi-word themes still win over incidental
-      // single-word matches.
-      const significant = trimmed
-        .toLowerCase()
-        .split(/\s+/)
-        .filter((w) => w && !GENERIC_WORDS.has(w) && !/^\d+$/.test(w))
-        .sort((a, b) => b.length - a.length)
+      // Retry word by word, longest first, so a real theme word wins over
+      // an incidental short one ("30 days of halloween" -> "halloween").
       for (const word of significant) {
         keywordId = await lookupTmdbKeywordId(word, apiKey)
         if (keywordId) break
       }
     }
+  }
 
-    if (keywordId) {
-      candidates = await discoverByKeyword(keywordId, apiKey)
-    } else {
-      // No matching TMDb keyword at all - fall back to a plain title search
-      // (movies only; TV title search is noisier for a theme-driven name).
-      const searchRsp = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(trimmed)}&api_key=${encodeURIComponent(apiKey)}`)
-      const searchData = searchRsp.ok ? await searchRsp.json() : { results: [] }
-      candidates = (searchData.results || []).map((r) => ({ tmdbId: r.id, type: 'movie', name: r.title, poster: r.poster_path, year: r.release_date?.slice(0, 4) }))
-    }
+  if (decadeRange && keywordId) {
+    candidates = await discoverByKeywordAndDecade(keywordId, decadeRange, apiKey)
+  } else if (decadeRange) {
+    candidates = await discoverByDecade(decadeRange, apiKey)
+  } else if (keywordId) {
+    candidates = await discoverByKeyword(keywordId, apiKey)
+  } else {
+    // No matching TMDb keyword at all - fall back to a plain title search
+    // (movies only; TV title search is noisier for a theme-driven name).
+    const searchRsp = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(trimmed)}&api_key=${encodeURIComponent(apiKey)}`)
+    const searchData = searchRsp.ok ? await searchRsp.json() : { results: [] }
+    candidates = (searchData.results || []).map((r) => ({ tmdbId: r.id, type: 'movie', name: r.title, poster: r.poster_path, year: r.release_date?.slice(0, 4) }))
   }
 
   const capped = candidates.slice(0, MAX_SUGGESTIONS * 2) // headroom for excluded/unresolvable dropouts

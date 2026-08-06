@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.68.0",
+    "date": "2026-08-06",
+    "title": "feat: Nuvio Collections JSON export/import; fix: Suggest Titles decade+genre queries",
+    "features": [
+      "Nuvio Collections: Export downloads a profile's collections as JSON; Import stages a JSON file into the local draft for review before saving. An info panel next to both links out to Nuvio's own matching Import/Export on nuvio.tv, for anyone who'd rather manage things directly there."
+    ],
+    "bugFixes": [
+      "Suggest Titles: a query combining a decade and a genre/theme (\"90s horror movies\") returned the most popular titles from that decade overall, regardless of theme - the decade branch never even attempted a keyword lookup. Also fixed two follow-on bugs found while live-verifying the first fix: the keyword lookup wasn't preferring an exact name match (picked a near-empty subgenre tag over the real keyword), and the multi-word phrase attempt could match an obscure compound tag if a filler word like \"movies\" was still attached to it."
+    ],
+    "miscChores": [
+      "Superadmin: removed Force Logout - disabling an account already kills its sessions on every request, so the extra action (revoke access without blocking login) wasn't worth the surface for this panel's real moderation use."
+    ]
+  },
+  {
     "version": "1.67.0",
     "date": "2026-08-06",
     "title": "feat: Superadmin usage sort/bulk actions/force-logout, self-service account nicknames",
