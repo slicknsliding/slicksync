@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.68.3",
+    "date": "2026-08-06",
+    "title": "fix: Nuvio Collection gif covers not animating; RPDB posters ignoring the Poster ratings toggle",
+    "features": [],
+    "bugFixes": [
+      "Nuvio Collections: a folder cover set to a real .gif URL rendered as a static first frame in the real app instead of animating, since the cover picker never set the focusGifEnabled flag Nuvio needs to actually play it. Now inferred automatically from the URL when you set a cover, and self-healed for existing folders on every save.",
+      "Settings: turning Poster ratings off still left RPDB's rating-embedded poster art showing everywhere if an RPDB key was configured - the two were unrelated switches. Poster ratings is now the master switch for both; the title-detail popup's own ratings text is unaffected either way."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.2",
     "date": "2026-08-06",
     "title": "fix: Nuvio Collections never actually synced to the real app - root cause",
