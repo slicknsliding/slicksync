@@ -168,6 +168,20 @@ function newFolderDefaults() {
   return { tileShape: 'LANDSCAPE' as const, hideTitle: false, focusGifEnabled: false };
 }
 
+// Nuvio's app only animates a folder's coverImageUrl when focusGifEnabled
+// is explicitly true - otherwise a real .gif cover just renders its first
+// frame, static. The cover picker only ever asks for a URL, never whether
+// it's a gif, so infer it from the extension (ignoring query strings, since
+// CDN-hosted gifs like Tenor/Giphy links commonly carry a token after it).
+function isGifUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    return /\.gif$/i.test(new URL(url).pathname);
+  } catch {
+    return /\.gif(\?|$)/i.test(url);
+  }
+}
+
 // Fresh ids for the collection and every folder inside it, so pasting a
 // copy into a target profile never collides with (or aliases) the source's
 // own ids. catalogSources carry no id of their own - copied as-is. Also
@@ -721,8 +735,22 @@ export default function NuvioCollectionsPage() {
     if (!selectedUserId || selectedProfileIndex === null) return;
     setSaving(true);
     try {
-      await api.setNuvioCollections(selectedUserId, selectedProfileIndex, collections);
-      setSavedSnapshot(JSON.stringify(collections));
+      // Self-heal focusGifEnabled on every save, not just through the cover
+      // picker - folders created before that field existed (or before this
+      // fix) can carry a real .gif coverImageUrl with focusGifEnabled still
+      // missing/false, which Nuvio renders as a static first frame instead
+      // of animating. Only touches folders that already have a cover set.
+      const normalized = collections.map((c) => ({
+        ...c,
+        folders: (c.folders || []).map((f) =>
+          typeof f.coverImageUrl === 'string' && f.coverImageUrl
+            ? { ...f, focusGifEnabled: isGifUrl(f.coverImageUrl) }
+            : f
+        ),
+      }));
+      await api.setNuvioCollections(selectedUserId, selectedProfileIndex, normalized);
+      setCollections(normalized);
+      setSavedSnapshot(JSON.stringify(normalized));
       toast.success('Collections saved');
     } catch (e: any) {
       toast.error(e.message || 'Failed to save Collections');
@@ -1725,7 +1753,10 @@ export default function NuvioCollectionsPage() {
             size="full"
             onSave={async (data) => {
               if (!('avatarUrl' in data)) { setCoverPickerFolder(null); return; }
-              updateFolder(coverPickerFolder.collectionId, coverPickerFolder.folderId, { coverImageUrl: data.avatarUrl ?? null });
+              updateFolder(coverPickerFolder.collectionId, coverPickerFolder.folderId, {
+                coverImageUrl: data.avatarUrl ?? null,
+                focusGifEnabled: isGifUrl(data.avatarUrl),
+              });
               setCoverPickerFolder(null);
             }}
           />
