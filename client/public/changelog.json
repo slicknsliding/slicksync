@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.2",
+    "date": "2026-08-06",
+    "title": "fix: Nuvio Collections never actually synced to the real app - root cause",
+    "features": [],
+    "bugFixes": [
+      "Critical: Nuvio Collections created or edited through SlickSync never appeared on the real Nuvio app, even after a full restart, regardless of the v1.68.1 fix - the actual cause was that collections were being double-JSON-encoded before being sent, so they were stored as a JSON string instead of a real array. Nuvio's app strictly rejects that shape and silently discards the whole update, which is also why SlickSync's own reads never caught it - they already defensively re-parsed a string back into an array. Confirmed live with a raw request trace and fixed at the source; also fixed a related crash when a successful save legitimately returns an empty response."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.1",
     "date": "2026-08-06",
     "title": "fix: production activity sync crash, Nuvio Collection folders not appearing, safer account unlinking",
