@@ -292,6 +292,71 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
     }
   });
 
+  // GET/PUT /db-maintenance - scheduled VACUUM + opt-in watch-history
+  // pruning settings, plus a dry-run prunable-row count so the panel can
+  // show what a prune would actually delete before anyone commits to it.
+  // Instance-level (one shared SQLite file, not per-account), so this lives
+  // under Superadmin rather than any tenant's own Settings - see
+  // dbMaintenance.js's own comment on why.
+  router.get('/db-maintenance', requireSuperAdmin, async (req, res) => {
+    try {
+      const { getSettings, countPrunableRows, getDbFilePath } = require('../utils/dbMaintenance');
+      if (!getDbFilePath()) return res.json({ supported: false });
+      const settings = getSettings();
+      const prunable = await countPrunableRows(prisma, settings.pruneRetentionDays);
+      res.json({ supported: true, settings, prunable });
+    } catch (e) {
+      console.error('[Superadmin] Failed to load DB maintenance settings:', e?.message);
+      res.status(500).json({ message: 'Failed to load DB maintenance settings' });
+    }
+  });
+
+  router.put('/db-maintenance', requireSuperAdmin, async (req, res) => {
+    try {
+      const { saveSettings, getDbFilePath } = require('../utils/dbMaintenance');
+      if (!getDbFilePath()) return res.status(400).json({ message: 'Not applicable outside private/SQLite mode' });
+      const body = req.body || {};
+      const patch = {};
+      if ('vacuumEnabled' in body) patch.vacuumEnabled = !!body.vacuumEnabled;
+      if ('pruneEnabled' in body) patch.pruneEnabled = !!body.pruneEnabled;
+      if ('pruneRetentionDays' in body) {
+        const days = parseInt(body.pruneRetentionDays, 10);
+        if (!Number.isFinite(days) || days < 30) return res.status(400).json({ message: 'pruneRetentionDays must be at least 30' });
+        patch.pruneRetentionDays = days;
+      }
+      const settings = saveSettings(patch);
+      res.json({ settings });
+    } catch (e) {
+      console.error('[Superadmin] Failed to update DB maintenance settings:', e?.message);
+      res.status(500).json({ message: 'Failed to update DB maintenance settings' });
+    }
+  });
+
+  router.post('/db-maintenance/vacuum', requireSuperAdmin, async (req, res) => {
+    try {
+      const { runVacuum, getDbFilePath } = require('../utils/dbMaintenance');
+      if (!getDbFilePath()) return res.status(400).json({ message: 'Not applicable outside private/SQLite mode' });
+      const result = await runVacuum(prisma);
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      console.error('[Superadmin] VACUUM failed:', e?.message);
+      res.status(500).json({ message: 'VACUUM failed' });
+    }
+  });
+
+  router.post('/db-maintenance/prune', requireSuperAdmin, async (req, res) => {
+    try {
+      const { runPrune, getSettings, getDbFilePath } = require('../utils/dbMaintenance');
+      if (!getDbFilePath()) return res.status(400).json({ message: 'Not applicable outside private/SQLite mode' });
+      const settings = getSettings();
+      const result = await runPrune(prisma, settings.pruneRetentionDays);
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      console.error('[Superadmin] Prune failed:', e?.message);
+      res.status(500).json({ message: 'Prune failed' });
+    }
+  });
+
   // POST not DELETE - a bulk delete needs a body (the id list), which DELETE
   // requests can carry but many proxies/clients handle unreliably.
   router.post('/accounts/bulk-delete', requireSuperAdmin, async (req, res) => {
