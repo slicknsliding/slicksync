@@ -155,6 +155,12 @@ model AppAccount {
   createdAt   DateTime  @default(now())
   lastLoginAt DateTime?
   disabled    Boolean   @default(false) // login blocked when true; data untouched
+  // Self-service - the account holder names themselves (Settings), NOT
+  // something an operator assigns. Superadmin's account list displays it
+  // read-only alongside the UUID, purely so accounts are easier to tell
+  // apart than by raw UUID prefix; it's never editable from that panel.
+  displayName String?
+  sessionsRevokedAt DateTime? // Superadmin "force logout" - tokens with iat before this are rejected in server/middleware/auth.js, alongside the disabled check
 
   // Relationships
   invitations Invitation[]

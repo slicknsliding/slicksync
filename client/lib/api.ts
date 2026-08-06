@@ -930,6 +930,13 @@ class ApiClient {
     });
   }
 
+  async updateAccountDisplayName(displayName: string | null) {
+    return this.fetch<{ displayName: string | null }>('/settings/account-display-name', {
+      method: 'PUT',
+      body: JSON.stringify({ displayName }),
+    });
+  }
+
   // Settings
   async getSyncSettings() {
     return this.fetch<SyncSettings>('/settings/account-sync');
@@ -2282,6 +2289,7 @@ export interface AccountStats {
   email?: string | null;
   linkedProvider?: 'stremio' | 'nuvio' | null;
   avatarUrl?: string | null;
+  displayName?: string | null;
 }
 
 export interface SyncSettings {
