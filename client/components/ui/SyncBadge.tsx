@@ -133,25 +133,48 @@ export function SyncBadge({
     }
   }, [userId, groupId]);
 
+  // A check that lands right after a write (a sync elsewhere, or this
+  // badge's own first mount right after navigating away from a page where a
+  // sync just ran) can still see "unsynced" if it reads the provider
+  // (Nuvio's own backend, documented elsewhere in this codebase as
+  // occasionally slow/degraded) before the write has actually propagated
+  // there - a real read-after-write race, not a failed sync. Confirmed live:
+  // "Sync Group" succeeds, a fresh check moments later (including on a
+  // different page's badge) reads back stale state and shows "Unsynced",
+  // then a manual re-check right after correctly shows "Synced" with no
+  // further action taken. Only retries while the verdict is "unsynced" - a
+  // genuinely-never-synced check has no reason to self-correct, so this
+  // never masks a real problem, just a propagation-lag false negative in
+  // the few seconds right after a write.
+  const fetchSyncStatusVerified = useCallback(async (retriesLeft = 2) => {
+    await fetchSyncStatus();
+    if (statusRef.current === 'unsynced' && retriesLeft > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      await fetchSyncStatusVerified(retriesLeft - 1);
+    }
+  }, [fetchSyncStatus]);
+
   // Initial fetch and polling
   useEffect(() => {
-    fetchSyncStatus();
+    fetchSyncStatusVerified();
 
     // Poll for updates. Sync status only changes on user action (connect,
     // sync, addon edits), and the isSyncing-transition effect below already
     // refetches immediately right after a sync completes, so this interval
-    // only needs to catch drift, not be near-real-time.
+    // only needs to catch drift, not be near-real-time. Plain fetchSyncStatus
+    // here (no retry) - this is routine background polling, not immediately
+    // following a known write, so there's no propagation-lag window to guard.
     const interval = setInterval(fetchSyncStatus, 120000);
     return () => clearInterval(interval);
-  }, [fetchSyncStatus]);
+  }, [fetchSyncStatusVerified, fetchSyncStatus]);
 
   // When sync completes, refetch the actual status instead of assuming success
   useEffect(() => {
     if (prevIsSyncing.current && !isSyncing) {
-      fetchSyncStatus();
+      fetchSyncStatusVerified();
     }
     prevIsSyncing.current = isSyncing;
-  }, [isSyncing, fetchSyncStatus]);
+  }, [isSyncing, fetchSyncStatusVerified]);
 
   const finalStatus = isSyncing ? 'syncing' : (isLoading ? 'checking' : status);
 

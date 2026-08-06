@@ -1760,7 +1760,7 @@ class ApiClient {
       body: JSON.stringify({ name, description }),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -2438,8 +2438,15 @@ export interface CustomList {
   coverColorIndex: number | null;
   importSourceUrl: string | null;
   autoRefresh: boolean;
+  autoRefreshFrequency: 'daily' | 'weekly';
   lastAutoRefreshAt: string | null;
   pinned: boolean;
+  // Owner-set opt-in - visible (read-only) to every other account on this
+  // instance when true. isOwner is computed server-side per viewer, not
+  // stored - a shared catalog you don't own comes back with isOwner: false
+  // and the client must hide every mutating affordance for it.
+  shared: boolean;
+  isOwner: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -2489,6 +2496,16 @@ export interface NuvioCollectionFolder {
   tileShape?: 'LANDSCAPE' | 'SQUARE' | 'POSTER';
   hideTitle?: boolean;
   focusGifEnabled?: boolean;
+  // The actual field Nuvio's home-row rendering checks to decide whether to
+  // animate a folder's cover - separate from coverImageUrl (the static
+  // fallback used everywhere else, e.g. folder detail). coverImageUrl alone,
+  // even with a real .gif URL and focusGifEnabled true, never animates -
+  // confirmed by reading Nuvio's own HomeCollectionRowSection.kt:
+  // isAnimatedCollectionFolderImage() only checks focusGifUrl, and
+  // collectionFolderCardImageUrl() only prefers it over coverImageUrl when
+  // set. Keep this equal to coverImageUrl whenever that's a .gif, null
+  // otherwise.
+  focusGifUrl?: string | null;
   [key: string]: any;
 }
 
@@ -2694,6 +2711,7 @@ export interface StoredNotification {
 export interface ContinueWatchingItem {
   userId: string;
   username: string;
+  providerType?: string;
   // 'movie' entries are in-progress movies (resume always true, nextEpisode/
   // lastWatched always null). For 'series', nextEpisode is the episode the
   // card opens - the in-progress one when resume=true, the next unwatched

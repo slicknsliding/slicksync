@@ -735,16 +735,23 @@ export default function NuvioCollectionsPage() {
     if (!selectedUserId || selectedProfileIndex === null) return;
     setSaving(true);
     try {
-      // Self-heal focusGifEnabled on every save, not just through the cover
-      // picker - folders created before that field existed (or before this
-      // fix) can carry a real .gif coverImageUrl with focusGifEnabled still
-      // missing/false, which Nuvio renders as a static first frame instead
-      // of animating. Only touches folders that already have a cover set.
+      // Self-heal focusGifEnabled/focusGifUrl on every save, not just through
+      // the cover picker - folders created before either field existed (or
+      // before this fix) can carry a real .gif coverImageUrl with neither
+      // set, which Nuvio renders as a static first frame instead of
+      // animating (focusGifUrl specifically is what its home-row rendering
+      // actually checks - see HomeCollectionRowSection.kt's
+      // isAnimatedCollectionFolderImage()). Only touches folders that
+      // already have a cover set.
       const normalized = collections.map((c) => ({
         ...c,
         folders: (c.folders || []).map((f) =>
           typeof f.coverImageUrl === 'string' && f.coverImageUrl
-            ? { ...f, focusGifEnabled: isGifUrl(f.coverImageUrl) }
+            ? {
+                ...f,
+                focusGifEnabled: isGifUrl(f.coverImageUrl),
+                focusGifUrl: isGifUrl(f.coverImageUrl) ? f.coverImageUrl : null,
+              }
             : f
         ),
       }));
@@ -1124,6 +1131,17 @@ export default function NuvioCollectionsPage() {
                   <p className="text-xs text-muted">
                     Some folders may use TMDb-sourced templates (created in the Nuvio app or on nuvio.tv) rather than an addon catalog.
                     Those need a TMDb API key set in the <span className="text-default">Nuvio app&apos;s own Settings</span> — separate from SlickSync&apos;s — or they won&apos;t render on-device.
+                  </p>
+                </div>
+
+                <div className="flex items-start gap-2 mb-4 p-3 rounded-lg bg-subtle border border-default">
+                  <InformationCircleIcon className="w-4 h-4 text-muted shrink-0 mt-0.5" />
+                  <p className="text-xs text-muted">
+                    Want to turn a local Catalog into a folder here? Nuvio folders can only reference a live addon catalog, TMDb list, or Trakt
+                    list — not a fixed set of titles directly — so open the Catalog, use <span className="text-default">Export to MDBList</span> to
+                    create a real MDBList list from it, then add that list&apos;s URL as a Custom Catalog (provider: MDBList) in either{' '}
+                    <span className="text-default">AIOStreams</span> or <span className="text-default">AIOMetadata</span>&apos;s own config — both
+                    work fine as sources. Once saved there, it shows up as a normal source in <span className="text-default">Add source</span> below.
                   </p>
                 </div>
 
@@ -1756,6 +1774,7 @@ export default function NuvioCollectionsPage() {
               updateFolder(coverPickerFolder.collectionId, coverPickerFolder.folderId, {
                 coverImageUrl: data.avatarUrl ?? null,
                 focusGifEnabled: isGifUrl(data.avatarUrl),
+                focusGifUrl: isGifUrl(data.avatarUrl) ? data.avatarUrl : null,
               });
               setCoverPickerFolder(null);
             }}
