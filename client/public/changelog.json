@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.4",
+    "date": "2026-08-06",
+    "title": "fix: Nuvio gif covers - the real field this time",
+    "features": [],
+    "bugFixes": [
+      "Nuvio Collections: the v1.68.3 gif-animation fix targeted the wrong field. Read Nuvio's actual app source to confirm: its home-row rendering only animates a folder cover when a separate focusGifUrl field is set - coverImageUrl (what SlickSync was writing) is only ever used as the static fallback. Now sets focusGifUrl too whenever a folder's cover is a real .gif, self-healed on save for existing folders."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.3",
     "date": "2026-08-06",
     "title": "fix: Nuvio Collection gif covers not animating; RPDB posters ignoring the Poster ratings toggle",
