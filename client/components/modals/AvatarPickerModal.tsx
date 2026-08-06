@@ -53,7 +53,14 @@ export function AvatarPickerModal({
   previewShape = 'circle',
   size = 'md',
 }: AvatarPickerModalProps) {
-  const [tab, setTab] = useState<Tab>(currentAvatarUrl ? 'url' : (previewShape === 'rect' ? (nuvioCoversUserId ? 'nuvio' : 'url') : 'color'));
+  // nuvioCoversUserId is only ever passed for the Nuvio folder/collection
+  // cover picker - most people picking a cover there are browsing the
+  // gallery, not pasting a URL, so it wins the default tab even when a
+  // cover is already set (editing an existing folder's cover otherwise
+  // landed on the URL tab just because currentAvatarUrl was non-null).
+  const [tab, setTab] = useState<Tab>(
+    nuvioCoversUserId ? 'nuvio' : currentAvatarUrl ? 'url' : (previewShape === 'rect' ? 'url' : 'color')
+  );
   const [urlInput, setUrlInput] = useState(currentAvatarUrl || '');
   const [selectedColor, setSelectedColor] = useState(currentColorIndex ?? 0);
   const [isSaving, setIsSaving] = useState(false);
