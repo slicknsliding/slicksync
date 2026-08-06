@@ -1134,6 +1134,18 @@ export default function NuvioCollectionsPage() {
                   </p>
                 </div>
 
+                <div className="flex items-start gap-2 mb-4 p-3 rounded-lg bg-subtle border border-default">
+                  <InformationCircleIcon className="w-4 h-4 text-muted shrink-0 mt-0.5" />
+                  <p className="text-xs text-muted">
+                    Want to turn a local Catalog into a folder here? Nuvio folders can only reference a live addon catalog, TMDb list, or Trakt
+                    list — not a fixed set of titles directly — so open the Catalog, use <span className="text-default">Export to MDBList</span> to
+                    create a real MDBList list from it, then add that list&apos;s URL as a Custom Catalog (provider: MDBList) in either{' '}
+                    <span className="text-default">AIOStreams</span> or <span className="text-default">AIOMetadata</span>&apos;s own config —
+                    AIOMetadata is confirmed to work reliably for this. Once saved there, it shows up as a normal source in{' '}
+                    <span className="text-default">Add source</span> below.
+                  </p>
+                </div>
+
                 <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
                   <p className="text-sm text-muted">{collections.length} collection{collections.length !== 1 ? 's' : ''}{isDirty && <span className="text-warning ml-2">(unsaved changes)</span>}</p>
                   <div className="flex items-center gap-2">
