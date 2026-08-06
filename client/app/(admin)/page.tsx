@@ -337,7 +337,14 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
               ? `${item.resume ? 'Resume ' : ''}S${String(item.nextEpisode.season).padStart(2, '0')}E${String(item.nextEpisode.episode).padStart(2, '0')}${item.nextEpisode.title ? ` · ${item.nextEpisode.title}` : ''}`
               : `Resume${item.progressPercent != null ? ` · ${item.progressPercent}% watched` : ''}`}
           </p>
-          <p className="text-[10px] text-subtle truncate mt-0.5">{item.username}</p>
+          <div className="flex items-center gap-1 mt-0.5">
+            <p className="text-[10px] text-subtle truncate">{item.username}</p>
+            {item.providerType && (
+              <Badge variant={item.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm" className="shrink-0">
+                {item.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+              </Badge>
+            )}
+          </div>
         </div>
       </div>
 
