@@ -437,6 +437,14 @@ model CustomList {
   // separate weekly timer.
   autoRefreshFrequency String @default("daily")
   lastAutoRefreshAt DateTime?
+  // Owner-set opt-in: when true, this catalog is visible (read-only) to
+  // every OTHER account on this same instance, not just its own owner -
+  // per-catalog, never instance-wide or admin-forced. Every mutating route
+  // in routes/lists.js already scopes its query by (id, accountId), so a
+  // non-owner viewer is blocked from writes purely by that existing
+  // ownership check - this field only changes what GET / returns, not any
+  // write-path authorization.
+  shared           Boolean  @default(false)
   // Featured/hero treatment on the Catalogs index page - at most meaningful
   // for one catalog at a time (the client only ever shows the first pinned
   // one as the hero), but not DB-enforced as singular; a second pin just

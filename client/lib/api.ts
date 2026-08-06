@@ -1760,7 +1760,7 @@ class ApiClient {
       body: JSON.stringify({ name, description }),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly' }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -2441,6 +2441,12 @@ export interface CustomList {
   autoRefreshFrequency: 'daily' | 'weekly';
   lastAutoRefreshAt: string | null;
   pinned: boolean;
+  // Owner-set opt-in - visible (read-only) to every other account on this
+  // instance when true. isOwner is computed server-side per viewer, not
+  // stored - a shared catalog you don't own comes back with isOwner: false
+  // and the client must hide every mutating affordance for it.
+  shared: boolean;
+  isOwner: boolean;
   createdAt: string;
   updatedAt: string;
 }

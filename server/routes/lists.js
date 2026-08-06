@@ -17,7 +17,11 @@ module.exports = ({ prisma, getAccountId }) => {
     try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a : []; }
     catch { return []; }
   };
-  const shape = (list) => ({
+  // viewerAccountId is optional - omitted for internal callers that only
+  // ever shape a caller's own list (isOwner would always be true there
+  // anyway). GET / is the only place that shapes a possibly-not-owned
+  // (shared) list, so it's the only caller that needs to pass it.
+  const shape = (list, viewerAccountId) => ({
     id: list.id,
     name: list.name,
     description: list.description || null,
@@ -29,6 +33,8 @@ module.exports = ({ prisma, getAccountId }) => {
     autoRefreshFrequency: list.autoRefreshFrequency === 'weekly' ? 'weekly' : 'daily',
     lastAutoRefreshAt: list.lastAutoRefreshAt || null,
     pinned: !!list.pinned,
+    shared: !!list.shared,
+    isOwner: viewerAccountId === undefined ? true : list.accountId === viewerAccountId,
     createdAt: list.createdAt,
     updatedAt: list.updatedAt,
   });
@@ -42,15 +48,23 @@ module.exports = ({ prisma, getAccountId }) => {
     return { id: String(id), type, name: String(name), poster: body.poster || null, year: body.year || null };
   };
 
-  // GET /api/lists — all lists for this account, newest-updated first.
+  // GET /api/lists — this account's own lists, newest-updated first, plus
+  // any OTHER account's catalogs shared with the whole instance (shared:
+  // true). Merged into one response (own lists first) so every existing
+  // client caller - which finds a list by id out of this same array - keeps
+  // working unchanged for a shared catalog's detail page too, with no
+  // separate fetch path to wire up.
   router.get('/', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';
-      const lists = await prisma.customList.findMany({
-        where: { accountId },
-        orderBy: { updatedAt: 'desc' },
-      });
-      res.json(lists.map(shape));
+      const [ownLists, sharedLists] = await Promise.all([
+        prisma.customList.findMany({ where: { accountId }, orderBy: { updatedAt: 'desc' } }),
+        prisma.customList.findMany({ where: { shared: true, accountId: { not: accountId } }, orderBy: { updatedAt: 'desc' } }),
+      ]);
+      res.json([
+        ...ownLists.map((l) => shape(l, accountId)),
+        ...sharedLists.map((l) => shape(l, accountId)),
+      ]);
     } catch (e) {
       console.error('Error fetching custom lists:', e);
       res.status(500).json({ error: 'Failed to fetch lists' });
@@ -164,6 +178,7 @@ module.exports = ({ prisma, getAccountId }) => {
       if ('autoRefreshFrequency' in body) {
         data.autoRefreshFrequency = body.autoRefreshFrequency === 'weekly' ? 'weekly' : 'daily';
       }
+      if ('shared' in body) data.shared = !!body.shared;
       const list = await prisma.customList.update({ where: { id: existing.id }, data });
       res.json(shape(list));
     } catch (e) {
