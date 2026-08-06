@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import {
-  Card, Button, Modal, ConfirmModal, MediaDetailModal, PosterCard, PosterCardItem,
+  Card, Button, Badge, Modal, ConfirmModal, MediaDetailModal, PosterCard, PosterCardItem,
   SelectionCheckbox, SelectAllCheckbox, ToggleSwitch,
   DndContext, closestCenter, SortableContext, useSortable, useSortableSensors, CSS,
 } from '@/components/ui';
@@ -24,7 +24,7 @@ import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import {
   RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon, SparklesIcon, PhotoIcon,
-  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, ArrowPathIcon,
+  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, ArrowPathIcon, ShareIcon,
 } from '@heroicons/react/24/outline';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
@@ -70,7 +70,7 @@ function CatalogGridCard({
   onToggleWatched: (next: boolean) => void;
   isMenuOpen: boolean;
   onMenuOpenChange: (open: boolean) => void;
-  onRemove: () => void;
+  onRemove?: () => void;
   selectMode: boolean;
   isSelected: boolean;
   onToggleSelect: () => void;
@@ -293,11 +293,42 @@ export default function ListDetailPage() {
     try {
       const updated = await api.updateList(list.id, { autoRefresh: next });
       setList(updated);
-      toast.success(next ? 'This catalog will now refresh from its source daily' : 'Daily auto-refresh turned off');
+      const freq = updated.autoRefreshFrequency === 'weekly' ? 'weekly' : 'daily';
+      toast.success(next ? `This catalog will now refresh from its source ${freq}` : 'Auto-refresh turned off');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to update auto-refresh');
     } finally {
       setSavingAutoRefresh(false);
+    }
+  };
+
+  const handleChangeAutoRefreshFrequency = async (frequency: 'daily' | 'weekly') => {
+    if (!list || savingAutoRefresh || list.autoRefreshFrequency === frequency) return;
+    setSavingAutoRefresh(true);
+    try {
+      const updated = await api.updateList(list.id, { autoRefreshFrequency: frequency });
+      setList(updated);
+      toast.success(`Auto-refresh set to ${frequency}`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to update auto-refresh schedule');
+    } finally {
+      setSavingAutoRefresh(false);
+    }
+  };
+
+  const [savingShared, setSavingShared] = useState(false);
+  const handleToggleShared = async () => {
+    if (!list || savingShared) return;
+    const next = !list.shared;
+    setSavingShared(true);
+    try {
+      const updated = await api.updateList(list.id, { shared: next });
+      setList(updated);
+      toast.success(next ? 'This catalog is now visible (read-only) to other accounts on this instance' : 'No longer shared');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to update sharing');
+    } finally {
+      setSavingShared(false);
     }
   };
 
@@ -345,7 +376,7 @@ export default function ListDetailPage() {
   // itemsJson order, which reads as broken the next time sort resets to
   // "List order". Also off during select mode so a drag gesture can't
   // fight with tap-to-select.
-  const canReorder = sortBy === 'default' && !selectMode && sortedItems.length > 1;
+  const canReorder = sortBy === 'default' && !selectMode && sortedItems.length > 1 && !!list?.isOwner;
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     if (!list || !canReorder) return;
@@ -427,7 +458,12 @@ export default function ListDetailPage() {
   // The bell now always renders on its own line above whatever this
   // returns (NebulaPageHeading's own line-break spacer), so all 5 buttons
   // can stay inline here with no page-specific layout trick needed.
-  const editActions = list && !isLoading && !notFound ? (
+  // A shared-with-you catalog is read-only - every button in here mutates
+  // the list, and the server already 404s any write from a non-owner
+  // account, so gating this one variable (used by both the non-nebula
+  // Header and NebulaPageHeading below) hides every header-level mutating
+  // action at once instead of needing a per-button check.
+  const editActions = list && !isLoading && !notFound && list.isOwner ? (
     <div className="flex items-center gap-2">
       <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
         Suggest titles
@@ -442,6 +478,16 @@ export default function ListDetailPage() {
       </Button>
       <Button variant="secondary" size="sm" leftIcon={<PencilSquareIcon className="w-4 h-4" />} onClick={() => { setRenameValue(list.name); setRenaming(true); }}>
         Rename
+      </Button>
+      <Button
+        variant={list.shared ? 'primary' : 'secondary'}
+        size="sm"
+        leftIcon={<ShareIcon className="w-4 h-4" />}
+        onClick={handleToggleShared}
+        isLoading={savingShared}
+        title={list.shared ? 'Visible (read-only) to other accounts on this instance - click to stop sharing' : 'Make this catalog visible (read-only) to other accounts on this instance'}
+      >
+        {list.shared ? 'Shared' : 'Share'}
       </Button>
       <Button
         variant="secondary"
@@ -527,6 +573,15 @@ export default function ListDetailPage() {
           </div>
         )}
 
+        {list && !list.isOwner && (
+          <div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-subtle border border-default">
+            <ShareIcon className="w-4 h-4 text-muted shrink-0" />
+            <p className="text-xs text-muted">
+              Shared with you by another account on this instance - read only, you can browse and open titles but can&apos;t edit this catalog.
+            </p>
+          </div>
+        )}
+
         <PageSection>
           {notFound ? (
             <Card padding="lg" className="text-center">
@@ -551,7 +606,7 @@ export default function ListDetailPage() {
               {list.items.length > 1 && (
                 <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                   <div className="flex items-center gap-2">
-                    {selectMode ? (
+                    {selectMode && list.isOwner ? (
                       <>
                         <SelectAllCheckbox
                           totalCount={sortedItems.length}
@@ -561,10 +616,12 @@ export default function ListDetailPage() {
                         />
                         <span className="text-xs text-muted">{selectedIds.size} of {sortedItems.length} selected</span>
                       </>
-                    ) : (
+                    ) : list.isOwner ? (
                       <Button variant="ghost" size="sm" leftIcon={<CheckCircleIcon className="w-4 h-4" />} onClick={() => setSelectMode(true)}>
                         Select
                       </Button>
+                    ) : (
+                      <Badge variant="muted" size="sm">Shared with you - read only</Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -616,7 +673,7 @@ export default function ListDetailPage() {
                         onToggleWatched={(next) => toggleWatched(toPosterCardItem(item), next)}
                         isMenuOpen={openMenuKey === item.id}
                         onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
-                        onRemove={() => handleRemoveItem(item)}
+                        onRemove={list.isOwner ? () => handleRemoveItem(item) : undefined}
                         selectMode={selectMode}
                         isSelected={selectedIds.has(item.id)}
                         onToggleSelect={() => toggleSelectItem(item.id)}
@@ -733,16 +790,43 @@ export default function ListDetailPage() {
             <p className="text-xs text-muted">
               Applying replaces this catalog&apos;s titles with the source list&apos;s current contents. Any titles you&apos;ve added or removed by hand since importing will be lost.
             </p>
-            <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-surface-hover">
-              <div>
-                <p className="text-sm font-medium text-default">Auto-refresh daily</p>
-                <p className="text-xs text-muted">
-                  {list?.autoRefresh && list.lastAutoRefreshAt
-                    ? `Last auto-refreshed ${new Date(list.lastAutoRefreshAt).toLocaleDateString()}`
-                    : 'Automatically re-pull and apply, once a day, no confirmation'}
-                </p>
+            <div className="p-3 rounded-lg bg-surface-hover space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-default">Auto-refresh</p>
+                  <p className="text-xs text-muted">
+                    {list?.autoRefresh && list.lastAutoRefreshAt
+                      ? `Last auto-refreshed ${new Date(list.lastAutoRefreshAt).toLocaleDateString()}`
+                      : 'Automatically re-pull and apply, no confirmation'}
+                  </p>
+                </div>
+                <ToggleSwitch checked={!!list?.autoRefresh} onChange={handleToggleAutoRefresh} disabled={savingAutoRefresh} />
               </div>
-              <ToggleSwitch checked={!!list?.autoRefresh} onChange={handleToggleAutoRefresh} disabled={savingAutoRefresh} />
+              {list?.autoRefresh && (
+                <div className="flex items-center gap-2 pt-1 border-t border-default">
+                  <p className="text-xs text-muted pt-2">Schedule</p>
+                  <div className="flex gap-1 pt-2">
+                    {(['daily', 'weekly'] as const).map((freq) => {
+                      const active = (list.autoRefreshFrequency || 'daily') === freq;
+                      return (
+                        <button
+                          key={freq}
+                          type="button"
+                          onClick={() => handleChangeAutoRefreshFrequency(freq)}
+                          disabled={savingAutoRefresh}
+                          className="px-2.5 py-1 rounded-lg text-xs font-medium capitalize transition-colors disabled:opacity-50"
+                          style={{
+                            background: active ? 'var(--color-primary)' : 'var(--color-subtle)',
+                            color: active ? 'white' : 'var(--color-textMuted)',
+                          }}
+                        >
+                          {freq}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" size="sm" onClick={() => setRefreshDiff(null)}>Cancel</Button>

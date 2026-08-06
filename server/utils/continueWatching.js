@@ -160,6 +160,7 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
     const entry = {
       userId: user.id,
       username: user.username,
+      providerType: user.providerType,
       contentType: 'series',
       showId: row.showId,
       showName: metadata.title || row.showName,
@@ -242,6 +243,7 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
     const entry = {
       userId: user.id,
       username: user.username,
+      providerType: user.providerType,
       contentType: 'movie',
       showId: row.itemId,
       showName: metadata?.title || row.itemName,

@@ -88,6 +88,35 @@ async function getUserAddons(user, req, { decrypt, StremioAPIClient, createProvi
   }
 }
 
+// Last-resort safety net before a desired-addons list ever reaches
+// provider.setAddons(): the protected/default-addon matching above compares
+// by normalized display NAME, but an addon's SlickSync-side custom name
+// (e.g. "Cinemeta (someuser)", applied whenever useCustomFields is on) can
+// diverge from the same addon's name as already stored on the provider
+// (e.g. plain "Cinemeta") - when that happens the name-based de-dup between
+// "already protected/kept" and "group-assigned" silently fails to recognize
+// they're the same addon, and both copies survive into the final list.
+// Confirmed live: Nuvio's own unique constraint on addon URL then rejects
+// the whole insert (Postgres 23505), which setAddons's own rollback also
+// fails to fully recover from, leaving the account desynced with no obvious
+// cause. Deduping by the addon's real identity (URL) right before return is
+// correct regardless of what caused an upstream duplicate - two rows for
+// the same URL are never a valid desired state - and keeps the FIRST
+// occurrence, preserving the position-locked/protected copy over any
+// redundant later one from the group list.
+function dedupeByUrl(addons) {
+  const seen = new Set()
+  const out = []
+  for (const addon of addons) {
+    const url = addon?.transportUrl || addon?.manifestUrl || addon?.url || ''
+    const key = String(url).trim().toLowerCase()
+    if (key && seen.has(key)) continue
+    if (key) seen.add(key)
+    out.push(addon)
+  }
+  return out
+}
+
 /**
  * Get desired addons for a user (group addons + protected addons from Stremio)
  */
@@ -265,13 +294,13 @@ async function getDesiredAddons(user, req, { prisma, getAccountId, decrypt, pars
     // If current is empty (finalLength = 0), ensure we still add all group addons
     if (finalLength === 0 && nonProtectedGroupAddons.length > 0) {
       // When current is empty, just return all non-protected group addons
-      return { success: true, addons: nonProtectedGroupAddons, error: null }
+      return { success: true, addons: dedupeByUrl(nonProtectedGroupAddons), error: null }
     }
 
     // Remove nulls and return
     const finalDesiredAddons = finalDesiredCollection.filter(Boolean)
-    
-    return { success: true, addons: finalDesiredAddons, error: null }
+
+    return { success: true, addons: dedupeByUrl(finalDesiredAddons), error: null }
   } catch (error) {
     return { success: false, addons: [], error: error.message || 'Failed to get desired addons' }
   }

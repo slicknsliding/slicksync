@@ -460,6 +460,16 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize catalog auto-refresh:', err)
     }
 
+    // Schedule DB maintenance (scheduled VACUUM + opt-in watch-history
+    // pruning, both off by default - operator-controlled via the
+    // Superadmin panel, private/SQLite mode only)
+    try {
+      const { scheduleDbMaintenance } = require('./utils/dbMaintenance')
+      scheduleDbMaintenance(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize DB maintenance scheduler:', err)
+    }
+
     // Schedule new-episode alerts (Cinemeta episode-list polling for shows
     // with recent watch history, every 6h)
     try {

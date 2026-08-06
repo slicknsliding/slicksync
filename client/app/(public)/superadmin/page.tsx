@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Card, Button, Input, Badge, SlickSyncLogo, SelectionCheckbox, SelectAllCheckbox, ConfirmModal } from '@/components/ui';
+import { Card, Button, Input, Badge, SlickSyncLogo, SelectionCheckbox, SelectAllCheckbox, ConfirmModal, ToggleSwitch } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
-import { XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, MagnifyingGlassIcon, CircleStackIcon } from '@heroicons/react/24/outline';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -46,6 +46,14 @@ interface AuditLogEntry {
 
 type SortKey = 'createdAt' | 'lastLoginAt' | 'resourceRowCount';
 
+interface MaintenanceState {
+  supported: boolean;
+  settings?: {
+    vacuumEnabled: boolean;
+    lastVacuumAt: string | null;
+  };
+}
+
 function isAbandoned(a: SuperAdminAccount): boolean {
   if (a.lastLoginAt) return false;
   if (a.userCount > 0 || a.groupCount > 0 || a.addonCount > 0) return false;
@@ -55,6 +63,21 @@ function isAbandoned(a: SuperAdminAccount): boolean {
 const NEW_ACCOUNT_AGE_MS = 48 * 60 * 60 * 1000;
 function isRecentlyRegistered(a: SuperAdminAccount): boolean {
   return Date.now() - new Date(a.createdAt).getTime() < NEW_ACCOUNT_AGE_MS;
+}
+
+// Resource quota alerting - flags an account whose resourceRowCount (the
+// same usage proxy the "Heaviest usage first" sort already uses) crosses a
+// superadmin-set threshold. There's no AppAccount for superadmin itself to
+// store a setting on (it's a single shared password, not a tenant), and no
+// push-notification identity to deliver an alert to either - so this lives
+// as a live-computed, in-panel indicator (mirroring the existing
+// "abandoned" pattern exactly: a summary count + quick-select) rather than
+// a push/bell notification, which this instance's notification pipeline has
+// no way to address to "the superadmin" specifically.
+const QUOTA_THRESHOLD_STORAGE_KEY = 'slicksync:superadmin:quotaThreshold';
+const DEFAULT_QUOTA_THRESHOLD = 500;
+function isOverQuota(a: SuperAdminAccount, threshold: number): boolean {
+  return threshold > 0 && a.resourceRowCount >= threshold;
 }
 
 // Cumulative registrations by day, straight from each account's own
@@ -139,6 +162,17 @@ export default function SuperAdminPage() {
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [loadingAuditLog, setLoadingAuditLog] = useState(false);
   const [sortBy, setSortBy] = useState<SortKey>('createdAt');
+  // Lazy-init from localStorage (client-only, safe here since this whole
+  // page is 'use client' and this runs during render on first mount, not SSR).
+  const [quotaThreshold, setQuotaThreshold] = useState<number>(() => {
+    if (typeof window === 'undefined') return DEFAULT_QUOTA_THRESHOLD;
+    const stored = Number(window.localStorage.getItem(QUOTA_THRESHOLD_STORAGE_KEY));
+    return Number.isFinite(stored) && stored > 0 ? stored : DEFAULT_QUOTA_THRESHOLD;
+  });
+  const updateQuotaThreshold = (value: number) => {
+    setQuotaThreshold(value);
+    if (typeof window !== 'undefined') window.localStorage.setItem(QUOTA_THRESHOLD_STORAGE_KEY, String(value));
+  };
 
   const filteredAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -174,7 +208,8 @@ export default function SuperAdminPage() {
     disabled: accounts.filter((a) => a.disabled).length,
     neverLoggedIn: accounts.filter((a) => !a.lastLoginAt).length,
     abandoned: accounts.filter(isAbandoned).length,
-  }), [accounts]);
+    overQuota: accounts.filter((a) => isOverQuota(a, quotaThreshold)).length,
+  }), [accounts, quotaThreshold]);
 
   const loadAccounts = useCallback(async () => {
     setLoadingAccounts(true);
@@ -190,14 +225,67 @@ export default function SuperAdminPage() {
     }
   }, []);
 
+  const [maintenance, setMaintenance] = useState<MaintenanceState | null>(null);
+  const [loadingMaintenance, setLoadingMaintenance] = useState(true);
+  const [vacuumBusy, setVacuumBusy] = useState(false);
+  const [savingMaintenanceSetting, setSavingMaintenanceSetting] = useState(false);
+
+  const loadMaintenance = useCallback(async () => {
+    setLoadingMaintenance(true);
+    try {
+      const res = await fetch(`${API_BASE}/superadmin/db-maintenance`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      setMaintenance(data);
+    } catch {
+      // Best-effort - the card just renders nothing (see !maintenance?.supported below)
+    } finally {
+      setLoadingMaintenance(false);
+    }
+  }, []);
+
+  const updateMaintenanceSetting = async (patch: { vacuumEnabled?: boolean }) => {
+    setSavingMaintenanceSetting(true);
+    try {
+      const res = await fetch(`${API_BASE}/superadmin/db-maintenance`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || 'Failed to save');
+      await loadMaintenance();
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to save setting');
+    } finally {
+      setSavingMaintenanceSetting(false);
+    }
+  };
+
+  const handleRunVacuum = async () => {
+    setVacuumBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/superadmin/db-maintenance/vacuum`, { method: 'POST', credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || 'VACUUM failed');
+      toast.success('VACUUM completed - disk space reclaimed');
+      await loadMaintenance();
+    } catch (e: any) {
+      toast.error(e?.message || 'VACUUM failed');
+    } finally {
+      setVacuumBusy(false);
+    }
+  };
+
   useEffect(() => {
     fetch(`${API_BASE}/superadmin/session`, { credentials: 'include' })
       .then((res) => {
         setSignedIn(res.ok);
-        if (res.ok) loadAccounts();
+        if (res.ok) { loadAccounts(); loadMaintenance(); }
       })
       .catch(() => setSignedIn(false));
-  }, [loadAccounts]);
+  }, [loadAccounts, loadMaintenance]);
 
   // Lazy-loaded on first expand, not on page load - this is a secondary,
   // occasionally-checked view, no reason to pay for it on every visit.
@@ -287,6 +375,10 @@ export default function SuperAdminPage() {
     setSelectedIds(new Set(filteredAccounts.filter(isAbandoned).map((a) => a.id)));
   };
 
+  const selectOverQuota = () => {
+    setSelectedIds(new Set(filteredAccounts.filter((a) => isOverQuota(a, quotaThreshold)).map((a) => a.id)));
+  };
+
   const handleBulkToggleDisabled = async (disable: boolean, confirmed = false) => {
     if (selectedIds.size === 0) return;
     setBulkBusy(true);
@@ -341,6 +433,42 @@ export default function SuperAdminPage() {
       toast.error('Bulk delete failed');
     } finally {
       setBulkBusy(false);
+    }
+  };
+
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastBody, setBroadcastBody] = useState('');
+  const [broadcastTarget, setBroadcastTarget] = useState<'all' | 'selected'>('all');
+  const [broadcasting, setBroadcasting] = useState(false);
+
+  const handleBroadcast = async () => {
+    const title = broadcastTitle.trim();
+    if (!title || broadcasting) return;
+    setBroadcasting(true);
+    try {
+      const body: { title: string; body: string; all?: boolean; ids?: string[] } = { title, body: broadcastBody.trim() };
+      if (broadcastTarget === 'selected' && selectedIds.size > 0) {
+        body.ids = Array.from(selectedIds);
+      } else {
+        body.all = true;
+      }
+      const res = await fetch(`${API_BASE}/superadmin/accounts/broadcast`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || 'Failed to send');
+      toast.success(`Notified ${data.notified} account${data.notified !== 1 ? 's' : ''}`);
+      setShowBroadcast(false);
+      setBroadcastTitle('');
+      setBroadcastBody('');
+    } catch (e: any) {
+      toast.error(e?.message || 'Broadcast failed');
+    } finally {
+      setBroadcasting(false);
     }
   };
 
@@ -431,13 +559,51 @@ export default function SuperAdminPage() {
           </div>
         )}
 
-        {accounts.length > 0 && (summary.neverLoggedIn > 0 || summary.abandoned > 0) && (
+        {!loadingMaintenance && maintenance?.supported && maintenance.settings && (
+          <Card padding="md" className="mb-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-sky-500/10 text-sky-400 shrink-0">
+                <CircleStackIcon className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-default">Database maintenance</h3>
+                <p className="text-xs text-muted">Instance-level - one shared SQLite file, not per-account. Off by default.</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 py-2.5 border-t border-default">
+              <div>
+                <p className="text-sm text-default">Scheduled VACUUM</p>
+                <p className="text-xs text-muted">
+                  Reclaims disk space SQLite never auto-shrinks after deletes. Weekly, no data touched.
+                  {maintenance.settings.lastVacuumAt && ` Last ran ${new Date(maintenance.settings.lastVacuumAt).toLocaleString()}.`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="ghost" size="sm" onClick={handleRunVacuum} isLoading={vacuumBusy}>Run now</Button>
+                <ToggleSwitch
+                  checked={maintenance.settings.vacuumEnabled}
+                  onChange={() => updateMaintenanceSetting({ vacuumEnabled: !maintenance!.settings!.vacuumEnabled })}
+                  disabled={savingMaintenanceSetting}
+                />
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {accounts.length > 0 && (summary.neverLoggedIn > 0 || summary.abandoned > 0 || summary.overQuota > 0) && (
           <div className="flex items-center gap-4 flex-wrap mb-4 text-xs text-muted">
             <span><span className="text-default font-semibold">{summary.neverLoggedIn}</span> never logged in</span>
             {summary.abandoned > 0 && (
               <>
                 <span>·</span>
                 <span><span className="text-warning font-semibold">{summary.abandoned}</span> abandoned</span>
+              </>
+            )}
+            {summary.overQuota > 0 && (
+              <>
+                <span>·</span>
+                <span><span className="text-error font-semibold">{summary.overQuota}</span> over the {quotaThreshold}-record quota</span>
               </>
             )}
           </div>
@@ -470,6 +636,31 @@ export default function SuperAdminPage() {
               Select {summary.abandoned} abandoned
             </Button>
           )}
+          {summary.overQuota > 0 && (
+            <Button variant="ghost" size="sm" onClick={selectOverQuota}>
+              Select {summary.overQuota} over quota
+            </Button>
+          )}
+          {accounts.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { setBroadcastTarget(selectedIds.size > 0 ? 'selected' : 'all'); setShowBroadcast(true); }}
+            >
+              Broadcast
+            </Button>
+          )}
+          <div className="flex items-center gap-1.5 text-xs text-muted" title="An account at or above this many total records (users/groups/addons/catalogs/watch sessions/vault entries) is flagged as over quota - saved on this device only">
+            <span>Quota</span>
+            <input
+              type="number"
+              min={0}
+              step={50}
+              value={quotaThreshold}
+              onChange={(e) => updateQuotaThreshold(Math.max(0, parseInt(e.target.value, 10) || 0))}
+              className="w-20 py-1.5 px-2 rounded-lg bg-surface-hover text-default text-xs border border-transparent focus:border-primary focus:outline-none"
+            />
+          </div>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as SortKey)}
@@ -508,6 +699,7 @@ export default function SuperAdminPage() {
                         {isRecentlyRegistered(a) && <Badge variant="primary" size="sm">New</Badge>}
                         {a.disabled && <Badge variant="warning" size="sm">Disabled</Badge>}
                         {isAbandoned(a) && <Badge variant="muted" size="sm" title="Registered a while ago, empty, never logged in">Abandoned</Badge>}
+                        {isOverQuota(a, quotaThreshold) && <Badge variant="error" size="sm" title={`At or above the ${quotaThreshold}-record quota`}>Over quota</Badge>}
                       </div>
                       <p className="text-xs text-muted mt-0.5">
                         {a.userCount} user{a.userCount !== 1 ? 's' : ''} · {a.groupCount} group{a.groupCount !== 1 ? 's' : ''} · {a.addonCount} addon{a.addonCount !== 1 ? 's' : ''}
@@ -585,6 +777,9 @@ export default function SuperAdminPage() {
               <span className="text-sm text-muted">selected</span>
             </div>
             <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => { setBroadcastTarget('selected'); setShowBroadcast(true); }}>
+                Notify
+              </Button>
               <Button variant="secondary" size="sm" onClick={() => handleBulkToggleDisabled(true)} isLoading={bulkBusy}>
                 Disable
               </Button>
@@ -617,6 +812,56 @@ export default function SuperAdminPage() {
         </div>
       )}
 
+      {showBroadcast && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+          <Card padding="lg" className="w-full max-w-md">
+            <h3 className="text-base font-semibold text-default mb-1">Broadcast announcement</h3>
+            <p className="text-xs text-muted mb-4">
+              Sends a bell notification, plus a push alert to any subscribed device, to the targeted accounts - the same delivery pipeline every other notification here uses.
+            </p>
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-2 mb-3 p-1 rounded-lg bg-surface-hover">
+                <button
+                  type="button"
+                  onClick={() => setBroadcastTarget('all')}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${broadcastTarget === 'all' ? 'bg-primary text-white' : 'text-muted'}`}
+                >
+                  All accounts ({accounts.filter((a) => !a.disabled).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBroadcastTarget('selected')}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${broadcastTarget === 'selected' ? 'bg-primary text-white' : 'text-muted'}`}
+                >
+                  Selected only ({selectedIds.size})
+                </button>
+              </div>
+            )}
+            <div className="space-y-3">
+              <Input
+                placeholder="Title (e.g. Maintenance window tonight)"
+                value={broadcastTitle}
+                onChange={(e) => setBroadcastTitle(e.target.value.slice(0, 120))}
+                autoFocus
+              />
+              <textarea
+                placeholder="Message (optional)"
+                value={broadcastBody}
+                onChange={(e) => setBroadcastBody(e.target.value.slice(0, 500))}
+                rows={4}
+                className="w-full px-3 py-2 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none resize-none"
+              />
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" size="sm" onClick={() => setShowBroadcast(false)}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={handleBroadcast} isLoading={broadcasting} disabled={!broadcastTitle.trim()}>
+                Send
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
       <ConfirmModal
         isOpen={confirmBulkDelete}
         onClose={() => setConfirmBulkDelete(false)}
@@ -627,6 +872,7 @@ export default function SuperAdminPage() {
         variant="danger"
         isLoading={bulkBusy}
       />
+
     </div>
   );
 }

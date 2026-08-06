@@ -117,7 +117,8 @@ async function supabasePost(table, rows, accessToken) {
       signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS)
     })
     if (!res.ok) {
-      console.error(`Supabase POST ${table} failed (${res.status})`)
+      const bodyText = await res.text().catch(() => '')
+      console.error(`Supabase POST ${table} failed (${res.status}): ${bodyText}`)
       const err = new Error('Provider request failed')
       err.status = res.status
       throw err

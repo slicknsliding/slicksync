@@ -248,6 +248,92 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
     }
   });
 
+  // POST /accounts/broadcast - a one-time in-app notice from the operator,
+  // e.g. a maintenance window or feature announcement. Rides the exact same
+  // delivery pipeline every other notification here uses (persistent bell +
+  // Web Push where a device has subscribed) rather than inventing a second
+  // one - the only difference from notifyPushForType's usual per-type calls
+  // is that a broadcast reaches every targeted account unconditionally,
+  // since there's no per-account "notifyOnAnnouncement" toggle for an
+  // operator-initiated message to be gated behind. { title, body, ids?:
+  // string[] } - omit ids (or pass all: true) to reach every account.
+  router.post('/accounts/broadcast', requireSuperAdmin, async (req, res) => {
+    try {
+      const title = String(req.body?.title || '').trim();
+      const body = String(req.body?.body || '').trim();
+      if (!title) return res.status(400).json({ message: 'title is required' });
+      if (title.length > 120) return res.status(400).json({ message: 'title is too long (max 120 characters)' });
+      if (body.length > 500) return res.status(400).json({ message: 'body is too long (max 500 characters)' });
+
+      let targetIds;
+      if (req.body?.all === true) {
+        const all = await prisma.appAccount.findMany({ where: { disabled: false }, select: { id: true } });
+        targetIds = all.map((a) => a.id);
+      } else {
+        const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : null;
+        if (!ids || ids.length === 0) return res.status(400).json({ message: 'ids must be a non-empty array, or pass all: true' });
+        if (ids.length > 500) return res.status(400).json({ message: 'Too many accounts in one request (max 500)' });
+        targetIds = [...new Set(ids)];
+      }
+      if (targetIds.length === 0) return res.status(400).json({ message: 'No accounts to notify' });
+
+      const { createNotification } = require('../utils/notificationStore');
+      const { sendPushToAccount } = require('../utils/pushNotifications');
+      const payload = { title, body, icon: '/android-chrome-192x192.png' };
+      const results = await Promise.all(targetIds.map(async (accountId) => {
+        await createNotification(prisma, accountId, { type: 'announcement', title, body }).catch(() => null);
+        const push = await sendPushToAccount(prisma, accountId, payload).catch(() => ({ sent: 0 }));
+        return push.sent > 0;
+      }));
+      res.json({ notified: targetIds.length, pushed: results.filter(Boolean).length });
+    } catch (e) {
+      console.error('[Superadmin] Broadcast failed:', e?.message);
+      res.status(500).json({ message: 'Broadcast failed' });
+    }
+  });
+
+  // GET/PUT /db-maintenance - scheduled VACUUM settings. Instance-level (one
+  // shared SQLite file, not per-account), so this lives under Superadmin
+  // rather than any tenant's own Settings. VACUUM-only, deliberately no data
+  // pruning here - see dbMaintenance.js's own comment on why.
+  router.get('/db-maintenance', requireSuperAdmin, async (req, res) => {
+    try {
+      const { getSettings, getDbFilePath } = require('../utils/dbMaintenance');
+      if (!getDbFilePath()) return res.json({ supported: false });
+      res.json({ supported: true, settings: getSettings() });
+    } catch (e) {
+      console.error('[Superadmin] Failed to load DB maintenance settings:', e?.message);
+      res.status(500).json({ message: 'Failed to load DB maintenance settings' });
+    }
+  });
+
+  router.put('/db-maintenance', requireSuperAdmin, async (req, res) => {
+    try {
+      const { saveSettings, getDbFilePath } = require('../utils/dbMaintenance');
+      if (!getDbFilePath()) return res.status(400).json({ message: 'Not applicable outside private/SQLite mode' });
+      const body = req.body || {};
+      const patch = {};
+      if ('vacuumEnabled' in body) patch.vacuumEnabled = !!body.vacuumEnabled;
+      const settings = saveSettings(patch);
+      res.json({ settings });
+    } catch (e) {
+      console.error('[Superadmin] Failed to update DB maintenance settings:', e?.message);
+      res.status(500).json({ message: 'Failed to update DB maintenance settings' });
+    }
+  });
+
+  router.post('/db-maintenance/vacuum', requireSuperAdmin, async (req, res) => {
+    try {
+      const { runVacuum, getDbFilePath } = require('../utils/dbMaintenance');
+      if (!getDbFilePath()) return res.status(400).json({ message: 'Not applicable outside private/SQLite mode' });
+      const result = await runVacuum(prisma);
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      console.error('[Superadmin] VACUUM failed:', e?.message);
+      res.status(500).json({ message: 'VACUUM failed' });
+    }
+  });
+
   // POST not DELETE - a bulk delete needs a body (the id list), which DELETE
   // requests can carry but many proxies/clients handle unreliably.
   router.post('/accounts/bulk-delete', requireSuperAdmin, async (req, res) => {

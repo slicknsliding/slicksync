@@ -30,8 +30,14 @@ export function CatalogPickerMenu({
   const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
+    // getLists() now also returns catalogs OTHER accounts have shared with
+    // this one (read-only) - this picker adds/removes titles, a write, so
+    // it must only ever offer catalogs this account actually owns. Every
+    // write route already 404s for a non-owner regardless, but filtering
+    // here keeps a shared-with-you catalog from even appearing as a
+    // pickable target in the first place.
     api.getLists()
-      .then((r) => setLists(Array.isArray(r) ? r : []))
+      .then((r) => setLists(Array.isArray(r) ? r.filter((l) => l.isOwner) : []))
       .catch(() => setLists([]))
       .finally(() => setLoaded(true));
   }, []);
