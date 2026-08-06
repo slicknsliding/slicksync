@@ -9,7 +9,7 @@ const express = require('express');
 // maintained by an existing background monitor - this route computes
 // nothing live and makes no outbound calls itself, so loading the page has
 // no cost beyond a few fast DB reads.
-module.exports = ({ prisma, getAccountId }) => {
+module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
   const router = express.Router();
 
   router.get('/', async (req, res) => {
@@ -111,16 +111,26 @@ module.exports = ({ prisma, getAccountId }) => {
       });
       const vaultIgnored = vaultEntries.filter((v) => v.healthIgnored);
 
-      // Proxy connectivity - last poll outcome, in-memory (single-instance deploy)
-      let proxy = { ok: null, at: null, error: null, configured: false };
-      try {
-        const { getProxyMonitorStatus } = require('../utils/proxyStreamMonitor');
-        proxy = { ...getProxyMonitorStatus(), configured: !!process.env.AIOSTREAMS_URL };
-      } catch {}
+      // Proxy connectivity - last poll outcome, in-memory (single-instance
+      // deploy). This entire concept is private-mode-only: the monitor is
+      // wired up once at boot against ONE shared AIOSTREAMS_URL env var for
+      // DEFAULT_ACCOUNT_ID (server/index.js), not a per-tenant Settings
+      // field - there is no way for an individual public-mode account to
+      // ever configure their own. Every public tenant would otherwise see
+      // the exact same "Not configured" card forever, since it's reading
+      // one process-wide global that has nothing to do with their account.
+      let proxy = null;
+      if (INSTANCE_TYPE !== 'public') {
+        proxy = { ok: null, at: null, error: null, configured: false };
+        try {
+          const { getProxyMonitorStatus } = require('../utils/proxyStreamMonitor');
+          proxy = { ...getProxyMonitorStatus(), configured: !!process.env.AIOSTREAMS_URL };
+        } catch {}
+      }
 
       const overall =
         addonsOffline.length === 0 && vaultFailing.length === 0 && driftNotifications.length === 0 &&
-        (proxy.ok !== false)
+        (!proxy || proxy.ok !== false)
           ? 'healthy'
           : 'attention';
 

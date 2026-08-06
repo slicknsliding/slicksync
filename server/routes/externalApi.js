@@ -45,7 +45,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
       console.log(`[ext/account] Fetching stats for accountId: "${req.appAccountId}"`)
       const account = await prisma.appAccount.findUnique({
         where: { id: req.appAccountId },
-        select: { id: true, uuid: true, email: true, linkedProvider: true, sync: true, avatarUrl: true }
+        select: { id: true, uuid: true, email: true, linkedProvider: true, sync: true, avatarUrl: true, displayName: true }
       })
       const sync = account?.sync && typeof account.sync === 'string' ? JSON.parse(account.sync) : account?.sync || {}
       const [totalUsers, totalGroups, totalAddons, pendingInvites] = await Promise.all([
@@ -61,6 +61,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
         email: account?.email,
         linkedProvider: account?.linkedProvider || null,
         avatarUrl: account?.avatarUrl || null,
+        displayName: account?.displayName || null,
         lastRunAt: sync?.lastRunAt || null,
         totalUsers,
         totalGroups,

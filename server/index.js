@@ -313,7 +313,7 @@ if (INSTANCE_TYPE === 'public') {
 }
 app.use('/api/discover', discoverRouter({ prisma, getAccountId }));
 app.use('/api/lists', listsRouter({ prisma, getAccountId }));
-app.use('/api/health', healthRouter({ prisma, getAccountId }));
+app.use('/api/health', healthRouter({ prisma, getAccountId, INSTANCE_TYPE }));
 app.use('/api/superadmin', require('./routes/superadmin')({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }));
 app.use('/api/poster', postersRouter({ prisma, getAccountId }));
 // External API (API key protected, account-scoped)

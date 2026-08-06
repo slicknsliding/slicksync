@@ -87,6 +87,25 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // PUT /account-display-name - self-service nickname, set by the account
+  // holder themselves (Settings). Only meaningful in public multi-tenant
+  // mode - it's what makes an account recognizable on the superadmin panel
+  // instead of by raw UUID, but that panel only ever reads it, never writes.
+  router.put('/account-display-name', async (req, res) => {
+    try {
+      const { displayName } = req.body || {}
+      const accountId = INSTANCE_TYPE !== 'public' ? (await ensureDefaultAccount()).id : req.appAccountId
+      if (!accountId) {
+        return res.status(401).json({ message: 'Unauthorized' })
+      }
+      const trimmed = displayName === null || displayName === undefined ? null : String(displayName).trim().slice(0, 60) || null
+      await prisma.appAccount.update({ where: { id: accountId }, data: { displayName: trimmed } })
+      return res.json({ displayName: trimmed })
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to update display name', error: e?.message })
+    }
+  })
+
   // Backup settings endpoints - only available in private mode
   if (INSTANCE_TYPE !== 'public') {
     // Use centralized backup utilities

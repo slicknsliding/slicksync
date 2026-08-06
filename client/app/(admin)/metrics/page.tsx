@@ -1295,6 +1295,9 @@ export default function MetricsPage() {
                   </HealthCheckCard>
                   </div>
 
+                  {/* Private-mode only - see health.js for why this has no
+                      meaning on a public multi-tenant instance. */}
+                  {healthData.proxy && (
                   <div className="mb-4 break-inside-avoid-column">
                   <HealthCheckCard
                     icon={<SignalIcon className="w-5 h-5" />}
@@ -1311,6 +1314,7 @@ export default function MetricsPage() {
                     )}
                   </HealthCheckCard>
                   </div>
+                  )}
 
                   {/* Unified incident timeline: every offline/online addon
                       transition plus every vault/proxy health notification,

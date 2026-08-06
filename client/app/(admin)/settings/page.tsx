@@ -280,6 +280,8 @@ export default function SettingsPage() {
   const [accountInfo, setAccountInfo] = useState<AccountStats | null>(null);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [uuidCopied, setUuidCopied] = useState(false);
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [savingDisplayName, setSavingDisplayName] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
@@ -287,6 +289,7 @@ export default function SettingsPage() {
       try {
         const stats = await api.getAccountStats();
         setAccountInfo(stats);
+        setDisplayNameDraft(stats.displayName || '');
       } catch (e) {
         // Account stats endpoint may not be available
       }
@@ -382,6 +385,22 @@ export default function SettingsPage() {
     // Sidebar/Nebula topbar fetch account info independently on mount, so a
     // full reload is the simplest way to get the new picture to show there too.
     setTimeout(() => window.location.reload(), 600);
+  };
+
+  const handleSaveDisplayName = async () => {
+    const trimmed = displayNameDraft.trim();
+    if (trimmed === (accountInfo?.displayName || '')) return;
+    setSavingDisplayName(true);
+    try {
+      const result = await api.updateAccountDisplayName(trimmed || null);
+      setAccountInfo((prev) => prev ? { ...prev, displayName: result.displayName } : prev);
+      setDisplayNameDraft(result.displayName || '');
+      toast.success('Nickname saved');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to save nickname');
+    } finally {
+      setSavingDisplayName(false);
+    }
   };
 
   const handleTestWebhook = async () => {
@@ -553,6 +572,30 @@ export default function SettingsPage() {
                 </p>
               </div>
             </div>
+
+            {isPublicInstance && (
+              <div className="mt-5 pt-5 border-t border-default">
+                <label className="text-sm font-medium text-default mb-1.5 block">Nickname</label>
+                <p className="text-xs text-muted mb-2">
+                  Pick your own name for this account. It's yours to set - shown next to your UUID wherever this instance needs to tell accounts apart.
+                </p>
+                <div className="flex items-center gap-2 max-w-sm">
+                  <input
+                    type="text"
+                    value={displayNameDraft}
+                    onChange={(e) => setDisplayNameDraft(e.target.value)}
+                    onBlur={handleSaveDisplayName}
+                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                    placeholder="e.g. Movie Night"
+                    maxLength={60}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="input-base w-full px-3 py-2 text-sm"
+                  />
+                  {savingDisplayName && <span className="text-xs text-muted shrink-0">Saving...</span>}
+                </div>
+              </div>
+            )}
           </Card>
         </PageSection>
 

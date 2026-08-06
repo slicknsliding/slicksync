@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.67.0",
+    "date": "2026-08-06",
+    "title": "feat: Superadmin usage sort/bulk actions/force-logout, self-service account nicknames",
+    "features": [
+      "Superadmin: sort accounts by heaviest usage or most recently active (not just newest), select every abandoned account in one click for bulk actions, and force-logout an account's active sessions on demand - independent of disabling it.",
+      "Public multi-tenant accounts can now give themselves a nickname in Settings, shown alongside their UUID wherever this instance needs to tell accounts apart (including on the Superadmin panel) - it's the account holder's own choice, never assigned by an operator."
+    ],
+    "bugFixes": [
+      "The Health page's Proxy card - a private-mode, single-shared-AIOStreams-instance concept with no per-account equivalent - no longer shows a permanently identical \"Not configured\" card to every public multi-tenant account."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.66.0",
     "date": "2026-08-05",
     "title": "feat: smarter Suggest Titles, self-service deletion, franchise grouping, and a security hardening pass",
