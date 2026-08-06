@@ -25,7 +25,7 @@ import {
   ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
   DocumentDuplicateIcon, PhotoIcon, ExclamationTriangleIcon, MapPinIcon,
   EllipsisVerticalIcon, PencilSquareIcon, FilmIcon, TvIcon, InformationCircleIcon,
-  ArrowDownTrayIcon, ArrowUpTrayIcon,
+  ArrowDownTrayIcon, ArrowUpTrayIcon, QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -502,6 +502,7 @@ export default function NuvioCollectionsPage() {
   const [collections, setCollections] = useState<NuvioCollection[]>([]);
   const [savedSnapshot, setSavedSnapshot] = useState('[]');
   const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [importExportInfoOpen, setImportExportInfoOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [addons, setAddons] = useState<StremioAddon[]>([]);
@@ -1097,6 +1098,14 @@ export default function NuvioCollectionsPage() {
                     <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={exportCollectionsJson} disabled={collections.length === 0} title="Download this profile's collections as JSON">
                       Export
                     </Button>
+                    <button
+                      type="button"
+                      onClick={() => setImportExportInfoOpen(true)}
+                      className="p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover transition-colors"
+                      title="Where do I use this JSON?"
+                    >
+                      <QuestionMarkCircleIcon className="w-4 h-4" />
+                    </button>
                     <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setTemplatesOpen(true)}>
                       Use a template
                     </Button>
@@ -1315,6 +1324,29 @@ export default function NuvioCollectionsPage() {
               Delete
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={importExportInfoOpen} onClose={() => setImportExportInfoOpen(false)} title="Export & Import" size="sm">
+        <div className="space-y-3 text-sm text-muted">
+          <p>
+            <span className="text-default font-medium">Export</span> downloads this profile&apos;s collections exactly as SlickSync sends them to Nuvio&apos;s sync backend.
+          </p>
+          <p>
+            <span className="text-default font-medium">Import</span> loads a JSON file back into this page as a draft - review it, then hit Save changes to push it through the normal sync path. Nothing is written until you save.
+          </p>
+          <p>
+            Nuvio&apos;s own site has a matching Import/Export on its Collections page, if you&apos;d rather manage things from there:
+          </p>
+          <a
+            href="https://nuvio.tv/account?tab=collections"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-primary hover:underline w-fit"
+          >
+            nuvio.tv/account?tab=collections
+            <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
+          </a>
         </div>
       </Modal>
 
