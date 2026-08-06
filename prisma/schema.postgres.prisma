@@ -430,6 +430,12 @@ model CustomList {
   // unattended is a bigger behavior change than the existing manual
   // "Refresh" button, which always shows a diff before applying.
   autoRefresh      Boolean  @default(false)
+  // 'daily' (default) or 'weekly' - how often the scheduler actually applies
+  // a refresh once autoRefresh is on. The scheduler itself still ticks daily
+  // (see catalogAutoRefresh.js); 'weekly' lists are just skipped on ticks
+  // where lastAutoRefreshAt is under 7 days old, rather than running on a
+  // separate weekly timer.
+  autoRefreshFrequency String @default("daily")
   lastAutoRefreshAt DateTime?
   // Featured/hero treatment on the Catalogs index page - at most meaningful
   // for one catalog at a time (the client only ever shows the first pinned
