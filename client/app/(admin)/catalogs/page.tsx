@@ -222,7 +222,12 @@ export default function ListsPage() {
             // touch equivalent, so the original opacity-0 group-hover
             // treatment made Cover art/Rename/Delete completely unreachable
             // on mobile. Small enough not to compete with the title/count.
+            // A catalog someone else shared with you is read-only here - no
+            // pin/cover/rename/delete, since those all mutate a list you
+            // don't own (the server already blocks the write, this just
+            // avoids showing a control that would 404).
             const actionRow = (list: CustomList, size: 'sm' | 'lg') => (
+              list.isOwner ? (
               <div className={`flex items-center gap-1 ${size === 'lg' ? 'bg-black/40 backdrop-blur-sm rounded-lg p-1' : ''}`}>
                 <button
                   type="button"
@@ -257,6 +262,9 @@ export default function ListsPage() {
                   <TrashIcon className="w-4 h-4" />
                 </button>
               </div>
+              ) : (
+                <Badge variant="muted" size="sm">Shared with you</Badge>
+              )
             );
 
             return (
@@ -290,6 +298,10 @@ export default function ListsPage() {
                         <div className="absolute bottom-0 left-0 right-0 p-4 md:p-5">
                           <div className="flex items-center gap-2 mb-1">
                             <Badge variant="primary" size="sm">Featured</Badge>
+                            {hero.isOwner && hero.shared && (
+                              <Badge variant="muted" size="sm" title="Visible (read-only) to other accounts on this instance">Shared</Badge>
+                            )}
+                            {!hero.isOwner && <Badge variant="muted" size="sm">Shared with you</Badge>}
                           </div>
                           <p className="text-xl md:text-2xl font-display font-semibold text-white truncate">{hero.name}</p>
                           <p className="text-sm text-white/70">{hero.items.length} title{hero.items.length !== 1 ? 's' : ''}</p>
@@ -342,7 +354,12 @@ export default function ListsPage() {
                               )}
                             </div>
                           )}
-                          <p className="text-sm font-semibold text-default truncate">{list.name}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-default truncate">{list.name}</p>
+                            {list.isOwner && list.shared && (
+                              <Badge variant="primary" size="sm" title="Visible (read-only) to other accounts on this instance">Shared</Badge>
+                            )}
+                          </div>
                           <p className="text-xs text-muted">{list.items.length} title{list.items.length !== 1 ? 's' : ''}</p>
                         </button>
                         <div className="flex items-center gap-1 mt-2">
