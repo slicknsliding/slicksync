@@ -735,16 +735,23 @@ export default function NuvioCollectionsPage() {
     if (!selectedUserId || selectedProfileIndex === null) return;
     setSaving(true);
     try {
-      // Self-heal focusGifEnabled on every save, not just through the cover
-      // picker - folders created before that field existed (or before this
-      // fix) can carry a real .gif coverImageUrl with focusGifEnabled still
-      // missing/false, which Nuvio renders as a static first frame instead
-      // of animating. Only touches folders that already have a cover set.
+      // Self-heal focusGifEnabled/focusGifUrl on every save, not just through
+      // the cover picker - folders created before either field existed (or
+      // before this fix) can carry a real .gif coverImageUrl with neither
+      // set, which Nuvio renders as a static first frame instead of
+      // animating (focusGifUrl specifically is what its home-row rendering
+      // actually checks - see HomeCollectionRowSection.kt's
+      // isAnimatedCollectionFolderImage()). Only touches folders that
+      // already have a cover set.
       const normalized = collections.map((c) => ({
         ...c,
         folders: (c.folders || []).map((f) =>
           typeof f.coverImageUrl === 'string' && f.coverImageUrl
-            ? { ...f, focusGifEnabled: isGifUrl(f.coverImageUrl) }
+            ? {
+                ...f,
+                focusGifEnabled: isGifUrl(f.coverImageUrl),
+                focusGifUrl: isGifUrl(f.coverImageUrl) ? f.coverImageUrl : null,
+              }
             : f
         ),
       }));
@@ -1756,6 +1763,7 @@ export default function NuvioCollectionsPage() {
               updateFolder(coverPickerFolder.collectionId, coverPickerFolder.folderId, {
                 coverImageUrl: data.avatarUrl ?? null,
                 focusGifEnabled: isGifUrl(data.avatarUrl),
+                focusGifUrl: isGifUrl(data.avatarUrl) ? data.avatarUrl : null,
               });
               setCoverPickerFolder(null);
             }}
