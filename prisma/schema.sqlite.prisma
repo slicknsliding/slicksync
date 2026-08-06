@@ -201,7 +201,6 @@ model AppAccount {
   // Self-service account nickname, set from Settings by the account holder
   // themselves - meaningless but harmless on this private deployment.
   displayName String?
-  sessionsRevokedAt DateTime? // Superadmin "force logout" - meaningless but harmless on this private deployment
 
   // Relationships
   invitations Invitation[]

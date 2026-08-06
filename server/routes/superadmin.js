@@ -79,7 +79,7 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
     try {
       const accounts = await prisma.appAccount.findMany({
         select: {
-          id: true, uuid: true, createdAt: true, lastLoginAt: true, disabled: true, displayName: true, sessionsRevokedAt: true,
+          id: true, uuid: true, createdAt: true, lastLoginAt: true, disabled: true, displayName: true,
         },
         orderBy: { createdAt: 'desc' },
       });
@@ -166,23 +166,6 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
       const account = await prisma.appAccount.update({ where: { id: req.params.id }, data: { disabled: false } });
       await logAction('enable', account.id, account.uuid);
       res.json({ id: account.id, disabled: false });
-    } catch (e) {
-      res.status(404).json({ message: 'Account not found' });
-    }
-  });
-
-  // POST /accounts/:id/revoke-sessions - force-logout. Doesn't touch any
-  // token directly (these are stateless JWTs) - instead stamps
-  // sessionsRevokedAt, which server/middleware/auth.js checks against each
-  // token's own `iat` on every request (same lookup it already does for the
-  // `disabled` check, no extra DB round trip). Any token issued before this
-  // moment stops working immediately; the account can log back in right away
-  // and get a fresh token with a later iat.
-  router.post('/accounts/:id/revoke-sessions', requireSuperAdmin, async (req, res) => {
-    try {
-      const account = await prisma.appAccount.update({ where: { id: req.params.id }, data: { sessionsRevokedAt: new Date() } });
-      await logAction('revoke-sessions', account.id, account.uuid);
-      res.json({ id: account.id, sessionsRevokedAt: account.sessionsRevokedAt });
     } catch (e) {
       res.status(404).json({ message: 'Account not found' });
     }
