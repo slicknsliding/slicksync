@@ -2489,6 +2489,16 @@ export interface NuvioCollectionFolder {
   tileShape?: 'LANDSCAPE' | 'SQUARE' | 'POSTER';
   hideTitle?: boolean;
   focusGifEnabled?: boolean;
+  // The actual field Nuvio's home-row rendering checks to decide whether to
+  // animate a folder's cover - separate from coverImageUrl (the static
+  // fallback used everywhere else, e.g. folder detail). coverImageUrl alone,
+  // even with a real .gif URL and focusGifEnabled true, never animates -
+  // confirmed by reading Nuvio's own HomeCollectionRowSection.kt:
+  // isAnimatedCollectionFolderImage() only checks focusGifUrl, and
+  // collectionFolderCardImageUrl() only prefers it over coverImageUrl when
+  // set. Keep this equal to coverImageUrl whenever that's a .gif, null
+  // otherwise.
+  focusGifUrl?: string | null;
   [key: string]: any;
 }
 
