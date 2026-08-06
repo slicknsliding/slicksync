@@ -375,6 +375,42 @@ export default function SuperAdminPage() {
     }
   };
 
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastBody, setBroadcastBody] = useState('');
+  const [broadcastTarget, setBroadcastTarget] = useState<'all' | 'selected'>('all');
+  const [broadcasting, setBroadcasting] = useState(false);
+
+  const handleBroadcast = async () => {
+    const title = broadcastTitle.trim();
+    if (!title || broadcasting) return;
+    setBroadcasting(true);
+    try {
+      const body: { title: string; body: string; all?: boolean; ids?: string[] } = { title, body: broadcastBody.trim() };
+      if (broadcastTarget === 'selected' && selectedIds.size > 0) {
+        body.ids = Array.from(selectedIds);
+      } else {
+        body.all = true;
+      }
+      const res = await fetch(`${API_BASE}/superadmin/accounts/broadcast`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || 'Failed to send');
+      toast.success(`Notified ${data.notified} account${data.notified !== 1 ? 's' : ''}`);
+      setShowBroadcast(false);
+      setBroadcastTitle('');
+      setBroadcastBody('');
+    } catch (e: any) {
+      toast.error(e?.message || 'Broadcast failed');
+    } finally {
+      setBroadcasting(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!confirmDelete) return;
     setBusyId(confirmDelete.id);
@@ -512,6 +548,15 @@ export default function SuperAdminPage() {
               Select {summary.overQuota} over quota
             </Button>
           )}
+          {accounts.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { setBroadcastTarget(selectedIds.size > 0 ? 'selected' : 'all'); setShowBroadcast(true); }}
+            >
+              Broadcast
+            </Button>
+          )}
           <div className="flex items-center gap-1.5 text-xs text-muted" title="An account at or above this many total records (users/groups/addons/catalogs/watch sessions/vault entries) is flagged as over quota - saved on this device only">
             <span>Quota</span>
             <input
@@ -639,6 +684,9 @@ export default function SuperAdminPage() {
               <span className="text-sm text-muted">selected</span>
             </div>
             <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => { setBroadcastTarget('selected'); setShowBroadcast(true); }}>
+                Notify
+              </Button>
               <Button variant="secondary" size="sm" onClick={() => handleBulkToggleDisabled(true)} isLoading={bulkBusy}>
                 Disable
               </Button>
@@ -666,6 +714,56 @@ export default function SuperAdminPage() {
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)}>Cancel</Button>
               <Button variant="danger" size="sm" onClick={handleDelete} isLoading={busyId === confirmDelete.id}>Delete permanently</Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {showBroadcast && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+          <Card padding="lg" className="w-full max-w-md">
+            <h3 className="text-base font-semibold text-default mb-1">Broadcast announcement</h3>
+            <p className="text-xs text-muted mb-4">
+              Sends a bell notification, plus a push alert to any subscribed device, to the targeted accounts - the same delivery pipeline every other notification here uses.
+            </p>
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-2 mb-3 p-1 rounded-lg bg-surface-hover">
+                <button
+                  type="button"
+                  onClick={() => setBroadcastTarget('all')}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${broadcastTarget === 'all' ? 'bg-primary text-white' : 'text-muted'}`}
+                >
+                  All accounts ({accounts.filter((a) => !a.disabled).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBroadcastTarget('selected')}
+                  className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${broadcastTarget === 'selected' ? 'bg-primary text-white' : 'text-muted'}`}
+                >
+                  Selected only ({selectedIds.size})
+                </button>
+              </div>
+            )}
+            <div className="space-y-3">
+              <Input
+                placeholder="Title (e.g. Maintenance window tonight)"
+                value={broadcastTitle}
+                onChange={(e) => setBroadcastTitle(e.target.value.slice(0, 120))}
+                autoFocus
+              />
+              <textarea
+                placeholder="Message (optional)"
+                value={broadcastBody}
+                onChange={(e) => setBroadcastBody(e.target.value.slice(0, 500))}
+                rows={4}
+                className="w-full px-3 py-2 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none resize-none"
+              />
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" size="sm" onClick={() => setShowBroadcast(false)}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={handleBroadcast} isLoading={broadcasting} disabled={!broadcastTitle.trim()}>
+                Send
+              </Button>
             </div>
           </Card>
         </div>
