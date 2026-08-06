@@ -2704,6 +2704,7 @@ export interface StoredNotification {
 export interface ContinueWatchingItem {
   userId: string;
   username: string;
+  providerType?: string;
   // 'movie' entries are in-progress movies (resume always true, nextEpisode/
   // lastWatched always null). For 'series', nextEpisode is the episode the
   // card opens - the in-progress one when resume=true, the next unwatched
