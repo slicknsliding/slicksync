@@ -347,11 +347,28 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
 
     // Full replace, matching sync_push_collections' own semantics - there is
     // no partial-update RPC, so callers must always push the complete array.
+    //
+    // p_collections_json must be the raw array, NOT a JSON string. Confirmed
+    // live (2026-08-06) via a raw fetch intercept on sync_pull_collections:
+    // stringifying it here meant supabaseRpc's own JSON.stringify(body) on
+    // the outer request double-encoded it, so collections_json was stored
+    // (and always came back) as a JSON *string* containing escaped JSON
+    // text, not a real array - typeof came back "string", not "object".
+    // Nuvio's real desktop client (composeApp/.../CollectionModels.kt,
+    // SupabaseCollectionBlob.collectionsJson: JsonElement) expects a native
+    // JSON array there; getting a string instead makes its strict
+    // kotlinx.serialization decode of the whole payload throw, which its
+    // own sync code silently swallows (logs and discards) - so literally
+    // nothing written by this app ever appeared on-device, regardless of
+    // which fields were set on any individual folder. This masked itself
+    // completely from every read this app ever did of its own writes,
+    // since getCollections() already defensively re-parses a string return
+    // back into an array - see that function's own comment.
     async setCollections(profileId, collections) {
       const accessToken = await ensureAuth()
       await supabaseRpc('sync_push_collections', {
         p_profile_id: profileId,
-        p_collections_json: JSON.stringify(collections)
+        p_collections_json: collections
       }, accessToken)
     },
 
