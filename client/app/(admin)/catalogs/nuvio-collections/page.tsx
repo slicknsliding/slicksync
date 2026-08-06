@@ -156,14 +156,35 @@ function moveItem<T>(arr: T[], index: number, dir: -1 | 1): T[] {
   return next;
 }
 
+// Confirmed live (2026-08-06): Nuvio's real client only picks up a folder
+// object on FIRST sync if it carries these fields - a folder missing them
+// entirely (not just falsy) silently never renders, even after a full app
+// restart, even though the write itself lands correctly and reads back
+// fine everywhere (including this app's own editor). Pre-existing folders
+// already in an account keep working without them since they're not going
+// through whatever "is this a genuinely new folder" check gates a first
+// sync - but every NEW folder this editor creates needs them from the start.
+function newFolderDefaults() {
+  return { tileShape: 'LANDSCAPE' as const, hideTitle: false, focusGifEnabled: false };
+}
+
 // Fresh ids for the collection and every folder inside it, so pasting a
 // copy into a target profile never collides with (or aliases) the source's
-// own ids. catalogSources carry no id of their own - copied as-is.
+// own ids. catalogSources carry no id of their own - copied as-is. Also
+// backfills newFolderDefaults() for any folder missing them (e.g. copying
+// an old-style folder, or importing a JSON export from before this fix) -
+// a copy into a different profile is a first sync there regardless of
+// whether it was "new" in the source profile.
 function deepCopyCollection(c: NuvioCollection): NuvioCollection {
   return {
     ...c,
     id: newId(),
-    folders: (c.folders || []).map((f) => ({ ...f, id: newId(), catalogSources: [...(f.catalogSources || [])] })),
+    folders: (c.folders || []).map((f) => ({
+      ...newFolderDefaults(),
+      ...f,
+      id: newId(),
+      catalogSources: [...(f.catalogSources || [])],
+    })),
   };
 }
 
@@ -760,7 +781,7 @@ export default function NuvioCollectionsPage() {
   // an empty/fake placeholder folder just because the template listed it.
   const applyGenreTemplate = () => {
     const folders = GENRE_TEMPLATE.genres
-      .map((slot) => ({ id: newId(), title: slot.title, catalogSources: matchGenreSources(slot.aliases, addons) }))
+      .map((slot) => ({ id: newId(), title: slot.title, catalogSources: matchGenreSources(slot.aliases, addons), ...newFolderDefaults() }))
       .filter((f) => f.catalogSources.length > 0);
     if (folders.length === 0) {
       toast.error('No genre-filterable catalogs found in your installed addons');
@@ -786,7 +807,7 @@ export default function NuvioCollectionsPage() {
   const addFolder = (collectionId: string) => {
     setCollections((prev) => prev.map((c) => (c.id !== collectionId ? c : {
       ...c,
-      folders: [...(c.folders || []), { id: newId(), title: 'New Folder', catalogSources: [] }],
+      folders: [...(c.folders || []), { id: newId(), title: 'New Folder', catalogSources: [], ...newFolderDefaults() }],
     })));
   };
 

@@ -219,13 +219,13 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                         onClick={() => { setView('unlink-uuid'); setError(null); setPassword(''); }}
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200"
                         style={{ backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text)', border: '1px solid var(--color-surface-border)' }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-primary)'; }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-warning)'; }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-surface-border)'; }}
                     >
-                        <ShieldCheckIcon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
+                        <ExclamationTriangleIcon className="w-5 h-5" style={{ color: 'var(--color-warning)' }} />
                         <div className="text-left">
                             <p className="text-sm font-medium">Keep {providerLabel} Only</p>
-                            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Remove UUID & password</p>
+                            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Remove UUID & password - {providerLabel} becomes your only way in</p>
                         </div>
                     </button>
 
@@ -233,13 +233,13 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                         onClick={() => { setView('unlink-stremio'); setError(null); setPassword(''); }}
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200"
                         style={{ backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text)', border: '1px solid var(--color-surface-border)' }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-warning)'; }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-primary)'; }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--color-surface-border)'; }}
                     >
-                        <KeyIcon className="w-5 h-5" style={{ color: 'var(--color-warning)' }} />
+                        <KeyIcon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
                         <div className="text-left">
                             <p className="text-sm font-medium">Keep UUID Only</p>
-                            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Unlink {providerLabel} account</p>
+                            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Unlink {providerLabel} account, keep your password as a fallback</p>
                         </div>
                     </button>
                 </>
@@ -394,13 +394,13 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
         <div className="space-y-4">
             <div
                 className="rounded-xl p-4 flex items-start gap-3"
-                style={{ backgroundColor: 'var(--color-primary-muted)' }}
+                style={{ backgroundColor: 'var(--color-warning-muted, rgba(245, 158, 11, 0.1))', border: '1px solid var(--color-warning)' }}
             >
-                <ShieldCheckIcon className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--color-primary)' }} />
+                <ExclamationTriangleIcon className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--color-warning)' }} />
                 <div>
-                    <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>Keep {providerLabel} Only</p>
+                    <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>This removes your only fallback login</p>
                     <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                        This will remove your UUID and password. You&apos;ll only be able to log in via {providerLabel} ({accountInfo.email}).
+                        Your UUID and password will be deleted. From then on, {providerLabel} ({accountInfo.email}) is the <em>only</em> way to sign in - if {providerLabel} has an outage, a bug, or your account there has an issue, you will not be able to get into this admin dashboard until that's resolved on their end. There is no password fallback once this is done.
                     </p>
                 </div>
             </div>
@@ -422,7 +422,7 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                     disabled={isLoading}
                     className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
                     style={{
-                        backgroundColor: 'var(--color-primary)',
+                        backgroundColor: 'var(--color-warning)',
                         color: 'var(--color-bg)',
                         opacity: isLoading ? 0.6 : 1,
                     }}
@@ -430,7 +430,7 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                     {isLoading ? (
                         <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                     ) : (
-                        'Confirm'
+                        'Remove password anyway'
                     )}
                 </button>
             </div>

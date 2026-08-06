@@ -33,6 +33,13 @@ model User {
   lastSyncedAt       DateTime? // When user addons were last successfully synced
   syncStatus         String? // "idle", "syncing", "success", "error"
   syncErrorMessage   String? // Last sync error message if any
+  // Set when a live provider fetch fails (e.g. an expired Stremio session)
+  // so it's visible somewhere instead of the sync silently going quiet -
+  // confirmed real case: a user's watch history stopped updating for over
+  // a week with nothing surfacing why. Null means the most recent attempt
+  // succeeded; cleared automatically on the next successful live fetch.
+  providerConnectionError   String?
+  providerConnectionErrorAt DateTime?
   createdAt          DateTime  @default(now())
 
   // Relationships
