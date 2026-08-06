@@ -266,19 +266,27 @@ async function suggestTitlesForCatalog(apiKey, query, excludeIds = []) {
   // genre/theme keyword in what's left - otherwise a query like "90s horror
   // movies" would try to look up "90s" as a keyword alongside "horror".
   const withoutDecade = trimmed.replace(/\b(19|20)?\d0s\b/i, ' ').replace(/\s+/g, ' ').trim()
-  const significant = withoutDecade
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w && !GENERIC_WORDS.has(w) && !/^\d+$/.test(w))
-    .sort((a, b) => b.length - a.length)
+  // Original word order preserved (for a real multi-word keyword phrase),
+  // filler words removed. Confirmed real bug: leaving "movies" in for
+  // "90s horror movies" made the phrase lookup match TMDb's "horrormovies"
+  // keyword (a near-empty tag, 0 results after filtering) before the clean
+  // word "horror" ever got a chance - the phrase attempt must be built from
+  // filler-stripped words, not the raw remaining text.
+  const wordsInOrder = withoutDecade.toLowerCase().split(/\s+/).filter((w) => w && !GENERIC_WORDS.has(w) && !/^\d+$/.test(w))
+  const significant = [...wordsInOrder].sort((a, b) => b.length - a.length)
 
   let keywordId = null
   if (significant.length > 0) {
-    keywordId = await lookupTmdbKeywordId(withoutDecade, apiKey)
+    // Only worth trying as a phrase when there's more than one significant
+    // word - a single word has nothing left to distinguish it from the
+    // per-word retry below, and phrase search is the riskier of the two
+    // (more prone to matching an obscure compound tag over the real one).
+    if (wordsInOrder.length > 1) {
+      keywordId = await lookupTmdbKeywordId(wordsInOrder.join(' '), apiKey)
+    }
     if (!keywordId) {
-      // Full remaining phrase didn't match a real keyword - retry word by
-      // word, longest first, so multi-word themes still win over incidental
-      // single-word matches ("30 days of halloween" -> "halloween").
+      // Retry word by word, longest first, so a real theme word wins over
+      // an incidental short one ("30 days of halloween" -> "halloween").
       for (const word of significant) {
         keywordId = await lookupTmdbKeywordId(word, apiKey)
         if (keywordId) break
