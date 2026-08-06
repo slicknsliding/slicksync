@@ -218,7 +218,21 @@ export function AvatarPickerModal({
   // 3-across grid of tiny thumbnails at modal-md width was the "how could
   // anyone choose from that" complaint this whole size/layout pass exists
   // to fix. More columns only at the wider sizes cover callers actually use.
-  const nuvioGridCols = size === 'full' ? 'grid-cols-5' : size === 'xl' ? 'grid-cols-4' : size === 'lg' ? 'grid-cols-3' : 'grid-cols-2';
+  //
+  // These column counts are keyed off `size` (the Modal's desktop max-width
+  // preset), not the actual viewport - on a real phone the Modal itself
+  // still only gets as wide as the screen, so a bare "grid-cols-5" for
+  // size="full" packed 5 columns into ~350px of real width and made every
+  // thumbnail unreadable. Tailwind breakpoints below floor it at 2 columns
+  // under `sm` (640px) regardless of `size`, then scale up to each size's
+  // intended column count only once there's actually room for it.
+  const nuvioGridCols = size === 'full'
+    ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
+    : size === 'xl'
+    ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4'
+    : size === 'lg'
+    ? 'grid-cols-2 sm:grid-cols-3'
+    : 'grid-cols-2';
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size={size}>
