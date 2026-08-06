@@ -26,6 +26,7 @@ module.exports = ({ prisma, getAccountId }) => {
     coverColorIndex: list.coverColorIndex ?? null,
     importSourceUrl: list.importSourceUrl || null,
     autoRefresh: !!list.autoRefresh,
+    autoRefreshFrequency: list.autoRefreshFrequency === 'weekly' ? 'weekly' : 'daily',
     lastAutoRefreshAt: list.lastAutoRefreshAt || null,
     pinned: !!list.pinned,
     createdAt: list.createdAt,
@@ -159,6 +160,9 @@ module.exports = ({ prisma, getAccountId }) => {
           return res.status(400).json({ error: 'This catalog wasn\'t imported from a list, so there\'s no source to auto-refresh from.' });
         }
         data.autoRefresh = !!body.autoRefresh;
+      }
+      if ('autoRefreshFrequency' in body) {
+        data.autoRefreshFrequency = body.autoRefreshFrequency === 'weekly' ? 'weekly' : 'daily';
       }
       const list = await prisma.customList.update({ where: { id: existing.id }, data });
       res.json(shape(list));

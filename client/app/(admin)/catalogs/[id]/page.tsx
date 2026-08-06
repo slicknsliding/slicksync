@@ -293,9 +293,24 @@ export default function ListDetailPage() {
     try {
       const updated = await api.updateList(list.id, { autoRefresh: next });
       setList(updated);
-      toast.success(next ? 'This catalog will now refresh from its source daily' : 'Daily auto-refresh turned off');
+      const freq = updated.autoRefreshFrequency === 'weekly' ? 'weekly' : 'daily';
+      toast.success(next ? `This catalog will now refresh from its source ${freq}` : 'Auto-refresh turned off');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to update auto-refresh');
+    } finally {
+      setSavingAutoRefresh(false);
+    }
+  };
+
+  const handleChangeAutoRefreshFrequency = async (frequency: 'daily' | 'weekly') => {
+    if (!list || savingAutoRefresh || list.autoRefreshFrequency === frequency) return;
+    setSavingAutoRefresh(true);
+    try {
+      const updated = await api.updateList(list.id, { autoRefreshFrequency: frequency });
+      setList(updated);
+      toast.success(`Auto-refresh set to ${frequency}`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to update auto-refresh schedule');
     } finally {
       setSavingAutoRefresh(false);
     }
@@ -733,16 +748,43 @@ export default function ListDetailPage() {
             <p className="text-xs text-muted">
               Applying replaces this catalog&apos;s titles with the source list&apos;s current contents. Any titles you&apos;ve added or removed by hand since importing will be lost.
             </p>
-            <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-surface-hover">
-              <div>
-                <p className="text-sm font-medium text-default">Auto-refresh daily</p>
-                <p className="text-xs text-muted">
-                  {list?.autoRefresh && list.lastAutoRefreshAt
-                    ? `Last auto-refreshed ${new Date(list.lastAutoRefreshAt).toLocaleDateString()}`
-                    : 'Automatically re-pull and apply, once a day, no confirmation'}
-                </p>
+            <div className="p-3 rounded-lg bg-surface-hover space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-default">Auto-refresh</p>
+                  <p className="text-xs text-muted">
+                    {list?.autoRefresh && list.lastAutoRefreshAt
+                      ? `Last auto-refreshed ${new Date(list.lastAutoRefreshAt).toLocaleDateString()}`
+                      : 'Automatically re-pull and apply, no confirmation'}
+                  </p>
+                </div>
+                <ToggleSwitch checked={!!list?.autoRefresh} onChange={handleToggleAutoRefresh} disabled={savingAutoRefresh} />
               </div>
-              <ToggleSwitch checked={!!list?.autoRefresh} onChange={handleToggleAutoRefresh} disabled={savingAutoRefresh} />
+              {list?.autoRefresh && (
+                <div className="flex items-center gap-2 pt-1 border-t border-default">
+                  <p className="text-xs text-muted pt-2">Schedule</p>
+                  <div className="flex gap-1 pt-2">
+                    {(['daily', 'weekly'] as const).map((freq) => {
+                      const active = (list.autoRefreshFrequency || 'daily') === freq;
+                      return (
+                        <button
+                          key={freq}
+                          type="button"
+                          onClick={() => handleChangeAutoRefreshFrequency(freq)}
+                          disabled={savingAutoRefresh}
+                          className="px-2.5 py-1 rounded-lg text-xs font-medium capitalize transition-colors disabled:opacity-50"
+                          style={{
+                            background: active ? 'var(--color-primary)' : 'var(--color-subtle)',
+                            color: active ? 'white' : 'var(--color-textMuted)',
+                          }}
+                        >
+                          {freq}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" size="sm" onClick={() => setRefreshDiff(null)}>Cancel</Button>

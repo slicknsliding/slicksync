@@ -1760,7 +1760,7 @@ class ApiClient {
       body: JSON.stringify({ name, description }),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly' }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -2438,6 +2438,7 @@ export interface CustomList {
   coverColorIndex: number | null;
   importSourceUrl: string | null;
   autoRefresh: boolean;
+  autoRefreshFrequency: 'daily' | 'weekly';
   lastAutoRefreshAt: string | null;
   pinned: boolean;
   createdAt: string;
