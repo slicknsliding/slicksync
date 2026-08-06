@@ -1140,9 +1140,8 @@ export default function NuvioCollectionsPage() {
                     Want to turn a local Catalog into a folder here? Nuvio folders can only reference a live addon catalog, TMDb list, or Trakt
                     list — not a fixed set of titles directly — so open the Catalog, use <span className="text-default">Export to MDBList</span> to
                     create a real MDBList list from it, then add that list&apos;s URL as a Custom Catalog (provider: MDBList) in either{' '}
-                    <span className="text-default">AIOStreams</span> or <span className="text-default">AIOMetadata</span>&apos;s own config —
-                    AIOMetadata is confirmed to work reliably for this. Once saved there, it shows up as a normal source in{' '}
-                    <span className="text-default">Add source</span> below.
+                    <span className="text-default">AIOStreams</span> or <span className="text-default">AIOMetadata</span>&apos;s own config — both
+                    work fine as sources. Once saved there, it shows up as a normal source in <span className="text-default">Add source</span> below.
                   </p>
                 </div>
 
