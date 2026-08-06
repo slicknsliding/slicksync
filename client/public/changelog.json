@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.68.5",
+    "date": "2026-08-06",
+    "title": "fix: group sync failing every time (409); new Catalog sharing, auto-refresh schedule, Superadmin tools",
+    "features": [
+      "Catalogs: auto-refresh can now be set to daily or weekly, not just on/off.",
+      "Catalogs: a catalog's owner can share it read-only with every other account on this instance - visible in Add to Catalogs is excluded for non-owners, and every mutating action (edit, reorder, delete, remove items) is hidden on a shared-with-you catalog.",
+      "Continue Watching cards now show a small Stremio/Nuvio badge so it's clear which provider each in-progress title came from.",
+      "Superadmin: resource quota alerts - flags an account crossing a configurable usage threshold, with quick-select for bulk action.",
+      "Superadmin: broadcast a one-time announcement (bell + push) to all or selected accounts.",
+      "Superadmin: scheduled weekly VACUUM to reclaim SQLite disk space, toggleable, with a manual \"Run now\"."
+    ],
+    "bugFixes": [
+      "Critical: group sync was failing on every single attempt with a duplicate-addon conflict whenever an addon's SlickSync-side custom display name (e.g. \"Cinemeta (someuser)\") diverged from its name as already stored on the provider - the two never matched, so a protected addon and the same addon from the group's list both survived into the synced list and collided. Confirmed live on production. Now de-dupes the final list by actual addon identity (URL), which is correct regardless of any name mismatch.",
+      "A group/user could show a stale \"Unsynced\" badge for a while after a real, successful sync - a read-after-write race against the provider's own backend. Now retries briefly before settling on \"Unsynced\" specifically right after a sync, without masking a genuinely failed one.",
+      "Nuvio Collections: the folder cover picker defaulted to the URL tab even when browsing the Nuvio Covers gallery would be more useful, and the Nuvio Covers grid was unreadable on mobile (fixed column count crammed 5 columns into phone width)."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.4",
     "date": "2026-08-06",
     "title": "fix: Nuvio gif covers - the real field this time",
