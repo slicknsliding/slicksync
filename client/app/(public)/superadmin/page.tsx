@@ -50,12 +50,8 @@ interface MaintenanceState {
   supported: boolean;
   settings?: {
     vacuumEnabled: boolean;
-    pruneEnabled: boolean;
-    pruneRetentionDays: number;
     lastVacuumAt: string | null;
-    lastPruneAt: string | null;
   };
-  prunable?: { episodes: number; movies: number; total: number; cutoff: string };
 }
 
 function isAbandoned(a: SuperAdminAccount): boolean {
@@ -232,10 +228,7 @@ export default function SuperAdminPage() {
   const [maintenance, setMaintenance] = useState<MaintenanceState | null>(null);
   const [loadingMaintenance, setLoadingMaintenance] = useState(true);
   const [vacuumBusy, setVacuumBusy] = useState(false);
-  const [pruneBusy, setPruneBusy] = useState(false);
   const [savingMaintenanceSetting, setSavingMaintenanceSetting] = useState(false);
-  const [showPruneConfirm, setShowPruneConfirm] = useState(false);
-  const [retentionInput, setRetentionInput] = useState(365);
 
   const loadMaintenance = useCallback(async () => {
     setLoadingMaintenance(true);
@@ -244,7 +237,6 @@ export default function SuperAdminPage() {
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       setMaintenance(data);
-      if (data?.settings?.pruneRetentionDays) setRetentionInput(data.settings.pruneRetentionDays);
     } catch {
       // Best-effort - the card just renders nothing (see !maintenance?.supported below)
     } finally {
@@ -252,7 +244,7 @@ export default function SuperAdminPage() {
     }
   }, []);
 
-  const updateMaintenanceSetting = async (patch: { vacuumEnabled?: boolean; pruneEnabled?: boolean; pruneRetentionDays?: number }) => {
+  const updateMaintenanceSetting = async (patch: { vacuumEnabled?: boolean }) => {
     setSavingMaintenanceSetting(true);
     try {
       const res = await fetch(`${API_BASE}/superadmin/db-maintenance`, {
@@ -283,22 +275,6 @@ export default function SuperAdminPage() {
       toast.error(e?.message || 'VACUUM failed');
     } finally {
       setVacuumBusy(false);
-    }
-  };
-
-  const handleRunPrune = async () => {
-    setPruneBusy(true);
-    try {
-      const res = await fetch(`${API_BASE}/superadmin/db-maintenance/prune`, { method: 'POST', credentials: 'include' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.message || 'Prune failed');
-      toast.success(`Pruned ${data.episodesDeleted + data.moviesDeleted} old watch-history rows`);
-      setShowPruneConfirm(false);
-      await loadMaintenance();
-    } catch (e: any) {
-      toast.error(e?.message || 'Prune failed');
-    } finally {
-      setPruneBusy(false);
     }
   };
 
@@ -591,7 +567,7 @@ export default function SuperAdminPage() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-default">Database maintenance</h3>
-                <p className="text-xs text-muted">Instance-level - one shared SQLite file, not per-account. Both off by default.</p>
+                <p className="text-xs text-muted">Instance-level - one shared SQLite file, not per-account. Off by default.</p>
               </div>
             </div>
 
@@ -608,43 +584,6 @@ export default function SuperAdminPage() {
                 <ToggleSwitch
                   checked={maintenance.settings.vacuumEnabled}
                   onChange={() => updateMaintenanceSetting({ vacuumEnabled: !maintenance!.settings!.vacuumEnabled })}
-                  disabled={savingMaintenanceSetting}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 py-2.5 border-t border-default">
-              <div>
-                <p className="text-sm text-default">Prune old watch history</p>
-                <p className="text-xs text-muted">
-                  Permanently deletes episode/movie watch-history rows past the retention window below. Weekly.
-                  {maintenance.settings.lastPruneAt && ` Last ran ${new Date(maintenance.settings.lastPruneAt).toLocaleString()}.`}
-                  {maintenance.prunable && maintenance.prunable.total > 0 && ` ${maintenance.prunable.total} row${maintenance.prunable.total !== 1 ? 's' : ''} would be pruned right now.`}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <input
-                  type="number"
-                  min={30}
-                  step={30}
-                  value={retentionInput}
-                  onChange={(e) => setRetentionInput(Math.max(30, parseInt(e.target.value, 10) || 30))}
-                  onBlur={() => retentionInput !== maintenance!.settings!.pruneRetentionDays && updateMaintenanceSetting({ pruneRetentionDays: retentionInput })}
-                  title="Retention window in days"
-                  className="w-16 py-1.5 px-2 rounded-lg bg-surface-hover text-default text-xs border border-transparent focus:border-primary focus:outline-none"
-                />
-                <span className="text-xs text-muted">days</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowPruneConfirm(true)}
-                  disabled={!maintenance.prunable || maintenance.prunable.total === 0}
-                >
-                  Run now
-                </Button>
-                <ToggleSwitch
-                  checked={maintenance.settings.pruneEnabled}
-                  onChange={() => updateMaintenanceSetting({ pruneEnabled: !maintenance!.settings!.pruneEnabled })}
                   disabled={savingMaintenanceSetting}
                 />
               </div>
@@ -934,16 +873,6 @@ export default function SuperAdminPage() {
         isLoading={bulkBusy}
       />
 
-      <ConfirmModal
-        isOpen={showPruneConfirm}
-        onClose={() => setShowPruneConfirm(false)}
-        onConfirm={handleRunPrune}
-        title="Prune old watch history"
-        description={`Permanently delete ${maintenance?.prunable?.total ?? 0} watch-history row${(maintenance?.prunable?.total ?? 0) !== 1 ? 's' : ''} (${maintenance?.prunable?.episodes ?? 0} episode, ${maintenance?.prunable?.movies ?? 0} movie) watched before ${maintenance?.prunable?.cutoff ? new Date(maintenance.prunable.cutoff).toLocaleDateString() : ''}, across every account. This cannot be undone - it does not affect current/resumable state (Continue Watching), only the history log.`}
-        confirmText={pruneBusy ? 'Pruning...' : 'Prune permanently'}
-        variant="danger"
-        isLoading={pruneBusy}
-      />
     </div>
   );
 }

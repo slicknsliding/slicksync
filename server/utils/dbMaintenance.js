@@ -1,15 +1,25 @@
-// SQLite maintenance: scheduled VACUUM (reclaims space SQLite never
-// auto-shrinks after deletes) and an entirely separate, explicit opt-in for
-// pruning old watch-history rows past a retention window. dbSizeMonitor.js
-// only ever observes the DB file's size - this is the actual remediation
-// half of that story, private-mode/SQLite only (public mode is Postgres,
-// managed by whoever hosts it, not this app).
+// SQLite maintenance: scheduled VACUUM, reclaiming disk space SQLite never
+// auto-shrinks after deletes. dbSizeMonitor.js only ever observes the DB
+// file's size - this is the actual remediation half of that story,
+// private-mode/SQLite only (public mode is Postgres, managed by whoever
+// hosts it, not this app).
+//
+// Deliberately VACUUM-only, no data pruning: an earlier version of this
+// file also offered opt-in pruning of old EpisodeWatchHistory/
+// MovieWatchHistory rows, but that conflicts with real features that read
+// this same history unbounded or by a specific past date -
+// recommendationEngine.js's "Because you watched X" vectors use the
+// account's ENTIRE watch history with no date filter, and yearInReview.js
+// queries a specific past calendar year - so pruning old rows would
+// silently degrade recommendation quality over time and could make a past
+// year's review come back incomplete. VACUUM alone never touches a row, so
+// none of that applies to it.
 //
 // Settings live in a JSON file on the same mounted data volume as backups
 // and vapid.json - same reasoning as vapid.json's own comment: there's no
 // AppAccount for "the instance" itself to store a setting on (superadmin is
 // a single shared password, not a tenant), so a small file avoids a schema
-// migration for a handful of instance-level flags no tenant ever reads.
+// migration for one instance-level flag no tenant ever reads.
 
 const fs = require('fs')
 const path = require('path')
@@ -17,14 +27,10 @@ const path = require('path')
 const SETTINGS_FILE = path.join(process.cwd(), 'data', 'db-maintenance-settings.json')
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000 // 6h - matches dbSizeMonitor/vaultMonitor's cadence
 const VACUUM_MIN_GAP_MS = 7 * 24 * 60 * 60 * 1000 // weekly
-const PRUNE_MIN_GAP_MS = 7 * 24 * 60 * 60 * 1000 // weekly
 
 const DEFAULT_SETTINGS = {
   vacuumEnabled: false,
-  pruneEnabled: false,
-  pruneRetentionDays: 365,
   lastVacuumAt: null,
-  lastPruneAt: null,
 }
 
 function getDbFilePath() {
@@ -66,32 +72,6 @@ async function runVacuum(prisma) {
   return { durationMs: Date.now() - start }
 }
 
-// Only EpisodeWatchHistory/MovieWatchHistory - real, append-only watch-
-// history logs (one row per viewing, watchedAt-stamped), the actual bulk
-// contributor to long-run DB growth. Deliberately excludes WatchSession:
-// despite its name it's current/resumable STATE (one row per (user, item),
-// updated in place, unique-constrained - see its own schema comment),
-// not a growing history log, so age-based pruning there would delete a
-// still-relevant paused item's resume position, not stale history.
-async function countPrunableRows(prisma, retentionDays) {
-  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
-  const [episodes, movies] = await Promise.all([
-    prisma.episodeWatchHistory.count({ where: { watchedAt: { lt: cutoff } } }),
-    prisma.movieWatchHistory.count({ where: { watchedAt: { lt: cutoff } } }),
-  ])
-  return { episodes, movies, total: episodes + movies, cutoff: cutoff.toISOString() }
-}
-
-async function runPrune(prisma, retentionDays) {
-  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
-  const [episodes, movies] = await Promise.all([
-    prisma.episodeWatchHistory.deleteMany({ where: { watchedAt: { lt: cutoff } } }),
-    prisma.movieWatchHistory.deleteMany({ where: { watchedAt: { lt: cutoff } } }),
-  ])
-  saveSettings({ lastPruneAt: new Date().toISOString() })
-  return { episodesDeleted: episodes.count, moviesDeleted: movies.count, cutoff: cutoff.toISOString() }
-}
-
 let timer = null
 
 async function checkAndRun(prisma) {
@@ -103,13 +83,6 @@ async function checkAndRun(prisma) {
       if (due) {
         await runVacuum(prisma)
         console.log('[DbMaintenance] Scheduled VACUUM completed')
-      }
-    }
-    if (settings.pruneEnabled) {
-      const due = !settings.lastPruneAt || (Date.now() - new Date(settings.lastPruneAt).getTime()) >= PRUNE_MIN_GAP_MS
-      if (due) {
-        const result = await runPrune(prisma, settings.pruneRetentionDays || DEFAULT_SETTINGS.pruneRetentionDays)
-        console.log(`[DbMaintenance] Scheduled prune: ${result.episodesDeleted} episode + ${result.moviesDeleted} movie history rows past ${settings.pruneRetentionDays}d`)
       }
     }
   } catch (e) {
@@ -131,6 +104,6 @@ function clearDbMaintenanceSchedule() {
 }
 
 module.exports = {
-  getSettings, saveSettings, runVacuum, countPrunableRows, runPrune,
+  getSettings, saveSettings, runVacuum,
   scheduleDbMaintenance, clearDbMaintenanceSchedule, getDbFilePath,
 }
