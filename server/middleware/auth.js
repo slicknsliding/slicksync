@@ -37,16 +37,9 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
         // tenant account's state, see the comment above.
         if (!allowlisted && INSTANCE_TYPE === 'public' && prisma) {
           try {
-            const acct = await prisma.appAccount.findUnique({ where: { id: decoded.accId }, select: { disabled: true, sessionsRevokedAt: true } });
+            const acct = await prisma.appAccount.findUnique({ where: { id: decoded.accId }, select: { disabled: true } });
             if (acct?.disabled) {
               return res.status(401).json({ message: 'This account has been disabled' });
-            }
-            // Superadmin "force logout" - any token issued before the
-            // revocation timestamp is rejected, same as an expired token.
-            // decoded.iat is seconds since epoch (standard JWT claim, set
-            // automatically by jwt.sign); sessionsRevokedAt is a real Date.
-            if (acct?.sessionsRevokedAt && decoded.iat && decoded.iat * 1000 < acct.sessionsRevokedAt.getTime()) {
-              return res.status(401).json({ message: 'Session revoked' });
             }
           } catch {}
         }
@@ -64,12 +57,9 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
               // refresh token, without a DB read on every single request.
               if (!allowlisted && INSTANCE_TYPE === 'public' && prisma) {
                 try {
-                  const acct = await prisma.appAccount.findUnique({ where: { id: rj.accId }, select: { disabled: true, sessionsRevokedAt: true } });
+                  const acct = await prisma.appAccount.findUnique({ where: { id: rj.accId }, select: { disabled: true } });
                   if (acct?.disabled) {
                     return res.status(401).json({ message: 'This account has been disabled' });
-                  }
-                  if (acct?.sessionsRevokedAt && rj.iat && rj.iat * 1000 < acct.sessionsRevokedAt.getTime()) {
-                    return res.status(401).json({ message: 'Session revoked' });
                   }
                 } catch {}
               }

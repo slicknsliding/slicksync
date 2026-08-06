@@ -33,14 +33,11 @@ interface SuperAdminAccount {
   // Settings - read-only here, purely so accounts are easier to tell apart
   // than by raw UUID prefix. Superadmin never sets or edits this.
   displayName: string | null;
-  // Set by the "Force logout" action - server/middleware/auth.js rejects
-  // any token issued before this timestamp. Purely informational here.
-  sessionsRevokedAt: string | null;
 }
 
 interface AuditLogEntry {
   id: string;
-  action: 'disable' | 'enable' | 'delete' | 'revoke-sessions';
+  action: 'disable' | 'enable' | 'delete';
   targetAccountId: string;
   targetAccountUuid: string | null;
   bulk: boolean;
@@ -142,7 +139,6 @@ export default function SuperAdminPage() {
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [loadingAuditLog, setLoadingAuditLog] = useState(false);
   const [sortBy, setSortBy] = useState<SortKey>('createdAt');
-  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const filteredAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -289,22 +285,6 @@ export default function SuperAdminPage() {
 
   const selectAbandoned = () => {
     setSelectedIds(new Set(filteredAccounts.filter(isAbandoned).map((a) => a.id)));
-  };
-
-  const handleRevokeSessions = async (account: SuperAdminAccount) => {
-    if (!window.confirm(`Force-logout everyone currently signed into ${account.displayName || account.uuid || account.id}? They'll need to log in again.`)) return;
-    setRevokingId(account.id);
-    try {
-      const res = await fetch(`${API_BASE}/superadmin/accounts/${account.id}/revoke-sessions`, { method: 'POST', credentials: 'include' });
-      if (!res.ok) throw new Error('Failed');
-      const data = await res.json();
-      setAccounts((prev) => prev.map((a) => (a.id === account.id ? { ...a, sessionsRevokedAt: data.sessionsRevokedAt } : a)));
-      toast.success('Active sessions revoked');
-    } catch {
-      toast.error('Failed to revoke sessions');
-    } finally {
-      setRevokingId(null);
-    }
   };
 
   const handleBulkToggleDisabled = async (disable: boolean, confirmed = false) => {
@@ -539,15 +519,6 @@ export default function SuperAdminPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRevokeSessions(a)}
-                      isLoading={revokingId === a.id}
-                      title="Sign this account out everywhere - they'll need to log in again"
-                    >
-                      Force logout
-                    </Button>
                     <Button
                       variant="secondary"
                       size="sm"
