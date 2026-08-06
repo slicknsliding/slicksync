@@ -930,6 +930,13 @@ class ApiClient {
     });
   }
 
+  async updateAccountDisplayName(displayName: string | null) {
+    return this.fetch<{ displayName: string | null }>('/settings/account-display-name', {
+      method: 'PUT',
+      body: JSON.stringify({ displayName }),
+    });
+  }
+
   // Settings
   async getSyncSettings() {
     return this.fetch<SyncSettings>('/settings/account-sync');
@@ -2282,6 +2289,7 @@ export interface AccountStats {
   email?: string | null;
   linkedProvider?: 'stremio' | 'nuvio' | null;
   avatarUrl?: string | null;
+  displayName?: string | null;
 }
 
 export interface SyncSettings {
@@ -2546,7 +2554,10 @@ export interface HealthStatus {
     expiring: Array<{ id: string; name: string; provider: string | null; expiresAt: string }>;
     ignored: Array<{ id: string; name: string; provider: string | null }>;
   };
-  proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean };
+  // null on public multi-tenant instances - the AIOStreams proxy monitor is
+  // a private-mode, single-shared-instance concept with no per-account
+  // Settings field, so there's nothing real to report for a given tenant.
+  proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean } | null;
   mismatchCount: number;
   version: { running: string; latestRelease: string | null; updateAvailable: boolean };
   timeline: Array<{
