@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.68.1",
+    "date": "2026-08-06",
+    "title": "fix: production activity sync crash, Nuvio Collection folders not appearing, safer account unlinking",
+    "features": [],
+    "bugFixes": [
+      "Critical: native activity/watch-history syncing has been crashing on every poll cycle in public multi-tenant mode since providerConnectionError/providerConnectionErrorAt were added to the SQLite schema but never mirrored to the Postgres schema - instance-wide, not account-specific. Fixed by adding the missing fields to the Postgres schema.",
+      "Nuvio Collections: a newly created folder never rendered on-device, even after a full app restart, because it was missing tileShape/hideTitle/focusGifEnabled fields that Nuvio's real client requires on first sync - confirmed via a live A/B test against a known-working third-party tool writing to the same backend. Every place that creates a folder now sets sensible defaults, and copying a collection between profiles backfills them onto older-style folders too.",
+      "Account modal: removing your UUID/password to rely solely on a linked provider for admin login was styled as the calm, safe-looking option with no real warning - swapped the visual weighting to match the actual risk (you lose your only fallback if the provider has an outage or bug) and made the confirmation copy explicit about it."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.0",
     "date": "2026-08-06",
     "title": "feat: Nuvio Collections JSON export/import; fix: Suggest Titles decade+genre queries",
