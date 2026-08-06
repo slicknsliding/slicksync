@@ -2480,6 +2480,15 @@ export interface NuvioCollectionFolder {
   id: string;
   title: string;
   catalogSources?: NuvioCatalogSource[];
+  // Confirmed live (2026-08-06): Nuvio's real client only picks up a BRAND
+  // NEW folder on its first sync if these are present - a folder missing
+  // them entirely (not just falsy) never renders, even after a full app
+  // restart, despite the write/read round-tripping correctly everywhere
+  // else. Every folder this app creates must set them (see
+  // newFolderDefaults() in the Nuvio Collections page).
+  tileShape?: 'LANDSCAPE' | 'SQUARE' | 'POSTER';
+  hideTitle?: boolean;
+  focusGifEnabled?: boolean;
   [key: string]: any;
 }
 
