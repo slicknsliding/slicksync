@@ -161,7 +161,12 @@ async function supabaseRpc(fn, body, accessToken) {
       err.status = res.status
       throw err
     }
-    return await res.json()
+    // A write-only RPC (e.g. sync_push_collections) can legitimately return
+    // a 2xx with an empty body - blindly calling .json() on that throws
+    // "Unexpected end of JSON input" and makes a successful write look like
+    // a failure. Only parse when there's actually a body to parse.
+    const text = await res.text()
+    return text ? JSON.parse(text) : null
   })
 }
 
