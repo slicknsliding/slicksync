@@ -123,11 +123,20 @@ function SortableItem({
     isDragging,
   } = useSortable({ id });
 
+  // opacity: 0 while dragging used to be correct here - it hid the
+  // original item so only the DragOverlay's ghost copy (following the
+  // cursor) was visible, avoiding a visual duplicate. That overlay no
+  // longer exists (removed along with the nested DndContext it needed -
+  // see DraggableList's own comment), so hiding the original left nothing
+  // to replace it: the dragged item just vanished until dropped, confirmed
+  // real. Matches useSortableDragState's style now - no opacity rule, the
+  // item tracks the cursor via its own transform and stays visible the
+  // whole time, same as Addons/Users/Groups' own reorder already does.
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition: isDragging ? 'none' : transition,
     zIndex: isDragging ? 100 : undefined,
-    opacity: isDragging ? 0 : 1,
+    isolation: 'isolate',
   };
 
   const dragHandleProps = {
