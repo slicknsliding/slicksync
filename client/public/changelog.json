@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.15",
+    "date": "2026-08-07",
+    "title": "fix: janky modal open/close when launched from the iPhone Home Screen",
+    "features": [],
+    "bugFixes": [
+      "A Home Screen-launched (standalone mode) web app on iOS runs in a separate WKWebView process with markedly worse backdrop-filter/blur compositing than the same page in a normal Safari tab - a known WebKit regression, confirmed by user report (fast at the plain URL, janky opening/closing modals from the Home Screen bookmark). This app leans on blur heavily (nav bar, modals, dropdowns, cards), so now detects standalone mode and disables backdrop-filter entirely there - slightly less \"frosted glass\" look, meaningfully smoother modals, only when launched from the Home Screen icon."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.14",
     "date": "2026-08-07",
     "title": "fix: Nuvio Covers toolbar ate too much screen height - now collapses on scroll",
