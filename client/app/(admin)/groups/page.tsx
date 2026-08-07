@@ -18,6 +18,10 @@ import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { TVLink } from '@/components/tv/TVLink';
+import { useSortableDragState } from '@/components/ui/DragSortable';
+import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import type { DragEndEvent } from '@dnd-kit/core';
+import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -29,6 +33,7 @@ import {
   XMarkIcon,
   EyeIcon,
   DocumentDuplicateIcon,
+  Bars3Icon,
 } from '@heroicons/react/24/outline';
 
 // Group display type
@@ -153,6 +158,33 @@ export default function GroupsPage() {
     group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     group.description?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Register this page's drag-end logic with the layout-level DndContext,
+  // same shared mechanism Addons/Users/Vault already use.
+  const { registerDragEndHandler } = useVaultDrag();
+  useEffect(() => {
+    const handleDragEnd = (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const oldIndex = filteredGroups.findIndex(g => g.id === active.id);
+      const newIndex = filteredGroups.findIndex(g => g.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const reorderedIds = filteredGroups.map(g => g.id);
+      const [movedId] = reorderedIds.splice(oldIndex, 1);
+      reorderedIds.splice(newIndex, 0, movedId);
+      setGroups(prev => {
+        const byId = new Map(prev.map(g => [g.id, g]));
+        const reorderedGroups = reorderedIds.map(id => byId.get(id)).filter((g): g is Group => !!g);
+        const rest = prev.filter(g => !reorderedIds.includes(g.id));
+        return [...reorderedGroups, ...rest];
+      });
+      api.reorderGroups(reorderedIds).catch((err: any) => {
+        toast.error(err.message || 'Failed to save new order');
+      });
+    };
+    registerDragEndHandler(handleDragEnd);
+    return () => registerDragEndHandler(null);
+  }, [filteredGroups, registerDragEndHandler]);
 
   // Nebula's stat row - real totals from the same groupsDisplay data already rendered.
   const totalMembers = groupsDisplay.reduce((sum, g) => sum + (g.userCount || 0), 0);
@@ -384,8 +416,11 @@ export default function GroupsPage() {
                 {viewMode === 'grid' ? (
                   <StaggerContainer key="grid" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
+                      <SortableContext items={filteredGroups.map(g => g.id)} strategy={rectSortingStrategy}>
                       {filteredGroups.map((group) => (
-                        <StaggerItem key={group.id}>
+                        <SortableGroupWrapper key={group.id} id={group.id}>
+                          {(dragHandleProps) => (
+                        <StaggerItem>
                           <GroupCard
                             group={group}
                             isSelected={selectedIds.has(group.id)}
@@ -400,9 +435,13 @@ export default function GroupsPage() {
                               ));
                             }}
                             focusable={isTV}
+                            dragHandleProps={dragHandleProps}
                           />
                         </StaggerItem>
+                          )}
+                        </SortableGroupWrapper>
                       ))}
+                      </SortableContext>
                     </AnimatePresence>
                   </StaggerContainer>
                 ) : (
@@ -417,6 +456,7 @@ export default function GroupsPage() {
                     <table className="w-full min-w-[500px]">
                       <thead>
                         <tr className="border-b border-default">
+                          <th className="w-8" aria-hidden="true" />
                           <th className="px-4 py-4 text-left w-12">
                             <div
                               className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${hasSelection && selectedIds.size === filteredGroups.length
@@ -437,17 +477,15 @@ export default function GroupsPage() {
                         </tr>
                       </thead>
                       <tbody>
+                        <SortableContext items={filteredGroups.map(g => g.id)} strategy={verticalListSortingStrategy}>
                         <AnimatePresence mode="popLayout">
                           {filteredGroups.map((group) => (
-                            <motion.tr
+                            <SortableGroupRow
                               key={group.id}
-                              layout
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
+                              id={group.id}
+                              onClick={() => toggleSelect(group.id)}
                               className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(group.id) ? 'bg-primary-muted' : 'hover:bg-white/5'
                                 }`}
-                              onClick={() => toggleSelect(group.id)}
                             >
                               <td className="px-4 py-4">
                                 <div
@@ -513,9 +551,10 @@ export default function GroupsPage() {
                                   Sync
                                 </Button>
                               </td>
-                            </motion.tr>
+                            </SortableGroupRow>
                           ))}
                         </AnimatePresence>
+                        </SortableContext>
                       </tbody>
                     </table>
                   </motion.div>
@@ -649,6 +688,44 @@ export default function GroupsPage() {
   );
 }
 
+// Only itemProps (position/transform tracking, no listeners) goes on the
+// outer wrapper - dragHandleProps is threaded into GroupCard as a prop,
+// rendered there as a small dedicated grab handle. Same pattern as Addons'
+// SortableAddonWrapper / Users' SortableUserWrapper.
+function SortableGroupWrapper({ id, children }: { id: string; children: (dragHandleProps: Record<string, unknown>) => React.ReactNode }) {
+  const { dragHandleProps, itemProps } = useSortableDragState(id);
+  return (
+    <div ref={itemProps.ref} className={itemProps.className} style={itemProps.style}>
+      {children(dragHandleProps)}
+    </div>
+  );
+}
+
+// List-view counterpart - renders its own dedicated handle cell. Same
+// pattern as Addons' SortableAddonRow / Users' SortableUserRow.
+function SortableGroupRow({ id, onClick, className, children }: { id: string; onClick?: () => void; className?: string; children: React.ReactNode }) {
+  const { dragHandleProps, itemProps } = useSortableDragState(id);
+  return (
+    <motion.tr
+      ref={itemProps.ref as unknown as React.Ref<HTMLTableRowElement>}
+      layout
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={itemProps.style}
+      className={`${className || ''} ${itemProps.className}`}
+      onClick={onClick}
+    >
+      <td className="pl-4 py-4 w-8" onClick={(e) => e.stopPropagation()}>
+        <div {...dragHandleProps} className="p-1 rounded hover:bg-surface-hover cursor-grab active:cursor-grabbing inline-flex text-subtle hover:text-default" title="Drag to reorder">
+          <Bars3Icon className="w-4 h-4" />
+        </div>
+      </td>
+      {children}
+    </motion.tr>
+  );
+}
+
 // Group Card Component - single click opens, long press/right-click shows menu
 function GroupCard({
   group,
@@ -658,6 +735,7 @@ function GroupCard({
   onClone,
   onToggleStatus,
   focusable = false,
+  dragHandleProps,
 }: {
   group: GroupDisplay;
   isSelected: boolean;
@@ -668,6 +746,8 @@ function GroupCard({
   /** TV mode: wraps the card in a D-pad-focusable container, Enter/OK opens
    *  the same detail page a click would. */
   focusable?: boolean;
+  /** Dedicated grab handle (top-left), same pattern as Addons/Users. */
+  dragHandleProps?: Record<string, unknown>;
 }) {
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
   const [showActions, setShowActions] = useState(false);
@@ -724,6 +804,17 @@ function GroupCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
+        {dragHandleProps && (
+          <div
+            {...dragHandleProps}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            className="absolute top-4 left-4 z-10 p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
+            title="Drag to reorder"
+          >
+            <Bars3Icon className="w-4 h-4" />
+          </div>
+        )}
+
         {/* Selection indicator & Toggle - visible on hover or when selected */}
         <div className="absolute top-4 right-4 flex items-center gap-2">
           <SelectionCheckbox
