@@ -971,17 +971,6 @@ function UserCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
-        {dragHandleProps && (
-          <div
-            {...dragHandleProps}
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            className="absolute top-4 left-4 z-10 p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
-            title="Drag to reorder"
-          >
-            <Bars3Icon className="w-4 h-4" />
-          </div>
-        )}
-
         {/* Selection indicator & Toggle */}
         <div className="absolute top-4 right-4 flex items-center gap-2">
           <SelectionCheckbox
@@ -1005,6 +994,22 @@ function UserCard({
         </div>
 
         <div className="flex items-start gap-4">
+          {/* Genuine flex sibling, not an absolute overlay - this card's
+              avatar sits flush at the same top-left offset an absolute
+              handle would use (unlike AddonCard, whose icon has extra
+              clearance from its own header layout), so an overlay directly
+              collided with the avatar. Same nesting the User detail page's
+              own addon lists already use for exactly this reason. */}
+          {dragHandleProps && (
+            <div
+              {...dragHandleProps}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              className="shrink-0 mt-1 p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
+              title="Drag to reorder"
+            >
+              <Bars3Icon className="w-4 h-4" />
+            </div>
+          )}
           {/* Avatar */}
           <UserAvatar userId={user.id} name={user.name} email={user.email} colorIndex={user.colorIndex} src={user.avatarUrl || undefined} size="lg" />
 

@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.25",
+    "date": "2026-08-07",
+    "title": "fix: Users/Groups grid drag handle was invisible, overlapping the avatar",
+    "features": [],
+    "bugFixes": [
+      "Users and Groups grid-view cards: the new grab handle (previous release) was positioned as an absolute overlay at top-left, same as Addons - but unlike Addons' icon, these cards' avatar sits flush at that exact spot, so the handle was functionally there (confirmed via direct testing) but visually invisible underneath it. Now a genuine flex sibling that takes its own space before the avatar, same nesting the User detail page's own addon lists already use."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.24",
     "date": "2026-08-07",
     "title": "feat: drag-to-reorder for Addons, Users, and Groups (grid + list view)",
