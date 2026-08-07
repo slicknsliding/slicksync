@@ -464,7 +464,7 @@ export default function ListDetailPage() {
   // Header and NebulaPageHeading below) hides every header-level mutating
   // action at once instead of needing a per-button check.
   const editActions = list && !isLoading && !notFound && list.isOwner ? (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 flex-wrap justify-end">
       <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
         Suggest titles
       </Button>
@@ -506,7 +506,7 @@ export default function ListDetailPage() {
   ) : null;
 
   const detailActions = editActions ? (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 flex-wrap">
       {backButton}
       {editActions}
     </div>
