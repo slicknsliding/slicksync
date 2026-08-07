@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.13",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Covers toolbar (tabs/search/filters) also floats with the preview now",
+    "features": [],
+    "bugFixes": [
+      "Cover art picker: floating just the preview box (previous release) wasn't enough - the tabs, description, search bar, and orientation/format filters still scrolled away with the grid. All of it now sticks together as one toolbar at the top of the modal while scrolling through covers, per direct follow-up feedback."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.12",
     "date": "2026-08-07",
     "title": "fix: Nuvio Covers preview scrolled away while browsing the grid",
