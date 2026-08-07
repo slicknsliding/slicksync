@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.27",
+    "date": "2026-08-07",
+    "title": "feat: Addons list view redesigned as full-width rows, no more truncated names",
+    "features": [
+      "Addons page's list view is now full-width rows (icon, name, description, tags all in one flowing row) instead of a spreadsheet-style table - the table truncated addon names at 200px, which made same-provider addons with long custom names (e.g. \"AIOStreams || Fraggle\") impossible to tell apart. Full row width means no truncation. Grid view is unchanged; both views share the same drag-to-reorder."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.68.26",
     "date": "2026-08-07",
     "title": "fix: Group Addons / Account Addons drag still glitching - nested DndContext",
