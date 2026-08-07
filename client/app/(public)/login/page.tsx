@@ -14,6 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { userOAuth, userAuth as userAuthApi } from '@/lib/user-api';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
+import { PasswordToggleButton } from '@/components/ui/Input';
 import { api } from '@/lib/api';
 import { useUserAuth, UserAuthProvider } from '@/lib/hooks/useUserAuth';
 
@@ -32,6 +33,7 @@ function LoginContent() {
   // Admin login state
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [adminPasswordVisible, setAdminPasswordVisible] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminLoginType, setAdminLoginType] = useState<'credentials' | 'stremio' | 'nuvio'>(
@@ -672,20 +674,23 @@ function LoginContent() {
                         >
                           Password
                         </label>
-                        <input
-                          id="password"
-                          type="password"
-                          value={adminPassword}
-                          onChange={(e) => setAdminPassword(e.target.value)}
-                          className="w-full px-4 py-3 rounded-xl text-sm transition-all"
-                          style={{
-                            background: 'var(--color-bg)',
-                            border: '1px solid var(--color-surface-border)',
-                            color: 'var(--color-text)',
-                          }}
-                          placeholder="********"
-                          autoComplete="current-password"
-                        />
+                        <div className="relative">
+                          <input
+                            id="password"
+                            type={adminPasswordVisible ? 'text' : 'password'}
+                            value={adminPassword}
+                            onChange={(e) => setAdminPassword(e.target.value)}
+                            className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
+                            style={{
+                              background: 'var(--color-bg)',
+                              border: '1px solid var(--color-surface-border)',
+                              color: 'var(--color-text)',
+                            }}
+                            placeholder="********"
+                            autoComplete="current-password"
+                          />
+                          <PasswordToggleButton visible={adminPasswordVisible} onToggle={() => setAdminPasswordVisible((v) => !v)} />
+                        </div>
                       </div>
 
                       {adminError && (

@@ -5,6 +5,7 @@ import { Dialog, DialogPanel, DialogTitle, Transition, TransitionChild } from '@
 import { motion, AnimatePresence } from 'framer-motion';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 
 interface ModalProps {
   isOpen: boolean;
@@ -46,6 +47,18 @@ const sizeMaxWidthPx = {
 };
 
 export function Modal({ isOpen, onClose, title, description, size = 'md', children, hideCloseButton = false, backdropImage }: ModalProps) {
+  // Diagnostic/fix for a reported freeze closing any modal on mobile Safari
+  // specifically (confirmed NOT present on PC, and a Chromium long-task
+  // profile of the same open/close cycle came back completely clean - so
+  // whatever's costing time isn't generic heavy JS, it's something WebKit/
+  // mobile-Safari-specific neither desktop nor Chromium can reproduce).
+  // Skipping the leave transition entirely on mobile removes one whole
+  // category of suspect (blur/opacity/scale compositing during the close
+  // animation) at the cost of an instant close instead of a fade - if this
+  // fixes it, that's confirmation; if the freeze persists even with no
+  // animation, that rules animation out and points elsewhere (unmount cost,
+  // focus/inert handling, viewport resize).
+  const isMobile = useIsMobile();
   return (
     <Transition show={isOpen} as={Fragment}>
       <Dialog onClose={onClose} className="relative z-50">
@@ -55,7 +68,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
           enter="ease-out duration-200"
           enterFrom="opacity-0"
           enterTo="opacity-100"
-          leave="ease-in duration-150"
+          leave={isMobile ? '' : 'ease-in duration-150'}
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
@@ -78,7 +91,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
             enter="ease-out duration-200"
             enterFrom="opacity-0 scale-95 translate-y-4"
             enterTo="opacity-100 scale-100 translate-y-0"
-            leave="ease-in duration-150"
+            leave={isMobile ? '' : 'ease-in duration-150'}
             leaveFrom="opacity-100 scale-100 translate-y-0"
             leaveTo="opacity-0 scale-95 translate-y-4"
           >
