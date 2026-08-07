@@ -1450,17 +1450,17 @@ function AddonCard({
       onContextMenu={handleContextMenu}
       {...longPress}
     >
-      <div className="flex items-center gap-3 p-4">
-        {dragHandleProps && (
-          <div
-            {...dragHandleProps}
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            className="shrink-0 p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
-            title="Drag to reorder"
-          >
-            <Bars3Icon className="w-4 h-4" />
-          </div>
-        )}
+      {dragHandleProps && (
+        <div
+          {...dragHandleProps}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          className="absolute top-1 left-3 z-10 px-2 py-0.5 rounded-full text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
+          title="Drag to reorder"
+        >
+          <Bars3Icon className="w-3.5 h-3.5" />
+        </div>
+      )}
+      <div className="flex items-center gap-3 pt-6 pb-4 px-4">
         <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
           <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} visible={isSelected} />
         </div>
