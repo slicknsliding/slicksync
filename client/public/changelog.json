@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.7",
+    "date": "2026-08-06",
+    "title": "fix: Nuvio Collections info banners always taking up space",
+    "features": [],
+    "bugFixes": [
+      "Nuvio Collections: the two info banners (TMDb templates, bridging a Catalog in) rendered in full on every visit. Now collapsible into a single compact summary row, remembered per-browser once dismissed."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.6",
     "date": "2026-08-06",
     "title": "fix: Automatic Sync schedule (and Backup/Health Check) not holding after navigating away",
