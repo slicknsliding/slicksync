@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ClipboardIcon, CheckIcon, ArrowRightIcon } from '@heroicons/react/24/outline';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
+import { PasswordToggleButton } from '@/components/ui/Input';
 import { api } from '@/lib/api';
 
 // Public-mode (multi-tenant) self-registration - the flow the README already
@@ -20,6 +21,8 @@ export default function RegisterPage() {
   const [copied, setCopied] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -217,40 +220,46 @@ export default function RegisterPage() {
                 <label htmlFor="password" className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
                   Password
                 </label>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl text-sm transition-all"
-                  style={{
-                    background: 'var(--color-bg)',
-                    border: '1px solid var(--color-surface-border)',
-                    color: 'var(--color-text)',
-                  }}
-                  placeholder="At least 4 characters"
-                  autoComplete="new-password"
-                />
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={passwordVisible ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
+                    style={{
+                      background: 'var(--color-bg)',
+                      border: '1px solid var(--color-surface-border)',
+                      color: 'var(--color-text)',
+                    }}
+                    placeholder="At least 4 characters"
+                    autoComplete="new-password"
+                  />
+                  <PasswordToggleButton visible={passwordVisible} onToggle={() => setPasswordVisible((v) => !v)} />
+                </div>
               </div>
 
               <div>
                 <label htmlFor="confirmPassword" className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
                   Confirm password
                 </label>
-                <input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl text-sm transition-all"
-                  style={{
-                    background: 'var(--color-bg)',
-                    border: '1px solid var(--color-surface-border)',
-                    color: 'var(--color-text)',
-                  }}
-                  placeholder="********"
-                  autoComplete="new-password"
-                />
+                <div className="relative">
+                  <input
+                    id="confirmPassword"
+                    type={confirmPasswordVisible ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full pl-4 pr-12 py-3 rounded-xl text-sm transition-all"
+                    style={{
+                      background: 'var(--color-bg)',
+                      border: '1px solid var(--color-surface-border)',
+                      color: 'var(--color-text)',
+                    }}
+                    placeholder="********"
+                    autoComplete="new-password"
+                  />
+                  <PasswordToggleButton visible={confirmPasswordVisible} onToggle={() => setConfirmPasswordVisible((v) => !v)} />
+                </div>
               </div>
 
               {formError && (

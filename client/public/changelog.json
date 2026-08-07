@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.68.18",
+    "date": "2026-08-07",
+    "title": "feat: show/hide toggle on every password field; diagnostic mobile modal-close fix",
+    "features": [
+      "Every password field in the app (login, register, create user, vault, superadmin, account settings) now has an eye icon to show/hide what you typed, instead of only ever showing dots."
+    ],
+    "bugFixes": [
+      "Modals now close instantly (no fade/scale animation) on mobile only, as a diagnostic for a reported freeze closing any modal on mobile Safari specifically - confirmed not present on PC, and a browser profile of the same open/close cycle showed no heavy JS blocking the main thread, pointing at something WebKit/mobile-specific neither desktop nor that profiling could reproduce. If this doesn't fully resolve it, it at least rules animation out as the cause."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.17",
     "date": "2026-08-07",
     "title": "fix: every page load blocked on 10 unused theme-picker fonts",

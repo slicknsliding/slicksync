@@ -1,9 +1,9 @@
 'use client';
 
-import { forwardRef, InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import { forwardRef, useState, InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label?: string;
@@ -20,16 +20,39 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       sm: 'px-3 py-1.5 text-sm',
       md: 'px-4 py-3',
     };
-    
+
     const iconSizeStyles = {
       sm: 'left-3',
       md: 'left-4',
     };
-    
+
+    // Every password field in the app was unreadable dots with no way to
+    // check what was actually typed - real feedback that this made typing
+    // (and copy-pasting into) credential fields error-prone. type="password"
+    // gets this automatically rather than needing every caller to opt in -
+    // toggling swaps the native input type itself (not just a CSS mask), so
+    // browser/password-manager autofill still behaves correctly either way.
+    // rightIcon is ignored in this combination (no current caller passes
+    // both together) since there's only one slot to put an icon in.
+    const isPassword = props.type === 'password';
+    const [passwordVisible, setPasswordVisible] = useState(false);
+    const effectiveRightIcon = isPassword ? (
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => setPasswordVisible((v) => !v)}
+        className="pointer-events-auto p-1 -m-1 rounded-md hover:bg-surface-hover transition-colors"
+        aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+        title={passwordVisible ? 'Hide password' : 'Show password'}
+      >
+        {passwordVisible ? <EyeSlashIcon className={size === 'sm' ? 'w-4 h-4' : 'w-5 h-5'} /> : <EyeIcon className={size === 'sm' ? 'w-4 h-4' : 'w-5 h-5'} />}
+      </button>
+    ) : rightIcon;
+
     return (
       <div className="w-full">
         {label && (
-          <label 
+          <label
             className="block text-sm font-medium mb-2"
             style={{ color: 'var(--color-text-muted)' }}
           >
@@ -38,7 +61,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         )}
         <div className="relative">
           {leftIcon && (
-            <div 
+            <div
               className={clsx("absolute top-1/2 -translate-y-1/2", iconSizeStyles[size])}
               style={{ color: 'var(--color-text-subtle)' }}
             >
@@ -52,11 +75,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               sizeStyles[size],
               'focus:outline-none focus:ring-0 focus:shadow-none focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-none',
               'border',
-              error 
-                ? 'border-theme-error focus:border-theme-error' 
+              error
+                ? 'border-theme-error focus:border-theme-error'
                 : 'border-theme-surface-border focus:border-theme-primary-muted',
               leftIcon && (size === 'sm' ? 'pl-9' : 'pl-12'),
-              rightIcon && (size === 'sm' ? 'pr-9' : 'pr-12'),
+              effectiveRightIcon && (size === 'sm' ? 'pr-9' : 'pr-12'),
               className
             )}
             style={{
@@ -66,18 +89,19 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               ...props.style,
             }}
             {...props}
+            type={isPassword ? (passwordVisible ? 'text' : 'password') : props.type}
           />
-          {rightIcon && (
-            <div 
+          {effectiveRightIcon && (
+            <div
               className="absolute right-4 top-1/2 -translate-y-1/2"
               style={{ color: 'var(--color-text-subtle)' }}
             >
-              {rightIcon}
+              {effectiveRightIcon}
             </div>
           )}
         </div>
         {(error || hint) && (
-          <p 
+          <p
             className="mt-2 text-sm"
             style={{ color: error ? 'var(--color-error)' : 'var(--color-text-subtle)' }}
           >
@@ -90,6 +114,31 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
 );
 
 Input.displayName = 'Input';
+
+// Show/hide toggle for a plain, hand-rolled `<input type="password">` -
+// callers that don't go through the Input component above (a few pages
+// build their own styled input directly instead) still get the same
+// eye-icon toggle by wiring this in themselves: track a `visible` boolean,
+// pass `type={visible ? 'text' : 'password'}` to the input, position this
+// button absolutely inside a `relative` wrapper, right-pad the input so
+// typed text doesn't run under the icon. Same markup/behavior Input uses
+// internally, factored out so both paths render identically instead of
+// two hand-maintained copies of the same button.
+export function PasswordToggleButton({ visible, onToggle, size = 'md' }: { visible: boolean; onToggle: () => void; size?: 'sm' | 'md' }) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      onClick={onToggle}
+      className="absolute right-4 top-1/2 -translate-y-1/2 p-1 -m-1 rounded-md hover:bg-surface-hover transition-colors"
+      style={{ color: 'var(--color-text-subtle)' }}
+      aria-label={visible ? 'Hide password' : 'Show password'}
+      title={visible ? 'Hide password' : 'Show password'}
+    >
+      {visible ? <EyeSlashIcon className={size === 'sm' ? 'w-4 h-4' : 'w-5 h-5'} /> : <EyeIcon className={size === 'sm' ? 'w-4 h-4' : 'w-5 h-5'} />}
+    </button>
+  );
+}
 
 // Textarea component
 interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
