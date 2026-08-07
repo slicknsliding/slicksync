@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.14",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Covers toolbar ate too much screen height - now collapses on scroll",
+    "features": [],
+    "bugFixes": [
+      "Cover art picker: sticking the whole toolbar (tabs/description/search/filters) alongside the preview - the previous fix - left barely any room to actually see covers on a phone. Only the preview itself stays permanently visible now; the toolbar collapses on scroll and re-expands back at the top, same pattern the app's own top nav already uses when scrolling a page."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.13",
     "date": "2026-08-07",
     "title": "fix: Nuvio Covers toolbar (tabs/search/filters) also floats with the preview now",
