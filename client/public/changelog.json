@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.17",
+    "date": "2026-08-07",
+    "title": "fix: every page load blocked on 10 unused theme-picker fonts",
+    "features": [],
+    "bugFixes": [
+      "Every page load fetched and parsed 12 Google Font families as one render-blocking stylesheet, even though only 2 (Space Grotesk, Outfit) power the default UI - the other 10 are Build-your-own-theme picks (Settings > Themes) almost nobody's on. Split into a small blocking stylesheet for the 2 default fonts and a deferred (non-blocking) load for the other 10 - confirmed real, measurable slowness on a real flagship iPhone, both on initial page load and general responsiveness. Investigation into a separate reported modal-close freeze is ongoing; this fix addresses a confirmed inefficiency, not necessarily the whole story there."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.16",
     "date": "2026-08-07",
     "title": "fix: Nuvio Covers sticky preview / collapsing toolbar was mobile-only, now actually restricted to mobile",
