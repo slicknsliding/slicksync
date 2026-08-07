@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.68.23",
+    "date": "2026-08-07",
+    "title": "fix: Account Addons drag-to-reorder was landing in the wrong spot",
+    "features": [],
+    "bugFixes": [
+      "User detail page's Addons tab: the Account Addons list (Group Addons was unaffected) used the item's own current index baked into its drag id, so every reorder changed every other item's id too, breaking dnd-kit's tracking mid-drag - real feedback that drops landed in the wrong place. Now uses the addon's own transportUrl as a stable id, same pattern Group Addons already used correctly.",
+      "Renamed \"Stremio Account Addons\" to \"Account Addons\" - the same list renders for Nuvio accounts too, not just Stremio."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.22",
     "date": "2026-08-07",
     "title": "fix: Addons page stat cards looked smaller than Users/Groups/Vault's",
