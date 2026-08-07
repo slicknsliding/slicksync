@@ -13,7 +13,8 @@ import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, ResourceBadge, SearchInput, Modal, Input, ConfirmModal, VersionBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { NebulaPageHeading, NebulaHeaderStats, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading, NebulaHeaderStats, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, Addon } from '@/lib/api';
@@ -176,6 +177,14 @@ function SortableAddonWrapper({ id, children }: { id: string; children: React.Re
 }
 export default function AddonsPage() {
   const { layoutMode } = useLayoutMode();
+  // Desktop-only: gives the 3 stat cards their own full-width row (same
+  // grid-cols-3 block Users/Groups/Vault already use) instead of being
+  // squeezed into NebulaPageHeading's own center column alongside the
+  // title/actions, which is what made them look noticeably smaller here
+  // than on those other pages despite using the identical card component.
+  // Mobile keeps the existing NebulaHeaderStats placement untouched, per
+  // explicit request.
+  const isMobile = useIsMobile();
   const isTV = useIsTV();
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const [searchQuery, setSearchQuery] = useState('');
@@ -626,15 +635,24 @@ export default function AddonsPage() {
           subtitle={isLoading ? 'Loading...' : `${addons.length} addon${addons.length !== 1 ? 's' : ''} • ${protectedCount} protected`}
           actions={reloadAllButton}
           stats={
-            <NebulaHeaderStats
-              stats={[
-                { label: 'Total Addons', value: isLoading ? '...' : addons.length, icon: <PuzzlePieceIcon className="w-4 h-4 md:w-6 md:h-6" /> },
-                { label: 'Protected', value: isLoading ? '...' : protectedCount, icon: <ShieldCheckIcon className="w-4 h-4 md:w-6 md:h-6" /> },
-                { label: 'Assignments', value: isLoading ? '...' : totalAddonAssignments, icon: <UsersIcon className="w-4 h-4 md:w-6 md:h-6" /> },
-              ]}
-            />
+            isMobile ? (
+              <NebulaHeaderStats
+                stats={[
+                  { label: 'Total Addons', value: isLoading ? '...' : addons.length, icon: <PuzzlePieceIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+                  { label: 'Protected', value: isLoading ? '...' : protectedCount, icon: <ShieldCheckIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+                  { label: 'Assignments', value: isLoading ? '...' : totalAddonAssignments, icon: <UsersIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+                ]}
+              />
+            ) : undefined
           }
         />
+      )}
+      {layoutMode === 'nebula' && !isMobile && (
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-5">
+          <NebulaCompactStatCard label="Total Addons" value={isLoading ? '...' : addons.length} icon={<PuzzlePieceIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
+          <NebulaCompactStatCard label="Protected" value={isLoading ? '...' : protectedCount} icon={<ShieldCheckIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={1} />
+          <NebulaCompactStatCard label="Assignments" value={isLoading ? '...' : totalAddonAssignments} icon={<UsersIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
+        </div>
       )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}

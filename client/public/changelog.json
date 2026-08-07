@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.22",
+    "date": "2026-08-07",
+    "title": "fix: Addons page stat cards looked smaller than Users/Groups/Vault's",
+    "features": [],
+    "bugFixes": [
+      "Addons: Total Addons/Protected/Assignments used the same stat card component as Users/Groups/Vault but were squeezed into the page heading's center column instead of getting their own full-width row, so they read noticeably smaller on desktop. Now match those pages' layout on desktop; mobile is unchanged."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.21",
     "date": "2026-08-07",
     "title": "fix: Nuvio Collections tips/Export & Import bold text looked clickable but wasn't",
