@@ -268,6 +268,27 @@ export default function TasksPage() {
   const [isHealthCheckLoading, setIsHealthCheckLoading] = useState(false);
   const [isRunningHealthCheck, setIsRunningHealthCheck] = useState(false);
 
+  // Load the real persisted schedule settings on mount - all three
+  // (syncFrequency, backupDays, healthCheckMinutes) were previously only
+  // ever set locally by their own change handlers, never loaded from the
+  // server, so every one of them silently reset to its useState default the
+  // moment the component remounted (navigating away and back, a hard
+  // refresh). syncFrequency's default (Disabled/'0') made this obvious;
+  // backupDays/healthCheckMinutes have the identical bug, just harder to
+  // notice since their defaults (0, 30) happen to be common real values.
+  // Confirmed real report: github.com/slicknsliding/slicksync/issues/22.
+  useEffect(() => {
+    api.getSyncSettings()
+      .then((s) => { if (typeof s?.frequency === 'string') setSyncFrequency(s.frequency); })
+      .catch(() => {});
+    api.getBackupFrequency()
+      .then((s) => { if (typeof s?.days === 'number') setBackupDays(s.days); })
+      .catch(() => {});
+    api.getAddonHealthCheckSettings()
+      .then((s) => { if (typeof s?.intervalMinutes === 'number') setHealthCheckMinutes(s.intervalMinutes); })
+      .catch(() => {});
+  }, []);
+
 // Metrics migration - DISABLED
   // const [migrationPreview, setMigrationPreview] = useState<{
   //   migrationStatus: { hasExistingData: boolean; alreadyMigrated: boolean; sessionsCount: number; episodesCount: number; activitiesCount: number };
