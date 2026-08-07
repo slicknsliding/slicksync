@@ -1,5 +1,25 @@
 [
   {
+    "version": "1.68.30",
+    "date": "2026-08-07",
+    "title": "fix: production Postgres startup could silently force-apply destructive schema changes",
+    "features": [],
+    "bugFixes": [
+      "scripts/start.sh ran `prisma db push --accept-data-loss` against the live public (Postgres) database on every single container restart, unconditionally - because `prisma migrate deploy` has been failing with P3005 (this database predates proper migration baselining) on every restart, silently swallowed, falling through to db push as the only thing actually keeping schema in sync. --accept-data-loss meant any destructive diff would be force-applied with zero review. The public instance briefly showed empty Users/Groups/Addons and a stale API session after tonight's redeploy. Removed --accept-data-loss for the public path specifically: additive changes (new tables/columns) still apply automatically, but anything destructive is now refused and logged instead of silently executed, and the container boots on the previous schema rather than risking live data. The private/SQLite path is unchanged (single-tenant, lower risk, already documented behavior)."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.29",
+    "date": "2026-08-07",
+    "title": "polish: Addons list view drag handle moved out of the row",
+    "features": [],
+    "bugFixes": [],
+    "miscChores": [
+      "Addons page list view: the drag handle used to sit inline at the start of each row, taking up its own slot next to the checkbox and icon. Moved it to a small floating tab in the top-left corner of the card instead, overlapping the accent bar - same corner treatment grid view already uses, just tighter. Cleaner row, same drag behavior."
+    ]
+  },
+  {
     "version": "1.68.28",
     "date": "2026-08-07",
     "title": "fix: dragging a Group/Account Addon made it disappear until dropped",
