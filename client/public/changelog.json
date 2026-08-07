@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.28",
+    "date": "2026-08-07",
+    "title": "fix: dragging a Group/Account Addon made it disappear until dropped",
+    "features": [],
+    "bugFixes": [
+      "User detail page's Addons tab: after the previous fix removed the nested drag-and-drop context, the dragged item still had its old opacity:0-while-dragging rule - previously correct because a floating ghost copy replaced it, but that ghost no longer exists, so the item just vanished with nothing to replace it until dropped. Now stays visible and tracks the cursor directly, same as Addons/Users/Groups reordering already does."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.27",
     "date": "2026-08-07",
     "title": "feat: Addons list view redesigned as full-width rows, no more truncated names",
