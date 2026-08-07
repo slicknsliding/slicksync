@@ -240,6 +240,21 @@ export function AvatarPickerModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size={size}>
       <div className="space-y-4">
+        {/* Sticky only on the Nuvio Covers tab - that's the only tab with
+            scrollable content below it. Pinned to the top of the Modal's
+            own scroll container (not the grid's - the grid no longer has
+            its own, see the scroll-nesting fix above) so the preview, tabs,
+            search, and filters all stay visible together while scrolling
+            through covers via infinite scroll, instead of scrolling away
+            with everything else - per feedback, floating just the preview
+            box alone wasn't enough, this whole toolbar needed to move with
+            it. A solid background (not the semi-transparent bg-surface-
+            hover/transparent defaults) is load-bearing here - without it,
+            scrolled-past grid rows show through underneath while sticky. */}
+        <div
+          className={tab === 'nuvio' ? 'sticky top-0 z-10 -mx-6 px-6 pb-3 shadow-lg space-y-4' : ''}
+          style={tab === 'nuvio' ? { background: 'var(--color-surface)' } : undefined}
+        >
         {previewShape === 'circle' ? (
           <div className="flex justify-center mb-2">
             <Avatar
@@ -250,19 +265,7 @@ export function AvatarPickerModal({
             />
           </div>
         ) : (
-          // Sticky only on the Nuvio Covers tab - that's the only tab with
-          // scrollable content below it. Pinned to the top of the Modal's
-          // own scroll container (not the grid's - the grid no longer has
-          // its own, see the scroll-nesting fix above) so the live hover
-          // preview stays visible while scrolling through covers via
-          // infinite scroll, instead of scrolling away with everything
-          // else. A solid background (not the semi-transparent
-          // bg-surface-hover default) is load-bearing here - without it,
-          // scrolled-past grid rows show through underneath while sticky.
-          <div
-            className={`w-full ${size === 'md' ? 'aspect-video' : 'aspect-[21/9]'} rounded-xl overflow-hidden bg-surface-hover mb-2 border border-default ${tab === 'nuvio' ? 'sticky top-0 z-10 shadow-lg' : ''}`}
-            style={tab === 'nuvio' ? { background: 'var(--color-surface)' } : undefined}
-          >
+          <div className={`w-full ${size === 'md' ? 'aspect-video' : 'aspect-[21/9]'} rounded-xl overflow-hidden bg-surface-hover mb-2 border border-default`}>
             {tab !== 'color' && previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={previewUrl} alt="" className="w-full h-full object-cover" />
@@ -291,6 +294,54 @@ export function AvatarPickerModal({
               {tabLabel[t]}
             </button>
           ))}
+        </div>
+
+        {tab === 'nuvio' && nuvioCoversUserId && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted">
+              Browsing nuvio.tv's community-submitted covers - hover one to preview it up top, click to use it.
+            </p>
+
+            <input
+              type="text"
+              value={nuvioSearch}
+              onChange={(e) => setNuvioSearch(e.target.value)}
+              placeholder="Search by title (e.g. Netflix)..."
+              className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
+              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+            />
+
+            <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
+              <div className="flex gap-1">
+                {(['all', 'landscape', 'portrait'] as const).map((o) => (
+                  <button
+                    key={o}
+                    type="button"
+                    onClick={() => setNuvioOrientation(o)}
+                    className={`${filterButtonClass(nuvioOrientation === o)} capitalize`}
+                    style={filterButtonStyle(nuvioOrientation === o)}
+                  >
+                    {o}
+                  </button>
+                ))}
+              </div>
+              <span className="w-px h-5" style={{ background: 'var(--color-surface-border)' }} />
+              <div className="flex gap-1">
+                {(['all', 'gif', 'jpg', 'png'] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setNuvioFormat(f)}
+                    className={`${filterButtonClass(nuvioFormat === f)} uppercase`}
+                    style={filterButtonStyle(nuvioFormat === f)}
+                  >
+                    {f === 'all' ? 'All formats' : f}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
         </div>
 
         {tab === 'color' && (
@@ -365,49 +416,11 @@ export function AvatarPickerModal({
 
         {tab === 'nuvio' && nuvioCoversUserId && (
           <div className="space-y-3">
-            <p className="text-xs text-muted">
-              Browsing nuvio.tv's community-submitted covers - hover one to preview it up top, click to use it.
-            </p>
-
-            <input
-              type="text"
-              value={nuvioSearch}
-              onChange={(e) => setNuvioSearch(e.target.value)}
-              placeholder="Search by title (e.g. Netflix)..."
-              className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
-              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-            />
-
-            <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
-              <div className="flex gap-1">
-                {(['all', 'landscape', 'portrait'] as const).map((o) => (
-                  <button
-                    key={o}
-                    type="button"
-                    onClick={() => setNuvioOrientation(o)}
-                    className={`${filterButtonClass(nuvioOrientation === o)} capitalize`}
-                    style={filterButtonStyle(nuvioOrientation === o)}
-                  >
-                    {o}
-                  </button>
-                ))}
-              </div>
-              <span className="w-px h-5" style={{ background: 'var(--color-surface-border)' }} />
-              <div className="flex gap-1">
-                {(['all', 'gif', 'jpg', 'png'] as const).map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setNuvioFormat(f)}
-                    className={`${filterButtonClass(nuvioFormat === f)} uppercase`}
-                    style={filterButtonStyle(nuvioFormat === f)}
-                  >
-                    {f === 'all' ? 'All formats' : f}
-                  </button>
-                ))}
-              </div>
-            </div>
-
+            {/* Description, search, and orientation/format filters now live
+                in the sticky toolbar above (with the preview and tabs) -
+                see that block's comment for why. Only the actual results
+                (grid/error/empty states) render here, as the page's normal
+                scrolling content beneath the sticky toolbar. */}
             {nuvioCoversError ? (
               <p className="text-xs text-error py-4 text-center">{nuvioCoversError}</p>
             ) : nuvioCovers.length === 0 && nuvioSearch.trim() && !nuvioCoversLoading ? (
