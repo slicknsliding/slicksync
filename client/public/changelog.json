@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.29",
+    "date": "2026-08-07",
+    "title": "polish: Addons list view drag handle moved out of the row",
+    "features": [],
+    "bugFixes": [],
+    "miscChores": [
+      "Addons page list view: the drag handle used to sit inline at the start of each row, taking up its own slot next to the checkbox and icon. Moved it to a small floating tab in the top-left corner of the card instead, overlapping the accent bar - same corner treatment grid view already uses, just tighter. Cleaner row, same drag behavior."
+    ]
+  },
+  {
     "version": "1.68.28",
     "date": "2026-08-07",
     "title": "fix: dragging a Group/Account Addon made it disappear until dropped",
