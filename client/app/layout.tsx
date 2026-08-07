@@ -42,17 +42,55 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Space Grotesk (headings) + Outfit (body) power the default UI type;
-            the rest are the Build-your-own-theme font choices, deliberately
-            picked to span very different aesthetics (rounded sans, classic
-            serif, elegant serif, monospace, poster display, comic display,
-            retro pixel, marker handwritten, graffiti, sci-fi geometric) so
-            no two options feel the same. Loaded once up front so swapping
-            fonts is instant with no FOUT. */}
+        {/* Space Grotesk (headings) + Outfit (body) power the default UI
+            type - the only two families every single page actually needs,
+            so this one stays a normal render-blocking stylesheet (small,
+            fast, and avoids FOUT on the default theme everyone sees). */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Outfit:wght@300..700&family=Poppins:wght@300;400;500;600;700&family=Merriweather:wght@300;400;700;900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Bungee&family=Bangers&family=Press+Start+2P&family=Permanent+Marker&family=Luckiest+Guy&family=Orbitron:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Outfit:wght@300..700&display=swap"
           rel="stylesheet"
         />
+        {/* The other 10 families are Build-your-own-theme choices (Settings
+            -> Themes) - deliberately picked to span very different
+            aesthetics (classic serif, elegant serif, monospace, poster
+            display, comic display, retro pixel, marker handwritten,
+            graffiti, sci-fi geometric) so no two options feel the same, but
+            the overwhelming majority of page loads never touch them (still
+            on the default theme). Bundling all 12 families into one
+            render-blocking stylesheet meant every single page load paid the
+            fetch+parse cost of 10 fonts almost nobody was using that visit -
+            confirmed real, measurable slowness on a real device, both on
+            initial page load and (via the same general JS/render-thread
+            pressure) noticeably during modal open/close. The media="print"
+            trick loads this in the background without blocking first paint,
+            then the onLoad flips it to apply once it's actually ready -
+            standard deferred-CSS pattern, not custom/fragile. Not lazy-
+            loaded on-demand from the theme picker itself (the more
+            "correct" fix) because that needs the theme picker's own load
+            path threaded through - this is the safe, low-risk half of the
+            fix; picking a non-default theme still briefly shows fallback
+            type until this finishes loading in the background, same as any
+            deferred web font. A plain inline script flips media back to
+            "all" once loaded (not a React onLoad handler - this file stays
+            a Server Component for the `metadata` export, which can't ship
+            client-side event-handler functions to a plain DOM element). */}
+        <link
+          id="optional-theme-fonts"
+          href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Merriweather:wght@300;400;700;900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Bungee&family=Bangers&family=Press+Start+2P&family=Permanent+Marker&family=Luckiest+Guy&family=Orbitron:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+          rel="stylesheet"
+          media="print"
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var l=document.getElementById('optional-theme-fonts');l.onload=function(){this.media='all'};if(l.sheet)l.media='all'}catch(e){}`,
+          }}
+        />
+        <noscript>
+          <link
+            href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Merriweather:wght@300;400;700;900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Bungee&family=Bangers&family=Press+Start+2P&family=Permanent+Marker&family=Luckiest+Guy&family=Orbitron:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+          />
+        </noscript>
         {/* The media detail modal's poster/background/cast images all come
             from these two CDNs - preconnecting warms up DNS/TLS ahead of the
             actual <img> requests instead of paying that setup cost right as
