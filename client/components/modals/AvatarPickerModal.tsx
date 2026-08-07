@@ -250,7 +250,19 @@ export function AvatarPickerModal({
             />
           </div>
         ) : (
-          <div className={`w-full ${size === 'md' ? 'aspect-video' : 'aspect-[21/9]'} rounded-xl overflow-hidden bg-surface-hover mb-2 border border-default`}>
+          // Sticky only on the Nuvio Covers tab - that's the only tab with
+          // scrollable content below it. Pinned to the top of the Modal's
+          // own scroll container (not the grid's - the grid no longer has
+          // its own, see the scroll-nesting fix above) so the live hover
+          // preview stays visible while scrolling through covers via
+          // infinite scroll, instead of scrolling away with everything
+          // else. A solid background (not the semi-transparent
+          // bg-surface-hover default) is load-bearing here - without it,
+          // scrolled-past grid rows show through underneath while sticky.
+          <div
+            className={`w-full ${size === 'md' ? 'aspect-video' : 'aspect-[21/9]'} rounded-xl overflow-hidden bg-surface-hover mb-2 border border-default ${tab === 'nuvio' ? 'sticky top-0 z-10 shadow-lg' : ''}`}
+            style={tab === 'nuvio' ? { background: 'var(--color-surface)' } : undefined}
+          >
             {tab !== 'color' && previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={previewUrl} alt="" className="w-full h-full object-cover" />
