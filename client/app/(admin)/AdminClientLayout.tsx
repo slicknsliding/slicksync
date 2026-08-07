@@ -43,12 +43,13 @@ const dragCollisionDetection: CollisionDetection = (args) => {
   return closestCenter(args);
 };
 
-// Lives inside VaultDragProvider so it can read the currently-registered
-// drag-end handler (set by whichever page has draggable items — currently
-// only the Vault page) and hands the event off to it.
+// Lives inside VaultDragProvider so it can read every currently-registered
+// drag-end handler (set by whichever page(s) have draggable items - a
+// detail page can have more than one list registered at once, see
+// VaultDragContext's own comment) and hands the event to all of them.
 function LayoutDndWrapper({ children }: { children: ReactNode }) {
   const sensors = useSortableSensors();
-  const { dragEndHandlerRef } = useVaultDrag();
+  const { dragEndHandlersRef } = useVaultDrag();
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -58,7 +59,7 @@ function LayoutDndWrapper({ children }: { children: ReactNode }) {
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveLabel(null);
-    dragEndHandlerRef.current?.(event);
+    dragEndHandlersRef.current.forEach((handler) => handler(event));
   };
 
   return (

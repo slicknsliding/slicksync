@@ -182,8 +182,7 @@ export default function GroupsPage() {
         toast.error(err.message || 'Failed to save new order');
       });
     };
-    registerDragEndHandler(handleDragEnd);
-    return () => registerDragEndHandler(null);
+    return registerDragEndHandler(handleDragEnd);
   }, [filteredGroups, registerDragEndHandler]);
 
   // Nebula's stat row - real totals from the same groupsDisplay data already rendered.

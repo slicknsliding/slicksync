@@ -226,8 +226,7 @@ export default function UsersPage() {
         toast.error(err.message || 'Failed to save new order');
       });
     };
-    registerDragEndHandler(handleDragEnd);
-    return () => registerDragEndHandler(null);
+    return registerDragEndHandler(handleDragEnd);
   }, [filteredUsers, registerDragEndHandler]);
 
   // Nebula's stat row - real counts from the same usersDisplay data the
