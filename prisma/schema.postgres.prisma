@@ -10,6 +10,7 @@ datasource db {
 
 model User {
   id                 String    @id @default(cuid())
+  position           Int       @default(0) // Drag-to-reorder display order on the Users list page - same pattern as Addon.position
   username           String
   email              String
   isActive           Boolean   @default(true)
@@ -52,6 +53,7 @@ model User {
 
 model Group {
   id                 String  @id @default(cuid())
+  position           Int     @default(0) // Drag-to-reorder display order on the Groups list page - same pattern as Addon.position
   name               String
   description        String?
   isActive           Boolean @default(true)

@@ -464,7 +464,7 @@ export default function ListDetailPage() {
   // Header and NebulaPageHeading below) hides every header-level mutating
   // action at once instead of needing a per-button check.
   const editActions = list && !isLoading && !notFound && list.isOwner ? (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 flex-wrap justify-end">
       <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
         Suggest titles
       </Button>
@@ -506,7 +506,7 @@ export default function ListDetailPage() {
   ) : null;
 
   const detailActions = editActions ? (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 flex-wrap">
       {backButton}
       {editActions}
     </div>
@@ -615,6 +615,16 @@ export default function ListDetailPage() {
                           onDeselectAll={() => setSelectedIds(new Set())}
                         />
                         <span className="text-xs text-muted">{selectedIds.size} of {sortedItems.length} selected</span>
+                        {/* Right next to "selected", not off on the far side
+                            with Sort - real feedback that it read as "no way
+                            to back out of Select mode" until stumbled on
+                            much later. Only this side of the row changes
+                            meaning between the two states (Select button ->
+                            checkbox+count+Cancel); Sort stays put on the
+                            right in both. */}
+                        <Button variant="ghost" size="sm" leftIcon={<XCircleIcon className="w-4 h-4" />} onClick={exitSelectMode}>
+                          Cancel
+                        </Button>
                       </>
                     ) : list.isOwner ? (
                       <Button variant="ghost" size="sm" leftIcon={<CheckCircleIcon className="w-4 h-4" />} onClick={() => setSelectMode(true)}>
@@ -625,11 +635,6 @@ export default function ListDetailPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
-                    {selectMode && (
-                      <Button variant="ghost" size="sm" leftIcon={<XCircleIcon className="w-4 h-4" />} onClick={exitSelectMode}>
-                        Cancel
-                      </Button>
-                    )}
                     <span className="text-xs text-muted">Sort:</span>
                     <select
                       value={sortBy}

@@ -543,8 +543,7 @@ function VaultPageContent() {
       }
     };
 
-    registerDragEndHandler(handleDragEnd);
-    return () => registerDragEndHandler(null);
+    return registerDragEndHandler(handleDragEnd);
   }, [entries, registerDragEndHandler]);
 
   const handleTest = async (entry: VaultEntry) => {

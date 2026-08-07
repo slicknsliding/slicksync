@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Dialog, DialogPanel } from '@headlessui/react';
-import { Button, SlickSyncLogo } from '@/components/ui';
+import { Button, SlickSyncLogo, PasswordToggleButton } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import {
@@ -42,6 +42,8 @@ export function CreateUserModal({
   // Auth key field
   const [authKey, setAuthKey] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [authKeyVisible, setAuthKeyVisible] = useState(false);
 
   // Credentials only - register new Stremio account
   const [registerNew, setRegisterNew] = useState(false);
@@ -64,6 +66,7 @@ export function CreateUserModal({
   const [nuvioAuthMethod, setNuvioAuthMethod] = useState<'credentials' | 'oauth'>('oauth');
   const [nuvioEmail, setNuvioEmail] = useState('');
   const [nuvioPassword, setNuvioPassword] = useState('');
+  const [nuvioPasswordVisible, setNuvioPasswordVisible] = useState(false);
   const [nuvioOauthStatus, setNuvioOauthStatus] = useState<'idle' | 'connecting' | 'waiting' | 'completed' | 'error'>('idle');
   const [nuvioOauthError, setNuvioOauthError] = useState<string | null>(null);
   const [nuvioWebUrl, setNuvioWebUrl] = useState<string | null>(null);
@@ -733,18 +736,21 @@ export function CreateUserModal({
                                   <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
                                     Password <span style={{ color: 'var(--color-error)' }}>*</span>
                                   </label>
-                                  <input
-                                    type="password"
-                                    placeholder={isReconnect ? "Enter Stremio password" : "Enter password"}
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none"
-                                    style={{
-                                      background: 'var(--color-surfaceHover)',
-                                      border: '1px solid var(--color-surface-border)',
-                                      color: 'var(--color-text)'
-                                    }}
-                                  />
+                                  <div className="relative">
+                                    <input
+                                      type={passwordVisible ? 'text' : 'password'}
+                                      placeholder={isReconnect ? "Enter Stremio password" : "Enter password"}
+                                      value={password}
+                                      onChange={(e) => setPassword(e.target.value)}
+                                      className="w-full pl-4 pr-12 py-3 rounded-xl transition-all duration-200 focus:outline-none"
+                                      style={{
+                                        background: 'var(--color-surfaceHover)',
+                                        border: '1px solid var(--color-surface-border)',
+                                        color: 'var(--color-text)'
+                                      }}
+                                    />
+                                    <PasswordToggleButton visible={passwordVisible} onToggle={() => setPasswordVisible((v) => !v)} />
+                                  </div>
                                 </div>
 
                                 {!isReconnect && (
@@ -769,18 +775,21 @@ export function CreateUserModal({
                                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
                                   Stremio Auth Key
                                 </label>
-                                <input
-                                  type="password"
-                                  placeholder="Paste from Stremio settings"
-                                  value={authKey}
-                                  onChange={(e) => setAuthKey(e.target.value)}
-                                  className="w-full px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none"
-                                  style={{
-                                    background: 'var(--color-surfaceHover)',
-                                    border: '1px solid var(--color-surface-border)',
-                                    color: 'var(--color-text)'
-                                  }}
-                                />
+                                <div className="relative">
+                                  <input
+                                    type={authKeyVisible ? 'text' : 'password'}
+                                    placeholder="Paste from Stremio settings"
+                                    value={authKey}
+                                    onChange={(e) => setAuthKey(e.target.value)}
+                                    className="w-full pl-4 pr-12 py-3 rounded-xl transition-all duration-200 focus:outline-none"
+                                    style={{
+                                      background: 'var(--color-surfaceHover)',
+                                      border: '1px solid var(--color-surface-border)',
+                                      color: 'var(--color-text)'
+                                    }}
+                                  />
+                                  <PasswordToggleButton visible={authKeyVisible} onToggle={() => setAuthKeyVisible((v) => !v)} />
+                                </div>
                                 <p className="mt-2 text-xs" style={{ color: 'var(--color-textSubtle)' }}>
                                   Find this in Stremio → Settings → Account
                                 </p>
@@ -898,14 +907,17 @@ export function CreateUserModal({
                                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
                                   Password <span style={{ color: 'var(--color-error)' }}>*</span>
                                 </label>
-                                <input
-                                  type="password"
-                                  placeholder="Enter password"
-                                  value={nuvioPassword}
-                                  onChange={(e) => setNuvioPassword(e.target.value)}
-                                  className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-                                />
+                                <div className="relative">
+                                  <input
+                                    type={nuvioPasswordVisible ? 'text' : 'password'}
+                                    placeholder="Enter password"
+                                    value={nuvioPassword}
+                                    onChange={(e) => setNuvioPassword(e.target.value)}
+                                    className="w-full pl-4 pr-12 py-3 rounded-xl focus:outline-none"
+                                    style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                                  />
+                                  <PasswordToggleButton visible={nuvioPasswordVisible} onToggle={() => setNuvioPasswordVisible((v) => !v)} />
+                                </div>
                               </div>
                             </div>
                             <div className="flex gap-3 mt-6">

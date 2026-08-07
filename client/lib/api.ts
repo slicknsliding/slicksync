@@ -1642,6 +1642,18 @@ class ApiClient {
       body: JSON.stringify({ orderedIds }),
     });
   }
+  async reorderUsers(orderedIds: string[]) {
+    return this.fetch<{ success: boolean }>('/users/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ orderedIds }),
+    });
+  }
+  async reorderGroups(orderedIds: string[]) {
+    return this.fetch<{ success: boolean }>('/groups/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ orderedIds }),
+    });
+  }
   // Custom addon tags — drag-to-recategorize, parallel to Vault's categories.
   async getAddonTags() {
     return this.fetch<{ tags: string[]; tagColors: Record<string, string> }>('/addons/tags');

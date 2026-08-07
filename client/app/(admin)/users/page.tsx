@@ -20,6 +20,10 @@ import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { TVLink } from '@/components/tv/TVLink';
+import { useSortableDragState } from '@/components/ui/DragSortable';
+import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import type { DragEndEvent } from '@dnd-kit/core';
+import { useVaultDrag } from '@/components/providers/VaultDragContext';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -36,6 +40,7 @@ import {
   PuzzlePieceIcon,
   MinusIcon,
   ExclamationTriangleIcon,
+  Bars3Icon,
 } from '@heroicons/react/24/outline';
 
 // User type for display
@@ -195,6 +200,34 @@ export default function UsersPage() {
     (user.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (user.email || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Register this page's drag-end logic with the layout-level DndContext,
+  // same shared mechanism Addons/Vault already use - only one page is ever
+  // mounted at a time, so there's no cross-page collision despite the
+  // "currently registered handler" being a single shared ref.
+  const { registerDragEndHandler } = useVaultDrag();
+  useEffect(() => {
+    const handleDragEnd = (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const oldIndex = filteredUsers.findIndex(u => u.id === active.id);
+      const newIndex = filteredUsers.findIndex(u => u.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const reorderedIds = filteredUsers.map(u => u.id);
+      const [movedId] = reorderedIds.splice(oldIndex, 1);
+      reorderedIds.splice(newIndex, 0, movedId);
+      setUsers(prev => {
+        const byId = new Map(prev.map(u => [u.id, u]));
+        const reorderedUsers = reorderedIds.map(id => byId.get(id)).filter((u): u is User => !!u);
+        const rest = prev.filter(u => !reorderedIds.includes(u.id));
+        return [...reorderedUsers, ...rest];
+      });
+      api.reorderUsers(reorderedIds).catch((err: any) => {
+        toast.error(err.message || 'Failed to save new order');
+      });
+    };
+    return registerDragEndHandler(handleDragEnd);
+  }, [filteredUsers, registerDragEndHandler]);
 
   // Nebula's stat row - real counts from the same usersDisplay data the
   // grid/table already render, not a new fetch.
@@ -465,8 +498,11 @@ export default function UsersPage() {
                 {viewMode === 'grid' ? (
                   <StaggerContainer key="grid" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     <AnimatePresence mode="popLayout">
+                      <SortableContext items={filteredUsers.map(u => u.id)} strategy={rectSortingStrategy}>
                       {filteredUsers.map((user) => (
-                        <StaggerItem key={user.id}>
+                        <SortableUserWrapper key={user.id} id={user.id}>
+                          {(dragHandleProps) => (
+                        <StaggerItem>
                           <UserCard
                             user={user}
                             isSelected={selectedIds.has(user.id)}
@@ -488,9 +524,13 @@ export default function UsersPage() {
                             onSyncStart={handleSyncStart}
                             onSyncEnd={handleSyncEnd}
                             focusable={isTV}
+                            dragHandleProps={dragHandleProps}
                           />
                         </StaggerItem>
+                          )}
+                        </SortableUserWrapper>
                       ))}
+                      </SortableContext>
                     </AnimatePresence>
                   </StaggerContainer>
                 ) : (
@@ -505,6 +545,7 @@ export default function UsersPage() {
                     <table className="w-full min-w-[600px]">
                       <thead>
                         <tr className="border-b border-default">
+                          <th className="w-8" aria-hidden="true" />
                           <th className="px-4 py-4 text-left w-12">
                             <div
                               className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${hasSelection && selectedIds.size === filteredUsers.length
@@ -527,17 +568,15 @@ export default function UsersPage() {
                         </tr>
                       </thead>
                       <tbody>
+                        <SortableContext items={filteredUsers.map(u => u.id)} strategy={verticalListSortingStrategy}>
                         <AnimatePresence mode="popLayout">
                           {filteredUsers.map((user) => (
-                            <motion.tr
+                            <SortableUserRow
                               key={user.id}
-                              layout
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
+                              id={user.id}
+                              onClick={() => toggleSelect(user.id)}
                               className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(user.id) ? 'bg-primary-muted' : 'hover:bg-white/5'
                                 }`}
-                              onClick={() => toggleSelect(user.id)}
                             >
                               <td className="px-4 py-4">
                                 <div
@@ -627,9 +666,10 @@ export default function UsersPage() {
                                   Sync
                                 </Button>
                               </td>
-                            </motion.tr>
+                            </SortableUserRow>
                           ))}
                         </AnimatePresence>
+                        </SortableContext>
                       </tbody>
                     </table>
                   </motion.div>
@@ -777,6 +817,45 @@ export default function UsersPage() {
   );
 }
 
+// Only itemProps (position/transform tracking, no listeners) goes on the
+// outer wrapper - dragHandleProps (the actual drag listeners) is threaded
+// into UserCard as a prop, rendered there as a small dedicated grab handle.
+// Same pattern as Addons' SortableAddonWrapper.
+function SortableUserWrapper({ id, children }: { id: string; children: (dragHandleProps: Record<string, unknown>) => React.ReactNode }) {
+  const { dragHandleProps, itemProps } = useSortableDragState(id);
+  return (
+    <div ref={itemProps.ref} className={itemProps.className} style={itemProps.style}>
+      {children(dragHandleProps)}
+    </div>
+  );
+}
+
+// List-view counterpart - renders its own dedicated handle cell rather than
+// threading dragHandleProps through every existing <td>. Same pattern as
+// Addons' SortableAddonRow.
+function SortableUserRow({ id, onClick, className, children }: { id: string; onClick?: () => void; className?: string; children: React.ReactNode }) {
+  const { dragHandleProps, itemProps } = useSortableDragState(id);
+  return (
+    <motion.tr
+      ref={itemProps.ref as unknown as React.Ref<HTMLTableRowElement>}
+      layout
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={itemProps.style}
+      className={`${className || ''} ${itemProps.className}`}
+      onClick={onClick}
+    >
+      <td className="pl-4 py-4 w-8" onClick={(e) => e.stopPropagation()}>
+        <div {...dragHandleProps} className="p-1 rounded hover:bg-surface-hover cursor-grab active:cursor-grabbing inline-flex text-subtle hover:text-default" title="Drag to reorder">
+          <Bars3Icon className="w-4 h-4" />
+        </div>
+      </td>
+      {children}
+    </motion.tr>
+  );
+}
+
 // User Card Component - single click opens, long press/right-click shows menu
 function UserCard({
   user,
@@ -789,6 +868,7 @@ function UserCard({
   onSyncStart,
   onSyncEnd,
   focusable = false,
+  dragHandleProps,
 }: {
   user: UserDisplay;
   isSelected: boolean;
@@ -802,6 +882,8 @@ function UserCard({
   /** TV mode: wraps the card in a D-pad-focusable container, Enter/OK opens
    *  the same detail page a click would. */
   focusable?: boolean;
+  /** Dedicated grab handle (top-left), same pattern as Addons' AddonCard. */
+  dragHandleProps?: Record<string, unknown>;
 }) {
   const { hideSensitive } = useTheme();
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
@@ -911,6 +993,22 @@ function UserCard({
         </div>
 
         <div className="flex items-start gap-4">
+          {/* Genuine flex sibling, not an absolute overlay - this card's
+              avatar sits flush at the same top-left offset an absolute
+              handle would use (unlike AddonCard, whose icon has extra
+              clearance from its own header layout), so an overlay directly
+              collided with the avatar. Same nesting the User detail page's
+              own addon lists already use for exactly this reason. */}
+          {dragHandleProps && (
+            <div
+              {...dragHandleProps}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              className="shrink-0 mt-1 p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
+              title="Drag to reorder"
+            >
+              <Bars3Icon className="w-4 h-4" />
+            </div>
+          )}
           {/* Avatar */}
           <UserAvatar userId={user.id} name={user.name} email={user.email} colorIndex={user.colorIndex} src={user.avatarUrl || undefined} size="lg" />
 

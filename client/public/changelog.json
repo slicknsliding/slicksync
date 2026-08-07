@@ -1,5 +1,208 @@
 [
   {
+    "version": "1.68.28",
+    "date": "2026-08-07",
+    "title": "fix: dragging a Group/Account Addon made it disappear until dropped",
+    "features": [],
+    "bugFixes": [
+      "User detail page's Addons tab: after the previous fix removed the nested drag-and-drop context, the dragged item still had its old opacity:0-while-dragging rule - previously correct because a floating ghost copy replaced it, but that ghost no longer exists, so the item just vanished with nothing to replace it until dropped. Now stays visible and tracks the cursor directly, same as Addons/Users/Groups reordering already does."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.27",
+    "date": "2026-08-07",
+    "title": "feat: Addons list view redesigned as full-width rows, no more truncated names",
+    "features": [
+      "Addons page's list view is now full-width rows (icon, name, description, tags all in one flowing row) instead of a spreadsheet-style table - the table truncated addon names at 200px, which made same-provider addons with long custom names (e.g. \"AIOStreams || Fraggle\") impossible to tell apart. Full row width means no truncation. Grid view is unchanged; both views share the same drag-to-reorder."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.26",
+    "date": "2026-08-07",
+    "title": "fix: Group Addons / Account Addons drag still glitching - nested DndContext",
+    "features": [],
+    "bugFixes": [
+      "User/Group/Addon detail pages: dragging Group Addons or Account Addons still visually glitched (items overlapping, drag state getting stuck) even after the earlier stable-id fix - real feedback with screenshots. Root cause: the whole admin app already wraps everything in one shared drag-and-drop context, but these lists created a SECOND, nested one of their own - both sets of pointer-event listeners were responding to the same drag gesture. Removed the nested context; these lists now register with the shared one, same mechanism Addons/Users/Groups/Vault reordering already uses, extended to support two independent lists active on the same page at once (a single detail page can have both Group Addons and Account Addons mounted simultaneously)."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.25",
+    "date": "2026-08-07",
+    "title": "fix: Users/Groups grid drag handle was invisible, overlapping the avatar",
+    "features": [],
+    "bugFixes": [
+      "Users and Groups grid-view cards: the new grab handle (previous release) was positioned as an absolute overlay at top-left, same as Addons - but unlike Addons' icon, these cards' avatar sits flush at that exact spot, so the handle was functionally there (confirmed via direct testing) but visually invisible underneath it. Now a genuine flex sibling that takes its own space before the avatar, same nesting the User detail page's own addon lists already use."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.24",
+    "date": "2026-08-07",
+    "title": "feat: drag-to-reorder for Addons, Users, and Groups (grid + list view)",
+    "features": [
+      "Addons, Users, and Groups list pages now support drag-to-reorder in both grid and list view, with a dedicated grab handle (same style already used on the User detail page's addon lists) instead of the whole card being a drag target. Addons already had reordering in grid view with no visible handle - list view had none at all; Users and Groups had no reordering anywhere. Order is saved server-side and persists across reloads."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.23",
+    "date": "2026-08-07",
+    "title": "fix: Account Addons drag-to-reorder was landing in the wrong spot",
+    "features": [],
+    "bugFixes": [
+      "User detail page's Addons tab: the Account Addons list (Group Addons was unaffected) used the item's own current index baked into its drag id, so every reorder changed every other item's id too, breaking dnd-kit's tracking mid-drag - real feedback that drops landed in the wrong place. Now uses the addon's own transportUrl as a stable id, same pattern Group Addons already used correctly.",
+      "Renamed \"Stremio Account Addons\" to \"Account Addons\" - the same list renders for Nuvio accounts too, not just Stremio."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.22",
+    "date": "2026-08-07",
+    "title": "fix: Addons page stat cards looked smaller than Users/Groups/Vault's",
+    "features": [],
+    "bugFixes": [
+      "Addons: Total Addons/Protected/Assignments used the same stat card component as Users/Groups/Vault but were squeezed into the page heading's center column instead of getting their own full-width row, so they read noticeably smaller on desktop. Now match those pages' layout on desktop; mobile is unchanged."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.21",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Collections tips/Export & Import bold text looked clickable but wasn't",
+    "features": [],
+    "bugFixes": [
+      "Nuvio Collections: bold terms in the Tips and Export & Import popups (Export, Import, Export to MDBList, Add source, Nuvio app's own Settings) looked like links but didn't do anything - real feedback that they read as broken. Export/Import now trigger the real page buttons, Export to MDBList jumps to Catalogs, Add source closes the popup, and Nuvio's own Settings links out to nuvio.tv. AIOStreams/AIOMetadata stay plain text on purpose - this account doesn't host either, so there's no correct instance to point at."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.20",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Collections \"?\" buttons were easy to miss",
+    "features": [],
+    "bugFixes": [
+      "Nuvio Collections: the Tips and Export & Import \"?\" buttons blended into the muted icon row around them and went unnoticed for a long time per real feedback. Both now have a soft primary-color glow, same visual language the logo badge already uses."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.19",
+    "date": "2026-08-07",
+    "title": "fix: Catalog detail page Cancel button was easy to miss when selecting titles",
+    "features": [],
+    "bugFixes": [
+      "Catalog detail page: the Cancel button for Select mode sat off on the far side of the row next to Sort, not next to the selection count it belongs with - real feedback that it read as \"no way to back out of Select mode\" until spotted much later. Moved next to \"X of Y selected\"."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.18",
+    "date": "2026-08-07",
+    "title": "feat: show/hide toggle on every password field; diagnostic mobile modal-close fix",
+    "features": [
+      "Every password field in the app (login, register, create user, vault, superadmin, account settings) now has an eye icon to show/hide what you typed, instead of only ever showing dots."
+    ],
+    "bugFixes": [
+      "Modals now close instantly (no fade/scale animation) on mobile only, as a diagnostic for a reported freeze closing any modal on mobile Safari specifically - confirmed not present on PC, and a browser profile of the same open/close cycle showed no heavy JS blocking the main thread, pointing at something WebKit/mobile-specific neither desktop nor that profiling could reproduce. If this doesn't fully resolve it, it at least rules animation out as the cause."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.17",
+    "date": "2026-08-07",
+    "title": "fix: every page load blocked on 10 unused theme-picker fonts",
+    "features": [],
+    "bugFixes": [
+      "Every page load fetched and parsed 12 Google Font families as one render-blocking stylesheet, even though only 2 (Space Grotesk, Outfit) power the default UI - the other 10 are Build-your-own-theme picks (Settings > Themes) almost nobody's on. Split into a small blocking stylesheet for the 2 default fonts and a deferred (non-blocking) load for the other 10 - confirmed real, measurable slowness on a real flagship iPhone, both on initial page load and general responsiveness. Investigation into a separate reported modal-close freeze is ongoing; this fix addresses a confirmed inefficiency, not necessarily the whole story there."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.16",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Covers sticky preview / collapsing toolbar was mobile-only, now actually restricted to mobile",
+    "features": [],
+    "bugFixes": [
+      "Cover art picker: the sticky preview and collapse-on-scroll toolbar (recent releases) were built for a cramped phone screen - desktop had plenty of room and was fine as it already was, per feedback. Now gated behind the same mobile breakpoint the app's own nav-collapse-on-scroll uses, so PC keeps the plain non-sticky layout."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.15",
+    "date": "2026-08-07",
+    "title": "fix: janky modal open/close when launched from the iPhone Home Screen",
+    "features": [],
+    "bugFixes": [
+      "A Home Screen-launched (standalone mode) web app on iOS runs in a separate WKWebView process with markedly worse backdrop-filter/blur compositing than the same page in a normal Safari tab - a known WebKit regression, confirmed by user report (fast at the plain URL, janky opening/closing modals from the Home Screen bookmark). This app leans on blur heavily (nav bar, modals, dropdowns, cards), so now detects standalone mode and disables backdrop-filter entirely there - slightly less \"frosted glass\" look, meaningfully smoother modals, only when launched from the Home Screen icon."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.14",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Covers toolbar ate too much screen height - now collapses on scroll",
+    "features": [],
+    "bugFixes": [
+      "Cover art picker: sticking the whole toolbar (tabs/description/search/filters) alongside the preview - the previous fix - left barely any room to actually see covers on a phone. Only the preview itself stays permanently visible now; the toolbar collapses on scroll and re-expands back at the top, same pattern the app's own top nav already uses when scrolling a page."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.13",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Covers toolbar (tabs/search/filters) also floats with the preview now",
+    "features": [],
+    "bugFixes": [
+      "Cover art picker: floating just the preview box (previous release) wasn't enough - the tabs, description, search bar, and orientation/format filters still scrolled away with the grid. All of it now sticks together as one toolbar at the top of the modal while scrolling through covers, per direct follow-up feedback."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.12",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Covers preview scrolled away while browsing the grid",
+    "features": [],
+    "bugFixes": [
+      "Cover art picker: the hover preview box scrolled away with everything else once the Nuvio Covers grid's own separate scroll region was removed (previous release) - now sticky to the top of the modal while scrolling through covers via infinite scroll, same as before that fix but without the double-scrollbar problem it was fixing."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.11",
+    "date": "2026-08-07",
+    "title": "fix: Catalog detail page action buttons ran off the screen edge on mobile",
+    "features": [],
+    "bugFixes": [
+      "Catalog detail page: the row of action buttons (Suggest titles, Refresh, Cover art, Rename, Share, Export to MDBList, Delete) had no flex-wrap on its own container, so on mobile it overflowed past the right edge of the screen instead of wrapping onto a second line - Delete was getting cut off entirely. Groups/Users/Addons detail pages already had this fix; Catalogs was missed."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.10",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Covers grid had its own nested scrollbar fighting the modal's",
+    "features": [],
+    "bugFixes": [
+      "Cover art picker: the Nuvio Covers grid had its own internal scroll region separate from the modal's own scroll, so mobile felt like two conflicting scroll areas stacked on top of each other. Removed the nested scroll - the grid now scrolls as part of the modal's single scrollable body, per direct feedback after the previous release's grid-crop fix."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.68.9",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Covers grid rendering broken/stacked on mobile",
+    "features": [],
+    "bugFixes": [
+      "Cover art picker: the Nuvio Covers gallery grid applied its aspect-ratio crop directly on the button element instead of an inner div, which mobile Safari doesn't reliably enforce - tall multi-frame cover images rendered at full height instead of being cropped, breaking the grid into uneven, stacked-looking cells. Now nests the crop the same way Nuvio Collections' folder tiles already do."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.8",
     "date": "2026-08-07",
     "title": "fix: Nuvio Collections tips now a tucked-away \"?\" instead of a collapsible banner",
