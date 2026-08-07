@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.10",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Covers grid had its own nested scrollbar fighting the modal's",
+    "features": [],
+    "bugFixes": [
+      "Cover art picker: the Nuvio Covers grid had its own internal scroll region separate from the modal's own scroll, so mobile felt like two conflicting scroll areas stacked on top of each other. Removed the nested scroll - the grid now scrolls as part of the modal's single scrollable body, per direct feedback after the previous release's grid-crop fix."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.9",
     "date": "2026-08-07",
     "title": "fix: Nuvio Covers grid rendering broken/stacked on mobile",
