@@ -1134,10 +1134,17 @@ export default function NuvioCollectionsPage() {
                 <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
                   <div className="flex items-center gap-1.5">
                     <p className="text-sm text-muted">{collections.length} collection{collections.length !== 1 ? 's' : ''}{isDirty && <span className="text-warning ml-2">(unsaved changes)</span>}</p>
+                    {/* Both "?" buttons on this page (this one and Export &
+                        Import's below) went unnoticed for a long time per
+                        real feedback - a soft primary-color glow, same
+                        visual language the logo badge already uses
+                        elsewhere, makes them read as "worth a tap" instead
+                        of blending into the muted icon row around them. */}
                     <button
                       type="button"
                       onClick={() => setTipsInfoOpen(true)}
-                      className="p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover transition-colors"
+                      className="p-1.5 rounded-lg text-primary hover:text-default hover:bg-surface-hover transition-colors"
+                      style={{ boxShadow: '0 0 0 1px color-mix(in srgb, var(--color-primary) 45%, transparent), 0 0 10px -1px var(--color-primary)' }}
                       title="Tips"
                     >
                       <QuestionMarkCircleIcon className="w-4 h-4" />
@@ -1164,7 +1171,8 @@ export default function NuvioCollectionsPage() {
                     <button
                       type="button"
                       onClick={() => setImportExportInfoOpen(true)}
-                      className="p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover transition-colors"
+                      className="p-1.5 rounded-lg text-primary hover:text-default hover:bg-surface-hover transition-colors"
+                      style={{ boxShadow: '0 0 0 1px color-mix(in srgb, var(--color-primary) 45%, transparent), 0 0 10px -1px var(--color-primary)' }}
                       title="Where do I use this JSON?"
                     >
                       <QuestionMarkCircleIcon className="w-4 h-4" />
