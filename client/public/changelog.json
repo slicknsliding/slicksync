@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.12",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Covers preview scrolled away while browsing the grid",
+    "features": [],
+    "bugFixes": [
+      "Cover art picker: the hover preview box scrolled away with everything else once the Nuvio Covers grid's own separate scroll region was removed (previous release) - now sticky to the top of the modal while scrolling through covers via infinite scroll, same as before that fix but without the double-scrollbar problem it was fixing."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.11",
     "date": "2026-08-07",
     "title": "fix: Catalog detail page action buttons ran off the screen edge on mobile",
