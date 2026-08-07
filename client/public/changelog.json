@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.16",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Covers sticky preview / collapsing toolbar was mobile-only, now actually restricted to mobile",
+    "features": [],
+    "bugFixes": [
+      "Cover art picker: the sticky preview and collapse-on-scroll toolbar (recent releases) were built for a cramped phone screen - desktop had plenty of room and was fine as it already was, per feedback. Now gated behind the same mobile breakpoint the app's own nav-collapse-on-scroll uses, so PC keeps the plain non-sticky layout."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.15",
     "date": "2026-08-07",
     "title": "fix: janky modal open/close when launched from the iPhone Home Screen",

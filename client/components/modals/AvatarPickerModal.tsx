@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { Modal, Button } from '@/components/ui';
 import { Avatar } from '@/components/ui/Avatar';
 import { toast } from '@/components/ui/Toast';
@@ -78,6 +79,12 @@ export function AvatarPickerModal({
   // IntersectionObserver with root:null still correctly accounts for
   // clipping through the Modal's own overflow-y-auto ancestor.
   const nuvioSentinelRef = useRef<HTMLDivElement | null>(null);
+  // Sticky preview + collapse-on-scroll toolbar is a mobile-only fix -
+  // desktop had plenty of room for the toolbar to just sit in normal flow
+  // above the grid like every other tab, and real feedback was explicit
+  // that PC was fine as it already was. Same breakpoint NebulaTopbar's own
+  // nav-collapse-on-scroll uses.
+  const isMobile = useIsMobile();
   // Sticking the whole toolbar (tabs/description/search/filters) alongside
   // the preview - the previous fix for this - ate too much of the modal's
   // height on a phone to comfortably see any covers at once (real
@@ -90,7 +97,7 @@ export function AvatarPickerModal({
   const modalScrollRef = useRef<HTMLDivElement | null>(null);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   useEffect(() => {
-    if (tab !== 'nuvio') return;
+    if (tab !== 'nuvio' || !isMobile) return;
     // AvatarPickerModal doesn't own the Modal's scrollable div (Modal.tsx's
     // own "overflow-y-auto" wrapper around {children}) - it's this
     // component's own root's parentElement, found via a ref on that root
@@ -101,7 +108,7 @@ export function AvatarPickerModal({
     onScroll();
     scrollEl.addEventListener('scroll', onScroll, { passive: true });
     return () => scrollEl.removeEventListener('scroll', onScroll);
-  }, [tab]);
+  }, [tab, isMobile]);
 
   const [nuvioCovers, setNuvioCovers] = useState<NuvioCommunityCover[]>([]);
   const [nuvioCoversLoading, setNuvioCoversLoading] = useState(false);
@@ -278,8 +285,8 @@ export function AvatarPickerModal({
             transparent defaults) is load-bearing here - without it,
             scrolled-past grid rows show through underneath while sticky. */}
         <div
-          className={tab === 'nuvio' ? 'sticky top-0 z-10 -mx-6 px-6 pb-3 shadow-lg' : ''}
-          style={tab === 'nuvio' ? { background: 'var(--color-surface)' } : undefined}
+          className={tab === 'nuvio' && isMobile ? 'sticky top-0 z-10 -mx-6 px-6 pb-3 shadow-lg' : ''}
+          style={tab === 'nuvio' && isMobile ? { background: 'var(--color-surface)' } : undefined}
         >
         {previewShape === 'circle' ? (
           <div className="flex justify-center mb-2">
@@ -311,9 +318,9 @@ export function AvatarPickerModal({
             of just hiding it, so its own tab-switch/filter clicks can't
             fire while it's collapsed - it's not reachable anyway. */}
         <AnimatePresence initial={false}>
-          {!(tab === 'nuvio' && toolbarCollapsed) && (
+          {!(tab === 'nuvio' && isMobile && toolbarCollapsed) && (
             <motion.div
-              initial={tab === 'nuvio' ? { height: 0, opacity: 0 } : false}
+              initial={tab === 'nuvio' && isMobile ? { height: 0, opacity: 0 } : false}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.2, ease: 'easeInOut' }}
