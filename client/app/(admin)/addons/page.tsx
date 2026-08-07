@@ -8,18 +8,18 @@ import { useIsTV } from '@/lib/hooks/useIsTV';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
-import { TVLink } from '@/components/tv/TVLink';
 import { Header } from '@/components/layout/Header';
-import { Button, Card, Badge, ResourceBadge, SearchInput, Modal, Input, ConfirmModal, VersionBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
+import { Button, Card, ResourceBadge, SearchInput, Modal, Input, ConfirmModal, VersionBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
-import { NebulaPageHeading, NebulaHeaderStats, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { NebulaPageHeading, NebulaHeaderStats, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, Addon } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { useSortableDragState } from '@/components/ui/DragSortable';
-import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
@@ -41,6 +41,7 @@ import {
   TagIcon,
   XCircleIcon,
   ArrowLeftIcon,
+  Bars3Icon,
 } from '@heroicons/react/24/outline';
 
 const ADDON_VAULT_CATEGORIES = [
@@ -161,21 +162,32 @@ function TagPill({
   );
 }
 
-function SortableAddonWrapper({ id, children }: { id: string; children: React.ReactNode }) {
+// Only itemProps (position/transform tracking, no listeners) goes on the
+// outer wrapper now - dragHandleProps (the actual drag listeners) gets
+// threaded into AddonCard as a prop instead, which renders it as a small
+// dedicated grab handle rather than making clicking anywhere on the card
+// (including its own buttons/links) a potential drag. Previously the whole
+// card WAS the drag handle with no visible affordance at all - real
+// feedback that reordering wasn't discoverable.
+function SortableAddonWrapper({ id, children }: { id: string; children: (dragHandleProps: Record<string, unknown>) => React.ReactNode }) {
   const { dragHandleProps, itemProps } = useSortableDragState(id);
-  // dragHandleProps itself carries a style (cursor: grab) - destructure it
-  // out and merge explicitly rather than spreading dragHandleProps after
-  // an explicit style prop, which TypeScript correctly flags as a
-  // duplicate 'style' attribute.
-  const { style: dragStyle, ...restDragHandleProps } = dragHandleProps as { style?: React.CSSProperties; [key: string]: unknown };
   return (
-    <div ref={itemProps.ref} className={itemProps.className} style={{ ...itemProps.style, ...dragStyle }} {...restDragHandleProps}>
-      {children}
+    <div ref={itemProps.ref} className={itemProps.className} style={itemProps.style}>
+      {children(dragHandleProps)}
     </div>
   );
 }
+
 export default function AddonsPage() {
   const { layoutMode } = useLayoutMode();
+  // Desktop-only: gives the 3 stat cards their own full-width row (same
+  // grid-cols-3 block Users/Groups/Vault already use) instead of being
+  // squeezed into NebulaPageHeading's own center column alongside the
+  // title/actions, which is what made them look noticeably smaller here
+  // than on those other pages despite using the identical card component.
+  // Mobile keeps the existing NebulaHeaderStats placement untouched, per
+  // explicit request.
+  const isMobile = useIsMobile();
   const isTV = useIsTV();
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const [searchQuery, setSearchQuery] = useState('');
@@ -561,8 +573,7 @@ export default function AddonsPage() {
         toast.error(err.message || 'Failed to save new order');
       });
     };
-    registerDragEndHandler(handleDragEnd);
-    return () => registerDragEndHandler(null);
+    return registerDragEndHandler(handleDragEnd);
   }, [filteredAddons, registerDragEndHandler, handleToggleProtect, handleSetTag]);
 
 
@@ -626,15 +637,24 @@ export default function AddonsPage() {
           subtitle={isLoading ? 'Loading...' : `${addons.length} addon${addons.length !== 1 ? 's' : ''} • ${protectedCount} protected`}
           actions={reloadAllButton}
           stats={
-            <NebulaHeaderStats
-              stats={[
-                { label: 'Total Addons', value: isLoading ? '...' : addons.length, icon: <PuzzlePieceIcon className="w-4 h-4 md:w-6 md:h-6" /> },
-                { label: 'Protected', value: isLoading ? '...' : protectedCount, icon: <ShieldCheckIcon className="w-4 h-4 md:w-6 md:h-6" /> },
-                { label: 'Assignments', value: isLoading ? '...' : totalAddonAssignments, icon: <UsersIcon className="w-4 h-4 md:w-6 md:h-6" /> },
-              ]}
-            />
+            isMobile ? (
+              <NebulaHeaderStats
+                stats={[
+                  { label: 'Total Addons', value: isLoading ? '...' : addons.length, icon: <PuzzlePieceIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+                  { label: 'Protected', value: isLoading ? '...' : protectedCount, icon: <ShieldCheckIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+                  { label: 'Assignments', value: isLoading ? '...' : totalAddonAssignments, icon: <UsersIcon className="w-4 h-4 md:w-6 md:h-6" /> },
+                ]}
+              />
+            ) : undefined
           }
         />
+      )}
+      {layoutMode === 'nebula' && !isMobile && (
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-5">
+          <NebulaCompactStatCard label="Total Addons" value={isLoading ? '...' : addons.length} icon={<PuzzlePieceIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
+          <NebulaCompactStatCard label="Protected" value={isLoading ? '...' : protectedCount} icon={<ShieldCheckIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={1} />
+          <NebulaCompactStatCard label="Assignments" value={isLoading ? '...' : totalAddonAssignments} icon={<UsersIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
+        </div>
       )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}
@@ -768,6 +788,7 @@ export default function AddonsPage() {
                       <SortableContext items={filteredAddons.map(a => a.id)} strategy={rectSortingStrategy}>
                         {filteredAddons.map((addon) => (
                           <SortableAddonWrapper key={addon.id} id={addon.id}>
+                            {(dragHandleProps) => (
                             <StaggerItem>
                               <AddonCard
                                 addon={addon}
@@ -791,8 +812,10 @@ export default function AddonsPage() {
                                 onSetTag={(tag) => handleSetTag(addon, tag)}
                                 onCreateLabel={(name) => handleCreateAndSetTag(addon, name)}
                                 focusable={isTV}
+                                dragHandleProps={dragHandleProps}
                               />
                             </StaggerItem>
+                            )}
                           </SortableAddonWrapper>
                         ))}
                       </SortableContext>
@@ -805,144 +828,43 @@ export default function AddonsPage() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="rounded-2xl overflow-hidden bg-surface border border-default overflow-x-auto"
+                    className="space-y-3"
                   >
-                    <table className="w-full min-w-[600px]">
-                      <thead>
-                        <tr className="border-b border-default">
-                          <th className="px-4 py-4 text-left w-12">
-                            <div
-                              className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${hasSelection && selectedIds.size === filteredAddons.length
-                                  ? 'bg-primary border-primary'
-                                  : 'border-default hover:border-primary'
-                                }`}
-                              onClick={() => hasSelection && selectedIds.size === filteredAddons.length ? deselectAll() : selectAll()}
-                            >
-                              {hasSelection && selectedIds.size === filteredAddons.length && (
-                                <CheckIcon className="w-3 h-3 text-white" />
-                              )}
-                            </div>
-                          </th>
-                          <th className="px-6 py-4 text-left text-sm font-medium text-muted">Addon</th>
-                          <th className="px-6 py-4 text-left text-sm font-medium text-muted">Status</th>
-                          <th className="px-6 py-4 text-left text-sm font-medium text-muted">Resources</th>
-                          <th className="px-6 py-4 text-left text-sm font-medium text-muted">Users</th>
-                          <th className="px-6 py-4 text-left text-sm font-medium text-muted">Groups</th>
-                          <th className="px-6 py-4 text-left text-sm font-medium text-muted">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <AnimatePresence mode="popLayout">
-                          {filteredAddons.map((addon) => (
-                            <motion.tr
-                              key={addon.id}
-                              layout
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
-                              className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(addon.id) ? 'bg-primary-muted' : 'hover:bg-white/5'
-                                }`}
-                              onClick={() => toggleSelect(addon.id)}
-                            >
-                              <td className="px-4 py-4">
-                                <div
-                                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${selectedIds.has(addon.id)
-                                      ? 'bg-primary border-primary'
-                                      : 'border-default'
-                                    }`}
-                                >
-                                  {selectedIds.has(addon.id) && (
-                                    <CheckIcon className="w-3 h-3 text-white" />
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <TVLink
-                                  href={`/addons/${addon.id}`}
-                                  className="flex items-center gap-3 group"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <div
-                                    className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 overflow-hidden"
-                                    style={{ background: 'linear-gradient(135deg, var(--color-primary-muted), var(--color-secondary-muted))' }}
-                                  >
-                                    {addon.logo ? (
-                                      <img
-                                        src={addon.logo}
-                                        alt={addon.name}
-                                        className="w-full h-full object-contain p-1"
-                                      />
-                                    ) : (
-                                      <PuzzlePieceIcon className="w-6 h-6 text-primary" />
-                                    )}
-                                  </div>
-                                  <div>
-                                    <p className="font-medium transition-colors group-hover:text-primary text-default truncate" style={{ maxWidth: '200px' }}>
-                                      {addon.name}
-                                    </p>
-                                    <p className="text-sm text-muted truncate" style={{ maxWidth: '200px' }}>
-                                      {addon.description || 'No description'}
-                                    </p>
-                                  </div>
-                                </TVLink>
-                              </td>
-                              <td className="px-6 py-4">
-                                {addon.lastHealthCheck ? (
-                                  <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${addon.isOnline ? 'bg-success' : 'bg-error'}`} />
-                                    <span className={`text-sm ${addon.isOnline ? 'text-success' : 'text-error'}`}>
-                                      {addon.isOnline ? 'Online' : 'Offline'}
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <span className="text-sm text-muted">Not checked</span>
-                                )}
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="flex flex-wrap gap-1">
-                                  {addon.resources.slice(0, 3).map((resource) => (
-                                    <ResourceBadge key={resource} resource={resource} />
-                                  ))}
-                                  {addon.resources.length > 3 && (
-                                    <Badge variant="neutral" size="sm">+{addon.resources.length - 3}</Badge>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 text-muted">
-                                <span className="flex items-center gap-1.5">
-                                  <UsersIcon className="w-4 h-4 text-secondary" />
-                                  {addon.userCount || 0} user{addon.userCount !== 1 ? 's' : ''}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 text-muted">
-                                <span className="flex items-center gap-1.5">
-                                  <PuzzlePieceIcon className="w-4 h-4 text-secondary" />
-                                  {addon.groupCount} group{addon.groupCount !== 1 ? 's' : ''}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4">
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  leftIcon={<ArrowPathIcon className="w-4 h-4" />}
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    try {
-                                      await api.reloadAddon(addon.id);
-                                      toast.success(`Reloaded ${addon.name} successfully`);
-                                    } catch (err: any) {
-                                      toast.error(err.message || `Failed to reload ${addon.name}`);
-                                    }
-                                  }}
-                                >
-                                  Reload
-                                </Button>
-                              </td>
-                            </motion.tr>
-                          ))}
-                        </AnimatePresence>
-                      </tbody>
-                    </table>
+                    <AnimatePresence mode="popLayout">
+                      <SortableContext items={filteredAddons.map(a => a.id)} strategy={verticalListSortingStrategy}>
+                        {filteredAddons.map((addon) => (
+                          <SortableAddonWrapper key={addon.id} id={addon.id}>
+                            {(dragHandleProps) => (
+                              <AddonCard
+                                layout="row"
+                                addon={addon}
+                                isSelected={selectedIds.has(addon.id)}
+                                onToggleSelect={() => toggleSelect(addon.id)}
+                                onOpenDetail={() => setSelectedAddon(addon)}
+                                onDelete={() => setDeleteTarget(addon)}
+                                onClone={() => setCloneTarget(addon)}
+                                onMoveToVault={() => setMoveToVaultTarget(addon)}
+                                onToggleStatus={(addonId, newStatus) => {
+                                  setAddons(prev => prev.map(a =>
+                                    a.id === addonId
+                                      ? { ...a, isActive: newStatus }
+                                      : a
+                                  ));
+                                }}
+                                onToggleProtect={(next) => handleToggleProtect(addon, next)}
+                                onClearTag={() => handleSetTag(addon, null)}
+                                addonTags={addonTags}
+                                addonTagColors={addonTagColors}
+                                onSetTag={(tag) => handleSetTag(addon, tag)}
+                                onCreateLabel={(name) => handleCreateAndSetTag(addon, name)}
+                                focusable={isTV}
+                                dragHandleProps={dragHandleProps}
+                              />
+                            )}
+                          </SortableAddonWrapper>
+                        ))}
+                      </SortableContext>
+                    </AnimatePresence>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1246,6 +1168,8 @@ function AddonCard({
   onSetTag,
   onCreateLabel,
   focusable = false,
+  dragHandleProps,
+  layout = 'grid',
 }: {
   addon: AddonDisplay;
   isSelected: boolean;
@@ -1264,6 +1188,20 @@ function AddonCard({
   /** TV mode: wraps the card in a D-pad-focusable container, Enter/OK opens
    *  the same detail page a click would. */
   focusable?: boolean;
+  /** Renders a dedicated grab handle (top-left) instead of the whole card
+   *  being the drag target - real feedback (with a reference screenshot of
+   *  the same pattern already used on the User detail page's own addon
+   *  lists) that a bare draggable card with no visible affordance wasn't
+   *  discoverable as reorderable at all. */
+  dragHandleProps?: Record<string, unknown>;
+  /** 'row' replaces the vertical card with a full-width horizontal row
+   *  (icon, name, description, tags all in one line-flowing row) - the
+   *  Addons page's "list view" used to be a spreadsheet-style table that
+   *  truncated names at 200px, which real feedback said made it impossible
+   *  to tell same-provider addons with long custom names apart. Full width
+   *  means no truncation is needed. Same underlying state/handlers/context
+   *  menu either way - only the presentational JSX differs. */
+  layout?: 'grid' | 'row';
 }) {
   const [isReloading, setIsReloading] = useState(false);
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
@@ -1359,6 +1297,17 @@ function AddonCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
+        {dragHandleProps && (
+          <div
+            {...dragHandleProps}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            className="absolute top-4 left-4 z-10 p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
+            title="Drag to reorder"
+          >
+            <Bars3Icon className="w-4 h-4" />
+          </div>
+        )}
+
         {/* Selection indicator & Toggle - hidden on mobile, use context menu */}
         <div className="absolute top-4 right-4 z-10 flex items-center gap-3">
           <SelectionCheckbox
@@ -1488,13 +1437,130 @@ function AddonCard({
       </Card>
   );
 
+  // Full-width row - name/description/tags all get the page's full width
+  // instead of a 3-column grid cell's, so nothing needs truncating. Same
+  // state/handlers/context menu as the grid card above, just laid out
+  // horizontally in one flowing row instead of a vertical card.
+  const rowElement = (
+    <Card
+      variant="interactive"
+      padding="none"
+      className={`cursor-pointer tap-card ${isSelected ? 'ring-2 ring-primary' : ''}`}
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      {...longPress}
+    >
+      <div className="flex items-center gap-3 p-4">
+        {dragHandleProps && (
+          <div
+            {...dragHandleProps}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            className="shrink-0 p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
+            title="Drag to reorder"
+          >
+            <Bars3Icon className="w-4 h-4" />
+          </div>
+        )}
+        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+          <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} visible={isSelected} />
+        </div>
+        <div
+          className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 overflow-hidden"
+          style={{ background: 'linear-gradient(135deg, var(--color-primary-muted), var(--color-secondary-muted))' }}
+        >
+          {addon.logo ? (
+            <img src={addon.logo} alt={addon.name} className="w-full h-full object-contain p-1.5" />
+          ) : (
+            <PuzzlePieceIcon className="w-6 h-6 text-primary" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {configUrl ? (
+              <button
+                onClick={handleOpenConfigure}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="font-semibold transition-colors hover:text-primary text-default text-left"
+                title="Open configure page"
+              >
+                {addon.name}
+              </button>
+            ) : (
+              <h3 className="font-semibold text-default">{addon.name}</h3>
+            )}
+            {addon.lastHealthCheck && (
+              <div
+                className={`w-2 h-2 rounded-full shrink-0 ${addon.isOnline ? 'bg-success' : 'bg-error'}`}
+                title={addon.isOnline
+                  ? `Online - Last checked: ${new Date(addon.lastHealthCheck).toLocaleString()}`
+                  : `Offline${addon.healthCheckError ? `: ${addon.healthCheckError}` : ''} - Last checked: ${new Date(addon.lastHealthCheck).toLocaleString()}`
+                }
+              />
+            )}
+            {addon.version && <VersionBadge version={addon.version.slice(0, 7)} size="sm" />}
+            {addon.isProtected && (
+              <ShieldCheckIcon className="w-4 h-4 shrink-0 text-success" title="Protected" />
+            )}
+            {addon.customTag && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary-muted text-primary"
+                style={
+                  addonTagColors?.[addon.customTag]
+                    ? { background: `${addonTagColors[addon.customTag]}26`, color: addonTagColors[addon.customTag] }
+                    : undefined
+                }
+                title={`Labeled "${addon.customTag}" — right-click to change or remove`}
+              >
+                <TagIcon className="w-3 h-3" />
+                {addon.customTag}
+              </span>
+            )}
+          </div>
+          {addon.description && (
+            <p className="text-sm text-muted mt-0.5 line-clamp-2">{addon.description}</p>
+          )}
+          <div className="flex items-center gap-2 flex-wrap mt-1.5">
+            {addon.resources.map((resource) => (
+              <ResourceBadge key={resource} resource={resource} />
+            ))}
+            <span className="text-xs text-muted flex items-center gap-1">
+              <UsersIcon className="w-3.5 h-3.5 text-secondary" />
+              {addon.userCount || 0} user{addon.userCount !== 1 ? 's' : ''}
+            </span>
+            <span className="text-xs text-muted flex items-center gap-1">
+              <PuzzlePieceIcon className="w-3.5 h-3.5 text-secondary" />
+              {addon.groupCount} group{addon.groupCount !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+        <div className="hidden md:block shrink-0" onClick={(e) => e.stopPropagation()}>
+          <ToggleSwitch
+            checked={addon.isActive !== false}
+            onChange={async () => {
+              try {
+                const newStatus = !addon.isActive;
+                await api.toggleAddonStatus(addon.id, newStatus);
+                toast.success(`Addon ${newStatus ? 'activated' : 'deactivated'}`);
+                onToggleStatus?.(addon.id, newStatus);
+              } catch (err: any) {
+                toast.error(err.message || `Failed to toggle ${addon.name}`);
+              }
+            }}
+          />
+        </div>
+      </div>
+    </Card>
+  );
+
+  const activeElement = layout === 'row' ? rowElement : cardElement;
+
   return (
     <>
       {focusable ? (
         <TVFocusable onEnterPress={() => { window.location.href = `/addons/${addon.id}`; }}>
-          {cardElement}
+          {activeElement}
         </TVFocusable>
-      ) : cardElement}
+      ) : activeElement}
 
       <ContextMenu isOpen={isOpen} position={position} onClose={close}>
         {menuView === 'main' ? (

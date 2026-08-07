@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { Modal, Button } from '@/components/ui';
 import { Avatar } from '@/components/ui/Avatar';
 import { toast } from '@/components/ui/Toast';
@@ -68,11 +70,45 @@ export function AvatarPickerModal({
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentAvatarUrl || null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Infinite scroll for the Nuvio Covers grid, same IntersectionObserver
-  // pattern Discover uses - root is the grid's own scrollable div (not the
-  // viewport), since this grid scrolls internally inside a fixed-height
-  // modal rather than the page itself.
-  const nuvioGridContainerRef = useRef<HTMLDivElement | null>(null);
+  // pattern Discover uses. Root is null (the browser viewport) rather than
+  // a grid-local scroll container - the grid used to have its own nested
+  // overflow-y-auto/max-h scroll region distinct from the Modal's own body
+  // scroll, which read as two independent, fighting scrollbars on mobile
+  // (confirmed by real feedback). Removed that nested scroll entirely so
+  // the grid is just part of the Modal's single scrollable body -
+  // IntersectionObserver with root:null still correctly accounts for
+  // clipping through the Modal's own overflow-y-auto ancestor.
   const nuvioSentinelRef = useRef<HTMLDivElement | null>(null);
+  // Sticky preview + collapse-on-scroll toolbar is a mobile-only fix -
+  // desktop had plenty of room for the toolbar to just sit in normal flow
+  // above the grid like every other tab, and real feedback was explicit
+  // that PC was fine as it already was. Same breakpoint NebulaTopbar's own
+  // nav-collapse-on-scroll uses.
+  const isMobile = useIsMobile();
+  // Sticking the whole toolbar (tabs/description/search/filters) alongside
+  // the preview - the previous fix for this - ate too much of the modal's
+  // height on a phone to comfortably see any covers at once (real
+  // feedback). Now only the preview itself stays permanently visible;
+  // everything below it collapses on scroll and re-expands back at the
+  // top, the same isScrolled pattern NebulaTopbar already uses for its own
+  // nav row (24px threshold, motion height/opacity animation) - this modal
+  // has no access to that component, so it re-implements the same idea
+  // locally against its own scroll container instead of the page's.
+  const modalScrollRef = useRef<HTMLDivElement | null>(null);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  useEffect(() => {
+    if (tab !== 'nuvio' || !isMobile) return;
+    // AvatarPickerModal doesn't own the Modal's scrollable div (Modal.tsx's
+    // own "overflow-y-auto" wrapper around {children}) - it's this
+    // component's own root's parentElement, found via a ref on that root
+    // rather than threading a new prop through Modal for one caller.
+    const scrollEl = modalScrollRef.current?.parentElement;
+    if (!scrollEl) return;
+    const onScroll = () => setToolbarCollapsed(scrollEl.scrollTop > 24);
+    onScroll();
+    scrollEl.addEventListener('scroll', onScroll, { passive: true });
+    return () => scrollEl.removeEventListener('scroll', onScroll);
+  }, [tab, isMobile]);
 
   const [nuvioCovers, setNuvioCovers] = useState<NuvioCommunityCover[]>([]);
   const [nuvioCoversLoading, setNuvioCoversLoading] = useState(false);
@@ -117,18 +153,17 @@ export function AvatarPickerModal({
   }, [tab, nuvioOrientation, nuvioFormat, nuvioSearch, nuvioCoversUserId]);
 
   // Infinite scroll - same IntersectionObserver pattern as Discover's own
-  // browse grid, except root is the grid's own scrollable div rather than
-  // the viewport, since this grid scrolls inside a fixed-height modal.
+  // browse grid, root:null (viewport) since the grid no longer has its own
+  // scroll container - see nuvioSentinelRef's comment above.
   useEffect(() => {
     if (tab !== 'nuvio') return;
-    const root = nuvioGridContainerRef.current;
     const sentinel = nuvioSentinelRef.current;
-    if (!root || !sentinel) return;
+    if (!sentinel) return;
     const io = new IntersectionObserver((entries) => {
       if (entries.some((e) => e.isIntersecting) && nuvioHasMore && !nuvioCoversLoading) {
         loadNuvioCovers(nuvioPage + 1, false);
       }
-    }, { root, rootMargin: '200px' });
+    }, { root: null, rootMargin: '200px' });
     io.observe(sentinel);
     return () => io.disconnect();
   }, [tab, nuvioHasMore, nuvioCoversLoading, nuvioPage, loadNuvioCovers]);
@@ -236,7 +271,23 @@ export function AvatarPickerModal({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size={size}>
-      <div className="space-y-4">
+      <div className="space-y-4" ref={modalScrollRef}>
+        {/* Sticky only on the Nuvio Covers tab - that's the only tab with
+            scrollable content below it. Pinned to the top of the Modal's
+            own scroll container (not the grid's - the grid no longer has
+            its own, see the scroll-nesting fix above). Only the preview
+            itself always stays visible here; the tabs/description/search/
+            filters toolbar below it collapses on scroll instead of staying
+            expanded the whole time - floating the full toolbar (previous
+            fix) ate too much of the modal's height on a phone to
+            comfortably see any covers at once, per feedback. A solid
+            background (not the semi-transparent bg-surface-hover/
+            transparent defaults) is load-bearing here - without it,
+            scrolled-past grid rows show through underneath while sticky. */}
+        <div
+          className={tab === 'nuvio' && isMobile ? 'sticky top-0 z-10 -mx-6 px-6 pb-3 shadow-lg' : ''}
+          style={tab === 'nuvio' && isMobile ? { background: 'var(--color-surface)' } : undefined}
+        >
         {previewShape === 'circle' ? (
           <div className="flex justify-center mb-2">
             <Avatar
@@ -261,21 +312,86 @@ export function AvatarPickerModal({
           </div>
         )}
 
-        <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
-          {tabs.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className="flex-1 py-2 text-sm font-medium rounded-lg capitalize transition-all whitespace-nowrap"
-              style={{
-                background: tab === t ? 'var(--color-primary)' : 'transparent',
-                color: tab === t ? 'white' : 'var(--color-textMuted)',
-              }}
+        {/* Collapses on scroll (and re-expands back at the top) - same
+            isScrolled/motion.height pattern NebulaTopbar uses for its own
+            nav row. AnimatePresence unmounts the collapsed content instead
+            of just hiding it, so its own tab-switch/filter clicks can't
+            fire while it's collapsed - it's not reachable anyway. */}
+        <AnimatePresence initial={false}>
+          {!(tab === 'nuvio' && isMobile && toolbarCollapsed) && (
+            <motion.div
+              initial={tab === 'nuvio' && isMobile ? { height: 0, opacity: 0 } : false}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: 'easeInOut' }}
+              className="overflow-hidden"
             >
-              {tabLabel[t]}
-            </button>
-          ))}
+              <div className="flex gap-2 p-1 rounded-xl mt-2" style={{ background: 'var(--color-subtle)' }}>
+                {tabs.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTab(t)}
+                    className="flex-1 py-2 text-sm font-medium rounded-lg capitalize transition-all whitespace-nowrap"
+                    style={{
+                      background: tab === t ? 'var(--color-primary)' : 'transparent',
+                      color: tab === t ? 'white' : 'var(--color-textMuted)',
+                    }}
+                  >
+                    {tabLabel[t]}
+                  </button>
+                ))}
+              </div>
+
+              {tab === 'nuvio' && nuvioCoversUserId && (
+                <div className="space-y-3 mt-3">
+                  <p className="text-xs text-muted">
+                    Browsing nuvio.tv's community-submitted covers - hover one to preview it up top, click to use it.
+                  </p>
+
+                  <input
+                    type="text"
+                    value={nuvioSearch}
+                    onChange={(e) => setNuvioSearch(e.target.value)}
+                    placeholder="Search by title (e.g. Netflix)..."
+                    className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
+                    style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                  />
+
+                  <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
+                    <div className="flex gap-1">
+                      {(['all', 'landscape', 'portrait'] as const).map((o) => (
+                        <button
+                          key={o}
+                          type="button"
+                          onClick={() => setNuvioOrientation(o)}
+                          className={`${filterButtonClass(nuvioOrientation === o)} capitalize`}
+                          style={filterButtonStyle(nuvioOrientation === o)}
+                        >
+                          {o}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="w-px h-5" style={{ background: 'var(--color-surface-border)' }} />
+                    <div className="flex gap-1">
+                      {(['all', 'gif', 'jpg', 'png'] as const).map((f) => (
+                        <button
+                          key={f}
+                          type="button"
+                          onClick={() => setNuvioFormat(f)}
+                          className={`${filterButtonClass(nuvioFormat === f)} uppercase`}
+                          style={filterButtonStyle(nuvioFormat === f)}
+                        >
+                          {f === 'all' ? 'All formats' : f}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
         </div>
 
         {tab === 'color' && (
@@ -350,55 +466,17 @@ export function AvatarPickerModal({
 
         {tab === 'nuvio' && nuvioCoversUserId && (
           <div className="space-y-3">
-            <p className="text-xs text-muted">
-              Browsing nuvio.tv's community-submitted covers - hover one to preview it up top, click to use it.
-            </p>
-
-            <input
-              type="text"
-              value={nuvioSearch}
-              onChange={(e) => setNuvioSearch(e.target.value)}
-              placeholder="Search by title (e.g. Netflix)..."
-              className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
-              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-            />
-
-            <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
-              <div className="flex gap-1">
-                {(['all', 'landscape', 'portrait'] as const).map((o) => (
-                  <button
-                    key={o}
-                    type="button"
-                    onClick={() => setNuvioOrientation(o)}
-                    className={`${filterButtonClass(nuvioOrientation === o)} capitalize`}
-                    style={filterButtonStyle(nuvioOrientation === o)}
-                  >
-                    {o}
-                  </button>
-                ))}
-              </div>
-              <span className="w-px h-5" style={{ background: 'var(--color-surface-border)' }} />
-              <div className="flex gap-1">
-                {(['all', 'gif', 'jpg', 'png'] as const).map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setNuvioFormat(f)}
-                    className={`${filterButtonClass(nuvioFormat === f)} uppercase`}
-                    style={filterButtonStyle(nuvioFormat === f)}
-                  >
-                    {f === 'all' ? 'All formats' : f}
-                  </button>
-                ))}
-              </div>
-            </div>
-
+            {/* Description, search, and orientation/format filters now live
+                in the sticky toolbar above (with the preview and tabs) -
+                see that block's comment for why. Only the actual results
+                (grid/error/empty states) render here, as the page's normal
+                scrolling content beneath the sticky toolbar. */}
             {nuvioCoversError ? (
               <p className="text-xs text-error py-4 text-center">{nuvioCoversError}</p>
             ) : nuvioCovers.length === 0 && nuvioSearch.trim() && !nuvioCoversLoading ? (
               <p className="text-xs text-muted py-4 text-center">No covers matching &quot;{nuvioSearch.trim()}&quot;.</p>
             ) : (
-              <div ref={nuvioGridContainerRef} className={`grid ${nuvioGridCols} gap-3 ${size === 'full' ? 'max-h-[38rem]' : 'max-h-[28rem]'} overflow-y-auto pr-1`}>
+              <div className={`grid ${nuvioGridCols} gap-3`}>
                 {nuvioCovers.map((cover) => (
                   <button
                     key={cover.id}
@@ -407,18 +485,28 @@ export function AvatarPickerModal({
                     onMouseEnter={() => setPreviewUrl(cover.image_url)}
                     onMouseLeave={() => setPreviewUrl(urlInput || null)}
                     title={cover.title || 'Use this cover'}
-                    className="group relative aspect-video rounded-lg overflow-hidden border-2 border-default hover:border-primary transition-colors bg-surface-hover"
+                    className="group block w-full text-left rounded-lg border-2 border-default hover:border-primary transition-colors"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={cover.image_url} alt={cover.title || ''} className="w-full h-full object-cover" loading="lazy" />
-                    {cover.title && (
-                      <div
-                        className="absolute inset-x-0 bottom-0 px-2 py-1 text-[11px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity"
-                        style={{ background: 'linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 100%)' }}
-                      >
-                        {cover.title}
-                      </div>
-                    )}
+                    {/* aspect-ratio + overflow-hidden live on this inner div,
+                        not the <button> itself - mobile Safari doesn't
+                        reliably constrain a <button>'s own aspect-ratio box
+                        (it's inline-block by default), which let tall
+                        multi-frame GIFs render at full intrinsic height
+                        instead of being cropped, breaking the grid on
+                        mobile. Same nesting FolderTile (Nuvio Collections)
+                        already uses for the identical aspect-ratio+img case. */}
+                    <div className="relative aspect-video rounded-lg overflow-hidden bg-surface-hover">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={cover.image_url} alt={cover.title || ''} className="w-full h-full object-cover" loading="lazy" />
+                      {cover.title && (
+                        <div
+                          className="absolute inset-x-0 bottom-0 px-2 py-1 text-[11px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ background: 'linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 100%)' }}
+                        >
+                          {cover.title}
+                        </div>
+                      )}
+                    </div>
                   </button>
                 ))}
                 {nuvioCoversLoading && Array.from({ length: size === 'full' ? 10 : size === 'md' ? 4 : 8 }).map((_, i) => (

@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState, useCallback } from 'react';
+import { ReactNode, useEffect } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -10,7 +10,6 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
-  DragStartEvent,
   DragOverlay,
 } from '@dnd-kit/core';
 import {
@@ -21,6 +20,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'framer-motion';
+import { useVaultDrag } from '@/components/providers/VaultDragContext';
 
 export {
   useSortable,
@@ -123,11 +123,20 @@ function SortableItem({
     isDragging,
   } = useSortable({ id });
 
+  // opacity: 0 while dragging used to be correct here - it hid the
+  // original item so only the DragOverlay's ghost copy (following the
+  // cursor) was visible, avoiding a visual duplicate. That overlay no
+  // longer exists (removed along with the nested DndContext it needed -
+  // see DraggableList's own comment), so hiding the original left nothing
+  // to replace it: the dragged item just vanished until dropped, confirmed
+  // real. Matches useSortableDragState's style now - no opacity rule, the
+  // item tracks the cursor via its own transform and stays visible the
+  // whole time, same as Addons/Users/Groups' own reorder already does.
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition: isDragging ? 'none' : transition,
     zIndex: isDragging ? 100 : undefined,
-    opacity: isDragging ? 0 : 1,
+    isolation: 'isolate',
   };
 
   const dragHandleProps = {
@@ -146,45 +155,36 @@ function SortableItem({
   return renderItem({ id, dragHandleProps, itemProps, isDragging });
 }
 
+// Registers with the shared layout-level DndContext (AdminClientLayout)
+// instead of creating its own nested DndContext - every caller of
+// DraggableList already lives inside the admin layout, which already wraps
+// everything in its own DndContext for Vault/Addons/Users/Groups reordering.
+// Nesting a second DndContext here meant BOTH sets of sensors listened to
+// the same pointer events for the same drag gesture, which produced real,
+// confirmed (via screenshot) bugs - items overlapping, drag state getting
+// stuck mid-reorder. No local DragOverlay either, for the same reason
+// (it needs its own DndContext ancestor) - falls back to the same in-place
+// transform animation Addons/Users/Groups' own reorder already uses
+// successfully with no overlay.
 export function DraggableList({
   items,
   renderItem,
   onDragEnd,
 }: DraggableListProps) {
-  const sensors = useSortableSensors();
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const { registerDragEndHandler } = useVaultDrag();
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveId(String(event.active.id));
-  }, []);
-
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    setActiveId(null);
-    onDragEnd?.(event);
-  }, [onDragEnd]);
+  useEffect(() => {
+    if (!onDragEnd) return;
+    return registerDragEndHandler(onDragEnd);
+  }, [onDragEnd, registerDragEndHandler]);
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
-      <SortableContext items={items} strategy={verticalListSortingStrategy}>
-        <div className="space-y-3" style={{ touchAction: 'none', userSelect: 'none' }}>
-          {items.map((id) => (
-            <SortableItem key={id} id={id} renderItem={renderItem} />
-          ))}
-        </div>
-      </SortableContext>
-      <DragOverlay>
-        {activeId ? renderItem({
-          id: activeId,
-          dragHandleProps: { style: { touchAction: 'none' } } as any,
-          itemProps: { ref: () => { }, style: { transform: 'none', transition: 'none' }, className: '' },
-          isDragging: true,
-        }) : null}
-      </DragOverlay>
-    </DndContext>
+    <SortableContext items={items} strategy={verticalListSortingStrategy}>
+      <div className="space-y-3" style={{ touchAction: 'none', userSelect: 'none' }}>
+        {items.map((id) => (
+          <SortableItem key={id} id={id} renderItem={renderItem} />
+        ))}
+      </div>
+    </SortableContext>
   );
 }

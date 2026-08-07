@@ -14,6 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
+import { PasswordToggleButton } from '@/components/ui/Input';
 
 interface AccountModalProps {
     isOpen: boolean;
@@ -47,6 +48,8 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
     const [view, setView] = useState<ModalView>('main');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [passwordVisible, setPasswordVisible] = useState(false);
+    const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
 
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -344,19 +347,22 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
                     Enter your password to confirm
                 </label>
-                <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => { setPassword(e.target.value); setError(null); }}
-                    placeholder="Password"
-                    className="w-full px-4 py-2.5 rounded-xl text-sm focus:outline-none"
-                    style={{
-                        backgroundColor: 'var(--color-bg-subtle)',
-                        color: 'var(--color-text)',
-                        border: `1px solid ${error ? 'var(--color-error)' : 'var(--color-surface-border)'}`,
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleUnlinkStremio(); }}
-                />
+                <div className="relative">
+                    <input
+                        type={passwordVisible ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => { setPassword(e.target.value); setError(null); }}
+                        placeholder="Password"
+                        className="w-full pl-4 pr-12 py-2.5 rounded-xl text-sm focus:outline-none"
+                        style={{
+                            backgroundColor: 'var(--color-bg-subtle)',
+                            color: 'var(--color-text)',
+                            border: `1px solid ${error ? 'var(--color-error)' : 'var(--color-surface-border)'}`,
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleUnlinkStremio(); }}
+                    />
+                    <PasswordToggleButton visible={passwordVisible} onToggle={() => setPasswordVisible((v) => !v)} />
+                </div>
                 {error && (
                     <p className="mt-1.5 text-xs" style={{ color: 'var(--color-error)' }}>{error}</p>
                 )}
@@ -449,37 +455,43 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
                     New Password
                 </label>
-                <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => { setPassword(e.target.value); setError(null); }}
-                    placeholder="At least 4 characters"
-                    className="w-full px-4 py-2.5 rounded-xl text-sm focus:outline-none"
-                    style={{
-                        backgroundColor: 'var(--color-bg-subtle)',
-                        color: 'var(--color-text)',
-                        border: `1px solid ${error ? 'var(--color-error)' : 'var(--color-surface-border)'}`,
-                    }}
-                />
+                <div className="relative">
+                    <input
+                        type={passwordVisible ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => { setPassword(e.target.value); setError(null); }}
+                        placeholder="At least 4 characters"
+                        className="w-full pl-4 pr-12 py-2.5 rounded-xl text-sm focus:outline-none"
+                        style={{
+                            backgroundColor: 'var(--color-bg-subtle)',
+                            color: 'var(--color-text)',
+                            border: `1px solid ${error ? 'var(--color-error)' : 'var(--color-surface-border)'}`,
+                        }}
+                    />
+                    <PasswordToggleButton visible={passwordVisible} onToggle={() => setPasswordVisible((v) => !v)} />
+                </div>
             </div>
 
             <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
                     Confirm Password
                 </label>
-                <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => { setConfirmPassword(e.target.value); setError(null); }}
-                    placeholder="Repeat password"
-                    className="w-full px-4 py-2.5 rounded-xl text-sm focus:outline-none"
-                    style={{
-                        backgroundColor: 'var(--color-bg-subtle)',
-                        color: 'var(--color-text)',
-                        border: `1px solid ${error?.includes('match') ? 'var(--color-error)' : 'var(--color-surface-border)'}`,
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSetCredentials(); }}
-                />
+                <div className="relative">
+                    <input
+                        type={confirmPasswordVisible ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => { setConfirmPassword(e.target.value); setError(null); }}
+                        placeholder="Repeat password"
+                        className="w-full pl-4 pr-12 py-2.5 rounded-xl text-sm focus:outline-none"
+                        style={{
+                            backgroundColor: 'var(--color-bg-subtle)',
+                            color: 'var(--color-text)',
+                            border: `1px solid ${error?.includes('match') ? 'var(--color-error)' : 'var(--color-surface-border)'}`,
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSetCredentials(); }}
+                    />
+                    <PasswordToggleButton visible={confirmPasswordVisible} onToggle={() => setConfirmPasswordVisible((v) => !v)} />
+                </div>
             </div>
 
             {error && (
