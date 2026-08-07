@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.20",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Collections \"?\" buttons were easy to miss",
+    "features": [],
+    "bugFixes": [
+      "Nuvio Collections: the Tips and Export & Import \"?\" buttons blended into the muted icon row around them and went unnoticed for a long time per real feedback. Both now have a soft primary-color glow, same visual language the logo badge already uses."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.19",
     "date": "2026-08-07",
     "title": "fix: Catalog detail page Cancel button was easy to miss when selecting titles",
