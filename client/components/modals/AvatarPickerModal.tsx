@@ -407,18 +407,28 @@ export function AvatarPickerModal({
                     onMouseEnter={() => setPreviewUrl(cover.image_url)}
                     onMouseLeave={() => setPreviewUrl(urlInput || null)}
                     title={cover.title || 'Use this cover'}
-                    className="group relative aspect-video rounded-lg overflow-hidden border-2 border-default hover:border-primary transition-colors bg-surface-hover"
+                    className="group block w-full text-left rounded-lg border-2 border-default hover:border-primary transition-colors"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={cover.image_url} alt={cover.title || ''} className="w-full h-full object-cover" loading="lazy" />
-                    {cover.title && (
-                      <div
-                        className="absolute inset-x-0 bottom-0 px-2 py-1 text-[11px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity"
-                        style={{ background: 'linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 100%)' }}
-                      >
-                        {cover.title}
-                      </div>
-                    )}
+                    {/* aspect-ratio + overflow-hidden live on this inner div,
+                        not the <button> itself - mobile Safari doesn't
+                        reliably constrain a <button>'s own aspect-ratio box
+                        (it's inline-block by default), which let tall
+                        multi-frame GIFs render at full intrinsic height
+                        instead of being cropped, breaking the grid on
+                        mobile. Same nesting FolderTile (Nuvio Collections)
+                        already uses for the identical aspect-ratio+img case. */}
+                    <div className="relative aspect-video rounded-lg overflow-hidden bg-surface-hover">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={cover.image_url} alt={cover.title || ''} className="w-full h-full object-cover" loading="lazy" />
+                      {cover.title && (
+                        <div
+                          className="absolute inset-x-0 bottom-0 px-2 py-1 text-[11px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ background: 'linear-gradient(0deg, rgba(0,0,0,0.75) 0%, transparent 100%)' }}
+                        >
+                          {cover.title}
+                        </div>
+                      )}
+                    </div>
                   </button>
                 ))}
                 {nuvioCoversLoading && Array.from({ length: size === 'full' ? 10 : size === 'md' ? 4 : 8 }).map((_, i) => (

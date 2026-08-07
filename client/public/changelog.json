@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.9",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Covers grid rendering broken/stacked on mobile",
+    "features": [],
+    "bugFixes": [
+      "Cover art picker: the Nuvio Covers gallery grid applied its aspect-ratio crop directly on the button element instead of an inner div, which mobile Safari doesn't reliably enforce - tall multi-frame cover images rendered at full height instead of being cropped, breaking the grid into uneven, stacked-looking cells. Now nests the crop the same way Nuvio Collections' folder tiles already do."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.8",
     "date": "2026-08-07",
     "title": "fix: Nuvio Collections tips now a tucked-away \"?\" instead of a collapsible banner",
