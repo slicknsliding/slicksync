@@ -65,7 +65,20 @@ else
   fi
 fi
 echo "➡️ Ensuring schema is applied (db push)"
-bunx prisma db push --schema "$PRISMA_SCHEMA_PATH" --accept-data-loss || true
+if [ "$INSTANCE" = "public" ]; then
+  # NEVER --accept-data-loss against the live multi-tenant Postgres DB.
+  # migrate deploy above always fails with P3005 (this DB predates proper
+  # migration baselining), so db push is the only thing actually keeping
+  # the public schema in sync - but --accept-data-loss meant it would
+  # silently force-apply ANY diff, including destructive ones, on every
+  # single container restart with zero review. Without the flag, additive
+  # changes (new tables/columns) still apply automatically; anything
+  # destructive is refused and logged instead of executed, and the
+  # container still boots on the prior schema rather than risking data.
+  bunx prisma db push --schema "$PRISMA_SCHEMA_PATH" || echo "⚠️ db push found a change it wouldn't apply without --accept-data-loss - review manually, container is booting on the previous schema"
+else
+  bunx prisma db push --schema "$PRISMA_SCHEMA_PATH" --accept-data-loss || true
+fi
 
 export NODE_OPTIONS="--dns-result-order=ipv4first"
 
