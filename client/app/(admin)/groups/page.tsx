@@ -804,17 +804,6 @@ function GroupCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
-        {dragHandleProps && (
-          <div
-            {...dragHandleProps}
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            className="absolute top-4 left-4 z-10 p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
-            title="Drag to reorder"
-          >
-            <Bars3Icon className="w-4 h-4" />
-          </div>
-        )}
-
         {/* Selection indicator & Toggle - visible on hover or when selected */}
         <div className="absolute top-4 right-4 flex items-center gap-2">
           <SelectionCheckbox
@@ -838,6 +827,20 @@ function GroupCard({
         </div>
 
         <div className="flex items-start gap-4">
+          {/* Genuine flex sibling, not an absolute overlay - this card's
+              avatar sits flush at the same top-left offset an absolute
+              handle would use, so an overlay directly collided with it.
+              Same nesting the User detail page's own addon lists use. */}
+          {dragHandleProps && (
+            <div
+              {...dragHandleProps}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              className="shrink-0 mt-1 p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
+              title="Drag to reorder"
+            >
+              <Bars3Icon className="w-4 h-4" />
+            </div>
+          )}
           {/* Color icon */}
           <Avatar
             name={group.name}
