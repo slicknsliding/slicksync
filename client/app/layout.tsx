@@ -60,6 +60,26 @@ export default function RootLayout({
             connections. */}
         <link rel="preconnect" href="https://images.metahub.space" />
         <link rel="preconnect" href="https://image.tmdb.org" />
+        {/* iOS runs a Home Screen-launched web app (standalone display mode -
+            see appleWebApp.capable above) in a separate WKWebView process
+            with markedly worse backdrop-filter/blur compositing than the
+            exact same page in a normal Safari tab - a known WebKit
+            regression, not anything specific to this app's CSS. This app
+            leans on blur heavily (nav bar, modals, dropdowns, cards), so
+            that shows up as real jank opening/closing modals specifically
+            when launched from the Home Screen icon, confirmed by direct
+            user report (fast in Safari, slow from the Home Screen bookmark
+            for the identical page). Sets data-standalone on <html> before
+            first paint (blocking inline script, not a useEffect, so there's
+            no flash of blurred-then-unblurred UI) - see globals.css for the
+            actual blur kill-switch this attribute gates. navigator.standalone
+            is iOS Safari's own flag; matchMedia covers Android/desktop PWA
+            installs the same way. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(window.navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches){document.documentElement.setAttribute('data-standalone','true')}}catch(e){}`,
+          }}
+        />
       </head>
       <body
         className="antialiased aurora-scrollbar overflow-x-hidden bg-page"
