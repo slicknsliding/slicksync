@@ -733,7 +733,7 @@ export default function UserDetailPage() {
     try {
       await api.removeUserStremioAddon(params.id as string, addonName);
       setStremioAddons(prev => prev.filter(a => a.manifest?.name !== addonName));
-      toast.success('Addon removed from Stremio account');
+      toast.success('Addon removed from account');
     } catch (err: any) {
       toast.error(err.message || 'Failed to remove addon');
     }
@@ -793,15 +793,24 @@ export default function UserDetailPage() {
     }
   }, [groupAddons, user]);
 
-  // Handle Stremio addon drag end for reordering
+  // Handle account addon drag end for reordering. Item ids are the addon's
+  // own transportUrl (stable, already unique) - looked up via findIndex
+  // rather than baking the current index into the id itself, which is what
+  // this used to do (`${index}-${transportUrl}`). That broke dnd-kit: every
+  // reorder changes every item's index, so the id of every OTHER item in
+  // the list also changed on each render, invalidating dnd-kit's item-
+  // identity tracking mid-drag - confirmed real, reported as the drag
+  // "acting weird" (items jumping to wrong spots, drops landing in the
+  // wrong place). The Group Addons list above never had this bug since it
+  // already used addon.id (genuinely stable) as its item id.
   const handleStremioAddonDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIndex = parseInt(String(active.id).split('-')[0]);
-    const newIndex = parseInt(String(over.id).split('-')[0]);
+    const oldIndex = stremioAddons.findIndex(a => a.transportUrl === active.id);
+    const newIndex = stremioAddons.findIndex(a => a.transportUrl === over.id);
 
-    if (isNaN(oldIndex) || isNaN(newIndex)) return;
+    if (oldIndex === -1 || newIndex === -1) return;
 
     // Optimistic update
     const newAddons = arrayMove(stremioAddons, oldIndex, newIndex);
@@ -1554,7 +1563,10 @@ export default function UserDetailPage() {
                   </Card>
                 </PageSection>
 
-                {/* Stremio Account Addons */}
+                {/* Account Addons - the provider's own addon collection
+                    (Stremio's addonCollectionSet or Nuvio's equivalent),
+                    not Stremio-specific despite the section's old name -
+                    this same list renders for Nuvio users too. */}
                 <PageSection delay={0.2}>
                   <Card padding="lg">
                     <div className="flex items-center justify-between mb-6">
@@ -1563,9 +1575,9 @@ export default function UserDetailPage() {
                           <FolderIcon className="w-5 h-5 text-secondary" />
                         </div>
                         <div>
-                          <h3 className="text-lg font-semibold text-default">Stremio Account Addons</h3>
+                          <h3 className="text-lg font-semibold text-default">Account Addons</h3>
                           <p className="text-sm text-muted">
-                            {stremioAddons.length} addon{stremioAddons.length !== 1 ? 's' : ''} in Stremio account
+                            {stremioAddons.length} addon{stremioAddons.length !== 1 ? 's' : ''} in your account
                             {stremioAddons.length > 0 && ' • Drag to reorder'}
                           </p>
                         </div>
@@ -1583,10 +1595,10 @@ export default function UserDetailPage() {
 
                     {stremioAddons.length > 0 ? (
                       <DraggableList
-                        items={stremioAddons.map((addon, index) => `${index}-${addon.transportUrl}`)}
+                        items={stremioAddons.map((addon) => addon.transportUrl)}
                         onDragEnd={handleStremioAddonDragEnd}
                         renderItem={({ id, dragHandleProps, itemProps, isDragging }) => {
-                          const index = stremioAddons.findIndex((a, i) => `${i}-${a.transportUrl}` === id);
+                          const index = stremioAddons.findIndex((a) => a.transportUrl === id);
                           if (index === -1) return null;
                           const addon = stremioAddons[index];
                           const name = addon.manifest?.name || 'Unknown Addon';
