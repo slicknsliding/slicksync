@@ -24,7 +24,7 @@ import {
   ArrowLeftIcon, PlusIcon, TrashIcon, ChevronDownIcon, ChevronRightIcon, EyeIcon,
   ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
   DocumentDuplicateIcon, PhotoIcon, ExclamationTriangleIcon, MapPinIcon,
-  EllipsisVerticalIcon, PencilSquareIcon, FilmIcon, TvIcon, InformationCircleIcon,
+  EllipsisVerticalIcon, PencilSquareIcon, FilmIcon, TvIcon,
   ArrowDownTrayIcon, ArrowUpTrayIcon, QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
@@ -538,21 +538,12 @@ export default function NuvioCollectionsPage() {
   const [savedSnapshot, setSavedSnapshot] = useState('[]');
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [importExportInfoOpen, setImportExportInfoOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
   // The two info banners (TMDb templates, bridging a Catalog in) read fine
-  // the first time but become dead weight on every later visit - collapsed
-  // by default once dismissed, remembered per-browser so it doesn't
-  // reappear every time this page loads.
-  const [infoBannersCollapsed, setInfoBannersCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem('slicksync:nuvioCollections:infoBannersCollapsed') === '1';
-  });
-  const setInfoBannersCollapsedPersisted = (collapsed: boolean) => {
-    setInfoBannersCollapsed(collapsed);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('slicksync:nuvioCollections:infoBannersCollapsed', collapsed ? '1' : '0');
-    }
-  };
+  // the first time but are a permanent eyesore taking up space on every
+  // later visit - same "?" icon + Modal pattern as importExportInfoOpen
+  // above, tucked away until someone actually wants them.
+  const [tipsInfoOpen, setTipsInfoOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [addons, setAddons] = useState<StremioAddon[]>([]);
   const [addonsLoading, setAddonsLoading] = useState(false);
@@ -1140,49 +1131,18 @@ export default function NuvioCollectionsPage() {
               </div>
             ) : (
               <>
-                {infoBannersCollapsed ? (
-                  <button
-                    type="button"
-                    onClick={() => setInfoBannersCollapsedPersisted(false)}
-                    className="flex items-center gap-2 mb-4 px-3 py-1.5 rounded-lg bg-subtle border border-default text-xs text-muted hover:text-default transition-colors w-full"
-                  >
-                    <InformationCircleIcon className="w-4 h-4 shrink-0" />
-                    <span>Tips: TMDb-template folders, bridging a Catalog in</span>
-                    <ChevronRightIcon className="w-3.5 h-3.5 ml-auto shrink-0" />
-                  </button>
-                ) : (
-                  <div className="mb-4">
+                <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm text-muted">{collections.length} collection{collections.length !== 1 ? 's' : ''}{isDirty && <span className="text-warning ml-2">(unsaved changes)</span>}</p>
                     <button
                       type="button"
-                      onClick={() => setInfoBannersCollapsedPersisted(true)}
-                      className="flex items-center gap-1.5 mb-2 text-xs text-muted hover:text-default transition-colors"
+                      onClick={() => setTipsInfoOpen(true)}
+                      className="p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover transition-colors"
+                      title="Tips"
                     >
-                      <ChevronDownIcon className="w-3.5 h-3.5" />
-                      Collapse tips
+                      <QuestionMarkCircleIcon className="w-4 h-4" />
                     </button>
-                    <div className="flex items-start gap-2 mb-2 p-3 rounded-lg bg-subtle border border-default">
-                      <InformationCircleIcon className="w-4 h-4 text-muted shrink-0 mt-0.5" />
-                      <p className="text-xs text-muted">
-                        Some folders may use TMDb-sourced templates (created in the Nuvio app or on nuvio.tv) rather than an addon catalog.
-                        Those need a TMDb API key set in the <span className="text-default">Nuvio app&apos;s own Settings</span> — separate from SlickSync&apos;s — or they won&apos;t render on-device.
-                      </p>
-                    </div>
-
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-subtle border border-default">
-                      <InformationCircleIcon className="w-4 h-4 text-muted shrink-0 mt-0.5" />
-                      <p className="text-xs text-muted">
-                        Want to turn a local Catalog into a folder here? Nuvio folders can only reference a live addon catalog, TMDb list, or Trakt
-                        list — not a fixed set of titles directly — so open the Catalog, use <span className="text-default">Export to MDBList</span> to
-                        create a real MDBList list from it, then add that list&apos;s URL as a Custom Catalog (provider: MDBList) in either{' '}
-                        <span className="text-default">AIOStreams</span> or <span className="text-default">AIOMetadata</span>&apos;s own config — both
-                        work fine as sources. Once saved there, it shows up as a normal source in <span className="text-default">Add source</span> below.
-                      </p>
-                    </div>
                   </div>
-                )}
-
-                <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-                  <p className="text-sm text-muted">{collections.length} collection{collections.length !== 1 ? 's' : ''}{isDirty && <span className="text-warning ml-2">(unsaved changes)</span>}</p>
                   <div className="flex items-center gap-2">
                     <input
                       ref={importFileInputRef}
@@ -1450,6 +1410,22 @@ export default function NuvioCollectionsPage() {
             nuvio.tv/account?tab=collections
             <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
           </a>
+        </div>
+      </Modal>
+
+      <Modal isOpen={tipsInfoOpen} onClose={() => setTipsInfoOpen(false)} title="Tips" size="sm">
+        <div className="space-y-3 text-sm text-muted">
+          <p>
+            Some folders may use TMDb-sourced templates (created in the Nuvio app or on nuvio.tv) rather than an addon catalog.
+            Those need a TMDb API key set in the <span className="text-default">Nuvio app&apos;s own Settings</span> — separate from SlickSync&apos;s — or they won&apos;t render on-device.
+          </p>
+          <p>
+            Want to turn a local Catalog into a folder here? Nuvio folders can only reference a live addon catalog, TMDb list, or Trakt
+            list — not a fixed set of titles directly — so open the Catalog, use <span className="text-default">Export to MDBList</span> to
+            create a real MDBList list from it, then add that list&apos;s URL as a Custom Catalog (provider: MDBList) in either{' '}
+            <span className="text-default">AIOStreams</span> or <span className="text-default">AIOMetadata</span>&apos;s own config — both
+            work fine as sources. Once saved there, it shows up as a normal source in <span className="text-default">Add source</span> below.
+          </p>
         </div>
       </Modal>
 

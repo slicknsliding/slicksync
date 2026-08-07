@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.8",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Collections tips now a tucked-away \"?\" instead of a collapsible banner",
+    "features": [],
+    "bugFixes": [
+      "Nuvio Collections: replaced the collapsible tips banner (still visible as a summary row on every visit) with a small \"?\" icon next to the collection count that opens the tips in a modal, same pattern as the existing Export & Import \"?\" - matches user feedback that the banner was still an eyesore even collapsed."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.7",
     "date": "2026-08-06",
     "title": "fix: Nuvio Collections info banners always taking up space",
