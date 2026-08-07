@@ -19,6 +19,34 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   const { createUserApiKeyMiddleware } = require('../middleware/userApiKey')
   router.use(createUserApiKeyMiddleware(prisma))
 
+  // PUT /api/users/reorder - bulk update user display order (drag-and-drop),
+  // same pattern as addons.js's own /reorder.
+  router.put('/reorder', async (req, res) => {
+    try {
+      const { orderedIds } = req.body || {};
+      if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+        return res.status(400).json({ error: 'orderedIds is required' });
+      }
+      // Confirm every id actually belongs to this account before touching anything
+      const existing = await prisma.user.findMany({
+        where: scopedWhere(req, { id: { in: orderedIds } }),
+        select: { id: true },
+      });
+      if (existing.length !== orderedIds.length) {
+        return res.status(400).json({ error: 'One or more users do not belong to this account' });
+      }
+      await Promise.all(
+        orderedIds.map((id, index) =>
+          prisma.user.update({ where: { id }, data: { position: index } })
+        )
+      );
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error reordering users:', error);
+      res.status(500).json({ error: 'Failed to reorder users' });
+    }
+  });
+
   // Check if user exists by email or username (for validation)
   router.get('/check', async (req, res) => {
     try {
@@ -109,7 +137,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const users = await prisma.user.findMany({
         where: scopedWhere(req, {}),
         include: {},
-        orderBy: { id: 'asc' }
+        orderBy: [{ position: 'asc' }, { id: 'asc' }]
       });
 
       // One bulk lookup for every merged user's absorbed second provider,

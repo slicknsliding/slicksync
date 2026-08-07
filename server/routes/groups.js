@@ -10,6 +10,37 @@ const { responseUtils, dbUtils } = require('../utils/routeUtils');
 module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUserToGroup, getDecryptedManifestUrl, manifestUrlHmac, decrypt, createProvider }) => {
   const router = express.Router();
 
+  // PUT /api/groups/reorder - bulk update group display order (drag-and-
+  // drop), same pattern as addons.js's own /reorder. Registered before
+  // PUT /:id below - Express matches routes in registration order, not
+  // specificity, so this has to come first or "/reorder" would match
+  // "/:id" with id="reorder" instead (same ordering note vault.js's own
+  // /reorder already has).
+  router.put('/reorder', async (req, res) => {
+    try {
+      const { orderedIds } = req.body || {};
+      if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+        return res.status(400).json({ error: 'orderedIds is required' });
+      }
+      const existing = await prisma.group.findMany({
+        where: scopedWhere(req, { id: { in: orderedIds } }),
+        select: { id: true },
+      });
+      if (existing.length !== orderedIds.length) {
+        return res.status(400).json({ error: 'One or more groups do not belong to this account' });
+      }
+      await Promise.all(
+        orderedIds.map((id, index) =>
+          prisma.group.update({ where: { id }, data: { position: index } })
+        )
+      );
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error reordering groups:', error);
+      res.status(500).json({ error: 'Failed to reorder groups' });
+    }
+  });
+
   // Shared helper: reload (advanced mode) then sync all users in a group
   async function syncGroupUsers(groupId, req) {
     // Load group with scoped account
@@ -143,7 +174,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
           addons: { include: { addon: true } },
           _count: { select: { addons: true } }
         },
-        orderBy: { id: 'asc' }
+        orderBy: [{ position: 'asc' }, { id: 'asc' }]
       });
 
       const transformedGroups = await Promise.all(groups.map(async group => {

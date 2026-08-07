@@ -20,7 +20,7 @@ import { toast } from '@/components/ui/Toast';
 import { api, Addon } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { useSortableDragState } from '@/components/ui/DragSortable';
-import { SortableContext, rectSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
@@ -42,6 +42,7 @@ import {
   TagIcon,
   XCircleIcon,
   ArrowLeftIcon,
+  Bars3Icon,
 } from '@heroicons/react/24/outline';
 
 const ADDON_VAULT_CATEGORIES = [
@@ -162,17 +163,48 @@ function TagPill({
   );
 }
 
-function SortableAddonWrapper({ id, children }: { id: string; children: React.ReactNode }) {
+// Only itemProps (position/transform tracking, no listeners) goes on the
+// outer wrapper now - dragHandleProps (the actual drag listeners) gets
+// threaded into AddonCard as a prop instead, which renders it as a small
+// dedicated grab handle rather than making clicking anywhere on the card
+// (including its own buttons/links) a potential drag. Previously the whole
+// card WAS the drag handle with no visible affordance at all - real
+// feedback that reordering wasn't discoverable.
+function SortableAddonWrapper({ id, children }: { id: string; children: (dragHandleProps: Record<string, unknown>) => React.ReactNode }) {
   const { dragHandleProps, itemProps } = useSortableDragState(id);
-  // dragHandleProps itself carries a style (cursor: grab) - destructure it
-  // out and merge explicitly rather than spreading dragHandleProps after
-  // an explicit style prop, which TypeScript correctly flags as a
-  // duplicate 'style' attribute.
-  const { style: dragStyle, ...restDragHandleProps } = dragHandleProps as { style?: React.CSSProperties; [key: string]: unknown };
   return (
-    <div ref={itemProps.ref} className={itemProps.className} style={{ ...itemProps.style, ...dragStyle }} {...restDragHandleProps}>
-      {children}
+    <div ref={itemProps.ref} className={itemProps.className} style={itemProps.style}>
+      {children(dragHandleProps)}
     </div>
+  );
+}
+
+// List-view counterpart of SortableAddonWrapper - list view had zero drag-
+// reorder support at all before this (grid view at least had it, just with
+// no visible handle). Renders its own dedicated handle cell rather than
+// threading dragHandleProps through every existing <td>, since a table
+// row's cells are all already inline at the call site (unlike AddonCard,
+// there's no existing component boundary to pass a prop through).
+function SortableAddonRow({ id, onClick, className, children }: { id: string; onClick?: () => void; className?: string; children: React.ReactNode }) {
+  const { dragHandleProps, itemProps } = useSortableDragState(id);
+  return (
+    <motion.tr
+      ref={itemProps.ref as unknown as React.Ref<HTMLTableRowElement>}
+      layout
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={itemProps.style}
+      className={`${className || ''} ${itemProps.className}`}
+      onClick={onClick}
+    >
+      <td className="pl-4 py-4 w-8" onClick={(e) => e.stopPropagation()}>
+        <div {...dragHandleProps} className="p-1 rounded hover:bg-surface-hover cursor-grab active:cursor-grabbing inline-flex text-subtle hover:text-default" title="Drag to reorder">
+          <Bars3Icon className="w-4 h-4" />
+        </div>
+      </td>
+      {children}
+    </motion.tr>
   );
 }
 export default function AddonsPage() {
@@ -786,6 +818,7 @@ export default function AddonsPage() {
                       <SortableContext items={filteredAddons.map(a => a.id)} strategy={rectSortingStrategy}>
                         {filteredAddons.map((addon) => (
                           <SortableAddonWrapper key={addon.id} id={addon.id}>
+                            {(dragHandleProps) => (
                             <StaggerItem>
                               <AddonCard
                                 addon={addon}
@@ -809,8 +842,10 @@ export default function AddonsPage() {
                                 onSetTag={(tag) => handleSetTag(addon, tag)}
                                 onCreateLabel={(name) => handleCreateAndSetTag(addon, name)}
                                 focusable={isTV}
+                                dragHandleProps={dragHandleProps}
                               />
                             </StaggerItem>
+                            )}
                           </SortableAddonWrapper>
                         ))}
                       </SortableContext>
@@ -828,6 +863,7 @@ export default function AddonsPage() {
                     <table className="w-full min-w-[600px]">
                       <thead>
                         <tr className="border-b border-default">
+                          <th className="w-8" aria-hidden="true" />
                           <th className="px-4 py-4 text-left w-12">
                             <div
                               className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${hasSelection && selectedIds.size === filteredAddons.length
@@ -850,17 +886,15 @@ export default function AddonsPage() {
                         </tr>
                       </thead>
                       <tbody>
+                        <SortableContext items={filteredAddons.map(a => a.id)} strategy={verticalListSortingStrategy}>
                         <AnimatePresence mode="popLayout">
                           {filteredAddons.map((addon) => (
-                            <motion.tr
+                            <SortableAddonRow
                               key={addon.id}
-                              layout
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
+                              id={addon.id}
+                              onClick={() => toggleSelect(addon.id)}
                               className={`transition-colors border-b border-default cursor-pointer ${selectedIds.has(addon.id) ? 'bg-primary-muted' : 'hover:bg-white/5'
                                 }`}
-                              onClick={() => toggleSelect(addon.id)}
                             >
                               <td className="px-4 py-4">
                                 <div
@@ -956,9 +990,10 @@ export default function AddonsPage() {
                                   Reload
                                 </Button>
                               </td>
-                            </motion.tr>
+                            </SortableAddonRow>
                           ))}
                         </AnimatePresence>
+                        </SortableContext>
                       </tbody>
                     </table>
                   </motion.div>
@@ -1264,6 +1299,7 @@ function AddonCard({
   onSetTag,
   onCreateLabel,
   focusable = false,
+  dragHandleProps,
 }: {
   addon: AddonDisplay;
   isSelected: boolean;
@@ -1282,6 +1318,12 @@ function AddonCard({
   /** TV mode: wraps the card in a D-pad-focusable container, Enter/OK opens
    *  the same detail page a click would. */
   focusable?: boolean;
+  /** Renders a dedicated grab handle (top-left) instead of the whole card
+   *  being the drag target - real feedback (with a reference screenshot of
+   *  the same pattern already used on the User detail page's own addon
+   *  lists) that a bare draggable card with no visible affordance wasn't
+   *  discoverable as reorderable at all. */
+  dragHandleProps?: Record<string, unknown>;
 }) {
   const [isReloading, setIsReloading] = useState(false);
   const { isOpen, position, handleContextMenu, close } = useContextMenu();
@@ -1377,6 +1419,17 @@ function AddonCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
+        {dragHandleProps && (
+          <div
+            {...dragHandleProps}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            className="absolute top-4 left-4 z-10 p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
+            title="Drag to reorder"
+          >
+            <Bars3Icon className="w-4 h-4" />
+          </div>
+        )}
+
         {/* Selection indicator & Toggle - hidden on mobile, use context menu */}
         <div className="absolute top-4 right-4 z-10 flex items-center gap-3">
           <SelectionCheckbox

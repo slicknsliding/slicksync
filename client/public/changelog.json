@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.24",
+    "date": "2026-08-07",
+    "title": "feat: drag-to-reorder for Addons, Users, and Groups (grid + list view)",
+    "features": [
+      "Addons, Users, and Groups list pages now support drag-to-reorder in both grid and list view, with a dedicated grab handle (same style already used on the User detail page's addon lists) instead of the whole card being a drag target. Addons already had reordering in grid view with no visible handle - list view had none at all; Users and Groups had no reordering anywhere. Order is saved server-side and persists across reloads."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.68.23",
     "date": "2026-08-07",
     "title": "fix: Account Addons drag-to-reorder was landing in the wrong spot",
