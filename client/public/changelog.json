@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.26",
+    "date": "2026-08-07",
+    "title": "fix: Group Addons / Account Addons drag still glitching - nested DndContext",
+    "features": [],
+    "bugFixes": [
+      "User/Group/Addon detail pages: dragging Group Addons or Account Addons still visually glitched (items overlapping, drag state getting stuck) even after the earlier stable-id fix - real feedback with screenshots. Root cause: the whole admin app already wraps everything in one shared drag-and-drop context, but these lists created a SECOND, nested one of their own - both sets of pointer-event listeners were responding to the same drag gesture. Removed the nested context; these lists now register with the shared one, same mechanism Addons/Users/Groups/Vault reordering already uses, extended to support two independent lists active on the same page at once (a single detail page can have both Group Addons and Account Addons mounted simultaneously)."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.25",
     "date": "2026-08-07",
     "title": "fix: Users/Groups grid drag handle was invisible, overlapping the avatar",

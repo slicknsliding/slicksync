@@ -602,8 +602,7 @@ export default function AddonsPage() {
         toast.error(err.message || 'Failed to save new order');
       });
     };
-    registerDragEndHandler(handleDragEnd);
-    return () => registerDragEndHandler(null);
+    return registerDragEndHandler(handleDragEnd);
   }, [filteredAddons, registerDragEndHandler, handleToggleProtect, handleSetTag]);
 
 
