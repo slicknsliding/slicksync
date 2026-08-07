@@ -1401,10 +1401,28 @@ export default function NuvioCollectionsPage() {
       <Modal isOpen={importExportInfoOpen} onClose={() => setImportExportInfoOpen(false)} title="Export & Import" size="sm">
         <div className="space-y-3 text-sm text-muted">
           <p>
-            <span className="text-default font-medium">Export</span> downloads this profile&apos;s collections exactly as SlickSync sends them to Nuvio&apos;s sync backend.
+            {/* Both actually trigger the same Export/Import buttons in the
+                page's own toolbar - real feedback that bold-but-inert text
+                reads as broken/clickable-looking with nothing behind it. */}
+            <button
+              type="button"
+              onClick={() => { setImportExportInfoOpen(false); exportCollectionsJson(); }}
+              disabled={collections.length === 0}
+              className="text-default font-medium hover:underline disabled:opacity-50 disabled:hover:no-underline disabled:cursor-not-allowed"
+            >
+              Export
+            </button>{' '}
+            downloads this profile&apos;s collections exactly as SlickSync sends them to Nuvio&apos;s sync backend.
           </p>
           <p>
-            <span className="text-default font-medium">Import</span> loads a JSON file back into this page as a draft - review it, then hit Save changes to push it through the normal sync path. Nothing is written until you save.
+            <button
+              type="button"
+              onClick={() => { setImportExportInfoOpen(false); importFileInputRef.current?.click(); }}
+              className="text-default font-medium hover:underline"
+            >
+              Import
+            </button>{' '}
+            loads a JSON file back into this page as a draft - review it, then hit Save changes to push it through the normal sync path. Nothing is written until you save.
           </p>
           <p>
             Nuvio&apos;s own site has a matching Import/Export on its Collections page, if you&apos;d rather manage things from there:
@@ -1425,14 +1443,41 @@ export default function NuvioCollectionsPage() {
         <div className="space-y-3 text-sm text-muted">
           <p>
             Some folders may use TMDb-sourced templates (created in the Nuvio app or on nuvio.tv) rather than an addon catalog.
-            Those need a TMDb API key set in the <span className="text-default">Nuvio app&apos;s own Settings</span> — separate from SlickSync&apos;s — or they won&apos;t render on-device.
+            Those need a TMDb API key set in the{' '}
+            {/* nuvio.tv/account?tab=settings inferred from the confirmed
+                ?tab=collections pattern below (same site, same account
+                dashboard) - not independently verified the tab itself
+                exists, unlike that one. */}
+            <a href="https://nuvio.tv/account?tab=settings" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              Nuvio app&apos;s own Settings
+            </a>{' '}
+            — separate from SlickSync&apos;s — or they won&apos;t render on-device.
           </p>
           <p>
             Want to turn a local Catalog into a folder here? Nuvio folders can only reference a live addon catalog, TMDb list, or Trakt
-            list — not a fixed set of titles directly — so open the Catalog, use <span className="text-default">Export to MDBList</span> to
-            create a real MDBList list from it, then add that list&apos;s URL as a Custom Catalog (provider: MDBList) in either{' '}
-            <span className="text-default">AIOStreams</span> or <span className="text-default">AIOMetadata</span>&apos;s own config — both
-            work fine as sources. Once saved there, it shows up as a normal source in <span className="text-default">Add source</span> below.
+            list — not a fixed set of titles directly — so open the Catalog, use{' '}
+            <button
+              type="button"
+              onClick={() => { setTipsInfoOpen(false); router.push('/catalogs'); }}
+              className="text-primary hover:underline font-medium"
+            >
+              Export to MDBList
+            </button>{' '}
+            to create a real MDBList list from it, then add that list&apos;s URL as a Custom Catalog (provider: MDBList) in either{' '}
+            {/* AIOStreams/AIOMetadata deliberately left as plain text, not
+                links - this account doesn't host either for anyone else to
+                use, and pointing at a specific instance would be wrong for
+                most readers; find your own is the correct answer here. */}
+            AIOStreams or AIOMetadata&apos;s own config — both
+            work fine as sources. Once saved there, it shows up as a normal source in{' '}
+            <button
+              type="button"
+              onClick={() => setTipsInfoOpen(false)}
+              className="text-primary hover:underline font-medium"
+            >
+              Add source
+            </button>{' '}
+            below.
           </p>
         </div>
       </Modal>

@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.21",
+    "date": "2026-08-07",
+    "title": "fix: Nuvio Collections tips/Export & Import bold text looked clickable but wasn't",
+    "features": [],
+    "bugFixes": [
+      "Nuvio Collections: bold terms in the Tips and Export & Import popups (Export, Import, Export to MDBList, Add source, Nuvio app's own Settings) looked like links but didn't do anything - real feedback that they read as broken. Export/Import now trigger the real page buttons, Export to MDBList jumps to Catalogs, Add source closes the popup, and Nuvio's own Settings links out to nuvio.tv. AIOStreams/AIOMetadata stay plain text on purpose - this account doesn't host either, so there's no correct instance to point at."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.20",
     "date": "2026-08-07",
     "title": "fix: Nuvio Collections \"?\" buttons were easy to miss",
