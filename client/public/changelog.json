@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.11",
+    "date": "2026-08-07",
+    "title": "fix: Catalog detail page action buttons ran off the screen edge on mobile",
+    "features": [],
+    "bugFixes": [
+      "Catalog detail page: the row of action buttons (Suggest titles, Refresh, Cover art, Rename, Share, Export to MDBList, Delete) had no flex-wrap on its own container, so on mobile it overflowed past the right edge of the screen instead of wrapping onto a second line - Delete was getting cut off entirely. Groups/Users/Addons detail pages already had this fix; Catalogs was missed."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.10",
     "date": "2026-08-07",
     "title": "fix: Nuvio Covers grid had its own nested scrollbar fighting the modal's",
