@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.6",
+    "date": "2026-08-06",
+    "title": "fix: Automatic Sync schedule (and Backup/Health Check) not holding after navigating away",
+    "features": [],
+    "bugFixes": [
+      "Tasks: the Automatic Sync schedule reset to Disabled every time you navigated away from the page and back, even though the real schedule was saved correctly and running server-side the whole time - it was purely a UI bug, the dropdown was never loading its actual saved value back on page load. The same bug affected the Backup and Addon Health Check schedules too, just harder to notice since their defaults happened to match common real settings."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.5",
     "date": "2026-08-06",
     "title": "fix: group sync failing every time (409); new Catalog sharing, auto-refresh schedule, Superadmin tools",
