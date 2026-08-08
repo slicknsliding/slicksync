@@ -1,5 +1,25 @@
 [
   {
+    "version": "1.68.32",
+    "date": "2026-08-07",
+    "title": "chore: remove dead/misleading account-scoping Prisma proxy",
+    "features": [],
+    "bugFixes": [],
+    "miscChores": [
+      "server/middleware/accountScoping.js swapped a module-level global.prisma reference to an account-scoped Proxy for the duration of each request, intended to enforce account isolation centrally. Traced it end-to-end: no route handler actually reads global.prisma - each router captures its own prisma reference via closure at startup, so the swap never affected a single query. Real account isolation was always the explicit accountId: getAccountId(req) filter already present in every route handler, which is safely per-request by construction. Removed the inert Proxy/global-swap code so it can't be mistaken for load-bearing isolation logic by a future change; kept the one thing it actually did, defaulting req.appAccountId for private-mode instances."
+    ]
+  },
+  {
+    "version": "1.68.31",
+    "date": "2026-08-07",
+    "title": "fix: Stremio OAuth connect opened a blank tab on Safari",
+    "features": [],
+    "bugFixes": [
+      "Add User's \"Connect via Stremio\" flow opened its new tab after awaiting the API call that generates the OAuth link - Safari (especially iOS) only treats window.open as part of the original tap if it happens with no async gap first, so the tab landed blank instead of navigating to Stremio's login. Now opens a blank tab synchronously on tap and redirects it once the link is ready, the standard fix for this class of Safari popup-blocking behavior."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.30",
     "date": "2026-08-07",
     "title": "fix: production Postgres startup could silently force-apply destructive schema changes",

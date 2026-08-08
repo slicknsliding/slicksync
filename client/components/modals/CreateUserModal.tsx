@@ -215,6 +215,13 @@ export function CreateUserModal({
   const handleStartOAuth = async () => {
     setOauthStatus('connecting');
     setOauthError(null);
+    // Open the tab synchronously, in the same tick as the click, before any
+    // await - Safari (especially iOS) only treats window.open as part of the
+    // original tap if there's no async gap first; once you await an API
+    // call before calling it, Safari silently opens/leaves a blank tab
+    // instead of navigating it. Point this pre-opened tab at the real link
+    // once the API call resolves instead of opening a fresh one then.
+    const preOpenedTab = typeof window !== 'undefined' ? window.open('', '_blank', 'noopener,noreferrer') : null;
     try {
       const data = await api.generateStremioOAuth();
       if (!data?.code || !data?.link) throw new Error('Failed to generate link');
@@ -225,7 +232,9 @@ export function CreateUserModal({
 
       if (data.expiresAt) startCountdown(data.expiresAt);
 
-      if (typeof window !== 'undefined') {
+      if (preOpenedTab) {
+        preOpenedTab.location.href = data.link;
+      } else if (typeof window !== 'undefined') {
         window.open(data.link, '_blank', 'noopener,noreferrer');
       }
 
@@ -234,6 +243,7 @@ export function CreateUserModal({
       console.error('Failed to start Stremio OAuth:', err);
       setOauthStatus('error');
       setOauthError(err.message || 'Failed to connect');
+      preOpenedTab?.close();
     }
   };
 
