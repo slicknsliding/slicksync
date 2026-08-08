@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.39",
+    "date": "2026-08-08",
+    "title": "fix: User detail Account Addons really didn't link - wrong field name",
+    "features": [],
+    "bugFixes": [
+      "Traced the real cause with live betatest data: GET /:id/group-addons returns each addon's URL as transportUrl, not manifestUrl - the previous fix matched against ga.manifestUrl, which this endpoint never populates (always undefined), so it silently failed to match anything regardless of canonicalization. Matches on transportUrl now, confirmed against the actual API response."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.38",
     "date": "2026-08-08",
     "title": "fix: User detail Account Addons still didn't link - URL comparison too strict",
