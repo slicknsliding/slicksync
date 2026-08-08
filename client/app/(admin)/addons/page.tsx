@@ -1301,10 +1301,10 @@ function AddonCard({
           <div
             {...dragHandleProps}
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            className="absolute top-4 left-4 z-10 p-1.5 rounded-lg text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
+            className="absolute top-1 left-3 z-10 px-2 py-0.5 rounded-full text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
             title="Drag to reorder"
           >
-            <Bars3Icon className="w-4 h-4" />
+            <Bars3Icon className="w-3.5 h-3.5" />
           </div>
         )}
 
