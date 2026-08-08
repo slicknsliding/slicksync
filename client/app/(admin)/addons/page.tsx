@@ -1297,17 +1297,6 @@ function AddonCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
-        {dragHandleProps && (
-          <div
-            {...dragHandleProps}
-            onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            className="absolute top-1 left-[52px] -translate-x-1/2 z-10 px-2 py-0.5 rounded-full text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
-            title="Drag to reorder"
-          >
-            <Bars3Icon className="w-3.5 h-3.5" />
-          </div>
-        )}
-
         {/* Selection indicator & Toggle - hidden on mobile, use context menu */}
         <div className="absolute top-4 right-4 z-10 flex items-center gap-3">
           <SelectionCheckbox
@@ -1338,6 +1327,16 @@ function AddonCard({
             row's content run right up under the toggle and overlap it. */}
         <div className="relative p-6 pb-4 md:pr-24">
           <div className="flex items-start gap-4">
+            {dragHandleProps && (
+              <div
+                {...dragHandleProps}
+                onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                className="self-center shrink-0 p-1 rounded-lg text-subtle hover:text-default hover:bg-surface-hover cursor-grab active:cursor-grabbing"
+                title="Drag to reorder"
+              >
+                <Bars3Icon className="w-3.5 h-3.5" />
+              </div>
+            )}
             {/* Icon */}
             <div
               className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0 overflow-hidden"
