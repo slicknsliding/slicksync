@@ -1,5 +1,25 @@
 [
   {
+    "version": "1.68.36",
+    "date": "2026-08-08",
+    "title": "polish: Addons grid-view drag handle moved to the left of the logo",
+    "features": [],
+    "bugFixes": [],
+    "miscChores": [
+      "Grid view's drag handle floated above the addon logo (centered) - moved to sit directly to its left instead, as a normal flex item (self-center, before the icon in the row) rather than an absolute overlay, matching list view's treatment and keeping it clear of the toggle/checkbox and everything else on the card."
+    ]
+  },
+  {
+    "version": "1.68.35",
+    "date": "2026-08-08",
+    "title": "polish: Addons list-view drag handle moved to the left of the logo",
+    "features": [],
+    "bugFixes": [],
+    "miscChores": [
+      "List view's drag handle floated above the addon logo (centered) - moved to sit directly to its left instead, as a normal flex item between the checkbox and the icon rather than an absolute overlay, so it can't drift into anything else on the page. Grid view is unchanged."
+    ]
+  },
+  {
     "version": "1.68.34",
     "date": "2026-08-08",
     "title": "polish: Addons drag handle centered above the addon logo",
