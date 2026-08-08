@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.34",
+    "date": "2026-08-08",
+    "title": "polish: Addons drag handle centered above the addon logo",
+    "features": [],
+    "bugFixes": [],
+    "miscChores": [
+      "The floating corner-tab drag handle (grid and list view) sat off to one side, looked awkward - now horizontally centered directly above the addon's icon instead."
+    ]
+  },
+  {
     "version": "1.68.33",
     "date": "2026-08-08",
     "title": "polish: Addons grid view drag handle moved to match list view",
