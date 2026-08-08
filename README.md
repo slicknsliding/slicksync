@@ -3,8 +3,8 @@
 *Multi-provider addon, user, and credential management for **Stremio** and **Nuvio**.*
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](./LICENSE)
-[![Node](https://img.shields.io/badge/node-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org)
-[![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js&logoColor=white)](https://nextjs.org)
+[![Bun](https://img.shields.io/badge/bun-1%2B-000000?logo=bun&logoColor=white)](https://bun.sh)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white)](https://nextjs.org)
 [![Docker Pulls](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/slicknsliding/slicksync/badges/docker-pulls.json&logo=docker&logoColor=white)](https://hub.docker.com/r/slicknsliding/slicksync)
 [![Fork of Syncio](https://img.shields.io/badge/fork%20of-Syncio-blueviolet)](https://github.com/iamneur0/syncio)
 [![Inspired by AIOManager](https://img.shields.io/badge/inspired%20by-AIOManager-orange)](https://github.com/Sonicx161/AIOManager)
@@ -182,7 +182,7 @@ This pulls the pre-built `ghcr.io/slicknsliding/slicksync:private` image — the
 
 Frontend and API are both served through `:3000` — the frontend proxies `/api`, `/uploads`, and `/invite` requests to the API internally, so only `:3000` needs a port mapping or a reverse proxy pointed at it.
 
-**Verify it's actually up**: `docker exec slicksync sh -c 'echo APP_VERSION=$APP_VERSION'` should print the current release tag (e.g. `v1.65.0`), and `https://your-domain/` should load the login page.
+**Verify it's actually up**: `docker exec slicksync sh -c 'echo APP_VERSION=$APP_VERSION'` should print the current release tag (matching the latest on the [Releases page](https://github.com/slicknsliding/slicksync/releases)), and `https://your-domain/` should load the login page.
 
 **Updating**: `docker compose -f docker-compose.private.yml pull && docker compose -f docker-compose.private.yml up -d` — your `/app/data` volume (database, encryption key, Vault backups, avatars) survives updates. No `git pull` or rebuild needed since the default config just pulls the published image. (If you switched to the commented-out `build:` block instead, use `git pull && docker compose -f docker-compose.private.yml up -d --build`.)
 
