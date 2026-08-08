@@ -1506,41 +1506,47 @@ export default function UserDetailPage() {
                               <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-hover">
                                 <Bars3Icon className="w-5 h-5 text-subtle" />
                               </div>
-                              <div className="w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center shrink-0">
-                                {(addon as any).customLogo ? (
-                                  <img src={(addon as any).customLogo} alt={addon.name} className="w-6 h-6 object-contain" />
-                                ) : addon.logo ? (
-                                  <img src={addon.logo} alt={addon.name} className="w-6 h-6 object-contain" />
-                                ) : (
-                                  <PuzzlePieceIcon className="w-5 h-5 text-primary" />
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className={`font-medium truncate flex-1 min-w-0 ${isExcluded ? 'text-muted line-through' : 'text-default'}`}>
-                                    {addon.name}
-                                  </h4>
-                                  {addon.version && <VersionBadge version={addon.version} size="sm" />}
-                                  {(addon as any).isBackup && <Badge variant="warning" size="sm" title={`Primary (${(addon as any).primaryAddonName}) is offline`}>Backup</Badge>}
-                                  {isExcluded && <Badge variant="error" size="sm">Excluded</Badge>}
+                              <Link
+                                href={`/addons/${addon.id}`}
+                                className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center shrink-0">
+                                  {(addon as any).customLogo ? (
+                                    <img src={(addon as any).customLogo} alt={addon.name} className="w-6 h-6 object-contain" />
+                                  ) : addon.logo ? (
+                                    <img src={addon.logo} alt={addon.name} className="w-6 h-6 object-contain" />
+                                  ) : (
+                                    <PuzzlePieceIcon className="w-5 h-5 text-primary" />
+                                  )}
                                 </div>
-                                {(addon as any).isBackup && (addon as any).primaryAddonName && (
-                                  <p className="text-xs text-warning truncate mb-1">Primary offline: {(addon as any).primaryAddonName}</p>
-                                )}
-                                {addon.description && (
-                                  <p className="text-xs text-muted truncate mb-1">{addon.description}</p>
-                                )}
-                                {addon.resources && addon.resources.length > 0 && (
-                                  <div className="flex flex-wrap gap-1.5 mt-1">
-                                    {addon.resources.slice(0, 4).map((res: string) => (
-                                      <ResourceBadge key={res} resource={res} />
-                                    ))}
-                                    {addon.resources.length > 4 && (
-                                      <Badge variant="muted" size="sm" className="bg-surface">+{addon.resources.length - 4}</Badge>
-                                    )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h4 className={`font-medium truncate flex-1 min-w-0 ${isExcluded ? 'text-muted line-through' : 'text-default'}`}>
+                                      {addon.name}
+                                    </h4>
+                                    {addon.version && <VersionBadge version={addon.version} size="sm" />}
+                                    {(addon as any).isBackup && <Badge variant="warning" size="sm" title={`Primary (${(addon as any).primaryAddonName}) is offline`}>Backup</Badge>}
+                                    {isExcluded && <Badge variant="error" size="sm">Excluded</Badge>}
                                   </div>
-                                )}
-                              </div>
+                                  {(addon as any).isBackup && (addon as any).primaryAddonName && (
+                                    <p className="text-xs text-warning truncate mb-1">Primary offline: {(addon as any).primaryAddonName}</p>
+                                  )}
+                                  {addon.description && (
+                                    <p className="text-xs text-muted truncate mb-1">{addon.description}</p>
+                                  )}
+                                  {addon.resources && addon.resources.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mt-1">
+                                      {addon.resources.slice(0, 4).map((res: string) => (
+                                        <ResourceBadge key={res} resource={res} />
+                                      ))}
+                                      {addon.resources.length > 4 && (
+                                        <Badge variant="muted" size="sm" className="bg-surface">+{addon.resources.length - 4}</Badge>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </Link>
                               <button
                                 onClick={() => handleToggleExclude(addon.id)}
                                 className={`p-2 rounded-lg transition-colors ${
@@ -1606,17 +1612,15 @@ export default function UserDetailPage() {
                           const description = addon.manifest?.description;
                           const logo = addon.manifest?.logo;
                           const isProtected = protectedAddonNames.has(addon.manifest?.name || '');
-                          return (
-                            <motion.div
-                              ref={itemProps.ref}
-                              style={itemProps.style}
-                              className={`flex items-center gap-3 p-4 rounded-xl bg-surface-hover hover:bg-surface transition-all border border-default group ${
-                                isDragging ? 'shadow-lg ring-2 ring-primary' : ''
-                              }`}
-                            >
-                              <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-hover">
-                                <Bars3Icon className="w-5 h-5 text-subtle" />
-                              </div>
+                          // Account Addons are raw entries from the provider's own addon
+                          // collection (keyed by transportUrl, no SlickSync id of their
+                          // own) - match against groupAddons (real SlickSync Addon
+                          // records, same account) by manifest URL so we have somewhere
+                          // to link to. No match ⇒ not a SlickSync-managed addon, stays
+                          // unlinked rather than guessing.
+                          const matchedAddon = groupAddons.find((ga) => ga.manifestUrl === addon.transportUrl);
+                          const content = (
+                            <>
                               <div className="w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center shrink-0">
                                 {logo ? (
                                   <img src={logo} alt={name} className="w-6 h-6 object-contain" />
@@ -1648,6 +1652,32 @@ export default function UserDetailPage() {
                                   </div>
                                 )}
                               </div>
+                            </>
+                          );
+                          return (
+                            <motion.div
+                              ref={itemProps.ref}
+                              style={itemProps.style}
+                              className={`flex items-center gap-3 p-4 rounded-xl bg-surface-hover hover:bg-surface transition-all border border-default group ${
+                                isDragging ? 'shadow-lg ring-2 ring-primary' : ''
+                              }`}
+                            >
+                              <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-surface-hover">
+                                <Bars3Icon className="w-5 h-5 text-subtle" />
+                              </div>
+                              {matchedAddon ? (
+                                <Link
+                                  href={`/addons/${matchedAddon.id}`}
+                                  className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {content}
+                                </Link>
+                              ) : (
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                  {content}
+                                </div>
+                              )}
                               <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                 <button
                                   onClick={() => handleToggleProtect(name)}

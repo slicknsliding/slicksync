@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.37",
+    "date": "2026-08-08",
+    "title": "fix: User detail Addons tab - clicking an addon did nothing",
+    "features": [],
+    "bugFixes": [
+      "User detail page's Addons tab (Group Addons and Account Addons) rendered addon names as plain text with no way to open the addon's own page - the same list on Groups > Group > Addons has always linked through to /addons/{id}. Group Addons now links the same way. Account Addons are raw entries from the provider's own addon collection (keyed by manifest URL, not a SlickSync addon id), so they're matched against Group Addons by manifest URL to find the corresponding SlickSync addon to link to; an addon with no match (not SlickSync-managed) stays unlinked rather than guessing."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.36",
     "date": "2026-08-08",
     "title": "polish: Addons grid-view drag handle moved to the left of the logo",
