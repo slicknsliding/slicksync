@@ -1634,13 +1634,17 @@ export default function UserDetailPage() {
                           const logo = addon.manifest?.logo;
                           const isProtected = protectedAddonNames.has(addon.manifest?.name || '');
                           // Account Addons are raw entries from the provider's own addon
-                          // collection (keyed by transportUrl, no SlickSync id of their
-                          // own) - match against groupAddons (real SlickSync Addon
-                          // records, same account) by manifest URL so we have somewhere
-                          // to link to. No match ⇒ not a SlickSync-managed addon, stays
-                          // unlinked rather than guessing.
+                          // collection - no SlickSync id of their own, only a transportUrl.
+                          // GET /:id/group-addons also returns transportUrl per addon
+                          // (despite the Addon TS type's manifestUrl field, which this
+                          // endpoint doesn't actually populate) - match on that, through
+                          // the same canonicalizer the backend uses everywhere else that
+                          // compares two addon URLs, since they rarely match by exact
+                          // string equality (http vs https, trailing /manifest.json,
+                          // query strings, case). No match ⇒ not a SlickSync-managed
+                          // addon, stays unlinked rather than guessing.
                           const canonicalTransportUrl = canonicalizeManifestUrl(addon.transportUrl);
-                          const matchedAddon = groupAddons.find((ga) => canonicalizeManifestUrl(ga.manifestUrl) === canonicalTransportUrl);
+                          const matchedAddon = groupAddons.find((ga) => canonicalizeManifestUrl((ga as any).transportUrl) === canonicalTransportUrl);
                           const content = (
                             <>
                               <div className="w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center shrink-0">
