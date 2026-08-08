@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.31",
+    "date": "2026-08-07",
+    "title": "fix: Stremio OAuth connect opened a blank tab on Safari",
+    "features": [],
+    "bugFixes": [
+      "Add User's \"Connect via Stremio\" flow opened its new tab after awaiting the API call that generates the OAuth link - Safari (especially iOS) only treats window.open as part of the original tap if it happens with no async gap first, so the tab landed blank instead of navigating to Stremio's login. Now opens a blank tab synchronously on tap and redirects it once the link is ready, the standard fix for this class of Safari popup-blocking behavior."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.30",
     "date": "2026-08-07",
     "title": "fix: production Postgres startup could silently force-apply destructive schema changes",
