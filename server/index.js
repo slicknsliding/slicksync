@@ -259,9 +259,12 @@ if (INSTANCE_TYPE === 'public') {
   app.use('/api', accountLimiter)
 }
 
-// Account scoping middleware
+// Account scoping middleware - ensures req.appAccountId is set before these
+// routes run; the routes themselves do the actual per-query accountId
+// filtering (see server/middleware/accountScoping.js for why this used to
+// also swap a global Prisma reference, and why that was removed).
 const { createAccountScopingMiddleware } = require('./middleware/accountScoping');
-const accountScopingMiddleware = createAccountScopingMiddleware(prisma);
+const accountScopingMiddleware = createAccountScopingMiddleware();
 app.use('/api/groups', accountScopingMiddleware);
 app.use('/api/users', accountScopingMiddleware);
 app.use('/api/addons', accountScopingMiddleware);
@@ -269,16 +272,6 @@ app.use('/api/stremio', accountScopingMiddleware);
 app.use('/api/nuvio', accountScopingMiddleware);
 app.use('/api/snapshots', accountScopingMiddleware);
 app.use('/api/vault', accountScopingMiddleware);
-
-// Cleanup middleware to restore prisma
-for (const base of ['/api/groups', '/api/users', '/api/addons', '/api/stremio', '/api/nuvio', '/api/snapshots', '/api/vault']) {
-  app.use(base, (req, res, next) => {
-    res.on('finish', () => {
-      if (req._restorePrisma) req._restorePrisma()
-    })
-    next()
-  })
-}
 
 // Mount routers
 const publicAuthRouterInstance = publicAuthRouter({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, PRIVATE_AUTH_USERNAME, PRIVATE_AUTH_PASSWORD, DEFAULT_ACCOUNT_ID, issueAccessToken, issueRefreshToken, cookieName, isProdEnv, encrypt, decrypt, getDecryptedManifestUrl, scopedWhere, getAccountDek, decryptWithFallback, manifestUrlHmac, manifestHash, filterManifestByResources, filterManifestByCatalogs, parseCookies, JWT_SECRET });

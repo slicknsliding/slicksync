@@ -1,90 +1,23 @@
 /**
- * Global Account Scoping Middleware
- * 
- * This middleware automatically adds accountId filters to all Prisma queries
- * for routes that require account isolation. This prevents cross-account
- * data access at the database level.
+ * Account Scoping Middleware
+ *
+ * Ensures req.appAccountId is set before account-scoped routes run (groups,
+ * users, addons, stremio, nuvio, snapshots, vault). The actual per-query
+ * account filtering happens in each route handler via getAccountId(req) -
+ * this middleware does not touch Prisma itself. An earlier version tried to
+ * enforce scoping centrally by swapping a module-level `global.prisma`
+ * variable to an account-scoped Proxy for the duration of each request, but
+ * no route handler ever read `global.prisma` (each router captures its own
+ * `prisma` reference via closure at startup, per server/index.js's factory
+ * pattern), so the swap never affected any query - it was inert. Worse,
+ * mutating shared global state per-request is unsafe under Node's async
+ * event loop regardless (a second request's swap could clobber the first
+ * request's assignment mid-flight), so it was removed rather than fixed in
+ * place. Real account isolation lives entirely in each route's explicit
+ * `accountId: getAccountId(req)` filters - see server/utils/helpers/database.js.
  */
-
-const { PrismaClient } = require('@prisma/client')
-
-// Create a proxy around Prisma Client to intercept queries
-function createAccountScopedPrisma(originalPrisma, accountId) {
-  return new Proxy(originalPrisma, {
-    get(target, prop) {
-      const originalMethod = target[prop]
-      
-      // Only intercept model methods (user, group, addon, etc.)
-      // Exclude models that don't have accountId
-      const unscopedModels = ['appAccount', 'groupAddon']
-      if (typeof originalMethod === 'object' && originalMethod !== null && !unscopedModels.includes(prop)) {
-        if (typeof prop === 'string' && prop !== 'constructor' && !prop.startsWith('_')) {
-           // console.log(`🔍 Scoping Prisma model: ${prop}`)
-        }
-        return new Proxy(originalMethod, {
-          get(modelTarget, methodName) {
-            const originalQuery = modelTarget[methodName]
-            
-            if (typeof originalQuery === 'function') {
-              return function(...args) {
-                // For findUnique, we must switch to findFirst if we're adding accountId
-                // because findUnique only allows unique fields.
-                const queryMethod = methodName === 'findUnique' ? 'findFirst' : methodName;
-                const queryFn = modelTarget[queryMethod];
-
-                // Add accountId filter to the query
-                const [queryArgs] = args
-                
-                if (queryArgs && typeof queryArgs === 'object') {
-                  // For findUnique, findFirst, findMany, etc.
-                  if (queryArgs.where) {
-                    queryArgs.where.accountId = accountId
-                  } else {
-                    queryArgs.where = { accountId }
-                  }
-                } else {
-                  // If no query args, create them
-                  args[0] = { where: { accountId } }
-                }
-                
-                return queryFn.apply(this, args)
-              }
-            }
-            
-            return originalQuery
-          }
-        })
-      }
-      
-      return originalMethod
-    }
-  })
-}
-
-// Override the global prisma instance for account scoping
-function overrideGlobalPrisma(prismaInstance, accountId) {
-  const scopedPrisma = createAccountScopedPrisma(prismaInstance, accountId)
-  
-  // Override the global prisma instance
-  const originalPrisma = global.prisma
-  global.prisma = scopedPrisma
-  
-  return function restoreGlobalPrisma() {
-    global.prisma = originalPrisma
-  }
-}
-
-/**
- * Account Scoping Middleware Factory
- * 
- * This middleware should be applied to routes that require account isolation:
- * - /api/groups/*
- * - /api/users/* 
- * - /api/addons/*
- */
-function createAccountScopingMiddleware(prismaInstance) {
+function createAccountScopingMiddleware() {
   return function accountScopingMiddleware(req, res, next) {
-    // Skip if no accountId and auth is disabled
     if (!req.appAccountId) {
       // If instance is private, use default account ID
       const { INSTANCE_TYPE } = require('../utils/config')
@@ -95,19 +28,10 @@ function createAccountScopingMiddleware(prismaInstance) {
         return res.status(401).json({ error: 'Authentication required' })
       }
     }
-    
-    // Override global prisma instance with account-scoped version
-    const restorePrisma = overrideGlobalPrisma(prismaInstance, req.appAccountId)
-    
-    // Store restore function on request for cleanup
-    req._restorePrisma = restorePrisma
-    
-    // console.log(`🔒 Account scoping applied for account: ${req.appAccountId}`)
     next()
   }
 }
 
 module.exports = {
-  createAccountScopingMiddleware,
-  createAccountScopedPrisma
+  createAccountScopingMiddleware
 }
