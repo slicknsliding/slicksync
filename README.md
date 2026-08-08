@@ -13,7 +13,7 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 
 > **Private, single-instance fork.** Built and run for one household's streaming group, not a general-purpose multi-tenant product.
 
-Can't self-host? **[slicksync.vip](https://slicksync.vip)** runs the same code in public/multi-tenant mode, free to register — a courtesy option for anyone who wants SlickSync without running their own server, not the project's primary form.
+Can't self-host? **[slicksync.vip](https://slicksync.vip)** runs the same code in public/multi-tenant mode, free to register — a courtesy option for anyone who wants SlickSync without running their own server.
 
 ## Contents
 
