@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.33",
+    "date": "2026-08-08",
+    "title": "polish: Addons grid view drag handle moved to match list view",
+    "features": [],
+    "bugFixes": [],
+    "miscChores": [
+      "Grid view's drag handle was still the old inline overlay near the icon - list view got the floating corner-tab treatment (overlapping the top accent bar) a few releases back, grid view didn't. Now both views match."
+    ]
+  },
+  {
     "version": "1.68.32",
     "date": "2026-08-07",
     "title": "chore: remove dead/misleading account-scoping Prisma proxy",
