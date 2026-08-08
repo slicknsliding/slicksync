@@ -63,6 +63,27 @@ interface WatchTimeDataPoint {
   series: number;
 }
 
+// Mirrors server/utils/validation.js's canonicalizeManifestUrl() - Account
+// Addons' transportUrl (raw, as installed on the provider account) rarely
+// matches a SlickSync Addon's stored manifestUrl by exact string equality
+// (http vs https, trailing /manifest.json, query strings, case), so a naive
+// === comparison silently fails to find the match even when it's the same
+// addon. Keep this in sync with the server version if that one changes.
+function canonicalizeManifestUrl(raw: string | null | undefined): string {
+  if (!raw) return '';
+  try {
+    let s = String(raw).trim();
+    s = s.replace(/^@+/, '');
+    let u = s.replace(/^https?:\/\//i, '').toLowerCase();
+    u = u.split('?')[0].split('#')[0];
+    u = u.replace(/\/manifest\.json$/i, '');
+    u = u.replace(/\/+$/g, '');
+    return u;
+  } catch {
+    return String(raw).trim().toLowerCase();
+  }
+}
+
 function formatMinutes(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
@@ -1618,7 +1639,8 @@ export default function UserDetailPage() {
                           // records, same account) by manifest URL so we have somewhere
                           // to link to. No match ⇒ not a SlickSync-managed addon, stays
                           // unlinked rather than guessing.
-                          const matchedAddon = groupAddons.find((ga) => ga.manifestUrl === addon.transportUrl);
+                          const canonicalTransportUrl = canonicalizeManifestUrl(addon.transportUrl);
+                          const matchedAddon = groupAddons.find((ga) => canonicalizeManifestUrl(ga.manifestUrl) === canonicalTransportUrl);
                           const content = (
                             <>
                               <div className="w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center shrink-0">

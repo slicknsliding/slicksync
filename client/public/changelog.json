@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.38",
+    "date": "2026-08-08",
+    "title": "fix: User detail Account Addons still didn't link - URL comparison too strict",
+    "features": [],
+    "bugFixes": [
+      "Previous release matched Account Addons to their SlickSync addon by exact manifestUrl === transportUrl string equality - real feedback confirmed Group Addons worked but Account Addons still didn't link. The two URLs rarely match exactly (http vs https, trailing /manifest.json, query strings, case), the same reason the backend has never compared these two fields with a raw === anywhere else. Added a client-side canonicalizeManifestUrl() mirroring the server's existing one (server/utils/validation.js) and matches through that instead."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.37",
     "date": "2026-08-08",
     "title": "fix: User detail Addons tab - clicking an addon did nothing",
