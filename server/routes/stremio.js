@@ -135,7 +135,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
               if (!group) {
                 group = await prisma.group.create({ data: { name: String(groupName).trim(), accountId: accId } })
               }
-              await assignUserToGroup(newUser.id, group.id, req)
+              await assignUserToGroup(prisma, newUser.id, group.id, req)
             } catch {}
           }
           return res.status(201).json({ message: 'Stremio account registered and user created', authKey, user: { id: newUser.id, username: newUser.username } })
@@ -461,7 +461,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
           console.log(`🔍 Group found/created:`, assignedGroup)
 
           // Assign user to group (persist in group's userIds JSON)
-          await assignUserToGroup(newUser.id, assignedGroup.id, req)
+          await assignUserToGroup(prisma, newUser.id, assignedGroup.id, req)
           console.log(`🔍 User added to group successfully`)
         } catch (groupError) {
           console.error(`❌ Failed to assign user to group:`, groupError)
@@ -602,7 +602,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
           if (!group) {
             group = await prisma.group.create({ data: { name: trimmed, accountId } })
           }
-          await assignUserToGroup(targetUser.id, group.id, req)
+          await assignUserToGroup(prisma, targetUser.id, group.id, req)
         } catch (groupErr) {
           console.error('Failed to assign user to group after OAuth creation:', groupErr)
           groupAssignmentError = groupErr?.message || 'Failed to assign to group'
