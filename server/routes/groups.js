@@ -639,7 +639,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         
         // Then, assign each user to this group (which will remove them from other groups)
         for (const userId of desiredUserIds) {
-          await assignUserToGroup(userId, id, req)
+          await assignUserToGroup(prisma, userId, id, req)
         }
       }
 
@@ -1048,7 +1048,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
       const { groupId, userId } = req.params
       
       // Use the assignUserToGroup function to handle the assignment
-      await assignUserToGroup(userId, groupId, req)
+      await assignUserToGroup(prisma, userId, groupId, req)
       
       res.json({ message: 'User added to group successfully' })
     } catch (error) {

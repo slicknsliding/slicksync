@@ -1902,7 +1902,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
               })
             }
 
-            await assignUserToGroup(id, groupId, req)
+            await assignUserToGroup(prisma, id, groupId, req)
           }
         }
       }
@@ -5648,7 +5648,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       if (!userInAnyGroup) {
-        await assignUserToGroup(userId, group.id, req)
+        await assignUserToGroup(prisma, userId, group.id, req)
       }
 
       const message = existingAddons.length > 0
