@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.68.40",
+    "date": "2026-08-08",
+    "title": "fix: critical - assigning a user to a group crashed with 'prisma is not defined'",
+    "features": [],
+    "bugFixes": [
+      "Reported live (GitHub #39): adding a user to a group, syncing group membership, and several addon/user creation flows all crashed with ReferenceError: prisma is not defined. Caused by an earlier cleanup this session that removed a Prisma proxy from accountScoping.js after confirming nothing in server/routes/*.js read the global it set - assignUserToGroup() in server/utils/helpers/database.js was the one function that actually did, as an implicit global rather than a real import or parameter, and that check never covered server/utils/. Audited every top-level function server-wide for the same pattern - this was the only one. assignUserToGroup now takes prisma as an explicit parameter like every other helper in that file already did."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.68.39",
     "date": "2026-08-08",
     "title": "fix: User detail Account Addons really didn't link - wrong field name",

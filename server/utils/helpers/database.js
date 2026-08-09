@@ -272,7 +272,7 @@ async function getGroupAddons(prisma, groupId, req) {
 /**
  * Assign a user to a group (removes from other groups first)
  */
-async function assignUserToGroup(userId, groupId, req) {
+async function assignUserToGroup(prisma, userId, groupId, req) {
   const accId = getAccountId(req);
   if (!accId) throw new Error('Account context required');
 
