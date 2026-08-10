@@ -453,6 +453,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize catalog auto-refresh:', err)
     }
 
+    // Schedule SIMKL sync (pull + push, every 30m, only for users who've
+    // linked a SIMKL account - no-op query when nobody has)
+    try {
+      const { scheduleSimklSync } = require('./utils/simklSync')
+      scheduleSimklSync(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize SIMKL sync:', err)
+    }
+
     // Schedule DB maintenance (scheduled VACUUM + opt-in watch-history
     // pruning, both off by default - operator-controlled via the
     // Superadmin panel, private/SQLite mode only)

@@ -223,6 +223,8 @@ export default function UserDetailPage() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isEditDetailsOpen, setIsEditDetailsOpen] = useState(false);
   const [isReconnectModalOpen, setIsReconnectModalOpen] = useState(false);
+  const [isSimklModalOpen, setIsSimklModalOpen] = useState(false);
+  const [isDisconnectingSimkl, setIsDisconnectingSimkl] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
@@ -1024,6 +1026,34 @@ export default function UserDetailPage() {
                         >
                           {showSyncDebug ? 'Hide' : 'Debug'}
                         </button>
+                        {/* SIMKL is an optional supplementary link (watch-history
+                            pull/push), not a peer of providerType - see the schema
+                            comment on User.simklAccessToken for why. */}
+                        {user.simklConnected ? (
+                          <button
+                            onClick={async () => {
+                              if (!confirm('Disconnect SIMKL? Watch history already pulled stays in place, only the link stops.')) return;
+                              setIsDisconnectingSimkl(true);
+                              try {
+                                await api.disconnectSimkl(user.id);
+                                toast.success('SIMKL disconnected');
+                                setUser((prev: any) => prev ? { ...prev, simklConnected: false, simklConnectedAt: null } : prev);
+                              } catch (err: any) {
+                                toast.error(err.message || 'Failed to disconnect SIMKL');
+                              } finally {
+                                setIsDisconnectingSimkl(false);
+                              }
+                            }}
+                            disabled={isDisconnectingSimkl}
+                            title="Click to disconnect"
+                          >
+                            <Badge variant="success" size="sm">SIMKL Linked</Badge>
+                          </button>
+                        ) : (
+                          <button onClick={() => setIsSimklModalOpen(true)} className="text-xs text-muted hover:text-primary underline">
+                            Link SIMKL
+                          </button>
+                        )}
                         {streaks?.currentStreak > 0 ? (
                           <Badge variant="warning" size="sm" className="hidden sm:inline-flex">
                             <FireIcon className="w-3 h-3 mr-1" />
@@ -1825,6 +1855,17 @@ export default function UserDetailPage() {
         }}
       />
 
+      {/* SIMKL Link Modal */}
+      <SimklLinkModal
+        isOpen={isSimklModalOpen}
+        onClose={() => setIsSimklModalOpen(false)}
+        userId={params.id as string}
+        onLinked={() => {
+          setIsSimklModalOpen(false);
+          setUser((prev: any) => prev ? { ...prev, simklConnected: true, simklConnectedAt: new Date().toISOString() } : prev);
+        }}
+      />
+
       {/* Edit Details Modal */}
       {isEditDetailsOpen && (
         <EditUserDetailsModal
@@ -1837,6 +1878,111 @@ export default function UserDetailPage() {
         />
       )}
     </>
+  );
+}
+
+// SIMKL Link Modal - PIN flow. Start fetches a code + verification URL from
+// Simkl, then polls at Simkl's own recommended interval until authorized or
+// the code expires. No client_secret involved (PIN flow doesn't use one),
+// so unlike Stremio's OAuth this needs no popup-blocking workaround - the
+// verification link is just a normal tappable link the user follows
+// themselves, same as the existing Nuvio/Stremio device-code cards.
+function SimklLinkModal({
+  isOpen,
+  onClose,
+  userId,
+  onLinked,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  userId: string;
+  onLinked: () => void;
+}) {
+  const [status, setStatus] = useState<'idle' | 'starting' | 'waiting' | 'error'>('idle');
+  const [userCode, setUserCode] = useState<string | null>(null);
+  const [verificationUrl, setVerificationUrl] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const expiresAtRef = useRef<number>(0);
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const start = async () => {
+    setStatus('starting');
+    setErrorMessage(null);
+    try {
+      const data = await api.startSimklPin(userId);
+      setUserCode(data.userCode);
+      setVerificationUrl(data.verificationUrl);
+      expiresAtRef.current = Date.now() + data.expiresIn * 1000;
+      setStatus('waiting');
+
+      const intervalMs = Math.max(2, data.pollIntervalSeconds || 5) * 1000;
+      pollRef.current = setInterval(async () => {
+        if (Date.now() > expiresAtRef.current) {
+          stopPolling();
+          setStatus('error');
+          setErrorMessage('Code expired - try again');
+          return;
+        }
+        try {
+          const poll = await api.pollSimklPin(userId, data.userCode);
+          if (poll.status === 'authorized') {
+            stopPolling();
+            toast.success(poll.username ? `Linked SIMKL as ${poll.username}` : 'SIMKL linked');
+            onLinked();
+          }
+        } catch {
+          // transient poll error - keep trying until expiry
+        }
+      }, intervalMs);
+    } catch (err: any) {
+      setStatus('error');
+      setErrorMessage(err.message || 'Failed to start SIMKL authorization');
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) start();
+    else {
+      stopPolling();
+      setStatus('idle');
+      setUserCode(null);
+      setVerificationUrl(null);
+      setErrorMessage(null);
+    }
+    return stopPolling;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Link SIMKL">
+      <div className="space-y-4 text-center py-2">
+        {status === 'starting' && <p className="text-sm text-muted">Requesting a code from SIMKL...</p>}
+        {status === 'error' && (
+          <>
+            <p className="text-sm text-error">{errorMessage}</p>
+            <Button variant="secondary" onClick={start}>Try Again</Button>
+          </>
+        )}
+        {status === 'waiting' && userCode && (
+          <>
+            <p className="text-sm text-muted">
+              Go to <a href={verificationUrl || undefined} target="_blank" rel="noreferrer" className="text-primary underline">{verificationUrl}</a> and enter this code:
+            </p>
+            <div className="text-3xl font-mono font-bold tracking-widest py-3 rounded-xl" style={{ background: 'var(--color-surfaceHover)' }}>
+              {userCode}
+            </div>
+            <p className="text-xs text-muted">Waiting for you to authorize on SIMKL...</p>
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 

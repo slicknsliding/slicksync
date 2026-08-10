@@ -18,6 +18,20 @@ model User {
   providerType       String    @default("stremio") // "stremio" | "nuvio"
   nuvioRefreshToken  String? // Encrypted Supabase refresh token
   nuvioUserId        String? // Nuvio/Supabase user UUID
+  // SIMKL is an optional supplementary link, not a peer of providerType - it
+  // has no addon/manifest concept at all (pure watch-tracking service), so it
+  // can't be "the" provider a user is created under. Any Stremio/Nuvio user
+  // can additionally connect their own personal SIMKL account: pulled watch
+  // history fills the blind spot when a Nuvio account has delegated its own
+  // native tracking to SIMKL (Nuvio's own Settings > Tracking), and pushed
+  // history mirrors SlickSync's already-unified watch record (Nuvio+Stremio+
+  // usenet) out to SIMKL - the same value the removed Trakt integration had,
+  // without Trakt's one-connected-app free-tier limit that killed it.
+  simklAccessToken   String? // Encrypted, 5yr expiry, no refresh flow needed
+  simklConnectedAt   DateTime? // When this user linked their SIMKL account
+  simklSyncState     String? // JSON: last-seen /sync/activities timestamps per category, so pull only re-fetches what actually changed
+  simklLastPullAt    DateTime? // Last successful pull sweep
+  simklLastPushAt    DateTime? // Watermark (createdAt cursor) for the push sweep - mirrors the removed Trakt integration's sync.trakt.lastSyncAt
   excludedAddons     String? // JSON array of addon IDs that user has excluded
   protectedAddons    String? // JSON array of addon IDs that user has protected
   colorIndex         Int? // UI color theme index

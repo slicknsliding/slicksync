@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.69.0",
+    "date": "2026-08-10",
+    "title": "feat: SIMKL watch-tracking link (beta)",
+    "features": [
+      "Any Stremio/Nuvio user can now optionally link their own SIMKL account from their user page (\"Link SIMKL\" - PIN-based, no password ever touches SlickSync). Bidirectional: pulls SIMKL's watch history to fill the blind spot when a Nuvio account has delegated its own native tracking to SIMKL (Nuvio Settings > Tracking), and pushes SlickSync's already-unified watch record (Nuvio+Stremio+usenet) out to SIMKL so it mirrors everything watched regardless of provider - the same value the removed Trakt integration had, without the Trakt free-tier one-connected-app limit that got it pulled (confirmed still in effect; SIMKL has no equivalent limit, which is why this is SIMKL and not a Trakt retry).",
+      "Settings > SIMKL Client ID: bring your own app registration instead of depending on the instance's SIMKL_CLIENT_ID env var, same per-account-key-first pattern as the TMDb/MDBList/OMDb keys already use."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Marked (beta) deliberately: the pull side (auth, /sync/activities, /sync/all-items) is built against Simkl's documented API and should be solid. The push side's exact payload shape for watched_at on /sync/history isn't confirmed by Simkl's public docs (only a GET-side query param was documented) - it's sent on the same assumption most Trakt-compatible sync tools in this space make, but needs a real connected account to confirm timestamps land correctly rather than just \"watched now\"."
+    ]
+  },
+  {
     "version": "1.68.42",
     "date": "2026-08-10",
     "title": "feat: Vault \"Rotate Now\" - one flow instead of two",

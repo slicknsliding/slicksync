@@ -18,6 +18,13 @@ model User {
   providerType       String    @default("stremio") // "stremio" | "nuvio"
   nuvioRefreshToken  String? // Encrypted Supabase refresh token
   nuvioUserId        String? // Nuvio/Supabase user UUID
+  // SIMKL is an optional supplementary link, not a peer of providerType - see
+  // the matching comment in schema.sqlite.prisma for the full reasoning.
+  simklAccessToken   String? // Encrypted, 5yr expiry, no refresh flow needed
+  simklConnectedAt   DateTime? // When this user linked their SIMKL account
+  simklSyncState     String? // JSON: last-seen /sync/activities timestamps per category
+  simklLastPullAt    DateTime? // Last successful pull sweep
+  simklLastPushAt    DateTime? // Watermark (createdAt cursor) for the push sweep
   excludedAddons     String? // JSON array of addon IDs that user has excluded
   protectedAddons    String? // JSON array of addon IDs that user has protected
   colorIndex         Int? // UI color theme index
