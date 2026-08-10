@@ -33,7 +33,7 @@ function getFixNowUrl(entryId) {
   return `${base}/vault?edit=${entryId}`
 }
 
-async function notify({ discordWebhookUrl }, { title, message, entryId }, ctx) {
+async function notify({ discordWebhookUrl }, { title, message, entryId, actionLabel = 'Fix now' }, ctx) {
   const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest')
   const digestOn = ctx?.prisma && ctx?.accountId && await isDigestEnabled(ctx.prisma, ctx.accountId)
 
@@ -47,7 +47,7 @@ async function notify({ discordWebhookUrl }, { title, message, entryId }, ctx) {
 
   if (discordWebhookUrl) {
     const fixNowUrl = entryId ? getFixNowUrl(entryId) : null
-    const text = fixNowUrl ? `**${title}**\n${message}\n\nFix now: ${fixNowUrl}` : `**${title}**\n${message}`
+    const text = fixNowUrl ? `**${title}**\n${message}\n\n${actionLabel}: ${fixNowUrl}` : `**${title}**\n${message}`
     await postDiscord(discordWebhookUrl, text)
   }
   // Mirror to phone push (self-gates on notifyOnVault). Independent of Discord,
@@ -147,6 +147,7 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
               message: `${entry.provider || entry.category}: ${daysText}`,
               tags: ['hourglass'],
               entryId: entry.id,
+              actionLabel: 'Rotate now',
             }, { prisma, accountId: account.id })
             await prisma.vaultEntry.update({ where: { id: entry.id }, data: { lastNotifiedAt: new Date() } })
           }
