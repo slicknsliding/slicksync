@@ -204,7 +204,7 @@ function SortableEntryCard({
           <button
             onClick={() => {
               close();
-              window.open(entry.dashboardUrl, '_blank', 'noopener,noreferrer');
+              window.open(entry.dashboardUrl || undefined, '_blank', 'noopener,noreferrer');
               onEdit(entry);
             }}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
