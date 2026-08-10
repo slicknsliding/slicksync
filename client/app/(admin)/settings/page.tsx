@@ -317,6 +317,7 @@ export default function SettingsPage() {
           mdblistApiKey: settings.mdblistApiKey || '',
           rpdbApiKey: settings.rpdbApiKey || '',
           omdbApiKey: settings.omdbApiKey || '',
+          simklClientId: settings.simklClientId || '',
           enableWatchlist: settings.enableWatchlist !== false,
           enableWatchedIndicators: settings.enableWatchedIndicators !== false,
           enableRecommendations: settings.enableRecommendations !== false,
@@ -1138,6 +1139,27 @@ export default function SettingsPage() {
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, omdbApiKey: e.target.value }))}
                   onBlur={() => handleSaveSetting('omdbApiKey' as keyof SyncSettings, syncSettings.omdbApiKey)}
                   placeholder="OMDb API key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* SIMKL Client ID - powers the "Link SIMKL" flow on a user's
+                  own page (watch-history pull/push). Account-scoped like the
+                  keys above so this account isn't dependent on whatever the
+                  server operator did or didn't configure in .env. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">SIMKL Client ID <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Powers linking a user's SIMKL account for watch-history sync. Register a free app at simkl.com/settings/developer and paste its Client ID here. Leave blank to use the server's own, if one is configured.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.simklClientId || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, simklClientId: e.target.value }))}
+                  onBlur={() => handleSaveSetting('simklClientId' as keyof SyncSettings, syncSettings.simklClientId)}
+                  placeholder="SIMKL Client ID"
                   autoComplete="off"
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"

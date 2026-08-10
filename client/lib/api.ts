@@ -401,6 +401,21 @@ class ApiClient {
     });
   }
 
+  async startSimklPin(id: string) {
+    return this.fetch<{ userCode: string; verificationUrl: string; expiresIn: number; pollIntervalSeconds: number }>(`/users/${id}/simkl/start`, { method: 'POST' });
+  }
+
+  async pollSimklPin(id: string, userCode: string) {
+    return this.fetch<{ status: 'pending' | 'authorized'; username?: string }>(`/users/${id}/simkl/poll`, {
+      method: 'POST',
+      body: JSON.stringify({ userCode }),
+    });
+  }
+
+  async disconnectSimkl(id: string) {
+    return this.fetch(`/users/${id}/simkl/disconnect`, { method: 'POST' });
+  }
+
   async getUserWatchTime(id: string, period: 'day' | 'week' | 'month' | 'year' = 'week') {
     return this.fetch<WatchTimeData>(`/users/${id}/watch-time?period=${period}`);
   }
@@ -2038,6 +2053,8 @@ export interface User {
   addons?: number;
   stremioAddonsCount?: number;
   hasStremioConnection?: boolean;
+  simklConnected?: boolean;
+  simklConnectedAt?: string | null;
   colorIndex?: number;
   avatarUrl?: string | null;
   inviteCode?: string;
@@ -2336,6 +2353,7 @@ export interface SyncSettings {
   mdblistApiKey?: string;
   rpdbApiKey?: string;
   omdbApiKey?: string;
+  simklClientId?: string;
 }
 
 export interface ThemePref {
