@@ -618,6 +618,55 @@ model NotInterestedItem {
   @@map("not_interested_items")
 }
 
+// SlickTrax feedback: 👍/❤️/👎 on a title - the replacement for a declined
+// "comments" feature, explicitly meant to feed recommendation scoring (see
+// server/utils/recommendationEngine.js's computeSignedAdjustments), not just
+// decorate the detail modal. Household-wide (no userId) and one-per-item
+// (upsert-replace, not a running tally) - same scoping reasoning as
+// NotInterestedItem above. itemType stored for the same "build an affinity
+// key without re-deriving type" reason as that model too.
+model TitleReaction {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String   // "movie" | "series"
+  reaction  String   // "like" | "love" | "dislike"
+  itemName  String?
+  poster    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, itemId])
+  @@map("title_reactions")
+}
+
+// SlickTrax feedback: a personal 1-10 rating, also feeding recommendation
+// scoring (same mechanism as TitleReaction above - see
+// computeSignedAdjustments). `season` distinguishes an overall/whole-item
+// rating (0 - the only value movies ever use) from a specific season's
+// rating (1+, series only) - kept as a non-null sentinel rather than a
+// nullable column because SQL NULL isn't equal to itself for uniqueness
+// purposes, which would have let duplicate "overall" rows slip past
+// @@unique. A series can carry both an overall (season 0) rating AND
+// per-season ratings at once - they're independent opinions ("solid show
+// overall, but season 3 was rough"), not a strict hierarchy.
+model TitleRating {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String   // "movie" | "series"
+  season    Int      @default(0)
+  rating    Int      // 1-10
+  itemName  String?
+  poster    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, itemId, season])
+  @@index([accountId, itemId])
+  @@map("title_ratings")
+}
+
 // Manual override for the "watched" indicator on Discover posters. Lets a
 // user mark something as watched even though they don't have polled watch
 // history for it (e.g. they saw it on a different service), OR mark it as

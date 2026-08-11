@@ -1972,6 +1972,42 @@ class ApiClient {
     });
   }
 
+  // SlickTrax reactions (👍/❤️/👎) - feeds /recommendations scoring, see
+  // server/utils/recommendationEngine.js's computeSignedAdjustments.
+  async setReaction(itemId: string, itemType: 'movie' | 'series', reaction: 'like' | 'love' | 'dislike', itemName?: string, poster?: string | null) {
+    return this.fetch<{ reaction: string }>('/discover/react', {
+      method: 'POST',
+      body: JSON.stringify({ itemId, itemType, reaction, itemName, poster }),
+    });
+  }
+  async clearReaction(itemId: string) {
+    return this.fetch<{ success: boolean }>(`/discover/react/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+  }
+  async getReactions(ids: string[]) {
+    const qs = ids.length ? `?ids=${ids.map(encodeURIComponent).join(',')}` : '';
+    return this.fetch<{ reactions: Record<string, 'like' | 'love' | 'dislike'> }>(`/discover/reactions${qs}`);
+  }
+
+  // SlickTrax personal ratings (1-10) - season omitted/0 = overall (the only
+  // kind movies use; a series may carry an overall rating AND independent
+  // per-season ratings at once).
+  async setRating(itemId: string, itemType: 'movie' | 'series', rating: number, season?: number, itemName?: string, poster?: string | null) {
+    return this.fetch<{ season: number; rating: number }>('/discover/rate', {
+      method: 'POST',
+      body: JSON.stringify({ itemId, itemType, rating, season, itemName, poster }),
+    });
+  }
+  async clearRating(itemId: string, season?: number) {
+    const qs = season !== undefined ? `?season=${season}` : '';
+    return this.fetch<{ success: boolean }>(`/discover/rate/${encodeURIComponent(itemId)}${qs}`, { method: 'DELETE' });
+  }
+  async getRatings(itemId: string) {
+    return this.fetch<{ ratings: Record<string, number> }>(`/discover/ratings/${encodeURIComponent(itemId)}`);
+  }
+  async getSeasonNumbers(itemId: string) {
+    return this.fetch<{ seasons: number[] }>(`/discover/${encodeURIComponent(itemId)}/seasons?type=series`);
+  }
+
   async getUpcomingEpisodes() {
     return this.fetch<UpcomingEpisode[]>('/users/upcoming-episodes');
   }
@@ -2398,6 +2434,7 @@ export interface SyncSettings {
   enableAutoplayTrailer?: boolean;
   autoplayTrailerStartMuted?: boolean;
   enablePosterRatings?: boolean;
+  enableReactions?: boolean;
   tmdbApiKey?: string;
   mdblistApiKey?: string;
   rpdbApiKey?: string;

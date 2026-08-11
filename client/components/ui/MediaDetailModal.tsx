@@ -167,7 +167,7 @@ export function MediaDetailModal({
   const effectiveFallbackRottenTomatoes = overrideItem ? null : fallbackRottenTomatoes;
   const effectiveFallbackMetacritic = overrideItem ? null : fallbackMetacritic;
 
-  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted } = usePersonalFeatures();
+  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions } = usePersonalFeatures();
   const isTV = useIsTV();
 
   // usePersonalFeatures resolves asynchronously (starts from a default of
@@ -247,6 +247,79 @@ export function MediaDetailModal({
       onWatchlistChange?.(effectiveId, !next);
     } finally {
       setWatchlistBusy(false);
+    }
+  };
+
+  // Reactions (👍/❤️/👎) + personal ratings — SlickTrax feedback that also
+  // feeds recommendation scoring (server/utils/recommendationEngine.js's
+  // computeSignedAdjustments), not just decoration. Same effectiveId-scoped
+  // reset and optimistic-update-with-revert pattern as Watchlist above.
+  const [reaction, setReactionState] = useState<'like' | 'love' | 'dislike' | null>(null);
+  const [reactionBusy, setReactionBusy] = useState(false);
+  const [ratings, setRatings] = useState<Record<string, number>>({});
+  const [seasonNumbers, setSeasonNumbers] = useState<number[]>([]);
+  const [ratingSeason, setRatingSeason] = useState(0); // 0 = overall/whole item
+  const [ratingBusy, setRatingBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !effectiveId || !enableReactions) return;
+    let cancelled = false;
+    setRatingSeason(0);
+    setReactionState(null);
+    setRatings({});
+    setSeasonNumbers([]);
+    api.getReactions([effectiveId]).then((r) => { if (!cancelled) setReactionState(r.reactions[effectiveId] || null); }).catch(() => {});
+    api.getRatings(effectiveId).then((r) => { if (!cancelled) setRatings(r.ratings || {}); }).catch(() => {});
+    if (effectiveType === 'series') {
+      api.getSeasonNumbers(effectiveId).then((r) => { if (!cancelled) setSeasonNumbers(r.seasons || []); }).catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [isOpen, effectiveId, effectiveType, enableReactions]);
+
+  const toggleReaction = async (next: 'like' | 'love' | 'dislike') => {
+    if (reactionBusy) return;
+    setReactionBusy(true);
+    const prev = reaction;
+    const willClear = reaction === next; // tapping the active reaction again clears it
+    setReactionState(willClear ? null : next); // optimistic
+    try {
+      if (willClear) {
+        await api.clearReaction(effectiveId);
+      } else {
+        await api.setReaction(effectiveId, effectiveType, next, details?.title || effectiveFallbackTitle, details?.poster || effectiveFallbackPoster || null);
+      }
+    } catch {
+      setReactionState(prev); // revert on failure
+    } finally {
+      setReactionBusy(false);
+    }
+  };
+
+  const setRatingValue = async (value: number) => {
+    if (ratingBusy) return;
+    setRatingBusy(true);
+    const prevRatings = ratings;
+    setRatings((r) => ({ ...r, [ratingSeason]: value })); // optimistic
+    try {
+      await api.setRating(effectiveId, effectiveType, value, ratingSeason, details?.title || effectiveFallbackTitle, details?.poster || effectiveFallbackPoster || null);
+    } catch {
+      setRatings(prevRatings); // revert on failure
+    } finally {
+      setRatingBusy(false);
+    }
+  };
+
+  const clearRatingValue = async () => {
+    if (ratingBusy) return;
+    setRatingBusy(true);
+    const prevRatings = ratings;
+    setRatings((r) => { const next = { ...r }; delete next[ratingSeason]; return next; }); // optimistic
+    try {
+      await api.clearRating(effectiveId, ratingSeason);
+    } catch {
+      setRatings(prevRatings); // revert on failure
+    } finally {
+      setRatingBusy(false);
     }
   };
 
@@ -842,6 +915,71 @@ export function MediaDetailModal({
                   </div>
                 );
               })()}
+
+              {/* Reactions + rating - SlickTrax feedback that feeds
+                  recommendation scoring, not just decoration (see the state
+                  block above). No TV-focus wiring yet (unlike the action row
+                  above) - visible and usable with a mouse/touch on PC and
+                  Mobile, just not yet D-pad-reachable on TV. */}
+              {enableReactions && (
+                <div className="mt-3 flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-1.5">
+                    {([
+                      { value: 'like' as const, emoji: '👍', label: 'Like' },
+                      { value: 'love' as const, emoji: '❤️', label: 'Love' },
+                      { value: 'dislike' as const, emoji: '👎', label: 'Dislike' },
+                    ]).map((r) => (
+                      <button
+                        key={r.value}
+                        type="button"
+                        onClick={() => toggleReaction(r.value)}
+                        disabled={reactionBusy}
+                        aria-label={r.label}
+                        title={r.label}
+                        className={`w-9 h-9 flex items-center justify-center rounded-lg text-base transition-colors ${
+                          reaction === r.value ? 'bg-primary/20 ring-1 ring-primary' : 'bg-surface-hover hover:bg-primary/10'
+                        } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
+                      >
+                        {r.emoji}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {effectiveType === 'series' && seasonNumbers.length > 0 && (
+                      <select
+                        value={ratingSeason}
+                        onChange={(e) => setRatingSeason(Number(e.target.value))}
+                        className="text-xs rounded-lg bg-surface-hover text-default px-2 py-1.5 border border-transparent focus:border-primary focus:outline-none"
+                      >
+                        <option value={0}>Overall</option>
+                        {seasonNumbers.map((s) => (
+                          <option key={s} value={s}>Season {s}</option>
+                        ))}
+                      </select>
+                    )}
+                    <div className="flex items-center gap-0.5">
+                      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
+                        const current = ratings[ratingSeason] ?? 0;
+                        return (
+                          <button
+                            key={n}
+                            type="button"
+                            onClick={() => (current === n ? clearRatingValue() : setRatingValue(n))}
+                            disabled={ratingBusy}
+                            title={`Rate ${n}/10`}
+                            className={`w-5 h-6 text-xs font-medium rounded transition-colors ${
+                              n <= current ? 'bg-primary text-white' : 'bg-surface-hover text-subtle hover:bg-primary/20'
+                            } ${ratingBusy ? 'opacity-60 cursor-wait' : ''}`}
+                          >
+                            {n}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {details.genres && details.genres.length > 0 && (
                 <div className="flex flex-wrap gap-2">
