@@ -1269,7 +1269,9 @@ export default function SettingsPage() {
               <div className="pt-1">
                 <label className="block text-sm font-medium text-default mb-1.5">SIMKL Client ID <span className="text-subtle font-normal">(optional)</span></label>
                 <p className="text-xs text-muted mb-2">
-                  Powers linking a user's SIMKL account for watch-history sync. Register a free app at simkl.com/settings/developer and paste its Client ID here. Leave blank to use the server's own, if one is configured.
+                  Powers linking a user&apos;s SIMKL account for watch-history sync. Get one free: sign in at{' '}
+                  <a href="https://simkl.com/settings/developer" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">simkl.com/settings/developer</a>
+                  {' '}→ under &quot;List of your apps&quot;, click <strong>+ Add a New App</strong> → give it any name and redirect URI (SlickSync&apos;s SIMKL login is PIN-based, so the redirect URI is never actually used — any placeholder like https://slicksync.local works) → paste the <strong>Client ID</strong> it shows you here. The Client Secret isn&apos;t needed. Leave blank to use the server&apos;s own, if one is configured.
                 </p>
                 <input
                   type="text"
