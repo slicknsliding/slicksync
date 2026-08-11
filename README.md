@@ -48,6 +48,7 @@ Can't self-host? **[slicksync.vip](https://slicksync.vip)** runs the same code i
 - Addon import fetches real manifest data for both providers, not just a bare URL+name.
 - **Account merge** — absorb a second provider's identity into one existing user instead of managing them as two separate people, with a preview before merging and a full **Undo** afterward that restores both identities and their original watch history exactly.
 - **Silent account-mismatch detection** — if a title is seen streaming but no connected account ever records it in History, that usually means playback happened on an account not yet added to SlickSync; a notification explains this and points at the fix.
+- **SIMKL linking** — any user can optionally connect their own SIMKL account (PIN-based, no password ever touches SlickSync). Bidirectional: pulls SIMKL's own watch history in, and pushes SlickSync's already-unified record (every provider, every source) back out — the same value the removed Trakt integration had, without Trakt's one-connected-app free-tier limit that got it pulled.
 
 ### 🎬 Activity & Now Playing
 - Live **Now Playing** panel, fed by a 30s poll of AIOStreams' proxy — real-time presence, gone the instant playback stops.
@@ -79,6 +80,7 @@ Named collections of titles, separate from the Watchlist — build a "Halloween 
 - **Custom cover art** — upload an image or pick a color, shown on the Catalogs index in place of the default poster collage.
 - **Bulk select** and real drag-and-drop reordering for a catalog's items.
 - **Import** an existing list straight from a **MDBList** or **TMDb** list URL (TMDb import is movies-only; MDBList supports both) — or go the other way and **export** a catalog to a brand-new MDBList list.
+- **SIMKL**: import a linked user's SIMKL "Plan to Watch" as a new catalog, or export a catalog onto one — SIMKL doesn't expose named Custom Lists via its API yet, so this targets the closest real equivalent instead of doing nothing.
 - **Refresh** an imported catalog against its original source URL any time, with a diff preview before applying, or opt a catalog into **daily auto-refresh** so it stays in sync with its source with no manual click.
 - **Suggest Titles** — match a catalog's own name (e.g. "Halloween", "90s Movies", "30 Days of Halloween") against TMDb's real keyword taxonomy and release-date ranges, review a batch of matching posters, and add only what you keep. Requires a (free) TMDb key.
 - Sort by title, year, or rating; each entry opens the same rich detail popup as everywhere else.
@@ -110,6 +112,7 @@ Credential tracking with expiry alerts and real active-checks.
 - Expiry/renewal alerts with configurable lead time, plus cost + billing-cycle spend tracking.
 - Real active-checks: Real-Debrid/TorBox/Newznab against their own APIs, Stremio via real login, generic HTTP/TCP for the rest.
 - Nightly encrypted export to `data/backup/vault/`, or on-demand.
+- **Rotate Now** — one click opens both the entry's provider dashboard and its edit form together, instead of hunting down the dashboard URL yourself first.
 - "Fix now" links straight from an alert to the entry, ready to edit.
 - Drag-and-drop reordering; move addons between Addons and Vault without deleting them.
 
@@ -151,6 +154,9 @@ Scheduled + on-demand config backups (validated for real restorability, not just
 
 ### 🛡️ Security
 Rate limiting actually enabled (including a separate per-account limit on public-mode API traffic), strict limits on credential/OAuth endpoints, correct `trust proxy` hop count, no hardcoded default key, and a self-generating anti-lockout encryption key with decrypt-only fallback on rotation. Every external API key (RPDB, MDBList, TMDb, OMDb) resolves an account's own Settings key first — a shared instance-wide key in `.env` is only ever a fallback for accounts that haven't set their own.
+- **Two-factor authentication** — opt-in per account, authenticator-app QR setup, 10 one-time backup codes shown once at enable time. Disabling 2FA or regenerating backup codes both require a fresh code, not just an active session — a hijacked session alone can't turn your own second factor off.
+- **OIDC/SSO login** — a "Continue with..." option for any OIDC-compliant provider (Authentik, Authelia, Keycloak, Google, etc.), configured once via env vars. Fully additive: password login keeps working, and 2FA (if enabled) still applies after an SSO sign-in.
+- **Interactive API docs** (Swagger UI) at `/api/docs` for the external developer API (`/api/ext`) — try real requests with your own API key straight from the browser, generated from the same route handlers documented in [`API.md`](./API.md) so the two can't silently drift apart.
 - Nuvio's self-service identity checks (view/delete) verify a real signed session token belonging to the caller, not just a client-supplied user id.
 - **Self-service data export** — Settings → Privacy has a Download button exporting your own movie/episode watch history plus the household watchlist as JSON, no admin needed.
 - **Self-service account deletion**, at two distinct scopes: an admin can wipe their entire account and everything tied to it (public multi-tenant mode), and separately, any managed user can delete just their own data (watch history, watchlist state, group membership) from their own User panel — without touching shared addons, groups, or anyone else's data — in both private and public instance mode.
@@ -228,6 +234,8 @@ Everything beyond `JWT_SECRET`/`ENCRYPTION_KEY` has a sensible default — see `
 | Variable | Purpose | Default |
 |---|---|---|
 | `NUVIO_SUPABASE_URL` / `NUVIO_SUPABASE_ANON_KEY` | Override Nuvio's backend endpoint | `https://api.nuvio.tv` / — |
+| `SIMKL_CLIENT_ID` | Instance-wide SIMKL app registration (each account can also bring its own in Settings) | — |
+| `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_REDIRECT_URI` | Enable "Continue with..." SSO login (all four required) — see `env.example` for the full set including scopes/display name/email allowlist | — |
 | `AUTH_RATE_LIMIT_WINDOW_MS` / `AUTH_RATE_LIMIT_MAX_REQUESTS` | Credential-endpoint rate limit | 20 / 15 min |
 | `POLL_RATE_LIMIT_MAX_REQUESTS` | OAuth device-flow poll limit | 60/min |
 | `VAULT_BACKUP_INTERVAL_HOURS` | Vault export interval | 24 |
