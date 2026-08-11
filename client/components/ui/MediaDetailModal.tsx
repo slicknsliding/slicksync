@@ -250,6 +250,12 @@ export function MediaDetailModal({
     }
   };
 
+  // Reactions/ratings UI pulled from this modal for now (see the comment
+  // further down where it used to render) - the backend
+  // (server/utils/titleFeedback.js, recommendationEngine.js's
+  // computeSignedAdjustments, client/lib/api.ts's setReaction/setRating/etc.)
+  // is untouched, so a redesigned UI here is a quick add-back, not a rebuild.
+
   // Mouse-only grab-and-drag horizontal scrolling for the Cast row, matching
   // the Dashboard's Continue Watching row. Pointer capture is deliberately
   // deferred until an actual drag crosses the 5px threshold, not engaged on
@@ -842,6 +848,13 @@ export function MediaDetailModal({
                   </div>
                 );
               })()}
+
+              {/* Reactions/ratings UI intentionally not (yet) here - pulled
+                  after first look, the 1-10 button row read as clutter. The
+                  backend (server/utils/titleFeedback.js,
+                  recommendationEngine.js's computeSignedAdjustments,
+                  client/lib/api.ts's setReaction/setRating/etc.) is untouched,
+                  so a redesigned UI is a quick add-back, not a rebuild. */}
 
               {details.genres && details.genres.length > 0 && (
                 <div className="flex flex-wrap gap-2">

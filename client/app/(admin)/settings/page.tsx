@@ -33,6 +33,7 @@ import {
   TrashIcon,
   CheckIcon,
   XMarkIcon,
+  ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 
 // Small curated fallback for environments without Intl.supportedValuesOf
@@ -272,6 +273,20 @@ export default function SettingsPage() {
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [isGeneratingKey, setIsGeneratingKey] = useState(false);
 
+  // 2FA (TOTP) state - see server/utils/twoFactor.js for the backend design.
+  const [twoFaEnabled, setTwoFaEnabled] = useState<boolean | null>(null);
+  const [twoFaSetup, setTwoFaSetup] = useState<{ secret: string; otpauthUrl: string; qrCodeDataUrl: string } | null>(null);
+  const [twoFaSetupCode, setTwoFaSetupCode] = useState('');
+  const [twoFaEnabling, setTwoFaEnabling] = useState(false);
+  const [twoFaStartingSetup, setTwoFaStartingSetup] = useState(false);
+  const [twoFaBackupCodes, setTwoFaBackupCodes] = useState<string[] | null>(null);
+  const [twoFaDisablePrompt, setTwoFaDisablePrompt] = useState(false);
+  const [twoFaDisableCode, setTwoFaDisableCode] = useState('');
+  const [twoFaDisabling, setTwoFaDisabling] = useState(false);
+  const [twoFaRegenPrompt, setTwoFaRegenPrompt] = useState(false);
+  const [twoFaRegenCode, setTwoFaRegenCode] = useState('');
+  const [twoFaRegenerating, setTwoFaRegenerating] = useState(false);
+
   // Webhook testing
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
   const [isGeneratingMosaic, setIsGeneratingMosaic] = useState(false);
@@ -317,12 +332,14 @@ export default function SettingsPage() {
           mdblistApiKey: settings.mdblistApiKey || '',
           rpdbApiKey: settings.rpdbApiKey || '',
           omdbApiKey: settings.omdbApiKey || '',
+          simklClientId: settings.simklClientId || '',
           enableWatchlist: settings.enableWatchlist !== false,
           enableWatchedIndicators: settings.enableWatchedIndicators !== false,
           enableRecommendations: settings.enableRecommendations !== false,
           enableAutoplayTrailer: settings.enableAutoplayTrailer === true,
           autoplayTrailerStartMuted: settings.autoplayTrailerStartMuted !== false,
           enablePosterRatings: settings.enablePosterRatings === true,
+          enableReactions: settings.enableReactions !== false,
         });
 
         // Nobody has ever explicitly saved a timezone for this account - the
@@ -361,8 +378,15 @@ export default function SettingsPage() {
       } catch (e) {
         // API key endpoint may not be available
       }
+
+      try {
+        const status = await api.get2faStatus();
+        setTwoFaEnabled(!!status.enabled);
+      } catch (e) {
+        setTwoFaEnabled(false);
+      }
     };
-    
+
     loadSettings();
     loadPushDevices();
   }, []);
@@ -459,6 +483,79 @@ export default function SettingsPage() {
       navigator.clipboard.writeText(apiKey);
       toast.success('API key copied to clipboard');
     }
+  };
+
+  const handleStart2fa = async () => {
+    setTwoFaStartingSetup(true);
+    try {
+      const result = await api.setup2fa();
+      setTwoFaSetup(result);
+      setTwoFaSetupCode('');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to start 2FA setup');
+    } finally {
+      setTwoFaStartingSetup(false);
+    }
+  };
+
+  const handleConfirm2fa = async () => {
+    if (!twoFaSetup || !twoFaSetupCode.trim()) return;
+    setTwoFaEnabling(true);
+    try {
+      const result = await api.enable2fa(twoFaSetup.secret, twoFaSetupCode.trim());
+      setTwoFaEnabled(true);
+      setTwoFaSetup(null);
+      setTwoFaSetupCode('');
+      setTwoFaBackupCodes(result.backupCodes);
+      toast.success('2FA enabled');
+    } catch (e: any) {
+      toast.error(e?.message || 'Incorrect code');
+    } finally {
+      setTwoFaEnabling(false);
+    }
+  };
+
+  const handleCancel2faSetup = () => {
+    setTwoFaSetup(null);
+    setTwoFaSetupCode('');
+  };
+
+  const handleDisable2fa = async () => {
+    if (!twoFaDisableCode.trim()) return;
+    setTwoFaDisabling(true);
+    try {
+      await api.disable2fa(twoFaDisableCode.trim());
+      setTwoFaEnabled(false);
+      setTwoFaDisablePrompt(false);
+      setTwoFaDisableCode('');
+      toast.success('2FA disabled');
+    } catch (e: any) {
+      toast.error(e?.message || 'Incorrect code');
+    } finally {
+      setTwoFaDisabling(false);
+    }
+  };
+
+  const handleRegenerate2faBackupCodes = async () => {
+    if (!twoFaRegenCode.trim()) return;
+    setTwoFaRegenerating(true);
+    try {
+      const result = await api.regenerate2faBackupCodes(twoFaRegenCode.trim());
+      setTwoFaRegenPrompt(false);
+      setTwoFaRegenCode('');
+      setTwoFaBackupCodes(result.backupCodes);
+      toast.success('New backup codes generated - your old codes no longer work');
+    } catch (e: any) {
+      toast.error(e?.message || 'Incorrect code');
+    } finally {
+      setTwoFaRegenerating(false);
+    }
+  };
+
+  const handleCopyBackupCodes = () => {
+    if (!twoFaBackupCodes) return;
+    navigator.clipboard.writeText(twoFaBackupCodes.join('\n'));
+    toast.success('Backup codes copied to clipboard');
   };
 
   const handleReset = async () => {
@@ -1039,6 +1136,17 @@ export default function SettingsPage() {
               </SettingRow>
 
               <SettingRow
+                label="Reactions & ratings"
+                description="👍/❤️/👎 and a personal 1-10 rating (with independent per-season ratings for shows) on the detail modal. These aren't just decorative - they feed what SlickTrax recommends, boosting titles similar to what you liked/rated well and suppressing ones similar to what you disliked."
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enableReactions !== false}
+                  onChange={async (v) => { await handleSaveSetting('enableReactions' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle reactions and ratings"
+                />
+              </SettingRow>
+
+              <SettingRow
                 label="Autoplay trailer"
                 description="When you open a title's detail popup, its trailer starts playing automatically instead of waiting for a Play Trailer click. Off by default - turn this on if you want it."
               >
@@ -1060,12 +1168,34 @@ export default function SettingsPage() {
                   label="Toggle autoplay trailer sound"
                 />
               </SettingRow>
+            </div>
+          </Card>
+        </PageSection>
 
+        {/* External API Keys — every external service key SlickSync can use, split
+            out from SlickTrax so that card stays pure on/off toggles.
+            Each one is optional and account-scoped: resolved from here
+            first, falling back to the instance's own env var (if the
+            operator configured one) only when this is left blank - never
+            a flat shared key silently used across every account. */}
+        <PageSection delay={0.19} className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
+                <KeyIcon className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold font-display text-default">External API Keys</h3>
+                <p className="text-xs text-muted">Optional keys for external services. Yours first, the server's own (if configured) as a fallback.</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
               {/* TMDb key for the cast/crew deep-dive. Text field, not a
                   toggle - the feature simply appears once a valid key is set.
                   Free from themoviedb.org (Settings -> API). Saved on blur,
                   same pattern as the webhook URL above. */}
-              <div className="pt-1">
+              <div>
                 <label className="block text-sm font-medium text-default mb-1.5">TMDb API key <span className="text-subtle font-normal">(optional)</span></label>
                 <p className="text-xs text-muted mb-2">
                   Enables the cast/crew deep-dive — click any actor in a title's detail popup to see everything else they're in. Get a free key at themoviedb.org → Settings → API. Leave blank to keep the feature off.
@@ -1109,7 +1239,7 @@ export default function SettingsPage() {
               <div className="pt-1">
                 <label className="block text-sm font-medium text-default mb-1.5">RPDB API key <span className="text-subtle font-normal">(optional)</span></label>
                 <p className="text-xs text-muted mb-2">
-                  Upgrades posters everywhere to rating-embedded art from RatingPosterDB, when Poster ratings above is also on. The free key works fine. Get one at ratingposterdb.com → API Key. Leave blank to keep today's posters.
+                  Upgrades posters everywhere to rating-embedded art from RatingPosterDB, when Poster ratings (in SlickTrax above) is also on. The free key works fine. Get one at ratingposterdb.com → API Key. Leave blank to keep today's posters.
                 </p>
                 <input
                   type="text"
@@ -1138,6 +1268,29 @@ export default function SettingsPage() {
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, omdbApiKey: e.target.value }))}
                   onBlur={() => handleSaveSetting('omdbApiKey' as keyof SyncSettings, syncSettings.omdbApiKey)}
                   placeholder="OMDb API key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* SIMKL Client ID - powers the "Link SIMKL" flow on a user's
+                  own page (watch-history pull/push). Account-scoped like the
+                  keys above so this account isn't dependent on whatever the
+                  server operator did or didn't configure in .env. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">SIMKL Client ID <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Powers linking a user&apos;s SIMKL account for watch-history sync. Get one free: sign in at{' '}
+                  <a href="https://simkl.com/settings/developer" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">simkl.com/settings/developer</a>
+                  {' '}→ under &quot;List of your apps&quot;, click <strong>+ Add a New App</strong> → give it any name and redirect URI (SlickSync&apos;s SIMKL login is PIN-based, so the redirect URI is never actually used — any placeholder like https://slicksync.local works) → paste the <strong>Client ID</strong> it shows you here. The Client Secret isn&apos;t needed. Leave blank to use the server&apos;s own, if one is configured.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.simklClientId || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, simklClientId: e.target.value }))}
+                  onBlur={() => handleSaveSetting('simklClientId' as keyof SyncSettings, syncSettings.simklClientId)}
+                  placeholder="SIMKL Client ID"
                   autoComplete="off"
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"
@@ -1200,10 +1353,163 @@ export default function SettingsPage() {
                 <p className="text-xs text-muted mt-2">
                   Use this key to authenticate API requests. Keep it secret!
                 </p>
+                <a
+                  href="/api/docs"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline mt-2"
+                >
+                  Interactive API docs
+                  <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
+                </a>
               </div>
             </div>
           </Card>
         </PageSection>
+
+        {/* Two-Factor Authentication - opt-in TOTP on top of the account
+            login. See server/utils/twoFactor.js for why disable/regenerate
+            both require a fresh code rather than just an active session. */}
+        <PageSection delay={0.21} className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
+                <ShieldCheckIcon className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold font-display text-default">Two-Factor Authentication</h3>
+                <p className="text-xs text-muted">Require a code from an authenticator app to sign in, on top of your password</p>
+              </div>
+            </div>
+
+            {twoFaEnabled === null ? (
+              <p className="text-sm text-muted">Loading…</p>
+            ) : twoFaSetup ? (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <img
+                    src={twoFaSetup.qrCodeDataUrl}
+                    alt="2FA QR code"
+                    className="w-40 h-40 rounded-lg border border-default bg-white p-2 shrink-0"
+                  />
+                  <div className="space-y-2 min-w-0">
+                    <p className="text-sm text-default">Scan this with your authenticator app (Google Authenticator, Authy, 1Password, etc.), or enter the code manually:</p>
+                    <code className="block text-xs font-mono text-muted break-all px-2 py-1.5 rounded bg-subtle border border-default">
+                      {twoFaSetup.secret}
+                    </code>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-default mb-1.5">Enter the 6-digit code it shows</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoFocus
+                      value={twoFaSetupCode}
+                      onChange={(e) => setTwoFaSetupCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm2fa(); }}
+                      placeholder="123456"
+                      className="input-base px-3 py-2 text-sm font-mono tracking-widest w-32"
+                    />
+                    <Button variant="primary" size="sm" onClick={handleConfirm2fa} disabled={twoFaSetupCode.length !== 6 || twoFaEnabling} isLoading={twoFaEnabling}>
+                      Confirm
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={handleCancel2faSetup} disabled={twoFaEnabling}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : twoFaEnabled ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Badge variant="success">Enabled</Badge>
+                  <span className="text-xs text-muted">You&apos;ll be asked for a code from your authenticator app each time you sign in</span>
+                </div>
+                {twoFaDisablePrompt ? (
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoFocus
+                      value={twoFaDisableCode}
+                      onChange={(e) => setTwoFaDisableCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleDisable2fa(); }}
+                      placeholder="Code or backup code"
+                      className="input-base px-3 py-2 text-sm font-mono w-40"
+                    />
+                    <Button variant="danger" size="sm" onClick={handleDisable2fa} disabled={!twoFaDisableCode.trim() || twoFaDisabling} isLoading={twoFaDisabling}>
+                      Confirm disable
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setTwoFaDisablePrompt(false); setTwoFaDisableCode(''); }} disabled={twoFaDisabling}>
+                      Cancel
+                    </Button>
+                  </div>
+                ) : twoFaRegenPrompt ? (
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoFocus
+                      value={twoFaRegenCode}
+                      onChange={(e) => setTwoFaRegenCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleRegenerate2faBackupCodes(); }}
+                      placeholder="Current code"
+                      className="input-base px-3 py-2 text-sm font-mono w-40"
+                    />
+                    <Button variant="primary" size="sm" onClick={handleRegenerate2faBackupCodes} disabled={!twoFaRegenCode.trim() || twoFaRegenerating} isLoading={twoFaRegenerating}>
+                      Confirm
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setTwoFaRegenPrompt(false); setTwoFaRegenCode(''); }} disabled={twoFaRegenerating}>
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => setTwoFaRegenPrompt(true)}>
+                      Regenerate backup codes
+                    </Button>
+                    <Button variant="danger" size="sm" onClick={() => setTwoFaDisablePrompt(true)}>
+                      Disable 2FA
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Button variant="primary" size="sm" onClick={handleStart2fa} isLoading={twoFaStartingSetup}>
+                Enable 2FA
+              </Button>
+            )}
+          </Card>
+        </PageSection>
+
+        {/* Backup codes - shown exactly once, right after enabling 2FA or
+            regenerating codes. Closing this modal is the only way past it,
+            same "you must acknowledge you saved this" pattern as the
+            Disaster Recovery Kit passphrase reveal elsewhere in the app. */}
+        <Modal isOpen={!!twoFaBackupCodes} onClose={() => setTwoFaBackupCodes(null)} title="Your backup codes" size="sm">
+          {twoFaBackupCodes && (
+            <div className="space-y-3">
+              <p className="text-sm text-default">
+                Save these somewhere safe. Each one lets you sign in <strong>once</strong> if you lose access to your authenticator app. They won&apos;t be shown again.
+              </p>
+              <div className="grid grid-cols-2 gap-1.5 p-3 rounded-lg bg-subtle border border-default">
+                {twoFaBackupCodes.map((c) => (
+                  <code key={c} className="text-xs font-mono text-default">{c}</code>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={handleCopyBackupCodes} leftIcon={<ClipboardDocumentIcon className="w-4 h-4" />}>
+                  Copy
+                </Button>
+                <Button variant="primary" size="sm" onClick={() => setTwoFaBackupCodes(null)}>
+                  I&apos;ve saved these
+                </Button>
+              </div>
+            </div>
+          )}
+        </Modal>
 
         {/* Account ID - public-mode login is a UUID with no recovery flow
             (per the register page's own warning), and there was previously

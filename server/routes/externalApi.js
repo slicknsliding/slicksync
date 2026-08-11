@@ -39,6 +39,34 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
     }
   })
 
+  /**
+   * @openapi
+   * /account:
+   *   get:
+   *     summary: Get account statistics
+   *     description: Brief stats for the account that owns the API key used to authenticate.
+   *     responses:
+   *       200:
+   *         description: Account info and counts
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 id: { type: string }
+   *                 uuid: { type: string }
+   *                 email: { type: string }
+   *                 linkedProvider: { type: string, nullable: true }
+   *                 avatarUrl: { type: string, nullable: true }
+   *                 displayName: { type: string, nullable: true }
+   *                 lastRunAt: { type: string, format: date-time, nullable: true }
+   *                 totalUsers: { type: integer }
+   *                 totalGroups: { type: integer }
+   *                 totalAddons: { type: integer }
+   *                 pendingInvites: { type: integer }
+   *       401:
+   *         description: Missing or invalid API key
+   */
   // GET /ext/account - brief stats
   router.get('/account', async (req, res) => {
     try {
@@ -74,6 +102,23 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
     }
   })
 
+  /**
+   * @openapi
+   * /metrics.json:
+   *   get:
+   *     summary: Get full dashboard metrics
+   *     description: Same data the Metrics dashboard page renders, scoped to the API key's account. Served from an in-memory cache refreshed every 5 minutes when available; built on demand otherwise.
+   *     parameters:
+   *       - in: query
+   *         name: period
+   *         schema: { type: string, enum: ['7d', '30d', '90d', 'all'], default: '30d' }
+   *         description: Lookback window, same semantics as the Metrics page's own period selector.
+   *     responses:
+   *       200:
+   *         description: Metrics payload (shape mirrors the admin Metrics page)
+   *       401:
+   *         description: Missing or invalid API key
+   */
   // GET /ext/metrics.json - full metrics JSON for this account (API key scoped)
   router.get('/metrics.json', async (req, res) => {
     try {
@@ -110,6 +155,53 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
     }
   })
 
+  /**
+   * @openapi
+   * /addons/reload:
+   *   post:
+   *     summary: Reload addons by Stremio addon ID
+   *     description: Re-fetches the manifest for every addon in this account matching `stremioAddonId` and updates it in place. Useful for addon developers so a call to SlickSync on deploy propagates a manifest change immediately, instead of waiting for the next scheduled sync.
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [stremioAddonId]
+   *             properties:
+   *               stremioAddonId: { type: string, example: 'com.stremio.addon.id' }
+   *     responses:
+   *       200:
+   *         description: Reload result
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 message: { type: string }
+   *                 reloaded: { type: integer }
+   *                 total: { type: integer }
+   *                 diffs:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       id: { type: string }
+   *                       name: { type: string }
+   *                       diffs:
+   *                         type: object
+   *                         properties:
+   *                           addedResources: { type: array, items: { type: string } }
+   *                           removedResources: { type: array, items: { type: string } }
+   *                           addedCatalogs: { type: array, items: { type: string } }
+   *                           removedCatalogs: { type: array, items: { type: string } }
+   *       400:
+   *         description: stremioAddonId is required
+   *       401:
+   *         description: Missing or invalid API key
+   *       404:
+   *         description: No addons found matching that stremioAddonId in this account
+   */
   // POST /ext/addons/reload
   router.post('/addons/reload', async (req, res) => {
     try {
@@ -142,6 +234,50 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
     }
   })
 
+  /**
+   * @openapi
+   * /addons/sync:
+   *   post:
+   *     summary: Reload addons by Stremio addon ID, then sync affected groups
+   *     description: Same manifest reload as /addons/reload, then syncs every group that contains one of the matching addons out to its users' own accounts - so an addon update propagates all the way to end users in one call.
+   *     parameters:
+   *       - in: header
+   *         name: Source
+   *         schema: { type: string }
+   *         description: Source label shown on the Discord sync notification, if one is configured (also accepted as X-Sync-Source or X-App-Name).
+   *       - in: header
+   *         name: Source-Logo
+   *         schema: { type: string }
+   *         description: Logo URL for the Discord notification (also accepted as X-Source-Logo).
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required: [stremioAddonId]
+   *             properties:
+   *               stremioAddonId: { type: string, example: 'com.stremio.addon.id' }
+   *     responses:
+   *       200:
+   *         description: Reload + sync result
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 message: { type: string }
+   *                 reloaded: { type: integer }
+   *                 groupsSynced: { type: integer }
+   *                 totalUsersSynced: { type: integer }
+   *                 diffs: { type: array, items: { type: object } }
+   *       400:
+   *         description: stremioAddonId is required
+   *       401:
+   *         description: Missing or invalid API key
+   *       404:
+   *         description: No addons found matching that stremioAddonId in this account
+   */
   // POST /ext/addons/sync
   // Reload all addons in this account that share the given stremioAddonId,
   // then sync all groups that contain any of those addons (no reload during sync)
@@ -279,6 +415,37 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
     }
   })
 
+  /**
+   * @openapi
+   * /groups/sync:
+   *   post:
+   *     summary: Sync all groups in this account
+   *     description: Pushes every group's current addon configuration out to its users' own accounts, regardless of which addon changed. Heavier than /addons/sync - use that instead when you know the specific stremioAddonId that changed.
+   *     parameters:
+   *       - in: header
+   *         name: Source
+   *         schema: { type: string }
+   *         description: Source label shown on the Discord sync notification, if one is configured (also accepted as X-Sync-Source or X-App-Name).
+   *       - in: header
+   *         name: Source-Logo
+   *         schema: { type: string }
+   *         description: Logo URL for the Discord notification (also accepted as X-Source-Logo).
+   *     responses:
+   *       200:
+   *         description: Sync result
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 message: { type: string }
+   *                 ok: { type: integer, description: 'Groups synced without error' }
+   *                 fail: { type: integer }
+   *                 totalSynced: { type: integer, description: 'Users successfully synced across all groups' }
+   *                 totalFailed: { type: integer }
+   *       401:
+   *         description: Missing or invalid API key
+   */
   // POST /ext/groups/sync
   router.post('/groups/sync', async (req, res) => {
     try {

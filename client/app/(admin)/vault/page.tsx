@@ -200,6 +200,20 @@ function SortableEntryCard({
             Open Dashboard
           </a>
         )}
+        {entry.dashboardUrl && (
+          <button
+            onClick={() => {
+              close();
+              window.open(entry.dashboardUrl || undefined, '_blank', 'noopener,noreferrer');
+              onEdit(entry);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            title="Open the provider's dashboard and this entry's edit form together"
+          >
+            <ArrowPathIcon className="w-4 h-4" />
+            Rotate Now
+          </button>
+        )}
         <div className="my-1 border-t border-default" />
         <button
           onClick={() => { close(); onMoveToAddons(entry); }}
@@ -240,6 +254,10 @@ function VaultPageContent() {
   const [movingToAddonsId, setMovingToAddonsId] = useState<string | null>(null);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
+  // Set only when the edit modal was opened via an alert's deep link
+  // (?edit=<id>), so the "rotate now" banner (open the dashboard right from
+  // inside the form) only shows in that context, not on every manual edit.
+  const [arrivedViaAlert, setArrivedViaAlert] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<EntryFormState>(EMPTY_FORM);
   const [isSaving, setIsSaving] = useState(false);
@@ -318,11 +336,13 @@ function VaultPageContent() {
   const openAddModal = () => {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setArrivedViaAlert(false);
     setIsAddOpen(true);
   };
 
   const openEditModal = async (entry: VaultEntry) => {
     setEditingId(entry.id);
+    setArrivedViaAlert(false);
     const cfg: any = entry.testConfig || {};
     setForm({
       name: entry.name,
@@ -361,6 +381,7 @@ function VaultPageContent() {
       .then((entry) => {
         setActiveCategory(entry.category);
         openEditModal(entry);
+        setArrivedViaAlert(true);
       })
       .catch(() => toast.error('Could not find that Vault entry'))
       .finally(() => router.replace('/vault'));
@@ -863,6 +884,19 @@ function VaultPageContent() {
       {/* Add/Edit Modal */}
       <Modal isOpen={isAddOpen} onClose={() => setIsAddOpen(false)} title={editingId ? 'Edit Vault Entry' : 'Add Vault Entry'} size="lg">
         <div className="space-y-4">
+          {arrivedViaAlert && form.dashboardUrl && (
+            <button
+              type="button"
+              onClick={() => window.open(form.dashboardUrl, '_blank', 'noopener,noreferrer')}
+              className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-left transition-colors"
+              style={{ background: 'var(--color-primaryMuted)', border: '1px solid var(--color-primary)' }}
+            >
+              <span className="text-sm font-medium" style={{ color: 'var(--color-primary)' }}>
+                Get the new value from the provider, then paste it below
+              </span>
+              <ArrowTopRightOnSquareIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} />
+            </button>
+          )}
           <Input label="Name" placeholder="e.g. Newshosting account" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
 
           <div>

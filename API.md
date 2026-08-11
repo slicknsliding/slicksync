@@ -1,5 +1,10 @@
 # SlickSync API Documentation
 
+> An interactive, try-it-yourself version of this doc (Swagger UI, built from
+> the same route handlers below) is served by every SlickSync instance at
+> `/api/docs` - no login required to view it, only to call an endpoint for
+> real.
+
 ## Base URL
 All API endpoints are prefixed with `/api/ext` (e.g., `/api/ext/account`, `/api/ext/addons/reload`).
 
@@ -31,6 +36,16 @@ Get account statistics.
   "addonsCount": 20
 }
 ```
+
+#### `GET /api/ext/metrics.json`
+Get the full dashboard metrics for this account — same data the Metrics page renders. Served from an in-memory cache refreshed every 5 minutes when available; built on demand otherwise.
+
+**Authentication:** Required (API key)
+
+**Query Parameters:**
+- `period` (optional): `7d` | `30d` | `90d` | `all` — defaults to `30d`
+
+**Response:** Same shape the admin Metrics page consumes.
 
 #### `POST /api/ext/addons/reload`
 Reload addons by Stremio addon ID. This can be used by other addon developers so whenever the addon is updated, a call to SlickSync is made to immediately reload it.

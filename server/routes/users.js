@@ -9,6 +9,7 @@ const { sendShareNotification } = require('../utils/activityMonitor');
 const { postDiscord, fetchMetadata } = require('../utils/notify');
 const { getAccountDateString, resolveAccountTimezone } = require('../utils/dateUtils');
 const { fetchOmdbRatings } = require('../utils/omdb');
+const { resolveSimklClientId, startSimklPin, pollSimklPin, getSimklAccountInfo } = require('../utils/simklAuth');
 
 // Export a function that returns the router, allowing dependency injection
 module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, encrypt, parseAddonIds, parseProtectedAddons, getDecryptedManifestUrl, StremioAPIClient, StremioAPIStore, assignUserToGroup, debug, defaultAddons, canonicalizeManifestUrl, getAccountDek, getServerKey, aesGcmDecrypt, validateStremioAuthKey, manifestUrlHmac, manifestHash, createProvider }) => {
@@ -1710,7 +1711,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         notifyOnWatch: user.notifyOnWatch !== false,
         watchTime: totalWatchTimeMinutes,
         providerConnectionError: user.providerConnectionError || null,
-        providerConnectionErrorAt: user.providerConnectionErrorAt || null
+        providerConnectionErrorAt: user.providerConnectionErrorAt || null,
+        simklConnected: !!user.simklAccessToken,
+        simklConnectedAt: user.simklConnectedAt || null,
       }
 
       res.json(transformedUser)
@@ -4688,6 +4691,77 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     } catch (error) {
       console.error('Error clearing Stremio credentials:', error)
       res.status(500).json({ message: 'Failed to clear Stremio credentials', error: error?.message })
+    }
+  })
+
+  // SIMKL link (optional, supplementary to whichever provider this user is
+  // actually created under) - see the schema comment on User.simklAccessToken
+  // for why this isn't a peer of providerType. PIN flow: /simkl/start shows
+  // the user a code, the client polls /simkl/poll until Simkl reports it
+  // authorized (or the user gives up and navigates away - nothing server-side
+  // needs cleaning up either way, Simkl expires the pending PIN on its own).
+  router.post('/:id/simkl/start', async (req, res) => {
+    try {
+      const { id } = req.params
+      const user = await prisma.user.findFirst({ where: { id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+
+      const clientId = await resolveSimklClientId(prisma, getAccountId, req)
+      const pin = await startSimklPin(clientId)
+      res.json(pin)
+    } catch (error) {
+      console.error('Error starting SIMKL authorization:', error)
+      res.status(error?.status || 500).json({ message: error?.message || 'Failed to start SIMKL authorization' })
+    }
+  })
+
+  router.post('/:id/simkl/poll', async (req, res) => {
+    try {
+      const { id } = req.params
+      const { userCode } = req.body
+      if (!userCode) return res.status(400).json({ message: 'userCode is required' })
+
+      const user = await prisma.user.findFirst({ where: { id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+
+      const clientId = await resolveSimklClientId(prisma, getAccountId, req)
+      const result = await pollSimklPin(clientId, userCode)
+      if (result.status !== 'authorized') {
+        return res.json({ status: 'pending' })
+      }
+
+      const encryptedToken = encrypt(result.accessToken, req)
+      await prisma.user.update({
+        where: { id, accountId: getAccountId(req) },
+        data: { simklAccessToken: encryptedToken, simklConnectedAt: new Date(), simklSyncState: null, simklLastPullAt: null, simklLastPushAt: null },
+      })
+
+      const username = await getSimklAccountInfo(clientId, result.accessToken).catch(() => null)
+      res.json({ status: 'authorized', username })
+    } catch (error) {
+      console.error('Error polling SIMKL authorization:', error)
+      res.status(error?.status || 500).json({ message: error?.message || 'Failed to poll SIMKL authorization' })
+    }
+  })
+
+  router.post('/:id/simkl/disconnect', async (req, res) => {
+    try {
+      const { id } = req.params
+      const user = await prisma.user.findFirst({ where: { id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+
+      // Deliberately leaves any watch history already pulled from Simkl in
+      // place (it's real, already-merged data now) - only stops the link
+      // itself, same as disconnecting Stremio doesn't retroactively erase
+      // that user's watch history either.
+      await prisma.user.update({
+        where: { id, accountId: getAccountId(req) },
+        data: { simklAccessToken: null, simklConnectedAt: null, simklSyncState: null, simklLastPullAt: null, simklLastPushAt: null },
+      })
+      res.json({ message: 'SIMKL disconnected' })
+    } catch (error) {
+      console.error('Error disconnecting SIMKL:', error)
+      res.status(500).json({ message: 'Failed to disconnect SIMKL', error: error?.message })
     }
   })
 
