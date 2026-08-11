@@ -191,19 +191,36 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
       .finally(() => setLoaded(true));
   }, []);
 
-  const handleDismiss = useCallback((item: UpcomingEpisode) => {
+  // Optimistically removes the row, but only keeps it gone (and only tells
+  // the user it worked) once the server call actually confirms it - a
+  // silently-swallowed failure here used to still show a success toast and
+  // hide the row for the rest of this session, so a real (if rare) failure
+  // read as "I hid it but it came back" on the next visit, with no error
+  // ever shown.
+  const handleDismiss = useCallback(async (item: UpcomingEpisode) => {
     setItems((prev) => prev.filter((i) => !(i.showId === item.showId && i.season === item.season && i.episode === item.episode)));
-    api.dismissUpcomingEpisode(item.showId, item.season, item.episode).catch(() => {});
-    toast.success(`Hidden ${item.showName || 'episode'} ${epLabel(item.season, item.episode)}`);
+    try {
+      await api.dismissUpcomingEpisode(item.showId, item.season, item.episode);
+      toast.success(`Hidden ${item.showName || 'episode'} ${epLabel(item.season, item.episode)}`);
+    } catch {
+      setItems((prev) => [...prev, item]);
+      toast.error(`Failed to hide ${item.showName || 'that episode'} - try again`);
+    }
   }, []);
 
   // Mutes the whole show, not just this one episode - removes every row for
   // it (there's only ever one per show anyway) and stops future new-episode
-  // alerts server-side too. See utils/episodeAlerts.js's muteShow.
-  const handleMute = useCallback((item: UpcomingEpisode) => {
+  // alerts server-side too. See utils/episodeAlerts.js's muteShow. Same
+  // confirm-before-celebrating pattern as handleDismiss above.
+  const handleMute = useCallback(async (item: UpcomingEpisode) => {
     setItems((prev) => prev.filter((i) => i.showId !== item.showId));
-    api.muteShow(item.showId, item.showName || undefined, item.poster || undefined).catch(() => {});
-    toast.success(`Won't track new episodes for ${item.showName || 'this show'} anymore`);
+    try {
+      await api.muteShow(item.showId, item.showName || undefined, item.poster || undefined);
+      toast.success(`Won't track new episodes for ${item.showName || 'this show'} anymore`);
+    } catch {
+      setItems((prev) => [...prev, item]);
+      toast.error(`Failed to stop tracking ${item.showName || 'that show'} - try again`);
+    }
   }, []);
 
   const openMutedModal = useCallback(() => {
@@ -211,10 +228,15 @@ export const UpcomingEpisodesPanel = memo(function UpcomingEpisodesPanel() {
     setIsMutedModalOpen(true);
   }, []);
 
-  const handleUnmute = useCallback((show: MutedShow) => {
+  const handleUnmute = useCallback(async (show: MutedShow) => {
     setMutedShows((prev) => prev.filter((s) => s.id !== show.id));
-    api.unmuteShow(show.showId).catch(() => {});
-    toast.success(`${show.showName || 'Show'} will show up again once it has a new episode`);
+    try {
+      await api.unmuteShow(show.showId);
+      toast.success(`${show.showName || 'Show'} will show up again once it has a new episode`);
+    } catch {
+      setMutedShows((prev) => [...prev, show]);
+      toast.error(`Failed to unmute ${show.showName || 'that show'} - try again`);
+    }
   }, []);
 
   if (!loaded) return null;
