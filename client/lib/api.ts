@@ -1001,6 +1001,34 @@ class ApiClient {
     });
   }
 
+  // Two-factor auth (TOTP) - opt-in, per account. See server/utils/twoFactor.js.
+  async get2faStatus() {
+    return this.fetch<{ enabled: boolean }>('/settings/account-2fa');
+  }
+  async setup2fa() {
+    return this.fetch<{ secret: string; otpauthUrl: string; qrCodeDataUrl: string }>('/settings/account-2fa/setup', {
+      method: 'POST',
+    });
+  }
+  async enable2fa(secret: string, code: string) {
+    return this.fetch<{ enabled: boolean; backupCodes: string[] }>('/settings/account-2fa/enable', {
+      method: 'POST',
+      body: JSON.stringify({ secret, code }),
+    });
+  }
+  async disable2fa(code: string) {
+    return this.fetch<{ enabled: boolean }>('/settings/account-2fa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  }
+  async regenerate2faBackupCodes(code: string) {
+    return this.fetch<{ backupCodes: string[] }>('/settings/account-2fa/backup-codes', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  }
+
   async getBackupFrequency() {
     return this.fetch<{ days: number }>('/settings/backup-frequency');
   }
@@ -1830,6 +1858,27 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ url, name }),
     });
+  }
+  // Managed users in this account who've linked a personal SIMKL account -
+  // the picker for import/export-to-SIMKL below, since SIMKL has no named
+  // Custom Lists API (see server/utils/simklLists.js): both flows act on a
+  // specific user's Plan to Watch, not an account-wide list.
+  async getSimklLinkedUsers() {
+    return this.fetch<Array<{ id: string; username: string; avatarUrl: string | null; colorIndex: number | null }>>('/lists/simkl-users');
+  }
+  // Import a linked user's SIMKL Plan to Watch into a new catalog.
+  async importListFromSimkl(userId: string, name?: string) {
+    return this.fetch<CustomList & { totalAvailable: number }>('/lists/import-simkl', {
+      method: 'POST',
+      body: JSON.stringify({ userId, name }),
+    });
+  }
+  // Add this catalog's items to a linked user's SIMKL Plan to Watch.
+  async exportListToSimkl(id: string, userId: string) {
+    return this.fetch<{ added: number; notFound: number; existing: number; username: string }>(
+      `/lists/${encodeURIComponent(id)}/export-simkl`,
+      { method: 'POST', body: JSON.stringify({ userId }) }
+    );
   }
   // Re-pull an already-imported catalog's own source URL. Without `apply`,
   // only returns the added/removed/unchanged diff so the caller can show a

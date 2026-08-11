@@ -36,6 +36,19 @@ function LoginContent() {
   const [adminPasswordVisible, setAdminPasswordVisible] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminLoading, setAdminLoading] = useState(false);
+  // 2FA step - set only when /login or /private-login responds with
+  // requiresTwoFactor (see server/utils/twoFactor.js). pendingToken is a
+  // one-shot opaque token, not a session credential - it's useless for
+  // anything except completing this one login via /verify-2fa.
+  const [twoFactorPendingToken, setTwoFactorPendingToken] = useState<string | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorVerifying, setTwoFactorVerifying] = useState(false);
+
+  // OIDC/SSO - operator-configured via env vars (server/utils/oidc.js), so
+  // the only client-side state is "is it configured at all" (from a public
+  // config endpoint) plus whatever the callback redirect handed back.
+  const [oidcConfigured, setOidcConfigured] = useState(false);
+  const [oidcDisplayName, setOidcDisplayName] = useState('SSO');
   const [adminLoginType, setAdminLoginType] = useState<'credentials' | 'stremio' | 'nuvio'>(
     searchParams.get('linkStremio') === '1' && initialMode === 'admin' ? 'stremio'
       : searchParams.get('linkNuvio') === '1' && initialMode === 'admin' ? 'nuvio'
@@ -77,6 +90,46 @@ function LoginContent() {
   // with no backoff. The always-visible "Refresh" button below is the
   // manual retry path once auto-generate has given up for this tab-visit.
   const stremioAutoStartedRef = useRef(false);
+
+  // OIDC config + handling the redirect back from /api/auth/oidc/callback:
+  // ?otp=<pendingToken> means the OIDC identity checked out but this
+  // account also has 2FA enabled - drop straight into the code-entry step
+  // rather than making them pick "Admin" and hit a password form they
+  // don't need. ?oidcError=<message> surfaces a failure the same way a
+  // failed password attempt would.
+  useEffect(() => {
+    fetch('/api/auth/oidc/config')
+      .then((r) => r.json())
+      .then((data) => {
+        setOidcConfigured(!!data.configured);
+        if (data.displayName) setOidcDisplayName(data.displayName);
+      })
+      .catch(() => {});
+
+    const otp = searchParams.get('otp');
+    const oidcError = searchParams.get('oidcError');
+    if (otp) {
+      setMode('admin');
+      setAdminLoginType('credentials');
+      setTwoFactorPendingToken(otp);
+    } else if (oidcError) {
+      setMode('admin');
+      setAdminLoginType('credentials');
+      setAdminError(oidcError);
+    }
+    // Strip these from the URL so a refresh doesn't resubmit/re-show them.
+    if (otp || oidcError) {
+      const cleaned = new URLSearchParams(searchParams.toString());
+      cleaned.delete('otp');
+      cleaned.delete('oidcError');
+      router.replace(`/login${cleaned.toString() ? `?${cleaned.toString()}` : ''}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleStartOidc = () => {
+    window.location.href = '/api/auth/oidc/start';
+  };
 
   // Check if auth is required for private instance
   useEffect(() => {
@@ -450,7 +503,10 @@ function LoginContent() {
 
       const data = await response.json();
 
-      if (response.ok && (data.token || data.account)) {
+      if (response.ok && data.requiresTwoFactor && data.pendingToken) {
+        setTwoFactorPendingToken(data.pendingToken);
+        setTwoFactorCode('');
+      } else if (response.ok && (data.token || data.account)) {
         // Store admin token and redirect
         // Backend returns token in different fields depending on route
         const token = data.token || response.headers.get('set-cookie');
@@ -465,6 +521,39 @@ function LoginContent() {
       setAdminError('Failed to connect to server');
     } finally {
       setAdminLoading(false);
+    }
+  };
+
+  const handleVerify2fa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!twoFactorPendingToken || twoFactorCode.trim().length < 6) return;
+
+    setTwoFactorVerifying(true);
+    setAdminError(null);
+    try {
+      const response = await fetch('/api/auth/verify-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pendingToken: twoFactorPendingToken, code: twoFactorCode.trim() }),
+      });
+      const data = await response.json();
+      if (response.ok && (data.token || data.account)) {
+        if (data.token) {
+          localStorage.setItem('slicksync-admin-token', data.token);
+        }
+        router.push('/');
+      } else {
+        setAdminError(data.message || 'Incorrect code');
+        // An expired/consumed pendingToken can't be retried - back to the
+        // password step rather than looping on a dead token.
+        if (response.status === 401) {
+          setTwoFactorPendingToken(null);
+        }
+      }
+    } catch (err) {
+      setAdminError('Failed to connect to server');
+    } finally {
+      setTwoFactorVerifying(false);
     }
   };
 
@@ -640,7 +729,76 @@ function LoginContent() {
                     </div>
                   )}
 
-                  {adminLoginType === 'credentials' ? (
+                  {adminLoginType === 'credentials' && twoFactorPendingToken ? (
+                    <form onSubmit={handleVerify2fa} className="space-y-4">
+                      <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>
+                        Enter the 6-digit code from your authenticator app, or one of your backup codes.
+                      </p>
+                      <div>
+                        <label
+                          htmlFor="twoFactorCode"
+                          className="block text-sm font-medium mb-2"
+                          style={{ color: 'var(--color-text)' }}
+                        >
+                          Code
+                        </label>
+                        <input
+                          id="twoFactorCode"
+                          type="text"
+                          inputMode="numeric"
+                          autoFocus
+                          value={twoFactorCode}
+                          onChange={(e) => setTwoFactorCode(e.target.value.replace(/\s+/g, ''))}
+                          className="w-full px-4 py-3 rounded-xl text-sm font-mono tracking-widest text-center transition-all"
+                          style={{
+                            background: 'var(--color-bg)',
+                            border: '1px solid var(--color-surface-border)',
+                            color: 'var(--color-text)',
+                          }}
+                          placeholder="123456"
+                          autoComplete="one-time-code"
+                        />
+                      </div>
+
+                      {adminError && (
+                        <p className="text-sm text-center" style={{ color: 'var(--color-error)' }}>
+                          {adminError}
+                        </p>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={twoFactorVerifying || twoFactorCode.trim().length < 6}
+                        className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+                        style={{
+                          background: 'var(--color-primary)',
+                          color: 'white',
+                          opacity: twoFactorVerifying || twoFactorCode.trim().length < 6 ? 0.5 : 1,
+                        }}
+                      >
+                        {twoFactorVerifying ? (
+                          <>
+                            <span className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                            Verifying...
+                          </>
+                        ) : (
+                          <>
+                            <ArrowRightIcon className="w-5 h-5" />
+                            Verify
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setTwoFactorPendingToken(null); setTwoFactorCode(''); setAdminError(null); }}
+                        className="w-full text-sm text-center hover:underline"
+                        style={{ color: 'var(--color-text-muted)' }}
+                      >
+                        Back
+                      </button>
+                    </form>
+                  ) : adminLoginType === 'credentials' ? (
                     <form onSubmit={handleAdminLogin} className="space-y-4">
                       <div>
                         <label
@@ -726,6 +884,31 @@ function LoginContent() {
                           </>
                         )}
                       </button>
+
+                      {oidcConfigured && (
+                        <>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 h-px" style={{ background: 'var(--color-surface-border)' }} />
+                            <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
+                              or
+                            </span>
+                            <div className="flex-1 h-px" style={{ background: 'var(--color-surface-border)' }} />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleStartOidc}
+                            className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+                            style={{
+                              background: 'transparent',
+                              border: '1px solid var(--color-surface-border)',
+                              color: 'var(--color-text)',
+                            }}
+                          >
+                            <ShieldCheckIcon className="w-5 h-5" />
+                            Continue with {oidcDisplayName}
+                          </button>
+                        </>
+                      )}
 
                       {INSTANCE_TYPE === 'public' && (
                         <p className="text-sm text-center" style={{ color: 'var(--color-text-muted)' }}>

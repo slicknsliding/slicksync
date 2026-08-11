@@ -58,6 +58,38 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
     return crypto.randomBytes(32).toString('hex');
   }
 
+  // Shared tail of a successful login (real session, post any 2FA check) -
+  // used by /login, /private-login, and /verify-2fa, so the three don't
+  // each hand-roll the same cookie-setting block with a chance to drift.
+  function issueSessionCookies(res, accountId) {
+    const at = issueAccessToken(accountId);
+    const rt = issueRefreshToken(accountId);
+    const csrf = randomCsrfToken();
+    res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+    res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 });
+    res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+    return at;
+  }
+
+  // Checks a submitted TOTP or backup code against the account, consuming a
+  // backup code if that's what matched (each works once). Returns true/false.
+  async function verifyTwoFactorCode(account, code) {
+    const twoFactor = require('../utils/twoFactor');
+    if (!code || !account?.twoFactorSecret) return false;
+    const secret = twoFactor.decryptSecret(account.id, account.twoFactorSecret);
+    if (twoFactor.verifyTotp(secret, code)) return true;
+    if (!account.twoFactorBackupCodes) return false;
+    try {
+      const hashed = JSON.parse(account.twoFactorBackupCodes);
+      const remaining = await twoFactor.consumeBackupCode(hashed, code);
+      if (!remaining) return false;
+      await prisma.appAccount.update({ where: { id: account.id }, data: { twoFactorBackupCodes: JSON.stringify(remaining) } });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function generateUniqueAccountUuid() {
     const tryGenerate = () => {
       try {
@@ -269,7 +301,10 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       }
 
       const account = await prisma.appAccount.findUnique({ where: { uuid } });
-      if (!account) {
+      if (!account || !account.passwordHash) {
+        // No passwordHash covers OIDC-only accounts (created via
+        // /oidc/callback with no password set) - same "Invalid credentials"
+        // response as a wrong uuid, not a 500 from bcrypt rejecting a null hash.
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 
@@ -286,13 +321,17 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
 
       prisma.appAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } }).catch(() => {});
 
-      // Set access/refresh and CSRF cookies
-      const at = issueAccessToken(account.id);
-      const rt = issueRefreshToken(account.id);
-      const csrf = randomCsrfToken();
-      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
-      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 });
-      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+      // 2FA gate - password alone isn't enough for this account. Issue a
+      // one-shot pending challenge (see server/utils/twoFactor.js for why
+      // this is deliberately NOT a JWT) instead of real session cookies;
+      // the client completes the login via POST /verify-2fa.
+      if (account.twoFactorEnabled) {
+        const twoFactor = require('../utils/twoFactor');
+        const pendingToken = twoFactor.createPendingChallenge(account.id);
+        return res.json({ requiresTwoFactor: true, pendingToken });
+      }
+
+      const at = issueSessionCookies(res, account.id);
       return res.json({
         message: 'Login successful',
         token: at,
@@ -326,13 +365,18 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       // Use DEFAULT_ACCOUNT_ID for private instances
       const accountId = DEFAULT_ACCOUNT_ID;
 
-      // Set access/refresh and CSRF cookies
-      const at = issueAccessToken(accountId);
-      const rt = issueRefreshToken(accountId);
-      const csrf = randomCsrfToken();
-      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
-      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 });
-      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 });
+      // 2FA gate - same pending-challenge design as /login above. The env-
+      // var credential check has no AppAccount row involved, but the
+      // resolved accountId still points at a real row that can carry a
+      // 2FA secret, so the check works the same way from here on.
+      const account = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { twoFactorEnabled: true } });
+      if (account?.twoFactorEnabled) {
+        const twoFactor = require('../utils/twoFactor');
+        const pendingToken = twoFactor.createPendingChallenge(accountId);
+        return res.json({ requiresTwoFactor: true, pendingToken });
+      }
+
+      issueSessionCookies(res, accountId);
 
       return res.json({
         message: 'Login successful',
@@ -341,6 +385,155 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
     } catch (error) {
       console.error('Private login error:', error);
       return responseUtils.internalError(res, String(error && error.message || error));
+    }
+  });
+
+  // POST /verify-2fa { pendingToken, code } - completes a login that was
+  // paused by the 2FA gate in /login or /private-login above. Consumes the
+  // pending token (one-shot) and, on a valid TOTP/backup code, issues the
+  // real session cookies exactly like a non-2FA login would have.
+  router.post('/verify-2fa', async (req, res) => {
+    try {
+      const { pendingToken, code } = req.body || {};
+      if (!pendingToken || !code) {
+        return responseUtils.badRequest(res, 'pendingToken and code are required');
+      }
+      const twoFactor = require('../utils/twoFactor');
+      const accountId = twoFactor.consumePendingChallenge(pendingToken);
+      if (!accountId) {
+        return res.status(401).json({ message: 'This login attempt has expired - sign in again' });
+      }
+      const account = await prisma.appAccount.findUnique({ where: { id: accountId } });
+      if (!account || account.disabled) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+      const ok = await verifyTwoFactorCode(account, code);
+      if (!ok) {
+        return res.status(400).json({ message: 'Incorrect code' });
+      }
+
+      prisma.appAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } }).catch(() => {});
+      const at = issueSessionCookies(res, account.id);
+      return res.json({
+        message: 'Login successful',
+        token: at,
+        account: { id: account.id, uuid: account.uuid || null, email: account.email || null },
+      });
+    } catch (error) {
+      console.error('2FA verification error:', error);
+      return responseUtils.internalError(res, String(error && error.message || error));
+    }
+  });
+
+  // Finishes a login for an already-resolved account (created/matched by
+  // /oidc/callback below) - checks disabled + the same 2FA gate every other
+  // login path respects, then either issues a real session or hands back a
+  // pending-2FA redirect. Returns a path to send the browser to next.
+  async function completeOidcLogin(res, account) {
+    if (account.disabled) {
+      return '/login?oidcError=' + encodeURIComponent('This account has been disabled');
+    }
+    if (account.twoFactorEnabled) {
+      const twoFactor = require('../utils/twoFactor');
+      const pendingToken = twoFactor.createPendingChallenge(account.id);
+      return '/login?otp=' + encodeURIComponent(pendingToken);
+    }
+    prisma.appAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } }).catch(() => {});
+    issueSessionCookies(res, account.id);
+    return '/';
+  }
+
+  // GET /oidc/config - lets the login page know whether to show the SSO
+  // button at all, without needing the env vars client-side.
+  router.get('/oidc/config', async (req, res) => {
+    const oidc = require('../utils/oidc');
+    return res.json({ configured: oidc.isConfigured(), displayName: oidc.displayName() });
+  });
+
+  // GET /oidc/start - real browser navigation (not fetch/JSON): redirects
+  // straight to the provider's own login page.
+  router.get('/oidc/start', async (req, res) => {
+    try {
+      const oidc = require('../utils/oidc');
+      if (!oidc.isConfigured()) return res.status(400).json({ message: 'OIDC is not configured' });
+      const { authorizationUrl } = await oidc.startAuthorization();
+      return res.redirect(authorizationUrl);
+    } catch (error) {
+      console.error('OIDC start error:', error);
+      return res.redirect('/login?oidcError=' + encodeURIComponent(error?.message || 'Failed to start SSO login'));
+    }
+  });
+
+  // GET /oidc/callback - where the provider redirects back to. Resolves or
+  // creates the AppAccount (public mode) / logs into DEFAULT_ACCOUNT_ID
+  // (private mode), then redirects into the app or back to /login with
+  // either an error or a pending-2FA token.
+  router.get('/oidc/callback', async (req, res) => {
+    try {
+      const oidc = require('../utils/oidc');
+      if (!oidc.isConfigured()) {
+        return res.redirect('/login?oidcError=' + encodeURIComponent('OIDC is not configured'));
+      }
+      const { code, state, error: providerError } = req.query || {};
+      if (providerError) {
+        return res.redirect('/login?oidcError=' + encodeURIComponent(String(providerError)));
+      }
+
+      const { sub, email, name, emailVerified } = await oidc.handleCallback(code, state);
+      let account;
+
+      if (INSTANCE_TYPE !== 'public') {
+        // Private mode: one admin account. OIDC_ALLOWED_EMAILS (if set) is
+        // the only extra gate - otherwise any identity the provider itself
+        // authenticates may sign in, same trust boundary as SSO-gating this
+        // app via a reverse proxy.
+        if (!oidc.isEmailAllowedForPrivateMode(email)) {
+          return res.redirect('/login?oidcError=' + encodeURIComponent('This identity is not allowed to sign in'));
+        }
+        account = await prisma.appAccount.findUnique({ where: { id: DEFAULT_ACCOUNT_ID } });
+        if (!account) {
+          return res.redirect('/login?oidcError=' + encodeURIComponent('Account not found'));
+        }
+        if (account.oidcSubject !== sub) {
+          account = await prisma.appAccount.update({ where: { id: DEFAULT_ACCOUNT_ID }, data: { oidcSubject: sub } });
+        }
+      } else {
+        account = await prisma.appAccount.findUnique({ where: { oidcSubject: sub } });
+        if (!account && email) {
+          // Auto-link onto an existing account with a matching, verified
+          // email - no separate "link my account" UI to build for this.
+          const byEmail = await prisma.appAccount.findUnique({ where: { email } });
+          if (byEmail && emailVerified) {
+            account = await prisma.appAccount.update({
+              where: { id: byEmail.id },
+              data: { oidcSubject: sub, linkedProvider: byEmail.linkedProvider || 'oidc' },
+            });
+          }
+        }
+        if (!account) {
+          // uuid: null, same as the stremio-login/nuvio-login account-
+          // creation paths above - it's only meaningful for the uuid+
+          // password /login flow, and this account has no password to go
+          // with it either way. Multiple accounts can share uuid: null
+          // (NULL isn't unique-constrained against itself).
+          account = await prisma.appAccount.create({
+            data: {
+              uuid: null,
+              email: email || null,
+              displayName: name || null,
+              oidcSubject: sub,
+              linkedProvider: 'oidc',
+              sync: JSON.stringify({ enabled: false, frequency: '0' }),
+            },
+          });
+        }
+      }
+
+      const redirectTo = await completeOidcLogin(res, account);
+      return res.redirect(redirectTo);
+    } catch (error) {
+      console.error('OIDC callback error:', error);
+      return res.redirect('/login?oidcError=' + encodeURIComponent(error?.message || 'Sign-in failed'));
     }
   });
 
