@@ -1972,9 +1972,11 @@ class ApiClient {
     });
   }
 
-  // SlickTrax reactions (👍/❤️/👎) - feeds /recommendations scoring, see
+  // SlickTrax reactions (😊/😞) - feeds /recommendations scoring, see
   // server/utils/recommendationEngine.js's computeSignedAdjustments.
-  async setReaction(itemId: string, itemType: 'movie' | 'series', reaction: 'like' | 'love' | 'dislike', itemName?: string, poster?: string | null) {
+  // Deliberately binary, not a 3-tier like/love/dislike - see
+  // server/utils/titleFeedback.js's REACTIONS comment for why.
+  async setReaction(itemId: string, itemType: 'movie' | 'series', reaction: 'happy' | 'sad', itemName?: string, poster?: string | null) {
     return this.fetch<{ reaction: string }>('/discover/react', {
       method: 'POST',
       body: JSON.stringify({ itemId, itemType, reaction, itemName, poster }),
@@ -1985,7 +1987,7 @@ class ApiClient {
   }
   async getReactions(ids: string[]) {
     const qs = ids.length ? `?ids=${ids.map(encodeURIComponent).join(',')}` : '';
-    return this.fetch<{ reactions: Record<string, 'like' | 'love' | 'dislike'> }>(`/discover/reactions${qs}`);
+    return this.fetch<{ reactions: Record<string, 'happy' | 'sad'> }>(`/discover/reactions${qs}`);
   }
 
   // SlickTrax personal ratings (1-10) - season omitted/0 = overall (the only

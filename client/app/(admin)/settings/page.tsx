@@ -1136,13 +1136,13 @@ export default function SettingsPage() {
               </SettingRow>
 
               <SettingRow
-                label="Reactions & ratings"
-                description="👍/❤️/👎 and a personal 1-10 rating (with independent per-season ratings for shows) on the detail modal. These aren't just decorative - they feed what SlickTrax recommends, boosting titles similar to what you liked/rated well and suppressing ones similar to what you disliked."
+                label="Reactions"
+                description="😊/😞 on the detail modal. Not just decorative - it feeds what SlickTrax recommends, boosting titles similar to what you reacted happy to and suppressing ones similar to what you didn't like."
               >
                 <ToggleSwitch
                   enabled={syncSettings.enableReactions !== false}
                   onChange={async (v) => { await handleSaveSetting('enableReactions' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
-                  label="Toggle reactions and ratings"
+                  label="Toggle reactions"
                 />
               </SettingRow>
 
