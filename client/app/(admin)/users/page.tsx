@@ -89,6 +89,31 @@ export default function UsersPage() {
   // for why this is a separate fetch from users/groups.
   const [nowPlaying, setNowPlaying] = useState<MetricsData['nowPlaying']>([]);
 
+  // Proactive "these might be the same person" banner (see
+  // server/utils/userMerge.js's getAllMergeCandidates) - the per-user
+  // version of this only ever showed up if you happened to open one of the
+  // two users' own detail pages; this surfaces it without needing to
+  // already suspect anything. Fetched once on load, separately from
+  // users/groups - a failure here shouldn't block the page.
+  const [mergeCandidatePairs, setMergeCandidatePairs] = useState<Array<{ userA: { id: string; username: string }; userB: { id: string; username: string } }>>([]);
+  const [dismissingMergePair, setDismissingMergePair] = useState<string | null>(null);
+  useEffect(() => {
+    api.getMergeCandidates().then((r) => setMergeCandidatePairs(r.pairs)).catch(() => {});
+  }, []);
+  const handleDismissMergePair = async (userAId: string, userBId: string) => {
+    const pairKey = `${userAId}::${userBId}`;
+    setDismissingMergePair(pairKey);
+    try {
+      await api.dismissMerge(userAId, userBId);
+      setMergeCandidatePairs((prev) => prev.filter((p) => !(p.userA.id === userAId && p.userB.id === userBId)));
+      toast.success('Won\'t suggest merging these two again');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to dismiss suggestion');
+    } finally {
+      setDismissingMergePair(null);
+    }
+  };
+
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -428,6 +453,34 @@ export default function UsersPage() {
           not a recolor. UserCard itself is completely unchanged either way. */}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      {/* Proactive duplicate-account banner - see the mergeCandidatePairs
+          state/effect above. Same underlying signal as the per-user banner
+          on a user's own detail page, just surfaced without needing to
+          already suspect anything. */}
+      {mergeCandidatePairs.length > 0 && (
+        <div className="mb-5 space-y-2">
+          {mergeCandidatePairs.map((pair) => {
+            const pairKey = `${pair.userA.id}::${pair.userB.id}`;
+            return (
+              <Card key={pairKey} padding="md" className="flex items-center gap-3 flex-wrap">
+                <ExclamationTriangleIcon className="w-5 h-5 text-warning shrink-0" />
+                <p className="text-sm text-default flex-1 min-w-0">
+                  <Link href={`/users/${pair.userA.id}`} className="font-medium hover:text-primary transition-colors">{pair.userA.username}</Link>
+                  {' '}and{' '}
+                  <Link href={`/users/${pair.userB.id}`} className="font-medium hover:text-primary transition-colors">{pair.userB.username}</Link>
+                  {' '}share the same email on different providers - same person?
+                </p>
+                <Button variant="ghost" size="sm" onClick={() => handleDismissMergePair(pair.userA.id, pair.userB.id)} isLoading={dismissingMergePair === pairKey}>
+                  Not the same person
+                </Button>
+                <Link href={`/users/${pair.userA.id}`}>
+                  <Button variant="secondary" size="sm">Review</Button>
+                </Link>
+              </Card>
+            );
+          })}
+        </div>
+      )}
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Users"
