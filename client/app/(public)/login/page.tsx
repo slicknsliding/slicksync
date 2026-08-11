@@ -17,6 +17,7 @@ import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { PasswordToggleButton } from '@/components/ui/Input';
 import { api } from '@/lib/api';
 import { useUserAuth, UserAuthProvider } from '@/lib/hooks/useUserAuth';
+import { useIsTV } from '@/lib/hooks/useIsTV';
 
 type LoginMode = 'user' | 'admin';
 
@@ -24,6 +25,7 @@ function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { login: userLogin, loginNuvio, isAuthenticated } = useUserAuth();
+  const isTV = useIsTV();
 
   // Mode state
   const initialMode = (searchParams.get('mode') as LoginMode) || 'user';
@@ -959,6 +961,26 @@ function LoginContent() {
                         )}
                       </button>
 
+                      {/* TV only: scan with a phone instead of fighting a
+                          D-pad remote with window.open() or the manual code
+                          below. */}
+                      {isTV && oauthLink && !isExpired && (
+                        <div className="flex flex-col items-center gap-2 pt-2">
+                          <div className="p-3 rounded-xl" style={{ background: 'white' }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={`/api/qr?data=${encodeURIComponent(oauthLink)}`}
+                              alt="Scan with your phone to open Stremio"
+                              width={160}
+                              height={160}
+                            />
+                          </div>
+                          <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
+                            Scan with your phone to continue
+                          </p>
+                        </div>
+                      )}
+
                       {/* Manual code UI reused */}
                       <div className="text-center space-y-3 pt-2">
                         <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
@@ -1048,6 +1070,25 @@ function LoginContent() {
                           </>
                         )}
                       </button>
+
+                      {/* TV only: scan with a phone instead of typing the
+                          code below with a D-pad remote. */}
+                      {isTV && nuvioWebUrl && nuvioTimeLeft !== 'Expired' && (
+                        <div className="flex flex-col items-center gap-2 pt-2">
+                          <div className="p-3 rounded-xl" style={{ background: 'white' }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={`/api/qr?data=${encodeURIComponent(nuvioWebUrl)}`}
+                              alt="Scan with your phone to open Nuvio"
+                              width={160}
+                              height={160}
+                            />
+                          </div>
+                          <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
+                            Scan with your phone to continue
+                          </p>
+                        </div>
+                      )}
 
                       <div className="text-center space-y-3 pt-2">
                         <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
@@ -1190,6 +1231,25 @@ function LoginContent() {
                       </>
                     )}
                   </button>
+
+                  {/* TV only: scan with a phone instead of fighting a D-pad
+                      remote with window.open() or the manual code below. */}
+                  {isTV && oauthLink && !isExpired && (
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="p-3 rounded-xl" style={{ background: 'white' }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/api/qr?data=${encodeURIComponent(oauthLink)}`}
+                          alt="Scan with your phone to open Stremio"
+                          width={160}
+                          height={160}
+                        />
+                      </div>
+                      <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
+                        Scan with your phone to continue
+                      </p>
+                    </div>
+                  )}
 
                   {/* Divider */}
                   <div className="flex items-center gap-3">
@@ -1334,6 +1394,25 @@ function LoginContent() {
                       </>
                     )}
                   </button>
+
+                  {/* TV only: scan with a phone instead of typing the code
+                      below with a D-pad remote. */}
+                  {isTV && nuvioWebUrl && nuvioTimeLeft !== 'Expired' && (
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="p-3 rounded-xl" style={{ background: 'white' }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/api/qr?data=${encodeURIComponent(nuvioWebUrl)}`}
+                          alt="Scan with your phone to open Nuvio"
+                          width={160}
+                          height={160}
+                        />
+                      </div>
+                      <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
+                        Scan with your phone to continue
+                      </p>
+                    </div>
+                  )}
 
                   <div className="text-center space-y-3 pt-2">
                     <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-subtle)' }}>
