@@ -340,6 +340,7 @@ export default function SettingsPage() {
           autoplayTrailerStartMuted: settings.autoplayTrailerStartMuted !== false,
           enablePosterRatings: settings.enablePosterRatings === true,
           enableReactions: settings.enableReactions !== false,
+          enableAutoThemedCatalogs: settings.enableAutoThemedCatalogs === true,
         });
 
         // Nobody has ever explicitly saved a timezone for this account - the
@@ -1121,6 +1122,17 @@ export default function SettingsPage() {
                   enabled={syncSettings.enableRecommendations !== false}
                   onChange={async (v) => { await handleSaveSetting('enableRecommendations' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
                   label="Toggle recommendations"
+                />
+              </SettingRow>
+
+              <SettingRow
+                label="Auto-generated catalogs"
+                description={'Detects a real taste cluster in your watch history (a genre, or a genre+decade combo like "90s Action") and saves it as an actual Catalog - e.g. "Your 90s Action Pack" - instead of a recommendation row that only scrolls by once. Checked daily; deleting a generated catalog stops it from coming back. Off by default.'}
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enableAutoThemedCatalogs === true}
+                  onChange={async (v) => { await handleSaveSetting('enableAutoThemedCatalogs' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle auto-generated catalogs"
                 />
               </SettingRow>
 

@@ -500,6 +500,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize addon scheduler:', err)
     }
 
+    // Schedule auto-generated themed catalogs (daily, only for accounts
+    // that opted in via Settings -> SlickTrax -> Auto-generated catalogs)
+    try {
+      const { scheduleAutoThemedCatalogs } = require('./utils/autoThemedCatalogs')
+      scheduleAutoThemedCatalogs(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize auto-themed catalogs:', err)
+    }
+
     // Schedule DB maintenance (scheduled VACUUM + opt-in watch-history
     // pruning, both off by default - operator-controlled via the
     // Superadmin panel, private/SQLite mode only)
