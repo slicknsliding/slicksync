@@ -153,6 +153,20 @@ model Addon {
   // clears it (sets back to null) off every addon that had it.
   customTag        String?
 
+  // Seasonal auto-scheduling (server/utils/addonScheduler.js) - opt-in
+  // per addon, year-agnostic recurring MM-DD window (e.g. a Halloween
+  // addon: start 10-01, end 11-01). The scheduler flips isActive to match
+  // whether "today" (account-timezone-aware, see dateUtils.js's
+  // getAccountMonthDay) falls inside the window - manually toggling
+  // isActive outside the window still works, the next scheduler tick just
+  // corrects it back. A window where start > end (by month-day ordering)
+  // wraps the year boundary (e.g. 12-01 -> 01-01 for "all of December").
+  scheduleEnabled    Boolean @default(false)
+  scheduleStartMonth Int?
+  scheduleStartDay   Int?
+  scheduleEndMonth   Int?
+  scheduleEndDay     Int?
+
   // Relationships
   groupAddons GroupAddon[]
   healthHistory AddonHealthHistory[]

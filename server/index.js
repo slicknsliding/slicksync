@@ -491,6 +491,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize SIMKL sync:', err)
     }
 
+    // Schedule seasonal addon auto-scheduling (every 6h, only for addons
+    // that opted in to scheduleEnabled - no-op query when nobody has)
+    try {
+      const { scheduleAddonScheduler } = require('./utils/addonScheduler')
+      scheduleAddonScheduler(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize addon scheduler:', err)
+    }
+
     // Schedule DB maintenance (scheduled VACUUM + opt-in watch-history
     // pruning, both off by default - operator-controlled via the
     // Superadmin panel, private/SQLite mode only)
