@@ -271,6 +271,85 @@ function applyNotInterestedPenalty(score, penalty, { maxPenaltyRatio = 0.9 } = {
   return score - cappedPenalty
 }
 
+/**
+ * SlickTrax reactions (👍/❤️/👎) and personal ratings, generalized into ONE
+ * signed adjustment: a real thumb on the scale for /recommendations'
+ * scoreByItem, not just a decorative badge on the detail modal. Positive
+ * weight boosts a title's odds of being picked as a "Because you watched X"
+ * seed (and its close neighbors' odds too); negative weight suppresses both,
+ * the mirror image of computeNotInterestedPenalties above - in fact
+ * "not interested" is exactly this same walk with a fixed negative weight,
+ * left as its own separate, unchanged function above rather than rewritten
+ * on top of this one, since it already shipped and works.
+ *
+ * Weights are in the same accumulated-seconds units as the rest of this
+ * file (BASELINE_SECONDS=600, WATCHLIST_WEIGHT_SECONDS=900 in discover.js)
+ * so a reaction/rating sits in the same scale as real watch-time and
+ * watchlist-intent signals instead of dominating or being drowned out by
+ * them. REACTION_WEIGHTS: love clearly stronger than like; dislike mirrors
+ * like's magnitude in the other direction (not love's - a dislike shouldn't
+ * need to be the STRONGEST possible signal to have real effect). Ratings
+ * convert on a line through the midpoint of the 1-10 scale (5.5) scaled so a
+ * perfect 10 lands at love's weight and a 1 lands at dislike's - a 5 or 6
+ * comes out near-zero, correctly read as "no strong opinion" rather than a
+ * mild boost or penalty.
+ */
+const REACTION_WEIGHTS = { like: 900, love: 1800, dislike: -900 }
+const RATING_SCALE = 1800 / 4.5 // so rating=10 -> +1800 (love), rating=1 -> -1800
+
+function ratingToWeight(rating) {
+  return (rating - 5.5) * RATING_SCALE
+}
+
+/**
+ * @param {Map<string, Map<string, number>>} affinity - computeItemSimilarity's output
+ * @param {Array<{ key: string, weight: number }>} signedEntries - e.g. [{ key: 'movie:tt123', weight: 900 }]
+ * @param {number} decay - how much of a neighbor's affinity weight carries over, same shape/default as computeNotInterestedPenalties
+ * @returns {Map<string, number>} candidateKey -> signed adjustment (direct entries included at full weight)
+ */
+function computeSignedAdjustments(affinity, signedEntries, { decay = 0.5 } = {}) {
+  const adjustments = new Map()
+  for (const { key, weight } of signedEntries) {
+    if (!weight) continue
+    adjustments.set(key, (adjustments.get(key) || 0) + weight)
+    const neighbors = affinity.get(key)
+    if (!neighbors) continue
+    const sign = weight > 0 ? 1 : -1
+    for (const [neighborKey, affinityWeight] of neighbors) {
+      adjustments.set(neighborKey, (adjustments.get(neighborKey) || 0) + sign * affinityWeight * decay)
+    }
+  }
+  return adjustments
+}
+
+/** Reaction rows (server/utils/titleFeedback.js's getAllReactions) -> signed entries for computeSignedAdjustments. */
+function reactionsToSignedEntries(reactions) {
+  return reactions
+    .filter((r) => REACTION_WEIGHTS[r.reaction])
+    .map((r) => ({ key: `${r.itemType === 'series' ? 'series' : 'movie'}:${r.itemId}`, weight: REACTION_WEIGHTS[r.reaction] }))
+}
+
+/**
+ * Rating rows (getAllRatings) -> signed entries. A series can carry several
+ * rows (an overall one plus per-season ones) - averaged into ONE weight per
+ * title, since the affinity graph operates at the whole-title level, not
+ * per-season; a blended "how do you feel about this show" is the right
+ * single signal to feed it (e.g. a great overall rating pulled down by one
+ * rough season averages out, rather than the show's contribution to scoring
+ * just being whichever row happened to load last).
+ */
+function ratingsToSignedEntries(ratings) {
+  const sums = new Map() // key -> { total, count }
+  for (const r of ratings) {
+    const key = `${r.itemType === 'series' ? 'series' : 'movie'}:${r.itemId}`
+    const entry = sums.get(key) || { total: 0, count: 0 }
+    entry.total += ratingToWeight(r.rating)
+    entry.count += 1
+    sums.set(key, entry)
+  }
+  return [...sums.entries()].map(([key, { total, count }]) => ({ key, weight: total / count }))
+}
+
 module.exports = {
   buildUserVectors,
   computePairwiseOverlap,
@@ -280,4 +359,9 @@ module.exports = {
   applyNotInterestedPenalty,
   findAttributionForSeed,
   pickStrongestAttribution,
+  computeSignedAdjustments,
+  reactionsToSignedEntries,
+  ratingsToSignedEntries,
+  REACTION_WEIGHTS,
+  ratingToWeight,
 }

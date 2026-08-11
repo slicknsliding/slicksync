@@ -564,6 +564,40 @@ model NotInterestedItem {
   @@map("not_interested_items")
 }
 
+// SlickTrax reactions (👍/❤️/👎) — see schema.sqlite.prisma for the full comment.
+model TitleReaction {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String
+  reaction  String
+  itemName  String?
+  poster    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, itemId])
+  @@map("title_reactions")
+}
+
+// SlickTrax personal ratings (1-10, optionally per-season) — see schema.sqlite.prisma for the full comment.
+model TitleRating {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String
+  season    Int      @default(0)
+  rating    Int
+  itemName  String?
+  poster    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, itemId, season])
+  @@index([accountId, itemId])
+  @@map("title_ratings")
+}
+
 // Manual "watched" override — see schema.sqlite.prisma for the full comment.
 model ManualWatchOverride {
   id        String   @id @default(cuid())

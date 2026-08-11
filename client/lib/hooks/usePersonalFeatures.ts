@@ -40,6 +40,11 @@ export interface PersonalFeatures {
   // read anything about a title is enough of a judgment call that it
   // shouldn't happen until someone explicitly asks for it in Settings.
   enablePosterRatings: boolean;
+  // 👍/❤️/👎 reactions + personal 1-10 ratings on the detail modal - both
+  // feed /recommendations scoring (recommendationEngine.js's
+  // computeSignedAdjustments), not just decorative. Default true, same as
+  // Watchlist/Watched indicators/Recommendations above.
+  enableReactions: boolean;
 }
 
 const DEFAULT: PersonalFeatures = {
@@ -50,6 +55,7 @@ const DEFAULT: PersonalFeatures = {
   autoplayTrailerStartMuted: true,
   rpdbEnabled: false,
   enablePosterRatings: false,
+  enableReactions: true,
 };
 
 // One in-flight promise + one cached value shared across every hook
@@ -73,6 +79,7 @@ async function fetchOnce(): Promise<PersonalFeatures> {
         autoplayTrailerStartMuted: s?.autoplayTrailerStartMuted !== false,
         rpdbEnabled: !!(s?.rpdbApiKey && s.rpdbApiKey.trim()) && s?.enablePosterRatings === true,
         enablePosterRatings: s?.enablePosterRatings === true,
+        enableReactions: s?.enableReactions !== false,
       };
       inFlight = null;
       return cached;

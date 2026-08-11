@@ -339,6 +339,7 @@ export default function SettingsPage() {
           enableAutoplayTrailer: settings.enableAutoplayTrailer === true,
           autoplayTrailerStartMuted: settings.autoplayTrailerStartMuted !== false,
           enablePosterRatings: settings.enablePosterRatings === true,
+          enableReactions: settings.enableReactions !== false,
         });
 
         // Nobody has ever explicitly saved a timezone for this account - the
@@ -1131,6 +1132,17 @@ export default function SettingsPage() {
                   enabled={syncSettings.enablePosterRatings === true}
                   onChange={async (v) => { await handleSaveSetting('enablePosterRatings' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
                   label="Toggle poster ratings"
+                />
+              </SettingRow>
+
+              <SettingRow
+                label="Reactions & ratings"
+                description="👍/❤️/👎 and a personal 1-10 rating (with independent per-season ratings for shows) on the detail modal. These aren't just decorative - they feed what SlickTrax recommends, boosting titles similar to what you liked/rated well and suppressing ones similar to what you disliked."
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enableReactions !== false}
+                  onChange={async (v) => { await handleSaveSetting('enableReactions' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle reactions and ratings"
                 />
               </SettingRow>
 
