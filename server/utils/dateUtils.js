@@ -209,11 +209,42 @@ function previousMonthString(yearMonth) {
   return `${prevYear}-${String(prevMonth).padStart(2, '0')}`
 }
 
+const monthDayFormatterCache = new Map()
+
+function monthDayFormatterFor(timeZone) {
+  let formatter = monthDayFormatterCache.get(timeZone)
+  if (!formatter) {
+    try {
+      formatter = new Intl.DateTimeFormat('en-CA', { timeZone, month: '2-digit', day: '2-digit' })
+    } catch {
+      formatter = new Intl.DateTimeFormat('en-CA', { timeZone: DEFAULT_TIMEZONE, month: '2-digit', day: '2-digit' })
+    }
+    monthDayFormatterCache.set(timeZone, formatter)
+  }
+  return formatter
+}
+
+/**
+ * Returns { month, day } (both numbers, 1-indexed month) for `date` in
+ * `timeZone` - for year-agnostic recurring "is today within this seasonal
+ * window" checks (addonScheduler.js). Built from formatToParts, same
+ * "never trust the formatter's own string ordering" reasoning as
+ * getAccountMonthString above.
+ * @param {Date} [date]
+ * @param {string} [timeZone]
+ * @returns {{ month: number, day: number }}
+ */
+function getAccountMonthDay(date = new Date(), timeZone = DEFAULT_TIMEZONE) {
+  const parts = monthDayFormatterFor(timeZone).formatToParts(date).reduce((acc, p) => { acc[p.type] = p.value; return acc }, {})
+  return { month: Number(parts.month), day: Number(parts.day) }
+}
+
 module.exports = {
   getAccountDateString,
   resolveAccountTimezone,
   DEFAULT_TIMEZONE,
   getAccountMonthString,
+  getAccountMonthDay,
   getAccountDayNumber,
   monthBoundsInTimezone,
   previousMonthString,
