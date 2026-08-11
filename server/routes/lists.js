@@ -300,6 +300,78 @@ module.exports = ({ prisma, getAccountId }) => {
     }
   });
 
+  // GET /api/lists/simkl-users — managed users in this account who've linked
+  // a personal SIMKL account (Users page > user detail > "Link SIMKL"), for
+  // the Import-from-SIMKL / Export-to-SIMKL user picker. SIMKL has no named
+  // Custom Lists API (see server/utils/simklLists.js) so both flows act on a
+  // specific user's Plan to Watch, not an account-wide list - hence the
+  // picker instead of a single implicit source.
+  router.get('/simkl-users', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const users = await prisma.user.findMany({
+        where: { accountId, simklAccessToken: { not: null } },
+        select: { id: true, username: true, avatarUrl: true, colorIndex: true },
+        orderBy: { username: 'asc' },
+      });
+      res.json(users);
+    } catch (e) {
+      console.error('Error listing SIMKL-linked users:', e);
+      res.status(500).json({ error: 'Failed to list SIMKL-linked users' });
+    }
+  });
+
+  // POST /api/lists/import-simkl — create a catalog from a linked user's
+  // SIMKL Plan to Watch. { userId, name? }
+  router.post('/import-simkl', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const userId = String(req.body?.userId || '').trim();
+      if (!userId) return res.status(400).json({ error: 'userId is required' });
+      const linkedUser = await prisma.user.findFirst({ where: { id: userId, accountId } });
+      if (!linkedUser) return res.status(404).json({ error: 'User not found' });
+
+      const { importSimklWatchlist } = require('../utils/simklLists');
+      const result = await importSimklWatchlist(prisma, linkedUser);
+      if (result.items.length === 0) {
+        return res.status(422).json({ error: `${linkedUser.username}'s SIMKL Plan to Watch is empty (or none of it resolved to an IMDb id)` });
+      }
+
+      const name = (req.body?.name || '').trim() || result.name;
+      const list = await prisma.customList.create({
+        data: { accountId, name, itemsJson: JSON.stringify(result.items) },
+      });
+      res.status(201).json({ ...shape(list), totalAvailable: result.totalAvailable });
+    } catch (e) {
+      console.error('Error importing SIMKL Plan to Watch:', e);
+      res.status(400).json({ error: e?.message || 'Failed to import from SIMKL' });
+    }
+  });
+
+  // POST /api/lists/:id/export-simkl — add this catalog's items to a linked
+  // user's SIMKL Plan to Watch. { userId }
+  router.post('/:id/export-simkl', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
+      if (!existing) return res.status(404).json({ error: 'List not found' });
+      const items = parseItems(existing.itemsJson);
+      if (items.length === 0) return res.status(422).json({ error: 'This catalog has no titles to export' });
+
+      const userId = String(req.body?.userId || '').trim();
+      if (!userId) return res.status(400).json({ error: 'userId is required' });
+      const linkedUser = await prisma.user.findFirst({ where: { id: userId, accountId } });
+      if (!linkedUser) return res.status(404).json({ error: 'User not found' });
+
+      const { exportListToSimklWatchlist } = require('../utils/simklLists');
+      const result = await exportListToSimklWatchlist(prisma, linkedUser, items);
+      res.json({ ...result, username: linkedUser.username });
+    } catch (e) {
+      console.error('Error exporting list to SIMKL:', e);
+      res.status(400).json({ error: e?.message || 'Failed to export to SIMKL' });
+    }
+  });
+
   // POST /api/lists/:id/export-mdblist — create a brand-new MDBList list
   // from this catalog's current items. One-way: this app can create the
   // list, but wiring it into a Stremio/Nuvio addon (e.g. AIOMetadata) as a

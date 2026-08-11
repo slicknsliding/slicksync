@@ -218,6 +218,24 @@ model AppAccount {
   // themselves - meaningless but harmless on this private deployment.
   displayName String?
 
+  // TOTP 2FA - opt-in, checked after the password/env-var check in both
+  // /login and /private-login (see server/utils/twoFactor.js for why the
+  // pending-challenge step in between never reuses the real session JWT
+  // shape). twoFactorSecret is encrypted at rest like other secrets on this
+  // model (apiKeyHash). twoFactorBackupCodes is a JSON array of bcrypt
+  // hashes, never the plaintext codes - those are shown to the user exactly
+  // once, at generation time, same treatment as the login password itself.
+  twoFactorEnabled     Boolean @default(false)
+  twoFactorSecret      String?
+  twoFactorBackupCodes String?
+
+  // OIDC/SSO - the external provider's stable subject id, set the first
+  // time this account signs in (or is created) via /api/auth/oidc/callback.
+  // See server/utils/oidc.js. Public-mode only in practice (private mode
+  // logs into DEFAULT_ACCOUNT_ID directly and doesn't need this column at
+  // all), but it lives on the shared model rather than a public-only one.
+  oidcSubject String? @unique
+
   // Relationships
   invitations Invitation[]
 

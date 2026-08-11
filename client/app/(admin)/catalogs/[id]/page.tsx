@@ -168,6 +168,14 @@ export default function ListDetailPage() {
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ name: string; slug: string | null; url: string | null; added: number | null; existing: number | null; notFound: number | null } | null>(null);
+  // Export to SIMKL - picks a linked user's Plan to Watch as the target
+  // (see server/utils/simklLists.js for why there's no named-list option).
+  const [simklUsers, setSimklUsers] = useState<Array<{ id: string; username: string; avatarUrl: string | null; colorIndex: number | null }>>([]);
+  const [simklUsersLoaded, setSimklUsersLoaded] = useState(false);
+  const [showExportSimkl, setShowExportSimkl] = useState(false);
+  const [exportSimklUserId, setExportSimklUserId] = useState('');
+  const [exportingSimkl, setExportingSimkl] = useState(false);
+  const [exportSimklResult, setExportSimklResult] = useState<{ added: number; notFound: number; existing: number; username: string } | null>(null);
   // Refresh from source - two-step (preview diff, then apply) since
   // wholesale-replacing itemsJson would silently wipe any titles added or
   // removed by hand since the original import.
@@ -251,6 +259,33 @@ export default function ListDetailPage() {
       toast.error(e?.message || 'Failed to export to MDBList');
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleOpenExportSimkl = () => {
+    setShowExportSimkl(true);
+    if (simklUsersLoaded) return;
+    api.getSimklLinkedUsers()
+      .then((users) => {
+        setSimklUsers(users);
+        if (users.length === 1) setExportSimklUserId(users[0].id);
+      })
+      .catch(() => setSimklUsers([]))
+      .finally(() => setSimklUsersLoaded(true));
+  };
+
+  const handleExportToSimkl = async () => {
+    if (!list || !exportSimklUserId) return;
+    setExportingSimkl(true);
+    try {
+      const result = await api.exportListToSimkl(list.id, exportSimklUserId);
+      setShowExportSimkl(false);
+      setExportSimklResult(result);
+      toast.success(`Added ${result.added} title${result.added !== 1 ? 's' : ''} to ${result.username}'s SIMKL Plan to Watch`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to export to SIMKL');
+    } finally {
+      setExportingSimkl(false);
     }
   };
 
@@ -498,6 +533,16 @@ export default function ListDetailPage() {
         title={list.items.length === 0 ? 'Add titles first' : undefined}
       >
         Export to MDBList
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
+        leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
+        onClick={handleOpenExportSimkl}
+        disabled={list.items.length === 0}
+        title={list.items.length === 0 ? 'Add titles first' : undefined}
+      >
+        Export to SIMKL
       </Button>
       <Button variant="danger" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setDeleting(true)}>
         Delete
@@ -777,6 +822,57 @@ export default function ListDetailPage() {
             )}
             <div className="flex justify-end pt-2">
               <Button variant="ghost" size="sm" onClick={() => setExportResult(null)}>Close</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Export to SIMKL - picks which linked user's Plan to Watch gets this
+          catalog's titles added to it (see server/utils/simklLists.js). */}
+      <Modal isOpen={showExportSimkl} onClose={() => setShowExportSimkl(false)} title="Export to SIMKL" size="sm">
+        <div className="space-y-4">
+          {simklUsersLoaded && simklUsers.length === 0 ? (
+            <p className="text-sm text-muted">
+              No users have linked a SIMKL account yet. Link one from a user&apos;s own page (Users → open a user → Link SIMKL), then come back here.
+            </p>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1.5">Add to which user&apos;s SIMKL Plan to Watch?</label>
+                <select
+                  value={exportSimklUserId}
+                  onChange={(e) => setExportSimklUserId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
+                >
+                  <option value="">Select a SIMKL-linked user…</option>
+                  {simklUsers.map((u) => (
+                    <option key={u.id} value={u.id}>{u.username}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-subtle mt-1.5">
+                  Adds this catalog&apos;s {list?.items.length || 0} title{list?.items.length !== 1 ? 's' : ''} to that user&apos;s SIMKL Plan to Watch. SIMKL doesn&apos;t expose named lists via API yet, so this is the closest equivalent — it&apos;s additive, nothing already on their SIMKL account is removed.
+                </p>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setShowExportSimkl(false)} disabled={exportingSimkl}>Cancel</Button>
+                <Button variant="primary" size="sm" onClick={handleExportToSimkl} disabled={!exportSimklUserId || exportingSimkl}>
+                  {exportingSimkl ? 'Exporting…' : 'Export'}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <Modal isOpen={!!exportSimklResult} onClose={() => setExportSimklResult(null)} title="Exported to SIMKL" size="sm">
+        {exportSimklResult && (
+          <div className="space-y-3">
+            <p className="text-sm text-default">Added to <span className="font-semibold">{exportSimklResult.username}</span>&apos;s SIMKL Plan to Watch.</p>
+            <div className="text-xs text-muted space-y-1">
+              <p>{exportSimklResult.added} added{exportSimklResult.existing ? `, ${exportSimklResult.existing} already there` : ''}{exportSimklResult.notFound ? `, ${exportSimklResult.notFound} not found on SIMKL` : ''}.</p>
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button variant="ghost" size="sm" onClick={() => setExportSimklResult(null)}>Close</Button>
             </div>
           </div>
         )}

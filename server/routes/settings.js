@@ -844,6 +844,120 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // 2FA (TOTP) - opt-in per account. See server/utils/twoFactor.js for the
+  // pending-challenge design that keeps the login-time verification step
+  // from ever looking like a real session token.
+  const twoFactor = require('../utils/twoFactor')
+
+  // GET /account-2fa - current status only, never the secret itself.
+  router.get('/account-2fa', async (req, res) => {
+    try {
+      const acc = await prisma.appAccount.findUnique({ where: { id: req.appAccountId }, select: { twoFactorEnabled: true } })
+      return res.json({ enabled: !!acc?.twoFactorEnabled })
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to read 2FA status' })
+    }
+  })
+
+  // POST /account-2fa/setup - generates a new secret + QR, does NOT persist
+  // or enable anything yet. The client must round-trip the secret back to
+  // /account-2fa/enable along with a real code from it, proving the user
+  // actually scanned/saved it, before it's turned on.
+  router.post('/account-2fa/setup', async (req, res) => {
+    try {
+      const acc = await prisma.appAccount.findUnique({ where: { id: req.appAccountId }, select: { email: true, uuid: true, twoFactorEnabled: true } })
+      if (acc?.twoFactorEnabled) return res.status(400).json({ message: '2FA is already enabled - disable it first to set up a new device' })
+      const secret = twoFactor.generateSecret()
+      const label = acc?.email || acc?.uuid || req.appAccountId
+      const url = twoFactor.otpauthUrl(secret, label)
+      const qrCodeDataUrl = await twoFactor.qrCodeDataUrl(url)
+      return res.json({ secret, otpauthUrl: url, qrCodeDataUrl })
+    } catch (e) {
+      console.error('Error starting 2FA setup:', e)
+      return res.status(500).json({ message: 'Failed to start 2FA setup' })
+    }
+  })
+
+  // POST /account-2fa/enable { secret, code } - verifies the code against
+  // the secret the client got from /setup, then persists (encrypted) and
+  // turns 2FA on. Returns the backup codes in plaintext ONCE.
+  router.post('/account-2fa/enable', async (req, res) => {
+    try {
+      const { secret, code } = req.body || {}
+      if (!secret || !code) return res.status(400).json({ message: 'secret and code are required' })
+      if (!twoFactor.verifyTotp(secret, code)) return res.status(400).json({ message: 'Incorrect code - check your authenticator app and try again' })
+
+      const backupCodes = twoFactor.generateBackupCodes()
+      const hashed = await twoFactor.hashBackupCodes(backupCodes)
+      await prisma.appAccount.update({
+        where: { id: req.appAccountId },
+        data: {
+          twoFactorEnabled: true,
+          twoFactorSecret: twoFactor.encryptSecret(req.appAccountId, secret),
+          twoFactorBackupCodes: JSON.stringify(hashed),
+        },
+      })
+      return res.json({ enabled: true, backupCodes })
+    } catch (e) {
+      console.error('Error enabling 2FA:', e)
+      return res.status(500).json({ message: 'Failed to enable 2FA' })
+    }
+  })
+
+  // POST /account-2fa/disable { code } - requires a valid TOTP or backup
+  // code, not just an active session, so a hijacked session alone can't
+  // turn off the second factor.
+  router.post('/account-2fa/disable', async (req, res) => {
+    try {
+      const { code } = req.body || {}
+      const acc = await prisma.appAccount.findUnique({ where: { id: req.appAccountId }, select: { twoFactorEnabled: true, twoFactorSecret: true, twoFactorBackupCodes: true } })
+      if (!acc?.twoFactorEnabled) return res.status(400).json({ message: '2FA is not enabled' })
+      if (!code) return res.status(400).json({ message: 'code is required' })
+
+      const secret = twoFactor.decryptSecret(req.appAccountId, acc.twoFactorSecret)
+      const validTotp = twoFactor.verifyTotp(secret, code)
+      let validBackup = false
+      if (!validTotp && acc.twoFactorBackupCodes) {
+        const hashed = JSON.parse(acc.twoFactorBackupCodes)
+        validBackup = !!(await twoFactor.consumeBackupCode(hashed, code))
+      }
+      if (!validTotp && !validBackup) return res.status(400).json({ message: 'Incorrect code' })
+
+      await prisma.appAccount.update({
+        where: { id: req.appAccountId },
+        data: { twoFactorEnabled: false, twoFactorSecret: null, twoFactorBackupCodes: null },
+      })
+      return res.json({ enabled: false })
+    } catch (e) {
+      console.error('Error disabling 2FA:', e)
+      return res.status(500).json({ message: 'Failed to disable 2FA' })
+    }
+  })
+
+  // POST /account-2fa/backup-codes { code } - same 2FA-gated pattern as
+  // disable above; invalidates every existing backup code (including
+  // unused ones) so an old leaked list stops working the moment new ones
+  // are generated.
+  router.post('/account-2fa/backup-codes', async (req, res) => {
+    try {
+      const { code } = req.body || {}
+      const acc = await prisma.appAccount.findUnique({ where: { id: req.appAccountId }, select: { twoFactorEnabled: true, twoFactorSecret: true } })
+      if (!acc?.twoFactorEnabled) return res.status(400).json({ message: '2FA is not enabled' })
+      if (!code) return res.status(400).json({ message: 'code is required' })
+
+      const secret = twoFactor.decryptSecret(req.appAccountId, acc.twoFactorSecret)
+      if (!twoFactor.verifyTotp(secret, code)) return res.status(400).json({ message: 'Incorrect code' })
+
+      const backupCodes = twoFactor.generateBackupCodes()
+      const hashed = await twoFactor.hashBackupCodes(backupCodes)
+      await prisma.appAccount.update({ where: { id: req.appAccountId }, data: { twoFactorBackupCodes: JSON.stringify(hashed) } })
+      return res.json({ backupCodes })
+    } catch (e) {
+      console.error('Error regenerating 2FA backup codes:', e)
+      return res.status(500).json({ message: 'Failed to regenerate backup codes' })
+    }
+  })
+
   // Repair addons metadata (fill missing stremioAddonId and iconUrl from manifest)
   // Scopes to current account when AUTH is enabled
   router.post('/repair-addons', async (req, res) => {

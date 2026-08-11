@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.70.0",
+    "date": "2026-08-10",
+    "title": "feat: 2FA, SSO login, SIMKL Watchlist sync, interactive API docs",
+    "features": [
+      "Optional two-factor authentication on the account login (Settings > Two-Factor Authentication): authenticator-app QR setup, 10 one-time backup codes shown once at enable time, and both disabling 2FA and regenerating backup codes require a fresh code rather than just an active session. Applies to both private-mode and public-mode login.",
+      "Optional SSO login (\"Continue with...\") alongside the existing password login, for any OIDC-compliant provider (Authentik, Authelia, Keycloak, Google, etc.) - the operator points SlickSync at their provider via env vars, no separate per-account setup. Fully additive: password login keeps working even with SSO configured, and an account's 2FA (if enabled) is still required after an SSO sign-in.",
+      "Catalogs: import a linked user's SIMKL \"Plan to Watch\" as a new catalog, and export a catalog's titles to a linked user's SIMKL Plan to Watch - SIMKL doesn't expose named Custom Lists via its API yet (confirmed against their current docs, no ETA), so this targets the closest real equivalent instead of silently doing nothing.",
+      "Settings reorganized: the SlickTrax card is now toggles only, with a new separate \"External API Keys\" card for TMDb/MDBList/RPDB/OMDb/SIMKL Client ID.",
+      "Interactive API docs (Swagger UI) at /api/docs for the external developer API (/api/ext) - try requests with your own API key directly from the browser, generated from the same route handlers documented in API.md so the two can't silently drift apart. Also documents the previously-undocumented GET /api/ext/metrics.json endpoint."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "2FA's pending-challenge state (the checkpoint between a correct password and a correct 2FA code) is a one-shot in-memory token, deliberately never a signed session JWT - the app's session-token check accepts any validly-signed token as a real login, so a JWT-shaped placeholder there would have been a genuine bypass rather than a checkpoint.",
+      "SSO account creation (public mode) auto-links onto an existing account by verified email match if one exists, otherwise creates a new passwordless account tied to that identity - same shape as the existing Stremio/Nuvio admin-login linking, no new UI needed for it.",
+      "Both 2FA and SSO were tested end-to-end against a local spec-compliant mock (real PKCE/token-exchange/JWKS-shaped flow, real Prisma DB), not yet against a real OIDC provider or a real authenticator app in production - worth a real test pass before this leaves beta."
+    ]
+  },
+  {
     "version": "1.69.0",
     "date": "2026-08-10",
     "title": "feat: SIMKL watch-tracking link (beta)",

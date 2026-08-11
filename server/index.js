@@ -192,6 +192,11 @@ app.use('/api/public-auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/public-auth/register', authLimiter);
 app.use('/api/superadmin/login', authLimiter);
+// 2FA code verification - a 6-digit TOTP is brute-forceable (1-in-a-million
+// per guess, but that's nothing without a hard cap on attempts); same
+// 20-req/15min throttle as the credential checks above.
+app.use('/api/auth/verify-2fa', authLimiter);
+app.use('/api/public-auth/verify-2fa', authLimiter);
 
 // Higher-frequency limiter for OAuth polling (device-code flow polls every few seconds)
 const pollLimiter = rateLimit({
@@ -317,6 +322,16 @@ app.use('/api/ext', externalApiRouter({
   reloadDeps: { decrypt, encrypt, getDecryptedManifestUrl, filterManifestByResources, filterManifestByCatalogs, manifestHash },
   syncGroupUsers: require('./routes/groups')({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUserToGroup, getDecryptedManifestUrl, manifestUrlHmac, decrypt, createProvider }).syncGroupUsers
 }));
+// Interactive docs for the /api/ext surface above (see server/utils/openapi.js
+// for why only that surface, not the whole app, gets a spec). Viewing the
+// docs needs no auth - same as API.md already being world-readable in the
+// public repo - actually calling an endpoint from the "Try it out" panel
+// still needs a real API key. helmet's default CSP blocks swagger-ui-dist's
+// inline bootstrap script (a known helmet/swagger-ui-express conflict), so
+// it's relaxed for this one path only.
+const swaggerUi = require('swagger-ui-express');
+const openapiSpec = require('./utils/openapi');
+app.use('/api/docs', (req, res, next) => { res.removeHeader('Content-Security-Policy'); next(); }, swaggerUi.serve, swaggerUi.setup(openapiSpec, { customSiteTitle: 'SlickSync API' }));
 app.use('/api/invitations', invitationsRouter({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assignUserToGroup }));
 app.use('/invite', invitationsRouter.createPublicRouter({ prisma, encrypt, assignUserToGroup, decrypt }));
 // Public library router (no auth required)

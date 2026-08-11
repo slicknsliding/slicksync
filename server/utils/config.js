@@ -16,6 +16,26 @@ const PRIVATE_AUTH_USERNAME = process.env.SLICKSYNC_PRIVATE_USERNAME || null;
 const PRIVATE_AUTH_PASSWORD = process.env.SLICKSYNC_PRIVATE_PASSWORD || null;
 const PRIVATE_AUTH_ENABLED = INSTANCE_TYPE !== 'public' && PRIVATE_AUTH_USERNAME && PRIVATE_AUTH_PASSWORD;
 
+// OIDC/SSO - single provider, operator-configured via env vars (the
+// self-hosted-homelab pattern: Authentik/Authelia/Keycloak/Google/etc. in
+// front of this app). Sits ALONGSIDE the password login above, never
+// replaces it - see server/utils/oidc.js for the full flow. All four of
+// these must be set for the "Continue with SSO" button to appear at all.
+const OIDC_ISSUER = (process.env.OIDC_ISSUER || '').trim() || null;
+const OIDC_CLIENT_ID = (process.env.OIDC_CLIENT_ID || '').trim() || null;
+const OIDC_CLIENT_SECRET = (process.env.OIDC_CLIENT_SECRET || '').trim() || null;
+const OIDC_REDIRECT_URI = (process.env.OIDC_REDIRECT_URI || '').trim() || null;
+const OIDC_SCOPES = (process.env.OIDC_SCOPES || 'openid profile email').trim();
+const OIDC_DISPLAY_NAME = (process.env.OIDC_DISPLAY_NAME || 'SSO').trim();
+// Optional extra gate for private mode specifically - without it, ANY
+// identity your OIDC provider successfully authenticates can sign into the
+// single private-mode admin account, same trust boundary as putting this
+// app behind an SSO-enforcing reverse proxy. Set to restrict to specific
+// verified emails from the provider's own userinfo response.
+const OIDC_ALLOWED_EMAILS = (process.env.OIDC_ALLOWED_EMAILS || '')
+  .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+const OIDC_ENABLED = !!(OIDC_ISSUER && OIDC_CLIENT_ID && OIDC_CLIENT_SECRET && OIDC_REDIRECT_URI);
+
 // Default Stremio addons that should be ignored in sync checks
 const defaultAddons = {
   names: [
@@ -83,6 +103,14 @@ module.exports = {
   PRIVATE_AUTH_ENABLED,
   PRIVATE_AUTH_USERNAME,
   PRIVATE_AUTH_PASSWORD,
+  OIDC_ENABLED,
+  OIDC_ISSUER,
+  OIDC_CLIENT_ID,
+  OIDC_CLIENT_SECRET,
+  OIDC_REDIRECT_URI,
+  OIDC_SCOPES,
+  OIDC_DISPLAY_NAME,
+  OIDC_ALLOWED_EMAILS,
   JWT_SECRET,
   DEFAULT_ACCOUNT_ID,
   DEFAULT_ACCOUNT_UUID,
