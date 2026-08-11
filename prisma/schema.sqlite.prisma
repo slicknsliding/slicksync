@@ -520,6 +520,15 @@ model CustomList {
   // one as the hero), but not DB-enforced as singular; a second pin just
   // means the client picks the most-recently-updated one to feature.
   pinned           Boolean  @default(false)
+  // Opt-in content-rating policy for this catalog (e.g. a "Kids" catalog
+  // whose contents feed a restricted group's addon catalogs) - a JSON array
+  // of OMDb "Rated" values to flag ("R","NC-17","TV-MA","TV-14","Not Rated").
+  // Null/empty = no policy (default). Deliberately a review tool, not an
+  // add-time block: GET /:id/flagged checks existing items against this on
+  // demand, since titles reach a catalog from several different entry
+  // points across the app and a hard block at every one of them would be a
+  // much larger surface to get right. See server/utils/contentRating.js.
+  blockedRatings   String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

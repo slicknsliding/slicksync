@@ -34,6 +34,7 @@ module.exports = ({ prisma, getAccountId }) => {
     lastAutoRefreshAt: list.lastAutoRefreshAt || null,
     pinned: !!list.pinned,
     shared: !!list.shared,
+    blockedRatings: require('../utils/contentRating').parseBlockedRatings(list.blockedRatings),
     isOwner: viewerAccountId === undefined ? true : list.accountId === viewerAccountId,
     createdAt: list.createdAt,
     updatedAt: list.updatedAt,
@@ -179,6 +180,9 @@ module.exports = ({ prisma, getAccountId }) => {
         data.autoRefreshFrequency = body.autoRefreshFrequency === 'weekly' ? 'weekly' : 'daily';
       }
       if ('shared' in body) data.shared = !!body.shared;
+      if ('blockedRatings' in body) {
+        data.blockedRatings = require('../utils/contentRating').serializeBlockedRatings(body.blockedRatings);
+      }
       const list = await prisma.customList.update({ where: { id: existing.id }, data });
       res.json(shape(list));
     } catch (e) {
@@ -297,6 +301,50 @@ module.exports = ({ prisma, getAccountId }) => {
     } catch (e) {
       console.error('Error suggesting catalog titles:', e);
       res.status(400).json({ error: e?.message || 'Failed to suggest titles' });
+    }
+  });
+
+  // GET /api/lists/:id/flagged — checks this catalog's CURRENT items against
+  // its OWN current blockedRatings policy (server/utils/contentRating.js).
+  // A review tool, not a live gate: run it after adding a batch of titles,
+  // or after changing the policy, to see what needs a second look. Requires
+  // an OMDb key (Settings -> External API Keys) - OMDb is the only source
+  // this app has for content/age ratings (distinct from OMDb's other job
+  // here, quality scores). Items with no items to check, or no policy set,
+  // return an empty flagged list rather than an error.
+  router.get('/:id/flagged', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
+      if (!existing) return res.status(404).json({ error: 'List not found' });
+
+      const { parseBlockedRatings, isFlagged } = require('../utils/contentRating');
+      const blockedRatings = parseBlockedRatings(existing.blockedRatings);
+      const items = parseItems(existing.itemsJson);
+      if (blockedRatings.length === 0 || items.length === 0) {
+        return res.json({ flagged: [], unknown: [], checked: 0, policy: blockedRatings });
+      }
+
+      const { resolveOmdbKey, mapLimit } = require('../utils/listImport');
+      const { fetchOmdbRatings } = require('../utils/omdb');
+      const apiKey = await resolveOmdbKey(prisma, getAccountId, req);
+      if (!apiKey) {
+        return res.status(400).json({ error: 'OMDb API key not configured (Settings -> External API Keys) - required to check content ratings' });
+      }
+
+      const results = await mapLimit(items, 8, async (item) => {
+        if (!item.id || !item.id.startsWith('tt')) return { item, rated: null };
+        const ratings = await fetchOmdbRatings(item.id, apiKey).catch(() => null);
+        return { item, rated: ratings?.rated || null };
+      });
+
+      const flagged = results.filter((r) => isFlagged(r.rated, blockedRatings)).map((r) => ({ ...r.item, rated: r.rated }));
+      const unknown = results.filter((r) => !r.rated).map((r) => r.item);
+
+      res.json({ flagged, unknown, checked: items.length, policy: blockedRatings });
+    } catch (e) {
+      console.error('Error checking catalog content ratings:', e);
+      res.status(400).json({ error: e?.message || 'Failed to check content ratings' });
     }
   });
 
