@@ -6,6 +6,7 @@ import { Dialog, DialogPanel } from '@headlessui/react';
 import { Button, SlickSyncLogo, PasswordToggleButton } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
+import { useIsTV } from '@/lib/hooks/useIsTV';
 import {
   UsersIcon,
   ArrowPathIcon,
@@ -31,6 +32,7 @@ export function CreateUserModal({
   onReconnectSuccess?: () => void;
 }) {
   const isReconnect = mode === 'reconnect';
+  const isTV = useIsTV();
   const [step, setStep] = useState<'tabs' | 'oauth' | 'details' | 'success' | 'nuvio-details' | 'nuvio-oauth'>('tabs');
   const [provider, setProvider] = useState<'stremio' | 'nuvio'>('stremio');
   const [authMethod, setAuthMethod] = useState<'credentials' | 'authKey' | 'oauth'>('oauth');
@@ -1048,6 +1050,28 @@ export function CreateUserModal({
                         </p>
                       </motion.div>
 
+                      {/* TV only: a phone camera fixes the worst part of this
+                          flow - fighting a D-pad remote with window.open() in
+                          a TV WebView browser, or copy/pasting a link with no
+                          keyboard. Scans straight to the same oauthLink a
+                          PC/mobile user would just click. */}
+                      {isTV && oauthLink && oauthStatus === 'waiting' && (
+                        <div className="mb-6 flex flex-col items-center gap-2">
+                          <div className="p-3 rounded-xl bg-white">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={`/api/qr?data=${encodeURIComponent(oauthLink)}`}
+                              alt="Scan with your phone to complete Stremio authorization"
+                              width={160}
+                              height={160}
+                            />
+                          </div>
+                          <p className="text-xs" style={{ color: 'var(--color-textMuted)' }}>
+                            Scan with your phone to continue
+                          </p>
+                        </div>
+                      )}
+
                       {/* Countdown timer */}
                       {(oauthStatus === 'waiting' || oauthStatus === 'connecting') && countdown > 0 && (
                         <div className="mb-6">
@@ -1132,6 +1156,25 @@ export function CreateUserModal({
 
                       {nuvioOauthStatus === 'waiting' && nuvioCode && (
                         <div className="mb-6 p-4 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
+                          {/* TV only: scan straight to the approval page
+                              instead of typing this code somewhere else with
+                              a D-pad remote. */}
+                          {isTV && nuvioWebUrl && (
+                            <div className="mb-4 flex flex-col items-center gap-2">
+                              <div className="p-3 rounded-xl bg-white">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={`/api/qr?data=${encodeURIComponent(nuvioWebUrl)}`}
+                                  alt="Scan with your phone to approve Nuvio"
+                                  width={160}
+                                  height={160}
+                                />
+                              </div>
+                              <p className="text-xs" style={{ color: 'var(--color-textMuted)' }}>
+                                Scan with your phone to continue
+                              </p>
+                            </div>
+                          )}
                           <p className="text-xs mb-2" style={{ color: 'var(--color-textMuted)' }}>Approval code</p>
                           <p className="text-2xl font-mono font-bold tracking-widest mb-4" style={{ color: 'var(--color-text)' }}>{nuvioCode}</p>
                           {nuvioWebUrl && (

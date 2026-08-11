@@ -44,6 +44,7 @@ function pathIsAllowlisted(path) {
     '/api/public-auth/oidc/callback', // Where the OIDC provider redirects back to - no session cookie exists yet
     '/api/auth/oidc/callback',
     '/api/public-auth/suggest-uuid',
+    '/api/qr', // QR-code rendering for TV Mode's Stremio/Nuvio OAuth linking - needed on the pre-login page too, and never carries anything sensitive (just re-renders a URL already shown/clickable elsewhere)
     '/api/ext', // External API uses API key auth (handled by externalApi router)
     '/invite', // Public invitation endpoints (request submission, status check, OAuth completion)
     '/api/public-library', // Public library endpoints (OAuth-based access)

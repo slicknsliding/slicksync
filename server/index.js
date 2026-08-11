@@ -314,6 +314,7 @@ app.use('/api/lists', listsRouter({ prisma, getAccountId }));
 app.use('/api/health', healthRouter({ prisma, getAccountId, INSTANCE_TYPE }));
 app.use('/api/superadmin', require('./routes/superadmin')({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }));
 app.use('/api/poster', postersRouter({ prisma, getAccountId }));
+app.use('/api/qr', require('./routes/qr')());
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({
   prisma,
