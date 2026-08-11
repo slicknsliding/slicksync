@@ -42,6 +42,14 @@ export default function ListsPage() {
   const [importName, setImportName] = useState('');
   const [importing, setImporting] = useState(false);
   const [coverPicker, setCoverPicker] = useState<CustomList | null>(null);
+  // SIMKL has no named-list URL to paste (see server/utils/simklLists.js) -
+  // import instead picks one of this account's SIMKL-linked users and pulls
+  // their Plan to Watch, so this needs its own picker state alongside the
+  // URL-based flow above.
+  const [simklUsers, setSimklUsers] = useState<Array<{ id: string; username: string; avatarUrl: string | null; colorIndex: number | null }>>([]);
+  const [simklUsersLoaded, setSimklUsersLoaded] = useState(false);
+  const [selectedSimklUserId, setSelectedSimklUserId] = useState('');
+  const [importingSimkl, setImportingSimkl] = useState(false);
 
   const load = useCallback(() => {
     api.getLists()
@@ -50,6 +58,17 @@ export default function ListsPage() {
       .finally(() => setLoaded(true));
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!showImport || simklUsersLoaded) return;
+    api.getSimklLinkedUsers()
+      .then((users) => {
+        setSimklUsers(users);
+        if (users.length === 1) setSelectedSimklUserId(users[0].id);
+      })
+      .catch(() => setSimklUsers([]))
+      .finally(() => setSimklUsersLoaded(true));
+  }, [showImport, simklUsersLoaded]);
 
   const handleCreate = async () => {
     const name = newName.trim();
@@ -94,6 +113,23 @@ export default function ListsPage() {
       toast.error(e?.message || 'Failed to import catalog');
     } finally {
       setImporting(false);
+    }
+  };
+
+  const handleImportSimkl = async () => {
+    if (!selectedSimklUserId) return;
+    setImportingSimkl(true);
+    try {
+      const list = await api.importListFromSimkl(selectedSimklUserId, importName.trim() || undefined);
+      setImportName('');
+      setSelectedSimklUserId('');
+      setShowImport(false);
+      toast.success(`Imported "${list.name}" (${list.items.length} title${list.items.length !== 1 ? 's' : ''})`);
+      router.push(`/catalogs/${list.id}`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to import from SIMKL');
+    } finally {
+      setImportingSimkl(false);
     }
   };
 
@@ -395,7 +431,10 @@ export default function ListsPage() {
         </div>
       </Modal>
 
-      {/* Import catalog from TMDb or MDBList - provider auto-detected from the URL. */}
+      {/* Import catalog from TMDb, MDBList, or a linked user's SIMKL Plan to
+          Watch. TMDb/MDBList are URL-based (provider auto-detected); SIMKL
+          has no named-list API yet (see server/utils/simklLists.js) so it
+          picks a linked user instead of a URL. */}
       <Modal isOpen={showImport} onClose={() => setShowImport(false)} title="Import a catalog" size="sm">
         <div className="space-y-4">
           <div>
@@ -410,12 +449,32 @@ export default function ListsPage() {
               className="w-full px-3 py-2 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
             />
             <p className="text-xs text-subtle mt-1.5">
-              Supports MDBList and TMDb lists (movies only for TMDb). Requires an API key in Settings → SlickTrax.
+              Supports MDBList and TMDb lists (movies only for TMDb). Requires an API key in Settings → External API Keys.
               This copies the list&apos;s current titles once — later changes to the source list won&apos;t appear here automatically.
             </p>
           </div>
+
+          {simklUsers.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1.5">Or import from SIMKL</label>
+              <select
+                value={selectedSimklUserId}
+                onChange={(e) => setSelectedSimklUserId(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
+              >
+                <option value="">Select a SIMKL-linked user…</option>
+                {simklUsers.map((u) => (
+                  <option key={u.id} value={u.id}>{u.username}</option>
+                ))}
+              </select>
+              <p className="text-xs text-subtle mt-1.5">
+                Pulls that user&apos;s SIMKL Plan to Watch — SIMKL doesn&apos;t expose named lists via API yet, this is the closest equivalent.
+              </p>
+            </div>
+          )}
+
           <div>
-            <label className="block text-xs font-medium text-muted mb-1.5">Name <span className="text-subtle font-normal">(optional — uses the source list&apos;s name if blank)</span></label>
+            <label className="block text-xs font-medium text-muted mb-1.5">Name <span className="text-subtle font-normal">(optional — uses the source&apos;s name if blank)</span></label>
             <input
               type="text"
               value={importName}
@@ -426,10 +485,16 @@ export default function ListsPage() {
             />
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setShowImport(false)} disabled={importing}>Cancel</Button>
-            <Button variant="primary" size="sm" onClick={handleImport} disabled={!importUrl.trim() || importing}>
-              {importing ? 'Importing…' : 'Import'}
-            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setShowImport(false)} disabled={importing || importingSimkl}>Cancel</Button>
+            {selectedSimklUserId ? (
+              <Button variant="primary" size="sm" onClick={handleImportSimkl} disabled={importingSimkl}>
+                {importingSimkl ? 'Importing…' : 'Import from SIMKL'}
+              </Button>
+            ) : (
+              <Button variant="primary" size="sm" onClick={handleImport} disabled={!importUrl.trim() || importing}>
+                {importing ? 'Importing…' : 'Import'}
+              </Button>
+            )}
           </div>
         </div>
       </Modal>

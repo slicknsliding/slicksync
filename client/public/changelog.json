@@ -1,5 +1,61 @@
 [
   {
+    "version": "1.71.0",
+    "date": "2026-08-11",
+    "title": "fix: API docs redirect loop, Airing Calendar false-success toasts, stale update-command button",
+    "features": [],
+    "bugFixes": [
+      "/api/docs (the interactive API docs added in 1.70.0) was stuck in an infinite redirect loop between /api/docs and /api/docs/ - a known swagger-ui-express quirk when mounted at a sub-path rather than the app root. Fixed by switching to its documented alternative (serveFiles + generateHTML) instead of the default setup() recipe.",
+      "Airing Calendar: \"Hide this episode,\" \"Stop tracking this series,\" and \"Unmute\" all showed a success toast and removed the row immediately, even when the request to the server actually failed - a real failure looked exactly like \"I hid/muted it but it came back later,\" with no error ever surfaced. All three now wait on the real result and roll the row back on failure.",
+      "The Changelog page's \"Latest\" button copied a stale, personal deploy command (a local git pull + Docker build, with one operator's own directory paths hardcoded in) to the clipboard - shipped to every self-hosted instance, not just this one. Now builds the correct pull + recreate command from the repo's own documented compose files, instance-type aware."
+    ],
+    "miscChores": [
+      "SIMKL Client ID setup in Settings now walks through the exact steps (simkl.com/settings/developer -> Developer tab -> + Add a New App -> Client ID) instead of just linking the page and hoping it's self-explanatory.",
+      "Catalogs' SIMKL import/export picker text corrected to reference the new \"External API Keys\" Settings section instead of the old combined SlickTrax card."
+    ]
+  },
+  {
+    "version": "1.70.0",
+    "date": "2026-08-10",
+    "title": "feat: 2FA, SSO login, SIMKL Watchlist sync, interactive API docs",
+    "features": [
+      "Optional two-factor authentication on the account login (Settings > Two-Factor Authentication): authenticator-app QR setup, 10 one-time backup codes shown once at enable time, and both disabling 2FA and regenerating backup codes require a fresh code rather than just an active session. Applies to both private-mode and public-mode login.",
+      "Optional SSO login (\"Continue with...\") alongside the existing password login, for any OIDC-compliant provider (Authentik, Authelia, Keycloak, Google, etc.) - the operator points SlickSync at their provider via env vars, no separate per-account setup. Fully additive: password login keeps working even with SSO configured, and an account's 2FA (if enabled) is still required after an SSO sign-in.",
+      "Catalogs: import a linked user's SIMKL \"Plan to Watch\" as a new catalog, and export a catalog's titles to a linked user's SIMKL Plan to Watch - SIMKL doesn't expose named Custom Lists via its API yet (confirmed against their current docs, no ETA), so this targets the closest real equivalent instead of silently doing nothing.",
+      "Settings reorganized: the SlickTrax card is now toggles only, with a new separate \"External API Keys\" card for TMDb/MDBList/RPDB/OMDb/SIMKL Client ID.",
+      "Interactive API docs (Swagger UI) at /api/docs for the external developer API (/api/ext) - try requests with your own API key directly from the browser, generated from the same route handlers documented in API.md so the two can't silently drift apart. Also documents the previously-undocumented GET /api/ext/metrics.json endpoint."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "2FA's pending-challenge state (the checkpoint between a correct password and a correct 2FA code) is a one-shot in-memory token, deliberately never a signed session JWT - the app's session-token check accepts any validly-signed token as a real login, so a JWT-shaped placeholder there would have been a genuine bypass rather than a checkpoint.",
+      "SSO account creation (public mode) auto-links onto an existing account by verified email match if one exists, otherwise creates a new passwordless account tied to that identity - same shape as the existing Stremio/Nuvio admin-login linking, no new UI needed for it.",
+      "Both 2FA and SSO were tested end-to-end against a local spec-compliant mock (real PKCE/token-exchange/JWKS-shaped flow, real Prisma DB), not yet against a real OIDC provider or a real authenticator app in production - worth a real test pass before this leaves beta."
+    ]
+  },
+  {
+    "version": "1.69.0",
+    "date": "2026-08-10",
+    "title": "feat: SIMKL watch-tracking link (beta)",
+    "features": [
+      "Any Stremio/Nuvio user can now optionally link their own SIMKL account from their user page (\"Link SIMKL\" - PIN-based, no password ever touches SlickSync). Bidirectional: pulls SIMKL's watch history to fill the blind spot when a Nuvio account has delegated its own native tracking to SIMKL (Nuvio Settings > Tracking), and pushes SlickSync's already-unified watch record (Nuvio+Stremio+usenet) out to SIMKL so it mirrors everything watched regardless of provider - the same value the removed Trakt integration had, without the Trakt free-tier one-connected-app limit that got it pulled (confirmed still in effect; SIMKL has no equivalent limit, which is why this is SIMKL and not a Trakt retry).",
+      "Settings > SIMKL Client ID: bring your own app registration instead of depending on the instance's SIMKL_CLIENT_ID env var, same per-account-key-first pattern as the TMDb/MDBList/OMDb keys already use."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Marked (beta) deliberately: the pull side (auth, /sync/activities, /sync/all-items) is built against Simkl's documented API and should be solid. The push side's exact payload shape for watched_at on /sync/history isn't confirmed by Simkl's public docs (only a GET-side query param was documented) - it's sent on the same assumption most Trakt-compatible sync tools in this space make, but needs a real connected account to confirm timestamps land correctly rather than just \"watched now\"."
+    ]
+  },
+  {
+    "version": "1.68.42",
+    "date": "2026-08-10",
+    "title": "feat: Vault \"Rotate Now\" - one flow instead of two",
+    "features": [
+      "Vault entries with a Dashboard URL now have a \"Rotate Now\" action (right-click/long-press menu) that opens the provider's dashboard and this entry's edit form together, instead of two separate steps. Arriving at an entry via an expiry alert's link now also shows a one-tap \"Get the new value from the provider\" banner right inside the edit form for the same reason - the expiry Discord alert itself now says \"Rotate now\" instead of the generic \"Fix now\" for this specific case."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.68.40",
     "date": "2026-08-08",
     "title": "fix: critical - assigning a user to a group crashed with 'prisma is not defined'",

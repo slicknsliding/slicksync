@@ -436,10 +436,12 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           enableAutoplayTrailer: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableAutoplayTrailer === 'boolean') ? syncCfg.enableAutoplayTrailer : false,
           autoplayTrailerStartMuted: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.autoplayTrailerStartMuted === 'boolean') ? syncCfg.autoplayTrailerStartMuted : true,
           enablePosterRatings: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enablePosterRatings === 'boolean') ? syncCfg.enablePosterRatings : false,
+          enableReactions: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableReactions === 'boolean') ? syncCfg.enableReactions : true,
           tmdbApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.tmdbApiKey === 'string') ? syncCfg.tmdbApiKey : '',
           mdblistApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.mdblistApiKey === 'string') ? syncCfg.mdblistApiKey : '',
           rpdbApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.rpdbApiKey === 'string') ? syncCfg.rpdbApiKey : '',
           omdbApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.omdbApiKey === 'string') ? syncCfg.omdbApiKey : '',
+          simklClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.simklClientId === 'string') ? syncCfg.simklClientId : '',
         }
 
         return res.json(response)
@@ -479,14 +481,16 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           enableAutoplayTrailer: typeof syncCfg.enableAutoplayTrailer === 'boolean' ? syncCfg.enableAutoplayTrailer : false,
           autoplayTrailerStartMuted: typeof syncCfg.autoplayTrailerStartMuted === 'boolean' ? syncCfg.autoplayTrailerStartMuted : true,
           enablePosterRatings: typeof syncCfg.enablePosterRatings === 'boolean' ? syncCfg.enablePosterRatings : false,
+          enableReactions: typeof syncCfg.enableReactions === 'boolean' ? syncCfg.enableReactions : true,
           tmdbApiKey: typeof syncCfg.tmdbApiKey === 'string' ? syncCfg.tmdbApiKey : '',
           mdblistApiKey: typeof syncCfg.mdblistApiKey === 'string' ? syncCfg.mdblistApiKey : '',
           rpdbApiKey: typeof syncCfg.rpdbApiKey === 'string' ? syncCfg.rpdbApiKey : '',
           omdbApiKey: typeof syncCfg.omdbApiKey === 'string' ? syncCfg.omdbApiKey : '',
+          simklClientId: typeof syncCfg.simklClientId === 'string' ? syncCfg.simklClientId : '',
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnMosaic: false, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnMosaic: false, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -494,7 +498,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnMosaic, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnMosaic, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -566,6 +570,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           enableAutoplayTrailer: enableAutoplayTrailer !== undefined ? !!enableAutoplayTrailer : (typeof baseCfg.enableAutoplayTrailer === 'boolean' ? baseCfg.enableAutoplayTrailer : false),
           autoplayTrailerStartMuted: autoplayTrailerStartMuted !== undefined ? !!autoplayTrailerStartMuted : (typeof baseCfg.autoplayTrailerStartMuted === 'boolean' ? baseCfg.autoplayTrailerStartMuted : true),
           enablePosterRatings: enablePosterRatings !== undefined ? !!enablePosterRatings : (typeof baseCfg.enablePosterRatings === 'boolean' ? baseCfg.enablePosterRatings : false),
+          enableReactions: enableReactions !== undefined ? !!enableReactions : (typeof baseCfg.enableReactions === 'boolean' ? baseCfg.enableReactions : true),
           // Optional TMDb API key for the cast/crew deep-dive. Trimmed; empty
           // string clears it (falls back to the TMDB_API_KEY env var, if any).
           tmdbApiKey: tmdbApiKey !== undefined ? (typeof tmdbApiKey === 'string' ? tmdbApiKey.trim() : '') : (baseCfg.tmdbApiKey || ''),
@@ -581,6 +586,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // above it, so one account's key/quota isn't silently shared by
           // every other account on this instance.
           omdbApiKey: omdbApiKey !== undefined ? (typeof omdbApiKey === 'string' ? normalizeOmdbApiKey(omdbApiKey.trim()) : '') : (baseCfg.omdbApiKey || ''),
+          simklClientId: simklClientId !== undefined ? (typeof simklClientId === 'string' ? simklClientId.trim() : '') : (baseCfg.simklClientId || ''),
         }
 
         try {
@@ -630,10 +636,12 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (enableAutoplayTrailer !== undefined) partial.enableAutoplayTrailer = !!enableAutoplayTrailer
       if (autoplayTrailerStartMuted !== undefined) partial.autoplayTrailerStartMuted = !!autoplayTrailerStartMuted
       if (enablePosterRatings !== undefined) partial.enablePosterRatings = !!enablePosterRatings
+      if (enableReactions !== undefined) partial.enableReactions = !!enableReactions
       if (tmdbApiKey !== undefined) partial.tmdbApiKey = typeof tmdbApiKey === 'string' ? tmdbApiKey.trim() : ''
       if (mdblistApiKey !== undefined) partial.mdblistApiKey = typeof mdblistApiKey === 'string' ? mdblistApiKey.trim() : ''
       if (rpdbApiKey !== undefined) partial.rpdbApiKey = typeof rpdbApiKey === 'string' ? rpdbApiKey.trim() : ''
       if (omdbApiKey !== undefined) partial.omdbApiKey = typeof omdbApiKey === 'string' ? normalizeOmdbApiKey(omdbApiKey.trim()) : ''
+      if (simklClientId !== undefined) partial.simklClientId = typeof simklClientId === 'string' ? simklClientId.trim() : ''
 
       const nextCfg = { ...base, ...partial }
 
@@ -837,6 +845,120 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       return res.json({ message: 'API key revoked' })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to revoke API key' })
+    }
+  })
+
+  // 2FA (TOTP) - opt-in per account. See server/utils/twoFactor.js for the
+  // pending-challenge design that keeps the login-time verification step
+  // from ever looking like a real session token.
+  const twoFactor = require('../utils/twoFactor')
+
+  // GET /account-2fa - current status only, never the secret itself.
+  router.get('/account-2fa', async (req, res) => {
+    try {
+      const acc = await prisma.appAccount.findUnique({ where: { id: req.appAccountId }, select: { twoFactorEnabled: true } })
+      return res.json({ enabled: !!acc?.twoFactorEnabled })
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to read 2FA status' })
+    }
+  })
+
+  // POST /account-2fa/setup - generates a new secret + QR, does NOT persist
+  // or enable anything yet. The client must round-trip the secret back to
+  // /account-2fa/enable along with a real code from it, proving the user
+  // actually scanned/saved it, before it's turned on.
+  router.post('/account-2fa/setup', async (req, res) => {
+    try {
+      const acc = await prisma.appAccount.findUnique({ where: { id: req.appAccountId }, select: { email: true, uuid: true, twoFactorEnabled: true } })
+      if (acc?.twoFactorEnabled) return res.status(400).json({ message: '2FA is already enabled - disable it first to set up a new device' })
+      const secret = twoFactor.generateSecret()
+      const label = acc?.email || acc?.uuid || req.appAccountId
+      const url = twoFactor.otpauthUrl(secret, label)
+      const qrCodeDataUrl = await twoFactor.qrCodeDataUrl(url)
+      return res.json({ secret, otpauthUrl: url, qrCodeDataUrl })
+    } catch (e) {
+      console.error('Error starting 2FA setup:', e)
+      return res.status(500).json({ message: 'Failed to start 2FA setup' })
+    }
+  })
+
+  // POST /account-2fa/enable { secret, code } - verifies the code against
+  // the secret the client got from /setup, then persists (encrypted) and
+  // turns 2FA on. Returns the backup codes in plaintext ONCE.
+  router.post('/account-2fa/enable', async (req, res) => {
+    try {
+      const { secret, code } = req.body || {}
+      if (!secret || !code) return res.status(400).json({ message: 'secret and code are required' })
+      if (!twoFactor.verifyTotp(secret, code)) return res.status(400).json({ message: 'Incorrect code - check your authenticator app and try again' })
+
+      const backupCodes = twoFactor.generateBackupCodes()
+      const hashed = await twoFactor.hashBackupCodes(backupCodes)
+      await prisma.appAccount.update({
+        where: { id: req.appAccountId },
+        data: {
+          twoFactorEnabled: true,
+          twoFactorSecret: twoFactor.encryptSecret(req.appAccountId, secret),
+          twoFactorBackupCodes: JSON.stringify(hashed),
+        },
+      })
+      return res.json({ enabled: true, backupCodes })
+    } catch (e) {
+      console.error('Error enabling 2FA:', e)
+      return res.status(500).json({ message: 'Failed to enable 2FA' })
+    }
+  })
+
+  // POST /account-2fa/disable { code } - requires a valid TOTP or backup
+  // code, not just an active session, so a hijacked session alone can't
+  // turn off the second factor.
+  router.post('/account-2fa/disable', async (req, res) => {
+    try {
+      const { code } = req.body || {}
+      const acc = await prisma.appAccount.findUnique({ where: { id: req.appAccountId }, select: { twoFactorEnabled: true, twoFactorSecret: true, twoFactorBackupCodes: true } })
+      if (!acc?.twoFactorEnabled) return res.status(400).json({ message: '2FA is not enabled' })
+      if (!code) return res.status(400).json({ message: 'code is required' })
+
+      const secret = twoFactor.decryptSecret(req.appAccountId, acc.twoFactorSecret)
+      const validTotp = twoFactor.verifyTotp(secret, code)
+      let validBackup = false
+      if (!validTotp && acc.twoFactorBackupCodes) {
+        const hashed = JSON.parse(acc.twoFactorBackupCodes)
+        validBackup = !!(await twoFactor.consumeBackupCode(hashed, code))
+      }
+      if (!validTotp && !validBackup) return res.status(400).json({ message: 'Incorrect code' })
+
+      await prisma.appAccount.update({
+        where: { id: req.appAccountId },
+        data: { twoFactorEnabled: false, twoFactorSecret: null, twoFactorBackupCodes: null },
+      })
+      return res.json({ enabled: false })
+    } catch (e) {
+      console.error('Error disabling 2FA:', e)
+      return res.status(500).json({ message: 'Failed to disable 2FA' })
+    }
+  })
+
+  // POST /account-2fa/backup-codes { code } - same 2FA-gated pattern as
+  // disable above; invalidates every existing backup code (including
+  // unused ones) so an old leaked list stops working the moment new ones
+  // are generated.
+  router.post('/account-2fa/backup-codes', async (req, res) => {
+    try {
+      const { code } = req.body || {}
+      const acc = await prisma.appAccount.findUnique({ where: { id: req.appAccountId }, select: { twoFactorEnabled: true, twoFactorSecret: true } })
+      if (!acc?.twoFactorEnabled) return res.status(400).json({ message: '2FA is not enabled' })
+      if (!code) return res.status(400).json({ message: 'code is required' })
+
+      const secret = twoFactor.decryptSecret(req.appAccountId, acc.twoFactorSecret)
+      if (!twoFactor.verifyTotp(secret, code)) return res.status(400).json({ message: 'Incorrect code' })
+
+      const backupCodes = twoFactor.generateBackupCodes()
+      const hashed = await twoFactor.hashBackupCodes(backupCodes)
+      await prisma.appAccount.update({ where: { id: req.appAccountId }, data: { twoFactorBackupCodes: JSON.stringify(hashed) } })
+      return res.json({ backupCodes })
+    } catch (e) {
+      console.error('Error regenerating 2FA backup codes:', e)
+      return res.status(500).json({ message: 'Failed to regenerate backup codes' })
     }
   })
 

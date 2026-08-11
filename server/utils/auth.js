@@ -35,6 +35,14 @@ function pathIsAllowlisted(path) {
     '/api/auth/nuvio-login',
     '/api/public-auth/private-login', // Private instance username/password login
     '/api/auth/private-login', // Private instance username/password login (alt path)
+    '/api/public-auth/verify-2fa', // Completes a login paused by the 2FA gate - no session cookie exists yet at this point
+    '/api/auth/verify-2fa',
+    '/api/public-auth/oidc/config', // Tells the login page whether to show a "Continue with SSO" button - no auth required to ask
+    '/api/auth/oidc/config',
+    '/api/public-auth/oidc/start', // Browser navigation to the OIDC provider's own login page - no session cookie exists yet
+    '/api/auth/oidc/start',
+    '/api/public-auth/oidc/callback', // Where the OIDC provider redirects back to - no session cookie exists yet
+    '/api/auth/oidc/callback',
     '/api/public-auth/suggest-uuid',
     '/api/ext', // External API uses API key auth (handled by externalApi router)
     '/invite', // Public invitation endpoints (request submission, status check, OAuth completion)

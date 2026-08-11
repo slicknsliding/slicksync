@@ -18,6 +18,13 @@ model User {
   providerType       String    @default("stremio") // "stremio" | "nuvio"
   nuvioRefreshToken  String? // Encrypted Supabase refresh token
   nuvioUserId        String? // Nuvio/Supabase user UUID
+  // SIMKL is an optional supplementary link, not a peer of providerType - see
+  // the matching comment in schema.sqlite.prisma for the full reasoning.
+  simklAccessToken   String? // Encrypted, 5yr expiry, no refresh flow needed
+  simklConnectedAt   DateTime? // When this user linked their SIMKL account
+  simklSyncState     String? // JSON: last-seen /sync/activities timestamps per category
+  simklLastPullAt    DateTime? // Last successful pull sweep
+  simklLastPushAt    DateTime? // Watermark (createdAt cursor) for the push sweep
   excludedAddons     String? // JSON array of addon IDs that user has excluded
   protectedAddons    String? // JSON array of addon IDs that user has protected
   colorIndex         Int? // UI color theme index
@@ -169,6 +176,24 @@ model AppAccount {
   // read-only alongside the UUID, purely so accounts are easier to tell
   // apart than by raw UUID prefix; it's never editable from that panel.
   displayName String?
+
+  // TOTP 2FA - opt-in, checked after the password check in /login (see
+  // server/utils/twoFactor.js for why the pending-challenge step in between
+  // never reuses the real session JWT shape). twoFactorSecret is encrypted
+  // at rest like other secrets on this model (apiKeyHash). twoFactorBackupCodes
+  // is a JSON-stringified array of bcrypt hashes (kept String, not Json, for
+  // the same reason simklSyncState etc. are String here - one shape shared
+  // with the sqlite schema), never the plaintext codes - those are shown to
+  // the user exactly once, at generation time, same treatment as the login
+  // password itself.
+  twoFactorEnabled     Boolean @default(false)
+  twoFactorSecret      String?
+  twoFactorBackupCodes String?
+
+  // OIDC/SSO - the external provider's stable subject id, set the first
+  // time this account signs in (or is created) via /api/auth/oidc/callback.
+  // See server/utils/oidc.js.
+  oidcSubject String? @unique
 
   // Relationships
   invitations Invitation[]
@@ -537,6 +562,40 @@ model NotInterestedItem {
 
   @@unique([accountId, itemId])
   @@map("not_interested_items")
+}
+
+// SlickTrax reactions (👍/❤️/👎) — see schema.sqlite.prisma for the full comment.
+model TitleReaction {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String
+  reaction  String
+  itemName  String?
+  poster    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, itemId])
+  @@map("title_reactions")
+}
+
+// SlickTrax personal ratings (1-10, optionally per-season) — see schema.sqlite.prisma for the full comment.
+model TitleRating {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String
+  season    Int      @default(0)
+  rating    Int
+  itemName  String?
+  poster    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, itemId, season])
+  @@index([accountId, itemId])
+  @@map("title_ratings")
 }
 
 // Manual "watched" override — see schema.sqlite.prisma for the full comment.

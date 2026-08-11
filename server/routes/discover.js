@@ -161,11 +161,30 @@ module.exports = ({ prisma, getAccountId } = {}) => {
         prisma.notInterestedItem.findMany({ where: { accountId }, select: { itemId: true, itemType: true } }).catch(() => []),
       ])
 
+      // SlickTrax reactions/ratings - see recommendationEngine.js's
+      // computeSignedAdjustments for how these turn into scoring below.
+      const { getAllReactions, getAllRatings } = require('../utils/titleFeedback')
+      const [reactions, ratings] = await Promise.all([
+        getAllReactions(prisma, accountId).catch(() => []),
+        getAllRatings(prisma, accountId).catch(() => []),
+      ])
+      // A disliked title (whether via reaction or a low rating) should never
+      // itself be suggested, same hard exclusion "not interested" already
+      // gets - a merely-similar title is still just downweighted below, not
+      // excluded outright.
+      const dislikedIds = new Set(reactions.filter((r) => r.reaction === 'dislike').map((r) => r.itemId))
+
       // Title/type for every candidate, from whichever source names it first.
       const itemMeta = new Map()
       for (const m of movies) itemMeta.set(m.itemId, { name: m.itemName, type: 'movie' })
       for (const e of episodes) itemMeta.set(e.showId, { name: e.showName, type: 'series' })
       for (const w of watchlist) if (!itemMeta.has(w.itemId)) itemMeta.set(w.itemId, { name: w.name, type: w.itemType })
+      // A liked/loved/rated title with no other watch signal (reacted to
+      // from Discover without having watched it here, e.g. a household
+      // member watched it elsewhere) still needs to be a real candidate for
+      // its positive weight below to have anywhere to attach.
+      for (const r of reactions) if (!itemMeta.has(r.itemId)) itemMeta.set(r.itemId, { name: r.itemName, type: r.itemType })
+      for (const r of ratings) if (!itemMeta.has(r.itemId)) itemMeta.set(r.itemId, { name: r.itemName, type: r.itemType })
 
       if (itemMeta.size === 0) return res.json({ rows: [] })
 
@@ -186,7 +205,10 @@ module.exports = ({ prisma, getAccountId } = {}) => {
       // watchlisted items already are (never a seed, never a recommended
       // item), plus notInterestedKeys below feeds computeNotInterestedPenalties
       // to also downweight items merely SIMILAR to what was dismissed.
-      const notInterestedIds = new Set(notInterested.map((n) => n.itemId))
+      // dislikedIds folded in here (not a separate exclusion set) so every
+      // existing "already excluded" filter below picks it up automatically,
+      // same treatment as an explicit "not interested" mark.
+      const notInterestedIds = new Set([...notInterested.map((n) => n.itemId), ...dislikedIds])
       const notInterestedKeys = notInterested.map((n) => `${n.itemType === 'series' ? 'series' : 'movie'}:${n.itemId}`)
 
       // Real watch-time weight, decayed by age so recent viewing still
@@ -222,6 +244,7 @@ module.exports = ({ prisma, getAccountId } = {}) => {
         const {
           buildUserVectors, computeItemSimilarity, collaborativeBoost, computePairwiseOverlap,
           computeNotInterestedPenalties, applyNotInterestedPenalty,
+          computeSignedAdjustments, reactionsToSignedEntries, ratingsToSignedEntries,
         } = require('../utils/recommendationEngine')
         const { vectors: allVectors, itemMeta: vectorItemMeta } = await buildUserVectors(prisma, accountId)
         // Scoped down to just the requested user(s) - buildUserVectors has
@@ -242,6 +265,12 @@ module.exports = ({ prisma, getAccountId } = {}) => {
           // still applies even for a single-user household, so affinity is
           // still built either way - it'll just be empty for one user.
           const penalties = computeNotInterestedPenalties(affinity, notInterestedKeys)
+          // Reactions/ratings, same neighbor-walk shape as the not-interested
+          // penalty above but signed (positive for like/love/high ratings,
+          // negative for dislike/low ratings) - see recommendationEngine.js's
+          // computeSignedAdjustments for the full reasoning.
+          const reactionAdjustments = computeSignedAdjustments(affinity, reactionsToSignedEntries(reactions))
+          const ratingAdjustments = computeSignedAdjustments(affinity, ratingsToSignedEntries(ratings))
           for (const [id, score] of scoreByItem) {
             const meta = itemMeta.get(id)
             if (!meta) continue
@@ -252,6 +281,8 @@ module.exports = ({ prisma, getAccountId } = {}) => {
               if (boost > 0) next += boost * COLLAB_BOOST_WEIGHT
             }
             next = applyNotInterestedPenalty(next, penalties.get(key) || 0)
+            next += reactionAdjustments.get(key) || 0
+            next += ratingAdjustments.get(key) || 0
             if (next !== score) scoreByItem.set(id, next)
           }
         }
@@ -569,6 +600,126 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     } catch (error) {
       console.error('Error marking not interested:', error)
       res.status(500).json({ error: 'Failed to save feedback' })
+    }
+  })
+
+  // POST /api/discover/react { itemId, itemType, reaction: 'like'|'love'|'dislike', itemName?, poster? }
+  // SlickTrax feedback: feeds /recommendations scoring - see
+  // recommendationEngine.js's computeSignedAdjustments. Setting a new
+  // reaction replaces any existing one on the same item (household-wide,
+  // one opinion per title - see TitleReaction's schema comment).
+  router.post('/react', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.status(503).json({ error: 'Not available' })
+      const accountId = getAccountId(req) || 'default'
+      const { itemId, itemType, reaction, itemName, poster } = req.body || {}
+      if (!itemId || (itemType !== 'movie' && itemType !== 'series')) {
+        return res.status(400).json({ error: 'itemId and itemType (movie|series) are required' })
+      }
+      const { setReaction } = require('../utils/titleFeedback')
+      const row = await setReaction(prisma, accountId, itemId, itemType, reaction, itemName, poster)
+      res.json(row)
+    } catch (error) {
+      console.error('Error setting reaction:', error)
+      res.status(400).json({ error: error?.message || 'Failed to save reaction' })
+    }
+  })
+
+  // DELETE /api/discover/react/:itemId
+  router.delete('/react/:itemId', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.status(503).json({ error: 'Not available' })
+      const accountId = getAccountId(req) || 'default'
+      const { clearReaction } = require('../utils/titleFeedback')
+      await clearReaction(prisma, accountId, req.params.itemId)
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error clearing reaction:', error)
+      res.status(500).json({ error: 'Failed to clear reaction' })
+    }
+  })
+
+  // GET /api/discover/reactions?ids=tt1,tt2,... - batch lookup for poster-grid/modal UI state
+  router.get('/reactions', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.json({ reactions: {} })
+      const accountId = getAccountId(req) || 'default'
+      const ids = typeof req.query.ids === 'string' ? req.query.ids.split(',').filter(Boolean) : undefined
+      const { getReactionsMap } = require('../utils/titleFeedback')
+      const reactions = await getReactionsMap(prisma, accountId, ids)
+      res.json({ reactions })
+    } catch (error) {
+      console.error('Error fetching reactions:', error)
+      res.status(500).json({ error: 'Failed to fetch reactions' })
+    }
+  })
+
+  // POST /api/discover/rate { itemId, itemType, rating (1-10), season?, itemName?, poster? }
+  // season omitted = overall rating (the only kind movies use; series may
+  // carry this AND independent per-season ratings - see TitleRating's schema
+  // comment). Also feeds /recommendations scoring.
+  router.post('/rate', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.status(503).json({ error: 'Not available' })
+      const accountId = getAccountId(req) || 'default'
+      const { itemId, itemType, rating, season, itemName, poster } = req.body || {}
+      if (!itemId || (itemType !== 'movie' && itemType !== 'series')) {
+        return res.status(400).json({ error: 'itemId and itemType (movie|series) are required' })
+      }
+      const { setRating } = require('../utils/titleFeedback')
+      const row = await setRating(prisma, accountId, itemId, itemType, rating, season, itemName, poster)
+      res.json(row)
+    } catch (error) {
+      console.error('Error setting rating:', error)
+      res.status(400).json({ error: error?.message || 'Failed to save rating' })
+    }
+  })
+
+  // DELETE /api/discover/rate/:itemId?season=N
+  router.delete('/rate/:itemId', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.status(503).json({ error: 'Not available' })
+      const accountId = getAccountId(req) || 'default'
+      const { clearRating } = require('../utils/titleFeedback')
+      const season = req.query.season !== undefined ? Number(req.query.season) : undefined
+      await clearRating(prisma, accountId, req.params.itemId, season)
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error clearing rating:', error)
+      res.status(500).json({ error: 'Failed to clear rating' })
+    }
+  })
+
+  // GET /api/discover/ratings/:itemId - { "0": overallRating, "1": season1Rating, ... }
+  router.get('/ratings/:itemId', async (req, res) => {
+    try {
+      if (!prisma || !getAccountId) return res.json({ ratings: {} })
+      const accountId = getAccountId(req) || 'default'
+      const { getRatingsForItem } = require('../utils/titleFeedback')
+      const ratings = await getRatingsForItem(prisma, accountId, req.params.itemId)
+      res.json({ ratings })
+    } catch (error) {
+      console.error('Error fetching ratings:', error)
+      res.status(500).json({ error: 'Failed to fetch ratings' })
+    }
+  })
+
+  // GET /api/discover/:id/seasons?type=series - distinct season numbers
+  // (excluding season 0/specials), for the rating UI's season picker. Not
+  // needed for movies - the client never calls this for itemType 'movie'.
+  router.get('/:id/seasons', async (req, res) => {
+    try {
+      if (req.query.type !== 'series') return res.json({ seasons: [] })
+      const { fetchMetadata } = require('../utils/notify')
+      const metadata = await fetchMetadata(req.params.id, 'series', null, null)
+      const seasons = [...new Set((metadata?.allEpisodes || [])
+        .map((e) => e.season)
+        .filter((s) => Number.isInteger(s) && s > 0))]
+        .sort((a, b) => a - b)
+      res.json({ seasons })
+    } catch (error) {
+      console.error('Error fetching season list:', error)
+      res.status(500).json({ error: 'Failed to fetch seasons' })
     }
   })
 

@@ -401,6 +401,21 @@ class ApiClient {
     });
   }
 
+  async startSimklPin(id: string) {
+    return this.fetch<{ userCode: string; verificationUrl: string; expiresIn: number; pollIntervalSeconds: number }>(`/users/${id}/simkl/start`, { method: 'POST' });
+  }
+
+  async pollSimklPin(id: string, userCode: string) {
+    return this.fetch<{ status: 'pending' | 'authorized'; username?: string }>(`/users/${id}/simkl/poll`, {
+      method: 'POST',
+      body: JSON.stringify({ userCode }),
+    });
+  }
+
+  async disconnectSimkl(id: string) {
+    return this.fetch(`/users/${id}/simkl/disconnect`, { method: 'POST' });
+  }
+
   async getUserWatchTime(id: string, period: 'day' | 'week' | 'month' | 'year' = 'week') {
     return this.fetch<WatchTimeData>(`/users/${id}/watch-time?period=${period}`);
   }
@@ -983,6 +998,34 @@ class ApiClient {
   async rotateApiKey() {
     return this.fetch<{ apiKey: string }>('/settings/account-api-key', {
       method: 'PUT',
+    });
+  }
+
+  // Two-factor auth (TOTP) - opt-in, per account. See server/utils/twoFactor.js.
+  async get2faStatus() {
+    return this.fetch<{ enabled: boolean }>('/settings/account-2fa');
+  }
+  async setup2fa() {
+    return this.fetch<{ secret: string; otpauthUrl: string; qrCodeDataUrl: string }>('/settings/account-2fa/setup', {
+      method: 'POST',
+    });
+  }
+  async enable2fa(secret: string, code: string) {
+    return this.fetch<{ enabled: boolean; backupCodes: string[] }>('/settings/account-2fa/enable', {
+      method: 'POST',
+      body: JSON.stringify({ secret, code }),
+    });
+  }
+  async disable2fa(code: string) {
+    return this.fetch<{ enabled: boolean }>('/settings/account-2fa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  }
+  async regenerate2faBackupCodes(code: string) {
+    return this.fetch<{ backupCodes: string[] }>('/settings/account-2fa/backup-codes', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
     });
   }
 
@@ -1816,6 +1859,27 @@ class ApiClient {
       body: JSON.stringify({ url, name }),
     });
   }
+  // Managed users in this account who've linked a personal SIMKL account -
+  // the picker for import/export-to-SIMKL below, since SIMKL has no named
+  // Custom Lists API (see server/utils/simklLists.js): both flows act on a
+  // specific user's Plan to Watch, not an account-wide list.
+  async getSimklLinkedUsers() {
+    return this.fetch<Array<{ id: string; username: string; avatarUrl: string | null; colorIndex: number | null }>>('/lists/simkl-users');
+  }
+  // Import a linked user's SIMKL Plan to Watch into a new catalog.
+  async importListFromSimkl(userId: string, name?: string) {
+    return this.fetch<CustomList & { totalAvailable: number }>('/lists/import-simkl', {
+      method: 'POST',
+      body: JSON.stringify({ userId, name }),
+    });
+  }
+  // Add this catalog's items to a linked user's SIMKL Plan to Watch.
+  async exportListToSimkl(id: string, userId: string) {
+    return this.fetch<{ added: number; notFound: number; existing: number; username: string }>(
+      `/lists/${encodeURIComponent(id)}/export-simkl`,
+      { method: 'POST', body: JSON.stringify({ userId }) }
+    );
+  }
   // Re-pull an already-imported catalog's own source URL. Without `apply`,
   // only returns the added/removed/unchanged diff so the caller can show a
   // confirm step before this destructively replaces the catalog's items.
@@ -1906,6 +1970,42 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ itemId, itemType }),
     });
+  }
+
+  // SlickTrax reactions (👍/❤️/👎) - feeds /recommendations scoring, see
+  // server/utils/recommendationEngine.js's computeSignedAdjustments.
+  async setReaction(itemId: string, itemType: 'movie' | 'series', reaction: 'like' | 'love' | 'dislike', itemName?: string, poster?: string | null) {
+    return this.fetch<{ reaction: string }>('/discover/react', {
+      method: 'POST',
+      body: JSON.stringify({ itemId, itemType, reaction, itemName, poster }),
+    });
+  }
+  async clearReaction(itemId: string) {
+    return this.fetch<{ success: boolean }>(`/discover/react/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+  }
+  async getReactions(ids: string[]) {
+    const qs = ids.length ? `?ids=${ids.map(encodeURIComponent).join(',')}` : '';
+    return this.fetch<{ reactions: Record<string, 'like' | 'love' | 'dislike'> }>(`/discover/reactions${qs}`);
+  }
+
+  // SlickTrax personal ratings (1-10) - season omitted/0 = overall (the only
+  // kind movies use; a series may carry an overall rating AND independent
+  // per-season ratings at once).
+  async setRating(itemId: string, itemType: 'movie' | 'series', rating: number, season?: number, itemName?: string, poster?: string | null) {
+    return this.fetch<{ season: number; rating: number }>('/discover/rate', {
+      method: 'POST',
+      body: JSON.stringify({ itemId, itemType, rating, season, itemName, poster }),
+    });
+  }
+  async clearRating(itemId: string, season?: number) {
+    const qs = season !== undefined ? `?season=${season}` : '';
+    return this.fetch<{ success: boolean }>(`/discover/rate/${encodeURIComponent(itemId)}${qs}`, { method: 'DELETE' });
+  }
+  async getRatings(itemId: string) {
+    return this.fetch<{ ratings: Record<string, number> }>(`/discover/ratings/${encodeURIComponent(itemId)}`);
+  }
+  async getSeasonNumbers(itemId: string) {
+    return this.fetch<{ seasons: number[] }>(`/discover/${encodeURIComponent(itemId)}/seasons?type=series`);
   }
 
   async getUpcomingEpisodes() {
@@ -2038,6 +2138,8 @@ export interface User {
   addons?: number;
   stremioAddonsCount?: number;
   hasStremioConnection?: boolean;
+  simklConnected?: boolean;
+  simklConnectedAt?: string | null;
   colorIndex?: number;
   avatarUrl?: string | null;
   inviteCode?: string;
@@ -2332,10 +2434,12 @@ export interface SyncSettings {
   enableAutoplayTrailer?: boolean;
   autoplayTrailerStartMuted?: boolean;
   enablePosterRatings?: boolean;
+  enableReactions?: boolean;
   tmdbApiKey?: string;
   mdblistApiKey?: string;
   rpdbApiKey?: string;
   omdbApiKey?: string;
+  simklClientId?: string;
 }
 
 export interface ThemePref {

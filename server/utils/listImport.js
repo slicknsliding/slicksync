@@ -413,4 +413,4 @@ async function refreshListFromSourceForAccount(prisma, accountId, list) {
   return { items: result.items, added, removed, unchanged }
 }
 
-module.exports = { detectProvider, importFromTmdb, importFromMdblist, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, refreshListFromSourceForAccount, suggestTitlesForCatalog, MAX_IMPORT_ITEMS }
+module.exports = { detectProvider, importFromTmdb, importFromMdblist, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, resolveKeyFromSettings, refreshListFromSourceForAccount, suggestTitlesForCatalog, mapLimit, MAX_IMPORT_ITEMS }
