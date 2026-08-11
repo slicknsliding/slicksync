@@ -285,6 +285,21 @@ export default function UserDetailPage() {
     }
   };
 
+  const [isDismissingMerge, setIsDismissingMerge] = useState(false);
+  const handleDismissMerge = async () => {
+    if (!mergeCandidate) return;
+    setIsDismissingMerge(true);
+    try {
+      await api.dismissMerge(params.id as string, mergeCandidate.id);
+      setMergeCandidate(null);
+      toast.success('Won\'t suggest merging these two again');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to dismiss suggestion');
+    } finally {
+      setIsDismissingMerge(false);
+    }
+  };
+
   const handleUndoMerge = async () => {
     setIsUndoing(true);
     try {
@@ -1162,6 +1177,9 @@ export default function UserDetailPage() {
                       </div>
                       {mergeCandidate.email && <p className="text-sm text-muted truncate">{mergeCandidate.email}</p>}
                     </div>
+                    <Button variant="ghost" size="sm" onClick={handleDismissMerge} isLoading={isDismissingMerge}>
+                      Not the same person
+                    </Button>
                     <Button variant="primary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openMergeModal}>
                       Merge
                     </Button>

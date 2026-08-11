@@ -52,7 +52,90 @@ async function getMergeCandidate(prisma, userId) {
   const candidateHasSecondary = await prisma.userProviderCredential.findFirst({ where: { userId: candidate.id } })
   if (candidateHasSecondary) return null
 
+  if (await isMergeSuggestionDismissed(prisma, user.accountId, user.id, candidate.id)) return null
+
   return candidate
+}
+
+// ---- Dismissal (declined merge suggestions never come back) ---------------
+
+/** Stable pair order so a dismissal made from either side's own page covers both. */
+function sortPair(a, b) {
+  return a < b ? [a, b] : [b, a]
+}
+
+async function isMergeSuggestionDismissed(prisma, accountId, userIdA, userIdB) {
+  const [a, b] = sortPair(userIdA, userIdB)
+  const row = await prisma.dismissedMergeSuggestion.findUnique({
+    where: { accountId_userIdA_userIdB: { accountId: accountId || 'default', userIdA: a, userIdB: b } },
+  }).catch(() => null)
+  return !!row
+}
+
+/** "Not the same person" - upsert so re-dismissing an already-dismissed pair is a no-op. */
+async function dismissMergeSuggestion(prisma, accountId, userIdA, userIdB) {
+  const [a, b] = sortPair(userIdA, userIdB)
+  const accountIdValue = accountId || 'default'
+  await prisma.dismissedMergeSuggestion.upsert({
+    where: { accountId_userIdA_userIdB: { accountId: accountIdValue, userIdA: a, userIdB: b } },
+    create: { accountId: accountIdValue, userIdA: a, userIdB: b },
+    update: {},
+  })
+}
+
+/**
+ * Every not-yet-dismissed merge candidate pair across the whole account, for
+ * a proactive Users-page banner instead of only surfacing per-pair when an
+ * admin happens to open one of the two users' own detail pages. Same
+ * matching rules as getMergeCandidate (email match, different providerType,
+ * neither side already has an absorbed secondary), just computed once
+ * across every user instead of starting from one specific id.
+ * @returns {Promise<Array<{ userA: object, userB: object }>>}
+ */
+async function getAllMergeCandidates(prisma, accountId) {
+  const accountIdValue = accountId || 'default'
+  const users = await prisma.user.findMany({
+    where: { accountId: accountIdValue, email: { not: '' } },
+    select: { id: true, username: true, email: true, providerType: true, avatarUrl: true, colorIndex: true },
+  })
+  if (users.length < 2) return []
+
+  const secondaryUserIds = new Set(
+    (await prisma.userProviderCredential.findMany({
+      where: { userId: { in: users.map((u) => u.id) } },
+      select: { userId: true },
+    })).map((r) => r.userId)
+  )
+
+  const byEmail = new Map() // normalized email -> users[]
+  for (const u of users) {
+    if (secondaryUserIds.has(u.id)) continue // already absorbed a secondary - nothing left to suggest
+    const email = (u.email || '').trim().toLowerCase()
+    if (!email) continue
+    if (!byEmail.has(email)) byEmail.set(email, [])
+    byEmail.get(email).push(u)
+  }
+
+  const pairs = []
+  for (const group of byEmail.values()) {
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        if (group[i].providerType === group[j].providerType) continue // same-provider same-email isn't a merge candidate, just a coincidence
+        pairs.push([group[i], group[j]])
+      }
+    }
+  }
+  if (pairs.length === 0) return []
+
+  const dismissedRows = await prisma.dismissedMergeSuggestion.findMany({ where: { accountId: accountIdValue } }).catch(() => [])
+  const dismissedKeys = new Set(dismissedRows.map((r) => `${r.userIdA}::${r.userIdB}`))
+
+  return pairs
+    .filter(([a, b]) => {
+      const [x, y] = sortPair(a.id, b.id)
+      return !dismissedKeys.has(`${x}::${y}`)
+    })
+    .map(([userA, userB]) => ({ userA, userB }))
 }
 
 /**
@@ -373,4 +456,7 @@ async function undoMerge(prisma, survivorId, { dataDir = path.join(process.cwd()
   return { donorId, donorUsername: donor.username, donorProviderType: donor.providerType }
 }
 
-module.exports = { getMergeCandidate, getMergePreview, getUndoInfo, mergeUsers, undoMerge }
+module.exports = {
+  getMergeCandidate, getMergePreview, getUndoInfo, mergeUsers, undoMerge,
+  isMergeSuggestionDismissed, dismissMergeSuggestion, getAllMergeCandidates,
+}
