@@ -172,7 +172,7 @@ module.exports = ({ prisma, getAccountId } = {}) => {
       // itself be suggested, same hard exclusion "not interested" already
       // gets - a merely-similar title is still just downweighted below, not
       // excluded outright.
-      const dislikedIds = new Set(reactions.filter((r) => r.reaction === 'dislike').map((r) => r.itemId))
+      const dislikedIds = new Set(reactions.filter((r) => r.reaction === 'sad').map((r) => r.itemId))
 
       // Title/type for every candidate, from whichever source names it first.
       const itemMeta = new Map()
@@ -266,9 +266,10 @@ module.exports = ({ prisma, getAccountId } = {}) => {
           // still built either way - it'll just be empty for one user.
           const penalties = computeNotInterestedPenalties(affinity, notInterestedKeys)
           // Reactions/ratings, same neighbor-walk shape as the not-interested
-          // penalty above but signed (positive for like/love/high ratings,
-          // negative for dislike/low ratings) - see recommendationEngine.js's
-          // computeSignedAdjustments for the full reasoning.
+          // penalty above but signed (positive for a happy reaction/high
+          // rating, negative for sad/low ratings) - see
+          // recommendationEngine.js's computeSignedAdjustments for the full
+          // reasoning.
           const reactionAdjustments = computeSignedAdjustments(affinity, reactionsToSignedEntries(reactions))
           const ratingAdjustments = computeSignedAdjustments(affinity, ratingsToSignedEntries(ratings))
           for (const [id, score] of scoreByItem) {
@@ -603,7 +604,7 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     }
   })
 
-  // POST /api/discover/react { itemId, itemType, reaction: 'like'|'love'|'dislike', itemName?, poster? }
+  // POST /api/discover/react { itemId, itemType, reaction: 'happy'|'sad', itemName?, poster? }
   // SlickTrax feedback: feeds /recommendations scoring - see
   // recommendationEngine.js's computeSignedAdjustments. Setting a new
   // reaction replaces any existing one on the same item (household-wide,

@@ -167,7 +167,7 @@ export function MediaDetailModal({
   const effectiveFallbackRottenTomatoes = overrideItem ? null : fallbackRottenTomatoes;
   const effectiveFallbackMetacritic = overrideItem ? null : fallbackMetacritic;
 
-  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted } = usePersonalFeatures();
+  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions } = usePersonalFeatures();
   const isTV = useIsTV();
 
   // usePersonalFeatures resolves asynchronously (starts from a default of
@@ -250,11 +250,42 @@ export function MediaDetailModal({
     }
   };
 
-  // Reactions/ratings UI pulled from this modal for now (see the comment
-  // further down where it used to render) - the backend
-  // (server/utils/titleFeedback.js, recommendationEngine.js's
-  // computeSignedAdjustments, client/lib/api.ts's setReaction/setRating/etc.)
-  // is untouched, so a redesigned UI here is a quick add-back, not a rebuild.
+  // Reactions (😊/😞) - SlickTrax feedback that feeds recommendation scoring
+  // (server/utils/recommendationEngine.js's computeSignedAdjustments), not
+  // just decoration. Deliberately binary, replacing an earlier 👍/❤️/👎
+  // (like/love/dislike) version that read as clutter. Same effectiveId-scoped reset and
+  // optimistic-update-with-revert pattern as Watchlist above. Personal
+  // ratings (1-10, per-season) stay backend-only for now - no UI yet, see
+  // client/lib/api.ts's setRating/getRatings if that changes.
+  const [reaction, setReactionState] = useState<'happy' | 'sad' | null>(null);
+  const [reactionBusy, setReactionBusy] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !effectiveId || !enableReactions) return;
+    let cancelled = false;
+    setReactionState(null);
+    api.getReactions([effectiveId]).then((r) => { if (!cancelled) setReactionState(r.reactions[effectiveId] || null); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen, effectiveId, enableReactions]);
+
+  const toggleReaction = async (next: 'happy' | 'sad') => {
+    if (reactionBusy) return;
+    setReactionBusy(true);
+    const prev = reaction;
+    const willClear = reaction === next; // tapping the active reaction again clears it
+    setReactionState(willClear ? null : next); // optimistic
+    try {
+      if (willClear) {
+        await api.clearReaction(effectiveId);
+      } else {
+        await api.setReaction(effectiveId, effectiveType, next, details?.title || effectiveFallbackTitle, details?.poster || effectiveFallbackPoster || null);
+      }
+    } catch {
+      setReactionState(prev); // revert on failure
+    } finally {
+      setReactionBusy(false);
+    }
+  };
 
   // Mouse-only grab-and-drag horizontal scrolling for the Cast row, matching
   // the Dashboard's Continue Watching row. Pointer capture is deliberately
@@ -849,12 +880,39 @@ export function MediaDetailModal({
                 );
               })()}
 
-              {/* Reactions/ratings UI intentionally not (yet) here - pulled
-                  after first look, the 1-10 button row read as clutter. The
-                  backend (server/utils/titleFeedback.js,
-                  recommendationEngine.js's computeSignedAdjustments,
-                  client/lib/api.ts's setReaction/setRating/etc.) is untouched,
-                  so a redesigned UI is a quick add-back, not a rebuild. */}
+              {/* Reactions - two buttons, no legend needed. Feeds
+                  recommendation scoring (see the state block above), not
+                  just decoration. No TV-focus wiring yet (unlike the action
+                  row above) - visible and usable with a mouse/touch on PC
+                  and Mobile, just not yet D-pad-reachable on TV. */}
+              {enableReactions && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleReaction('happy')}
+                    disabled={reactionBusy}
+                    aria-label="Happy"
+                    title="Happy"
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${
+                      reaction === 'happy' ? 'bg-success/20 ring-1 ring-success' : 'bg-surface-hover hover:bg-success/10'
+                    } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
+                  >
+                    😊
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleReaction('sad')}
+                    disabled={reactionBusy}
+                    aria-label="Not happy"
+                    title="Not happy"
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${
+                      reaction === 'sad' ? 'bg-error/20 ring-1 ring-error' : 'bg-surface-hover hover:bg-error/10'
+                    } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
+                  >
+                    😞
+                  </button>
+                </div>
+              )}
 
               {details.genres && details.genres.length > 0 && (
                 <div className="flex flex-wrap gap-2">
