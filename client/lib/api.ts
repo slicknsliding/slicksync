@@ -1815,7 +1815,7 @@ class ApiClient {
       body: JSON.stringify({ name, description }),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean; blockedRatings?: string[] }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -1823,6 +1823,14 @@ class ApiClient {
   }
   async deleteList(id: string) {
     return this.fetch<{ success: boolean }>(`/lists/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  // Checks this catalog's current items against its own current
+  // blockedRatings policy (server/utils/contentRating.js) - a review tool,
+  // run on demand, not a live gate. Requires an OMDb key.
+  async getFlaggedContent(id: string) {
+    return this.fetch<{ flagged: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number; policy: string[] }>(
+      `/lists/${encodeURIComponent(id)}/flagged`
+    );
   }
   async addToList(id: string, item: { id: string; type: 'movie' | 'series'; name: string; poster?: string | null; year?: number | string | null }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items`, {
@@ -2564,6 +2572,10 @@ export interface CustomList {
   // stored - a shared catalog you don't own comes back with isOwner: false
   // and the client must hide every mutating affordance for it.
   shared: boolean;
+  // Content-rating review policy - OMDb "Rated" values to flag when
+  // checking this catalog (GET /:id/flagged), e.g. a "Kids" catalog set to
+  // flag ["R","TV-MA"]. Empty = no policy. See server/utils/contentRating.js.
+  blockedRatings: string[];
   isOwner: boolean;
   createdAt: string;
   updatedAt: string;

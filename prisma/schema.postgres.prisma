@@ -477,6 +477,8 @@ model CustomList {
   // one as the hero), but not DB-enforced as singular; a second pin just
   // means the client picks the most-recently-updated one to feature.
   pinned           Boolean  @default(false)
+  // Opt-in content-rating policy - see schema.sqlite.prisma for the full comment.
+  blockedRatings   String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
