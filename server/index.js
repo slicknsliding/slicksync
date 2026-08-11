@@ -329,9 +329,22 @@ app.use('/api/ext', externalApiRouter({
 // still needs a real API key. helmet's default CSP blocks swagger-ui-dist's
 // inline bootstrap script (a known helmet/swagger-ui-express conflict), so
 // it's relaxed for this one path only.
+//
+// swaggerUi.serve + swaggerUi.setup() (the README's default recipe) issues
+// its own internal bare-path -> trailing-slash redirect when mounted at a
+// sub-path like this instead of app root - confirmed live on betatest this
+// produces an infinite redirect LOOP (/api/docs -> /api/docs/ -> /api/docs
+// -> ...), not just a cosmetic extra hop. serveFiles()+generateHTML() is
+// swagger-ui-express's own documented alternative for exactly this
+// mounted-at-a-subpath case: it serves the page directly at the exact GET
+// route with no redirect involved at all.
 const swaggerUi = require('swagger-ui-express');
 const openapiSpec = require('./utils/openapi');
-app.use('/api/docs', (req, res, next) => { res.removeHeader('Content-Security-Policy'); next(); }, swaggerUi.serve, swaggerUi.setup(openapiSpec, { customSiteTitle: 'SlickSync API' }));
+app.use('/api/docs', (req, res, next) => { res.removeHeader('Content-Security-Policy'); next(); });
+app.use('/api/docs', swaggerUi.serveFiles(openapiSpec, {}));
+app.get('/api/docs', (req, res) => {
+  res.send(swaggerUi.generateHTML(openapiSpec, { customSiteTitle: 'SlickSync API' }));
+});
 app.use('/api/invitations', invitationsRouter({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assignUserToGroup }));
 app.use('/invite', invitationsRouter.createPublicRouter({ prisma, encrypt, assignUserToGroup, decrypt }));
 // Public library router (no auth required)
