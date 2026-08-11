@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.71.0",
+    "date": "2026-08-11",
+    "title": "fix: API docs redirect loop, Airing Calendar false-success toasts, stale update-command button",
+    "features": [],
+    "bugFixes": [
+      "/api/docs (the interactive API docs added in 1.70.0) was stuck in an infinite redirect loop between /api/docs and /api/docs/ - a known swagger-ui-express quirk when mounted at a sub-path rather than the app root. Fixed by switching to its documented alternative (serveFiles + generateHTML) instead of the default setup() recipe.",
+      "Airing Calendar: \"Hide this episode,\" \"Stop tracking this series,\" and \"Unmute\" all showed a success toast and removed the row immediately, even when the request to the server actually failed - a real failure looked exactly like \"I hid/muted it but it came back later,\" with no error ever surfaced. All three now wait on the real result and roll the row back on failure.",
+      "The Changelog page's \"Latest\" button copied a stale, personal deploy command (a local git pull + Docker build, with one operator's own directory paths hardcoded in) to the clipboard - shipped to every self-hosted instance, not just this one. Now builds the correct pull + recreate command from the repo's own documented compose files, instance-type aware."
+    ],
+    "miscChores": [
+      "SIMKL Client ID setup in Settings now walks through the exact steps (simkl.com/settings/developer -> Developer tab -> + Add a New App -> Client ID) instead of just linking the page and hoping it's self-explanatory.",
+      "Catalogs' SIMKL import/export picker text corrected to reference the new \"External API Keys\" Settings section instead of the old combined SlickTrax card."
+    ]
+  },
+  {
     "version": "1.70.0",
     "date": "2026-08-10",
     "title": "feat: 2FA, SSO login, SIMKL Watchlist sync, interactive API docs",
