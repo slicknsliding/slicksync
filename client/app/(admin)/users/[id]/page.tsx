@@ -3,7 +3,7 @@
 import { useState, useCallback, memo, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
-import { api, Addon, StremioAddon, MergeCandidate, MergePreview, MergeInfo } from '@/lib/api';
+import { api, Addon, StremioAddon, MergeCandidate, MergePreview, MergeInfo, User } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -38,6 +38,7 @@ import {
   ArrowDownTrayIcon,
   FolderIcon,
   LinkIcon,
+  MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 import { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
@@ -240,6 +241,14 @@ export default function UserDetailPage() {
   const [mergeInfo, setMergeInfo] = useState<MergeInfo | null>(null);
   const [isUndoModalOpen, setIsUndoModalOpen] = useState(false);
   const [isUndoing, setIsUndoing] = useState(false);
+  // Manual merge picker - the auto-detected suggestion above is the common
+  // case, but dismissing it (or the accounts simply not sharing an email)
+  // shouldn't dead-end merging entirely. mergeUsers/getMergePreview never
+  // checked dismissal status server-side to begin with (only the proactive
+  // suggestion itself does) - this was purely a missing UI entry point.
+  const [isMergePickerOpen, setIsMergePickerOpen] = useState(false);
+  const [mergePickerUsers, setMergePickerUsers] = useState<User[] | null>(null);
+  const [mergePickerSearch, setMergePickerSearch] = useState('');
 
   useEffect(() => {
     if (!params.id) return;
@@ -253,10 +262,16 @@ export default function UserDetailPage() {
     return () => { cancelled = true; };
   }, [params.id]);
 
-  const openMergeModal = async () => {
-    if (!mergeCandidate) return;
+  const openMergeModal = async (candidateOverride?: MergeCandidate) => {
+    // Explicit param, not just the mergeCandidate state read: setMergeCandidate
+    // right before calling this (the manual-picker path) wouldn't be visible
+    // here yet - React state updates aren't synchronous within the same
+    // handler, so reading the closure's `mergeCandidate` immediately after
+    // setting it would still see the previous (likely null) value.
+    const candidate = candidateOverride ?? mergeCandidate;
+    if (!candidate) return;
     try {
-      const preview = await api.getMergePreview(params.id as string, mergeCandidate.id);
+      const preview = await api.getMergePreview(params.id as string, candidate.id);
       setMergePreview(preview);
       setIsMergeModalOpen(true);
     } catch (err: any) {
@@ -298,6 +313,33 @@ export default function UserDetailPage() {
     } finally {
       setIsDismissingMerge(false);
     }
+  };
+
+  const openMergePicker = async () => {
+    setIsMergePickerOpen(true);
+    setMergePickerSearch('');
+    if (mergePickerUsers) return; // already loaded this visit to the page
+    try {
+      const all = await api.getUsers();
+      setMergePickerUsers(all);
+    } catch {
+      toast.error('Failed to load users');
+      setMergePickerUsers([]);
+    }
+  };
+
+  const handlePickMergeCandidate = (picked: User) => {
+    const candidate: MergeCandidate = {
+      id: picked.id,
+      username: picked.username || picked.name || picked.email || 'Unnamed user',
+      providerType: picked.providerType === 'nuvio' ? 'nuvio' : 'stremio',
+      avatarUrl: picked.avatarUrl,
+      colorIndex: picked.colorIndex,
+      email: picked.email,
+    };
+    setMergeCandidate(candidate);
+    setIsMergePickerOpen(false);
+    openMergeModal(candidate);
   };
 
   const handleUndoMerge = async () => {
@@ -1207,8 +1249,36 @@ export default function UserDetailPage() {
                     <Button variant="ghost" size="sm" onClick={handleDismissMerge} isLoading={isDismissingMerge}>
                       Not the same person
                     </Button>
-                    <Button variant="primary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openMergeModal}>
+                    <Button variant="primary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => openMergeModal()}>
                       Merge
+                    </Button>
+                  </div>
+                </Card>
+              </PageSection>
+            )}
+
+            {/* Manual merge fallback - shown once there's no active
+                auto-detected suggestion (dismissed, or the accounts never
+                shared an email to begin with) and this account hasn't
+                already absorbed a second provider. Restores an always-
+                available path to merge: dismissing the proactive banner
+                used to be a dead end with no way back short of editing the
+                database directly. */}
+            {!mergeCandidate && !mergeInfo && (
+              <PageSection className="mb-6">
+                <Card padding="lg">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-surface-hover">
+                        <LinkIcon className="w-5 h-5 text-muted" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-semibold text-default">Same person on another provider?</h3>
+                        <p className="text-sm text-muted">Merge this account with a specific Stremio or Nuvio user - works even if it was already dismissed as a suggestion.</p>
+                      </div>
+                    </div>
+                    <Button variant="secondary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openMergePicker}>
+                      Merge with another user
                     </Button>
                   </div>
                 </Card>
@@ -1841,6 +1911,74 @@ export default function UserDetailPage() {
         variant="danger"
         isLoading={isUndoing}
       />
+
+      {/* Manual merge picker - any other user, not just an auto-detected
+          same-email match. Filtered to the opposite provider client-side
+          (merge is always cross-provider); the real validation (not already
+          absorbed, not already someone else's absorbed secondary) happens
+          server-side in getMergePreview and surfaces as a toast if violated. */}
+      <Modal
+        isOpen={isMergePickerOpen}
+        onClose={() => setIsMergePickerOpen(false)}
+        title="Merge with another user"
+        description="Pick the other account to absorb into this one."
+        size="md"
+      >
+        <div className="space-y-3">
+          <div className="relative">
+            <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-subtle" />
+            <input
+              autoFocus
+              value={mergePickerSearch}
+              onChange={(e) => setMergePickerSearch(e.target.value)}
+              placeholder="Search users..."
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl focus:outline-none"
+              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+            />
+          </div>
+          <div className="max-h-80 overflow-y-auto space-y-1">
+            {mergePickerUsers === null ? (
+              <p className="text-sm text-muted py-4 text-center">Loading users...</p>
+            ) : (() => {
+              const query = mergePickerSearch.trim().toLowerCase();
+              const candidates = mergePickerUsers.filter((u) => {
+                if (u.id === params.id) return false;
+                if ((u.providerType || 'stremio') === (user?.providerType || 'stremio')) return false;
+                if (!query) return true;
+                return (u.username || '').toLowerCase().includes(query) || (u.email || '').toLowerCase().includes(query);
+              });
+              if (candidates.length === 0) {
+                return <p className="text-sm text-muted py-4 text-center">No matching {user?.providerType === 'nuvio' ? 'Stremio' : 'Nuvio'} users found.</p>;
+              }
+              return candidates.map((u) => (
+                <button
+                  key={u.id}
+                  onClick={() => handlePickMergeCandidate(u)}
+                  className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-surface-hover transition-colors text-left"
+                >
+                  <UserAvatar
+                    userId={u.id}
+                    name={u.username || u.name}
+                    email={u.email}
+                    src={u.avatarUrl ?? undefined}
+                    colorIndex={u.colorIndex ?? undefined}
+                    size="sm"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-default truncate">{u.username || u.name}</span>
+                      <Badge variant={u.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
+                        {u.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                      </Badge>
+                    </div>
+                    {u.email && <p className="text-xs text-muted truncate">{u.email}</p>}
+                  </div>
+                </button>
+              ));
+            })()}
+          </div>
+        </div>
+      </Modal>
 
       {/* Merge confirmation - shows real counts before committing, and flags
           if the two accounts are in different Groups (merge deliberately
