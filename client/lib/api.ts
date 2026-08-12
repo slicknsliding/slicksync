@@ -1836,6 +1836,21 @@ class ApiClient {
       body: JSON.stringify({ name, description }),
     });
   }
+  // Natural-language catalog building - see server/utils/nlCatalog.js.
+  // Preview never touches the database; save takes the exact items the
+  // preview already returned rather than re-running the pipeline.
+  async previewDescribedCatalog(description: string) {
+    return this.fetch<DescribedCatalogPreview>('/lists/describe-preview', {
+      method: 'POST',
+      body: JSON.stringify({ description }),
+    });
+  }
+  async saveDescribedCatalog(data: { name: string; description: string; items: CustomListItem[] }) {
+    return this.fetch<CustomList>('/lists/from-description', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
   async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean; blockedRatings?: string[] }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
@@ -2576,6 +2591,23 @@ export interface CustomListItem {
   name: string;
   poster?: string | null;
   year?: number | string | null;
+}
+
+// The structured query nlCatalog.js parsed a description into - shown back
+// to the admin as "here's what I understood" before they commit to saving.
+export interface DescribedCatalogQuery {
+  type: 'movie' | 'series' | null;
+  genres: string[];
+  yearFrom: number | null;
+  yearTo: number | null;
+  maxRuntimeMinutes: number | null;
+  keywords: string[];
+}
+export interface DescribedCatalogPreview {
+  items: CustomListItem[];
+  query: DescribedCatalogQuery;
+  usedAi: boolean;
+  mediaType: 'movie' | 'tv';
 }
 
 export interface CatalogSuggestion {
