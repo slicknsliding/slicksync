@@ -79,13 +79,20 @@ async function fetchOmdbRatings(imdbId, apiKey) {
     // Movies only in practice - OMDb returns "N/A" for virtually every TV
     // series (no theatrical release to report a gross for).
     const boxOffice = data.BoxOffice && data.BoxOffice !== 'N/A' ? data.BoxOffice : null
+    // Content/age rating (MPAA for movies - "PG-13", "R" - or TV parental
+    // guidelines - "TV-14", "TV-MA"), NOT a quality score - powers Catalogs'
+    // content-rating policy (server/utils/contentRating.js). OMDb uses both
+    // "N/A" and "Not Rated" for "no rating on file"; only "N/A" is
+    // meaningless, "Not Rated" is itself a real value someone may want to
+    // flag (unrated content is sometimes MORE explicit than an R, not less).
+    const rated = data.Rated && data.Rated !== 'N/A' ? data.Rated : null
 
-    if (!rottenTomatoes && !metacritic && !imdbRating && !boxOffice) {
+    if (!rottenTomatoes && !metacritic && !imdbRating && !boxOffice && !rated) {
       omdbCache.set(imdbId, { value: null, at: Date.now() })
       return null
     }
 
-    const result = { imdbRating, rottenTomatoes, metacritic, boxOffice }
+    const result = { imdbRating, rottenTomatoes, metacritic, boxOffice, rated }
     omdbCache.set(imdbId, { value: result, at: Date.now() })
     return result
   } catch {

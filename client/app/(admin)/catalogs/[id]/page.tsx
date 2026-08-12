@@ -24,7 +24,7 @@ import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import {
   RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon, SparklesIcon, PhotoIcon,
-  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, ArrowPathIcon, ShareIcon,
+  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, ArrowPathIcon, ShareIcon, ShieldExclamationIcon,
 } from '@heroicons/react/24/outline';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
@@ -367,6 +367,55 @@ export default function ListDetailPage() {
     }
   };
 
+  // Content-rating review policy (server/utils/contentRating.js) - a
+  // "Kids" catalog can flag mature OMDb ratings; GET /flagged checks
+  // current items against it on demand, not a live add-time gate.
+  const RATING_OPTIONS = ['PG-13', 'R', 'NC-17', 'TV-14', 'TV-MA', 'Not Rated', 'Unrated'] as const;
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
+  const [draftRatings, setDraftRatings] = useState<string[]>([]);
+  const [savingPolicy, setSavingPolicy] = useState(false);
+  const openPolicyModal = () => {
+    setDraftRatings(list?.blockedRatings || []);
+    setShowPolicyModal(true);
+  };
+  const toggleDraftRating = (rating: string) => {
+    setDraftRatings((prev) => (prev.includes(rating) ? prev.filter((r) => r !== rating) : [...prev, rating]));
+  };
+  const handleSavePolicy = async () => {
+    if (!list) return;
+    setSavingPolicy(true);
+    try {
+      const updated = await api.updateList(list.id, { blockedRatings: draftRatings });
+      setList(updated);
+      setShowPolicyModal(false);
+      toast.success(draftRatings.length ? 'Content rating policy saved' : 'Content rating policy cleared');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to save policy');
+    } finally {
+      setSavingPolicy(false);
+    }
+  };
+
+  const [checkingFlagged, setCheckingFlagged] = useState(false);
+  const [flaggedResult, setFlaggedResult] = useState<{ flagged: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number } | null>(null);
+  const handleCheckContent = async () => {
+    if (!list) return;
+    setCheckingFlagged(true);
+    try {
+      const result = await api.getFlaggedContent(list.id);
+      setFlaggedResult(result);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to check content ratings');
+    } finally {
+      setCheckingFlagged(false);
+    }
+  };
+  const handleRemoveFlagged = async (item: CustomListItem) => {
+    if (!list) return;
+    await handleRemoveItem(item);
+    setFlaggedResult((prev) => prev ? { ...prev, flagged: prev.flagged.filter((f) => f.id !== item.id) } : prev);
+  };
+
   const handleRemoveItem = async (item: CustomListItem) => {
     if (!list) return;
     const updated = { ...list, items: list.items.filter((i) => i.id !== item.id) };
@@ -523,6 +572,15 @@ export default function ListDetailPage() {
         title={list.shared ? 'Visible (read-only) to other accounts on this instance - click to stop sharing' : 'Make this catalog visible (read-only) to other accounts on this instance'}
       >
         {list.shared ? 'Shared' : 'Share'}
+      </Button>
+      <Button
+        variant={list.blockedRatings.length > 0 ? 'primary' : 'secondary'}
+        size="sm"
+        leftIcon={<ShieldExclamationIcon className="w-4 h-4" />}
+        onClick={openPolicyModal}
+        title={list.blockedRatings.length > 0 ? `Flags: ${list.blockedRatings.join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
+      >
+        {list.blockedRatings.length > 0 ? `Content Rating (${list.blockedRatings.length})` : 'Content Rating'}
       </Button>
       <Button
         variant="secondary"
@@ -873,6 +931,84 @@ export default function ListDetailPage() {
             </div>
             <div className="flex justify-end pt-2">
               <Button variant="ghost" size="sm" onClick={() => setExportSimklResult(null)}>Close</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Content rating policy - a review tool (see server/utils/
+          contentRating.js), not a live gate on adding titles. Saving just
+          sets which OMDb ratings to flag; actually checking current items
+          against it happens separately via "Check content" below. */}
+      <Modal isOpen={showPolicyModal} onClose={() => setShowPolicyModal(false)} title="Content Rating" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Flag titles rated any of the following when you check this catalog&apos;s content (below). Doesn&apos;t block adding anything - review when you want to.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {RATING_OPTIONS.map((rating) => (
+              <label key={rating} className="flex items-center gap-2 text-sm text-default cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={draftRatings.includes(rating)}
+                  onChange={() => toggleDraftRating(rating)}
+                  className="rounded"
+                />
+                {rating}
+              </label>
+            ))}
+          </div>
+          {list && list.blockedRatings.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={<ShieldExclamationIcon className="w-4 h-4" />}
+              onClick={() => { setShowPolicyModal(false); handleCheckContent(); }}
+              isLoading={checkingFlagged}
+              className="w-full"
+            >
+              Check content against saved policy
+            </Button>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setShowPolicyModal(false)} disabled={savingPolicy}>Cancel</Button>
+            <Button variant="primary" size="sm" onClick={handleSavePolicy} isLoading={savingPolicy}>
+              Save policy
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Flagged-content results - shown after "Check content", either from
+          the policy modal above or re-run any time from there. Removing a
+          flagged item here just calls the normal remove-from-catalog path. */}
+      <Modal isOpen={!!flaggedResult} onClose={() => setFlaggedResult(null)} title="Content Rating Check" size="md">
+        {flaggedResult && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted">
+              Checked {flaggedResult.checked} title{flaggedResult.checked !== 1 ? 's' : ''} against this catalog&apos;s policy.
+            </p>
+            {flaggedResult.flagged.length === 0 ? (
+              <p className="text-sm text-default">Nothing flagged.</p>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-default">{flaggedResult.flagged.length} flagged:</p>
+                {flaggedResult.flagged.map((item) => (
+                  <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg bg-surface-hover">
+                    <p className="flex-1 min-w-0 text-sm text-default truncate">{item.name}</p>
+                    <Badge variant="error" size="sm">{item.rated}</Badge>
+                    <Button variant="danger" size="sm" onClick={() => handleRemoveFlagged(item)}>Remove</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {flaggedResult.unknown.length > 0 && (
+              <p className="text-xs text-subtle">
+                {flaggedResult.unknown.length} title{flaggedResult.unknown.length !== 1 ? 's have' : ' has'} no rating on file (OMDb doesn&apos;t have one, or it hasn&apos;t been looked up) - not automatically flagged either way, worth a manual look if you want full coverage.
+              </p>
+            )}
+            <div className="flex justify-end pt-2">
+              <Button variant="ghost" size="sm" onClick={() => setFlaggedResult(null)}>Close</Button>
             </div>
           </div>
         )}

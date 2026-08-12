@@ -340,6 +340,7 @@ export default function SettingsPage() {
           autoplayTrailerStartMuted: settings.autoplayTrailerStartMuted !== false,
           enablePosterRatings: settings.enablePosterRatings === true,
           enableReactions: settings.enableReactions !== false,
+          enableAutoThemedCatalogs: settings.enableAutoThemedCatalogs === true,
         });
 
         // Nobody has ever explicitly saved a timezone for this account - the
@@ -1125,6 +1126,17 @@ export default function SettingsPage() {
               </SettingRow>
 
               <SettingRow
+                label="Auto-generated catalogs"
+                description={'Detects a real taste cluster in your watch history (a genre, or a genre+decade combo like "90s Action") and saves it as an actual Catalog - e.g. "Your 90s Action Pack" - instead of a recommendation row that only scrolls by once. Checked daily; deleting a generated catalog stops it from coming back. Off by default.'}
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enableAutoThemedCatalogs === true}
+                  onChange={async (v) => { await handleSaveSetting('enableAutoThemedCatalogs' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle auto-generated catalogs"
+                />
+              </SettingRow>
+
+              <SettingRow
                 label="Poster ratings"
                 description="Show IMDb/Rotten Tomatoes/Metacritic score badges on every poster card in Discover and Catalogs - also the master switch for RPDB's rating-embedded posters below, if you've set a key. Off by default - turn this on if you want scores visible before opening a title."
               >
@@ -1136,13 +1148,13 @@ export default function SettingsPage() {
               </SettingRow>
 
               <SettingRow
-                label="Reactions & ratings"
-                description="👍/❤️/👎 and a personal 1-10 rating (with independent per-season ratings for shows) on the detail modal. These aren't just decorative - they feed what SlickTrax recommends, boosting titles similar to what you liked/rated well and suppressing ones similar to what you disliked."
+                label="Reactions"
+                description="😊/😞 on the detail modal. Not just decorative - it feeds what SlickTrax recommends, boosting titles similar to what you reacted happy to and suppressing ones similar to what you didn't like."
               >
                 <ToggleSwitch
                   enabled={syncSettings.enableReactions !== false}
                   onChange={async (v) => { await handleSaveSetting('enableReactions' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
-                  label="Toggle reactions and ratings"
+                  label="Toggle reactions"
                 />
               </SettingRow>
 

@@ -1,9 +1,14 @@
-// SlickTrax reactions (👍/❤️/👎) and personal ratings - both household-wide
+// SlickTrax reactions (😊/😞) and personal ratings - both household-wide
 // (no userId), matching NotInterestedItem/WatchlistItem's existing scoping
 // (see server/utils/notInterested.js). Both feed recommendation scoring via
 // recommendationEngine.js's computeSignedAdjustments - see that module's own
 // comment for the weight scheme.
-const REACTIONS = new Set(['like', 'love', 'dislike'])
+//
+// Deliberately binary (happy/sad), not a 3-tier like/love/dislike - the
+// original 👍/❤️/👎 version read as clutter in practice (real feedback,
+// this session) and a plain two-state reaction needs no legend to
+// understand at a glance.
+const REACTIONS = new Set(['happy', 'sad'])
 const OVERALL_SEASON = 0
 
 function normalizeAccountId(accountId) {
