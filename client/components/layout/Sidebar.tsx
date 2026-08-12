@@ -23,7 +23,6 @@ import {
   MagnifyingGlassIcon,
   SwatchIcon,
   RectangleStackIcon,
-  BoltIcon,
 } from '@heroicons/react/24/outline';
 import { PanelSwitcher } from './PanelSwitcher';
 import { api } from '@/lib/api';
@@ -54,7 +53,6 @@ const navigationSections = [
       { name: 'Groups', href: '/groups', icon: UserGroupIcon },
       { name: 'Addons', href: '/addons', icon: PuzzlePieceIcon },
       { name: 'Vault', href: '/vault', icon: ShieldCheckIcon },
-      { name: 'Automation', href: '/automation', icon: BoltIcon },
       { name: 'Invitations', href: '/invitations', icon: EnvelopeIcon },
     ],
   },

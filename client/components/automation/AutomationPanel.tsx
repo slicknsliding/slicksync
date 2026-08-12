@@ -10,8 +10,6 @@ import {
   CheckCircleIcon,
   XCircleIcon,
 } from '@heroicons/react/24/outline';
-import { Header } from '@/components/layout/Header';
-import { PageSection } from '@/components/layout/PageContainer';
 import { Card, Button, Badge, Modal, ConfirmModal, ToggleSwitch } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
@@ -22,7 +20,12 @@ import type {
 // A rule builder for the automation engine (server/utils/automation/) - every
 // trigger/action/operator here is read live from GET /api/automation/registry
 // rather than hardcoded, so a new one shows up without touching this file.
-export default function AutomationPage() {
+//
+// Lives inside a Modal launched from the Tasks page rather than its own
+// nav-level route - this is operator tooling (same category as backups,
+// snapshots, disaster recovery kit already on that page), not a page most
+// admins need parked in the sidebar every day.
+export function AutomationPanel() {
   const [registry, setRegistry] = useState<AutomationRegistry | null>(null);
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [runs, setRuns] = useState<AutomationRun[]>([]);
@@ -102,114 +105,107 @@ export default function AutomationPage() {
   const triggerLabel = (type: string) => registry?.triggers.find((t) => t.type === type)?.label || type;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 md:px-6 py-6">
-      <Header
-        title="Automation"
-        subtitle="When something happens, do something about it - without shipping code for every combination."
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={() => setShowHistory((v) => !v)}>
-              {showHistory ? 'Hide history' : 'Run history'}
-            </Button>
-            <Button variant="primary" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setEditingRule('new')}>
-              New rule
-            </Button>
-          </div>
-        }
-      />
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <p className="text-sm text-muted">When something happens, do something about it - without shipping code for every combination.</p>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button variant="secondary" size="sm" onClick={() => setShowHistory((v) => !v)}>
+            {showHistory ? 'Hide history' : 'Run history'}
+          </Button>
+          <Button variant="primary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setEditingRule('new')}>
+            New rule
+          </Button>
+        </div>
+      </div>
 
       {showHistory && (
-        <PageSection className="mb-6">
-          <Card padding="lg">
-            <h3 className="text-base font-semibold text-default mb-3">Recent activity</h3>
-            {runs.length === 0 ? (
-              <p className="text-sm text-muted">No rules have fired yet.</p>
-            ) : (
-              <div className="space-y-2">
-                {runs.map((run) => (
-                  <div key={run.id} className="flex items-start gap-3 p-3 rounded-xl bg-surface-hover">
-                    {run.ok ? (
-                      <CheckCircleIcon className="w-5 h-5 text-success shrink-0 mt-0.5" />
-                    ) : (
-                      <XCircleIcon className="w-5 h-5 text-error shrink-0 mt-0.5" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-default">
-                        {run.ruleName}
-                        {run.triggerType.startsWith('test:') && <Badge variant="muted" size="sm" className="ml-2">Test run</Badge>}
-                      </p>
-                      <p className="text-xs text-muted mt-0.5">
-                        {run.results.map((r) => r.message).join(' · ')}
-                      </p>
-                    </div>
-                    <span className="text-xs text-subtle shrink-0">{new Date(run.createdAt).toLocaleString()}</span>
+        <Card padding="lg" className="mb-4">
+          <h3 className="text-base font-semibold text-default mb-3">Recent activity</h3>
+          {runs.length === 0 ? (
+            <p className="text-sm text-muted">No rules have fired yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {runs.map((run) => (
+                <div key={run.id} className="flex items-start gap-3 p-3 rounded-xl bg-surface-hover">
+                  {run.ok ? (
+                    <CheckCircleIcon className="w-5 h-5 text-success shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircleIcon className="w-5 h-5 text-error shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-default">
+                      {run.ruleName}
+                      {run.triggerType.startsWith('test:') && <Badge variant="muted" size="sm" className="ml-2">Test run</Badge>}
+                    </p>
+                    <p className="text-xs text-muted mt-0.5">
+                      {run.results.map((r) => r.message).join(' · ')}
+                    </p>
                   </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        </PageSection>
+                  <span className="text-xs text-subtle shrink-0">{new Date(run.createdAt).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       )}
 
-      <PageSection>
-        {loading ? (
-          <Card padding="lg"><p className="text-sm text-muted">Loading...</p></Card>
-        ) : rules.length === 0 ? (
-          <Card padding="lg">
-            <div className="text-center py-8">
-              <BoltIcon className="w-10 h-10 text-subtle mx-auto mb-3" />
-              <p className="text-default font-medium mb-1">No automation rules yet</p>
-              <p className="text-sm text-muted mb-4">e.g. &quot;when a vault credential expires, move those users to the free group.&quot;</p>
-              <Button variant="primary" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setEditingRule('new')}>
-                Create your first rule
-              </Button>
-            </div>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {rules.map((rule) => (
-              <Card key={rule.id} padding="lg">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${rule.enabled ? 'bg-primary-muted' : 'bg-surface-hover'}`}>
-                      <BoltIcon className={`w-5 h-5 ${rule.enabled ? 'text-primary' : 'text-subtle'}`} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-medium text-default truncate">{rule.name}</p>
-                      <p className="text-sm text-muted">
-                        When <span className="text-default">{triggerLabel(rule.triggerType)}</span>
-                        {rule.conditions.length > 0 && ` (${rule.conditions.length} condition${rule.conditions.length !== 1 ? 's' : ''})`}
-                        {' -> '}{rule.actions.length} action{rule.actions.length !== 1 ? 's' : ''}
-                      </p>
-                      <p className="text-xs text-subtle mt-1">
-                        {rule.lastRunAt
-                          ? <>Last fired {new Date(rule.lastRunAt).toLocaleString()} · {rule.runCount} total</>
-                          : 'Never fired yet'}
-                      </p>
-                    </div>
+      {loading ? (
+        <Card padding="lg"><p className="text-sm text-muted">Loading...</p></Card>
+      ) : rules.length === 0 ? (
+        <Card padding="lg">
+          <div className="text-center py-8">
+            <BoltIcon className="w-10 h-10 text-subtle mx-auto mb-3" />
+            <p className="text-default font-medium mb-1">No automation rules yet</p>
+            <p className="text-sm text-muted mb-4">e.g. &quot;when a vault credential expires, move those users to the free group.&quot;</p>
+            <Button variant="primary" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setEditingRule('new')}>
+              Create your first rule
+            </Button>
+          </div>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {rules.map((rule) => (
+            <Card key={rule.id} padding="lg">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${rule.enabled ? 'bg-primary-muted' : 'bg-surface-hover'}`}>
+                    <BoltIcon className={`w-5 h-5 ${rule.enabled ? 'text-primary' : 'text-subtle'}`} />
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Button variant="ghost" size="sm" isLoading={testingId === rule.id} leftIcon={<PlayIcon className="w-4 h-4" />} onClick={() => handleTest(rule)}>
-                      Test
-                    </Button>
-                    <Button variant="ghost" size="sm" leftIcon={<PencilIcon className="w-4 h-4" />} onClick={() => setEditingRule(rule)}>
-                      Edit
-                    </Button>
-                    <button
-                      onClick={() => setDeleteTarget(rule)}
-                      className="p-2 rounded-lg text-muted hover:text-error hover:bg-error-muted transition-colors"
-                      title="Delete rule"
-                    >
-                      <TrashIcon className="w-4 h-4" />
-                    </button>
-                    <ToggleSwitch checked={rule.enabled} onChange={() => handleToggleEnabled(rule, !rule.enabled)} title={`Toggle ${rule.name}`} />
+                  <div className="min-w-0">
+                    <p className="font-medium text-default truncate">{rule.name}</p>
+                    <p className="text-sm text-muted">
+                      When <span className="text-default">{triggerLabel(rule.triggerType)}</span>
+                      {rule.conditions.length > 0 && ` (${rule.conditions.length} condition${rule.conditions.length !== 1 ? 's' : ''})`}
+                      {' -> '}{rule.actions.length} action{rule.actions.length !== 1 ? 's' : ''}
+                    </p>
+                    <p className="text-xs text-subtle mt-1">
+                      {rule.lastRunAt
+                        ? <>Last fired {new Date(rule.lastRunAt).toLocaleString()} · {rule.runCount} total</>
+                        : 'Never fired yet'}
+                    </p>
                   </div>
                 </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </PageSection>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button variant="ghost" size="sm" isLoading={testingId === rule.id} leftIcon={<PlayIcon className="w-4 h-4" />} onClick={() => handleTest(rule)}>
+                    Test
+                  </Button>
+                  <Button variant="ghost" size="sm" leftIcon={<PencilIcon className="w-4 h-4" />} onClick={() => setEditingRule(rule)}>
+                    Edit
+                  </Button>
+                  <button
+                    onClick={() => setDeleteTarget(rule)}
+                    className="p-2 rounded-lg text-muted hover:text-error hover:bg-error-muted transition-colors"
+                    title="Delete rule"
+                  >
+                    <TrashIcon className="w-4 h-4" />
+                  </button>
+                  <ToggleSwitch checked={rule.enabled} onChange={() => handleToggleEnabled(rule, !rule.enabled)} title={`Toggle ${rule.name}`} />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {editingRule && registry && (
         <RuleEditorModal
