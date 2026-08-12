@@ -107,6 +107,13 @@ interface EntryFormState {
   testPort: string;
   testSsl: boolean;
   testDataCap: string;
+  // "ai" category only - the endpoint/model an entry's key talks to (see
+  // server/utils/nlCatalog.js, which reads these back out of testConfig for
+  // natural-language Catalogs). Optional: left blank, the server defaults to
+  // OpenAI's own endpoint + a small fast model - only needs filling in for a
+  // different OpenAI-compatible provider (OpenRouter, Groq, a local proxy).
+  aiBaseUrl: string;
+  aiModel: string;
   dashboardUrl: string;
   cost: string;
   costCycle: 'monthly' | 'yearly';
@@ -117,6 +124,7 @@ interface EntryFormState {
 const EMPTY_FORM: EntryFormState = {
   name: '', category: 'custom', provider: '', secretLabel: 'API Key', secret: '', secretUsername: '',
   testType: 'manual', testUrl: '', testHost: '', testPort: '', testSsl: true, testDataCap: '',
+  aiBaseUrl: '', aiModel: '',
   dashboardUrl: '', cost: '', costCycle: 'monthly', expiresAt: '', notifyDaysBefore: '3',
 };
 
@@ -130,6 +138,7 @@ function categoryFieldMode(category: VaultCategory): 'credentials' | 'indexer' |
 
 // Sensible defaults applied automatically when switching to a specialized category
 function categoryDefaults(category: VaultCategory): Partial<EntryFormState> {
+  if (category === 'ai') return { testType: 'manual', secretLabel: 'API Key' };
   switch (categoryFieldMode(category)) {
     case 'credentials':
       return { testType: category === 'nuvio' ? 'nuvio_auth' : 'stremio_auth', secretLabel: 'Password' };
@@ -357,6 +366,8 @@ function VaultPageContent() {
       testPort: cfg.port ? String(cfg.port) : '',
       testSsl: cfg.ssl ?? true,
       testDataCap: cfg.dataCapGB ? String(cfg.dataCapGB) : '',
+      aiBaseUrl: cfg.baseUrl || '',
+      aiModel: cfg.model || '',
       dashboardUrl: entry.dashboardUrl || '',
       cost: entry.cost != null ? String(entry.cost) : '',
       costCycle: entry.costCycle === 'yearly' ? 'yearly' : 'monthly',
@@ -394,6 +405,11 @@ function VaultPageContent() {
 
   const buildTestConfig = (f: EntryFormState) => {
     const mode = categoryFieldMode(f.category);
+    if (f.category === 'ai') {
+      return (f.aiBaseUrl.trim() || f.aiModel.trim())
+        ? { baseUrl: f.aiBaseUrl.trim() || undefined, model: f.aiModel.trim() || undefined }
+        : undefined;
+    }
     if (mode === 'indexer') {
       return f.testUrl ? { url: f.testUrl } : undefined;
     }
@@ -976,26 +992,40 @@ function VaultPageContent() {
                 onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
               />
 
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>Active check</label>
-                <select
-                  value={form.testType}
-                  onChange={e => setForm(f => ({ ...f, testType: e.target.value as VaultTestType }))}
-                  className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-                >
-                  {Object.entries(TEST_TYPE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                </select>
-              </div>
-
-              {(form.testType === 'generic_http' || form.testType === 'newznab_caps') && (
-                <Input label="Test URL" placeholder="https://..." value={form.testUrl} onChange={e => setForm(f => ({ ...f, testUrl: e.target.value }))} />
-              )}
-              {form.testType === 'tcp_reachability' && (
+              {form.category === 'ai' ? (
+                // No automated checker exists for an LLM key (unlike the other
+                // generic-mode categories) - these two feed natural-language
+                // Catalogs (server/utils/nlCatalog.js) directly instead of a
+                // check config. Both optional: blank means OpenAI's default
+                // endpoint + a small fast model.
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Input label="Host" placeholder="news.example.com" value={form.testHost} onChange={e => setForm(f => ({ ...f, testHost: e.target.value }))} />
-                  <Input label="Port" placeholder="563" value={form.testPort} onChange={e => setForm(f => ({ ...f, testPort: e.target.value }))} />
+                  <Input label="API base URL (optional)" placeholder="https://api.openai.com/v1" value={form.aiBaseUrl} onChange={e => setForm(f => ({ ...f, aiBaseUrl: e.target.value }))} />
+                  <Input label="Model (optional)" placeholder="gpt-4o-mini" value={form.aiModel} onChange={e => setForm(f => ({ ...f, aiModel: e.target.value }))} />
                 </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>Active check</label>
+                    <select
+                      value={form.testType}
+                      onChange={e => setForm(f => ({ ...f, testType: e.target.value as VaultTestType }))}
+                      className="w-full px-4 py-3 rounded-xl focus:outline-none"
+                      style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                    >
+                      {Object.entries(TEST_TYPE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                    </select>
+                  </div>
+
+                  {(form.testType === 'generic_http' || form.testType === 'newznab_caps') && (
+                    <Input label="Test URL" placeholder="https://..." value={form.testUrl} onChange={e => setForm(f => ({ ...f, testUrl: e.target.value }))} />
+                  )}
+                  {form.testType === 'tcp_reachability' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Input label="Host" placeholder="news.example.com" value={form.testHost} onChange={e => setForm(f => ({ ...f, testHost: e.target.value }))} />
+                      <Input label="Port" placeholder="563" value={form.testPort} onChange={e => setForm(f => ({ ...f, testPort: e.target.value }))} />
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}

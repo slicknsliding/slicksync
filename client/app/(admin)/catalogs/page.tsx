@@ -9,9 +9,9 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
-import { api, CustomList } from '@/lib/api';
+import { api, CustomList, DescribedCatalogPreview } from '@/lib/api';
 import {
-  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon, MapPinIcon,
+  RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon, MapPinIcon, SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid, PlayIcon } from '@heroicons/react/24/solid';
 
@@ -38,6 +38,7 @@ export default function ListsPage() {
   const [renameValue, setRenameValue] = useState('');
   const [deleting, setDeleting] = useState<CustomList | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [showDescribe, setShowDescribe] = useState(false);
   const [importUrl, setImportUrl] = useState('');
   const [importName, setImportName] = useState('');
   const [importing, setImporting] = useState(false);
@@ -231,6 +232,9 @@ export default function ListsPage() {
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={() => setShowImport(true)}>
                 Import
+              </Button>
+              <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setShowDescribe(true)}>
+                Describe a catalog
               </Button>
               <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
                 New catalog
@@ -505,6 +509,17 @@ export default function ListsPage() {
         </div>
       </Modal>
 
+      {showDescribe && (
+        <DescribeCatalogModal
+          onClose={() => setShowDescribe(false)}
+          onSaved={(saved) => {
+            setLists((prev) => [saved, ...prev]);
+            setShowDescribe(false);
+            toast.success(`Created "${saved.name}"`);
+          }}
+        />
+      )}
+
       {/* Rename catalog */}
       <Modal isOpen={!!renaming} onClose={() => setRenaming(null)} title="Rename catalog" size="sm">
         <div className="space-y-4">
@@ -550,5 +565,155 @@ export default function ListsPage() {
         />
       )}
     </>
+  );
+}
+
+// ---- Describe a catalog (natural-language) ---------------------------------
+//
+// Two steps, deliberately never collapsed into one: describe -> preview
+// (nothing saved) -> review what the parser actually understood + the real
+// results -> save. Skipping straight to save would mean the first time an
+// admin learns the AI (or the keyword fallback) misread their request is
+// after a wrong catalog already exists.
+function DescribeCatalogModal({
+  onClose, onSaved,
+}: {
+  onClose: () => void;
+  onSaved: (list: CustomList) => void;
+}) {
+  const [description, setDescription] = useState('');
+  const [name, setName] = useState('');
+  const [preview, setPreview] = useState<DescribedCatalogPreview | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handlePreview = async () => {
+    if (!description.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await api.previewDescribedCatalog(description.trim());
+      setPreview(result);
+      if (!name.trim()) {
+        // A short default name from the description itself - trimmed to a
+        // sane title length rather than dumping the whole sentence as the
+        // catalog's name. Still just a starting point; the input below it
+        // stays fully editable before save.
+        const words = description.trim().split(/\s+/).slice(0, 6).join(' ');
+        setName(words.charAt(0).toUpperCase() + words.slice(1));
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to generate a preview');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!name.trim() || !preview) return;
+    setSaving(true);
+    try {
+      const saved = await api.saveDescribedCatalog({ name: name.trim(), description: description.trim(), items: preview.items });
+      onSaved(saved);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save catalog');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const queryParts: string[] = [];
+  if (preview) {
+    if (preview.query.genres.length) queryParts.push(preview.query.genres.join('/'));
+    if (preview.query.yearFrom && preview.query.yearTo && preview.query.yearFrom !== preview.query.yearTo) {
+      queryParts.push(`${preview.query.yearFrom}-${preview.query.yearTo}`);
+    } else if (preview.query.yearFrom) {
+      queryParts.push(String(preview.query.yearFrom));
+    }
+    if (preview.query.maxRuntimeMinutes) queryParts.push(`under ${preview.query.maxRuntimeMinutes}m`);
+    queryParts.push(preview.mediaType === 'tv' ? 'series' : 'movies');
+  }
+
+  return (
+    <Modal isOpen onClose={onClose} title="Describe a catalog" size="md">
+      <div className="space-y-4">
+        <div>
+          <textarea
+            autoFocus
+            value={description}
+            onChange={(e) => { setDescription(e.target.value); setPreview(null); }}
+            placeholder='e.g. "A 90s neo-noir under two hours" or "cozy horror series"'
+            rows={2}
+            maxLength={500}
+            className="w-full px-4 py-3 rounded-xl focus:outline-none resize-none"
+            style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+          />
+          <p className="text-xs text-muted mt-1.5">Genre, decade, runtime, movie or series - whatever you mention gets used. Already-watched titles are always excluded.</p>
+        </div>
+
+        {!preview && (
+          <div className="flex justify-end">
+            <Button variant="primary" onClick={handlePreview} isLoading={loading} disabled={!description.trim()}>
+              Preview
+            </Button>
+          </div>
+        )}
+
+        {error && (
+          <p className="text-sm p-3 rounded-lg bg-error-muted text-error">{error}</p>
+        )}
+
+        {preview && (
+          <div className="space-y-4">
+            <div className="p-3 rounded-xl bg-surface-hover">
+              <p className="text-xs uppercase tracking-wide text-subtle mb-1">
+                {preview.usedAi ? 'AI understood this as' : 'Understood as'}
+              </p>
+              <p className="text-sm text-default">
+                {queryParts.length > 0 ? queryParts.join(' · ') : 'No specific filters detected - showing top-rated results'}
+              </p>
+            </div>
+
+            {preview.items.length === 0 ? (
+              <p className="text-sm text-muted">No matches found - try rephrasing, or widening the runtime/decade.</p>
+            ) : (
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {preview.items.slice(0, 10).map((item) => (
+                  <PosterThumb key={item.id} item={item} className="w-16 h-24 shrink-0" />
+                ))}
+                {preview.items.length > 10 && (
+                  <div className="w-16 h-24 shrink-0 rounded-md bg-surface flex items-center justify-center text-xs text-muted">
+                    +{preview.items.length - 10}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {preview.items.length > 0 && (
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Catalog name"
+                className="w-full px-4 py-3 rounded-xl focus:outline-none"
+                style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+              />
+            )}
+
+            <div className="flex justify-between gap-3">
+              <Button variant="ghost" onClick={() => setPreview(null)}>Try again</Button>
+              <div className="flex gap-3">
+                <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                {preview.items.length > 0 && (
+                  <Button variant="primary" onClick={handleSave} isLoading={saving} disabled={!name.trim()}>
+                    Save as Catalog
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
