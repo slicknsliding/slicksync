@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.72.0",
+    "date": "2026-08-12",
+    "title": "feat: reactions, auto-generated Catalogs, duplicate-account detection, QR account linking",
+    "features": [
+      "Reactions (😊/😞) on any title's detail page - a real thumb on the scale for SlickTrax recommendations, not just decorative: boosts titles similar to what you reacted happy to, suppresses ones similar to what you didn't like, on the same neighbor-similarity graph that already powers \"Because you watched X.\"",
+      "Faster account linking via QR code: linking Stremio or Nuvio now shows a QR code alongside the existing link/button wherever typing or pasting a long authorization link is awkward - scan it with your phone's camera and finish the authorization there instead. Same underlying link a normal click would use, nothing new to trust.",
+      "Content rating policy for Catalogs, opt-in per catalog (e.g. a \"Kids\" catalog whose contents feed a restricted group's addon catalogs): set which OMDb ratings should be flagged (R, TV-MA, etc.), then run \"Check content\" to review what's currently in the catalog against that policy. A review tool, not an add-time block - titles reach a catalog from too many different entry points across the app for a hard block at all of them to be worth it.",
+      "Proactive duplicate-account detection: when the same email shows up on both a Stremio and a Nuvio user, a banner now surfaces the suggested merge right on the Users list page (previously you'd only see it if you happened to open one of the two accounts' own pages). Merge combines watch history/sessions with a most-recent-wins tie-break and is undoable afterward; \"Not the same person\" dismisses that pair permanently so it never asks again.",
+      "Seasonal addon auto-scheduling: set a recurring MM-DD window on any addon (right-click -> Seasonal schedule) and it turns on at the start date, off at the end date, every year - e.g. a holiday catalog addon that enables itself every December and disables itself after, with no manual toggling.",
+      "Auto-generated themed catalogs (opt-in, Settings -> SlickTrax -> Auto-generated catalogs, off by default): detects a real taste cluster in your watch history - a genre, or a genre+decade combo when one decade clearly dominates it - and saves it as an actual Catalog (\"Your 90s Action Pack\") instead of a recommendation row that only ever scrolls by once. Checked daily; delete one and it's gone for good, it won't quietly regenerate.",
+      "SIMKL account linking is now a proper card on the user detail page instead of a small underlined text link buried next to \"Debug\" - same feature (bidirectional watch-history sync, checked every 30 minutes), just easier to actually notice."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Duplicate-account detection only ever matches across providers (Stremio<->Nuvio) - same-provider duplicates can't exist to begin with, prevented at the database level.",
+      "Reactions replace the earlier pulled 👍/❤️/👎 three-tier design - real feedback was that three options with no legend read as clutter. Personal 1-10 ratings stay backend-only for now; this release only ships the reactions half."
+    ]
+  },
+  {
     "version": "1.71.0",
     "date": "2026-08-11",
     "title": "fix: API docs redirect loop, Airing Calendar false-success toasts, stale update-command button",
