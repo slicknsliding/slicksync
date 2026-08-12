@@ -40,6 +40,7 @@ const pushRouter = require('./routes/push');
 const watchlistRouter = require('./routes/watchlist');
 const avatarsRouter = require('./routes/avatars');
 const vaultRouter = require('./routes/vault');
+const automationRouter = require('./routes/automation');
 const discoverRouter = require('./routes/discover');
 const listsRouter = require('./routes/lists');
 const healthRouter = require('./routes/health');
@@ -277,6 +278,7 @@ app.use('/api/stremio', accountScopingMiddleware);
 app.use('/api/nuvio', accountScopingMiddleware);
 app.use('/api/snapshots', accountScopingMiddleware);
 app.use('/api/vault', accountScopingMiddleware);
+app.use('/api/automation', accountScopingMiddleware);
 
 // Mount routers
 const publicAuthRouterInstance = publicAuthRouter({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, PRIVATE_AUTH_USERNAME, PRIVATE_AUTH_PASSWORD, DEFAULT_ACCOUNT_ID, issueAccessToken, issueRefreshToken, cookieName, isProdEnv, encrypt, decrypt, getDecryptedManifestUrl, scopedWhere, getAccountDek, decryptWithFallback, manifestUrlHmac, manifestHash, filterManifestByResources, filterManifestByCatalogs, parseCookies, JWT_SECRET });
@@ -290,6 +292,7 @@ app.use('/api/nuvio', nuvioRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/snapshots', snapshotsRouter({ prisma, getAccountId, encrypt, decrypt, createProvider }));
 app.use('/api/avatars', avatarsRouter({ imageUpload }));
 app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));
+app.use('/api/automation', automationRouter({ prisma, getAccountId }));
 app.use('/api/settings', settingsRouter({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }));
 app.use('/api/push', pushRouter({ prisma, getAccountId }));
 app.use('/api/watchlist', watchlistRouter({ prisma, getAccountId }));
@@ -310,7 +313,7 @@ if (INSTANCE_TYPE === 'public') {
   app.use('/api/discover', discoverLimiter)
 }
 app.use('/api/discover', discoverRouter({ prisma, getAccountId }));
-app.use('/api/lists', listsRouter({ prisma, getAccountId }));
+app.use('/api/lists', listsRouter({ prisma, getAccountId, decrypt }));
 app.use('/api/health', healthRouter({ prisma, getAccountId, INSTANCE_TYPE }));
 app.use('/api/superadmin', require('./routes/superadmin')({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }));
 app.use('/api/poster', postersRouter({ prisma, getAccountId }));

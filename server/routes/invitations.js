@@ -394,6 +394,17 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
           }
         })
 
+        try {
+          const { emitAutomationEvent } = require('../utils/automation/engine')
+          await emitAutomationEvent(prisma, request.invitation.accountId, 'invite.accepted', {
+            username: newUser.username,
+            userId: newUser.id,
+            email: newUser.email,
+            inviteCode: request.invitation.inviteCode,
+            providerType: newUser.providerType,
+          })
+        } catch { /* emit never throws; guarding the require itself */ }
+
         // Assign to group
         if (finalGroupName) {
           try {
@@ -1414,6 +1425,17 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
           inviteCode: invitation.inviteCode
         }
       })
+
+      try {
+        const { emitAutomationEvent } = require('../utils/automation/engine')
+        await emitAutomationEvent(prisma, invitation.accountId, 'invite.accepted', {
+          username: newUser.username,
+          userId: newUser.id,
+          email: newUser.email,
+          inviteCode: invitation.inviteCode,
+          providerType: newUser.providerType,
+        })
+      } catch { /* emit never throws; guarding the require itself */ }
 
       // assign to group if we have one
       if (finalGroupName) {

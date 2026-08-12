@@ -143,6 +143,21 @@ async function deleteExpiredUsers(prisma, decrypt, StremioAPIClient, createProvi
             }
           }
 
+          // Automation rules fire BEFORE the delete below, so the user row
+          // still exists for any action that resolves it (and the payload is
+          // read off a live record rather than a deleted one). Practically
+          // this trigger is for notify-style rules - a group action targeting
+          // a user who's about to be deleted has nothing lasting to do.
+          try {
+            const { emitAutomationEvent } = require('./automation/engine')
+            await emitAutomationEvent(prisma, accountId, 'user.expired', {
+              username: user.username,
+              userId: user.id,
+              email: user.email,
+              providerType: user.providerType,
+            })
+          } catch { /* emit never throws; guarding the require itself */ }
+
           // Delete the user
           await prisma.user.delete({
             where: { id: user.id }
