@@ -271,6 +271,65 @@ model SuperadminAuditLog {
   @@map("superadmin_audit_log")
 }
 
+// Automation rules ("when X happens, do Y") - see server/utils/automation/.
+//
+// Every automation in this app before this model was a bespoke scheduler with
+// exactly one hardcoded trigger welded to one hardcoded action (vaultMonitor,
+// addonScheduler, userExpiration, syncGuardian, ...). Those all still exist and
+// still run - this doesn't replace them. It sits alongside as the *composable*
+// layer, so a new "when a credential expires, move those users to the free
+// group" doesn't need a new scheduler shipped for it.
+//
+// triggerConfig/conditions/actions are stringified JSON (SQLite has no Json
+// type, same as itemsJson on CustomList). Shapes are validated in
+// server/utils/automation/registry.js, which is the single source of truth for
+// what triggers and actions actually exist - never trust these columns blind.
+model AutomationRule {
+  id            String   @id @default(cuid())
+  accountId     String   @default("default")
+  name          String
+  enabled       Boolean  @default(true)
+  // Trigger type key from the registry, e.g. "addon.offline".
+  triggerType   String
+  triggerConfig String   @default("{}")
+  // JSON array of { field, op, value } - ALL must pass (AND). Empty = always.
+  conditions    String   @default("[]")
+  // JSON array of { type, config } run in order. A failing action is logged
+  // and the remaining ones still run - one bad action shouldn't silently
+  // swallow the rest of a rule the admin is relying on.
+  actions       String   @default("[]")
+  lastRunAt     DateTime?
+  runCount      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  runs AutomationRun[]
+
+  @@index([accountId, triggerType, enabled])
+  @@map("automation_rules")
+}
+
+// One row per rule evaluation that actually fired (conditions passed), kept so
+// "why did this happen / why didn't it" is answerable after the fact - an
+// automation you can't audit is one you can't trust with destructive actions.
+model AutomationRun {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  ruleId      String
+  triggerType String
+  // Stringified JSON: the event payload that fired it, plus per-action results.
+  payload     String   @default("{}")
+  results     String   @default("[]")
+  ok          Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([ruleId, createdAt])
+  @@map("automation_runs")
+}
+
 model Invitation {
   id                     String    @id @default(cuid())
   accountId              String

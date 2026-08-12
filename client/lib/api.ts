@@ -1836,6 +1836,21 @@ class ApiClient {
       body: JSON.stringify({ name, description }),
     });
   }
+  // Natural-language catalog building - see server/utils/nlCatalog.js.
+  // Preview never touches the database; save takes the exact items the
+  // preview already returned rather than re-running the pipeline.
+  async previewDescribedCatalog(description: string) {
+    return this.fetch<DescribedCatalogPreview>('/lists/describe-preview', {
+      method: 'POST',
+      body: JSON.stringify({ description }),
+    });
+  }
+  async saveDescribedCatalog(data: { name: string; description: string; items: CustomListItem[] }) {
+    return this.fetch<CustomList>('/lists/from-description', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
   async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean; blockedRatings?: string[] }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
@@ -1844,6 +1859,29 @@ class ApiClient {
   }
   async deleteList(id: string) {
     return this.fetch<{ success: boolean }>(`/lists/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  // Automation rules ("when X happens, do Y") - see server/utils/automation/registry.js.
+  async getAutomationRegistry() {
+    return this.fetch<AutomationRegistry>('/automation/registry');
+  }
+  async getAutomationRules() {
+    return this.fetch<AutomationRule[]>('/automation');
+  }
+  async createAutomationRule(data: AutomationRuleInput) {
+    return this.fetch<AutomationRule>('/automation', { method: 'POST', body: JSON.stringify(data) });
+  }
+  async updateAutomationRule(id: string, data: Partial<AutomationRuleInput>) {
+    return this.fetch<AutomationRule>(`/automation/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) });
+  }
+  async deleteAutomationRule(id: string) {
+    return this.fetch<{ success: boolean }>(`/automation/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  async testAutomationRule(id: string) {
+    return this.fetch<{ payload: Record<string, unknown>; results: AutomationActionResult[] }>(`/automation/${encodeURIComponent(id)}/test`, { method: 'POST' });
+  }
+  async getAutomationRuns(ruleId?: string) {
+    const qs = ruleId ? `?ruleId=${encodeURIComponent(ruleId)}` : '';
+    return this.fetch<AutomationRun[]>(`/automation/runs${qs}`);
   }
   // Checks this catalog's current items against its own current
   // blockedRatings policy (server/utils/contentRating.js) - a review tool,
@@ -2476,6 +2514,7 @@ export interface SyncSettings {
   enableReactions?: boolean;
   // Opt-in (default false, unlike the toggles above) - see settings.js's own comment.
   enableAutoThemedCatalogs?: boolean;
+  notifyOnAutomation?: boolean;
   tmdbApiKey?: string;
   mdblistApiKey?: string;
   rpdbApiKey?: string;
@@ -2578,6 +2617,23 @@ export interface CustomListItem {
   year?: number | string | null;
 }
 
+// The structured query nlCatalog.js parsed a description into - shown back
+// to the admin as "here's what I understood" before they commit to saving.
+export interface DescribedCatalogQuery {
+  type: 'movie' | 'series' | null;
+  genres: string[];
+  yearFrom: number | null;
+  yearTo: number | null;
+  maxRuntimeMinutes: number | null;
+  keywords: string[];
+}
+export interface DescribedCatalogPreview {
+  items: CustomListItem[];
+  query: DescribedCatalogQuery;
+  usedAi: boolean;
+  mediaType: 'movie' | 'tv';
+}
+
 export interface CatalogSuggestion {
   id: string;
   type: 'movie' | 'series';
@@ -2616,6 +2672,90 @@ export interface CustomList {
   isOwner: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+// Automation rules ("when X happens, do Y") - server/utils/automation/registry.js
+// is the single source of truth these types mirror; the rule builder UI reads
+// AutomationRegistry live from the server rather than hardcoding this shape a
+// second time, so a new trigger/action shows up without a client release.
+export interface AutomationField {
+  name: string;
+  label: string;
+  type: 'string' | 'number' | 'boolean';
+}
+export interface AutomationTriggerDef {
+  type: string;
+  label: string;
+  description: string;
+  fields: AutomationField[];
+}
+export interface AutomationOperatorDef {
+  op: string;
+  label: string;
+  unary: boolean;
+}
+export interface AutomationConfigField {
+  name: string;
+  label: string;
+  type: 'string' | 'text' | 'addon' | 'group' | 'user';
+  required?: boolean;
+  hint?: string;
+}
+export interface AutomationActionDef {
+  type: string;
+  label: string;
+  description: string;
+  configFields: AutomationConfigField[];
+}
+export interface AutomationRegistry {
+  triggers: AutomationTriggerDef[];
+  operators: AutomationOperatorDef[];
+  actions: AutomationActionDef[];
+}
+export interface AutomationCondition {
+  field: string;
+  op: string;
+  value?: string | number;
+}
+export interface AutomationActionConfig {
+  type: string;
+  config: Record<string, string>;
+}
+export interface AutomationRuleInput {
+  name: string;
+  triggerType: string;
+  triggerConfig?: Record<string, unknown>;
+  conditions?: AutomationCondition[];
+  actions: AutomationActionConfig[];
+  enabled?: boolean;
+}
+export interface AutomationRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  triggerType: string;
+  triggerConfig: Record<string, unknown>;
+  conditions: AutomationCondition[];
+  actions: AutomationActionConfig[];
+  lastRunAt: string | null;
+  runCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface AutomationActionResult {
+  type: string;
+  ok: boolean;
+  message: string;
+}
+export interface AutomationRun {
+  id: string;
+  ruleId: string;
+  ruleName: string;
+  triggerType: string;
+  payload: Record<string, unknown>;
+  results: AutomationActionResult[];
+  ok: boolean;
+  createdAt: string;
 }
 
 // Nuvio's own native "Collections" (home-screen folder/catalog-source

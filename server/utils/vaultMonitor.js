@@ -126,30 +126,76 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
               }, { prisma, accountId: account.id })
               await prisma.vaultEntry.update({ where: { id: entry.id }, data: { lastNotifiedAt: new Date() } })
             }
+
+            // Automation rules fire on the raw ok -> error edge, deliberately
+            // NOT gated on hasNotifyChannel like the notification above: a rule
+            // whose action is "move these users to the free group" must still
+            // run on an instance with no Discord webhook configured. No throttle
+            // needed - this is an edge, so it can't repeat while the entry stays
+            // failing (wasOk is false on every subsequent pass).
+            if (wasOk && !nowOk) {
+              try {
+                const { emitAutomationEvent } = require('./automation/engine')
+                await emitAutomationEvent(prisma, account.id, 'vault.check_failed', {
+                  entryName: entry.name,
+                  entryId: entry.id,
+                  category: entry.category,
+                  message: result.message || 'Check failed',
+                })
+              } catch { /* emit never throws; guarding the require itself */ }
+            }
           } catch (err) {
             console.error(`[VaultMonitor] Check failed for entry ${entry.id}:`, err.message)
           }
         }
 
-        // 2) Expiry warning, independent of the check above
-        if (entry.expiresAt && hasNotifyChannel) {
+        // 2) Expiry warning, independent of the check above.
+        // hasNotifyChannel is NOT part of this outer gate (it used to be) so
+        // automation rules still fire on an instance with no notification
+        // channel configured - the notify() call below keeps its own gate, and
+        // lastNotifiedAt is only written when something actually happened, so
+        // an instance with neither channels nor rules behaves exactly as before.
+        if (entry.expiresAt) {
           const msUntilExpiry = new Date(entry.expiresAt).getTime() - Date.now()
           const daysUntilExpiry = msUntilExpiry / (1000 * 60 * 60 * 24)
           const withinWindow = daysUntilExpiry <= (entry.notifyDaysBefore ?? 3)
           const isSnoozed = entry.snoozedUntil && new Date(entry.snoozedUntil) > new Date()
 
           if (withinWindow && !isSnoozed && !wasNotifiedToday(entry.lastNotifiedAt)) {
-            const daysText = daysUntilExpiry < 0
-              ? `expired ${Math.abs(Math.round(daysUntilExpiry))} day(s) ago`
-              : `expires in ${Math.round(daysUntilExpiry)} day(s)`
-            await notify(notifyCfg, {
-              title: `⏰ ${entry.name} ${daysUntilExpiry < 0 ? 'has expired' : 'expiring soon'}`,
-              message: `${entry.provider || entry.category}: ${daysText}`,
-              tags: ['hourglass'],
-              entryId: entry.id,
-              actionLabel: 'Rotate now',
-            }, { prisma, accountId: account.id })
-            await prisma.vaultEntry.update({ where: { id: entry.id }, data: { lastNotifiedAt: new Date() } })
+            let didNotify = false
+            if (hasNotifyChannel) {
+              const daysText = daysUntilExpiry < 0
+                ? `expired ${Math.abs(Math.round(daysUntilExpiry))} day(s) ago`
+                : `expires in ${Math.round(daysUntilExpiry)} day(s)`
+              await notify(notifyCfg, {
+                title: `⏰ ${entry.name} ${daysUntilExpiry < 0 ? 'has expired' : 'expiring soon'}`,
+                message: `${entry.provider || entry.category}: ${daysText}`,
+                tags: ['hourglass'],
+                entryId: entry.id,
+                actionLabel: 'Rotate now',
+              }, { prisma, accountId: account.id })
+              didNotify = true
+            }
+
+            // Unlike the check-failure edge above, this condition stays true on
+            // every pass until the credential is rotated, so it relies on the
+            // same once-a-day lastNotifiedAt throttle the notification uses -
+            // otherwise a 6h monitor would fire the rule four times a day.
+            let didFire = false
+            try {
+              const { emitAutomationEvent } = require('./automation/engine')
+              const { fired } = await emitAutomationEvent(prisma, account.id, 'vault.expiring', {
+                entryName: entry.name,
+                entryId: entry.id,
+                category: entry.category,
+                daysLeft: Math.round(daysUntilExpiry),
+              })
+              didFire = fired > 0
+            } catch { /* emit never throws; guarding the require itself */ }
+
+            if (didNotify || didFire) {
+              await prisma.vaultEntry.update({ where: { id: entry.id }, data: { lastNotifiedAt: new Date() } })
+            }
           }
         }
       }

@@ -83,6 +83,19 @@ async function notifyAddonStatusChange(prisma, addon, isOnline, errorMessage) {
       },
     });
 
+    // Automation rules listening for this transition (see utils/automation/).
+    // Fired on the same once-per-transition edge the alert row above uses, not
+    // once per health check, so a rule can't spam while an addon stays down.
+    try {
+      const { emitAutomationEvent } = require('./automation/engine');
+      await emitAutomationEvent(prisma, addon.accountId, isOnline ? 'addon.online' : 'addon.offline', {
+        addonName: addon.name,
+        addonId: addon.id,
+        error: isOnline ? '' : (errorMessage || ''),
+        hasBackup: hasActiveBackup,
+      });
+    } catch { /* emit never throws, but belt-and-braces around the require itself */ }
+
     const { isDigestEnabled, queueDigestEntry } = require('./notificationDigest');
     const digestOn = await isDigestEnabled(prisma, addon.accountId);
 

@@ -414,6 +414,11 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnProxyHealth: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnProxyHealth === true : false,
           notifyOnUpdateAvailable: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnUpdateAvailable === true : false,
           notifyOnMosaic: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnMosaic === true : false,
+          // Default true, unlike every notify toggle above - an automation
+          // notification only exists because the admin explicitly wrote a rule
+          // whose action is "notify me," so defaulting it off would mean that
+          // rule silently does nothing until Settings is opened once.
+          notifyOnAutomation: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.notifyOnAutomation === 'boolean') ? syncCfg.notifyOnAutomation : true,
           notifyDigestEnabled: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyDigestEnabled === true : false,
           notifyDigestFrequency: (syncCfg && typeof syncCfg === 'object' && syncCfg.notifyDigestFrequency === 'weekly') ? 'weekly' : 'daily',
           accountTimezone: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE,
@@ -475,6 +480,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnProxyHealth: syncCfg.notifyOnProxyHealth === true,
           notifyOnUpdateAvailable: syncCfg.notifyOnUpdateAvailable === true,
           notifyOnMosaic: syncCfg.notifyOnMosaic === true,
+          notifyOnAutomation: typeof syncCfg.notifyOnAutomation === 'boolean' ? syncCfg.notifyOnAutomation : true,
           notifyDigestEnabled: syncCfg.notifyDigestEnabled === true,
           notifyDigestFrequency: syncCfg.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily',
           accountTimezone: (typeof syncCfg.accountTimezone === 'string' && syncCfg.accountTimezone.trim()) ? syncCfg.accountTimezone.trim() : DEFAULT_TIMEZONE,
@@ -496,7 +502,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnMosaic: false, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableAutoThemedCatalogs: false })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableAutoThemedCatalogs: false })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -504,7 +510,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnMosaic, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -566,6 +572,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnProxyHealth: notifyOnProxyHealth !== undefined ? !!notifyOnProxyHealth : ((baseCfg.notifyOnProxyHealth !== undefined) ? baseCfg.notifyOnProxyHealth : false),
           notifyOnUpdateAvailable: notifyOnUpdateAvailable !== undefined ? !!notifyOnUpdateAvailable : ((baseCfg.notifyOnUpdateAvailable !== undefined) ? baseCfg.notifyOnUpdateAvailable : false),
           notifyOnMosaic: notifyOnMosaic !== undefined ? !!notifyOnMosaic : ((baseCfg.notifyOnMosaic !== undefined) ? baseCfg.notifyOnMosaic : false),
+          notifyOnAutomation: notifyOnAutomation !== undefined ? !!notifyOnAutomation : (typeof baseCfg.notifyOnAutomation === 'boolean' ? baseCfg.notifyOnAutomation : true),
           notifyDigestEnabled: notifyDigestEnabled !== undefined ? !!notifyDigestEnabled : ((baseCfg.notifyDigestEnabled !== undefined) ? baseCfg.notifyDigestEnabled : false),
           notifyDigestFrequency: notifyDigestFrequency === 'weekly' ? 'weekly' : (notifyDigestFrequency === 'daily' ? 'daily' : (baseCfg.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily')),
           accountTimezone: typeof accountTimezone === 'string' && accountTimezone.trim() ? accountTimezone.trim() : (baseCfg.accountTimezone || DEFAULT_TIMEZONE),
@@ -633,6 +640,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (notifyOnProxyHealth !== undefined) partial.notifyOnProxyHealth = !!notifyOnProxyHealth
       if (notifyOnUpdateAvailable !== undefined) partial.notifyOnUpdateAvailable = !!notifyOnUpdateAvailable
       if (notifyOnMosaic !== undefined) partial.notifyOnMosaic = !!notifyOnMosaic
+      if (notifyOnAutomation !== undefined) partial.notifyOnAutomation = !!notifyOnAutomation
       if (notifyDigestEnabled !== undefined) partial.notifyDigestEnabled = !!notifyDigestEnabled
       if (notifyDigestFrequency !== undefined) partial.notifyDigestFrequency = notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily'
       if (typeof accountTimezone === 'string' && accountTimezone.trim()) partial.accountTimezone = accountTimezone.trim()
