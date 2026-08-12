@@ -1611,6 +1611,22 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // GET /api/users/merge-candidates — every not-yet-dismissed "these might be
+  // the same person" pair across the whole account, for a proactive Users-
+  // page banner instead of only surfacing per-pair on a specific user's own
+  // detail page. Must be before /:id route. See server/utils/userMerge.js.
+  router.get('/merge-candidates', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const { getAllMergeCandidates } = require('../utils/userMerge')
+      const pairs = await getAllMergeCandidates(prisma, accountId)
+      res.json({ pairs })
+    } catch (error) {
+      console.error('Error checking merge candidates:', error)
+      res.status(500).json({ error: 'Failed to check merge candidates' })
+    }
+  });
+
   // Get single user with detailed information
   router.get('/:id', async (req, res) => {
     try {
@@ -1733,6 +1749,22 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     } catch (error) {
       console.error('Error checking merge candidate:', error)
       res.status(500).json({ error: 'Failed to check merge candidate' })
+    }
+  });
+
+  // "Not the same person" - the pair never surfaces again, permanently (per-
+  // pair, symmetric - see server/utils/userMerge.js's sortPair). { donorId }
+  router.post('/:id/dismiss-merge', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const { donorId } = req.body || {}
+      if (!donorId) return res.status(400).json({ error: 'donorId is required' })
+      const { dismissMergeSuggestion } = require('../utils/userMerge')
+      await dismissMergeSuggestion(prisma, accountId, req.params.id, donorId)
+      res.json({ success: true })
+    } catch (error) {
+      console.error('Error dismissing merge suggestion:', error)
+      res.status(400).json({ error: error.message || 'Failed to dismiss merge suggestion' })
     }
   });
 

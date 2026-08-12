@@ -314,6 +314,7 @@ app.use('/api/lists', listsRouter({ prisma, getAccountId }));
 app.use('/api/health', healthRouter({ prisma, getAccountId, INSTANCE_TYPE }));
 app.use('/api/superadmin', require('./routes/superadmin')({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }));
 app.use('/api/poster', postersRouter({ prisma, getAccountId }));
+app.use('/api/qr', require('./routes/qr')());
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({
   prisma,
@@ -488,6 +489,24 @@ async function bootstrap() {
       scheduleSimklSync(prisma)
     } catch (err) {
       console.error('⚠️ Failed to initialize SIMKL sync:', err)
+    }
+
+    // Schedule seasonal addon auto-scheduling (every 6h, only for addons
+    // that opted in to scheduleEnabled - no-op query when nobody has)
+    try {
+      const { scheduleAddonScheduler } = require('./utils/addonScheduler')
+      scheduleAddonScheduler(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize addon scheduler:', err)
+    }
+
+    // Schedule auto-generated themed catalogs (daily, only for accounts
+    // that opted in via Settings -> SlickTrax -> Auto-generated catalogs)
+    try {
+      const { scheduleAutoThemedCatalogs } = require('./utils/autoThemedCatalogs')
+      scheduleAutoThemedCatalogs(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize auto-themed catalogs:', err)
     }
 
     // Schedule DB maintenance (scheduled VACUUM + opt-in watch-history

@@ -272,7 +272,7 @@ function applyNotInterestedPenalty(score, penalty, { maxPenaltyRatio = 0.9 } = {
 }
 
 /**
- * SlickTrax reactions (👍/❤️/👎) and personal ratings, generalized into ONE
+ * SlickTrax reactions (😊/😞) and personal ratings, generalized into ONE
  * signed adjustment: a real thumb on the scale for /recommendations'
  * scoreByItem, not just a decorative badge on the detail modal. Positive
  * weight boosts a title's odds of being picked as a "Because you watched X"
@@ -286,16 +286,16 @@ function applyNotInterestedPenalty(score, penalty, { maxPenaltyRatio = 0.9 } = {
  * file (BASELINE_SECONDS=600, WATCHLIST_WEIGHT_SECONDS=900 in discover.js)
  * so a reaction/rating sits in the same scale as real watch-time and
  * watchlist-intent signals instead of dominating or being drowned out by
- * them. REACTION_WEIGHTS: love clearly stronger than like; dislike mirrors
- * like's magnitude in the other direction (not love's - a dislike shouldn't
- * need to be the STRONGEST possible signal to have real effect). Ratings
- * convert on a line through the midpoint of the 1-10 scale (5.5) scaled so a
- * perfect 10 lands at love's weight and a 1 lands at dislike's - a 5 or 6
- * comes out near-zero, correctly read as "no strong opinion" rather than a
- * mild boost or penalty.
+ * them. REACTION_WEIGHTS: binary and symmetric (happy/sad, no middle tier -
+ * the original 3-tier 👍/❤️/👎 version was pulled from the UI for reading as
+ * clutter; the weight scheme follows the UI back down to two states).
+ * Ratings convert on a line through the midpoint of the 1-10 scale (5.5)
+ * scaled so a perfect 10 lands at "happy"'s weight and a 1 lands at "sad"'s -
+ * a 5 or 6 comes out near-zero, correctly read as "no strong opinion" rather
+ * than a mild boost or penalty.
  */
-const REACTION_WEIGHTS = { like: 900, love: 1800, dislike: -900 }
-const RATING_SCALE = 1800 / 4.5 // so rating=10 -> +1800 (love), rating=1 -> -1800
+const REACTION_WEIGHTS = { happy: 1200, sad: -1200 }
+const RATING_SCALE = 1200 / 4.5 // so rating=10 -> +1200 (happy), rating=1 -> -1200
 
 function ratingToWeight(rating) {
   return (rating - 5.5) * RATING_SCALE

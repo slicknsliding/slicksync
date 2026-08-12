@@ -349,6 +349,19 @@ class ApiClient {
       body: JSON.stringify({ donorId }),
     });
   }
+  // "Not the same person" - this pair never surfaces again, symmetric (see
+  // server/utils/userMerge.js's dismissMergeSuggestion).
+  async dismissMerge(id: string, donorId: string) {
+    return this.fetch<{ success: boolean }>(`/users/${id}/dismiss-merge`, {
+      method: 'POST',
+      body: JSON.stringify({ donorId }),
+    });
+  }
+  // Every not-yet-dismissed merge candidate pair across the whole account -
+  // for a proactive Users-page banner, not just the per-user one below.
+  async getMergeCandidates() {
+    return this.fetch<{ pairs: Array<{ userA: MergeCandidate; userB: MergeCandidate }> }>('/users/merge-candidates');
+  }
   async getMergeInfo(id: string) {
     return this.fetch<{ info: MergeInfo | null }>(`/users/${id}/merge-info`);
   }
@@ -1724,6 +1737,14 @@ class ApiClient {
       body: JSON.stringify({ color }),
     });
   }
+  // Seasonal auto-scheduling (server/utils/addonScheduler.js). Pass just
+  // scheduleEnabled to toggle without touching a previously-saved window.
+  async setAddonSchedule(addonId: string, data: { scheduleEnabled?: boolean; scheduleStartMonth?: number; scheduleStartDay?: number; scheduleEndMonth?: number; scheduleEndDay?: number }) {
+    return this.fetch<{ scheduleEnabled: boolean; scheduleStartMonth: number | null; scheduleStartDay: number | null; scheduleEndMonth: number | null; scheduleEndDay: number | null }>(`/addons/${addonId}/schedule`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
   async setAddonProtected(addonId: string, protectedFlag: boolean, unsafe?: boolean) {
     const qs = unsafe ? '?unsafe=true' : '';
     return this.fetch<{ isProtected: boolean }>(`/addons/${addonId}/protect${qs}`, {
@@ -1815,7 +1836,7 @@ class ApiClient {
       body: JSON.stringify({ name, description }),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean; blockedRatings?: string[] }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -1823,6 +1844,14 @@ class ApiClient {
   }
   async deleteList(id: string) {
     return this.fetch<{ success: boolean }>(`/lists/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+  // Checks this catalog's current items against its own current
+  // blockedRatings policy (server/utils/contentRating.js) - a review tool,
+  // run on demand, not a live gate. Requires an OMDb key.
+  async getFlaggedContent(id: string) {
+    return this.fetch<{ flagged: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number; policy: string[] }>(
+      `/lists/${encodeURIComponent(id)}/flagged`
+    );
   }
   async addToList(id: string, item: { id: string; type: 'movie' | 'series'; name: string; poster?: string | null; year?: number | string | null }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items`, {
@@ -1972,9 +2001,11 @@ class ApiClient {
     });
   }
 
-  // SlickTrax reactions (👍/❤️/👎) - feeds /recommendations scoring, see
+  // SlickTrax reactions (😊/😞) - feeds /recommendations scoring, see
   // server/utils/recommendationEngine.js's computeSignedAdjustments.
-  async setReaction(itemId: string, itemType: 'movie' | 'series', reaction: 'like' | 'love' | 'dislike', itemName?: string, poster?: string | null) {
+  // Deliberately binary, not a 3-tier like/love/dislike - see
+  // server/utils/titleFeedback.js's REACTIONS comment for why.
+  async setReaction(itemId: string, itemType: 'movie' | 'series', reaction: 'happy' | 'sad', itemName?: string, poster?: string | null) {
     return this.fetch<{ reaction: string }>('/discover/react', {
       method: 'POST',
       body: JSON.stringify({ itemId, itemType, reaction, itemName, poster }),
@@ -1985,7 +2016,7 @@ class ApiClient {
   }
   async getReactions(ids: string[]) {
     const qs = ids.length ? `?ids=${ids.map(encodeURIComponent).join(',')}` : '';
-    return this.fetch<{ reactions: Record<string, 'like' | 'love' | 'dislike'> }>(`/discover/reactions${qs}`);
+    return this.fetch<{ reactions: Record<string, 'happy' | 'sad'> }>(`/discover/reactions${qs}`);
   }
 
   // SlickTrax personal ratings (1-10) - season omitted/0 = overall (the only
@@ -2294,6 +2325,14 @@ export interface Addon {
   // routes/addons.js's /:id/protect) and the user-defined custom tag.
   isProtected?: boolean;
   customTag?: string | null;
+  // Seasonal auto-scheduling (server/utils/addonScheduler.js) - a
+  // year-agnostic recurring MM-DD window this addon auto-enables/disables
+  // for. Null dates = never configured yet.
+  scheduleEnabled?: boolean;
+  scheduleStartMonth?: number | null;
+  scheduleStartDay?: number | null;
+  scheduleEndMonth?: number | null;
+  scheduleEndDay?: number | null;
 }
 
 export interface CreateAddonData {
@@ -2435,6 +2474,8 @@ export interface SyncSettings {
   autoplayTrailerStartMuted?: boolean;
   enablePosterRatings?: boolean;
   enableReactions?: boolean;
+  // Opt-in (default false, unlike the toggles above) - see settings.js's own comment.
+  enableAutoThemedCatalogs?: boolean;
   tmdbApiKey?: string;
   mdblistApiKey?: string;
   rpdbApiKey?: string;
@@ -2562,6 +2603,16 @@ export interface CustomList {
   // stored - a shared catalog you don't own comes back with isOwner: false
   // and the client must hide every mutating affordance for it.
   shared: boolean;
+  // Content-rating review policy - OMDb "Rated" values to flag when
+  // checking this catalog (GET /:id/flagged), e.g. a "Kids" catalog set to
+  // flag ["R","TV-MA"]. Empty = no policy. See server/utils/contentRating.js.
+  blockedRatings: string[];
+  // True for a catalog server/utils/autoThemedCatalogs.js created from a
+  // detected taste cluster (Settings -> SlickTrax -> Auto-generated
+  // catalogs). Purely informational client-side - deleting it works the
+  // same as any other catalog (the server records the dismissal so it
+  // doesn't come back).
+  autoGenerated: boolean;
   isOwner: boolean;
   createdAt: string;
   updatedAt: string;
