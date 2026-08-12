@@ -1041,34 +1041,6 @@ export default function UserDetailPage() {
                         >
                           {showSyncDebug ? 'Hide' : 'Debug'}
                         </button>
-                        {/* SIMKL is an optional supplementary link (watch-history
-                            pull/push), not a peer of providerType - see the schema
-                            comment on User.simklAccessToken for why. */}
-                        {user.simklConnected ? (
-                          <button
-                            onClick={async () => {
-                              if (!confirm('Disconnect SIMKL? Watch history already pulled stays in place, only the link stops.')) return;
-                              setIsDisconnectingSimkl(true);
-                              try {
-                                await api.disconnectSimkl(user.id);
-                                toast.success('SIMKL disconnected');
-                                setUser((prev: any) => prev ? { ...prev, simklConnected: false, simklConnectedAt: null } : prev);
-                              } catch (err: any) {
-                                toast.error(err.message || 'Failed to disconnect SIMKL');
-                              } finally {
-                                setIsDisconnectingSimkl(false);
-                              }
-                            }}
-                            disabled={isDisconnectingSimkl}
-                            title="Click to disconnect"
-                          >
-                            <Badge variant="success" size="sm">SIMKL Linked</Badge>
-                          </button>
-                        ) : (
-                          <button onClick={() => setIsSimklModalOpen(true)} className="text-xs text-muted hover:text-primary underline">
-                            Link SIMKL
-                          </button>
-                        )}
                         {streaks?.currentStreak > 0 ? (
                           <Badge variant="warning" size="sm" className="hidden sm:inline-flex">
                             <FireIcon className="w-3 h-3 mr-1" />
@@ -1138,6 +1110,61 @@ export default function UserDetailPage() {
                       </div>
                     </div>
                   </div>
+                </div>
+              </Card>
+            </PageSection>
+
+            {/* SIMKL link - an optional supplementary watch-history pull/push,
+                not a peer of providerType (see the schema comment on
+                User.simklAccessToken for why). Used to live as a tiny text
+                link buried in the header row next to "Debug" - promoted to
+                its own card (same treatment as the merge-candidate card
+                below) since it's a real two-way sync feature, not a footnote. */}
+            <PageSection className="mb-6">
+              <Card padding="lg">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${user.simklConnected ? 'bg-success-muted' : 'bg-primary-muted'}`}>
+                      <ArrowPathIcon className={`w-5 h-5 ${user.simklConnected ? 'text-success' : 'text-primary'}`} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-semibold text-default">SIMKL</h3>
+                        {user.simklConnected && <Badge variant="success" size="sm">Linked</Badge>}
+                      </div>
+                      <p className="text-sm text-muted">
+                        {user.simklConnected
+                          ? `Watch history syncs both ways with SIMKL${user.simklConnectedAt ? ` since ${new Date(user.simklConnectedAt).toLocaleDateString()}` : ''}.`
+                          : 'Pull watch history from SIMKL and push everything this user watches back to it - a two-way sync, checked every 30 minutes.'}
+                      </p>
+                    </div>
+                  </div>
+                  {user.simklConnected ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      isLoading={isDisconnectingSimkl}
+                      onClick={async () => {
+                        if (!confirm('Disconnect SIMKL? Watch history already pulled stays in place, only the link stops.')) return;
+                        setIsDisconnectingSimkl(true);
+                        try {
+                          await api.disconnectSimkl(user.id);
+                          toast.success('SIMKL disconnected');
+                          setUser((prev: any) => prev ? { ...prev, simklConnected: false, simklConnectedAt: null } : prev);
+                        } catch (err: any) {
+                          toast.error(err.message || 'Failed to disconnect SIMKL');
+                        } finally {
+                          setIsDisconnectingSimkl(false);
+                        }
+                      }}
+                    >
+                      Disconnect
+                    </Button>
+                  ) : (
+                    <Button variant="primary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setIsSimklModalOpen(true)}>
+                      Link SIMKL
+                    </Button>
+                  )}
                 </div>
               </Card>
             </PageSection>
