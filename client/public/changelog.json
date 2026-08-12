@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.72.1",
+    "date": "2026-08-12",
+    "title": "feat: natural-language catalog building",
+    "features": [
+      "Describe a catalog in plain English (\"a 90s neo-noir under two hours nobody here has seen\") and get a real saved Catalog back, from the new \"Describe a catalog\" button on the Catalogs page. Parses the description into genre/decade/runtime filters, runs it against TMDb, and always excludes titles already in your watch history. Shows exactly what it understood before anything is saved - review it, tweak the name, then save.",
+      "Uses an AI model if you've added one to Vault (Settings -> Vault -> new \"AI Services\" entries: base URL and model are optional, defaults to OpenAI) for better understanding of nuanced descriptions. Falls back to a built-in keyword parser with zero setup when no AI key is configured, or if the AI call fails for any reason - the feature always works, the AI just makes it smarter."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.72.0",
     "date": "2026-08-12",
     "title": "feat: reactions, auto-generated Catalogs, duplicate-account detection, QR account linking",
