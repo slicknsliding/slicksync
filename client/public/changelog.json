@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.72.2",
+    "date": "2026-08-12",
+    "title": "fix: dismissing a duplicate-account suggestion was a dead end",
+    "features": [],
+    "bugFixes": [
+      "Clicking \"Not the same person\" on the duplicate-account banner (or the two accounts simply never sharing an email) left no way back to merge them short of editing the database directly - the merge/preview endpoints never actually checked dismissal status, only the proactive suggestion banner did, so this was purely a missing UI path. A user's detail page now shows a \"Merge with another user\" option whenever there's no active auto-detected suggestion, letting you pick any other account to merge regardless of dismissal history."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.72.1",
     "date": "2026-08-12",
     "title": "feat: natural-language catalog building",
