@@ -10,7 +10,7 @@ const express = require('express');
 // Json type - see the schema note), each { id, type, name, poster?, year? }, so
 // a list renders without a Cinemeta round-trip per item (same pattern as the
 // *WatchHistory / watchlist rows).
-module.exports = ({ prisma, getAccountId }) => {
+module.exports = ({ prisma, getAccountId, decrypt }) => {
   const router = express.Router();
 
   const parseItems = (raw) => {
@@ -86,6 +86,50 @@ module.exports = ({ prisma, getAccountId }) => {
     } catch (e) {
       console.error('Error creating custom list:', e);
       res.status(500).json({ error: 'Failed to create list' });
+    }
+  });
+
+  // POST /api/lists/describe-preview — "A 90s neo-noir under two hours nobody
+  // here has seen" -> a real preview of catalog items, nothing saved yet. See
+  // server/utils/nlCatalog.js for the two-stage pipeline (description ->
+  // structured query -> TMDb Discover, always excluding the household's own
+  // watch history). `query`/`usedAi` are returned alongside the items so the
+  // client can show "here's what I understood" before the admin commits to
+  // saving it - an AI (or even the keyword fallback) can misread a request,
+  // and silently saving a catalog that doesn't match what was asked for would
+  // be worse than a wrong search result, which is at least visibly wrong.
+  router.post('/describe-preview', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const description = String(req.body?.description || '');
+      const { generateCatalogFromDescription } = require('../utils/nlCatalog');
+      const result = await generateCatalogFromDescription(prisma, accountId, decrypt, description);
+      res.json(result);
+    } catch (e) {
+      console.error('Error previewing described catalog:', e);
+      res.status(400).json({ error: e.message || 'Failed to generate a preview' });
+    }
+  });
+
+  // POST /api/lists/from-description — saves a catalog from a prior preview.
+  // Takes the items the client already fetched via describe-preview rather
+  // than re-running the pipeline (a second TMDb round-trip could return
+  // slightly different results and would just be wasted work - the admin
+  // already saw and approved these exact items).
+  router.post('/from-description', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const name = (req.body?.name || '').trim();
+      const description = String(req.body?.description || '').trim();
+      if (!name) return res.status(400).json({ error: 'name is required' });
+      const items = Array.isArray(req.body?.items) ? req.body.items.map(normalizeItem).filter(Boolean) : [];
+      const list = await prisma.customList.create({
+        data: { accountId, name, description: description || null, itemsJson: JSON.stringify(items) },
+      });
+      res.status(201).json(shape(list));
+    } catch (e) {
+      console.error('Error saving described catalog:', e);
+      res.status(500).json({ error: 'Failed to save catalog' });
     }
   });
 
