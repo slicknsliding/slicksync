@@ -326,6 +326,13 @@ class ApiClient {
     });
   }
 
+  // Session check for the admin auth gate - resolves with { account: null } when
+  // auth is disabled (private mode) or a real account when a session is valid,
+  // and 401s (triggering the global redirect handler above) when it isn't.
+  async getSession() {
+    return this.fetch<{ account: { id: string; uuid: string; email: string | null } | null; message?: string }>('/auth/me');
+  }
+
   // Users
   async getUsers() {
     return this.fetch<User[]>('/users');
