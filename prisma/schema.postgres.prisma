@@ -622,18 +622,6 @@ model TitleRating {
   @@map("title_ratings")
 }
 
-// A declined merge suggestion — see schema.sqlite.prisma for the full comment.
-model DismissedMergeSuggestion {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  userIdA   String
-  userIdB   String
-  createdAt DateTime @default(now())
-
-  @@unique([accountId, userIdA, userIdB])
-  @@map("dismissed_merge_suggestions")
-}
-
 // Manual "watched" override — see schema.sqlite.prisma for the full comment.
 model ManualWatchOverride {
   id        String   @id @default(cuid())

@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.72.3",
+    "date": "2026-08-13",
+    "title": "feat: thumbs up/down reactions; simplified account merging",
+    "features": [
+      "Reactions on a title's detail page are now thumbs up/down icons instead of the 😊/😞 faces - same feed into SlickTrax recommendation scoring underneath, just a clearer affordance."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Removed proactive duplicate-account detection (the \"same email on Stremio and Nuvio\" banner and its \"Not the same person\" dismissal) - dismissing a pair used to be a dead end, and the extra suggest/dismiss layer made merging harder to reason about than it needed to be. Merging two accounts is now always available from a user's detail page via \"Merge with another user,\" and undo works the same as before."
+    ]
+  },
+  {
     "version": "1.72.2",
     "date": "2026-08-12",
     "title": "fix: dismissing a duplicate-account suggestion was a dead end",
