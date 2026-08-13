@@ -272,7 +272,7 @@ function applyNotInterestedPenalty(score, penalty, { maxPenaltyRatio = 0.9 } = {
 }
 
 /**
- * SlickTrax reactions (😊/😞) and personal ratings, generalized into ONE
+ * SlickTrax reactions (thumbs up/down) and personal ratings, generalized into ONE
  * signed adjustment: a real thumb on the scale for /recommendations'
  * scoreByItem, not just a decorative badge on the detail modal. Positive
  * weight boosts a title's odds of being picked as a "Because you watched X"

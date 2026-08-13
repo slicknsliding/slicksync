@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
-import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon, HandThumbUpIcon, HandThumbDownIcon } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { AddToListButton } from './AddToListButton';
@@ -250,10 +250,13 @@ export function MediaDetailModal({
     }
   };
 
-  // Reactions (😊/😞) - SlickTrax feedback that feeds recommendation scoring
-  // (server/utils/recommendationEngine.js's computeSignedAdjustments), not
-  // just decoration. Deliberately binary, replacing an earlier 👍/❤️/👎
-  // (like/love/dislike) version that read as clutter. Same effectiveId-scoped reset and
+  // Reactions (thumbs up/down) - SlickTrax feedback that feeds recommendation
+  // scoring (server/utils/recommendationEngine.js's computeSignedAdjustments),
+  // not just decoration. Deliberately binary, replacing an earlier 👍/❤️/👎
+  // (like/love/dislike) three-tier version that read as clutter - the
+  // 'happy'/'sad' state values are a holdover from a brief face-emoji design
+  // in between, kept as-is since they're what's already stored server-side;
+  // only the icon changed. Same effectiveId-scoped reset and
   // optimistic-update-with-revert pattern as Watchlist above. Personal
   // ratings (1-10, per-season) stay backend-only for now - no UI yet, see
   // client/lib/api.ts's setRating/getRatings if that changes.
@@ -891,25 +894,25 @@ export function MediaDetailModal({
                     type="button"
                     onClick={() => toggleReaction('happy')}
                     disabled={reactionBusy}
-                    aria-label="Happy"
-                    title="Happy"
-                    className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${
-                      reaction === 'happy' ? 'bg-success/20 ring-1 ring-success' : 'bg-surface-hover hover:bg-success/10'
+                    aria-label="Thumbs up"
+                    title="Thumbs up"
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
+                      reaction === 'happy' ? 'bg-success/20 ring-1 ring-success text-success' : 'bg-surface-hover hover:bg-success/10 text-muted'
                     } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
                   >
-                    😊
+                    <HandThumbUpIcon className="w-5 h-5" />
                   </button>
                   <button
                     type="button"
                     onClick={() => toggleReaction('sad')}
                     disabled={reactionBusy}
-                    aria-label="Not happy"
-                    title="Not happy"
-                    className={`w-9 h-9 flex items-center justify-center rounded-lg text-lg transition-colors ${
-                      reaction === 'sad' ? 'bg-error/20 ring-1 ring-error' : 'bg-surface-hover hover:bg-error/10'
+                    aria-label="Thumbs down"
+                    title="Thumbs down"
+                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
+                      reaction === 'sad' ? 'bg-error/20 ring-1 ring-error text-error' : 'bg-surface-hover hover:bg-error/10 text-muted'
                     } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
                   >
-                    😞
+                    <HandThumbDownIcon className="w-5 h-5" />
                   </button>
                 </div>
               )}
