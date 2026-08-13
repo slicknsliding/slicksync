@@ -231,9 +231,8 @@ export default function UserDetailPage() {
   const [showEmail, setShowEmail] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now());
 
-  // Account merge (Stremio<->Nuvio, same real person) - a same-email,
-  // different-provider sibling that hasn't been absorbed yet gets surfaced
-  // here as a suggestion, never auto-linked. See server/utils/userMerge.js.
+  // Account merge (Stremio<->Nuvio, same real person) - manual only, picked
+  // from the "Merge with another user" picker below. See server/utils/userMerge.js.
   const [mergeCandidate, setMergeCandidate] = useState<MergeCandidate | null>(null);
   const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
@@ -241,11 +240,6 @@ export default function UserDetailPage() {
   const [mergeInfo, setMergeInfo] = useState<MergeInfo | null>(null);
   const [isUndoModalOpen, setIsUndoModalOpen] = useState(false);
   const [isUndoing, setIsUndoing] = useState(false);
-  // Manual merge picker - the auto-detected suggestion above is the common
-  // case, but dismissing it (or the accounts simply not sharing an email)
-  // shouldn't dead-end merging entirely. mergeUsers/getMergePreview never
-  // checked dismissal status server-side to begin with (only the proactive
-  // suggestion itself does) - this was purely a missing UI entry point.
   const [isMergePickerOpen, setIsMergePickerOpen] = useState(false);
   const [mergePickerUsers, setMergePickerUsers] = useState<User[] | null>(null);
   const [mergePickerSearch, setMergePickerSearch] = useState('');
@@ -253,9 +247,6 @@ export default function UserDetailPage() {
   useEffect(() => {
     if (!params.id) return;
     let cancelled = false;
-    api.getMergeCandidate(params.id as string).then((res) => {
-      if (!cancelled) setMergeCandidate(res.candidate);
-    }).catch(() => {});
     api.getMergeInfo(params.id as string).then((res) => {
       if (!cancelled) setMergeInfo(res.info);
     }).catch(() => {});
@@ -300,21 +291,6 @@ export default function UserDetailPage() {
     }
   };
 
-  const [isDismissingMerge, setIsDismissingMerge] = useState(false);
-  const handleDismissMerge = async () => {
-    if (!mergeCandidate) return;
-    setIsDismissingMerge(true);
-    try {
-      await api.dismissMerge(params.id as string, mergeCandidate.id);
-      setMergeCandidate(null);
-      toast.success('Won\'t suggest merging these two again');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to dismiss suggestion');
-    } finally {
-      setIsDismissingMerge(false);
-    }
-  };
-
   const openMergePicker = async () => {
     setIsMergePickerOpen(true);
     setMergePickerSearch('');
@@ -349,12 +325,9 @@ export default function UserDetailPage() {
       toast.success(`Split ${result.donorUsername} back into its own account`);
       setIsUndoModalOpen(false);
       setMergeInfo(null);
-      const [userData, candidateRes] = await Promise.all([
-        api.getUser(params.id as string),
-        api.getMergeCandidate(params.id as string),
-      ]);
+      const userData = await api.getUser(params.id as string);
       setUser(userData);
-      setMergeCandidate(candidateRes.candidate);
+      setMergeCandidate(null);
     } catch (err: any) {
       toast.error(err.message || 'Failed to undo merge');
     } finally {
@@ -1160,8 +1133,8 @@ export default function UserDetailPage() {
                 not a peer of providerType (see the schema comment on
                 User.simklAccessToken for why). Used to live as a tiny text
                 link buried in the header row next to "Debug" - promoted to
-                its own card (same treatment as the merge-candidate card
-                below) since it's a real two-way sync feature, not a footnote. */}
+                its own card since it's a real two-way sync feature, not a
+                footnote. */}
             <PageSection className="mb-6">
               <Card padding="lg">
                 <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -1211,60 +1184,9 @@ export default function UserDetailPage() {
               </Card>
             </PageSection>
 
-            {/* Merge candidate - a same-email, different-provider sibling
-                (Stremio<->Nuvio) that hasn't been absorbed yet. Suggested,
-                never auto-linked - see server/utils/userMerge.js. */}
-            {mergeCandidate && (
-              <PageSection className="mb-6">
-                <Card padding="lg">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary-muted">
-                      <LinkIcon className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-default">Same person, different provider?</h3>
-                      <p className="text-sm text-muted">Shares this account's email, on {mergeCandidate.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4 p-4 rounded-xl bg-surface-hover">
-                    <UserAvatar
-                      userId={mergeCandidate.id}
-                      name={mergeCandidate.username}
-                      email={mergeCandidate.email}
-                      src={mergeCandidate.avatarUrl ?? undefined}
-                      colorIndex={mergeCandidate.colorIndex}
-                      size="md"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Link href={`/users/${mergeCandidate.id}`} className="font-medium text-default hover:text-primary transition-colors truncate">
-                          {mergeCandidate.username}
-                        </Link>
-                        <Badge variant={mergeCandidate.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
-                          {mergeCandidate.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
-                        </Badge>
-                      </div>
-                      {mergeCandidate.email && <p className="text-sm text-muted truncate">{mergeCandidate.email}</p>}
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={handleDismissMerge} isLoading={isDismissingMerge}>
-                      Not the same person
-                    </Button>
-                    <Button variant="primary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => openMergeModal()}>
-                      Merge
-                    </Button>
-                  </div>
-                </Card>
-              </PageSection>
-            )}
-
-            {/* Manual merge fallback - shown once there's no active
-                auto-detected suggestion (dismissed, or the accounts never
-                shared an email to begin with) and this account hasn't
-                already absorbed a second provider. Restores an always-
-                available path to merge: dismissing the proactive banner
-                used to be a dead end with no way back short of editing the
-                database directly. */}
-            {!mergeCandidate && !mergeInfo && (
+            {/* Manual merge - shown when this account hasn't already
+                absorbed a second provider's account. */}
+            {!mergeInfo && (
               <PageSection className="mb-6">
                 <Card padding="lg">
                   <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -1274,7 +1196,7 @@ export default function UserDetailPage() {
                       </div>
                       <div>
                         <h3 className="text-base font-semibold text-default">Same person on another provider?</h3>
-                        <p className="text-sm text-muted">Merge this account with a specific Stremio or Nuvio user - works even if it was already dismissed as a suggestion.</p>
+                        <p className="text-sm text-muted">Merge this account with a specific Stremio or Nuvio user.</p>
                       </div>
                     </div>
                     <Button variant="secondary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openMergePicker}>
