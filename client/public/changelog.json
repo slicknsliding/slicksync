@@ -1,5 +1,38 @@
 [
   {
+    "version": "1.72.3",
+    "date": "2026-08-13",
+    "title": "feat: thumbs up/down reactions; simplified account merging",
+    "features": [
+      "Reactions on a title's detail page are now thumbs up/down icons instead of the 😊/😞 faces - same feed into SlickTrax recommendation scoring underneath, just a clearer affordance."
+    ],
+    "bugFixes": [],
+    "miscChores": [
+      "Removed proactive duplicate-account detection (the \"same email on Stremio and Nuvio\" banner and its \"Not the same person\" dismissal) - dismissing a pair used to be a dead end, and the extra suggest/dismiss layer made merging harder to reason about than it needed to be. Merging two accounts is now always available from a user's detail page via \"Merge with another user,\" and undo works the same as before."
+    ]
+  },
+  {
+    "version": "1.72.2",
+    "date": "2026-08-12",
+    "title": "fix: dismissing a duplicate-account suggestion was a dead end",
+    "features": [],
+    "bugFixes": [
+      "Clicking \"Not the same person\" on the duplicate-account banner (or the two accounts simply never sharing an email) left no way back to merge them short of editing the database directly - the merge/preview endpoints never actually checked dismissal status, only the proactive suggestion banner did, so this was purely a missing UI path. A user's detail page now shows a \"Merge with another user\" option whenever there's no active auto-detected suggestion, letting you pick any other account to merge regardless of dismissal history."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.72.1",
+    "date": "2026-08-12",
+    "title": "feat: natural-language catalog building",
+    "features": [
+      "Describe a catalog in plain English (\"a 90s neo-noir under two hours nobody here has seen\") and get a real saved Catalog back, from the new \"Describe a catalog\" button on the Catalogs page. Parses the description into genre/decade/runtime filters, runs it against TMDb, and always excludes titles already in your watch history. Shows exactly what it understood before anything is saved - review it, tweak the name, then save.",
+      "Uses an AI model if you've added one to Vault (Settings -> Vault -> new \"AI Services\" entries: base URL and model are optional, defaults to OpenAI) for better understanding of nuanced descriptions. Falls back to a built-in keyword parser with zero setup when no AI key is configured, or if the AI call fails for any reason - the feature always works, the AI just makes it smarter."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.72.0",
     "date": "2026-08-12",
     "title": "feat: reactions, auto-generated Catalogs, duplicate-account detection, QR account linking",
