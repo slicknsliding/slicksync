@@ -1149,7 +1149,7 @@ export default function SettingsPage() {
 
               <SettingRow
                 label="Reactions"
-                description="😊/😞 on the detail modal. Not just decorative - it feeds what SlickTrax recommends, boosting titles similar to what you reacted happy to and suppressing ones similar to what you didn't like."
+                description="Thumbs up/down on the detail modal. Not just decorative - it feeds what SlickTrax recommends, boosting titles similar to what you reacted positively to and suppressing ones similar to what you didn't like."
               >
                 <ToggleSwitch
                   enabled={syncSettings.enableReactions !== false}
