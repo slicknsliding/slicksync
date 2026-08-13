@@ -337,9 +337,6 @@ class ApiClient {
 
   // Account merge (Stremio<->Nuvio, same real person) - see
   // server/utils/userMerge.js for the full design.
-  async getMergeCandidate(id: string) {
-    return this.fetch<{ candidate: MergeCandidate | null }>(`/users/${id}/merge-candidate`);
-  }
   async getMergePreview(id: string, donorId: string) {
     return this.fetch<MergePreview>(`/users/${id}/merge-preview?donorId=${encodeURIComponent(donorId)}`);
   }
@@ -348,19 +345,6 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ donorId }),
     });
-  }
-  // "Not the same person" - this pair never surfaces again, symmetric (see
-  // server/utils/userMerge.js's dismissMergeSuggestion).
-  async dismissMerge(id: string, donorId: string) {
-    return this.fetch<{ success: boolean }>(`/users/${id}/dismiss-merge`, {
-      method: 'POST',
-      body: JSON.stringify({ donorId }),
-    });
-  }
-  // Every not-yet-dismissed merge candidate pair across the whole account -
-  // for a proactive Users-page banner, not just the per-user one below.
-  async getMergeCandidates() {
-    return this.fetch<{ pairs: Array<{ userA: MergeCandidate; userB: MergeCandidate }> }>('/users/merge-candidates');
   }
   async getMergeInfo(id: string) {
     return this.fetch<{ info: MergeInfo | null }>(`/users/${id}/merge-info`);
@@ -2039,7 +2023,7 @@ class ApiClient {
     });
   }
 
-  // SlickTrax reactions (😊/😞) - feeds /recommendations scoring, see
+  // SlickTrax reactions (thumbs up/down) - feeds /recommendations scoring, see
   // server/utils/recommendationEngine.js's computeSignedAdjustments.
   // Deliberately binary, not a 3-tier like/love/dislike - see
   // server/utils/titleFeedback.js's REACTIONS comment for why.
