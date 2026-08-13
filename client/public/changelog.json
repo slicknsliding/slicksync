@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.72.4",
+    "date": "2026-08-13",
+    "title": "fix: anonymous visitors briefly saw the admin dashboard before being sent to login",
+    "features": [],
+    "bugFixes": [
+      "Loading the site with no active session (e.g. a fresh visit to the public instance) showed a flash of the real admin dashboard - sidebar, stats, everything - before redirecting to the login page a moment later. The admin area rendered its layout immediately for any visitor and only reacted after its data requests failed, instead of checking the session first like the user-panel login flow already did. It now verifies the session before rendering anything, showing a brief loading state instead."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.72.3",
     "date": "2026-08-13",
     "title": "feat: thumbs up/down reactions; simplified account merging",
