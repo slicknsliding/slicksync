@@ -715,28 +715,6 @@ model TitleRating {
   @@map("title_ratings")
 }
 
-// A declined "these might be the same person" merge suggestion (see
-// server/utils/userMerge.js's getMergeCandidate/getAllMergeCandidates) -
-// once dismissed, that specific pair never surfaces again (neither the
-// per-user banner nor the account-wide proactive list), permanently, same
-// "no expiry" treatment as MutedShow. userIdA/userIdB are stored as a
-// stable-sorted pair (alphabetically, whichever order the two ids compare)
-// so a dismissal made while looking at user A also covers looking at it
-// from user B's own page - the suggestion is symmetric, the dismissal must
-// be too. Merging the pair (the OTHER resolution) doesn't need a row here
-// at all - the accounts genuinely don't exist as two separate users
-// anymore afterward, so there's nothing left to keep suggesting.
-model DismissedMergeSuggestion {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  userIdA   String
-  userIdB   String
-  createdAt DateTime @default(now())
-
-  @@unique([accountId, userIdA, userIdB])
-  @@map("dismissed_merge_suggestions")
-}
-
 // Manual override for the "watched" indicator on Discover posters. Lets a
 // user mark something as watched even though they don't have polled watch
 // history for it (e.g. they saw it on a different service), OR mark it as
