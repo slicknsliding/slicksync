@@ -40,7 +40,7 @@ export interface PersonalFeatures {
   // read anything about a title is enough of a judgment call that it
   // shouldn't happen until someone explicitly asks for it in Settings.
   enablePosterRatings: boolean;
-  // 😊/😞 reactions on the detail modal - feeds /recommendations scoring
+  // Thumbs up/down reactions on the detail modal - feeds /recommendations scoring
   // (recommendationEngine.js's computeSignedAdjustments), not just
   // decorative. Default true, same as Watchlist/Watched indicators/
   // Recommendations above. Personal 1-10 ratings share the same backend
