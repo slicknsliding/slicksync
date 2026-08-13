@@ -3,6 +3,7 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { AdminAuthGate } from "@/components/layout/AdminAuthGate";
 import { NebulaTopbar } from "@/components/layout/NebulaTopbar";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { useLayoutMode, isNebulaEligiblePath } from "@/lib/layout-mode";
@@ -148,39 +149,41 @@ export default function AdminClientLayout({
   const handleClose = () => setIsMobileMenuOpen(false);
 
   return (
-    <MobileMenuContext.Provider value={{ isOpen: isMobileMenuOpen, onOpen: handleOpen, onClose: handleClose }}>
-      <TVBackButton />
-      <VaultDragProvider>
-        <LayoutDndWrapper>
-          <div className="relative min-h-screen">
-            {!useNebulaChrome && (
-              <Sidebar
-                isOpen={isMobileMenuOpen}
-                onClose={handleClose}
-              />
-            )}
-            {/* Hoisted here (not rendered per-page) so it persists across
-                Nebula-eligible route changes instead of fully unmounting and
-                remounting on every navigation - it previously lived inside
-                each of 16 individual page.tsx files, which meant every click
-                between them tore down and rebuilt NebulaTopbar from scratch:
-                re-fetching account stats, replaying its entrance stagger
-                animations, and resetting scroll-collapse state
-                (isScrolled/mobileNavOpen) back to expanded even if you'd just
-                scrolled it collapsed. Confirmed as a real contributor to
-                mobile feeling laggy/glitchy switching pages, not just a
-                guess - NebulaTopbar takes no props, so it's exactly as safe
-                hoisted here as Sidebar already is. Gated on the same
-                useNebulaChrome flag Sidebar uses (isNebulaEligiblePath),
-                which matches 1:1 with the paths that used to render it
-                themselves. */}
-            {useNebulaChrome && <NebulaTopbar />}
-            <PageContainer noSidebarOffset={useNebulaChrome}>
-              {children}
-            </PageContainer>
-          </div>
-        </LayoutDndWrapper>
-      </VaultDragProvider>
-    </MobileMenuContext.Provider>
+    <AdminAuthGate>
+      <MobileMenuContext.Provider value={{ isOpen: isMobileMenuOpen, onOpen: handleOpen, onClose: handleClose }}>
+        <TVBackButton />
+        <VaultDragProvider>
+          <LayoutDndWrapper>
+            <div className="relative min-h-screen">
+              {!useNebulaChrome && (
+                <Sidebar
+                  isOpen={isMobileMenuOpen}
+                  onClose={handleClose}
+                />
+              )}
+              {/* Hoisted here (not rendered per-page) so it persists across
+                  Nebula-eligible route changes instead of fully unmounting and
+                  remounting on every navigation - it previously lived inside
+                  each of 16 individual page.tsx files, which meant every click
+                  between them tore down and rebuilt NebulaTopbar from scratch:
+                  re-fetching account stats, replaying its entrance stagger
+                  animations, and resetting scroll-collapse state
+                  (isScrolled/mobileNavOpen) back to expanded even if you'd just
+                  scrolled it collapsed. Confirmed as a real contributor to
+                  mobile feeling laggy/glitchy switching pages, not just a
+                  guess - NebulaTopbar takes no props, so it's exactly as safe
+                  hoisted here as Sidebar already is. Gated on the same
+                  useNebulaChrome flag Sidebar uses (isNebulaEligiblePath),
+                  which matches 1:1 with the paths that used to render it
+                  themselves. */}
+              {useNebulaChrome && <NebulaTopbar />}
+              <PageContainer noSidebarOffset={useNebulaChrome}>
+                {children}
+              </PageContainer>
+            </div>
+          </LayoutDndWrapper>
+        </VaultDragProvider>
+      </MobileMenuContext.Provider>
+    </AdminAuthGate>
   );
 }
