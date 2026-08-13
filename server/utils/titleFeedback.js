@@ -1,4 +1,4 @@
-// SlickTrax reactions (😊/😞) and personal ratings - both household-wide
+// SlickTrax reactions (thumbs up/down) and personal ratings - both household-wide
 // (no userId), matching NotInterestedItem/WatchlistItem's existing scoping
 // (see server/utils/notInterested.js). Both feed recommendation scoring via
 // recommendationEngine.js's computeSignedAdjustments - see that module's own
