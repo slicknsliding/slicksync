@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.72.5",
+    "date": "2026-08-13",
+    "title": "fix: the v1.72.4 dashboard-flash fix didn't fully close the gap",
+    "features": [],
+    "bugFixes": [
+      "v1.72.4's admin session gate only tracked whether the session check had finished, not whether it had actually succeeded - so a rejected (401) check still rendered the dashboard in the brief window before the browser finished navigating to the login page. It now tracks the real outcome and keeps the dashboard from rendering at all until a session is confirmed valid."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.72.4",
     "date": "2026-08-13",
     "title": "fix: anonymous visitors briefly saw the admin dashboard before being sent to login",

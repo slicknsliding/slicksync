@@ -51,7 +51,7 @@ async function checkAccount(prisma, accountId, deps) {
 
   const users = await prisma.user.findMany({
     where: { accountId, isActive: true },
-    select: { id: true, username: true, stremioAuthKey: true, nuvioRefreshToken: true, nuvioUserId: true },
+    select: { id: true, username: true, stremioAuthKey: true, nuvioRefreshToken: true, nuvioUserId: true, providerType: true },
   })
   if (users.length === 0) return
 
@@ -96,6 +96,17 @@ async function checkAccount(prisma, accountId, deps) {
           url: `/users/${user.id}`,
         })
       } catch {}
+      // Fired on the same synced -> unsynced edge as the alert above, so a
+      // rule can't repeat while the user stays drifted (the wasSynced state
+      // row below is what makes this an edge rather than a level).
+      try {
+        const { emitAutomationEvent } = require('./automation/engine')
+        await emitAutomationEvent(prisma, accountId, 'user.sync_reverted', {
+          username: user.username,
+          userId: user.id,
+          providerType: user.providerType,
+        })
+      } catch { /* emit never throws; guarding the require itself */ }
     } else if (status.isSynced === true) {
       // Self-heal: confirmed synced again - clear any standing drift alert.
       await prisma.notification.deleteMany({ where: { accountId, dedupeKey } }).catch(() => {})

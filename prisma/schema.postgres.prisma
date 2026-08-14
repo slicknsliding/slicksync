@@ -225,6 +225,45 @@ model SuperadminAuditLog {
   @@map("superadmin_audit_log")
 }
 
+// Automation rules - see schema.sqlite.prisma for the full comment.
+model AutomationRule {
+  id            String   @id @default(cuid())
+  accountId     String   @default("default")
+  name          String
+  enabled       Boolean  @default(true)
+  triggerType   String
+  triggerConfig String   @default("{}")
+  conditions    String   @default("[]")
+  actions       String   @default("[]")
+  lastRunAt     DateTime?
+  runCount      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  runs AutomationRun[]
+
+  @@index([accountId, triggerType, enabled])
+  @@map("automation_rules")
+}
+
+// See schema.sqlite.prisma for the full comment.
+model AutomationRun {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  ruleId      String
+  triggerType String
+  payload     String   @default("{}")
+  results     String   @default("[]")
+  ok          Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([ruleId, createdAt])
+  @@map("automation_runs")
+}
+
 model Invitation {
   id                     String    @id @default(cuid())
   accountId              String

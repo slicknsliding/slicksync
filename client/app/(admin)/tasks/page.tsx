@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, UserAvatar, ConfirmModal, Modal, Input } from '@/components/ui';
+import { AutomationPanel } from '@/components/automation/AutomationPanel';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -11,6 +12,7 @@ import { api, User, Group, AddonSnapshot, BackupFile, DisasterRecoveryKit } from
 import { toast } from '@/components/ui/Toast';
 import {
   ArrowPathIcon,
+  BoltIcon,
   TrashIcon,
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
@@ -153,6 +155,7 @@ export default function TasksPage() {
   // deploy it to any user later. Backend (/api/snapshots) already existed
   // fully built but had no UI anywhere referencing it.
   const [groups, setGroups] = useState<Group[]>([]);
+  const [isAutomationOpen, setIsAutomationOpen] = useState(false);
   const [snapshots, setSnapshots] = useState<AddonSnapshot[]>([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [isCreateSnapshotOpen, setIsCreateSnapshotOpen] = useState(false);
@@ -1050,6 +1053,24 @@ export default function TasksPage() {
           />
         </PageSection>
 
+        {/* Automation - "when X happens, do Y" rules (server/utils/automation/).
+            Operator tooling, same category as everything else on this page -
+            lives in a Modal here rather than its own nav-level route. */}
+        <PageSection delay={0.11}>
+          <TaskCard
+            icon={<BoltIcon className="w-5 h-5 text-primary" />}
+            iconBg="bg-primary-muted"
+            title="Automation"
+            description="When something happens, do something about it"
+          >
+            <ActionButton
+              onClick={() => setIsAutomationOpen(true)}
+              icon={<BoltIcon className="w-4 h-4" />}
+              label="Manage Rules"
+            />
+          </TaskCard>
+        </PageSection>
+
         {/* Addon Templates - the backend (/api/snapshots) already existed
             fully built (save a user's/group's current addon set, deploy it
             to any user later) but had no UI anywhere calling it. */}
@@ -1732,6 +1753,16 @@ export default function TasksPage() {
         variant={confirmConfig.variant}
         confirmText="Confirm"
       />
+
+      {/* Automation rules */}
+      <Modal
+        isOpen={isAutomationOpen}
+        onClose={() => setIsAutomationOpen(false)}
+        title="Automation"
+        size="xl"
+      >
+        <AutomationPanel />
+      </Modal>
 
       {/* Save Addon Template */}
       <Modal

@@ -17,31 +17,38 @@ interface AdminAuthGateProps {
 //
 // getSession() hits /auth/me, which resolves three ways: a real account
 // (valid session), { account: null } with no error (auth disabled entirely,
-// private mode), or a 401 (no/invalid session - api.ts's own handler
-// redirects to /login on that response, same as it already does for every
-// other protected endpoint). Either of the first two means it's safe to
-// render; only the 401 case needs this gate to actually intervene, and it
-// does so by simply never having rendered the shell in the first place.
+// private mode), or a 401 (no/invalid session). api.ts's own handler already
+// starts the redirect to /login on that 401 - but window.location.href
+// doesn't unmount React synchronously, so there's a real window between
+// that redirect firing and the browser actually navigating away. An earlier
+// version of this gate only tracked whether the check had *finished*, not
+// whether it had *succeeded* - so a 401 still flipped straight to rendering
+// children in that window, reproducing the exact flash this gate exists to
+// prevent. Tracking the outcome explicitly (not just completion) keeps the
+// gate closed for the whole redirect, not just until the request settles.
 export function AdminAuthGate({ children }: AdminAuthGateProps) {
-  const [checking, setChecking] = useState(true);
+  const [status, setStatus] = useState<'checking' | 'ok' | 'unauthenticated'>('checking');
 
   useEffect(() => {
     let cancelled = false;
     api.getSession()
-      // A 401 already triggers api.ts's own redirect to /login - nothing
-      // further to do here. A network error fails open (render normally)
-      // rather than stranding the user on a spinner if the check itself
-      // can't complete.
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setChecking(false);
+      .then(() => {
+        if (!cancelled) setStatus('ok');
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        // Only a real 401 means "not authenticated" (redirect already in
+        // flight via api.ts). Anything else - a network error, the server
+        // being briefly unreachable - fails open rather than stranding the
+        // user on a spinner forever over a transient issue unrelated to auth.
+        setStatus(err?.response?.status === 401 ? 'unauthenticated' : 'ok');
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  if (checking) {
+  if (status !== 'ok') {
     return (
       <div
         className="min-h-screen flex items-center justify-center"
