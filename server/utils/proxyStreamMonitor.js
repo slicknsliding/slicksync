@@ -268,7 +268,23 @@ function normalizeForNotify(name) {
 // Maps an AIOStreams username to a SlickSync user - same tiers as the live
 // Now Playing merge (proxyNowPlaying.js): exact username, then email
 // local-part, then the AIOSTREAMS_FALLBACK_USER_IDS list (in its configured
-// order). Returns null if nothing matches.
+// order). Returns null if nothing matches - and also if a match exists but is
+// ambiguous and can't be narrowed down, rather than guessing.
+//
+// The email-local-part tier previously fell through to an unconditional
+// `return candidates[0]` when more than one user matched and
+// AIOSTREAMS_FALLBACK_USER_IDS wasn't configured (or didn't cover any of the
+// candidates) - i.e. it picked whichever user happened to be first in the
+// array, not whoever the proxy connection actually belonged to. This bit a
+// real household where the same person's Stremio and Nuvio accounts share
+// one email: AIOStreams' proxy only knows that shared email, so every
+// connection matched both users, and the guess silently misattributed a real
+// Nuvio watch onto the Stremio account - including writing a phantom
+// MovieWatchHistory row for it via hasConfirmedProxyPlayback's fallback in
+// metricsProcessor.js recordMovieWatch. An unresolved ambiguity must return
+// null (matching every caller's existing null-safe handling) so a watch is
+// left unattributed rather than attributed to the wrong person - same
+// "correct or nothing" principle as this codebase's poster matching.
 function resolveUserForActiveConnection(users, aiostreamsUser) {
   const lower = (aiostreamsUser || '').toLowerCase()
   const direct = users.find((u) => u.username && u.username.toLowerCase() === lower)
@@ -280,14 +296,15 @@ function resolveUserForActiveConnection(users, aiostreamsUser) {
     ? emailMatches
     : fallbackUserIds.map((id) => users.find((u) => u.id === id)).filter(Boolean)
   if (candidates.length === 0) return null
-  if (candidates.length > 1 && fallbackUserIds.length > 0) {
+  if (candidates.length === 1) return candidates[0]
+  if (fallbackUserIds.length > 0) {
     const byRank = candidates
       .map((u) => ({ u, rank: fallbackUserIds.indexOf(u.id) }))
       .filter((c) => c.rank !== -1)
       .sort((a, b) => a.rank - b.rank)
     if (byRank.length) return byRank[0].u
   }
-  return candidates[0]
+  return null
 }
 
 // Sends the instant "started watching" Discord notification for a brand-new
