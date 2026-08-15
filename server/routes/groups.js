@@ -41,8 +41,16 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
     }
   });
 
-  // Shared helper: reload (advanced mode) then sync all users in a group
-  async function syncGroupUsers(groupId, req) {
+  // Shared helper: reload (advanced mode) then sync all users in a group.
+  // forcePush bypasses the alreadySynced skip below - needed after a
+  // group-level addon reorder, since computeUserSyncPlan's comparison is
+  // deliberately order-insensitive (see sync.js's own comment: a *user's*
+  // own local reorder in their Stremio app must not read as "not synced").
+  // That same order-insensitivity means a pure reorder never looks different
+  // from "already synced" to the normal check, so the group's new order
+  // never actually got pushed down - reported as addons/reorder silently
+  // not syncing to local user accounts.
+  async function syncGroupUsers(groupId, req, { forcePush = false } = {}) {
     // Load group with scoped account
     const group = await prisma.group.findFirst({
       where: { id: groupId, accountId: getAccountId(req) },
@@ -135,8 +143,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
           useCustomFields
         })
 
-        // If already synced, count and skip pushing
-        if (plan?.success && plan.alreadySynced) {
+        // If already synced, count and skip pushing - unless forcePush, since
+        // this comparison is order-insensitive and a pure reorder looks
+        // identical to "already synced" here (see this function's own
+        // comment above).
+        if (!forcePush && plan?.success && plan.alreadySynced) {
           console.log('✅ User already synced')
           synced++
           continue
@@ -952,9 +963,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         }
       })
 
-      // After reordering, sync all users in this group to reflect the new order
+      // After reordering, push the new order down to every user in this
+      // group - forcePush because the addon *set* hasn't changed, only its
+      // order, and the normal alreadySynced check can't tell that apart from
+      // a no-op (see syncGroupUsers's own comment).
       console.log(`[Reorder] Success. Triggering group sync for ${groupId}`)
-      syncGroupUsers(groupId, req).catch(e => console.error('Post-reorder group sync failed:', e.message))
+      syncGroupUsers(groupId, req, { forcePush: true }).catch(e => console.error('Post-reorder group sync failed:', e.message))
 
       res.json({ message: 'Addons reordered successfully', groupId, reorderedCount: orderedIds.length })
     } catch (error) {

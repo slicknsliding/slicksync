@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.72.6",
+    "date": "2026-08-14",
+    "title": "fix: group addon reorder not syncing to users; proxy watch misattribution",
+    "features": [],
+    "bugFixes": [
+      "Reordering addons at the group level (drag-and-drop, Groups -> Addons) updated the stored order but never actually pushed it down to that group's users - the sync step compares addon sets, not order, so a pure reorder looked identical to \"already synced\" and was silently skipped. It's now force-pushed after a reorder regardless of that check.",
+      "A household where the same person's Stremio and Nuvio accounts share one email could have a watch recorded against the wrong one of the two. AIOStreams' proxy only sees the shared email, and when that matched more than one account, the resolver picked whichever one happened to be first instead of leaving it unresolved - occasionally misattributing a real watch (and in rare cases writing a phantom history entry for the account that didn't actually watch it). It now leaves an ambiguous connection unattributed rather than guessing."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.72.5",
     "date": "2026-08-13",
     "title": "feat: automation rules engine; fix: admin dashboard auth-flash on load",
