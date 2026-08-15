@@ -1,11 +1,24 @@
 [
   {
-    "version": "1.72.5",
-    "date": "2026-08-13",
-    "title": "fix: the v1.72.4 dashboard-flash fix didn't fully close the gap",
+    "version": "1.72.6",
+    "date": "2026-08-14",
+    "title": "fix: group addon reorder not syncing to users; proxy watch misattribution",
     "features": [],
     "bugFixes": [
-      "v1.72.4's admin session gate only tracked whether the session check had finished, not whether it had actually succeeded - so a rejected (401) check still rendered the dashboard in the brief window before the browser finished navigating to the login page. It now tracks the real outcome and keeps the dashboard from rendering at all until a session is confirmed valid."
+      "Reordering addons at the group level (drag-and-drop, Groups -> Addons) updated the stored order but never actually pushed it down to that group's users - the sync step compares addon sets, not order, so a pure reorder looked identical to \"already synced\" and was silently skipped. It's now force-pushed after a reorder regardless of that check.",
+      "A household where the same person's Stremio and Nuvio accounts share one email could have a watch recorded against the wrong one of the two. AIOStreams' proxy only sees the shared email, and when that matched more than one account, the resolver picked whichever one happened to be first instead of leaving it unresolved - occasionally misattributing a real watch (and in rare cases writing a phantom history entry for the account that didn't actually watch it). It now leaves an ambiguous connection unattributed rather than guessing."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.72.5",
+    "date": "2026-08-13",
+    "title": "feat: automation rules engine; fix: admin dashboard auth-flash on load",
+    "features": [
+      "Automation: a \"when X happens, do Y\" rules engine at Settings -> Tasks -> Automation, sitting alongside the existing one-off schedulers rather than replacing them. Build a rule from 7 real trigger points (addon coming online/offline, a Vault secret expiring or failing its check, a user expiring, a sync getting reverted, an invite being accepted) and pick what it should do in response - no code or redeploy needed for new rules, just the builder UI."
+    ],
+    "bugFixes": [
+      "Loading the site with no active session (e.g. a fresh visit to the public instance) showed a flash of the real admin dashboard - sidebar, stats, everything - before redirecting to the login page a moment later. The admin area now verifies the session before rendering anything, showing a brief loading state instead - including a follow-up correction after the first attempt at this fix still left a brief flash in the window between the redirect firing and the browser actually navigating away."
     ],
     "miscChores": []
   },
