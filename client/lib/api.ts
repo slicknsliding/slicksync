@@ -2163,6 +2163,20 @@ class ApiClient {
     }
   }
 
+  // Discover row backed by SIMKL's public Trending/Most Anticipated feeds -
+  // needs only a SIMKL Client ID (Settings -> External API Keys), not a
+  // linked user. Returns [] rather than throwing on any failure (missing
+  // key, SIMKL down) so callers can render nothing instead of an error
+  // state for what's a bonus row, not core functionality.
+  async getSimklDiscoverRow(list: 'trending' | 'anticipated', type: 'movies' | 'shows') {
+    try {
+      const result = await this.fetch<{ items: SimklDiscoverItem[] }>(`/lists/simkl-discover?list=${list}&type=${type}`);
+      return result.items || [];
+    } catch {
+      return [];
+    }
+  }
+
   async discoverSearch(type: 'movie' | 'series', query: string) {
     const params = new URLSearchParams({ type, query });
     try {
@@ -3051,6 +3065,17 @@ export interface DiscoverItem {
   // own catalog fetch is Cinemeta-only and has no Rotten Tomatoes/Metacritic.
   rottenTomatoes?: string | null;
   metacritic?: string | null;
+}
+
+// getSimklDiscoverRow's item shape - deliberately lighter than DiscoverItem
+// (no genres/imdbRating - SIMKL's trending/anticipated payload doesn't
+// carry either), matches PosterCardItem's actual minimum requirements.
+export interface SimklDiscoverItem {
+  id: string;
+  type: 'movie' | 'series';
+  name: string;
+  poster: string | null;
+  year: string | null;
 }
 
 export interface RatingsBatchEntry {

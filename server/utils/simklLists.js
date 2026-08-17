@@ -105,4 +105,50 @@ async function exportListToSimklWatchlist(prisma, linkedUser, items) {
   return { added, notFound, existing: eligible.length - added - notFound }
 }
 
-module.exports = { importSimklWatchlist, exportListToSimklWatchlist }
+// Discover row: SIMKL's public Trending/Most Anticipated feeds. Unlike
+// import/export above, these are catalog-browsing endpoints, not tied to
+// any one linked User - only a Client ID is needed, no per-user access
+// token (confirmed against SIMKL's own docs: /movies|tv/{trending|
+// anticipated}/{period} don't require Authorization, just simkl-api-key).
+// So this works for any account with a SIMKL Client ID configured
+// (Settings -> External API Keys), even with zero linked users.
+const SIMKL_DISCOVER_LISTS = new Set(['trending', 'anticipated'])
+const SIMKL_DISCOVER_TYPES = { movies: 'movies', shows: 'tv' } // SlickSync's own naming vs SIMKL's URL segment
+
+async function fetchSimklDiscoverRow(prisma, accountId, { list, mediaType, period = 'weekly' } = {}) {
+  if (!SIMKL_DISCOVER_LISTS.has(list)) throw new Error(`Unknown SIMKL list "${list}"`)
+  const urlType = SIMKL_DISCOVER_TYPES[mediaType]
+  if (!urlType) throw new Error(`Unknown media type "${mediaType}"`)
+
+  const clientId = await resolveSimklClientIdForAccount(prisma, accountId)
+  const res = await fetch(`${SIMKL_BASE}/${urlType}/${list}/${period}?extended=full`, {
+    headers: { 'simkl-api-key': clientId },
+  })
+  if (!res.ok) throw new Error(`SIMKL request failed (${res.status})`)
+  const data = await res.json().catch(() => [])
+
+  const raw = []
+  for (const it of (Array.isArray(data) ? data : [])) {
+    const entry = it?.movie || it?.show
+    const imdb = entry?.ids?.imdb
+    if (!isImdb(imdb)) continue
+    raw.push({
+      id: imdb,
+      type: mediaType === 'movies' ? 'movie' : 'series',
+      name: entry.title || imdb,
+      year: entry.year ? String(entry.year) : null,
+    })
+  }
+
+  // Same Cinemeta-by-IMDb-id poster backfill as importSimklWatchlist -
+  // SIMKL's own payload has a poster path, but it's on SIMKL's own CDN and
+  // this app standardizes on Cinemeta-resolved posters everywhere else
+  // (consistent art style/size across every row, not a visually different
+  // source for just this one).
+  return mapLimit(raw, 8, async (it) => ({
+    ...it,
+    poster: await resolveSinglePoster(it.id, it.type, null).catch(() => null),
+  }))
+}
+
+module.exports = { importSimklWatchlist, exportListToSimklWatchlist, fetchSimklDiscoverRow }
