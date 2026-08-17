@@ -6,7 +6,7 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, Badge, PosterCard, PosterCardItem } from '@/components/ui';
-import { api, DiscoverItem, RecommendationRow, User } from '@/lib/api';
+import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useWatchlistState } from '@/lib/hooks/useWatchlistState';
 import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
@@ -134,6 +134,16 @@ export default function DiscoverPage() {
   // Household-wide (not tied to the personal/shared user picker), so it only
   // depends on the type toggle - a lead row above the personalized rows.
   const [householdPicks, setHouseholdPicks] = useState<{ items: DiscoverItem[]; genres: string[]; memberCount: number; sharedAppeal: boolean } | null>(null);
+  // SIMKL Trending row - independent of everything else on this page (no
+  // linked user needed, just a SIMKL Client ID in Settings), so a plain
+  // fetch-once-on-mount rather than tied to the type/catalog/genre state
+  // the main grid reacts to. Empty array (not an error state) when SIMKL
+  // isn't configured or the request fails - see getSimklDiscoverRow's own
+  // comment on why this fails silently.
+  const [simklTrending, setSimklTrending] = useState<SimklDiscoverItem[]>([]);
+  useEffect(() => {
+    api.getSimklDiscoverRow('trending', type === 'series' ? 'shows' : 'movies').then(setSimklTrending);
+  }, [type]);
   const [recMode, setRecMode] = useState<'personal' | 'shared'>('personal');
   const [recUserId, setRecUserId] = useState<string>('');
   const [recUserId2, setRecUserId2] = useState<string>('');
@@ -589,6 +599,36 @@ export default function DiscoverPage() {
                 </div>
               </div>
               )}
+            </div>
+          </PageSection>
+        )}
+
+        {source === 'discover' && !debouncedQuery && simklTrending.length > 0 && (
+          <PageSection delay={0.06} className="mb-6">
+            <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+              <h3 className="text-base font-semibold font-display text-default">🔥 Trending on SIMKL</h3>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+              {simklTrending.map((item) => (
+                <div key={item.id} className="w-32 sm:w-36 shrink-0">
+                  <PosterCard
+                    item={{ ...item, releaseInfo: item.year }}
+                    ratings={ratingsById[item.id]}
+                    watched={watchedStatus[item.id]}
+                    inWatchlist={inWatchlistIds.has(item.id)}
+                    showWatchlistMenu={enableWatchlist}
+                    showWatchlistBadge={enableWatchlist}
+                    showWatchedMenu={enableWatchedIndicators}
+                    showWatchedBadge={enableWatchedIndicators}
+                    onOpenDetails={setDetailItem}
+                    onToggleWatchlist={handleToggleWatchlist}
+                    onToggleWatched={handleToggleWatched}
+                    isMenuOpen={openMenuKey === item.id}
+                    onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                    focusable={isTV}
+                  />
+                </div>
+              ))}
             </div>
           </PageSection>
         )}

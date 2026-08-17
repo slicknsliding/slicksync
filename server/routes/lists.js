@@ -429,6 +429,24 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
     }
   });
 
+  // GET /api/lists/simkl-discover?list=trending|anticipated&type=movies|shows
+  // — Discover row backing SIMKL's public feeds. Account-wide (needs only a
+  // SIMKL Client ID, no linked user) - see fetchSimklDiscoverRow's own
+  // comment for why these specific endpoints don't need a per-user token.
+  router.get('/simkl-discover', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const list = String(req.query?.list || 'trending');
+      const mediaType = String(req.query?.type || 'movies');
+      const { fetchSimklDiscoverRow } = require('../utils/simklLists');
+      const items = await fetchSimklDiscoverRow(prisma, accountId, { list, mediaType });
+      res.json({ items });
+    } catch (e) {
+      console.error('Error fetching SIMKL discover row:', e);
+      res.status(400).json({ error: e?.message || 'Failed to fetch SIMKL discover row' });
+    }
+  });
+
   // POST /api/lists/import-simkl — create a catalog from a linked user's
   // SIMKL Plan to Watch. { userId, name? }
   router.post('/import-simkl', async (req, res) => {
