@@ -45,4 +45,71 @@ function isKept(rated, keptRatings) {
   return keptRatings.includes(rated)
 }
 
-module.exports = { SELECTABLE_RATINGS, parseKeptRatings, serializeKeptRatings, isKept }
+/**
+ * Account-direct (no req) version of the split computation server/routes/
+ * lists.js's preview/apply endpoints use, for the scheduled enforcement
+ * sweep below - that runs in the background with no request context.
+ */
+async function computeContentRatingSplitForAccount(prisma, accountId, items, keptRatings) {
+  if (!keptRatings || keptRatings.length === 0 || items.length === 0) {
+    return { keep: items, remove: [], unknown: [] }
+  }
+  const { resolveOmdbKeyForAccount, mapLimit } = require('./listImport')
+  const { fetchOmdbRatings } = require('./omdb')
+  const apiKey = await resolveOmdbKeyForAccount(prisma, accountId)
+  if (!apiKey) return { keep: items, remove: [], unknown: items } // can't check without a key - leave everything alone rather than guess
+
+  const results = await mapLimit(items, 8, async (item) => {
+    if (!item.id || !item.id.startsWith('tt')) return { item, rated: null }
+    const ratings = await fetchOmdbRatings(item.id, apiKey).catch(() => null)
+    return { item, rated: ratings?.rated || null }
+  })
+  const keep = []
+  const remove = []
+  const unknown = []
+  for (const r of results) {
+    if (!r.rated) unknown.push(r.item)
+    if (isKept(r.rated, keptRatings)) keep.push(r.item)
+    else remove.push(r.item)
+  }
+  return { keep, remove, unknown }
+}
+
+/**
+ * Re-applies a catalog's own already-saved keptRatings policy against its
+ * CURRENT items - the ongoing-enforcement half of the allowlist (the
+ * add-time gate in lists.js's POST /:id/items covers new additions through
+ * that one path; this catches anything that reached the catalog another
+ * way - imports, the NL catalog builder, suggestions, "Refresh from
+ * source" - and keeps a policy continuously enforced until it's cleared,
+ * not just applied once). Snapshots for undo exactly like a manual apply
+ * does; no-ops (no snapshot, no write) when nothing would actually change,
+ * so this is safe to run on every catalog on a schedule without spamming
+ * "removed 0 titles" state every tick.
+ * @returns {Promise<{removedCount: number}>}
+ */
+async function reapplyContentRatingForAccount(prisma, accountId, list) {
+  const keptRatings = parseKeptRatings(list.keptRatings)
+  if (keptRatings.length === 0) return { removedCount: 0 }
+
+  const items = JSON.parse(list.itemsJson || '[]')
+  const { remove } = await computeContentRatingSplitForAccount(prisma, accountId, items, keptRatings)
+  if (remove.length === 0) return { removedCount: 0 }
+
+  const removeIds = new Set(remove.map((r) => r.id))
+  const keptItems = items.filter((it) => !removeIds.has(it.id))
+  await prisma.customList.update({
+    where: { id: list.id },
+    data: {
+      itemsJson: JSON.stringify(keptItems),
+      lastRemovalSnapshot: list.itemsJson,
+      lastRemovalAt: new Date(),
+    },
+  })
+  return { removedCount: remove.length }
+}
+
+module.exports = {
+  SELECTABLE_RATINGS, parseKeptRatings, serializeKeptRatings, isKept,
+  computeContentRatingSplitForAccount, reapplyContentRatingForAccount,
+}
