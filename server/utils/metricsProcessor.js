@@ -15,6 +15,21 @@ const { postDiscord } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
 const { notifyPushForType } = require('./pushNotifications')
 
+// notifyNativeWatchDetected's own gate (!existing && !session) only answers
+// "have we ever recorded this item for this user before" - it says nothing
+// about whether the watch itself is recent. A backlog item native tracking
+// is only just now discovering (e.g. a provider connection error that
+// self-healed, or a large first-time history backfill) is just as "new" to
+// that check as something watched five minutes ago, so it fired the exact
+// same "X watched Y" notification either way - confirmed real case: dozens
+// of weeks-old titles, discovered in one poll after a gap, each notifying as
+// if freshly watched. Gated on watchedAt (the provider's own reported watch
+// time, not "now") being within this window - generous enough to cover
+// native's own checkpoint-then-poll lag (checkpoints happen at pause/stop,
+// polled every 1min per this repo's CLAUDE.md), tight enough to exclude a
+// real backlog.
+const NOTIFY_RECENCY_WINDOW_MS = 2 * 60 * 60 * 1000
+
 // Real completion for a library item: did playback reach (near) the end?
 // From the item's own position vs runtime (state.timeOffset / state.duration),
 // the same fields the duration logic reads. Returns true (finished), false
@@ -318,8 +333,9 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     // Brand-new row (never seen this episode before) with no WatchSession
     // at all for the show - the proxy never had a chance to notify. See
     // notifyNativeWatchDetected's comment for why session (not
-    // sessionDuration/videoId-matched) is the right check here.
-    if (!existing && !session) {
+    // sessionDuration/videoId-matched) is the right check here. Also gated
+    // on watchedAt being recent - see NOTIFY_RECENCY_WINDOW_MS's comment.
+    if (!existing && !session && (Date.now() - watchedAt.getTime()) <= NOTIFY_RECENCY_WINDOW_MS) {
       notifyNativeWatchDetected(prisma, accountIdValue, {
         title: showName, poster, itemType: 'series', season, episode, userId, users,
       })
@@ -450,7 +466,9 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
 
     // Brand-new row with no WatchSession at all for this item - the proxy
     // never had a chance to notify. See notifyNativeWatchDetected's comment.
-    if (!existing && !session) {
+    // Also gated on watchedAt being recent - see NOTIFY_RECENCY_WINDOW_MS's
+    // comment.
+    if (!existing && !session && (Date.now() - watchedAt.getTime()) <= NOTIFY_RECENCY_WINDOW_MS) {
       notifyNativeWatchDetected(prisma, accountIdValue, {
         title: itemName, poster, itemType: 'movie', season: null, episode: null, userId, users,
       })
