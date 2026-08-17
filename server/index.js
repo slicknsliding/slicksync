@@ -494,6 +494,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize SIMKL sync:', err)
     }
 
+    // Schedule Automation's own time.daily trigger (every 1m, only for
+    // accounts with an enabled time.daily rule - no-op query otherwise)
+    try {
+      const { scheduleAutomationTimeTriggers } = require('./utils/automation/scheduler')
+      scheduleAutomationTimeTriggers(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize automation scheduler:', err)
+    }
+
     // Schedule auto-generated themed catalogs (daily, only for accounts
     // that opted in via Settings -> SlickTrax -> Auto-generated catalogs)
     try {

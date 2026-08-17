@@ -142,6 +142,25 @@ function validateRule(body) {
   const triggerType = body?.triggerType
   if (!TRIGGERS[triggerType]) return { ok: false, error: `Unknown trigger "${triggerType}"` }
 
+  // Only time.daily has this today - see registry.js's own comment on why
+  // triggerConfigFields is separate from the payload/condition `fields`.
+  const triggerConfig = body?.triggerConfig && typeof body.triggerConfig === 'object' ? body.triggerConfig : {}
+  for (const field of TRIGGERS[triggerType].triggerConfigFields || []) {
+    const value = triggerConfig[field.name]
+    if (field.required && (value === undefined || value === null || value === '')) {
+      return { ok: false, error: `"${TRIGGERS[triggerType].label}" needs ${field.label}` }
+    }
+    if (field.type === 'number' && value !== undefined && value !== null && !Number.isFinite(Number(value))) {
+      return { ok: false, error: `${field.label} must be a number` }
+    }
+  }
+  if (triggerType === 'time.daily') {
+    const hour = Number(triggerConfig.hour)
+    const minute = Number(triggerConfig.minute)
+    if (!(hour >= 0 && hour <= 23)) return { ok: false, error: 'Hour must be between 0 and 23' }
+    if (!(minute >= 0 && minute <= 59)) return { ok: false, error: 'Minute must be between 0 and 59' }
+  }
+
   const conditions = Array.isArray(body?.conditions) ? body.conditions : []
   const validFields = new Set(TRIGGERS[triggerType].fields.map((f) => f.name))
   for (const c of conditions) {
@@ -175,7 +194,7 @@ function validateRule(body) {
     value: {
       name,
       triggerType,
-      triggerConfig: JSON.stringify(body?.triggerConfig && typeof body.triggerConfig === 'object' ? body.triggerConfig : {}),
+      triggerConfig: JSON.stringify(triggerConfig),
       conditions: JSON.stringify(conditions),
       actions: JSON.stringify(actions),
       enabled: body?.enabled === undefined ? true : !!body.enabled,

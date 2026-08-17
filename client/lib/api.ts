@@ -2676,12 +2676,17 @@ export interface AutomationField {
   name: string;
   label: string;
   type: 'string' | 'number' | 'boolean';
+  required?: boolean;
 }
 export interface AutomationTriggerDef {
   type: string;
   label: string;
   description: string;
   fields: AutomationField[];
+  // Only schedule-driven triggers (time.daily) have this - the rule
+  // builder shows a config form (writing into rule.triggerConfig) instead
+  // of/alongside the normal condition builder when present.
+  triggerConfigFields?: AutomationField[];
 }
 export interface AutomationOperatorDef {
   op: string;

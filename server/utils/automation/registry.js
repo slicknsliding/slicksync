@@ -86,6 +86,44 @@ const TRIGGERS = {
       { name: 'providerType', label: 'Provider', type: 'string' },
     ],
   },
+  // Broader than invite.accepted - fires for ANY new user, including ones
+  // created directly from the Users page (Add User), which invite.accepted
+  // never sees since there's no invite involved. Also fires for invited
+  // users (both emit on the same creation), so a rule that genuinely only
+  // cares about invites should still use invite.accepted for its inviteCode
+  // field - this one carries no invite context at all.
+  'user.created': {
+    label: 'A new user is created',
+    description: 'Fires for any new user - via an invitation or created directly from the Users page.',
+    fields: [
+      { name: 'username', label: 'Username', type: 'string' },
+      { name: 'userId', label: 'User ID', type: 'string' },
+      { name: 'email', label: 'Email', type: 'string' },
+      { name: 'providerType', label: 'Provider', type: 'string' },
+    ],
+  },
+  // Fires on a recurring daily schedule rather than in response to
+  // something happening elsewhere in the app - the odd one out among these
+  // triggers, which is why it's the only one with its own triggerConfig
+  // (hour/minute, account-timezone aware) instead of relying purely on
+  // conditions. See automation/scheduler.js for the tick that fires this.
+  'time.daily': {
+    label: 'At a scheduled time each day',
+    description: 'Fires once a day at the time you set below, in your account\'s timezone (Settings -> Privacy & Display).',
+    fields: [
+      { name: 'hour', label: 'Hour (0-23)', type: 'number' },
+      { name: 'minute', label: 'Minute (0-59)', type: 'number' },
+    ],
+    // Distinct from `fields` (the event payload/condition fields) - this
+    // describes the trigger's OWN configuration, only meaningful for a
+    // schedule-driven trigger like this one. The rule builder shows a time
+    // picker writing into rule.triggerConfig when this trigger is selected;
+    // every other trigger type has no use for triggerConfig at all.
+    triggerConfigFields: [
+      { name: 'hour', label: 'Hour (0-23)', type: 'number', required: true },
+      { name: 'minute', label: 'Minute (0-59)', type: 'number', required: true },
+    ],
+  },
 }
 
 // ---- Condition operators ---------------------------------------------------
@@ -235,6 +273,7 @@ function describeRegistry() {
   return {
     triggers: Object.entries(TRIGGERS).map(([type, t]) => ({
       type, label: t.label, description: t.description, fields: t.fields,
+      ...(t.triggerConfigFields ? { triggerConfigFields: t.triggerConfigFields } : {}),
     })),
     operators: Object.entries(OPERATORS).map(([op, o]) => ({ op, label: o.label, unary: !!o.unary })),
     actions: Object.entries(ACTIONS).map(([type, a]) => ({

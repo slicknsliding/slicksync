@@ -403,6 +403,12 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
             inviteCode: request.invitation.inviteCode,
             providerType: newUser.providerType,
           })
+          // Also fires the broader user.created (see registry.js's comment on
+          // why both exist) - a rule watching for "any new user" shouldn't
+          // have to separately listen for invite.accepted too.
+          await emitAutomationEvent(prisma, request.invitation.accountId, 'user.created', {
+            username: newUser.username, userId: newUser.id, email: newUser.email, providerType: newUser.providerType,
+          })
         } catch { /* emit never throws; guarding the require itself */ }
 
         // Assign to group
@@ -1434,6 +1440,9 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
           email: newUser.email,
           inviteCode: invitation.inviteCode,
           providerType: newUser.providerType,
+        })
+        await emitAutomationEvent(prisma, invitation.accountId, 'user.created', {
+          username: newUser.username, userId: newUser.id, email: newUser.email, providerType: newUser.providerType,
         })
       } catch { /* emit never throws; guarding the require itself */ }
 
