@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.72.7",
+    "date": "2026-08-17",
+    "title": "fix: backlog watch discoveries fired live-watch notifications",
+    "features": [],
+    "bugFixes": [
+      "A watch native tracking only just discovered - e.g. after a provider connection hiccup healed itself, or a large first-time history catch-up - fired the exact same \"watched X\" notification as something genuinely just watched, regardless of how old the actual watch was. It now only notifies for watches discovered within a couple hours of actually happening; older discoveries still show up in History normally, they just stay quiet."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.72.6",
     "date": "2026-08-14",
     "title": "fix: group addon reorder not syncing to users; proxy watch misattribution",
