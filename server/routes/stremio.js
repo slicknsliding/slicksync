@@ -138,6 +138,12 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
               await assignUserToGroup(prisma, newUser.id, group.id, req)
             } catch {}
           }
+          try {
+            const { emitAutomationEvent } = require('../utils/automation/engine')
+            await emitAutomationEvent(prisma, accId, 'user.created', {
+              username: newUser.username, userId: newUser.id, email: newUser.email, providerType: newUser.providerType,
+            })
+          } catch {}
           return res.status(201).json({ message: 'Stremio account registered and user created', authKey, user: { id: newUser.id, username: newUser.username } })
         }
       } catch {}
@@ -406,6 +412,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
 
       // Create or update user in database
       let newUser;
+      let wasNewUser = false;
       if (existingUser && !hasValidStremioConnection) {
         // Update existing user with new Stremio connection
         newUser = await prisma.user.update({
@@ -432,6 +439,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
             colorIndex: req.body.colorIndex || 0
           }
         });
+        wasNewUser = true;
         console.log(`✅ Created new user: ${newUser.id}`)
       }
 
@@ -470,6 +478,15 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
         }
       } else {
         console.log(`🔍 No group assignment - groupName is empty or undefined`)
+      }
+
+      if (wasNewUser) {
+        try {
+          const { emitAutomationEvent } = require('../utils/automation/engine')
+          await emitAutomationEvent(prisma, getAccountId(req), 'user.created', {
+            username: newUser.username, userId: newUser.id, email: newUser.email, providerType: newUser.providerType,
+          })
+        } catch {}
       }
 
       res.status(201).json({
@@ -609,6 +626,13 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, I
           // Continue - user was created successfully, group assignment is optional
         }
       }
+
+      try {
+        const { emitAutomationEvent } = require('../utils/automation/engine')
+        await emitAutomationEvent(prisma, accountId, 'user.created', {
+          username: targetUser.username, userId: targetUser.id, email: targetUser.email, providerType: targetUser.providerType,
+        })
+      } catch {}
 
       // User was created successfully, return success even if group assignment failed
       return res.status(201).json({
