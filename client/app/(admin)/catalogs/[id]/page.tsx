@@ -375,10 +375,19 @@ export default function ListDetailPage() {
   const RATING_OPTIONS = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'Not Rated', 'Unrated'] as const;
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [draftRatings, setDraftRatings] = useState<string[]>([]);
+  const [loadingBreakdown, setLoadingBreakdown] = useState(false);
+  const [ratingBreakdown, setRatingBreakdown] = useState<{ counts: Record<string, number>; unknownCount: number; checked: number } | null>(null);
   const openPolicyModal = () => {
     setDraftRatings(list?.keptRatings || []);
     setPreviewResult(null);
     setShowPolicyModal(true);
+    if (list) {
+      setLoadingBreakdown(true);
+      api.getContentRatingBreakdown(list.id)
+        .then(setRatingBreakdown)
+        .catch(() => setRatingBreakdown(null))
+        .finally(() => setLoadingBreakdown(false));
+    }
   };
   const toggleDraftRating = (rating: string) => {
     setDraftRatings((prev) => (prev.includes(rating) ? prev.filter((r) => r !== rating) : [...prev, rating]));
@@ -978,8 +987,13 @@ export default function ListDetailPage() {
             className="text-sm rounded-lg p-3"
             style={{ background: 'var(--color-warning-muted)', color: 'var(--color-warning)', border: '1px solid var(--color-warning)' }}
           >
-            <strong>This removes titles from the catalog.</strong> Check the ratings you want to KEEP - everything else gets removed when you apply. Preview shows exactly what stays and what goes before anything changes, and the most recent removal can always be undone afterward.
+            <strong>This removes titles from the catalog, and stays enforced automatically</strong> - any title added later that doesn&apos;t match gets rejected, and a daily sweep catches anything that slips in another way (import, refresh, etc.), until you clear the policy. Check the ratings you want to KEEP - everything else gets removed when you apply. Preview shows exactly what stays and what goes before anything changes, and the most recent removal can always be undone afterward.
           </div>
+          <p className="text-xs text-subtle">
+            {loadingBreakdown ? 'Checking what\'s currently in this catalog...' : ratingBreakdown
+              ? `Currently: ${Object.entries(ratingBreakdown.counts).map(([r, n]) => `${n} ${r}`).join(', ') || 'nothing rated yet'}${ratingBreakdown.unknownCount > 0 ? `, ${ratingBreakdown.unknownCount} unrated/unknown` : ''} (${ratingBreakdown.checked} total).`
+              : null}
+          </p>
           <div className="grid grid-cols-2 gap-2">
             {RATING_OPTIONS.map((rating) => (
               <label key={rating} className="flex items-center gap-2 text-sm text-default cursor-pointer">
@@ -990,6 +1004,9 @@ export default function ListDetailPage() {
                   className="rounded"
                 />
                 {rating}
+                {ratingBreakdown?.counts[rating] ? (
+                  <span className="text-subtle">({ratingBreakdown.counts[rating]})</span>
+                ) : null}
               </label>
             ))}
           </div>

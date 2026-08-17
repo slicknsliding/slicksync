@@ -485,6 +485,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize catalog auto-refresh:', err)
     }
 
+    // Schedule content-rating enforcement (daily, only for catalogs with an
+    // active keptRatings policy - no-op query when nobody has one set)
+    try {
+      const { scheduleContentRatingEnforcement } = require('./utils/contentRatingEnforcement')
+      scheduleContentRatingEnforcement(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize content rating enforcement:', err)
+    }
+
     // Schedule SIMKL sync (pull + push, every 30m, only for users who've
     // linked a SIMKL account - no-op query when nobody has)
     try {

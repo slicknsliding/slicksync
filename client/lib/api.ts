@@ -1901,6 +1901,14 @@ class ApiClient {
   // contentRating.js) - preview shows what a candidate list would do
   // without changing anything; apply actually removes non-matching items
   // (and snapshots for undo); restore undoes the single most recent apply.
+  // What's currently in the catalog by rating, independent of any candidate
+  // policy - shown before anyone checks a box, so "what's actually in here"
+  // doesn't stay hidden until after picking ratings and hitting Preview.
+  async getContentRatingBreakdown(id: string) {
+    return this.fetch<{ counts: Record<string, number>; unknownCount: number; checked: number }>(
+      `/lists/${encodeURIComponent(id)}/content-rating-breakdown`
+    );
+  }
   async previewContentRating(id: string, keptRatings: string[]) {
     const qs = keptRatings.length ? `?keep=${encodeURIComponent(keptRatings.join(','))}` : '';
     return this.fetch<{ keep: CustomListItem[]; remove: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number }>(

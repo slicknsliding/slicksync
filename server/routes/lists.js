@@ -279,6 +279,29 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
       if (!existing) return res.status(404).json({ error: 'List not found' });
       const item = normalizeItem(req.body || {});
       if (!item) return res.status(400).json({ error: 'id, name, and a valid type are required' });
+
+      // Content-rating allowlist gate - the single choke point every "Add to
+      // catalog" UI action funnels through, so this is enough to cover all
+      // of them without duplicating the check at each call site. An unknown
+      // rating (no OMDb data, or OMDb not configured) is never blocked here
+      // either - same "never auto-reject/remove on missing data" rule
+      // apply-content-rating already follows.
+      const { parseKeptRatings, isKept } = require('../utils/contentRating');
+      const keptRatings = parseKeptRatings(existing.keptRatings);
+      if (keptRatings.length > 0 && item.id && item.id.startsWith('tt')) {
+        const { resolveOmdbKey } = require('../utils/listImport');
+        const { fetchOmdbRatings } = require('../utils/omdb');
+        const apiKey = await resolveOmdbKey(prisma, getAccountId, req);
+        if (apiKey) {
+          const ratings = await fetchOmdbRatings(item.id, apiKey).catch(() => null);
+          if (ratings?.rated && !isKept(ratings.rated, keptRatings)) {
+            return res.status(403).json({
+              error: `"${item.name}" is rated ${ratings.rated}, which isn't in this catalog's content rating policy (${keptRatings.join(', ')}). Change the policy to allow it, or add it to a different catalog.`,
+            });
+          }
+        }
+      }
+
       const items = parseItems(existing.itemsJson);
       if (!items.some((i) => i.id === item.id)) items.push(item);
       const list = await prisma.customList.update({
@@ -402,6 +425,46 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
     }
     return { keep, remove, unknown };
   }
+
+  // GET /api/lists/:id/content-rating-breakdown — what's actually in this
+  // catalog RIGHT NOW, by rating, independent of any candidate policy - so
+  // the Content Rating modal can show "this catalog currently has 3 PG-13,
+  // 2 R, 5 unrated" before anyone checks a single box, instead of that only
+  // becoming visible after picking ratings and hitting Preview.
+  router.get('/:id/content-rating-breakdown', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
+      if (!existing) return res.status(404).json({ error: 'List not found' });
+
+      const items = parseItems(existing.itemsJson);
+      if (items.length === 0) return res.json({ counts: {}, unknownCount: 0, checked: 0 });
+
+      const { resolveOmdbKey, mapLimit } = require('../utils/listImport');
+      const { fetchOmdbRatings } = require('../utils/omdb');
+      const apiKey = await resolveOmdbKey(prisma, getAccountId, req);
+      if (!apiKey) {
+        return res.status(400).json({ error: 'OMDb API key not configured (Settings -> External API Keys) - required to check content ratings' });
+      }
+
+      const results = await mapLimit(items, 8, async (item) => {
+        if (!item.id || !item.id.startsWith('tt')) return null;
+        const ratings = await fetchOmdbRatings(item.id, apiKey).catch(() => null);
+        return ratings?.rated || null;
+      });
+
+      const counts = {};
+      let unknownCount = 0;
+      for (const rated of results) {
+        if (!rated) { unknownCount++; continue; }
+        counts[rated] = (counts[rated] || 0) + 1;
+      }
+      res.json({ counts, unknownCount, checked: items.length });
+    } catch (e) {
+      console.error('Error computing content rating breakdown:', e);
+      res.status(400).json({ error: e?.message || 'Failed to compute content rating breakdown' });
+    }
+  });
 
   // GET /api/lists/:id/preview-content-rating?keep=G,PG — shows what a
   // candidate allowlist would do to this catalog's CURRENT items, without
