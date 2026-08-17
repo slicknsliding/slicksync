@@ -166,6 +166,47 @@ const ACTIONS = {
     },
   },
 
+  webhook: {
+    label: 'Call a webhook',
+    description: 'POSTs the trigger\'s data as JSON to a URL you choose - for reaching anything outside SlickSync\'s built-in channels (Home Assistant, ntfy, a custom script, n8n/Zapier, etc).',
+    configFields: [
+      { name: 'url', label: 'URL', type: 'string', required: true },
+      { name: 'headers', label: 'Extra headers (optional)', type: 'text', hint: 'One per line, e.g. Authorization: Bearer xxx' },
+    ],
+    // Same trust model as the Discord webhook URL already configurable in
+    // Settings - only an account admin can create/edit an automation rule,
+    // so a URL pointed at an internal address is exactly as much (and no
+    // more) of a concern as that existing feature already is. Not treating
+    // this as a new attack surface requiring SSRF guarding the Discord path
+    // never needed either.
+    async run({ config, payload }) {
+      const url = typeof config.url === 'string' ? config.url.trim() : ''
+      if (!url) throw new Error('No webhook URL configured')
+      let parsed
+      try { parsed = new URL(url) } catch { throw new Error('Invalid webhook URL') }
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('Webhook URL must be http or https')
+
+      const headers = { 'Content-Type': 'application/json' }
+      for (const line of String(config.headers || '').split('\n')) {
+        const idx = line.indexOf(':')
+        if (idx === -1) continue
+        const key = line.slice(0, idx).trim()
+        const value = line.slice(idx + 1).trim()
+        if (key) headers[key] = value
+      }
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
+      try {
+        const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload || {}), signal: controller.signal })
+        if (!res.ok) throw new Error(`Webhook returned ${res.status}`)
+        return `Called webhook (${res.status})`
+      } finally {
+        clearTimeout(timeoutId)
+      }
+    },
+  },
+
   'addon.disable': {
     label: 'Disable an addon',
     description: 'Turns off a specific addon.',
