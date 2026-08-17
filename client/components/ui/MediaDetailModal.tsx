@@ -744,6 +744,15 @@ export function MediaDetailModal({
                     {details.runtime}
                   </span>
                 )}
+                {details.rated && (
+                  <span
+                    className="px-2 py-0.5 rounded-md text-sm font-semibold border"
+                    style={{ color: 'var(--color-text)', borderColor: 'var(--color-surface-border)' }}
+                    title="Content rating"
+                  >
+                    {details.rated}
+                  </span>
+                )}
                 {(effectiveFallbackRating || details.imdbRating) && (
                   <span className="flex items-center gap-1.5 text-amber-400 font-medium">
                     <StarIcon className="w-5 h-5" />
