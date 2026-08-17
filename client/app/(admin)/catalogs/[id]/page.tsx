@@ -367,53 +367,73 @@ export default function ListDetailPage() {
     }
   };
 
-  // Content-rating review policy (server/utils/contentRating.js) - a
-  // "Kids" catalog can flag mature OMDb ratings; GET /flagged checks
-  // current items against it on demand, not a live add-time gate.
-  const RATING_OPTIONS = ['PG-13', 'R', 'NC-17', 'TV-14', 'TV-MA', 'Not Rated', 'Unrated'] as const;
+  // Content-rating ALLOWLIST (server/utils/contentRating.js) - checking a
+  // rating means KEEP it; applying removes every item whose rating isn't
+  // checked. Destructive, so the flow is always preview (see what would
+  // happen) before apply (actually do it), and apply always leaves a
+  // one-step undo available via lastRemovalAt/restoreContentRatingRemoval.
+  const RATING_OPTIONS = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'Not Rated', 'Unrated'] as const;
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [draftRatings, setDraftRatings] = useState<string[]>([]);
-  const [savingPolicy, setSavingPolicy] = useState(false);
   const openPolicyModal = () => {
-    setDraftRatings(list?.blockedRatings || []);
+    setDraftRatings(list?.keptRatings || []);
+    setPreviewResult(null);
     setShowPolicyModal(true);
   };
   const toggleDraftRating = (rating: string) => {
     setDraftRatings((prev) => (prev.includes(rating) ? prev.filter((r) => r !== rating) : [...prev, rating]));
   };
-  const handleSavePolicy = async () => {
+
+  const [previewing, setPreviewing] = useState(false);
+  const [previewResult, setPreviewResult] = useState<{ keep: CustomListItem[]; remove: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number } | null>(null);
+  const handlePreview = async () => {
     if (!list) return;
-    setSavingPolicy(true);
+    setPreviewing(true);
     try {
-      const updated = await api.updateList(list.id, { blockedRatings: draftRatings });
-      setList(updated);
-      setShowPolicyModal(false);
-      toast.success(draftRatings.length ? 'Content rating policy saved' : 'Content rating policy cleared');
+      setPreviewResult(await api.previewContentRating(list.id, draftRatings));
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to save policy');
+      toast.error(e?.message || 'Failed to preview content rating');
     } finally {
-      setSavingPolicy(false);
+      setPreviewing(false);
     }
   };
 
-  const [checkingFlagged, setCheckingFlagged] = useState(false);
-  const [flaggedResult, setFlaggedResult] = useState<{ flagged: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number } | null>(null);
-  const handleCheckContent = async () => {
+  const [applying, setApplying] = useState(false);
+  const handleApply = async () => {
     if (!list) return;
-    setCheckingFlagged(true);
+    setApplying(true);
     try {
-      const result = await api.getFlaggedContent(list.id);
-      setFlaggedResult(result);
+      const { removedCount, ...updated } = await api.applyContentRating(list.id, draftRatings);
+      setList(updated);
+      setShowPolicyModal(false);
+      setPreviewResult(null);
+      toast.success(
+        draftRatings.length === 0
+          ? 'Content rating policy cleared'
+          : removedCount > 0
+            ? `Removed ${removedCount} title${removedCount !== 1 ? 's' : ''} - use "Restore last removal" to undo`
+            : 'Policy saved - nothing to remove'
+      );
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to check content ratings');
+      toast.error(e?.message || 'Failed to apply content rating');
     } finally {
-      setCheckingFlagged(false);
+      setApplying(false);
     }
   };
-  const handleRemoveFlagged = async (item: CustomListItem) => {
+
+  const [restoring, setRestoring] = useState(false);
+  const handleRestoreRemoval = async () => {
     if (!list) return;
-    await handleRemoveItem(item);
-    setFlaggedResult((prev) => prev ? { ...prev, flagged: prev.flagged.filter((f) => f.id !== item.id) } : prev);
+    setRestoring(true);
+    try {
+      const updated = await api.restoreContentRatingRemoval(list.id);
+      setList(updated);
+      toast.success('Restored the last content-rating removal');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to restore');
+    } finally {
+      setRestoring(false);
+    }
   };
 
   const handleRemoveItem = async (item: CustomListItem) => {
@@ -574,14 +594,25 @@ export default function ListDetailPage() {
         {list.shared ? 'Shared' : 'Share'}
       </Button>
       <Button
-        variant={list.blockedRatings.length > 0 ? 'primary' : 'secondary'}
+        variant={list.keptRatings.length > 0 ? 'primary' : 'secondary'}
         size="sm"
         leftIcon={<ShieldExclamationIcon className="w-4 h-4" />}
         onClick={openPolicyModal}
-        title={list.blockedRatings.length > 0 ? `Flags: ${list.blockedRatings.join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
+        title={list.keptRatings.length > 0 ? `Keeping only: ${list.keptRatings.join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
       >
-        {list.blockedRatings.length > 0 ? `Content Rating (${list.blockedRatings.length})` : 'Content Rating'}
+        {list.keptRatings.length > 0 ? `Content Rating (${list.keptRatings.length})` : 'Content Rating'}
       </Button>
+      {list.lastRemovalAt && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleRestoreRemoval}
+          isLoading={restoring}
+          title={`Undo the content-rating removal from ${new Date(list.lastRemovalAt).toLocaleString()}`}
+        >
+          Restore last removal
+        </Button>
+      )}
       <Button
         variant="secondary"
         size="sm"
@@ -936,82 +967,71 @@ export default function ListDetailPage() {
         )}
       </Modal>
 
-      {/* Content rating policy - a review tool (see server/utils/
-          contentRating.js), not a live gate on adding titles. Saving just
-          sets which OMDb ratings to flag; actually checking current items
-          against it happens separately via "Check content" below. */}
+      {/* Content rating ALLOWLIST (server/utils/contentRating.js) - checking
+          a rating means KEEP it. Applying removes everything else from this
+          catalog right now. Always preview before apply; apply always
+          leaves a one-step undo (the "Restore last removal" button above,
+          shown whenever list.lastRemovalAt is set). */}
       <Modal isOpen={showPolicyModal} onClose={() => setShowPolicyModal(false)} title="Content Rating" size="sm">
         <div className="space-y-4">
-          <p className="text-sm text-muted">
-            Flag titles rated any of the following when you check this catalog&apos;s content (below). Doesn&apos;t block adding anything - review when you want to.
-          </p>
+          <div
+            className="text-sm rounded-lg p-3"
+            style={{ background: 'var(--color-warning-muted)', color: 'var(--color-warning)', border: '1px solid var(--color-warning)' }}
+          >
+            <strong>This removes titles from the catalog.</strong> Check the ratings you want to KEEP - everything else gets removed when you apply. Preview shows exactly what stays and what goes before anything changes, and the most recent removal can always be undone afterward.
+          </div>
           <div className="grid grid-cols-2 gap-2">
             {RATING_OPTIONS.map((rating) => (
               <label key={rating} className="flex items-center gap-2 text-sm text-default cursor-pointer">
                 <input
                   type="checkbox"
                   checked={draftRatings.includes(rating)}
-                  onChange={() => toggleDraftRating(rating)}
+                  onChange={() => { toggleDraftRating(rating); setPreviewResult(null); }}
                   className="rounded"
                 />
                 {rating}
               </label>
             ))}
           </div>
-          {list && list.blockedRatings.length > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              leftIcon={<ShieldExclamationIcon className="w-4 h-4" />}
-              onClick={() => { setShowPolicyModal(false); handleCheckContent(); }}
-              isLoading={checkingFlagged}
-              className="w-full"
-            >
-              Check content against saved policy
-            </Button>
+
+          {previewResult && (
+            <div className="space-y-2 pt-1">
+              <p className="text-sm font-medium text-default">
+                {previewResult.remove.length === 0
+                  ? 'Nothing would be removed.'
+                  : `${previewResult.remove.length} of ${previewResult.checked} would be removed, ${previewResult.keep.length} would stay.`}
+              </p>
+              {previewResult.remove.length > 0 && (
+                <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg p-2" style={{ background: 'var(--color-surface-hover)' }}>
+                  {previewResult.remove.map((item) => (
+                    <div key={item.id} className="flex items-center gap-2 text-xs">
+                      <span className="flex-1 min-w-0 truncate text-default">{item.name}</span>
+                      <Badge variant="error" size="sm">{item.rated}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {previewResult.unknown.length > 0 && (
+                <p className="text-xs text-subtle">
+                  {previewResult.unknown.length} title{previewResult.unknown.length !== 1 ? 's have' : ' has'} no rating on file (OMDb doesn&apos;t have one, or it hasn&apos;t been looked up) - kept either way, since an unknown rating is never auto-removed.
+                </p>
+              )}
+            </div>
           )}
+
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" size="sm" onClick={() => setShowPolicyModal(false)} disabled={savingPolicy}>Cancel</Button>
-            <Button variant="primary" size="sm" onClick={handleSavePolicy} isLoading={savingPolicy}>
-              Save policy
-            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setShowPolicyModal(false)} disabled={applying}>Cancel</Button>
+            {!previewResult ? (
+              <Button variant="secondary" size="sm" onClick={handlePreview} isLoading={previewing}>
+                Preview
+              </Button>
+            ) : (
+              <Button variant="danger" size="sm" onClick={handleApply} isLoading={applying}>
+                {draftRatings.length === 0 ? 'Save (clear policy)' : `Apply${previewResult.remove.length > 0 ? ` & Remove ${previewResult.remove.length}` : ''}`}
+              </Button>
+            )}
           </div>
         </div>
-      </Modal>
-
-      {/* Flagged-content results - shown after "Check content", either from
-          the policy modal above or re-run any time from there. Removing a
-          flagged item here just calls the normal remove-from-catalog path. */}
-      <Modal isOpen={!!flaggedResult} onClose={() => setFlaggedResult(null)} title="Content Rating Check" size="md">
-        {flaggedResult && (
-          <div className="space-y-4">
-            <p className="text-sm text-muted">
-              Checked {flaggedResult.checked} title{flaggedResult.checked !== 1 ? 's' : ''} against this catalog&apos;s policy.
-            </p>
-            {flaggedResult.flagged.length === 0 ? (
-              <p className="text-sm text-default">Nothing flagged.</p>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-default">{flaggedResult.flagged.length} flagged:</p>
-                {flaggedResult.flagged.map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg bg-surface-hover">
-                    <p className="flex-1 min-w-0 text-sm text-default truncate">{item.name}</p>
-                    <Badge variant="error" size="sm">{item.rated}</Badge>
-                    <Button variant="danger" size="sm" onClick={() => handleRemoveFlagged(item)}>Remove</Button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {flaggedResult.unknown.length > 0 && (
-              <p className="text-xs text-subtle">
-                {flaggedResult.unknown.length} title{flaggedResult.unknown.length !== 1 ? 's have' : ' has'} no rating on file (OMDb doesn&apos;t have one, or it hasn&apos;t been looked up) - not automatically flagged either way, worth a manual look if you want full coverage.
-              </p>
-            )}
-            <div className="flex justify-end pt-2">
-              <Button variant="ghost" size="sm" onClick={() => setFlaggedResult(null)}>Close</Button>
-            </div>
-          </div>
-        )}
       </Modal>
 
       {/* Refresh from source - never a silent replace. Shows exactly what
