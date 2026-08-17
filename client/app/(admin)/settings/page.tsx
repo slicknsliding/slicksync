@@ -190,6 +190,55 @@ export default function SettingsPage() {
     accountTimezone: '',
   });
 
+  // AI Services (Settings > External API Keys) - powers natural-language
+  // Catalog building (Catalogs -> "Describe a catalog"). Stored as a Vault
+  // entry underneath (see api.ts's getAiServicesStatus comment) - the
+  // status endpoint never returns the key itself, only whether one is set,
+  // same as the account API key above.
+  const [aiConfigured, setAiConfigured] = useState(false);
+  const [aiApiKey, setAiApiKey] = useState('');
+  const [aiBaseUrl, setAiBaseUrl] = useState('');
+  const [aiModel, setAiModel] = useState('');
+  const [isSavingAi, setIsSavingAi] = useState(false);
+
+  const loadAiServicesStatus = async () => {
+    try {
+      const status = await api.getAiServicesStatus();
+      setAiConfigured(!!status.configured);
+      setAiBaseUrl(status.baseUrl || '');
+      setAiModel(status.model || '');
+    } catch {
+      // Endpoint may not exist yet on an older backend - stay silent.
+    }
+  };
+
+  const handleSaveAiServices = async () => {
+    setIsSavingAi(true);
+    try {
+      await api.setAiServices({ apiKey: aiApiKey.trim() || undefined, baseUrl: aiBaseUrl.trim(), model: aiModel.trim() });
+      setAiApiKey('');
+      setAiConfigured(true);
+      toast.success('AI Services saved');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to save AI Services');
+    } finally {
+      setIsSavingAi(false);
+    }
+  };
+
+  const handleRemoveAiServices = async () => {
+    try {
+      await api.removeAiServices();
+      setAiConfigured(false);
+      setAiApiKey('');
+      setAiBaseUrl('');
+      setAiModel('');
+      toast.success('AI Services removed');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to remove AI Services');
+    }
+  };
+
   // Push-subscribed devices (Settings > Notifications > Devices) - every
   // browser/phone currently subscribed to push on this account, with zero
   // UI over it until now.
@@ -390,6 +439,7 @@ export default function SettingsPage() {
 
     loadSettings();
     loadPushDevices();
+    loadAiServicesStatus();
   }, []);
 
   const handleSaveSetting = async (key: keyof SyncSettings, value: any) => {
@@ -1203,6 +1253,67 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-3">
+              {/* AI Services key - powers natural-language Catalog building
+                  (Catalogs -> "Describe a catalog"). Placed first/most
+                  prominent of this group deliberately: this used to only be
+                  configurable from a generic Vault "add credential" entry
+                  with no explanation of what it did, which made it easy to
+                  add a key there and have no idea whether it was doing
+                  anything. Still stored as a Vault entry underneath (see
+                  api.ts), just with a clear, focused front door here. */}
+              <div className="rounded-xl p-3" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)' }}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-default">AI Services <span className="text-subtle font-normal">(optional)</span></label>
+                  {aiConfigured && (
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--color-success-muted)', color: 'var(--color-success)' }}>
+                      Connected
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted mb-2">
+                  Powers natural-language Catalog building (Catalogs → &quot;Describe a catalog&quot;) — describe what you want in plain English and get a real saved Catalog back. Works without a key too, using a built-in keyword parser; adding one here just makes it understand nuanced descriptions better. Defaults to OpenAI, but any OpenAI-compatible endpoint works (OpenRouter, Groq, a local proxy).
+                </p>
+                <div className="space-y-2">
+                  <input
+                    type="password"
+                    value={aiApiKey}
+                    onChange={(e) => setAiApiKey(e.target.value)}
+                    placeholder={aiConfigured ? '•••••••• (leave blank to keep current)' : 'API key'}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="input-base w-full px-3 py-2 text-sm"
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={aiBaseUrl}
+                      onChange={(e) => setAiBaseUrl(e.target.value)}
+                      placeholder="API base URL (optional, default OpenAI)"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="input-base w-full px-3 py-2 text-sm"
+                    />
+                    <input
+                      type="text"
+                      value={aiModel}
+                      onChange={(e) => setAiModel(e.target.value)}
+                      placeholder="Model (optional, default gpt-4o-mini)"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="input-base w-full px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end pt-1">
+                    {aiConfigured && (
+                      <Button variant="secondary" size="sm" onClick={handleRemoveAiServices}>Remove</Button>
+                    )}
+                    <Button size="sm" onClick={handleSaveAiServices} disabled={isSavingAi || (!aiApiKey.trim() && !aiConfigured)}>
+                      {isSavingAi ? 'Saving...' : 'Save'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
               {/* TMDb key for the cast/crew deep-dive. Text field, not a
                   toggle - the feature simply appears once a valid key is set.
                   Free from themoviedb.org (Settings -> API). Saved on blur,

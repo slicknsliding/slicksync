@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Card, Button, Modal, PosterThumb, Badge } from '@/components/ui';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -673,6 +674,11 @@ function DescribeCatalogModal({
               <p className="text-sm text-default">
                 {queryParts.length > 0 ? queryParts.join(' · ') : 'No specific filters detected - showing top-rated results'}
               </p>
+              {!preview.usedAi && (
+                <p className="text-xs text-subtle mt-1.5">
+                  Using the built-in keyword parser. <Link href="/settings" className="underline hover:text-default">Add an AI key in Settings</Link> for better understanding of nuanced descriptions.
+                </p>
+              )}
             </div>
 
             {preview.items.length === 0 ? (
