@@ -181,25 +181,25 @@ const AI_BASE_URL_OPTIONS = [
 // base URL is currently selected.
 const AI_MODEL_OPTIONS_BY_PROVIDER: Record<string, { value: string; label: string }[]> = {
   'https://api.openai.com/v1': [
-    { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
-    { value: 'gpt-4o', label: 'gpt-4o' },
-    { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini' },
-    { value: 'o4-mini', label: 'o4-mini' },
+    { value: 'gpt-5.2-mini', label: 'gpt-5.2-mini' },
+    { value: 'gpt-5.2-chat-latest', label: 'gpt-5.2-chat-latest' },
+    { value: 'gpt-5.4-mini', label: 'gpt-5.4-mini' },
   ],
   'https://openrouter.ai/api/v1': [
-    { value: 'openai/gpt-4o-mini', label: 'GPT-4o mini' },
+    { value: 'openai/gpt-5.2-mini', label: 'GPT-5.2 mini' },
     { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
-    { value: 'google/gemini-2.0-flash-001', label: 'Gemini 2.0 Flash' },
-    { value: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
+    { value: 'google/gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
+    { value: 'meta-llama/llama-4-scout', label: 'Llama 4 Scout' },
   ],
   'https://api.groq.com/openai/v1': [
-    { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
-    { value: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
+    { value: 'llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout' },
+    { value: 'llama-4-maverick-17b-128e-instruct', label: 'Llama 4 Maverick' },
+    { value: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B' },
   ],
   'https://generativelanguage.googleapis.com/v1beta/openai': [
-    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+    { value: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash (latest)' },
+    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
   ],
   'https://api.deepseek.com': [
     { value: 'deepseek-chat', label: 'DeepSeek Chat' },
@@ -251,12 +251,38 @@ export default function SettingsPage() {
   const [aiBaseUrl, setAiBaseUrl] = useState('');
   const [aiModel, setAiModel] = useState('');
   const [isSavingAi, setIsSavingAi] = useState(false);
-  // Narrows the model suggestions to whichever provider the current base
-  // URL actually is - see AI_MODEL_OPTIONS_BY_PROVIDER's own comment for
-  // why this can't be one flat list. Blank base URL defaults to OpenAI
-  // (matching the field's own placeholder text); an unrecognized URL (a
-  // custom/local proxy) falls back to showing everything.
-  const aiModelOptions = AI_MODEL_OPTIONS_BY_PROVIDER[aiBaseUrl.trim() || 'https://api.openai.com/v1'] || AI_MODEL_OPTIONS_ALL;
+  // liveAiModels comes from the provider's own GET /models (fetched below)
+  // once a key is available - the real, current list, not a hardcoded guess
+  // that inevitably drifts as providers retire/rename models (confirmed
+  // real case: every hardcoded suggestion here had already gone stale).
+  // Falls back to the static per-provider list only until that live fetch
+  // has something, so the field isn't empty before a key exists to fetch
+  // with.
+  const [liveAiModels, setLiveAiModels] = useState<string[]>([]);
+  const [loadingAiModels, setLoadingAiModels] = useState(false);
+  const staticAiModelOptions = AI_MODEL_OPTIONS_BY_PROVIDER[aiBaseUrl.trim() || 'https://api.openai.com/v1'] || AI_MODEL_OPTIONS_ALL;
+  const aiModelOptions = liveAiModels.length > 0
+    ? liveAiModels.map((m) => ({ value: m, label: m }))
+    : staticAiModelOptions;
+
+  // Both overrides exist because React state updates are async - a caller
+  // that just called setAiBaseUrl()/setAiConfigured() moments ago
+  // (loadAiServicesStatus, on mount) can't rely on those closure values
+  // reflecting the update yet.
+  const fetchLiveAiModels = async (opts?: { baseUrl?: string; hasKey?: boolean }) => {
+    const effectiveBaseUrl = opts?.baseUrl ?? aiBaseUrl;
+    const hasKey = opts?.hasKey ?? (!!aiApiKey.trim() || aiConfigured);
+    if (!hasKey) return; // nothing to fetch with yet
+    setLoadingAiModels(true);
+    try {
+      const { models } = await api.listAiModels({ apiKey: aiApiKey.trim() || undefined, baseUrl: effectiveBaseUrl.trim() });
+      setLiveAiModels(models);
+    } catch {
+      setLiveAiModels([]); // fails silently - falls back to the static suggestions, same "bonus, not required" treatment as everywhere else this pattern is used
+    } finally {
+      setLoadingAiModels(false);
+    }
+  };
   // Real verification result from the last save (settings.js actually calls
   // the provider, not just "was something written to the DB") - null means
   // never checked yet (fresh page load before any save, or an entry saved
@@ -274,6 +300,7 @@ export default function SettingsPage() {
       setAiModel(status.model || '');
       setAiCheckStatus(status.lastCheckStatus || null);
       setAiCheckMessage(status.lastCheckMessage || null);
+      if (status.configured) fetchLiveAiModels({ baseUrl: status.baseUrl || '', hasKey: true });
     } catch {
       // Endpoint may not exist yet on an older backend - stay silent.
     }
@@ -295,6 +322,7 @@ export default function SettingsPage() {
       setAiCheckMessage(result.lastCheckMessage);
       if (result.lastCheckStatus === 'ok') toast.success('AI Services verified and saved');
       else toast.error(`Saved, but verification failed: ${result.lastCheckMessage}`);
+      fetchLiveAiModels({ hasKey: true }); // refresh the model dropdown against whatever key/URL just got saved
     } catch (e: any) {
       toast.error(e.message || 'Failed to save AI Services');
     } finally {
@@ -1404,10 +1432,17 @@ export default function SettingsPage() {
                       value={aiModel}
                       onChange={setAiModel}
                       onBlur={handleAiFieldBlur}
-                      placeholder="Model (optional, default gpt-4o-mini)"
+                      placeholder="Model (optional, default gpt-5.2-mini)"
                       options={aiModelOptions}
                     />
                   </div>
+                  <p className="text-[11px] text-subtle">
+                    {loadingAiModels
+                      ? 'Loading current models from the provider...'
+                      : liveAiModels.length > 0
+                        ? `${liveAiModels.length} models loaded live from the provider.`
+                        : 'Showing common suggestions - enter a key to load the provider\'s actual current model list.'}
+                  </p>
                 </div>
               </div>
 

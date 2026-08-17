@@ -62,7 +62,14 @@ async function resolveAiCredentials(prisma, accountId, decrypt) {
     return {
       apiKey,
       baseUrl: (typeof config.baseUrl === 'string' && config.baseUrl.trim()) ? config.baseUrl.trim().replace(/\/+$/, '') : 'https://api.openai.com/v1',
-      model: (typeof config.model === 'string' && config.model.trim()) ? config.model.trim() : 'gpt-4o-mini',
+      // Was 'gpt-4o-mini' - OpenAI retired that model. This default only
+      // matters for someone who saved a key with the model field left
+      // blank; anyone who picks a model explicitly (the Settings dropdown
+      // now suggests live options from the provider itself) never hits it.
+      // Providers rotate their lineups fast enough that even this fallback
+      // will need occasional updates - it's a "reasonably current as of
+      // when this was written" default, not a permanent guarantee.
+      model: (typeof config.model === 'string' && config.model.trim()) ? config.model.trim() : 'gpt-5.2-mini',
       entryName: entry.name,
     }
   } catch {

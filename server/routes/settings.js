@@ -910,6 +910,61 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // POST /account-ai-services/list-models - live model list from the
+  // provider's own GET /models (the OpenAI-compatible endpoint every
+  // provider in this app's suggestion list implements), instead of a
+  // hardcoded guess. Hardcoded model names go stale fast (confirmed real
+  // case: gemini-2.0-flash, gpt-4o-mini, and llama-3.3-70b-versatile were
+  // ALL retired/deprecated by their providers since this feature's
+  // suggestions were written) - a live call is the only version of this
+  // that doesn't need updating every time a provider reshuffles its lineup.
+  // Takes { apiKey, baseUrl } from the form directly (not necessarily
+  // saved yet) so models can be browsed before committing; apiKey blank
+  // falls back to the already-saved key, same "leave blank to keep
+  // current" convention as the save endpoint itself.
+  router.post('/account-ai-services/list-models', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const { apiKey, baseUrl } = req.body || {}
+      let effectiveKey = typeof apiKey === 'string' ? apiKey.trim() : ''
+      if (!effectiveKey) {
+        const entry = await findAiVaultEntry(accountId)
+        if (entry) effectiveKey = decrypt(entry.encryptedSecret, req)
+      }
+      if (!effectiveKey) return res.status(400).json({ message: 'No API key to list models with' })
+
+      const effectiveBaseUrl = (typeof baseUrl === 'string' && baseUrl.trim()) ? baseUrl.trim().replace(/\/+$/, '') : 'https://api.openai.com/v1'
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
+      let response
+      try {
+        response = await fetch(`${effectiveBaseUrl}/models`, {
+          headers: { Authorization: `Bearer ${effectiveKey}` },
+          signal: controller.signal,
+        })
+      } finally {
+        clearTimeout(timeoutId)
+      }
+      if (!response.ok) {
+        return res.status(400).json({ message: `Provider returned ${response.status} listing models` })
+      }
+      const data = await response.json().catch(() => null)
+      // OpenAI-compatible shape: { data: [{ id: "..." }, ...] }. Some
+      // providers (confirmed: Google's compat layer) instead return a bare
+      // array - handled either way rather than assuming one shape.
+      const rawList = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []
+      const models = rawList
+        .map((m) => (typeof m === 'string' ? m : m?.id))
+        .filter((id) => typeof id === 'string' && id.trim())
+        .sort()
+      return res.json({ models })
+    } catch (e) {
+      console.error('Error listing AI models:', e)
+      return res.status(400).json({ message: e?.message || 'Failed to list models' })
+    }
+  })
+
   // Runs the real request the feature itself sends (nlCatalog.js's callAi,
   // with a throwaway description) and writes the verdict onto the entry's
   // existing lastCheckStatus/lastCheckMessage fields (VaultEntry already has
