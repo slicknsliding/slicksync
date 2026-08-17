@@ -254,6 +254,47 @@ function resolveGenreIds(genres, mediaType, maps) {
   return ids
 }
 
+// TMDb's Discover endpoint filters by keyword ID, not text - "heist",
+// "time travel", "based on a true story" etc. only work as with_keywords
+// once resolved through TMDb's own /search/keyword. A short cache avoids
+// re-resolving the same common phrase across different descriptions in the
+// same window; unlike genres (a small fixed set worth caching for a day),
+// keyword phrases are open-ended, so this is capped and short-lived rather
+// than an unbounded growing map.
+const KEYWORD_CACHE_TTL_MS = 60 * 60 * 1000
+const KEYWORD_CACHE_MAX = 200
+const keywordCache = new Map() // lowercase phrase -> { id: number|null, at: number }
+
+async function resolveKeywordId(phrase, tmdbKey) {
+  const key = phrase.toLowerCase().trim()
+  const cached = keywordCache.get(key)
+  if (cached && (Date.now() - cached.at) < KEYWORD_CACHE_TTL_MS) return cached.id
+
+  let id = null
+  try {
+    const res = await fetch(`https://api.themoviedb.org/3/search/keyword?api_key=${encodeURIComponent(tmdbKey)}&query=${encodeURIComponent(key)}`)
+    if (res.ok) {
+      const data = await res.json()
+      // TMDb's keyword search has no relevance score beyond result order -
+      // for a short, well-formed phrase (what the parser/AI extracts, not
+      // raw freeform text) the first result is reliably the intended match.
+      id = data.results?.[0]?.id ?? null
+    }
+  } catch { /* leave id null - a keyword TMDb can't resolve just drops out, same as an unmatched genre */ }
+
+  if (keywordCache.size >= KEYWORD_CACHE_MAX) keywordCache.clear() // simple bound, not LRU - this cache is a minor optimization, not correctness-critical
+  keywordCache.set(key, { id, at: Date.now() })
+  return id
+}
+
+/** keyword phrases -> real TMDb keyword ids. Unmatched phrases are dropped, not an error - same "fewer filters than requested still returns something" contract as resolveGenreIds. */
+async function resolveKeywordIds(keywords, tmdbKey) {
+  if (!keywords || keywords.length === 0) return []
+  const { mapLimit } = require('./listImport')
+  const ids = await mapLimit(keywords, 3, (kw) => resolveKeywordId(kw, tmdbKey))
+  return ids.filter((id) => id !== null)
+}
+
 async function discoverFromQuery(query, tmdbKey) {
   const mediaType = query.type === 'series' ? 'tv' : 'movie' // default to movie when unspecified - the common case for a casual description
   const maps = await loadGenreMaps(tmdbKey)
@@ -267,7 +308,14 @@ async function discoverFromQuery(query, tmdbKey) {
   })
   if (genreIds.length) params.set('with_genres', genreIds.join(','))
   if (query.maxRuntimeMinutes) params.set('with_runtime.lte', String(query.maxRuntimeMinutes))
-  if (query.keywords.length) params.set('with_keywords', '') // TMDb keyword ids would need a lookup call; left as a future refinement, not silently mismapped to plain text
+  if (query.keywords.length) {
+    const keywordIds = await resolveKeywordIds(query.keywords, tmdbKey)
+    // Pipe = OR, not comma (AND) - these are independent descriptive terms
+    // pulled from a loose description ("heist", "time travel"), not a
+    // checklist every result must satisfy. Requiring all of them would
+    // return near-empty results for anything but a very literal match.
+    if (keywordIds.length) params.set('with_keywords', keywordIds.join('|'))
+  }
 
   const dateField = mediaType === 'tv' ? 'first_air_date' : 'primary_release_date'
   if (query.yearFrom) params.set(`${dateField}.gte`, `${query.yearFrom}-01-01`)
@@ -347,6 +395,7 @@ module.exports = {
   parseDescriptionFallback,
   discoverFromQuery,
   resolveGenreIds,
+  resolveKeywordIds,
   generateCatalogFromDescription,
   normalizeQuery,
 }
