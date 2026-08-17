@@ -25,3 +25,4 @@ export * from './PageToolbar';
 export * from './DragSortable';
 export * from './RatingBadges';
 export * from './PosterCard';
+export * from './ComboBox';

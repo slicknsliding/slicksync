@@ -292,12 +292,14 @@ async function fetchMetadata(itemId, itemType, videoId, omdbApiKey) {
           result.rottenTomatoes = null
           result.metacritic = null
           result.boxOffice = null
+          result.rated = null
           if (result.imdb_id) {
             const omdbRatings = await fetchOmdbRatings(result.imdb_id, omdbApiKey)
             if (omdbRatings) {
               result.rottenTomatoes = omdbRatings.rottenTomatoes
               result.metacritic = omdbRatings.metacritic
               result.boxOffice = omdbRatings.boxOffice
+              result.rated = omdbRatings.rated
             }
           }
 

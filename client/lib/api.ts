@@ -3076,6 +3076,10 @@ export interface MediaDetails {
   imdbRating: string | null;
   rottenTomatoes: string | null;
   metacritic: string | null;
+  // Content/age rating (MPAA "PG-13"/"R" or TV parental guidelines
+  // "TV-14"/"TV-MA"), NOT a quality score - see server/utils/omdb.js's own
+  // comment on why "Not Rated" is kept as a real value distinct from null.
+  rated: string | null;
   runtime: string | null;
   releaseInfo: string | null;
   country: string | null;
