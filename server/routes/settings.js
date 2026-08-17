@@ -885,7 +885,11 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
   }
 
   // GET /account-ai-services - status only, secret never returned (same
-  // pattern as /account-api above).
+  // pattern as /account-api above). lastCheckStatus/Message come from the
+  // real verification PUT performs on every save (see below) - "configured"
+  // alone used to be all this reported, which meant a garbage key showed
+  // exactly the same as a working one until someone actually tried the
+  // feature and it silently fell back to the keyword parser.
   router.get('/account-ai-services', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default'
@@ -897,6 +901,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         configured: true,
         baseUrl: config.baseUrl || null,
         model: config.model || null,
+        lastCheckStatus: entry.lastCheckStatus || null,
+        lastCheckMessage: entry.lastCheckMessage || null,
       })
     } catch (e) {
       console.error('Error fetching AI services status:', e)
@@ -904,10 +910,38 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // Runs the real request the feature itself sends (nlCatalog.js's callAi,
+  // with a throwaway description) and writes the verdict onto the entry's
+  // existing lastCheckStatus/lastCheckMessage fields (VaultEntry already has
+  // these for every other category's checker - AI was just the one category
+  // that never actually used them, testType: 'manual' from the start).
+  async function verifyAndRecordAiServices(accountId, entry) {
+    const { resolveAiCredentials, callAi } = require('../utils/nlCatalog')
+    try {
+      const creds = await resolveAiCredentials(prisma, accountId, decrypt)
+      if (!creds) throw new Error('No credentials to verify')
+      await callAi('test', creds)
+      await prisma.vaultEntry.update({
+        where: { id: entry.id },
+        data: { lastCheckedAt: new Date(), lastCheckStatus: 'ok', lastCheckMessage: null },
+      })
+      return { lastCheckStatus: 'ok', lastCheckMessage: null }
+    } catch (err) {
+      const message = err?.message || 'Verification failed'
+      await prisma.vaultEntry.update({
+        where: { id: entry.id },
+        data: { lastCheckedAt: new Date(), lastCheckStatus: 'error', lastCheckMessage: message },
+      }).catch(() => {}) // best-effort - a failed status write must not turn a reported verification failure into a 500
+      return { lastCheckStatus: 'error', lastCheckMessage: message }
+    }
+  }
+
   // PUT /account-ai-services - create the entry on first save, update it
   // (in place) on every save after. apiKey is optional on update (blank =
   // keep the existing key, same convention as Vault's own PUT /:id) but
-  // required to create one in the first place.
+  // required to create one in the first place. Verifies with a real request
+  // before responding, so "configured: true" always means "this was proven
+  // to work just now," not just "something got saved."
   router.put('/account-ai-services', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default'
@@ -921,8 +955,9 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (existing) {
         const data = { testConfig }
         if (trimmedKey) data.encryptedSecret = encrypt(trimmedKey, req)
-        await prisma.vaultEntry.update({ where: { id: existing.id }, data })
-        return res.json({ configured: true })
+        const updated = await prisma.vaultEntry.update({ where: { id: existing.id }, data })
+        const verdict = await verifyAndRecordAiServices(accountId, updated)
+        return res.json({ configured: true, ...verdict })
       }
 
       if (!trimmedKey) {
@@ -933,7 +968,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         orderBy: { position: 'desc' },
         select: { position: true },
       })
-      await prisma.vaultEntry.create({
+      const created = await prisma.vaultEntry.create({
         data: {
           accountId,
           name: 'AI Services',
@@ -945,7 +980,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           position: (maxPositionEntry?.position ?? -1) + 1,
         },
       })
-      return res.status(201).json({ configured: true })
+      const verdict = await verifyAndRecordAiServices(accountId, created)
+      return res.status(201).json({ configured: true, ...verdict })
     } catch (e) {
       console.error('Error saving AI services config:', e)
       return res.status(500).json({ message: 'Failed to save AI services config' })

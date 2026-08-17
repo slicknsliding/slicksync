@@ -1010,10 +1010,13 @@ class ApiClient {
   // the focused Settings-native form for it - see server/routes/settings.js's
   // account-ai-services comment for why.
   async getAiServicesStatus() {
-    return this.fetch<{ configured: boolean; baseUrl?: string | null; model?: string | null }>('/settings/account-ai-services');
+    return this.fetch<{ configured: boolean; baseUrl?: string | null; model?: string | null; lastCheckStatus?: 'ok' | 'error' | null; lastCheckMessage?: string | null }>('/settings/account-ai-services');
   }
+  // Saving always re-verifies with a real request (see settings.js's own
+  // comment) - the response's lastCheckStatus/Message reflect that just-run
+  // check, not merely "something got saved."
   async setAiServices(data: { apiKey?: string; baseUrl?: string; model?: string }) {
-    return this.fetch<{ configured: boolean }>('/settings/account-ai-services', {
+    return this.fetch<{ configured: boolean; lastCheckStatus: 'ok' | 'error'; lastCheckMessage: string | null }>('/settings/account-ai-services', {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -2650,6 +2653,12 @@ export interface DescribedCatalogPreview {
   items: CustomListItem[];
   query: DescribedCatalogQuery;
   usedAi: boolean;
+  // Set only when an AI key IS configured but the call itself failed (wrong
+  // model/baseUrl pairing, invalid key, provider outage) - null whenever no
+  // AI key is configured at all, since that's not an error, just the
+  // expected zero-setup path. Lets the UI say *why* it fell back instead of
+  // leaving a configured-looking key silently unused with no explanation.
+  aiError: string | null;
   mediaType: 'movie' | 'tv';
 }
 

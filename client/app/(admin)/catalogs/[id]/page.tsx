@@ -972,7 +972,7 @@ export default function ListDetailPage() {
           catalog right now. Always preview before apply; apply always
           leaves a one-step undo (the "Restore last removal" button above,
           shown whenever list.lastRemovalAt is set). */}
-      <Modal isOpen={showPolicyModal} onClose={() => setShowPolicyModal(false)} title="Content Rating" size="sm">
+      <Modal isOpen={showPolicyModal} onClose={() => setShowPolicyModal(false)} title="Content Rating" size="lg">
         <div className="space-y-4">
           <div
             className="text-sm rounded-lg p-3"
@@ -1002,11 +1002,20 @@ export default function ListDetailPage() {
                   : `${previewResult.remove.length} of ${previewResult.checked} would be removed, ${previewResult.keep.length} would stay.`}
               </p>
               {previewResult.remove.length > 0 && (
-                <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg p-2" style={{ background: 'var(--color-surface-hover)' }}>
+                <div className="max-h-72 overflow-y-auto grid grid-cols-4 sm:grid-cols-5 gap-2 rounded-lg p-2" style={{ background: 'var(--color-surface-hover)' }}>
                   {previewResult.remove.map((item) => (
-                    <div key={item.id} className="flex items-center gap-2 text-xs">
-                      <span className="flex-1 min-w-0 truncate text-default">{item.name}</span>
-                      <Badge variant="error" size="sm">{item.rated}</Badge>
+                    <div key={item.id} className="text-left">
+                      <div className="relative rounded-md overflow-hidden aspect-[2/3] bg-surface border border-default">
+                        {item.poster ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={item.poster} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-[10px] text-subtle p-1 text-center">{item.name}</div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/0 to-black/0" />
+                        <Badge variant="error" size="sm" className="absolute bottom-1 left-1 right-1 justify-center">{item.rated}</Badge>
+                      </div>
+                      <p className="text-[10px] text-muted mt-0.5 truncate" title={item.name}>{item.name}</p>
                     </div>
                   ))}
                 </div>
