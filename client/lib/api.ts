@@ -1853,7 +1853,7 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean; blockedRatings?: string[] }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -1885,13 +1885,24 @@ class ApiClient {
     const qs = ruleId ? `?ruleId=${encodeURIComponent(ruleId)}` : '';
     return this.fetch<AutomationRun[]>(`/automation/runs${qs}`);
   }
-  // Checks this catalog's current items against its own current
-  // blockedRatings policy (server/utils/contentRating.js) - a review tool,
-  // run on demand, not a live gate. Requires an OMDb key.
-  async getFlaggedContent(id: string) {
-    return this.fetch<{ flagged: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number; policy: string[] }>(
-      `/lists/${encodeURIComponent(id)}/flagged`
+  // Content rating is now a destructive allowlist (server/utils/
+  // contentRating.js) - preview shows what a candidate list would do
+  // without changing anything; apply actually removes non-matching items
+  // (and snapshots for undo); restore undoes the single most recent apply.
+  async previewContentRating(id: string, keptRatings: string[]) {
+    const qs = keptRatings.length ? `?keep=${encodeURIComponent(keptRatings.join(','))}` : '';
+    return this.fetch<{ keep: CustomListItem[]; remove: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number }>(
+      `/lists/${encodeURIComponent(id)}/preview-content-rating${qs}`
     );
+  }
+  async applyContentRating(id: string, keptRatings: string[]) {
+    return this.fetch<CustomList & { removedCount: number }>(`/lists/${encodeURIComponent(id)}/apply-content-rating`, {
+      method: 'POST',
+      body: JSON.stringify({ keptRatings }),
+    });
+  }
+  async restoreContentRatingRemoval(id: string) {
+    return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/restore-content-rating`, { method: 'POST' });
   }
   async addToList(id: string, item: { id: string; type: 'movie' | 'series'; name: string; poster?: string | null; year?: number | string | null }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items`, {
@@ -2667,10 +2678,14 @@ export interface CustomList {
   // stored - a shared catalog you don't own comes back with isOwner: false
   // and the client must hide every mutating affordance for it.
   shared: boolean;
-  // Content-rating review policy - OMDb "Rated" values to flag when
-  // checking this catalog (GET /:id/flagged), e.g. a "Kids" catalog set to
-  // flag ["R","TV-MA"]. Empty = no policy. See server/utils/contentRating.js.
-  blockedRatings: string[];
+  // Content-rating ALLOWLIST - OMDb "Rated" values to KEEP, e.g. a "Kids"
+  // catalog set to ["G","PG"]. Empty = no policy (nothing touched). Only
+  // changes via applyContentRating, which also performs the removal - see
+  // server/utils/contentRating.js.
+  keptRatings: string[];
+  // When a content-rating removal is undoable via restoreContentRatingRemoval -
+  // null means nothing to restore (never applied, or already restored).
+  lastRemovalAt: string | null;
   // True for a catalog server/utils/autoThemedCatalogs.js created from a
   // detected taste cluster (Settings -> SlickTrax -> Auto-generated
   // catalogs). Purely informational client-side - deleting it works the
