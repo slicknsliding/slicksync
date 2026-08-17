@@ -11,6 +11,7 @@ export interface ComboBoxOption {
 interface ComboBoxProps {
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   options: ComboBoxOption[];
   placeholder?: string;
   className?: string;
@@ -25,9 +26,20 @@ interface ComboBoxProps {
 // same explicit chevron + click-to-open panel every <select> in this app
 // already uses (see FilterTabs.tsx), so "there's a dropdown here" is obvious
 // on sight, while still accepting arbitrary text typed directly.
-export function ComboBox({ value, onChange, options, placeholder, className }: ComboBoxProps) {
+export function ComboBox({ value, onChange, onBlur, options, placeholder, className }: ComboBoxProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Clicking a dropdown option also blurs the input (focus moves to the
+  // option button) - firing onBlur immediately would save whatever the
+  // input held BEFORE that click's onChange lands. Deferring one tick lets
+  // the option's own click handler (which calls onChange) run first, same
+  // "blur-then-microtask" ordering issue every custom combobox needs to
+  // account for since there's no single native element wrapping both parts.
+  const handleBlur = () => {
+    if (!onBlur) return;
+    setTimeout(onBlur, 150);
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -46,6 +58,7 @@ export function ComboBox({ value, onChange, options, placeholder, className }: C
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setIsOpen(true)}
+        onBlur={handleBlur}
         placeholder={placeholder}
         autoComplete="off"
         spellCheck={false}

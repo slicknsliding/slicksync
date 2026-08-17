@@ -475,10 +475,15 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
   });
 
   // POST /api/lists/:id/restore-content-rating — undoes the single most
-  // recent /apply-content-rating removal by restoring itemsJson from
-  // lastRemovalSnapshot. One-step undo, not a history stack - there is
-  // nothing to restore once this has been called, or once a later removal
-  // has overwritten the snapshot.
+  // recent /apply-content-rating removal: restores itemsJson from
+  // lastRemovalSnapshot AND clears keptRatings back to no-policy. Both
+  // together, not just the items - apply set them as one atomic action
+  // (the policy and the removal it caused), so undo reverses both halves.
+  // Leaving keptRatings set after a restore would show the Content Rating
+  // button as still "active" for a policy whose actual effect had just
+  // been undone. One-step undo, not a history stack - there is nothing to
+  // restore once this has been called, or once a later removal has
+  // overwritten the snapshot.
   router.post('/:id/restore-content-rating', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';
@@ -488,7 +493,7 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
 
       const list = await prisma.customList.update({
         where: { id: existing.id },
-        data: { itemsJson: existing.lastRemovalSnapshot, lastRemovalSnapshot: null, lastRemovalAt: null },
+        data: { itemsJson: existing.lastRemovalSnapshot, lastRemovalSnapshot: null, lastRemovalAt: null, keptRatings: null },
       });
       res.json(shape(list));
     } catch (e) {

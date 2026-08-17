@@ -224,6 +224,14 @@ export default function SettingsPage() {
   const [aiBaseUrl, setAiBaseUrl] = useState('');
   const [aiModel, setAiModel] = useState('');
   const [isSavingAi, setIsSavingAi] = useState(false);
+  // Real verification result from the last save (settings.js actually calls
+  // the provider, not just "was something written to the DB") - null means
+  // never checked yet (fresh page load before any save, or an entry saved
+  // before this check existed). Previously "Connected" meant only "a key is
+  // stored," true even for garbage input - this is what makes the badge
+  // mean something.
+  const [aiCheckStatus, setAiCheckStatus] = useState<'ok' | 'error' | null>(null);
+  const [aiCheckMessage, setAiCheckMessage] = useState<string | null>(null);
 
   const loadAiServicesStatus = async () => {
     try {
@@ -231,18 +239,29 @@ export default function SettingsPage() {
       setAiConfigured(!!status.configured);
       setAiBaseUrl(status.baseUrl || '');
       setAiModel(status.model || '');
+      setAiCheckStatus(status.lastCheckStatus || null);
+      setAiCheckMessage(status.lastCheckMessage || null);
     } catch {
       // Endpoint may not exist yet on an older backend - stay silent.
     }
   };
 
-  const handleSaveAiServices = async () => {
+  // Auto-saves on blur, same as every other API key field on this page (no
+  // separate Save button) - always sends baseUrl/model together (they share
+  // one testConfig JSON server-side) plus apiKey only when the admin
+  // actually typed a new one, so blurring baseUrl right after typing a key
+  // doesn't accidentally save an empty key over it.
+  const handleAiFieldBlur = async () => {
+    if (!aiApiKey.trim() && !aiConfigured) return; // nothing to save yet
     setIsSavingAi(true);
     try {
-      await api.setAiServices({ apiKey: aiApiKey.trim() || undefined, baseUrl: aiBaseUrl.trim(), model: aiModel.trim() });
+      const result = await api.setAiServices({ apiKey: aiApiKey.trim() || undefined, baseUrl: aiBaseUrl.trim(), model: aiModel.trim() });
       setAiApiKey('');
       setAiConfigured(true);
-      toast.success('AI Services saved');
+      setAiCheckStatus(result.lastCheckStatus);
+      setAiCheckMessage(result.lastCheckMessage);
+      if (result.lastCheckStatus === 'ok') toast.success('AI Services verified and saved');
+      else toast.error(`Saved, but verification failed: ${result.lastCheckMessage}`);
     } catch (e: any) {
       toast.error(e.message || 'Failed to save AI Services');
     } finally {
@@ -250,6 +269,10 @@ export default function SettingsPage() {
     }
   };
 
+  // Blank password field can't double as "clear" the way a plain visible-
+  // value field can (an untouched blur would look identical to "I want to
+  // delete this"), so this stays a distinct affordance - just a small icon
+  // action now rather than a full button, since it's the only one left.
   const handleRemoveAiServices = async () => {
     try {
       await api.removeAiServices();
@@ -257,6 +280,8 @@ export default function SettingsPage() {
       setAiApiKey('');
       setAiBaseUrl('');
       setAiModel('');
+      setAiCheckStatus(null);
+      setAiCheckMessage(null);
       toast.success('AI Services removed');
     } catch (e: any) {
       toast.error(e.message || 'Failed to remove AI Services');
@@ -1288,20 +1313,47 @@ export default function SettingsPage() {
               <div className="rounded-xl p-3" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)' }}>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm font-medium text-default">AI Services <span className="text-subtle font-normal">(optional)</span></label>
-                  {aiConfigured && (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--color-success-muted)', color: 'var(--color-success)' }}>
-                      Connected
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {isSavingAi && <span className="text-xs text-subtle">Verifying...</span>}
+                    {!isSavingAi && aiConfigured && aiCheckStatus === 'ok' && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--color-success-muted)', color: 'var(--color-success)' }}>
+                        Verified
+                      </span>
+                    )}
+                    {!isSavingAi && aiConfigured && aiCheckStatus === 'error' && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--color-error-muted)', color: 'var(--color-error)' }} title={aiCheckMessage || undefined}>
+                        Check failed
+                      </span>
+                    )}
+                    {!isSavingAi && aiConfigured && !aiCheckStatus && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--color-surface-border)', color: 'var(--color-text-muted)' }}>
+                        Not yet verified
+                      </span>
+                    )}
+                    {aiConfigured && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveAiServices}
+                        className="text-subtle hover:text-error transition-colors"
+                        title="Remove AI Services"
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <p className="text-xs text-muted mb-2">
-                  Powers natural-language Catalog building (Catalogs → &quot;Describe a catalog&quot;) — describe what you want in plain English and get a real saved Catalog back. Works without a key too, using a built-in keyword parser; adding one here just makes it understand nuanced descriptions better. Defaults to OpenAI, but any OpenAI-compatible endpoint works (OpenRouter, Groq, a local proxy).
+                  Powers natural-language Catalog building (Catalogs → &quot;Describe a catalog&quot;) — describe what you want in plain English and get a real saved Catalog back. Works without a key too, using a built-in keyword parser; adding one here just makes it understand nuanced descriptions better. Defaults to OpenAI, but any OpenAI-compatible endpoint works (OpenRouter, Groq, a local proxy) - the base URL and model need to actually match each other (a Gemini model name against OpenAI&apos;s own endpoint will fail).
                 </p>
+                {aiCheckStatus === 'error' && aiCheckMessage && (
+                  <p className="text-xs mb-2" style={{ color: 'var(--color-error)' }}>{aiCheckMessage}</p>
+                )}
                 <div className="space-y-2">
                   <input
                     type="password"
                     value={aiApiKey}
                     onChange={(e) => setAiApiKey(e.target.value)}
+                    onBlur={handleAiFieldBlur}
                     placeholder={aiConfigured ? '•••••••• (leave blank to keep current)' : 'API key'}
                     autoComplete="off"
                     spellCheck={false}
@@ -1311,23 +1363,17 @@ export default function SettingsPage() {
                     <ComboBox
                       value={aiBaseUrl}
                       onChange={setAiBaseUrl}
+                      onBlur={handleAiFieldBlur}
                       placeholder="API base URL (optional, default OpenAI)"
                       options={AI_BASE_URL_OPTIONS}
                     />
                     <ComboBox
                       value={aiModel}
                       onChange={setAiModel}
+                      onBlur={handleAiFieldBlur}
                       placeholder="Model (optional, default gpt-4o-mini)"
                       options={AI_MODEL_OPTIONS}
                     />
-                  </div>
-                  <div className="flex gap-2 justify-end pt-1">
-                    {aiConfigured && (
-                      <Button variant="secondary" size="sm" onClick={handleRemoveAiServices}>Remove</Button>
-                    )}
-                    <Button size="sm" onClick={handleSaveAiServices} disabled={isSavingAi || (!aiApiKey.trim() && !aiConfigured)}>
-                      {isSavingAi ? 'Saving...' : 'Save'}
-                    </Button>
                   </div>
                 </div>
               </div>

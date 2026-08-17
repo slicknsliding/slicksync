@@ -674,7 +674,12 @@ function DescribeCatalogModal({
               <p className="text-sm text-default">
                 {queryParts.length > 0 ? queryParts.join(' · ') : 'No specific filters detected - showing top-rated results'}
               </p>
-              {!preview.usedAi && (
+              {!preview.usedAi && preview.aiError && (
+                <p className="text-xs mt-1.5" style={{ color: 'var(--color-error)' }}>
+                  Your configured AI key didn&apos;t work ({preview.aiError}) - used the built-in keyword parser instead. Check the model/base URL pairing in <Link href="/settings" className="underline hover:text-default">Settings</Link>.
+                </p>
+              )}
+              {!preview.usedAi && !preview.aiError && (
                 <p className="text-xs text-subtle mt-1.5">
                   Using the built-in keyword parser. <Link href="/settings" className="underline hover:text-default">Add an AI key in Settings</Link> for better understanding of nuanced descriptions.
                 </p>

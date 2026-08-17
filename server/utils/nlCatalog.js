@@ -104,7 +104,17 @@ async function callAi(description, creds) {
       signal,
     })
     cancel()
-    if (!res.ok) throw new Error(`AI provider returned ${res.status}`)
+    if (!res.ok) {
+      // Include the provider's own error body when there is one (wrong
+      // model name, invalid key, etc.) - a bare status code alone left
+      // literally every failure mode looking identical from the outside.
+      let detail = ''
+      try {
+        const body = await res.json()
+        detail = body?.error?.message || body?.message || ''
+      } catch { /* body wasn't JSON, or was empty - status code is all we get */ }
+      throw new Error(`AI provider returned ${res.status}${detail ? `: ${detail}` : ''}`)
+    }
     const data = await res.json()
     const content = data?.choices?.[0]?.message?.content
     if (!content) throw new Error('AI provider returned no content')
@@ -208,18 +218,25 @@ function normalizeQuery(raw) {
   }
 }
 
-/** @returns {Promise<{query: object, usedAi: boolean}>} */
+/** @returns {Promise<{query: object, usedAi: boolean, aiError: string|null}>} */
 async function parseDescription(prisma, accountId, decrypt, description) {
   const creds = await resolveAiCredentials(prisma, accountId, decrypt)
   if (creds) {
     try {
       const query = await callAi(description, creds)
-      return { query, usedAi: true }
+      return { query, usedAi: true, aiError: null }
     } catch (err) {
+      // Previously silent - a wrong model/baseUrl pairing (e.g. a Gemini
+      // model name against OpenAI's own endpoint) failed exactly like a
+      // missing key would, from the client's perspective: no error, just a
+      // fallback to the keyword parser with no way to tell why. Surfacing
+      // this specifically so a misconfigured key doesn't read as "not
+      // working" with no further information.
       console.warn('[NLCatalog] AI parse failed, falling back to keyword parser:', err?.message || err)
+      return { query: parseDescriptionFallback(description), usedAi: false, aiError: err?.message || 'AI request failed' }
     }
   }
-  return { query: parseDescriptionFallback(description), usedAi: false }
+  return { query: parseDescriptionFallback(description), usedAi: false, aiError: null }
 }
 
 // ---- Stage 2: structured query -> TMDb Discover -> IMDb items -------------
@@ -363,7 +380,7 @@ async function buildWatchedIdSet(prisma, accountId) {
 
 /**
  * The full pipeline: free-text description -> saved-catalog-ready items.
- * @returns {Promise<{ items: Array, query: object, usedAi: boolean, mediaType: 'movie'|'tv' }>}
+ * @returns {Promise<{ items: Array, query: object, usedAi: boolean, aiError: string|null, mediaType: 'movie'|'tv' }>}
  */
 async function generateCatalogFromDescription(prisma, accountId, decrypt, description) {
   const trimmed = (description || '').trim()
@@ -377,16 +394,16 @@ async function generateCatalogFromDescription(prisma, accountId, decrypt, descri
   const tmdbKey = await resolveTmdbKey(prisma, () => accountId, null)
   if (!tmdbKey) throw new Error('A TMDb API key is required for this feature (Settings -> External API Keys)')
 
-  const { query, usedAi } = await parseDescription(prisma, accountId, decrypt, trimmed)
+  const { query, usedAi, aiError } = await parseDescription(prisma, accountId, decrypt, trimmed)
   const { mediaType, results } = await discoverFromQuery(query, tmdbKey)
-  if (results.length === 0) return { items: [], query, usedAi, mediaType }
+  if (results.length === 0) return { items: [], query, usedAi, aiError, mediaType }
 
   const watchedIds = await buildWatchedIdSet(prisma, accountId)
   const { mapLimit } = require('./listImport')
   const resolved = await mapLimit(results, 5, (r) => resolveToImdbItem(r, mediaType, tmdbKey))
 
   const items = resolved.filter((item) => item && !watchedIds.has(item.id)).slice(0, MAX_ITEMS)
-  return { items, query, usedAi, mediaType }
+  return { items, query, usedAi, aiError, mediaType }
 }
 
 module.exports = {
@@ -398,4 +415,10 @@ module.exports = {
   resolveKeywordIds,
   generateCatalogFromDescription,
   normalizeQuery,
+  // Exported for Settings' "verify on save" check (server/routes/settings.js)
+  // specifically so that check exercises the EXACT same request shape the
+  // real feature sends - a generic "does this endpoint respond at all" ping
+  // would have passed for the wrong-model-for-this-provider case that
+  // originally prompted adding real verification at all.
+  callAi,
 }
