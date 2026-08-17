@@ -1005,6 +1005,25 @@ class ApiClient {
     });
   }
 
+  // AI Services - powers natural-language Catalog building (Catalogs ->
+  // "Describe a catalog"). Stored as a Vault entry underneath, but this is
+  // the focused Settings-native form for it - see server/routes/settings.js's
+  // account-ai-services comment for why.
+  async getAiServicesStatus() {
+    return this.fetch<{ configured: boolean; baseUrl?: string | null; model?: string | null }>('/settings/account-ai-services');
+  }
+  async setAiServices(data: { apiKey?: string; baseUrl?: string; model?: string }) {
+    return this.fetch<{ configured: boolean }>('/settings/account-ai-services', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+  async removeAiServices() {
+    return this.fetch<{ configured: boolean }>('/settings/account-ai-services', {
+      method: 'DELETE',
+    });
+  }
+
   // Two-factor auth (TOTP) - opt-in, per account. See server/utils/twoFactor.js.
   async get2faStatus() {
     return this.fetch<{ enabled: boolean }>('/settings/account-2fa');

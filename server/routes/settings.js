@@ -864,6 +864,107 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // AI Services (natural-language Catalog building - server/utils/nlCatalog.js).
+  // Storage is still a Vault entry underneath (category 'ai') - see
+  // nlCatalog.js's resolveAiCredentials comment for why that stays a real,
+  // rotatable Vault credential rather than a lightweight settings key like
+  // TMDb/MDBList/OMDb above. This is just a focused, Settings-native form
+  // for it: most people configuring one AI key don't need Vault's full
+  // generic entry form (name/provider/testType/cost/expiry/etc.) to get
+  // there, and having it live only in Vault with no explanation of what it
+  // powers was exactly the "does putting a key in Vault even do anything?"
+  // confusion this exists to fix. The entry is still fully visible/editable
+  // from Vault itself for anyone who wants that (rotation history, cost
+  // tracking, expiry reminders) - this doesn't replace Vault, just adds a
+  // clearer front door to the same underlying entry.
+  async function findAiVaultEntry(accountId) {
+    return prisma.vaultEntry.findFirst({
+      where: { accountId, category: 'ai', isActive: true },
+      orderBy: [{ position: 'asc' }, { updatedAt: 'desc' }],
+    })
+  }
+
+  // GET /account-ai-services - status only, secret never returned (same
+  // pattern as /account-api above).
+  router.get('/account-ai-services', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const entry = await findAiVaultEntry(accountId)
+      if (!entry) return res.json({ configured: false })
+      let config = {}
+      try { config = entry.testConfig ? JSON.parse(entry.testConfig) : {} } catch { config = {} }
+      return res.json({
+        configured: true,
+        baseUrl: config.baseUrl || null,
+        model: config.model || null,
+      })
+    } catch (e) {
+      console.error('Error fetching AI services status:', e)
+      return res.status(500).json({ message: 'Failed to fetch AI services status' })
+    }
+  })
+
+  // PUT /account-ai-services - create the entry on first save, update it
+  // (in place) on every save after. apiKey is optional on update (blank =
+  // keep the existing key, same convention as Vault's own PUT /:id) but
+  // required to create one in the first place.
+  router.put('/account-ai-services', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const { apiKey, baseUrl, model } = req.body || {}
+      const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : ''
+      const testConfig = (baseUrl || model)
+        ? JSON.stringify({ baseUrl: (baseUrl || '').trim() || undefined, model: (model || '').trim() || undefined })
+        : null
+
+      const existing = await findAiVaultEntry(accountId)
+      if (existing) {
+        const data = { testConfig }
+        if (trimmedKey) data.encryptedSecret = encrypt(trimmedKey, req)
+        await prisma.vaultEntry.update({ where: { id: existing.id }, data })
+        return res.json({ configured: true })
+      }
+
+      if (!trimmedKey) {
+        return res.status(400).json({ message: 'API key is required' })
+      }
+      const maxPositionEntry = await prisma.vaultEntry.findFirst({
+        where: { accountId, category: 'ai' },
+        orderBy: { position: 'desc' },
+        select: { position: true },
+      })
+      await prisma.vaultEntry.create({
+        data: {
+          accountId,
+          name: 'AI Services',
+          category: 'ai',
+          secretLabel: 'API Key',
+          encryptedSecret: encrypt(trimmedKey, req),
+          testType: 'manual',
+          testConfig,
+          position: (maxPositionEntry?.position ?? -1) + 1,
+        },
+      })
+      return res.status(201).json({ configured: true })
+    } catch (e) {
+      console.error('Error saving AI services config:', e)
+      return res.status(500).json({ message: 'Failed to save AI services config' })
+    }
+  })
+
+  // DELETE /account-ai-services - removes the underlying Vault entry entirely.
+  router.delete('/account-ai-services', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const existing = await findAiVaultEntry(accountId)
+      if (existing) await prisma.vaultEntry.delete({ where: { id: existing.id } })
+      return res.json({ configured: false })
+    } catch (e) {
+      console.error('Error removing AI services config:', e)
+      return res.status(500).json({ message: 'Failed to remove AI services config' })
+    }
+  })
+
   // 2FA (TOTP) - opt-in per account. See server/utils/twoFactor.js for the
   // pending-challenge design that keeps the login-time verification step
   // from ever looking like a real session token.
