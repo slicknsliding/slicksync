@@ -169,19 +169,46 @@ const AI_BASE_URL_OPTIONS = [
   { value: 'https://generativelanguage.googleapis.com/v1beta/openai', label: 'Google Gemini' },
   { value: 'https://api.deepseek.com', label: 'DeepSeek' },
 ];
-const AI_MODEL_OPTIONS = [
-  { value: 'gpt-4o-mini', label: 'gpt-4o-mini (OpenAI)' },
-  { value: 'gpt-4o', label: 'gpt-4o (OpenAI)' },
-  { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini (OpenAI)' },
-  { value: 'o4-mini', label: 'o4-mini (OpenAI)' },
-  { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet (OpenRouter)' },
-  { value: 'google/gemini-2.0-flash-001', label: 'Gemini 2.0 Flash (OpenRouter)' },
-  { value: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B (OpenRouter)' },
-  { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Groq)' },
-  { value: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B (Groq)' },
-  { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (Google)' },
-  { value: 'deepseek-chat', label: 'DeepSeek Chat (DeepSeek)' },
-];
+// Keyed by base URL, NOT one flat combined list - a model name only means
+// something in the context of which endpoint it's sent to (OpenRouter's
+// "google/gemini-2.0-flash-001" slug format vs Google's own native
+// "gemini-2.0-flash" are genuinely different strings for effectively the
+// same model), and a flat list let someone pick a Google-formatted URL
+// alongside an OpenRouter-formatted model with nothing stopping the
+// mismatch - confirmed real case, a user did exactly that and got a 404
+// with no clue why until the AI Services error surfacing was added. Now
+// the model list itself narrows to only what actually works with whatever
+// base URL is currently selected.
+const AI_MODEL_OPTIONS_BY_PROVIDER: Record<string, { value: string; label: string }[]> = {
+  'https://api.openai.com/v1': [
+    { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
+    { value: 'gpt-4o', label: 'gpt-4o' },
+    { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini' },
+    { value: 'o4-mini', label: 'o4-mini' },
+  ],
+  'https://openrouter.ai/api/v1': [
+    { value: 'openai/gpt-4o-mini', label: 'GPT-4o mini' },
+    { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
+    { value: 'google/gemini-2.0-flash-001', label: 'Gemini 2.0 Flash' },
+    { value: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
+  ],
+  'https://api.groq.com/openai/v1': [
+    { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
+    { value: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
+  ],
+  'https://generativelanguage.googleapis.com/v1beta/openai': [
+    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+  ],
+  'https://api.deepseek.com': [
+    { value: 'deepseek-chat', label: 'DeepSeek Chat' },
+  ],
+};
+// Fallback for a custom/unrecognized base URL (a local proxy, something not
+// in the preset list) - can't narrow to a known-correct set, so show
+// everything rather than nothing.
+const AI_MODEL_OPTIONS_ALL = Object.values(AI_MODEL_OPTIONS_BY_PROVIDER).flat();
 
 export default function SettingsPage() {
   // Theme picking + the theme builder now live on their own page (Themes) —
@@ -224,6 +251,12 @@ export default function SettingsPage() {
   const [aiBaseUrl, setAiBaseUrl] = useState('');
   const [aiModel, setAiModel] = useState('');
   const [isSavingAi, setIsSavingAi] = useState(false);
+  // Narrows the model suggestions to whichever provider the current base
+  // URL actually is - see AI_MODEL_OPTIONS_BY_PROVIDER's own comment for
+  // why this can't be one flat list. Blank base URL defaults to OpenAI
+  // (matching the field's own placeholder text); an unrecognized URL (a
+  // custom/local proxy) falls back to showing everything.
+  const aiModelOptions = AI_MODEL_OPTIONS_BY_PROVIDER[aiBaseUrl.trim() || 'https://api.openai.com/v1'] || AI_MODEL_OPTIONS_ALL;
   // Real verification result from the last save (settings.js actually calls
   // the provider, not just "was something written to the DB") - null means
   // never checked yet (fresh page load before any save, or an entry saved
@@ -1372,7 +1405,7 @@ export default function SettingsPage() {
                       onChange={setAiModel}
                       onBlur={handleAiFieldBlur}
                       placeholder="Model (optional, default gpt-4o-mini)"
-                      options={AI_MODEL_OPTIONS}
+                      options={aiModelOptions}
                     />
                   </div>
                 </div>
