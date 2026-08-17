@@ -1284,8 +1284,17 @@ export default function SettingsPage() {
                     className="input-base w-full px-3 py-2 text-sm"
                   />
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {/* datalist, not a plain <select> - a fixed dropdown would
+                        go stale the moment a provider ships a new model or
+                        the user points at some other OpenAI-compatible
+                        endpoint entirely, so free text always has to keep
+                        working. This just adds the "click to see common
+                        options" affordance on top, same list-input pattern
+                        most sites use for exactly this "pick or type your
+                        own" case. */}
                     <input
                       type="text"
+                      list="ai-base-url-options"
                       value={aiBaseUrl}
                       onChange={(e) => setAiBaseUrl(e.target.value)}
                       placeholder="API base URL (optional, default OpenAI)"
@@ -1293,8 +1302,16 @@ export default function SettingsPage() {
                       spellCheck={false}
                       className="input-base w-full px-3 py-2 text-sm"
                     />
+                    <datalist id="ai-base-url-options">
+                      <option value="https://api.openai.com/v1">OpenAI</option>
+                      <option value="https://openrouter.ai/api/v1">OpenRouter</option>
+                      <option value="https://api.groq.com/openai/v1">Groq</option>
+                      <option value="https://generativelanguage.googleapis.com/v1beta/openai">Google Gemini</option>
+                      <option value="https://api.deepseek.com">DeepSeek</option>
+                    </datalist>
                     <input
                       type="text"
+                      list="ai-model-options"
                       value={aiModel}
                       onChange={(e) => setAiModel(e.target.value)}
                       placeholder="Model (optional, default gpt-4o-mini)"
@@ -1302,6 +1319,25 @@ export default function SettingsPage() {
                       spellCheck={false}
                       className="input-base w-full px-3 py-2 text-sm"
                     />
+                    {/* One combined list across providers rather than
+                        swapping per-baseUrl - this field alone can't reliably
+                        tell OpenRouter's URL from a custom proxy pointed at
+                        the same models, so showing everything and letting
+                        the user pick the row matching whatever they set
+                        above is simpler than a brittle guess. */}
+                    <datalist id="ai-model-options">
+                      <option value="gpt-4o-mini" label="gpt-4o-mini (OpenAI)" />
+                      <option value="gpt-4o" label="gpt-4o (OpenAI)" />
+                      <option value="gpt-4.1-mini" label="gpt-4.1-mini (OpenAI)" />
+                      <option value="o4-mini" label="o4-mini (OpenAI)" />
+                      <option value="anthropic/claude-3.5-sonnet" label="Claude 3.5 Sonnet (OpenRouter)" />
+                      <option value="google/gemini-2.0-flash-001" label="Gemini 2.0 Flash (OpenRouter)" />
+                      <option value="meta-llama/llama-3.3-70b-instruct" label="Llama 3.3 70B (OpenRouter)" />
+                      <option value="llama-3.3-70b-versatile" label="Llama 3.3 70B (Groq)" />
+                      <option value="mixtral-8x7b-32768" label="Mixtral 8x7B (Groq)" />
+                      <option value="gemini-2.0-flash" label="Gemini 2.0 Flash (Google)" />
+                      <option value="deepseek-chat" label="DeepSeek Chat (DeepSeek)" />
+                    </datalist>
                   </div>
                   <div className="flex gap-2 justify-end pt-1">
                     {aiConfigured && (
