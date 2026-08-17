@@ -1021,6 +1021,15 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+  // Live model list from the provider itself, not a hardcoded guess - see
+  // settings.js's own comment on why (model names go stale fast). apiKey
+  // blank falls back to whatever's already saved.
+  async listAiModels(data: { apiKey?: string; baseUrl?: string }) {
+    return this.fetch<{ models: string[] }>('/settings/account-ai-services/list-models', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
   async removeAiServices() {
     return this.fetch<{ configured: boolean }>('/settings/account-ai-services', {
       method: 'DELETE',
