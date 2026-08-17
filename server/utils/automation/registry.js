@@ -130,7 +130,7 @@ const ACTIONS = {
 
   'addon.disable': {
     label: 'Disable an addon',
-    description: 'Turns off a specific addon (the same isActive flag the seasonal scheduler uses).',
+    description: 'Turns off a specific addon.',
     configFields: [
       { name: 'addonId', label: 'Addon', type: 'addon', required: true, hint: 'Leave blank to act on the addon from the trigger.' },
     ],

@@ -709,12 +709,6 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
           catalogs: (() => { try { return addon.catalogs ? JSON.parse(addon.catalogs) : [] } catch { return [] } })(),
           isProtected: protectedNameSet.has((addon.name || '').trim().toLowerCase()),
           customTag: addon.customTag || null,
-          // Seasonal auto-scheduling (server/utils/addonScheduler.js)
-          scheduleEnabled: addon.scheduleEnabled || false,
-          scheduleStartMonth: addon.scheduleStartMonth ?? null,
-          scheduleStartDay: addon.scheduleStartDay ?? null,
-          scheduleEndMonth: addon.scheduleEndMonth ?? null,
-          scheduleEndDay: addon.scheduleEndDay ?? null,
           // Proxy info
           proxyEnabled: addon.proxyEnabled || false,
           proxyUuid: addon.proxyUuid || null,
@@ -846,50 +840,6 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       }, `Addon ${isActive ? 'enabled' : 'disabled'} successfully`)
     } catch (error) {
       console.error('Error toggling addon status:', error)
-      return responseUtils.internalError(res, error.message)
-    }
-  })
-
-  // PATCH /api/addons/:id/schedule - seasonal auto-enable/disable window
-  // (server/utils/addonScheduler.js). { scheduleEnabled, scheduleStartMonth,
-  // scheduleStartDay, scheduleEndMonth, scheduleEndDay } - all four date
-  // fields required together when enabling; pass scheduleEnabled: false
-  // alone to turn scheduling off without clearing the saved window (so
-  // re-enabling later doesn't need the dates re-entered).
-  router.patch('/:id/schedule', async (req, res) => {
-    try {
-      const { id } = req.params
-      const { scheduleEnabled, scheduleStartMonth, scheduleStartDay, scheduleEndMonth, scheduleEndDay } = req.body || {}
-
-      const addon = await dbUtils.findEntity(prisma, 'addon', id, getAccountId(req))
-      if (!addon) return responseUtils.notFound(res, 'Addon')
-
-      const data = {}
-      if (typeof scheduleEnabled === 'boolean') data.scheduleEnabled = scheduleEnabled
-      const hasAllDates = [scheduleStartMonth, scheduleStartDay, scheduleEndMonth, scheduleEndDay].every((v) => Number.isInteger(v))
-      if (hasAllDates) {
-        const valid = (m, d) => m >= 1 && m <= 12 && d >= 1 && d <= 31
-        if (!valid(scheduleStartMonth, scheduleStartDay) || !valid(scheduleEndMonth, scheduleEndDay)) {
-          return responseUtils.badRequest(res, 'Invalid month/day')
-        }
-        data.scheduleStartMonth = scheduleStartMonth
-        data.scheduleStartDay = scheduleStartDay
-        data.scheduleEndMonth = scheduleEndMonth
-        data.scheduleEndDay = scheduleEndDay
-      } else if (data.scheduleEnabled === true) {
-        return responseUtils.badRequest(res, 'scheduleStartMonth/Day and scheduleEndMonth/Day are required to enable scheduling')
-      }
-
-      const updated = await dbUtils.updateEntity(prisma, 'addon', id, data, getAccountId(req))
-      return responseUtils.success(res, {
-        scheduleEnabled: updated.scheduleEnabled,
-        scheduleStartMonth: updated.scheduleStartMonth,
-        scheduleStartDay: updated.scheduleStartDay,
-        scheduleEndMonth: updated.scheduleEndMonth,
-        scheduleEndDay: updated.scheduleEndDay,
-      })
-    } catch (error) {
-      console.error('Error updating addon schedule:', error)
       return responseUtils.internalError(res, error.message)
     }
   })
@@ -1527,11 +1477,6 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
         resources: (() => { try { return addon.resources ? JSON.parse(addon.resources) : [] } catch { return [] } })(),
         catalogs: (() => { try { return addon.catalogs ? JSON.parse(addon.catalogs) : [] } catch { return [] } })(),
         customLogo: addon.customLogo || null,
-        scheduleEnabled: addon.scheduleEnabled || false,
-        scheduleStartMonth: addon.scheduleStartMonth ?? null,
-        scheduleStartDay: addon.scheduleStartDay ?? null,
-        scheduleEndMonth: addon.scheduleEndMonth ?? null,
-        scheduleEndDay: addon.scheduleEndDay ?? null,
         originalManifest: (() => {
           try {
             if (addon.originalManifest) return JSON.parse(decrypt(addon.originalManifest, req))

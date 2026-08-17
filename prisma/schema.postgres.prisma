@@ -113,13 +113,6 @@ model Addon {
   // User-defined single tag for drag-to-recategorize — see schema.sqlite.prisma.
   customTag        String?
 
-  // Seasonal auto-scheduling — see schema.sqlite.prisma for the full comment.
-  scheduleEnabled    Boolean @default(false)
-  scheduleStartMonth Int?
-  scheduleStartDay   Int?
-  scheduleEndMonth   Int?
-  scheduleEndDay     Int?
-
   // Relationships
   groupAddons GroupAddon[]
   healthHistory AddonHealthHistory[]

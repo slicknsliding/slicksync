@@ -1728,14 +1728,6 @@ class ApiClient {
       body: JSON.stringify({ color }),
     });
   }
-  // Seasonal auto-scheduling (server/utils/addonScheduler.js). Pass just
-  // scheduleEnabled to toggle without touching a previously-saved window.
-  async setAddonSchedule(addonId: string, data: { scheduleEnabled?: boolean; scheduleStartMonth?: number; scheduleStartDay?: number; scheduleEndMonth?: number; scheduleEndDay?: number }) {
-    return this.fetch<{ scheduleEnabled: boolean; scheduleStartMonth: number | null; scheduleStartDay: number | null; scheduleEndMonth: number | null; scheduleEndDay: number | null }>(`/addons/${addonId}/schedule`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    });
-  }
   async setAddonProtected(addonId: string, protectedFlag: boolean, unsafe?: boolean) {
     const qs = unsafe ? '?unsafe=true' : '';
     return this.fetch<{ isProtected: boolean }>(`/addons/${addonId}/protect${qs}`, {
@@ -2354,14 +2346,6 @@ export interface Addon {
   // routes/addons.js's /:id/protect) and the user-defined custom tag.
   isProtected?: boolean;
   customTag?: string | null;
-  // Seasonal auto-scheduling (server/utils/addonScheduler.js) - a
-  // year-agnostic recurring MM-DD window this addon auto-enables/disables
-  // for. Null dates = never configured yet.
-  scheduleEnabled?: boolean;
-  scheduleStartMonth?: number | null;
-  scheduleStartDay?: number | null;
-  scheduleEndMonth?: number | null;
-  scheduleEndDay?: number | null;
 }
 
 export interface CreateAddonData {
