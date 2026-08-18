@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.73.1",
+    "date": "2026-08-18",
+    "title": "fix: What's New banner showing at the same time as the onboarding wizard",
+    "features": [],
+    "bugFixes": [
+      "The new What's New banner and the first-run onboarding wizard could both show at once on a brand-new install - onboarding already covers what's new as one of its own steps, so the banner now waits until onboarding is actually finished."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.0",
     "date": "2026-08-18",
     "title": "feat: catalogs as installable addons, scrobbling, CSV import/export, command palette, and more",
