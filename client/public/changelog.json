@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.73.4",
+    "date": "2026-08-18",
+    "title": "chore: command palette help guide expanded to close real coverage gaps",
+    "features": [
+      "The command palette's built-in how-to guide (new in v1.73.3) now also covers Groups, Discover browsing, the Nuvio Collections manager itself, TV/D-pad mode, 2FA/SSO, notification setup, poster ratings/RPDB, Year in Review/Taste Profiles, account merge/mismatch alerts, and Now Playing/Continue Watching - about 30 topics total, up from an initial pass that missed several of these."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.73.3",
     "date": "2026-08-18",
     "title": "feat: detail modal cleanup, per-user Health ignore, local command palette help",
