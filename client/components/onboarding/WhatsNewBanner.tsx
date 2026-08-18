@@ -56,33 +56,51 @@ export function WhatsNewBanner() {
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, y: -16 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -16 }}
-        className="fixed top-4 left-1/2 -translate-x-1/2 z-[90] w-[calc(100%-2rem)] max-w-md"
+        initial={{ opacity: 0, y: 16, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 16, scale: 0.96 }}
+        transition={{ duration: 0.2 }}
+        // Compact corner card, not a page-spanning bar - opposite corner
+        // from react-hot-toast's bottom-right so the two never stack, and
+        // a fixed w-80 (not "100% minus a margin") so it stays a small
+        // card even on a phone instead of reading as a full-width banner.
+        className="fixed bottom-5 left-4 z-[90] w-80 max-w-[calc(100vw-2rem)]"
       >
         <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg"
+          className="relative overflow-hidden rounded-2xl shadow-xl"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
         >
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--color-primary-muted)' }}>
-            <SparklesIcon className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-default">New in v{entry.version}</p>
-            <p className="text-xs text-muted truncate">{entry.title}</p>
-          </div>
-          <Link
-            href="/changelog"
+          <div className="h-[3px] w-full" style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))' }} />
+          <button
             onClick={handleDismiss}
-            className="text-xs font-medium shrink-0"
-            style={{ color: 'var(--color-primary)' }}
+            className="absolute top-2.5 right-2.5 w-6 h-6 rounded-full flex items-center justify-center transition-colors"
+            style={{ color: 'var(--color-textMuted)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surfaceHover)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            title="Dismiss"
+            aria-label="Dismiss"
           >
-            See what's new
-          </Link>
-          <button onClick={handleDismiss} className="shrink-0" title="Dismiss">
-            <XMarkIcon className="w-4 h-4" style={{ color: 'var(--color-textMuted)' }} />
+            <XMarkIcon className="w-4 h-4" />
           </button>
+          <div className="p-4 pr-9">
+            <div className="flex items-center gap-2.5 mb-2">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--color-primary-muted)' }}>
+                <SparklesIcon className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-primary)' }}>New · v{entry.version}</p>
+              </div>
+            </div>
+            <p className="text-sm font-medium text-default leading-snug mb-3">{entry.title}</p>
+            <Link
+              href="/changelog"
+              onClick={handleDismiss}
+              className="inline-flex items-center text-xs font-semibold"
+              style={{ color: 'var(--color-primary)' }}
+            >
+              See what's new →
+            </Link>
+          </div>
         </div>
       </motion.div>
     </AnimatePresence>

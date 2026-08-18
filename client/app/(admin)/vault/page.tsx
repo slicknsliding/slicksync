@@ -35,6 +35,7 @@ import {
   DocumentDuplicateIcon,
   BellSlashIcon,
   CalendarDaysIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 
 const CATEGORY_LABELS: Record<VaultCategory, string> = {
@@ -50,17 +51,15 @@ const CATEGORY_LABELS: Record<VaultCategory, string> = {
   custom: 'Custom',
 };
 
-// AI Services has its own dedicated front door in Settings -> External API
-// Keys now (with the real verify-on-save check this generic Vault form
-// doesn't run), so it's excluded from Vault's own tabs/Add Entry category
-// picker - editing the SAME underlying entry through two different forms,
-// only one of which actually confirms it works, was strictly worse than
-// just picking Settings as the one place to manage it. Still the same
-// VaultEntry row underneath (category: 'ai') - this only hides it from
-// this page's own UI, nothing about the storage changed.
-const VAULT_UI_CATEGORY_LABELS = Object.fromEntries(
-  Object.entries(CATEGORY_LABELS).filter(([key]) => key !== 'ai')
-) as Record<VaultCategory, string>;
+// AI Services also has its own dedicated front door in Settings -> External
+// API Keys (with a real verify-on-save check this generic Vault form
+// doesn't run) - but it's still the same underlying VaultEntry row
+// (category: 'ai'), so it stays visible here too rather than hidden from
+// Vault's own tabs/Add Entry picker. Managing it from Settings gets you
+// live verification; managing it here gets you the same expiry/cost
+// tracking and drag-to-reorder every other entry has - both write to the
+// same place.
+const VAULT_UI_CATEGORY_LABELS = CATEGORY_LABELS;
 
 const TEST_TYPE_LABELS: Record<VaultTestType, string> = {
   manual: 'Manual (no automated check)',
@@ -160,23 +159,34 @@ function DebridUsageBadge({ entry, onEntryUpdated }: { entry: VaultEntry; onEntr
       {parts.length > 0 && (
         <p className="text-xs" style={{ color: 'var(--color-textMuted)' }}>{parts.join(' · ')}</p>
       )}
-      <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-textMuted)' }}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs" style={{ color: 'var(--color-textMuted)' }}>Auto-remove finished torrents</span>
         <ToggleSwitch
+          size="sm"
           checked={!!entry.autoRemoveEnabled}
           onChange={handleToggleAutoRemove}
           disabled={savingAutoRemove}
         />
-        <span>Auto-remove finished torrents after</span>
-        <input
-          type="number"
-          min={1}
-          defaultValue={entry.autoRemoveAfterDays || 7}
-          onBlur={(e) => handleChangeAutoRemoveDays(parseInt(e.target.value, 10))}
-          className="w-12 px-1.5 py-0.5 rounded text-xs text-center"
-          style={{ background: 'var(--color-subtle)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-        />
-        <span>days idle</span>
       </div>
+      {/* Day-count control only shown once auto-remove is actually on -
+          confirmed cramped/mismatched on both PC and mobile when it was
+          always inline next to the toggle regardless of state (a size="md"
+          toggle next to text-xs text plus a number input, all fighting for
+          space on an already-narrow card). */}
+      {entry.autoRemoveEnabled && (
+        <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-textMuted)' }}>
+          <span>After</span>
+          <input
+            type="number"
+            min={1}
+            defaultValue={entry.autoRemoveAfterDays || 7}
+            onBlur={(e) => handleChangeAutoRemoveDays(parseInt(e.target.value, 10))}
+            className="w-12 px-1.5 py-0.5 rounded text-xs text-center"
+            style={{ background: 'var(--color-subtle)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+          />
+          <span>days idle</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -366,6 +376,10 @@ function VaultPageContent() {
   const [hoursLast30, setHoursLast30] = useState<number | null>(null);
   const [currency, setCurrency] = useState('USD');
   const [costRefreshKey, setCostRefreshKey] = useState(0);
+  // Renewal calendar starts collapsed to just its one summary line - the
+  // detail list of every individual upcoming renewal is worth having but
+  // not worth always taking up vertical space for.
+  const [renewalExpanded, setRenewalExpanded] = useState(false);
   useEffect(() => {
     api.getVaultEntries().then((d) => {
       setAllCostEntries(d.entries);
@@ -728,6 +742,21 @@ function VaultPageContent() {
     }
   };
 
+  // Lazy-fills the edit form's Secret field with the real stored value the
+  // first time its eye icon is clicked to reveal (see Input's own
+  // onRevealClick comment) - only when the field is still exactly the
+  // placeholder-blank "leave empty to keep current" state, so it never
+  // clobbers something the user already started typing to replace it with.
+  const handleRevealInEditForm = async () => {
+    if (!editingId || form.secret) return;
+    try {
+      const result = await api.revealVaultSecret(editingId);
+      setForm(f => ({ ...f, secret: result.secret }));
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to reveal secret');
+    }
+  };
+
   // Copies the secret without requiring "Reveal" first - reuses whatever's
   // already revealed on screen if present, otherwise fetches it quietly
   // (never stores it into `revealed`, so the card stays masked).
@@ -972,25 +1001,35 @@ function VaultPageContent() {
           {upcomingRenewals.length > 0 && (
             <div className={`${NEBULA_GLASS_CLASS} p-4 sm:p-5 mb-4`} style={nebulaGlassStyle}>
               <NebulaGlassStripe />
-              <div className="flex items-center gap-2 mb-3">
-                <CalendarDaysIcon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
-                <h3 className="text-sm font-semibold text-default">
+              <button
+                type="button"
+                onClick={() => setRenewalExpanded((v) => !v)}
+                className="w-full flex items-center gap-2 text-left"
+              >
+                <CalendarDaysIcon className="w-5 h-5 shrink-0" style={{ color: 'var(--color-primary)' }} />
+                <h3 className="text-sm font-semibold text-default flex-1">
                   Next {FORECAST_WINDOW_DAYS} days: {fmtMoney(forecastTotal)} across {upcomingRenewals.length} renewal{upcomingRenewals.length !== 1 ? 's' : ''}
                 </h3>
-              </div>
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {upcomingRenewals.map((r, i) => {
-                  const days = Math.max(0, Math.round((r.date.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-                  return (
-                    <div key={`${r.entryId}-${i}`} className="flex items-center justify-between text-xs py-1">
-                      <span className="text-default truncate">{r.name}</span>
-                      <span className="text-muted shrink-0 ml-2">
-                        {days === 0 ? 'today' : `in ${days}d`} · {fmtMoney(r.amount)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+                <ChevronDownIcon
+                  className="w-4 h-4 shrink-0 transition-transform"
+                  style={{ color: 'var(--color-textMuted)', transform: renewalExpanded ? 'rotate(180deg)' : undefined }}
+                />
+              </button>
+              {renewalExpanded && (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto mt-3 pt-3" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
+                  {upcomingRenewals.map((r, i) => {
+                    const days = Math.max(0, Math.round((r.date.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                    return (
+                      <div key={`${r.entryId}-${i}`} className="flex items-center justify-between text-xs py-1">
+                        <span className="text-default truncate">{r.name}</span>
+                        <span className="text-muted shrink-0 ml-2">
+                          {days === 0 ? 'today' : `in ${days}d`} · {fmtMoney(r.amount)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </>
@@ -1083,6 +1122,7 @@ function VaultPageContent() {
                 placeholder={editingId ? '••••••••' : 'Account password'}
                 value={form.secret}
                 onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+                onRevealClick={editingId ? handleRevealInEditForm : undefined}
               />
             </>
           )}
@@ -1096,6 +1136,7 @@ function VaultPageContent() {
                 placeholder={editingId ? '••••••••' : 'Indexer API key'}
                 value={form.secret}
                 onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+                onRevealClick={editingId ? handleRevealInEditForm : undefined}
               />
             </>
           )}
@@ -1114,6 +1155,7 @@ function VaultPageContent() {
                   placeholder={editingId ? '••••••••' : 'Account password'}
                   value={form.secret}
                   onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+                  onRevealClick={editingId ? handleRevealInEditForm : undefined}
                 />
               </div>
               <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
@@ -1134,6 +1176,7 @@ function VaultPageContent() {
                 placeholder={editingId ? '••••••••' : 'Paste API key / password / token'}
                 value={form.secret}
                 onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+                onRevealClick={editingId ? handleRevealInEditForm : undefined}
               />
 
               {form.category === 'ai' ? (

@@ -249,6 +249,11 @@ export default function SettingsPage() {
   // same as the account API key above.
   const [aiConfigured, setAiConfigured] = useState(false);
   const [aiApiKey, setAiApiKey] = useState('');
+  // Reveal state for the API key field's eye icon - lazy-fetches the real
+  // stored key on first click (this field is a plain <input>, not the
+  // shared Input component, so this is hand-rolled rather than that
+  // component's built-in onRevealClick).
+  const [aiKeyVisible, setAiKeyVisible] = useState(false);
   const [aiBaseUrl, setAiBaseUrl] = useState('');
   const [aiModel, setAiModel] = useState('');
   const [isSavingAi, setIsSavingAi] = useState(false);
@@ -328,6 +333,19 @@ export default function SettingsPage() {
       toast.error(e.message || 'Failed to save AI Services');
     } finally {
       setIsSavingAi(false);
+    }
+  };
+
+  // Lazy-fills the field with the real stored key the first time the eye
+  // icon reveals (not on hide) - only when it's still blank, so it never
+  // clobbers something already being typed to replace it.
+  const handleRevealAiKey = async () => {
+    if (aiApiKey) return;
+    try {
+      const result = await api.revealAiServicesKey();
+      setAiApiKey(result.secret);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to reveal API key');
     }
   };
 
@@ -1425,16 +1443,31 @@ export default function SettingsPage() {
                   <p className="text-xs mb-2" style={{ color: 'var(--color-error)' }}>{aiCheckMessage}</p>
                 )}
                 <div className="space-y-2">
-                  <input
-                    type="password"
-                    value={aiApiKey}
-                    onChange={(e) => setAiApiKey(e.target.value)}
-                    onBlur={handleAiFieldBlur}
-                    placeholder={aiConfigured ? '•••••••• (leave blank to keep current)' : 'API key'}
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="input-base w-full px-3 py-2 text-sm"
-                  />
+                  <div className="relative">
+                    <input
+                      type={aiKeyVisible ? 'text' : 'password'}
+                      value={aiApiKey}
+                      onChange={(e) => setAiApiKey(e.target.value)}
+                      onBlur={handleAiFieldBlur}
+                      placeholder={aiConfigured ? '•••••••• (leave blank to keep current)' : 'API key'}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="input-base w-full px-3 py-2 pr-10 text-sm"
+                    />
+                    {aiConfigured && (
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onMouseDown={(e) => e.preventDefault()} // don't steal focus from the input before the click registers
+                        onClick={() => { if (!aiKeyVisible) handleRevealAiKey(); setAiKeyVisible((v) => !v); }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-surface-hover transition-colors"
+                        style={{ color: 'var(--color-textMuted)' }}
+                        title={aiKeyVisible ? 'Hide key' : 'Show key'}
+                      >
+                        {aiKeyVisible ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                      </button>
+                    )}
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <ComboBox
                       value={aiBaseUrl}

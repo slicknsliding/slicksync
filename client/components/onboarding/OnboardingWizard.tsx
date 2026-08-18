@@ -51,21 +51,64 @@ const STEPS: Step[] = [
     icon: SparklesIcon,
     title: 'What\'s different from the original Syncio fork',
     body: (
-      <ul className="text-sm space-y-1.5 mt-1">
+      <div className="max-h-72 overflow-y-auto pr-1 -mr-1">
         {[
-          'SlickTrax: a built-in Trakt alternative - watchlist, For You recommendations, rewatch tracking, no external service',
-          'Content Rating: a real allowlist that keeps a catalog enforced to a policy, not just a one-time filter',
-          'Vault: real active-checks against your actual providers, expiry alerts, and now live usage + auto-remove for debrid services',
-          'AI Services: natural-language catalog building, verified on save, with live model lists from your own provider',
-          'Automation: webhook actions and time/event-based triggers for your own rules',
-          'System Health, Year in Review, Taste Profiles, and a lot more under Metrics',
-        ].map((line) => (
-          <li key={line} className="flex items-start gap-2">
-            <CheckIcon className="w-3.5 h-3.5 mt-1 shrink-0" style={{ color: 'var(--color-primary)' }} />
-            <span className="text-muted">{line}</span>
-          </li>
+          {
+            group: 'Providers & Vault',
+            lines: [
+              'Nuvio as a full second provider alongside Stremio, plus optional SIMKL sync',
+              'Encrypted credential Vault with real active health-checks, expiry alerts, and cost tracking',
+            ],
+          },
+          {
+            group: 'Watch tracking & Discover',
+            lines: [
+              'SlickTrax: built-in watchlist, rewatch tracking, and "For You" recommendations - no external service',
+              'Live Now Playing, resume-on-another-device links, and true completion tracking',
+              'Taste Profiles, Year in Review, Airing Calendar, and TMDb-powered "More Like This"',
+            ],
+          },
+          {
+            group: 'Catalogs & Nuvio Collections',
+            lines: [
+              'Named catalogs from an MDBList/TMDb URL, with content-rating allowlists and auto-refresh',
+              'Full Nuvio Collections manager - templates, cover art, community covers, drag reorder',
+              'Export catalogs to MDBList or SIMKL, or import from Trakt/Letterboxd/IMDb',
+            ],
+          },
+          {
+            group: 'Automation & alerts',
+            lines: [
+              'Webhook + time/event-based Automation rules, and a renewal calendar with spend forecasts',
+              'Native push + in-app bell, digest mode, and per-user Discord opt-out',
+              'A Trakt-compatible scrobble API so third-party players can write into SlickTrax',
+            ],
+          },
+          {
+            group: 'Personalization & admin',
+            lines: [
+              'Build-your-own themes (colors, fonts, radius) with export/import share codes',
+              'A public shareable stats page, command palette (Ctrl+K), and TV/D-pad mode',
+              'System Health board, backup/restore, addon templates, and opt-in 2FA/SSO',
+            ],
+          },
+        ].map(({ group, lines }) => (
+          <div key={group} className="mb-3 last:mb-0">
+            <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-primary)' }}>{group}</p>
+            <ul className="text-sm space-y-1.5">
+              {lines.map((line) => (
+                <li key={line} className="flex items-start gap-2">
+                  <CheckIcon className="w-3.5 h-3.5 mt-1 shrink-0" style={{ color: 'var(--color-primary)' }} />
+                  <span className="text-muted">{line}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         ))}
-      </ul>
+        <p className="text-xs text-muted mt-1">
+          That's the highlights - the <a href="/changelog" className="font-medium" style={{ color: 'var(--color-primary)' }}>full changelog</a> has everything, version by version.
+        </p>
+      </div>
     ),
   },
   {

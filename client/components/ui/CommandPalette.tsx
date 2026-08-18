@@ -90,15 +90,6 @@ export function CommandPalette() {
     }
   }, [entities, loadingEntities]);
 
-  const open = useCallback(() => {
-    setIsOpen(true);
-    setQuery('');
-    setAiAnswer(null);
-    setAiError(null);
-    setActiveIndex(0);
-    loadEntities();
-  }, [loadEntities]);
-
   const close = useCallback(() => {
     setIsOpen(false);
   }, []);
@@ -187,20 +178,12 @@ export function CommandPalette() {
 
   return (
     <>
-      {/* Small floating trigger hint - discoverability for a keyboard
-          shortcut that's otherwise invisible. Hidden on mobile (no keyboard
-          shortcut to advertise there). */}
-      <button
-        type="button"
-        onClick={open}
-        className="hidden md:flex fixed bottom-5 right-5 z-40 items-center gap-2 px-3 py-2 rounded-full text-xs font-medium shadow-lg transition-transform hover:scale-105"
-        style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', color: 'var(--color-textMuted)' }}
-        title="Open command palette"
-      >
-        <MagnifyingGlassIcon className="w-3.5 h-3.5" />
-        <kbd className="font-mono">{mac ? '⌘' : 'Ctrl'}K</kbd>
-      </button>
-
+      {/* No persistent floating trigger button - it cluttered every page
+          (confirmed: looked out of place, competed with other fixed
+          elements like the What's New banner). Discovery is the
+          onboarding wizard's own dedicated tip step instead, same as
+          Linear/Notion/Raycast rely on the shortcut itself rather than a
+          permanent on-screen button once a user's been shown it once. */}
       <AnimatePresence>
         {isOpen && (
           <>

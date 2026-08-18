@@ -1018,6 +1018,11 @@ class ApiClient {
   async getAiServicesStatus() {
     return this.fetch<{ configured: boolean; baseUrl?: string | null; model?: string | null; lastCheckStatus?: 'ok' | 'error' | null; lastCheckMessage?: string | null }>('/settings/account-ai-services');
   }
+  // The real stored key, for the eye icon's reveal - same underlying
+  // VaultEntry secret as vault.js's own /:id/reveal.
+  async revealAiServicesKey() {
+    return this.fetch<{ secret: string }>('/settings/account-ai-services/reveal', { method: 'POST' });
+  }
   // Saving always re-verifies with a real request (see settings.js's own
   // comment) - the response's lastCheckStatus/Message reflect that just-run
   // check, not merely "something got saved."
@@ -1918,7 +1923,7 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean; addonEnabled?: boolean }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -2764,11 +2769,6 @@ export interface CustomList {
   // stored - a shared catalog you don't own comes back with isOwner: false
   // and the client must hide every mutating affordance for it.
   shared: boolean;
-  // Owner-set opt-in - when true, this catalog is served as a real
-  // installable Stremio/Nuvio addon at /addon/catalog/<id>/manifest.json
-  // (server/routes/catalogAddon.js). Genuinely public/unauthenticated,
-  // unlike `shared` above which stays scoped to accounts on this instance.
-  addonEnabled: boolean;
   // Content-rating ALLOWLIST - OMDb "Rated" values to KEEP, e.g. a "Kids"
   // catalog set to ["G","PG"]. Empty = no policy (nothing touched). Only
   // changes via applyContentRating, which also performs the removal - see
