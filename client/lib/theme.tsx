@@ -210,6 +210,34 @@ export function isCustomThemeId(id: string): boolean {
   return typeof id === 'string' && id.startsWith('custom_');
 }
 
+// Theme sharing via a compact copy-paste code - no server round-trip
+// needed, themes are already purely client-side (localStorage). btoa/atob
+// only handle Latin1 by default; wrapping with encodeURIComponent/
+// decodeURIComponent is the standard trick for safely round-tripping any
+// UTF-8 (a theme name with non-ASCII characters, etc).
+const THEME_CODE_PREFIX = 'SST1:';
+
+export function encodeThemeShareCode(theme: CustomTheme, name: string): string {
+  const payload = { ...theme, name };
+  return THEME_CODE_PREFIX + btoa(encodeURIComponent(JSON.stringify(payload)));
+}
+
+export function decodeThemeShareCode(code: string): { theme: CustomTheme; name: string } | null {
+  const trimmed = code.trim();
+  if (!trimmed.startsWith(THEME_CODE_PREFIX)) return null;
+  try {
+    const json = decodeURIComponent(atob(trimmed.slice(THEME_CODE_PREFIX.length)));
+    const parsed = JSON.parse(json);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (!isBuiltInThemeId(parsed.base)) return null;
+    if (typeof parsed.primary !== 'string' || typeof parsed.secondary !== 'string') return null;
+    const { name, ...theme } = parsed;
+    return { theme: theme as CustomTheme, name: typeof name === 'string' && name.trim() ? name.trim() : 'Imported theme' };
+  } catch {
+    return null;
+  }
+}
+
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
   if (!m) return null;
