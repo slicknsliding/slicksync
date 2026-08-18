@@ -7,7 +7,7 @@ import {
   UsersIcon, PuzzlePieceIcon, EnvelopeIcon, SparklesIcon, CommandLineIcon,
   CheckIcon, ArrowRightIcon, XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { ONBOARDING_COMPLETED_KEY as COMPLETED_KEY, WHATS_NEW_LAST_SEEN_KEY } from '@/lib/onboardingStorage';
+import { ONBOARDING_COMPLETED_KEY as COMPLETED_KEY } from '@/lib/onboardingStorage';
 
 // A step's own href is optional - clicking "Take me there" closes the
 // wizard and navigates; steps with no action (the welcome/tips/finish
@@ -133,15 +133,7 @@ export function OnboardingWizard() {
 
   const finish = () => {
     localStorage.setItem(COMPLETED_KEY, '1');
-    // A fresh install has nothing to "catch up" on - seed the What's New
-    // banner's own tracking so it doesn't fire immediately after onboarding
-    // finishes. Best-effort; if this fetch fails the banner just shows once
-    // on the next visit instead, which is harmless.
-    fetch('/changelog.json')
-      .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data) && data[0]?.version) localStorage.setItem(WHATS_NEW_LAST_SEEN_KEY, data[0].version); })
-      .catch(() => {})
-      .finally(() => setIsOpen(false));
+    setIsOpen(false);
   };
 
   const goNext = () => {

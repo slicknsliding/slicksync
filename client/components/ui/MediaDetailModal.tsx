@@ -125,6 +125,13 @@ export function MediaDetailModal({
 
   const openPerson = useCallback(async (member: { name: string; tmdbId?: number | string | null }) => {
     if (member.tmdbId == null || member.tmdbId === '') return;
+    // Clicking the same cast member again closes the filmography row
+    // instead of re-fetching the same data - reads as a toggle, same as
+    // any other disclosure in this modal.
+    if (personView && personView.id === member.tmdbId) {
+      setPersonView(null);
+      return;
+    }
     setPersonView({ id: member.tmdbId, name: member.name, loading: true, credits: [] });
     const res = await api.getPersonCredits(member.tmdbId);
     if (!res) {
@@ -132,7 +139,7 @@ export function MediaDetailModal({
       return;
     }
     setPersonView({ id: member.tmdbId, name: res.person?.name || member.name, loading: false, credits: res.credits });
-  }, []);
+  }, [personView]);
 
   // Mouse grab-drag for the person-filmography row (touch/trackpad scroll it
   // natively already; this adds the desktop drag affordance it was missing).
@@ -984,11 +991,17 @@ export function MediaDetailModal({
                 </div>
               )}
 
-              {/* Cast moved ahead of Overview/Director - the overview
-                  paragraph can run several lines, and cast (a single
-                  horizontal-scroll row, not a wrapping list) is cheap to
-                  show early so it doesn't need scrolling past a long
-                  synopsis to reach. */}
+              {overview && (
+                <p className="text-base leading-relaxed text-default">{overview}</p>
+              )}
+
+              {details.director && details.director.length > 0 && (
+                <p className="text-base">
+                  <span className="text-muted">Director: </span>
+                  <span className="text-default">{details.director.join(', ')}</span>
+                </p>
+              )}
+
               {details.cast && details.cast.length > 0 && (
                 <div>
                   <p className="text-base text-muted mb-2">Cast</p>
@@ -1110,17 +1123,6 @@ export function MediaDetailModal({
                     </div>
                   )}
                 </div>
-              )}
-
-              {overview && (
-                <p className="text-base leading-relaxed text-default">{overview}</p>
-              )}
-
-              {details.director && details.director.length > 0 && (
-                <p className="text-base">
-                  <span className="text-muted">Director: </span>
-                  <span className="text-default">{details.director.join(', ')}</span>
-                </p>
               )}
 
               {details.awards && (

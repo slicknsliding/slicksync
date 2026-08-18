@@ -1,20 +1,32 @@
-// Proxy stream monitor - polls AIOStreams' built-in proxy stats endpoint and
-// mirrors active/ended connections into ProxyStreamSession rows, giving
-// SlickSync a "Now Playing" signal for Stremio/Nuvio users that AIOStreams
-// itself can see (this proxy sits in the middle of every stream request),
-// independent of the Nuvio-sourced WatchSession pipeline.
+// Proxy stream monitor - polls AIOStreams' unified live-streams dashboard
+// endpoint and mirrors active/ended sessions into ProxyStreamSession rows,
+// giving SlickSync a "Now Playing" signal for Stremio/Nuvio users that
+// AIOStreams itself can see (this proxy sits in the middle of every stream
+// request), independent of the Nuvio-sourced WatchSession pipeline.
 //
-// AIOStreams' /api/v1/proxy/stats route is gated by requireAdmin (dashboard
-// session cookie auth) - there is no separate API key mechanism in this
-// version of AIOStreams. So this module logs in with AIOSTREAMS_AUTH
+// AIOStreams' /api/v1/dashboard/streams/live route is gated by requireAdmin
+// (dashboard session cookie auth) - there is no separate API key mechanism
+// in this version of AIOStreams. So this module logs in with AIOSTREAMS_AUTH
 // credentials the same way the browser dashboard does, caches the resulting
 // session cookie, and re-logs-in on a 401.
 //
-// Connection identity: AIOStreams' BuiltinProxyStats keys each connection by
-// (ip, url), not by a single requestId - concurrent requests (e.g. range
-// requests for the same file) merge into one entry with a `count` and a
-// growing/shrinking `requestIds[]` array. This module mirrors that: identity
-// here is (accountId, aiostreamsUser, clientIp, url).
+// This endpoint replaced the older /api/v1/proxy/stats + separate
+// /api/v1/dashboard/usenet/live routes on recent (nightly, confirmed
+// 2026-08-18) AIOStreams builds - the old proxy/stats path now 400s with
+// "Invalid encrypted auth and data" (it's being matched by the actual
+// stream-serving proxy route instead of a stats handler, since the stats
+// route it used to be no longer exists). The new response is one flat
+// `streams[]` array covering BOTH transports at once (each row tagged
+// `transport: 'proxy' | 'usenet'`), with real per-row identity
+// (username/clientIp/targetKey) - no more synthetic usenet identity needed
+// for a row that actually came back attributed. Verified live via an
+// authenticated browser session against this exact instance.
+//
+// Session identity: each live stream has a stable `targetKey` (AIOStreams'
+// own words: "Stable identity of what is being streamed") - this module
+// reuses it as the `url` column below (the DB schema/unique-key predates
+// this rename and isn't worth a migration for a column that's always been
+// "whatever this session's stable identity string is", not literally a URL).
 
 const { searchCinemetaPosterByTitle } = require('./libraryHelpers')
 const { sendSessionStartNotification } = require('./sessionTracker')
@@ -22,21 +34,16 @@ const { notifyPushForType } = require('./pushNotifications')
 
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
-// Synthetic identity for usenet streams in the SAME ProxyStreamSession
-// table/unique-key/notification pipeline the regular proxy connections use
-// (accountId, aiostreamsUser, clientIp, url) - no schema change needed.
-// Usenet's own live-stream data (see fetchUsenetLiveStreams) carries NO
-// user identity at all, unlike proxy connections (which come back tagged
-// per aiostreamsUser) - so every usenet stream resolves through
-// resolveUserForActiveConnection's existing AIOSTREAMS_FALLBACK_USER_IDS
-// path, exactly like any other "proxy activity AIOStreams can't attribute"
-// case already does. url is repurposed to hold the stream's nzbHash - a
-// stable per-title identity, unlike a mutable byte-range URL - and IS
-// unique per concurrent usenet stream, so multiple simultaneous usenet
-// watches still get distinct rows; they just can't be told apart by WHO
-// is watching which one without a configured fallback user id.
-const USENET_SYNTHETIC_USER = '__usenet__'
-const USENET_SYNTHETIC_IP = 'usenet'
+// Fallback identity for a stream AIOStreams couldn't attribute to a user at
+// all (empty `username` - StreamOpenInput's own comment: "Empty when the
+// caller could not be identified; exempt from limits"). Kept in the SAME
+// ProxyStreamSession table/unique-key/notification pipeline real streams
+// use - every such stream still resolves through resolveUserForActiveConnection's
+// existing AIOSTREAMS_FALLBACK_USER_IDS path, same as any other "activity
+// AIOStreams can't attribute" case already does. Named generically now
+// (used for either transport when unattributed), not usenet-specific.
+const UNATTRIBUTED_SYNTHETIC_USER = '__unattributed__'
+const UNATTRIBUTED_SYNTHETIC_IP = 'unattributed'
 
 let pollTimer = null
 let cachedCookie = null
@@ -133,61 +140,87 @@ async function loginToAiostreams(baseUrl, username, password) {
   return setCookies.map((c) => c.split(';')[0]).join('; ')
 }
 
-async function fetchProxyStats(baseUrl, username, password) {
+// Returns the flat `streams[]` array from AIOStreams' unified live-streams
+// snapshot (both proxy and usenet transports together - see this file's own
+// header comment). Falls back to the pre-2026-08 /api/v1/proxy/stats shape
+// (`{ users: [{ username, active: [...] }] }`) only if the new route 404s,
+// so an instance running an older/stable AIOStreams build still gets
+// *proxy* Now Playing (just not usenet, which that older API never exposed
+// either) instead of losing the feature outright on a version this module
+// hasn't caught up to yet.
+async function fetchLiveStreams(baseUrl, username, password) {
   if (!cachedCookie) {
     cachedCookie = await loginToAiostreams(baseUrl, username, password)
-    heartbeat('fetchProxyStats:logged_in')
+    heartbeat('fetchLiveStreams:logged_in')
   }
 
-  let res = await fetch(`${baseUrl}/api/v1/proxy/stats`, {
+  let res = await fetch(`${baseUrl}/api/v1/dashboard/streams/live`, {
     headers: { Cookie: cachedCookie },
   })
 
   if (res.status === 401) {
-    heartbeat('fetchProxyStats:session_expired_relogging_in')
+    heartbeat('fetchLiveStreams:session_expired_relogging_in')
     cachedCookie = await loginToAiostreams(baseUrl, username, password)
-    res = await fetch(`${baseUrl}/api/v1/proxy/stats`, {
+    res = await fetch(`${baseUrl}/api/v1/dashboard/streams/live`, {
       headers: { Cookie: cachedCookie },
     })
   }
 
+  if (res.status === 404) {
+    heartbeat('fetchLiveStreams:falling_back_to_legacy_proxy_stats')
+    return fetchLegacyProxyStats(baseUrl)
+  }
+
+  if (!res.ok) {
+    throw new Error(`AIOStreams /dashboard/streams/live failed: ${res.status} ${res.statusText}`)
+  }
+
+  const json = await res.json()
+  const streams = json?.data?.streams ?? json?.streams ?? []
+  // Normalize the legacy shape's fields onto the new one so pollOnce only
+  // ever has to handle one row shape, regardless of which branch produced it.
+  return streams.map((s) => ({
+    transport: s.transport || 'proxy',
+    username: s.username || '',
+    clientIp: s.clientIp || null,
+    targetKey: s.targetKey,
+    filename: s.filename || null,
+    requests: s.requests,
+    startedAt: s.startedAt,
+    lastSeenAt: s.lastSeenAt,
+  }))
+}
+
+// Pre-2026-08 AIOStreams shape: { users: [{ username, active: [{ ip, url,
+// filename, timestamp, lastSeen, count }] }] }, proxy-only (that API never
+// exposed usenet sessions). Reshaped into the same flat row shape
+// fetchLiveStreams returns from the new endpoint, so pollOnce below never
+// needs to know which branch it came from.
+async function fetchLegacyProxyStats(baseUrl) {
+  const res = await fetch(`${baseUrl}/api/v1/proxy/stats`, {
+    headers: { Cookie: cachedCookie },
+  })
   if (!res.ok) {
     throw new Error(`AIOStreams /proxy/stats failed: ${res.status} ${res.statusText}`)
   }
-
-  return res.json()
-}
-
-// Live usenet streams (filename/bytes-served/rate, no user identity - see
-// this function's caller for how that's handled). Backend-only endpoint on
-// very recent AIOStreams builds (nightly/main as of 2026-08-01) - their own
-// dashboard PAGE for it was reverted the same day, but the API route
-// itself wasn't, confirmed via a live authenticated request against it.
-// Returns null (not a throw) on 404 so an instance running an older/stable
-// AIOStreams build - which is most self-hosters right now - just never
-// sees usenet entries, with zero impact on the proxy polling this rides
-// alongside. Shares the same session cookie as /proxy/stats since both
-// sit behind the same dashboard auth.
-async function fetchUsenetLiveStreams(baseUrl, username, password) {
-  if (!cachedCookie) {
-    cachedCookie = await loginToAiostreams(baseUrl, username, password)
+  const stats = await res.json()
+  const rows = []
+  for (const user of stats.users ?? []) {
+    for (const conn of user.active ?? []) {
+      if (!conn.ip || !conn.url) continue
+      rows.push({
+        transport: 'proxy',
+        username: user.username || '',
+        clientIp: conn.ip,
+        targetKey: conn.url,
+        filename: conn.filename || null,
+        requests: conn.count,
+        startedAt: conn.timestamp,
+        lastSeenAt: conn.lastSeen ?? conn.timestamp,
+      })
+    }
   }
-  let res = await fetch(`${baseUrl}/api/v1/dashboard/usenet/live`, {
-    headers: { Cookie: cachedCookie },
-  })
-  if (res.status === 401) {
-    cachedCookie = await loginToAiostreams(baseUrl, username, password)
-    res = await fetch(`${baseUrl}/api/v1/dashboard/usenet/live`, {
-      headers: { Cookie: cachedCookie },
-    })
-  }
-  if (res.status === 404) return null // older AIOStreams build - no usenet-live route at all
-  if (!res.ok) {
-    throw new Error(`AIOStreams /dashboard/usenet/live failed: ${res.status} ${res.statusText}`)
-  }
-  const data = await res.json()
-  // createResponse() envelope: { success, data: { live, pool, cache, streams } }
-  return data?.data?.streams ?? data?.streams ?? null
+  return rows
 }
 
 
@@ -437,7 +470,7 @@ async function pollOnce(prisma, accountId, config) {
   const wasOk = lastPollStatus.ok
   try {
     await retryMissingPosters(prisma, accountId)
-    const stats = await fetchProxyStats(config.baseUrl, config.username, config.password)
+    const liveStreams = await fetchLiveStreams(config.baseUrl, config.username, config.password)
     const now = new Date()
     const ignoredIps = new Set(getIgnoredIps())
     // Track which (aiostreamsUser, clientIp, url) combos are active this poll
@@ -465,153 +498,93 @@ async function pollOnce(prisma, accountId, config) {
       }
     } catch {}
 
-    for (const user of stats.users ?? []) {
-      for (const conn of user.active ?? []) {
-        // Real shape from BuiltinProxyStats: { ip, url, filename, timestamp,
-        // lastSeen, count, requestIds }. No clientIp/requestId fields exist.
-        const clientIp = conn.ip
-        const url = conn.url
-        if (!clientIp || !url) {
-          heartbeat('pollOnce:skipped_malformed_connection', { user: user.username, conn })
-          continue
-        }
-        // Skip the server's own proxied requests (see getIgnoredIps) - never a
-        // real user watch, and recording it spawns phantom sessions +
-        // notifications + duplicate Now Playing cards.
-        if (ignoredIps.has(clientIp)) {
-          heartbeat('pollOnce:skipped_ignored_ip', { clientIp })
-          continue
-        }
-
-        const key = `${user.username}:::${clientIp}:::${url}`
-        seenKeys.add(key)
-
-        const displayName = parseDisplayName(conn.filename)
-
-        // Was this connection already known before this poll? A brand-new
-        // row means playback just started - the trigger for an instant
-        // "started watching" notification below.
-        const existingRow = await prisma.proxyStreamSession.findUnique({
-          where: { accountId_aiostreamsUser_clientIp_url: { accountId, aiostreamsUser: user.username, clientIp, url } },
-          select: { id: true, isActive: true },
-        })
-
-        // Debrid resolvers frequently return a deterministic, content-
-        // addressed URL for the same title+store rather than a per-session
-        // token - replaying the same content days later can land on the
-        // EXACT same (accountId, user, clientIp, url) unique key as a much
-        // earlier, already-closed viewing. Without resetting startTime here,
-        // that old value rode along forever on every future reactivation of
-        // "the same" URL (confirmed real case: a row's startTime stayed
-        // frozen at its first-ever play from 2 days earlier, producing a
-        // bogus "Watching for 57h+" display once mergeProxyNowPlaying used
-        // it as the reported watch start). Only reset when the row was NOT
-        // already active - an ordinary 30s poll of a genuinely still-open
-        // connection must keep its real startTime, only a reactivation from
-        // a closed state is a new viewing occasion.
-        const isReactivation = existingRow && existingRow.isActive === false
-
-        const row = await prisma.proxyStreamSession.upsert({
-          where: {
-            accountId_aiostreamsUser_clientIp_url: {
-              accountId,
-              aiostreamsUser: user.username,
-              clientIp,
-              url,
-            },
-          },
-          create: {
-            accountId,
-            aiostreamsUser: user.username,
-            clientIp,
-            url,
-            filename: conn.filename ?? null,
-            displayName,
-            requestCount: conn.count ?? 1,
-            startTime: new Date(conn.timestamp),
-            lastSeenAt: new Date(conn.lastSeen ?? conn.timestamp),
-            isActive: true,
-          },
-          update: {
-            requestCount: conn.count ?? 1,
-            lastSeenAt: new Date(conn.lastSeen ?? Date.now()),
-            isActive: true,
-            endTime: null,
-            ...(isReactivation ? { startTime: new Date(conn.timestamp) } : {}),
-          },
-        })
-
-        // Strict poster lookup once per stream (cached via
-        // metadataMatchedAt), not on every 30s poll while it stays active.
-        if (!row.metadataMatchedAt) {
-          await attemptPosterLookup(prisma, row.id, displayName)
-        }
-
-        // Instant "started watching" notification for a genuinely new watch
-        // (runs after the poster lookup so the embed can include it).
-        if (notifyActivity && !existingRow) {
-          await maybeNotifyStart(prisma, accountId, notifyWebhook, notifyUsers, user.username, row.id, displayName)
-        }
+    // One unified loop over both transports - the new endpoint tags each
+    // row with real identity already, so proxy and usenet no longer need
+    // separate fetches/loops the way the old two-endpoint setup did.
+    for (const stream of liveStreams) {
+      if (!stream.targetKey) {
+        heartbeat('pollOnce:skipped_malformed_stream', { stream })
+        continue
       }
-    }
+      // Unattributed (empty username) falls back to the same synthetic
+      // identity regardless of transport - see the constant's own comment.
+      const aiostreamsUser = stream.username || UNATTRIBUTED_SYNTHETIC_USER
+      const clientIp = stream.clientIp || UNATTRIBUTED_SYNTHETIC_IP
+      const url = stream.targetKey
 
-    // Usenet live streams - same shape of work as the proxy loop above, just
-    // a different source and synthetic identity (see the constants' own
-    // comment for why). Isolated in its own try/catch so an older AIOStreams
-    // build (no /dashboard/usenet/live route - fetchUsenetLiveStreams
-    // returns null for that, not a throw) or any other failure here never
-    // touches the proxy polling it rides alongside.
-    try {
-      const usenetStreams = await fetchUsenetLiveStreams(config.baseUrl, config.username, config.password)
-      for (const stream of usenetStreams ?? []) {
-        if (!stream?.nzbHash) continue
-        const clientIp = USENET_SYNTHETIC_IP
-        const url = stream.nzbHash
-        const key = `${USENET_SYNTHETIC_USER}:::${clientIp}:::${url}`
-        seenKeys.add(key)
-
-        const displayName = parseDisplayName(stream.filename)
-
-        const existingRow = await prisma.proxyStreamSession.findUnique({
-          where: { accountId_aiostreamsUser_clientIp_url: { accountId, aiostreamsUser: USENET_SYNTHETIC_USER, clientIp, url } },
-          select: { id: true, isActive: true },
-        })
-        const isReactivation = existingRow && existingRow.isActive === false
-
-        const row = await prisma.proxyStreamSession.upsert({
-          where: {
-            accountId_aiostreamsUser_clientIp_url: { accountId, aiostreamsUser: USENET_SYNTHETIC_USER, clientIp, url },
-          },
-          create: {
-            accountId,
-            aiostreamsUser: USENET_SYNTHETIC_USER,
-            clientIp,
-            url,
-            filename: stream.filename ?? null,
-            displayName,
-            requestCount: 1,
-            startTime: new Date(stream.openedAt),
-            lastSeenAt: now,
-            isActive: true,
-          },
-          update: {
-            lastSeenAt: now,
-            isActive: true,
-            endTime: null,
-            ...(isReactivation ? { startTime: new Date(stream.openedAt) } : {}),
-          },
-        })
-
-        if (!row.metadataMatchedAt) {
-          await attemptPosterLookup(prisma, row.id, displayName)
-        }
-        if (notifyActivity && !existingRow) {
-          await maybeNotifyStart(prisma, accountId, notifyWebhook, notifyUsers, USENET_SYNTHETIC_USER, row.id, displayName)
-        }
+      // Skip the server's own proxied requests (see getIgnoredIps) - never a
+      // real user watch, and recording it spawns phantom sessions +
+      // notifications + duplicate Now Playing cards.
+      if (ignoredIps.has(clientIp)) {
+        heartbeat('pollOnce:skipped_ignored_ip', { clientIp })
+        continue
       }
-      heartbeat('pollOnce:usenet_done', { seen: (usenetStreams ?? []).length })
-    } catch (error) {
-      heartbeat('pollOnce:usenet_error', { message: error.message })
+
+      const key = `${aiostreamsUser}:::${clientIp}:::${url}`
+      seenKeys.add(key)
+
+      const displayName = parseDisplayName(stream.filename)
+
+      // Was this session already known before this poll? A brand-new row
+      // means playback just started - the trigger for an instant "started
+      // watching" notification below.
+      const existingRow = await prisma.proxyStreamSession.findUnique({
+        where: { accountId_aiostreamsUser_clientIp_url: { accountId, aiostreamsUser, clientIp, url } },
+        select: { id: true, isActive: true },
+      })
+
+      // Debrid resolvers frequently return a deterministic, content-
+      // addressed identity for the same title+store rather than a
+      // per-session token - replaying the same content days later can land
+      // on the EXACT same (accountId, user, clientIp, url) unique key as a
+      // much earlier, already-closed viewing. Without resetting startTime
+      // here, that old value rode along forever on every future
+      // reactivation of "the same" key (confirmed real case: a row's
+      // startTime stayed frozen at its first-ever play from 2 days earlier,
+      // producing a bogus "Watching for 57h+" display once
+      // mergeProxyNowPlaying used it as the reported watch start). Only
+      // reset when the row was NOT already active - an ordinary 30s poll of
+      // a genuinely still-open session must keep its real startTime, only a
+      // reactivation from a closed state is a new viewing occasion.
+      const isReactivation = existingRow && existingRow.isActive === false
+      const startedAt = new Date(stream.startedAt)
+
+      const row = await prisma.proxyStreamSession.upsert({
+        where: {
+          accountId_aiostreamsUser_clientIp_url: { accountId, aiostreamsUser, clientIp, url },
+        },
+        create: {
+          accountId,
+          aiostreamsUser,
+          clientIp,
+          url,
+          filename: stream.filename ?? null,
+          displayName,
+          requestCount: stream.requests ?? 1,
+          startTime: startedAt,
+          lastSeenAt: new Date(stream.lastSeenAt ?? stream.startedAt),
+          isActive: true,
+        },
+        update: {
+          requestCount: stream.requests ?? 1,
+          lastSeenAt: new Date(stream.lastSeenAt ?? Date.now()),
+          isActive: true,
+          endTime: null,
+          ...(isReactivation ? { startTime: startedAt } : {}),
+        },
+      })
+
+      // Strict poster lookup once per stream (cached via metadataMatchedAt),
+      // not on every 30s poll while it stays active.
+      if (!row.metadataMatchedAt) {
+        await attemptPosterLookup(prisma, row.id, displayName)
+      }
+
+      // Instant "started watching" notification for a genuinely new watch
+      // (runs after the poster lookup so the embed can include it).
+      if (notifyActivity && !existingRow) {
+        await maybeNotifyStart(prisma, accountId, notifyWebhook, notifyUsers, aiostreamsUser, row.id, displayName)
+      }
     }
 
     // Anything previously active that AIOStreams no longer lists: mark ended

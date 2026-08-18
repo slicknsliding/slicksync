@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.73.7",
+    "date": "2026-08-18",
+    "title": "fix: Now Playing for proxy-routed streams was silently dead - real root cause of the recurring Proxy 400",
+    "features": [],
+    "bugFixes": [
+      "Found the real cause of the recurring \"AIOStreams /proxy/stats failed: 400 Bad Request\" Health alert: recent AIOStreams builds (nightly, confirmed live 2026-08-18) moved the stats endpoint from /api/v1/proxy/stats to a new unified /api/v1/dashboard/streams/live route - the old path now 400s instead of 404ing, which made it look like an auth problem rather than a moved endpoint. Since every 30s poll was failing outright, this wasn't just a cosmetic Health-page error - Now Playing detection for every proxy-routed stream (Stremio/Nuvio via debrid) had been silently dead on any instance running an affected AIOStreams build. Updated to the new endpoint, with a fallback to the old one for instances on older AIOStreams builds where it still works.",
+      "The new AIOStreams endpoint also unifies proxy and usenet sessions into one response with real per-session identity, replacing the old two-endpoint setup and its usenet-specific synthetic-user workaround with a single, simpler code path."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.6",
     "date": "2026-08-18",
     "title": "fix: selection checkboxes hard to see against dark backgrounds",
@@ -41,7 +52,7 @@
     ],
     "bugFixes": [
       "Automation: a condition row's remove button could get squeezed off the edge of the New Rule modal on narrower screens - the row now shrinks its fields properly instead of overflowing.",
-      "Fixed a real bug behind the recurring \"AIOStreams /proxy/stats failed: 400 Bad Request\" Health alert - the proxy monitor's login only kept the first of AIOStreams' cookies when it set more than one, silently dropping a required session/CSRF cookie on some builds.",
+      "A real bug in how the proxy monitor's login handled multiple Set-Cookie headers, fixed defensively here - but turned out not to be the actual cause of the \"AIOStreams /proxy/stats failed: 400 Bad Request\" Health alert some instances kept seeing. The real fix landed in v1.73.7 - see that entry.",
       "Detail modal: reactions (thumbs up/down) moved next to the rating row instead of a separate row competing with the action buttons; Cast now appears before the Overview paragraph so it doesn't need scrolling past a long synopsis to reach; the 4 action buttons (Watchlist/catalog/Stremio/Nuvio) now lay out as 2x2 on mobile instead of 4 stacked full-width rows."
     ],
     "miscChores": []

@@ -180,11 +180,10 @@ export function CommandPalette() {
   return (
     <>
       {/* No persistent floating trigger button - it cluttered every page
-          (confirmed: looked out of place, competed with other fixed
-          elements like the What's New banner). Discovery is the
-          onboarding wizard's own dedicated tip step instead, same as
-          Linear/Notion/Raycast rely on the shortcut itself rather than a
-          permanent on-screen button once a user's been shown it once. */}
+          and looked out of place. Discovery is the onboarding wizard's own
+          dedicated tip step instead, same as Linear/Notion/Raycast rely on
+          the shortcut itself rather than a permanent on-screen button once
+          a user's been shown it once. */}
       <AnimatePresence>
         {isOpen && (
           <>
