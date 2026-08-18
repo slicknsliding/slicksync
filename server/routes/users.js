@@ -683,6 +683,53 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // POST /users/command-ask - the command palette's AI fallback for a
+  // free-text question that doesn't match any nav/entity search result.
+  // Deliberately read-only/answer-only, not action-executing: real command
+  // EXECUTION (e.g. "add every Nolan film to Halloween Marathon") would
+  // need a full tool-calling orchestration layer - resolving a director's
+  // filmography, fuzzy-matching a catalog by name, confirming before a
+  // bulk write - that's a materially bigger scope than "answer a question
+  // about the current state of this instance," which is what this
+  // actually does well. Context handed to the model is intentionally
+  // small and specific (current addon health) rather than a full data
+  // dump, both for latency and so the model can't be prompted into
+  // fabricating details about data it was never given. Must be before
+  // /:id route.
+  router.post('/command-ask', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const question = typeof req.body?.question === 'string' ? req.body.question.trim().slice(0, 300) : ''
+      if (!question) return res.status(400).json({ error: 'question is required' })
+
+      const { resolveAiCredentials, callAiText } = require('../utils/nlCatalog')
+      const creds = await resolveAiCredentials(prisma, accountId, decrypt)
+      if (!creds) return res.status(422).json({ error: 'No AI Services key configured (Settings -> External API Keys)' })
+
+      const offlineAddons = await prisma.addon.findMany({
+        where: { accountId, isActive: true, isOnline: false, healthIgnored: false },
+        select: { name: true, healthCheckError: true },
+      })
+      const totalAddons = await prisma.addon.count({ where: { accountId, isActive: true } })
+
+      const contextLines = [
+        `This SlickSync instance has ${totalAddons} active addon(s).`,
+        offlineAddons.length > 0
+          ? `Currently offline: ${offlineAddons.map((a) => `${a.name}${a.healthCheckError ? ` (${a.healthCheckError})` : ''}`).join('; ')}.`
+          : 'All addons are currently online.',
+      ]
+
+      const prompt = `You're a small assistant embedded in a SlickSync (self-hosted Stremio/Nuvio manager) command palette. Answer the user's question in 1-3 short, plain sentences using ONLY the context below - never invent data you weren't given. If the question needs data not listed here, say so plainly instead of guessing.\n\nContext:\n${contextLines.join('\n')}\n\nQuestion: ${question}`
+
+      const answer = await callAiText(prompt, creds, { maxTokens: 150, timeoutMs: 8000 })
+      res.json({ answer })
+    } catch (error) {
+      console.error('Error handling command palette AI question:', error)
+      res.status(500).json({ error: error?.message || 'Failed to get an answer' })
+    }
+  })
+
   // GET /users/media-details - Cinemeta detail lookup for the Activity page's
   // poster-click modal (cast, rating, genres, etc). Must be before /:id route.
   router.get('/media-details', async (req, res) => {
