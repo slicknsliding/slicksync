@@ -14,6 +14,8 @@ import { VaultDragProvider, useVaultDrag } from "@/components/providers/VaultDra
 import { TVBackButton } from "@/components/tv/TVBackButton";
 import { CommandPalette } from "@/components/ui/CommandPalette";
 import { useIsTV } from "@/lib/hooks/useIsTV";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { WhatsNewBanner } from "@/components/onboarding/WhatsNewBanner";
 import type { DragStartEvent, DragEndEvent, CollisionDetection } from "@dnd-kit/core";
 
 interface MobileMenuContextType {
@@ -158,6 +160,8 @@ export default function AdminClientLayout({
         {/* No keyboard on a D-pad-only TV interface - a floating Ctrl+K
             hint/shortcut makes no sense there. */}
         {!isTV && <CommandPalette />}
+        {!isTV && <OnboardingWizard />}
+        {!isTV && <WhatsNewBanner />}
         <VaultDragProvider>
           <LayoutDndWrapper>
             <div className="relative min-h-screen">
