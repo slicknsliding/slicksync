@@ -1876,7 +1876,7 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean; addonEnabled?: boolean }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -2722,6 +2722,11 @@ export interface CustomList {
   // stored - a shared catalog you don't own comes back with isOwner: false
   // and the client must hide every mutating affordance for it.
   shared: boolean;
+  // Owner-set opt-in - when true, this catalog is served as a real
+  // installable Stremio/Nuvio addon at /addon/catalog/<id>/manifest.json
+  // (server/routes/catalogAddon.js). Genuinely public/unauthenticated,
+  // unlike `shared` above which stays scoped to accounts on this instance.
+  addonEnabled: boolean;
   // Content-rating ALLOWLIST - OMDb "Rated" values to KEEP, e.g. a "Kids"
   // catalog set to ["G","PG"]. Empty = no policy (nothing touched). Only
   // changes via applyContentRating, which also performs the removal - see
