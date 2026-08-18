@@ -35,6 +35,65 @@ function coverColorStyle(colorIndex: number): React.CSSProperties {
   return { background: `color-mix(in srgb, var(--color-${colorIndex < 4 ? 'primary' : 'secondary'}) ${100 - (colorIndex % 4) * 25}%, white)` };
 }
 
+// "More" action menu building blocks (the catalog detail page's secondary
+// actions, everything past Suggest titles/Refresh - see editActions below).
+// A small uppercase label over a group of related rows, matching the
+// section-header treatment used elsewhere (e.g. HealthIgnoredList,
+// SettingsSection headers) rather than one flat undifferentiated list.
+function MoreMenuSection({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="px-2 py-1">
+      <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-textMuted)' }}>
+        {label}
+      </p>
+      <div className="space-y-0.5">{children}</div>
+    </div>
+  );
+}
+
+// One row: icon in a small tinted chip (reads as "designed", not a bare
+// glyph floating next to text) + label, with an active/pressed state for
+// toggles (Share, Content Rating) that stay relevant after closing.
+function MoreMenuItem({
+  icon, tint, children, onClick, disabled, active, title,
+}: {
+  icon: React.ReactNode;
+  tint: 'primary' | 'secondary' | 'error';
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  title?: string;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const tintVar = `var(--color-${tint})`;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-sm text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      style={{ background: hovered && !disabled ? 'var(--color-surfaceHover)' : 'transparent' }}
+    >
+      <span
+        className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+        style={{
+          background: active ? tintVar : `color-mix(in srgb, ${tintVar} 16%, transparent)`,
+          color: active ? 'var(--color-bg)' : tintVar,
+        }}
+      >
+        {icon}
+      </span>
+      <span style={{ color: active ? tintVar : 'var(--color-text)' }} className="truncate">
+        {children}
+      </span>
+    </button>
+  );
+}
+
 // PosterCard only needs this narrowed shape (see its own comment) - a
 // Catalog item's `year` becomes PosterCard's `releaseInfo` string, matching
 // how Discover already formats Cinemeta's own releaseInfo field.
@@ -606,11 +665,6 @@ export default function ListDetailPage() {
   // account, so gating this one variable (used by both the non-nebula
   // Header and NebulaPageHeading below) hides every header-level mutating
   // action at once instead of needing a per-button check.
-  // Plain <button>+onClick rows rather than pulling in a menu-item
-  // sub-component - this list only exists here, and each row needs a
-  // different icon/label/disabled condition anyway.
-  const moreMenuItemClass = "w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
-
   const editActions = list && !isLoading && !notFound && list.isOwner ? (
     <div className="flex items-center gap-2 flex-wrap justify-end">
       <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
@@ -626,12 +680,12 @@ export default function ListDetailPage() {
           ref={moreMenuButtonRef}
           variant="secondary"
           size="sm"
-          leftIcon={<EllipsisVerticalIcon className="w-4 h-4" />}
           onClick={() => setShowMoreMenu((v) => !v)}
           aria-label="More actions"
           aria-expanded={showMoreMenu}
+          className="!px-2.5"
         >
-          More
+          <EllipsisVerticalIcon className="w-4 h-4" />
         </Button>
         <AnimatePresence>
           {showMoreMenu && (
@@ -642,99 +696,85 @@ export default function ListDetailPage() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: -8 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-default shadow-lg overflow-hidden py-1.5"
-                style={{ background: 'var(--color-surface)' }}
+                className="absolute right-0 top-full mt-2.5 z-50 w-72 rounded-2xl overflow-hidden"
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', boxShadow: '0 20px 40px -12px rgba(0,0,0,0.5)' }}
               >
-                <button
-                  className={moreMenuItemClass}
-                  style={{ color: 'var(--color-text)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surfaceHover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  onClick={() => { setShowMoreMenu(false); setShowCoverPicker(true); }}
-                >
-                  <PhotoIcon className="w-4 h-4 shrink-0" />
-                  Cover art
-                </button>
-                <button
-                  className={moreMenuItemClass}
-                  style={{ color: 'var(--color-text)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surfaceHover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  onClick={() => { setShowMoreMenu(false); setRenameValue(list.name); setRenaming(true); }}
-                >
-                  <PencilSquareIcon className="w-4 h-4 shrink-0" />
-                  Rename
-                </button>
-                <button
-                  className={moreMenuItemClass}
-                  style={{ color: list.shared ? 'var(--color-primary)' : 'var(--color-text)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surfaceHover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  onClick={() => { setShowMoreMenu(false); handleToggleShared(); }}
-                  title={list.shared ? 'Visible (read-only) to other accounts on this instance - click to stop sharing' : 'Make this catalog visible (read-only) to other accounts on this instance'}
-                >
-                  <ShareIcon className="w-4 h-4 shrink-0" />
-                  {list.shared ? 'Shared (click to unshare)' : 'Share'}
-                </button>
-                <button
-                  className={moreMenuItemClass}
-                  style={{ color: list.keptRatings.length > 0 ? 'var(--color-primary)' : 'var(--color-text)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surfaceHover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  onClick={() => { setShowMoreMenu(false); openPolicyModal(); }}
-                  title={list.keptRatings.length > 0 ? `Keeping only: ${list.keptRatings.join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
-                >
-                  <ShieldExclamationIcon className="w-4 h-4 shrink-0" />
-                  {list.keptRatings.length > 0 ? `Content Rating (${list.keptRatings.length})` : 'Content Rating'}
-                </button>
-                {list.lastRemovalAt && (
-                  <button
-                    className={moreMenuItemClass}
-                    style={{ color: 'var(--color-text)' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surfaceHover)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                    onClick={() => { setShowMoreMenu(false); handleRestoreRemoval(); }}
-                    title={`Undo the content-rating removal from ${new Date(list.lastRemovalAt).toLocaleString()}`}
-                  >
-                    <ArrowPathIcon className="w-4 h-4 shrink-0" />
-                    Restore last removal
-                  </button>
-                )}
-                <button
-                  className={moreMenuItemClass}
-                  style={{ color: 'var(--color-text)' }}
-                  onMouseEnter={(e) => { if (list.items.length > 0) e.currentTarget.style.background = 'var(--color-surfaceHover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  onClick={() => { setShowMoreMenu(false); setShowExportConfirm(true); }}
-                  disabled={list.items.length === 0}
-                  title={list.items.length === 0 ? 'Add titles first' : undefined}
-                >
-                  <ArrowUpTrayIcon className="w-4 h-4 shrink-0" />
-                  Export to MDBList
-                </button>
-                <button
-                  className={moreMenuItemClass}
-                  style={{ color: 'var(--color-text)' }}
-                  onMouseEnter={(e) => { if (list.items.length > 0) e.currentTarget.style.background = 'var(--color-surfaceHover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  onClick={() => { setShowMoreMenu(false); handleOpenExportSimkl(); }}
-                  disabled={list.items.length === 0}
-                  title={list.items.length === 0 ? 'Add titles first' : undefined}
-                >
-                  <ArrowUpTrayIcon className="w-4 h-4 shrink-0" />
-                  Export to SIMKL
-                </button>
-                <div className="my-1.5 border-t border-default" />
-                <button
-                  className={moreMenuItemClass}
-                  style={{ color: 'var(--color-error)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surfaceHover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                  onClick={() => { setShowMoreMenu(false); setDeleting(true); }}
-                >
-                  <TrashIcon className="w-4 h-4 shrink-0" />
-                  Delete
-                </button>
+                {/* Small caret pointing up at the button that opened this -
+                    same speech-bubble trick NotificationsDropdown uses, so
+                    the panel reads unambiguously as coming from that button. */}
+                <div
+                  className="absolute -top-1 right-4 w-3 h-3 rotate-45 border-l border-t border-default"
+                  style={{ background: 'var(--color-surface)' }}
+                />
+                <div className="relative py-2">
+                  <MoreMenuSection label="Organize">
+                    <MoreMenuItem icon={<PhotoIcon className="w-4 h-4" />} tint="secondary" onClick={() => { setShowMoreMenu(false); setShowCoverPicker(true); }}>
+                      Cover art
+                    </MoreMenuItem>
+                    <MoreMenuItem icon={<PencilSquareIcon className="w-4 h-4" />} tint="secondary" onClick={() => { setShowMoreMenu(false); setRenameValue(list.name); setRenaming(true); }}>
+                      Rename
+                    </MoreMenuItem>
+                  </MoreMenuSection>
+
+                  <MoreMenuSection label="Share &amp; policy">
+                    <MoreMenuItem
+                      icon={<ShareIcon className="w-4 h-4" />}
+                      tint="primary"
+                      active={list.shared}
+                      onClick={() => { setShowMoreMenu(false); handleToggleShared(); }}
+                      title={list.shared ? 'Visible (read-only) to other accounts on this instance - click to stop sharing' : 'Make this catalog visible (read-only) to other accounts on this instance'}
+                    >
+                      {list.shared ? 'Shared (click to unshare)' : 'Share'}
+                    </MoreMenuItem>
+                    <MoreMenuItem
+                      icon={<ShieldExclamationIcon className="w-4 h-4" />}
+                      tint="primary"
+                      active={list.keptRatings.length > 0}
+                      onClick={() => { setShowMoreMenu(false); openPolicyModal(); }}
+                      title={list.keptRatings.length > 0 ? `Keeping only: ${list.keptRatings.join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
+                    >
+                      {list.keptRatings.length > 0 ? `Content Rating (${list.keptRatings.length})` : 'Content Rating'}
+                    </MoreMenuItem>
+                    {list.lastRemovalAt && (
+                      <MoreMenuItem
+                        icon={<ArrowPathIcon className="w-4 h-4" />}
+                        tint="primary"
+                        onClick={() => { setShowMoreMenu(false); handleRestoreRemoval(); }}
+                        title={`Undo the content-rating removal from ${new Date(list.lastRemovalAt).toLocaleString()}`}
+                      >
+                        Restore last removal
+                      </MoreMenuItem>
+                    )}
+                  </MoreMenuSection>
+
+                  <MoreMenuSection label="Export">
+                    <MoreMenuItem
+                      icon={<ArrowUpTrayIcon className="w-4 h-4" />}
+                      tint="secondary"
+                      disabled={list.items.length === 0}
+                      onClick={() => { setShowMoreMenu(false); setShowExportConfirm(true); }}
+                      title={list.items.length === 0 ? 'Add titles first' : undefined}
+                    >
+                      Export to MDBList
+                    </MoreMenuItem>
+                    <MoreMenuItem
+                      icon={<ArrowUpTrayIcon className="w-4 h-4" />}
+                      tint="secondary"
+                      disabled={list.items.length === 0}
+                      onClick={() => { setShowMoreMenu(false); handleOpenExportSimkl(); }}
+                      title={list.items.length === 0 ? 'Add titles first' : undefined}
+                    >
+                      Export to SIMKL
+                    </MoreMenuItem>
+                  </MoreMenuSection>
+
+                  <div className="mx-2 my-1.5 border-t border-default" />
+                  <div className="px-2">
+                    <MoreMenuItem icon={<TrashIcon className="w-4 h-4" />} tint="error" onClick={() => { setShowMoreMenu(false); setDeleting(true); }}>
+                      Delete catalog
+                    </MoreMenuItem>
+                  </div>
+                </div>
               </motion.div>
             </>
           )}

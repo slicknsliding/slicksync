@@ -115,6 +115,13 @@ function ExpiryBadge({ entry }: { entry: VaultEntry }) {
 function DebridUsageBadge({ entry, onEntryUpdated }: { entry: VaultEntry; onEntryUpdated: (id: string, patch: Partial<VaultEntry>) => void }) {
   const [usage, setUsage] = useState<{ premiumDaysLeft: number | null; activeDownloads: number | null } | null | undefined>(undefined);
   const [savingAutoRemove, setSavingAutoRemove] = useState(false);
+  // Controlled (was uncontrolled + save-on-blur only) - clicking the
+  // native spin-button arrows changes the value without ever blurring the
+  // input, so a blur-only save silently dropped the change if the user
+  // then refreshed or navigated away before clicking elsewhere. Saving on
+  // every change (typed or via the arrows) instead of only on blur means
+  // there's never a window where a real change sits unsaved.
+  const [daysValue, setDaysValue] = useState(String(entry.autoRemoveAfterDays || 7));
 
   useEffect(() => {
     if (entry.testType !== 'real_debrid' && entry.testType !== 'torbox') return;
@@ -179,8 +186,26 @@ function DebridUsageBadge({ entry, onEntryUpdated }: { entry: VaultEntry; onEntr
           <input
             type="number"
             min={1}
-            defaultValue={entry.autoRemoveAfterDays || 7}
-            onBlur={(e) => handleChangeAutoRemoveDays(parseInt(e.target.value, 10))}
+            value={daysValue}
+            onChange={(e) => {
+              setDaysValue(e.target.value);
+              const parsed = parseInt(e.target.value, 10);
+              // Saves on every valid change (typing a digit or clicking a
+              // spin-button arrow) - not just on blur, so a value changed
+              // via the arrows and never blurred (e.g. the user immediately
+              // refreshes or navigates away) still persists. An empty or
+              // mid-edit value (e.g. briefly clearing the field to retype)
+              // just doesn't save yet, rather than saving a bad number.
+              if (Number.isFinite(parsed) && parsed >= 1) handleChangeAutoRemoveDays(parsed);
+            }}
+            onBlur={(e) => {
+              // Safety net: if what's left in the field on blur never
+              // resolved to a valid save above (e.g. the user left it
+              // empty), fall back to the last known-good value instead of
+              // leaving the field blank.
+              const parsed = parseInt(e.target.value, 10);
+              if (!Number.isFinite(parsed) || parsed < 1) setDaysValue(String(entry.autoRemoveAfterDays || 7));
+            }}
             className="w-12 px-1.5 py-0.5 rounded text-xs text-center"
             style={{ background: 'var(--color-subtle)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
           />
