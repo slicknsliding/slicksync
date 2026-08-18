@@ -36,6 +36,7 @@ import {
   Bars3Icon,
   CheckCircleIcon,
   ArrowDownTrayIcon,
+  ArrowUpTrayIcon,
   FolderIcon,
   LinkIcon,
   MagnifyingGlassIcon,
@@ -243,6 +244,49 @@ export default function UserDetailPage() {
   const [isMergePickerOpen, setIsMergePickerOpen] = useState(false);
   const [mergePickerUsers, setMergePickerUsers] = useState<User[] | null>(null);
   const [mergePickerSearch, setMergePickerSearch] = useState('');
+
+  // Watch-history CSV import/export - see server/utils/csvHistoryImport.js
+  const historyFileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportingHistory, setIsImportingHistory] = useState(false);
+  const [isExportingHistory, setIsExportingHistory] = useState(false);
+  const [historyImportResult, setHistoryImportResult] = useState<{ imported: number; skipped: number; totalRows: number; truncated: boolean; unresolvedTitles: string[] } | null>(null);
+
+  const handleImportHistoryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file next time
+    if (!file || !params.id) return;
+    setIsImportingHistory(true);
+    setHistoryImportResult(null);
+    try {
+      const result = await api.importUserHistory(params.id as string, file);
+      setHistoryImportResult(result);
+      toast.success(`Imported ${result.imported} title${result.imported === 1 ? '' : 's'}${result.skipped > 0 ? `, skipped ${result.skipped}` : ''}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to import history');
+    } finally {
+      setIsImportingHistory(false);
+    }
+  };
+
+  const handleExportHistory = async () => {
+    if (!params.id) return;
+    setIsExportingHistory(true);
+    try {
+      const csv = await api.exportUserHistory(params.id as string);
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${user?.username || 'watch-history'}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('History exported');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to export history');
+    } finally {
+      setIsExportingHistory(false);
+    }
+  };
 
   useEffect(() => {
     if (!params.id) return;
@@ -1247,6 +1291,63 @@ export default function UserDetailPage() {
                 </Card>
               </PageSection>
             )}
+
+            {/* Watch History Import/Export - the biggest adoption blocker
+                for a Trakt alternative is leaving your history behind, so
+                this lets an admin bring an existing IMDb/Letterboxd export
+                straight into this user's SlickTrax history, and export a
+                Letterboxd-compatible CSV to leave with too. */}
+            <PageSection className="mb-6">
+              <Card padding="lg">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-default">Watch History Import/Export</h3>
+                    <p className="text-sm text-muted mt-0.5">Bring in an IMDb or Letterboxd export, or export this user's history as a Letterboxd-compatible CSV</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    ref={historyFileInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={handleImportHistoryFile}
+                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
+                    onClick={() => historyFileInputRef.current?.click()}
+                    isLoading={isImportingHistory}
+                  >
+                    Import CSV
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />}
+                    onClick={handleExportHistory}
+                    isLoading={isExportingHistory}
+                  >
+                    Export CSV
+                  </Button>
+                </div>
+                {historyImportResult && (
+                  <div className="mt-4 p-3 rounded-lg text-sm" style={{ background: 'var(--color-surface-hover)' }}>
+                    <p className="text-default">
+                      Imported <strong>{historyImportResult.imported}</strong> of {historyImportResult.totalRows} row{historyImportResult.totalRows === 1 ? '' : 's'}
+                      {historyImportResult.skipped > 0 && ` (${historyImportResult.skipped} skipped)`}
+                      {historyImportResult.truncated && ' - file was larger than the 2,000-row import cap'}
+                    </p>
+                    {historyImportResult.unresolvedTitles.length > 0 && (
+                      <p className="text-muted text-xs mt-1.5">
+                        Couldn't resolve: {historyImportResult.unresolvedTitles.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </Card>
+            </PageSection>
 
             {/* Sync Debug Section */}
             {showSyncDebug && (

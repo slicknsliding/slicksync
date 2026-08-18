@@ -555,6 +555,134 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // ==================== HISTORY CSV IMPORT/EXPORT ====================
+  // The biggest adoption blocker for a Trakt alternative is leaving your
+  // history behind - see csvHistoryImport.js's own comment for why this
+  // reads by flexible column name (IMDb/Letterboxd/loose-Trakt-export
+  // compatible) rather than three hardcoded exact formats.
+  const { createMulterInstance } = require('../utils/helpers/multer')
+  const csvUpload = createMulterInstance({
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      const looksLikeCsv = file.mimetype === 'text/csv' || file.mimetype === 'application/vnd.ms-excel' || /\.csv$/i.test(file.originalname || '')
+      if (looksLikeCsv) return cb(null, true)
+      cb(new Error('Only .csv files are allowed'), false)
+    },
+  })
+
+  // POST /users/:id/import-history - multipart file upload (field name
+  // "file"). Must be before /:id route.
+  router.post('/:id/import-history', csvUpload.single('file'), async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded (expected multipart field "file")' })
+
+      const { parseCsv, mapColumns, resolveRowToImdbItem, parseWatchedDate, normalizeRating } = require('../utils/csvHistoryImport')
+      const { resolveSinglePoster } = require('../utils/libraryHelpers')
+      const { resolveOmdbKeyForAccount } = require('../utils/listImport')
+
+      const text = req.file.buffer.toString('utf8')
+      const { headers, records } = parseCsv(text)
+      if (records.length === 0) return res.status(400).json({ error: 'No rows found in that CSV' })
+      const colMap = mapColumns(headers)
+      const omdbApiKey = await resolveOmdbKeyForAccount(prisma, accountId).catch(() => null)
+
+      // Capped so one enormous export (a decade of Letterboxd diary
+      // entries) can't turn a single request into thousands of sequential
+      // OMDb lookups - matches the same protective cap listImport.js's own
+      // MAX_IMPORT_ITEMS already applies to title-based catalog imports.
+      const MAX_ROWS = 2000
+      const rows = records.slice(0, MAX_ROWS)
+
+      let imported = 0
+      let skipped = 0
+      const unresolved = []
+
+      for (const row of rows) {
+        const resolved = await resolveRowToImdbItem(row, colMap, omdbApiKey)
+        if (!resolved) {
+          skipped++
+          if (colMap.title && row[colMap.title]) unresolved.push(row[colMap.title])
+          continue
+        }
+        const watchedAt = colMap.watchedDate ? (parseWatchedDate(row[colMap.watchedDate]) || new Date()) : new Date()
+        const rating = colMap.rating ? normalizeRating(row[colMap.rating]) : null
+
+        try {
+          const poster = await resolveSinglePoster(resolved.imdbId, 'movie', null)
+          await prisma.movieWatchHistory.upsert({
+            where: { accountId_userId_itemId: { accountId, userId: user.id, itemId: resolved.imdbId } },
+            create: { accountId, userId: user.id, itemId: resolved.imdbId, itemName: resolved.title || resolved.imdbId, poster, profileLabel: 'Imported', completed: true, watchedAt },
+            update: {}, // never overwrite an existing native record with an imported one
+          })
+          if (rating) {
+            await prisma.titleRating.upsert({
+              where: { accountId_itemId_season: { accountId, itemId: resolved.imdbId, season: 0 } },
+              create: { accountId, itemId: resolved.imdbId, itemType: 'movie', season: 0, rating, itemName: resolved.title || null },
+              update: {},
+            }).catch(() => {}) // best-effort - a rating conflict must never fail the whole import
+          }
+          imported++
+        } catch (e) {
+          skipped++
+        }
+      }
+
+      res.json({
+        imported,
+        skipped,
+        totalRows: records.length,
+        truncated: records.length > MAX_ROWS,
+        unresolvedTitles: unresolved.slice(0, 20),
+      })
+    } catch (error) {
+      console.error('Error importing history CSV:', error)
+      res.status(500).json({ error: error?.message || 'Failed to import history' })
+    }
+  })
+
+  // GET /users/:id/export-history.csv - Letterboxd-import-compatible CSV
+  // (Title,Year,imdbID,WatchedDate,Rating10 - the exact column names
+  // Letterboxd's own importer accepts, confirmed against
+  // letterboxd.com/about/importing-data/). Must be before /:id route.
+  router.get('/:id/export-history.csv', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+
+      const movies = await prisma.movieWatchHistory.findMany({
+        where: { accountId, userId: user.id },
+        orderBy: { watchedAt: 'desc' },
+      })
+      const ratings = await prisma.titleRating.findMany({ where: { accountId, itemId: { in: movies.map((m) => m.itemId) } } })
+      const ratingByItemId = new Map(ratings.map((r) => [r.itemId, r.rating]))
+
+      const escapeCsv = (v) => {
+        const s = String(v ?? '')
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+      }
+      const lines = ['Title,Year,imdbID,WatchedDate,Rating10']
+      for (const m of movies) {
+        const year = '' // MovieWatchHistory doesn't store release year separately
+        const watchedDate = m.watchedAt ? new Date(m.watchedAt).toISOString().split('T')[0] : ''
+        const rating = ratingByItemId.get(m.itemId) || ''
+        lines.push([escapeCsv(m.itemName), year, m.itemId, watchedDate, rating].join(','))
+      }
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="${user.username || 'watch-history'}.csv"`)
+      res.send(lines.join('\n'))
+    } catch (error) {
+      console.error('Error exporting history CSV:', error)
+      res.status(500).json({ error: 'Failed to export history' })
+    }
+  })
+
   // GET /users/media-details - Cinemeta detail lookup for the Activity page's
   // poster-click modal (cast, rating, genres, etc). Must be before /:id route.
   router.get('/media-details', async (req, res) => {
