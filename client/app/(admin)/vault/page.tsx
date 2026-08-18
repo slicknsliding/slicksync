@@ -1,7 +1,7 @@
 'use client';
 
 import Head from 'next/head';
-import { useState, useEffect, useCallback, Suspense, Fragment } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { useIsTV } from '@/lib/hooks/useIsTV';
@@ -34,6 +34,7 @@ import {
   CreditCardIcon,
   DocumentDuplicateIcon,
   BellSlashIcon,
+  CalendarDaysIcon,
 } from '@heroicons/react/24/outline';
 
 const CATEGORY_LABELS: Record<VaultCategory, string> = {
@@ -409,6 +410,36 @@ function VaultPageContent() {
   const monthlyTotal = allCostEntries.reduce((sum, e) => sum + toMonthly(e), 0);
   const trackedCount = allCostEntries.filter((e) => e.cost != null && e.cost > 0).length;
   const costPerHour = hoursLast30 && hoursLast30 > 0 ? monthlyTotal / hoursLast30 : null;
+
+  // Renewal calendar: projects each cost-tracked entry's OWN renewal cycle
+  // forward from its current expiresAt (not just a single "next renewal"
+  // check) - a monthly service renews up to 3 times within a 90-day window,
+  // and each occurrence is a real, separate charge, not one. expiresAt is
+  // kept current either by Real-Debrid/TorBox's own auto-check (see
+  // vaultCheckers.js) or manually whenever the admin renews something else -
+  // this only ever projects forward from whatever that value currently is,
+  // never guesses at a renewal that hasn't happened.
+  const FORECAST_WINDOW_DAYS = 90;
+  const upcomingRenewals = useMemo(() => {
+    const now = Date.now();
+    const windowEnd = now + FORECAST_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const occurrences: Array<{ entryId: string; name: string; date: Date; amount: number }> = [];
+    for (const e of allCostEntries) {
+      if (!e.cost || e.cost <= 0 || !e.expiresAt || !e.isActive) continue;
+      const cycleDays = e.costCycle === 'yearly' ? 365 : 30;
+      let next = new Date(e.expiresAt).getTime();
+      // Catch up past-due entries (expiresAt already passed but never
+      // updated) to the next real occurrence instead of skipping the
+      // window entirely or double-counting a stale date.
+      while (next < now) next += cycleDays * 24 * 60 * 60 * 1000;
+      while (next <= windowEnd) {
+        occurrences.push({ entryId: e.id, name: e.name, date: new Date(next), amount: e.cost });
+        next += cycleDays * 24 * 60 * 60 * 1000;
+      }
+    }
+    return occurrences.sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [allCostEntries]);
+  const forecastTotal = upcomingRenewals.reduce((sum, r) => sum + r.amount, 0);
 
   const load = useCallback(async () => {
     try {
@@ -937,6 +968,31 @@ function VaultPageContent() {
               );
             })}
           </div>
+
+          {upcomingRenewals.length > 0 && (
+            <div className={`${NEBULA_GLASS_CLASS} p-4 sm:p-5 mb-4`} style={nebulaGlassStyle}>
+              <NebulaGlassStripe />
+              <div className="flex items-center gap-2 mb-3">
+                <CalendarDaysIcon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
+                <h3 className="text-sm font-semibold text-default">
+                  Next {FORECAST_WINDOW_DAYS} days: {fmtMoney(forecastTotal)} across {upcomingRenewals.length} renewal{upcomingRenewals.length !== 1 ? 's' : ''}
+                </h3>
+              </div>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {upcomingRenewals.map((r, i) => {
+                  const days = Math.max(0, Math.round((r.date.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                  return (
+                    <div key={`${r.entryId}-${i}`} className="flex items-center justify-between text-xs py-1">
+                      <span className="text-default truncate">{r.name}</span>
+                      <span className="text-muted shrink-0 ml-2">
+                        {days === 0 ? 'today' : `in ${days}d`} · {fmtMoney(r.amount)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
