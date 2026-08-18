@@ -769,6 +769,12 @@ class ApiClient {
     }>(`/addons/${id}/health-history?limit=${limit}`);
   }
 
+  // AI incident summary of recent health-check history - null when the
+  // history is clean (nothing to summarize) or no AI key is configured.
+  async getAddonHealthSummary(id: string) {
+    return this.fetch<{ summary: string | null }>(`/addons/${id}/health-summary`);
+  }
+
   // Backup Management
   async getAddonBackup(id: string) {
     return this.fetch<{

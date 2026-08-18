@@ -1,6 +1,37 @@
 const express = require('express');
 const { fetchCatalog } = require('../utils/discover');
 
+// AI-sharpened "why this matches" text for For You's rows that already have
+// hasRealSignal (a genuine cross-item/cross-user affinity behind them, not
+// just this seed's own score) - those are the rows worth spending an AI call
+// on, since the deterministic `reason` text for the OTHER rows ("Because you
+// watched X") is already about as specific as it can get without one.
+// Capped to the first REASON_ENHANCE_MAX real-signal rows and run in
+// parallel with a short per-call timeout so a slow/misconfigured provider
+// can't meaningfully delay this hot GET endpoint - on any failure, timeout,
+// or missing AI credential, the existing deterministic `reason` is left
+// exactly as it was (this only ever upgrades text, never blocks the response
+// or removes a row).
+const REASON_ENHANCE_MAX = 3
+async function enhanceRealMatchReasons(prisma, accountId, rows) {
+  try {
+    const { resolveAiCredentials, callAiText } = require('../utils/nlCatalog')
+    const { decrypt } = require('../utils/encryption')
+    const creds = await resolveAiCredentials(prisma, accountId, decrypt)
+    if (!creds) return // no AI key configured - leave every row's deterministic reason as-is
+
+    const candidates = rows.filter((r) => r.hasRealSignal).slice(0, REASON_ENHANCE_MAX)
+    await Promise.allSettled(candidates.map(async (row) => {
+      const titleNames = row.items.slice(0, 3).map((it) => it.name).filter(Boolean).join(', ')
+      const prompt = `In one short punchy sentence (under 15 words, no quotes), explain to a household streaming user why they'd like this recommendation row, based on: "${row.reason}". The row includes titles like: ${titleNames || 'similar titles'}. Don't just restate the input - make it feel like a genuine insight.`
+      const text = await callAiText(prompt, creds, { maxTokens: 40, timeoutMs: 4000 })
+      if (text) row.reason = text
+    }))
+  } catch {
+    // Best-effort only - every row already has a real deterministic reason.
+  }
+}
+
 // Discover - browse/search Cinemeta's real catalogs and preview results
 // through the same MediaDetailModal used elsewhere. Mostly a stateless
 // proxy to Cinemeta; the /recommendations endpoint added below is the one
@@ -405,6 +436,7 @@ module.exports = ({ prisma, getAccountId } = {}) => {
         })
       }
 
+      await enhanceRealMatchReasons(prisma, accountId, rows)
       res.json({ rows })
     } catch (error) {
       console.error('Error building recommendations:', error)

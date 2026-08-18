@@ -413,6 +413,38 @@ async function generateCatalogFromDescription(prisma, accountId, decrypt, descri
   return { items, query, usedAi, aiError, mediaType }
 }
 
+// Generic plain-text completion, for AI uses beyond catalog-building's own
+// structured-JSON callAi above (recommendation "why this matches" one-liners,
+// addon health incident summaries). Same credential shape (resolveAiCredentials)
+// and timeout pattern, just no schema/JSON parsing - callers get the model's
+// raw text back, trimmed. A short maxTokens keeps this cheap to call from a
+// hot GET path (a one-liner doesn't need a token budget built for prose).
+async function callAiText(prompt, creds, { maxTokens = 60, timeoutMs = FETCH_TIMEOUT_MS } = {}) {
+  const { signal, cancel } = timeoutSignal(timeoutMs)
+  try {
+    const res = await fetch(`${creds.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${creds.apiKey}` },
+      body: JSON.stringify({
+        model: creds.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.5,
+        max_tokens: maxTokens,
+      }),
+      signal,
+    })
+    cancel()
+    if (!res.ok) throw new Error(`AI provider returned ${res.status}`)
+    const data = await res.json()
+    const content = data?.choices?.[0]?.message?.content
+    if (!content) throw new Error('AI provider returned no content')
+    return content.trim().replace(/^["']|["']$/g, '') // strip stray wrapping quotes some models add
+  } catch (err) {
+    cancel()
+    throw err
+  }
+}
+
 module.exports = {
   resolveAiCredentials,
   parseDescription,
@@ -428,4 +460,5 @@ module.exports = {
   // would have passed for the wrong-model-for-this-provider case that
   // originally prompted adding real verification at all.
   callAi,
+  callAiText,
 }

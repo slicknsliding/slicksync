@@ -1577,6 +1577,62 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
     }
   });
 
+  // AI incident summary - turns a run of raw health-check rows into one
+  // plain-English paragraph instead of making an admin read a timestamped
+  // log to piece together what happened. Only worth generating when there's
+  // an actual incident to explain (at least MIN_OFFLINE_FOR_SUMMARY offline
+  // rows in the most recent HISTORY_WINDOW checks) - a clean history has
+  // nothing to summarize, and this endpoint returns null rather than an AI
+  // call forcing a "everything's fine!" filler sentence. Silently null (not
+  // an error) when no AI key is configured, same as every other optional
+  // AI-backed field in this codebase.
+  const MIN_OFFLINE_FOR_SUMMARY = 2
+  const HISTORY_WINDOW = 30
+  router.get('/:id/health-summary', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const addon = await prisma.addon.findFirst({ where: { id }, select: { id: true, name: true, accountId: true } });
+      if (!addon) return res.status(404).json({ error: 'Addon not found' });
+
+      const history = await prisma.addonHealthHistory.findMany({
+        where: { addonId: id },
+        orderBy: { checkedAt: 'desc' },
+        take: HISTORY_WINDOW,
+        select: { isOnline: true, error: true, checkedAt: true },
+      });
+
+      const offlineCount = history.filter((h) => !h.isOnline).length;
+      if (offlineCount < MIN_OFFLINE_FOR_SUMMARY) {
+        return res.json({ summary: null });
+      }
+
+      const { resolveAiCredentials, callAiText } = require('../utils/nlCatalog');
+      const creds = await resolveAiCredentials(prisma, addon.accountId, decrypt);
+      if (!creds) return res.json({ summary: null });
+
+      // Oldest-first for the prompt - a timeline reads more naturally in
+      // chronological order than the newest-first order the table itself uses.
+      const timeline = [...history].reverse().map((h) => {
+        const when = new Date(h.checkedAt).toISOString();
+        return h.isOnline ? `${when}: online` : `${when}: offline${h.error ? ` (${h.error})` : ''}`;
+      }).join('\n');
+
+      const prompt = `You're summarizing a Stremio/Nuvio addon's recent health-check log for a self-hosted admin dashboard. Addon: "${addon.name}". Write ONE short paragraph (2-3 sentences, plain English, no markdown) covering: what broke, roughly when/how often, and whether it's currently back up. Log (oldest first):\n${timeline}`;
+
+      let summary = null;
+      try {
+        summary = await callAiText(prompt, creds, { maxTokens: 120, timeoutMs: 6000 });
+      } catch {
+        return res.json({ summary: null }); // best-effort - the raw log below is still there either way
+      }
+
+      res.json({ summary });
+    } catch (error) {
+      console.error('Error generating addon health summary:', error);
+      res.status(500).json({ error: 'Failed to generate health summary' });
+    }
+  });
+
   // Get addon backup status
   router.get('/:id/backup', async (req, res) => {
     try {
