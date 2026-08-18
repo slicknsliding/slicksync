@@ -53,6 +53,11 @@ model User {
   providerConnectionError   String?
   providerConnectionErrorAt DateTime?
   createdAt          DateTime  @default(now())
+  // Hides this user's Sync Guardian drift alert from the Health page's
+  // Attention list/notifications entirely - same treatment as Addon/
+  // VaultEntry's own healthIgnored, for a known drift the admin doesn't
+  // want repeated pinging about.
+  healthIgnored      Boolean   @default(false)
 
   // Relationships
 
@@ -167,6 +172,10 @@ model AppAccount {
   linkedProvider String? // 'stremio' | 'nuvio' | null
   passwordHash String?
   sync         Json?
+  // Mutes the Health page's Proxy connectivity card - it's one global
+  // account-wide check (no per-item entity like Addon/VaultEntry to hang a
+  // healthIgnored flag off), so the mute lives here instead.
+  proxyHealthIgnored Boolean @default(false)
   apiKeyHash   String? // Encrypted API key
   aiometadataManifestUrl String? // User-editable AIOMetadata addon manifest URL, used to look up posters for AIOStreams-proxy-detected Now Playing entries that have no WatchSession match
   avatarUrl    String? // Admin's own profile picture: full URL or /uploads/avatars/<file> for uploaded images

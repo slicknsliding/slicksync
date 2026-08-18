@@ -116,7 +116,7 @@ const STEPS: Step[] = [
     title: 'Tip: the command palette',
     body: (
       <>
-        Press <kbd className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: 'var(--color-subtle)' }}>Ctrl</kbd>+<kbd className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: 'var(--color-subtle)' }}>K</kbd> (or <kbd className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: 'var(--color-subtle)' }}>⌘K</kbd> on Mac) anywhere to jump straight to a page, user, addon, or catalog - or ask a question.
+        Press <kbd className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: 'var(--color-subtle)' }}>Ctrl</kbd>+<kbd className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: 'var(--color-subtle)' }}>K</kbd> (or <kbd className="px-1.5 py-0.5 rounded text-xs font-mono" style={{ background: 'var(--color-subtle)' }}>⌘K</kbd> on Mac) anywhere to jump straight to a page, user, addon, or catalog - or type a how-to question ("how do I set up automations?") for an instant built-in answer, no AI setup required.
       </>
     ),
   },

@@ -346,6 +346,12 @@ export default function MetricsPage() {
   const toggleAddonIgnored = useCallback((id: string, healthIgnored: boolean) => {
     api.setAddonHealthIgnored(id, healthIgnored).then(() => loadHealth(true)).catch(() => {});
   }, [loadHealth]);
+  const toggleSyncIgnored = useCallback((userId: string, healthIgnored: boolean) => {
+    api.setUserHealthIgnored(userId, healthIgnored).then(() => loadHealth(true)).catch(() => {});
+  }, [loadHealth]);
+  const toggleProxyIgnored = useCallback((healthIgnored: boolean) => {
+    api.setProxyHealthIgnored(healthIgnored).then(() => loadHealth(true)).catch(() => {});
+  }, [loadHealth]);
 
   // Fetch metrics data
   useEffect(() => {
@@ -1228,12 +1234,16 @@ export default function MetricsPage() {
                     {healthData.sync.driftCount > 0 ? (
                       <div>
                         {healthData.sync.drifted.map((d, i) => (
-                          <HealthIssueRow key={i} title={d.title} detail={d.body} meta={healthTimeAgo(d.since)} />
+                          <HealthIssueRow key={i} title={d.title} detail={d.body} meta={healthTimeAgo(d.since)} onIgnore={() => toggleSyncIgnored(d.userId, true)} />
                         ))}
                       </div>
                     ) : (
                       <p className="text-xs text-subtle">No accounts have drifted from their group&apos;s addons.</p>
                     )}
+                    <HealthIgnoredList
+                      items={healthData.sync.ignored.map((u) => ({ id: u.userId, name: u.title }))}
+                      onUnignore={(id) => toggleSyncIgnored(id, false)}
+                    />
                   </HealthCheckCard>
                   </div>
 
@@ -1302,15 +1312,33 @@ export default function MetricsPage() {
                   <HealthCheckCard
                     icon={<SignalIcon className="w-5 h-5" />}
                     title="Proxy"
-                    ok={!healthData.proxy.configured ? null : healthData.proxy.ok}
+                    ok={!healthData.proxy.configured || healthData.proxy.healthIgnored ? null : healthData.proxy.ok}
                     summary={!healthData.proxy.configured ? 'Not configured' : `Last poll ${healthTimeAgo(healthData.proxy.at)}`}
                   >
                     {!healthData.proxy.configured ? (
                       <p className="text-xs text-subtle">AIOStreams proxy isn&apos;t configured on this instance.</p>
-                    ) : healthData.proxy.ok === false ? (
-                      <HealthIssueRow title="Proxy stats unreachable" detail={healthData.proxy.error} meta={healthTimeAgo(healthData.proxy.at)} />
+                    ) : healthData.proxy.ok === false && !healthData.proxy.healthIgnored ? (
+                      <HealthIssueRow
+                        title="Proxy stats unreachable"
+                        detail={healthData.proxy.error}
+                        meta={healthTimeAgo(healthData.proxy.at)}
+                        onIgnore={() => toggleProxyIgnored(true)}
+                      />
                     ) : (
                       <p className="text-xs text-subtle">Now Playing polling is reaching AIOStreams normally.</p>
+                    )}
+                    {healthData.proxy.configured && healthData.proxy.healthIgnored && (
+                      <div className="mt-2 pt-2 border-t border-default">
+                        <button
+                          type="button"
+                          onClick={() => toggleProxyIgnored(false)}
+                          className="flex items-center gap-1.5 text-xs text-subtle hover:text-default transition-colors"
+                          title="Un-ignore"
+                        >
+                          <EyeIcon className="w-3.5 h-3.5" />
+                          Ignored - proxy connectivity alerts are muted
+                        </button>
+                      </div>
                     )}
                   </HealthCheckCard>
                   </div>

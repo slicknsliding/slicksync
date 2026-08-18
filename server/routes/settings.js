@@ -442,6 +442,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           autoplayTrailerStartMuted: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.autoplayTrailerStartMuted === 'boolean') ? syncCfg.autoplayTrailerStartMuted : true,
           enablePosterRatings: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enablePosterRatings === 'boolean') ? syncCfg.enablePosterRatings : false,
           enableReactions: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableReactions === 'boolean') ? syncCfg.enableReactions : true,
+          enableWatchProviders: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchProviders === 'boolean') ? syncCfg.enableWatchProviders : true,
           // Opt-in, not opt-out (like enableAutoplayTrailer above) - auto-
           // generating and persisting a new Catalog from a detected taste
           // cluster is a bigger, more visible change than a scrolling
@@ -493,6 +494,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           autoplayTrailerStartMuted: typeof syncCfg.autoplayTrailerStartMuted === 'boolean' ? syncCfg.autoplayTrailerStartMuted : true,
           enablePosterRatings: typeof syncCfg.enablePosterRatings === 'boolean' ? syncCfg.enablePosterRatings : false,
           enableReactions: typeof syncCfg.enableReactions === 'boolean' ? syncCfg.enableReactions : true,
+          enableWatchProviders: typeof syncCfg.enableWatchProviders === 'boolean' ? syncCfg.enableWatchProviders : true,
           enableAutoThemedCatalogs: typeof syncCfg.enableAutoThemedCatalogs === 'boolean' ? syncCfg.enableAutoThemedCatalogs : false,
           tmdbApiKey: typeof syncCfg.tmdbApiKey === 'string' ? syncCfg.tmdbApiKey : '',
           mdblistApiKey: typeof syncCfg.mdblistApiKey === 'string' ? syncCfg.mdblistApiKey : '',
@@ -502,7 +504,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableAutoThemedCatalogs: false })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableWatchProviders: true, enableAutoThemedCatalogs: false })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -510,7 +512,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -584,6 +586,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           autoplayTrailerStartMuted: autoplayTrailerStartMuted !== undefined ? !!autoplayTrailerStartMuted : (typeof baseCfg.autoplayTrailerStartMuted === 'boolean' ? baseCfg.autoplayTrailerStartMuted : true),
           enablePosterRatings: enablePosterRatings !== undefined ? !!enablePosterRatings : (typeof baseCfg.enablePosterRatings === 'boolean' ? baseCfg.enablePosterRatings : false),
           enableReactions: enableReactions !== undefined ? !!enableReactions : (typeof baseCfg.enableReactions === 'boolean' ? baseCfg.enableReactions : true),
+          enableWatchProviders: enableWatchProviders !== undefined ? !!enableWatchProviders : (typeof baseCfg.enableWatchProviders === 'boolean' ? baseCfg.enableWatchProviders : true),
           enableAutoThemedCatalogs: enableAutoThemedCatalogs !== undefined ? !!enableAutoThemedCatalogs : (typeof baseCfg.enableAutoThemedCatalogs === 'boolean' ? baseCfg.enableAutoThemedCatalogs : false),
           // Optional TMDb API key for the cast/crew deep-dive. Trimmed; empty
           // string clears it (falls back to the TMDB_API_KEY env var, if any).
@@ -652,6 +655,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (autoplayTrailerStartMuted !== undefined) partial.autoplayTrailerStartMuted = !!autoplayTrailerStartMuted
       if (enablePosterRatings !== undefined) partial.enablePosterRatings = !!enablePosterRatings
       if (enableReactions !== undefined) partial.enableReactions = !!enableReactions
+      if (enableWatchProviders !== undefined) partial.enableWatchProviders = !!enableWatchProviders
       if (enableAutoThemedCatalogs !== undefined) partial.enableAutoThemedCatalogs = !!enableAutoThemedCatalogs
       if (tmdbApiKey !== undefined) partial.tmdbApiKey = typeof tmdbApiKey === 'string' ? tmdbApiKey.trim() : ''
       if (mdblistApiKey !== undefined) partial.mdblistApiKey = typeof mdblistApiKey === 'string' ? mdblistApiKey.trim() : ''

@@ -167,7 +167,7 @@ export function MediaDetailModal({
   const effectiveFallbackRottenTomatoes = overrideItem ? null : fallbackRottenTomatoes;
   const effectiveFallbackMetacritic = overrideItem ? null : fallbackMetacritic;
 
-  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions } = usePersonalFeatures();
+  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions, enableWatchProviders } = usePersonalFeatures();
   const isTV = useIsTV();
 
   // usePersonalFeatures resolves asynchronously (starts from a default of
@@ -798,6 +798,44 @@ export function MediaDetailModal({
                     TMDb
                   </a>
                 )}
+
+                {/* Reactions - moved in next to the rating row (reads as
+                    "your own rating," right next to everyone else's) rather
+                    than a standalone row competing with the action buttons
+                    below. Feeds recommendation scoring (see the state block
+                    above), not just decoration. No TV-focus wiring yet
+                    (unlike the action row below) - visible and usable with a
+                    mouse/touch on PC and Mobile, just not yet D-pad-reachable
+                    on TV. ml-auto pins it to the row's right edge on wide
+                    screens; it simply wraps onto its own line on narrow ones. */}
+                {enableReactions && (
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <button
+                      type="button"
+                      onClick={() => toggleReaction('happy')}
+                      disabled={reactionBusy}
+                      aria-label="Thumbs up"
+                      title="Thumbs up"
+                      className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
+                        reaction === 'happy' ? 'bg-success/20 ring-1 ring-success text-success' : 'bg-surface-hover hover:bg-success/10 text-muted'
+                      } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
+                    >
+                      <HandThumbUpIcon className="w-5 h-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleReaction('sad')}
+                      disabled={reactionBusy}
+                      aria-label="Thumbs down"
+                      title="Thumbs down"
+                      className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
+                        reaction === 'sad' ? 'bg-error/20 ring-1 ring-error text-error' : 'bg-surface-hover hover:bg-error/10 text-muted'
+                      } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
+                    >
+                      <HandThumbDownIcon className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* "You might not even need an addon for this" - shown
@@ -807,7 +845,7 @@ export function MediaDetailModal({
                   comment for why rent/buy is excluded. Links to TMDb's
                   JustWatch attribution page, required by their API terms
                   when this data is displayed. */}
-              {details.watchProviders && details.watchProviders.providers.length > 0 && (
+              {enableWatchProviders && details.watchProviders && details.watchProviders.providers.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm text-muted">Also streaming on</span>
                   {details.watchProviders.providers.map((p) => (
@@ -842,6 +880,12 @@ export function MediaDetailModal({
                   generic accent color, so these read as "this specific
                   provider" the same way the badges already do. */}
               {details.imdb_id && (() => {
+                // sm:w-auto justify-center on each control - the mobile
+                // grid below (2 columns) needs every cell's control to fill
+                // its cell to actually read as a 2x2 grid rather than 4
+                // left-aligned buttons in narrow cells; sm:contents/w-auto
+                // hands width back to flex-wrap's own auto-sizing at the
+                // desktop breakpoint where the old single-row layout stays.
                 const watchlistBtn = enableWatchlist && (
                   <button
                     type="button"
@@ -849,7 +893,7 @@ export function MediaDetailModal({
                     disabled={watchlistBusy}
                     aria-label={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
                     title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${
                       inWatchlist
                         ? 'bg-primary text-white'
                         : 'bg-surface-hover text-default hover:bg-primary/20 hover:text-primary'
@@ -865,7 +909,7 @@ export function MediaDetailModal({
                   <a
                     href={buildStremioAppUrl(details.imdb_id, effectiveType)}
                     tabIndex={isTV ? -1 : undefined}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto"
                     style={{
                       background: 'rgba(167, 139, 250, 0.15)',
                       color: 'rgb(196, 181, 253)',
@@ -880,7 +924,7 @@ export function MediaDetailModal({
                   <a
                     href={buildNuvioAppUrl(details.imdb_id, effectiveType)}
                     tabIndex={isTV ? -1 : undefined}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto"
                     style={{
                       // Blue/orange Nuvio identity split by a `/` diagonal
                       // (see Badge.tsx's 'nuvio' variant for the same treatment).
@@ -918,48 +962,19 @@ export function MediaDetailModal({
                 }
 
                 return (
-                  <div className="flex flex-wrap gap-2 items-center">
+                  // 2 columns on mobile (Watchlist+catalog, Stremio+Nuvio -
+                  // 2 rows instead of 4 full-width stacked buttons), back to
+                  // the original single-row flex-wrap from sm: up.
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                     {watchlistBtn}
-                    <AddToListButton item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
+                    <div className="flex justify-center sm:contents">
+                      <AddToListButton item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
+                    </div>
                     {stremioBtn}
                     {nuvioBtn}
                   </div>
                 );
               })()}
-
-              {/* Reactions - two buttons, no legend needed. Feeds
-                  recommendation scoring (see the state block above), not
-                  just decoration. No TV-focus wiring yet (unlike the action
-                  row above) - visible and usable with a mouse/touch on PC
-                  and Mobile, just not yet D-pad-reachable on TV. */}
-              {enableReactions && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => toggleReaction('happy')}
-                    disabled={reactionBusy}
-                    aria-label="Thumbs up"
-                    title="Thumbs up"
-                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
-                      reaction === 'happy' ? 'bg-success/20 ring-1 ring-success text-success' : 'bg-surface-hover hover:bg-success/10 text-muted'
-                    } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
-                  >
-                    <HandThumbUpIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => toggleReaction('sad')}
-                    disabled={reactionBusy}
-                    aria-label="Thumbs down"
-                    title="Thumbs down"
-                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
-                      reaction === 'sad' ? 'bg-error/20 ring-1 ring-error text-error' : 'bg-surface-hover hover:bg-error/10 text-muted'
-                    } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
-                  >
-                    <HandThumbDownIcon className="w-5 h-5" />
-                  </button>
-                </div>
-              )}
 
               {details.genres && details.genres.length > 0 && (
                 <div className="flex flex-wrap gap-2">
@@ -969,17 +984,11 @@ export function MediaDetailModal({
                 </div>
               )}
 
-              {overview && (
-                <p className="text-base leading-relaxed text-default">{overview}</p>
-              )}
-
-              {details.director && details.director.length > 0 && (
-                <p className="text-base">
-                  <span className="text-muted">Director: </span>
-                  <span className="text-default">{details.director.join(', ')}</span>
-                </p>
-              )}
-
+              {/* Cast moved ahead of Overview/Director - the overview
+                  paragraph can run several lines, and cast (a single
+                  horizontal-scroll row, not a wrapping list) is cheap to
+                  show early so it doesn't need scrolling past a long
+                  synopsis to reach. */}
               {details.cast && details.cast.length > 0 && (
                 <div>
                   <p className="text-base text-muted mb-2">Cast</p>
@@ -1101,6 +1110,17 @@ export function MediaDetailModal({
                     </div>
                   )}
                 </div>
+              )}
+
+              {overview && (
+                <p className="text-base leading-relaxed text-default">{overview}</p>
+              )}
+
+              {details.director && details.director.length > 0 && (
+                <p className="text-base">
+                  <span className="text-muted">Director: </span>
+                  <span className="text-default">{details.director.join(', ')}</span>
+                </p>
               )}
 
               {details.awards && (

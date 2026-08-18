@@ -1,5 +1,22 @@
 [
   {
+    "version": "1.73.3",
+    "date": "2026-08-18",
+    "title": "feat: detail modal cleanup, per-user Health ignore, local command palette help",
+    "features": [
+      "The command palette's free-text \"ask a question\" no longer needs an AI Services key - it now searches a built-in how-to guide covering Automation, Catalogs, Vault, the Scrobble API, theming, and more, answering instantly for everyone.",
+      "Metrics -> Health: Sync (per drifted user) and Proxy (a mute toggle, since it's a single check) now support the same \"ignore\" treatment Addons and Vault already had.",
+      "A new Settings -> SlickTrax toggle for the detail modal's \"Also streaming on\" row, on by default.",
+      "Settings now clarifies that the account-level API key doesn't work for the Scrobble API or Public Stats Page - those are per-user, self-service settings reached via /login?mode=user, with a direct link."
+    ],
+    "bugFixes": [
+      "Automation: a condition row's remove button could get squeezed off the edge of the New Rule modal on narrower screens - the row now shrinks its fields properly instead of overflowing.",
+      "Fixed a real bug behind the recurring \"AIOStreams /proxy/stats failed: 400 Bad Request\" Health alert - the proxy monitor's login only kept the first of AIOStreams' cookies when it set more than one, silently dropping a required session/CSRF cookie on some builds.",
+      "Detail modal: reactions (thumbs up/down) moved next to the rating row instead of a separate row competing with the action buttons; Cast now appears before the Overview paragraph so it doesn't need scrolling past a long synopsis to reach; the 4 action buttons (Watchlist/catalog/Stremio/Nuvio) now lay out as 2x2 on mobile instead of 4 stacked full-width rows."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.2",
     "date": "2026-08-18",
     "title": "fix: polish pass on the v1.73.0 batch - Vault, toggles, dropdown, and more",
