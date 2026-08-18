@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.73.8",
+    "date": "2026-08-18",
+    "title": "fix: selection checkbox glow strength, More menu redesign, addons row layout",
+    "features": [],
+    "bugFixes": [
+      "The selection checkbox glow (v1.73.6) was verified correct in the DOM but too subtle to actually register at normal viewing distance - substantially brighter now on both the individual and \"select all\" checkboxes, with a tinted border to match.",
+      "Redesigned the catalog detail page's \"More\" action menu - grouped into labeled sections (Organize / Share & policy / Export) with tinted icon chips and a caret pointing at the trigger, instead of one flat undifferentiated list.",
+      "Addons list view: the selection checkbox no longer sits at the very start of every row (crowding a phone-width row alongside the drag handle and icon) - moved down next to the version tag/health dot it now wraps under on narrow screens.",
+      "Vault's auto-remove \"days idle\" field only saved on blur - clicking the number input's spin-button arrows changes the value without blurring it, so refreshing or navigating away right after clicking an arrow silently lost the change. Now saves on every change, typed or via the arrows."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.7",
     "date": "2026-08-18",
     "title": "fix: Now Playing for proxy-routed streams was silently dead - real root cause of the recurring Proxy 400",

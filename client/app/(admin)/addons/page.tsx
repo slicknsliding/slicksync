@@ -1449,9 +1449,6 @@ function AddonCard({
       {...longPress}
     >
       <div className="flex items-center gap-3 p-4">
-        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-          <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} />
-        </div>
         {dragHandleProps && (
           <div
             {...dragHandleProps}
@@ -1528,6 +1525,13 @@ function AddonCard({
             <span className="text-xs text-muted flex items-center gap-1">
               <PuzzlePieceIcon className="w-3.5 h-3.5 text-secondary" />
               {addon.groupCount} group{addon.groupCount !== 1 ? 's' : ''}
+            </span>
+            {/* Moved out of its old leading spot (before the drag handle,
+                crowding every row's start on mobile) - sits with the other
+                per-addon metadata now, right under the version tag/health
+                dot it wraps below on a narrow row. */}
+            <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
+              <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} />
             </span>
           </div>
         </div>
