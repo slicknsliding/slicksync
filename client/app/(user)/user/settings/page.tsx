@@ -938,6 +938,17 @@ export default function UserSettingsPage() {
                 Bearer {currentApiKey ? '...' : '•••••'}
               </code>
             </p>
+
+            <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
+              <p className="text-sm font-medium mb-1" style={{ color: 'var(--color-text)' }}>
+                Scrobble from other apps
+              </p>
+              <p className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
+                Any app with Trakt-compatible scrobbling (Infuse, Kodi's Trakt plugin, etc.) can write into your SlickTrax history instead - point its custom Trakt server at{' '}
+                <code className="px-1 py-0.5 rounded" style={{ background: 'var(--color-surface-elevated)' }}>{API_BASE}/scrobble</code>
+                {' '}using this same API key as the token.
+              </p>
+            </div>
           </div>
         </motion.div>
 

@@ -287,6 +287,7 @@ app.use('/api/public-auth', publicAuthRouterInstance);
 app.use('/api/addons', addonsRouter({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifestUrl, scopedWhere, INSTANCE_TYPE, manifestHash, filterManifestByResources, filterManifestByCatalogs, manifestUrlHmac }));
 app.use('/api/groups', groupsRouter({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUserToGroup, getDecryptedManifestUrl, manifestUrlHmac, decrypt, createProvider }));
 app.use('/api/users', usersRouter({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, encrypt, parseAddonIds, parseProtectedAddons, getDecryptedManifestUrl, StremioAPIClient, StremioAPIStore, assignUserToGroup, debug, defaultAddons, canonicalizeManifestUrl, getAccountDek, getServerKey, aesGcmDecrypt, validateStremioAuthKey, manifestUrlHmac, manifestHash, createProvider }));
+app.use('/api/scrobble', require('./routes/scrobble')({ prisma }));
 app.use('/api/stremio', stremioRouter({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, INSTANCE_TYPE }));
 app.use('/api/nuvio', nuvioRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/snapshots', snapshotsRouter({ prisma, getAccountId, encrypt, decrypt, createProvider }));
