@@ -45,6 +45,15 @@ model User {
   notifyOnWatch      Boolean   @default(true) // Whether THIS user's watch activity (started/watched) triggers a notification at all. When discordWebhookUrl is set, their watch pings route there instead of the account's shared webhook.
   apiKey             String? // User-specific API key for accessing own metrics
   activityVisibility String    @default("private") // "public" or "private" - when public, group members can see this user's library/history
+  // A genuinely public, unauthenticated share link (unlike activityVisibility
+  // above, which only ever exposes data to other members of THIS account) -
+  // opt-in per user, off by default. publicStatsSlug is a random unguessable
+  // token (not the user's real id) so the link can be shared without
+  // exposing anything else about the account. Disabling clears the slug
+  // entirely rather than just flipping the flag, so a previously-shared link
+  // can never work again even if re-enabled later (a fresh slug is issued).
+  publicStatsEnabled Boolean   @default(false)
+  publicStatsSlug    String?   @unique
   lastSyncedAt       DateTime? // When user addons were last successfully synced
   syncStatus         String? // "idle", "syncing", "success", "error"
   syncErrorMessage   String? // Last sync error message if any

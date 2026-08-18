@@ -456,6 +456,105 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   }
 
+  // ==================== PUBLIC STATS ====================
+  // A genuinely public, unauthenticated share link - distinct from
+  // activityVisibility (which only ever exposes data to other members of
+  // the SAME account). Opt-in per user, off by default, enabled from the
+  // user's own Settings page (see routes/publicLibrary.js's POST
+  // /public-stats/enable|disable, which use that self-service authKey
+  // identity check instead of an admin session). The slug (not the user's
+  // real id) is what a public visitor presents - no accountId/getAccountId
+  // check on the GET below, since a visitor has no session at all; the
+  // slug itself, a random 32-char token unguessable by brute force, is the
+  // only "auth" this needs.
+
+  // GET /users/public-stats/:slug - the actual public payload. No auth, no
+  // accountId scoping (the slug IS the scope - it's globally unique). Only
+  // ever returns a small, deliberately curated set of fields: username,
+  // avatar, total watch time, top titles, streak. Never email, never
+  // provider details, never anything else on the account.
+  router.get('/public-stats/:slug', async (req, res) => {
+    try {
+      const user = await prisma.user.findFirst({
+        where: { publicStatsSlug: req.params.slug, publicStatsEnabled: true },
+        select: { id: true, accountId: true, username: true, avatarUrl: true, colorIndex: true },
+      })
+      if (!user) return res.status(404).json({ error: 'This stats page is not available' })
+
+      const [movies, episodes] = await Promise.all([
+        prisma.movieWatchHistory.findMany({
+          where: { accountId: user.accountId || 'default', userId: user.id },
+          select: { itemName: true, poster: true, durationSeconds: true, watchedAt: true },
+        }),
+        prisma.episodeWatchHistory.findMany({
+          where: { accountId: user.accountId || 'default', userId: user.id },
+          select: { showName: true, poster: true, durationSeconds: true, watchedAt: true },
+        }),
+      ])
+
+      const totalWatchSeconds = [...movies, ...episodes].reduce((sum, r) => sum + (r.durationSeconds || 0), 0)
+
+      // Top titles by accumulated duration - movies and episodes of the same
+      // show grouped together under the show's own name.
+      const byTitle = new Map()
+      for (const m of movies) {
+        if (!m.itemName) continue
+        const key = m.itemName
+        const cur = byTitle.get(key) || { name: m.itemName, poster: m.poster, seconds: 0 }
+        cur.seconds += m.durationSeconds || 0
+        byTitle.set(key, cur)
+      }
+      for (const e of episodes) {
+        if (!e.showName) continue
+        const key = e.showName
+        const cur = byTitle.get(key) || { name: e.showName, poster: e.poster, seconds: 0 }
+        cur.seconds += e.durationSeconds || 0
+        if (!cur.poster && e.poster) cur.poster = e.poster
+        byTitle.set(key, cur)
+      }
+      const topTitles = Array.from(byTitle.values())
+        .sort((a, b) => b.seconds - a.seconds)
+        .slice(0, 10)
+        .map((t) => ({ name: t.name, poster: t.poster }))
+
+      // Simple day-streak over this user's own watchedAt dates - ending
+      // today or yesterday (so a streak survives up until the point the
+      // account's actual "today" catches up), consecutive days back from
+      // there. Self-contained rather than reusing buildMetricsForAccount's
+      // version, which is entangled with a full account-wide, period-
+      // filtered aggregation this lightweight public endpoint has no need for.
+      const dateSet = new Set(
+        [...movies, ...episodes]
+          .filter((r) => r.watchedAt)
+          .map((r) => new Date(r.watchedAt).toISOString().split('T')[0])
+      )
+      let streak = 0
+      const today = new Date().toISOString().split('T')[0]
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+      let checkDateStr = dateSet.has(today) ? today : (dateSet.has(yesterday) ? yesterday : null)
+      if (checkDateStr) {
+        let checkDate = new Date(checkDateStr)
+        while (dateSet.has(checkDate.toISOString().split('T')[0])) {
+          streak++
+          checkDate.setDate(checkDate.getDate() - 1)
+        }
+      }
+
+      res.json({
+        username: user.username,
+        avatarUrl: user.avatarUrl,
+        colorIndex: user.colorIndex,
+        totalWatchHours: Math.round((totalWatchSeconds / 3600) * 10) / 10,
+        totalTitles: byTitle.size,
+        streak,
+        topTitles,
+      })
+    } catch (error) {
+      console.error('Error fetching public stats:', error)
+      res.status(500).json({ error: 'Failed to fetch public stats' })
+    }
+  })
+
   // GET /users/media-details - Cinemeta detail lookup for the Activity page's
   // poster-click modal (cast, rating, genres, etc). Must be before /:id route.
   router.get('/media-details', async (req, res) => {
