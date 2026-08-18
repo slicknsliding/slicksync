@@ -772,6 +772,12 @@ export function MediaDetailModal({
                     {effectiveFallbackMetacritic || details.metacritic}
                   </span>
                 )}
+                {typeof details.mdblistScore === 'number' && (
+                  <span className="flex items-center gap-1.5 font-medium text-primary" title="MDBList Score (blended across multiple rating sources)">
+                    <span aria-hidden className="text-[10px] font-bold px-1 py-0.5 rounded border border-current leading-none">MDB</span>
+                    {details.mdblistScore}%
+                  </span>
+                )}
                 {details.imdb_id && (
                   <a
                     href={`https://www.imdb.com/title/${details.imdb_id}`}
@@ -793,6 +799,35 @@ export function MediaDetailModal({
                   </a>
                 )}
               </div>
+
+              {/* "You might not even need an addon for this" - shown
+                  unconditionally (not behind a disclosure like Collection
+                  below) since it's meant to be seen at a glance, not opted
+                  into. Subscription/free tiers only, see the type's own
+                  comment for why rent/buy is excluded. Links to TMDb's
+                  JustWatch attribution page, required by their API terms
+                  when this data is displayed. */}
+              {details.watchProviders && details.watchProviders.providers.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-muted">Also streaming on</span>
+                  {details.watchProviders.providers.map((p) => (
+                    <a
+                      key={p.name}
+                      href={details.watchProviders!.link || undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={p.name}
+                      className="flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full border transition-colors hover:border-primary"
+                      style={{ borderColor: 'var(--color-surface-border)', background: 'var(--color-surface-hover)' }}
+                    >
+                      {p.logo ? (
+                        <img src={p.logo} alt="" className="w-5 h-5 rounded-full" />
+                      ) : null}
+                      <span className="text-xs font-medium text-default">{p.name}</span>
+                    </a>
+                  ))}
+                </div>
+              )}
 
               {/* Neither link can "detect and fall back" if the target app
                   isn't installed/registered - a plain native <a href>, same

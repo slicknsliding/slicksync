@@ -374,6 +374,88 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   }
 
+  // TMDb "where to watch" (JustWatch data via TMDb) - answers "do I even
+  // need an addon for this" right on the detail popup. Hardcoded to the US
+  // region for now - TMDb's response covers every region in one call, but
+  // there's no per-account locale/country setting anywhere in this codebase
+  // yet to pick from, and US is the most complete JustWatch dataset by far.
+  // Only flatrate (subscription) and free (ad-supported) tiers are surfaced -
+  // rent/buy costs money too, which defeats the entire "you already have
+  // this" point of the badge. `link` is TMDb's own JustWatch attribution
+  // page - their API terms require linking back to it when this data is
+  // shown, not just displaying provider logos on their own.
+  const watchProvidersCache = new Map()
+  const WATCH_PROVIDERS_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+  async function fetchTmdbWatchProviders(imdbId, type, req) {
+    if (!imdbId || !/^tt\d+$/.test(imdbId)) return null
+    const cacheKey = `${imdbId}:${type}`
+    const cached = watchProvidersCache.get(cacheKey)
+    if (cached && (Date.now() - cached.at) < WATCH_PROVIDERS_CACHE_TTL_MS) return cached.value
+    const key = await resolveTmdbKeyForBackdrop(req)
+    if (!key) return null
+    try {
+      const findRsp = await fetch(`https://api.themoviedb.org/3/find/${imdbId}?api_key=${encodeURIComponent(key)}&external_source=imdb_id`)
+      if (!findRsp.ok) return null
+      const findData = await findRsp.json()
+      const tmdbType = type === 'series' ? 'tv' : 'movie'
+      const hit = (tmdbType === 'tv' ? findData.tv_results : findData.movie_results)?.[0]
+      if (!hit?.id) {
+        watchProvidersCache.set(cacheKey, { value: null, at: Date.now() })
+        return null
+      }
+
+      const provRsp = await fetch(`https://api.themoviedb.org/3/${tmdbType}/${hit.id}/watch/providers?api_key=${encodeURIComponent(key)}`)
+      if (!provRsp.ok) return null
+      const provData = await provRsp.json()
+      const usResult = provData.results?.US
+      if (!usResult) {
+        watchProvidersCache.set(cacheKey, { value: null, at: Date.now() })
+        return null
+      }
+
+      const mapProvider = (p) => ({ name: p.provider_name, logo: p.logo_path ? `https://image.tmdb.org/t/p/w92${p.logo_path}` : null })
+      const providers = [...(usResult.flatrate || []), ...(usResult.free || [])].map(mapProvider)
+      // Dedupe - the same service can appear in both flatrate and free tiers
+      // for different content on the same title (rare but confirmed possible).
+      const seen = new Set()
+      const deduped = providers.filter((p) => (seen.has(p.name) ? false : (seen.add(p.name), true)))
+
+      const finalValue = deduped.length > 0 ? { link: usResult.link || null, providers: deduped } : null
+      watchProvidersCache.set(cacheKey, { value: finalValue, at: Date.now() })
+      return finalValue
+    } catch {
+      return null
+    }
+  }
+
+  // MDBList's own blended `score` (0-100, weighted across IMDb/RT/Metacritic/
+  // Letterboxd/Trakt etc, not any single source) - the mdblistApiKey was
+  // previously only ever used for whole-list import/export (listImport.js),
+  // never this per-title lookup. Confirmed against MDBList's own OpenAPI
+  // schema (https://api.mdblist.com/schema/): GET /{provider}/{media_type}/
+  // {media_id}/ returns `score` at the top level. Silently absent (not an
+  // error) when no MDBList key is configured, same as every other optional
+  // metadata source on this endpoint.
+  const mdblistScoreCache = new Map()
+  const MDBLIST_SCORE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+  async function fetchMdblistScore(imdbId, type, apiKey) {
+    if (!apiKey || !imdbId || !/^tt\d+$/.test(imdbId)) return null
+    const cacheKey = `${imdbId}:${type}`
+    const cached = mdblistScoreCache.get(cacheKey)
+    if (cached && (Date.now() - cached.at) < MDBLIST_SCORE_CACHE_TTL_MS) return cached.value
+    try {
+      const mediaType = type === 'series' ? 'show' : 'movie'
+      const rsp = await fetch(`https://api.mdblist.com/imdb/${mediaType}/${imdbId}/?apikey=${encodeURIComponent(apiKey)}`)
+      if (!rsp.ok) return null
+      const data = await rsp.json()
+      const finalValue = typeof data.score === 'number' ? data.score : null
+      mdblistScoreCache.set(cacheKey, { value: finalValue, at: Date.now() })
+      return finalValue
+    } catch {
+      return null
+    }
+  }
+
   // GET /users/media-details - Cinemeta detail lookup for the Activity page's
   // poster-click modal (cast, rating, genres, etc). Must be before /:id route.
   router.get('/media-details', async (req, res) => {
@@ -388,7 +470,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ error: 'itemId and type are required' })
       }
 
-      const { resolveOmdbKey } = require('../utils/listImport')
+      const { resolveOmdbKey, resolveMdblistKey } = require('../utils/listImport')
       const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
       const metadata = await fetchMetadata(itemId, type, videoId || null, omdbApiKey)
       if (!metadata) {
@@ -403,11 +485,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // opening animation on mobile. Stripped at the response boundary only -
       // fetchMetadata's cache entry (shared with Continue Watching) still has it.
       const { allEpisodes, ...detailsForClient } = metadata
-      const [backdrop, collection] = await Promise.all([
+      const mdblistKey = await resolveMdblistKey(prisma, getAccountId, req)
+      const [backdrop, collection, watchProviders, mdblistScore] = await Promise.all([
         fetchTmdbBackdrop(itemId, req),
         fetchTmdbCollection(itemId, type, req),
+        fetchTmdbWatchProviders(itemId, type, req),
+        fetchMdblistScore(itemId, type, mdblistKey),
       ])
-      res.json({ ...detailsForClient, backdrop, collection })
+      res.json({ ...detailsForClient, backdrop, collection, watchProviders, mdblistScore })
     } catch (error) {
       console.error('Error fetching media details:', error)
       res.status(500).json({ error: 'Failed to fetch media details' })
