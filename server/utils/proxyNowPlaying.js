@@ -291,6 +291,17 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     // Learn from this resolution for next time - only when it's real
     // evidence, not a guess (see disambiguateMatch's own comment on why).
     if (confident && representative.clientIp) {
+      // Checked against ipAffinityByIp's initial snapshot (loaded once above,
+      // before this loop) - an IP this account has never confidently
+      // resolved before, for ANY user, streaming for the first time. Fired
+      // BEFORE the upsert below (which would otherwise make every later
+      // check in this same poll see it as already-known) and the map is
+      // updated immediately after so a second representative sharing this
+      // IP later in the same poll doesn't fire twice.
+      if (!ipAffinityByIp.has(representative.clientIp)) {
+        ipAffinityByIp.set(representative.clientIp, user.id)
+        notifyNewDevice(prisma, accountId, user, representative.clientIp).catch(() => {})
+      }
       prisma.proxyUserIpAffinity.upsert({
         where: { accountId_clientIp: { accountId, clientIp: representative.clientIp } },
         create: { accountId, clientIp: representative.clientIp, userId: user.id },
@@ -439,6 +450,24 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   }
 
   return result
+}
+
+// New-device alert - same push+bell pattern as every other notifyOn* type
+// (see pushNotifications.js's notifyPushForType), gated on its own
+// 'notifyOnNewDevice' toggle. Fires the first time this account's proxy
+// pipeline confidently resolves a clientIp it's never seen before to a
+// user - see the call site's comment for exactly what "confident" and
+// "never seen before" mean here.
+async function notifyNewDevice(prisma, accountId, user, clientIp) {
+  try {
+    const { notifyPushForType } = require('./pushNotifications')
+    await notifyPushForType(prisma, accountId, 'notifyOnNewDevice', {
+      title: '📱 New device detected',
+      body: `${user.username || 'A user'}'s stream was just seen from an IP we haven't confirmed before (${clientIp}) - worth checking if that's expected.`,
+      icon: '/android-chrome-192x192.png',
+      url: `/users/${user.id}`,
+    })
+  } catch {}
 }
 
 module.exports = { mergeProxyNowPlaying }

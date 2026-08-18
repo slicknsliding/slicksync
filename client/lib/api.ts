@@ -2534,6 +2534,7 @@ export interface SyncSettings {
   notifyOnInvite?: boolean;
   notifyOnVault?: boolean;
   notifyOnAddonHealth?: boolean;
+  notifyOnNewDevice?: boolean;
   notifyOnBackup?: boolean;
   notifyOnProxyHealth?: boolean;
   notifyOnUpdateAvailable?: boolean;
