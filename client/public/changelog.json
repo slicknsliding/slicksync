@@ -1,10 +1,20 @@
 [
   {
+    "version": "1.73.5",
+    "date": "2026-08-18",
+    "title": "chore: command palette help guide - final coverage pass (61 topics)",
+    "features": [
+      "One more audit pass against every Settings toggle and page in the app: added Private Mode, Custom Addon Names, Timezone, Unsafe Mode, Auto-generated Catalogs, Account ID/Danger Zone, Protected Addons, addon import/export, bulk sync/delete for Users and Groups, Library/History export/clear, and Configuration import/export/reset. 61 topics total."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
     "version": "1.73.4",
     "date": "2026-08-18",
     "title": "chore: command palette help guide expanded to close real coverage gaps",
     "features": [
-      "The command palette's built-in how-to guide (new in v1.73.3) now also covers Groups, Discover browsing, the Nuvio Collections manager itself, TV/D-pad mode, 2FA/SSO, notification setup, poster ratings/RPDB, Year in Review/Taste Profiles, account merge/mismatch alerts, and Now Playing/Continue Watching - about 30 topics total, up from an initial pass that missed several of these."
+      "The command palette's built-in how-to guide (new in v1.73.3) went through two more audit passes against the full feature list. It now covers 61 topics - every page and most Settings toggles, not just the newest features: Groups, Discover, Nuvio Collections, TV mode, 2FA/SSO, notifications, poster ratings, Year in Review, account merge, Now Playing, SIMKL linking, Vault organization/cost tracking, addon protection/import-export, config import/export/reset, and more."
     ],
     "bugFixes": [],
     "miscChores": []
