@@ -82,4 +82,105 @@ async function fetchDebridUsage(testType, apiKey) {
   return null
 }
 
-module.exports = { fetchDebridUsage, fetchRealDebridUsage, fetchTorBoxUsage }
+// ---- Auto-remove: finished torrents idle past a configured age ------------
+//
+// "Finished" and "idle since" are read differently per provider since
+// neither exposes the exact same shape (confirmed against Real-Debrid's own
+// API docs and TorBox's OpenAPI spec / TypeScript SDK, not guessed):
+//  - Real-Debrid: status === 'downloaded' means finished, and `ended` (only
+//    present once finished) is the real completion timestamp.
+//  - TorBox: download_finished === true means finished; TorBox's API has no
+//    separate "finished at" field, so `updated_at` is used as the best
+//    available proxy (a finished torrent generally stops being touched).
+async function listEligibleRealDebridTorrents(apiKey, afterDays) {
+  const { signal, cancel } = timeoutSignal(15000)
+  try {
+    const res = await fetch(`${REAL_DEBRID_BASE}/torrents?limit=100`, { headers: { Authorization: `Bearer ${apiKey}` }, signal })
+    cancel()
+    if (!res.ok) return []
+    const torrents = await res.json()
+    const cutoffMs = Date.now() - afterDays * 24 * 60 * 60 * 1000
+    return (Array.isArray(torrents) ? torrents : [])
+      .filter((t) => t?.status === 'downloaded' && t?.ended && new Date(t.ended).getTime() < cutoffMs)
+      .map((t) => ({ id: t.id, name: t.filename }))
+  } catch {
+    cancel()
+    return []
+  }
+}
+
+async function listEligibleTorBoxTorrents(apiKey, afterDays) {
+  const { signal, cancel } = timeoutSignal(15000)
+  try {
+    const res = await fetch(`${TORBOX_BASE}/torrents/mylist?bypass_cache=true`, { headers: { Authorization: `Bearer ${apiKey}` }, signal })
+    cancel()
+    if (!res.ok) return []
+    const body = await res.json()
+    const torrents = Array.isArray(body?.data) ? body.data : (Array.isArray(body) ? body : [])
+    const cutoffMs = Date.now() - afterDays * 24 * 60 * 60 * 1000
+    return torrents
+      .filter((t) => t?.download_finished === true && t?.updated_at && new Date(t.updated_at).getTime() < cutoffMs)
+      .map((t) => ({ id: t.id, name: t.name }))
+  } catch {
+    cancel()
+    return []
+  }
+}
+
+async function listEligibleTorrents(testType, apiKey, afterDays) {
+  if (testType === 'real_debrid') return listEligibleRealDebridTorrents(apiKey, afterDays)
+  if (testType === 'torbox') return listEligibleTorBoxTorrents(apiKey, afterDays)
+  return []
+}
+
+async function deleteRealDebridTorrent(apiKey, torrentId) {
+  const { signal, cancel } = timeoutSignal(10000)
+  try {
+    const res = await fetch(`${REAL_DEBRID_BASE}/torrents/delete/${encodeURIComponent(torrentId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal,
+    })
+    cancel()
+    return res.ok || res.status === 204
+  } catch {
+    cancel()
+    return false
+  }
+}
+
+async function deleteTorBoxTorrent(apiKey, torrentId) {
+  const { signal, cancel } = timeoutSignal(10000)
+  try {
+    // Confirmed request shape against TorBox's community TypeScript SDK
+    // (torrent_id + lowercase operation: 'delete') - their own OpenAPI spec
+    // types the body as untyped `any` with no example, so this is the one
+    // piece of this file taken from real working client code rather than
+    // TorBox's own docs directly.
+    const res = await fetch(`${TORBOX_BASE}/torrents/controltorrent`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ torrent_id: torrentId, operation: 'delete' }),
+      signal,
+    })
+    cancel()
+    return res.ok
+  } catch {
+    cancel()
+    return false
+  }
+}
+
+async function deleteTorrent(testType, apiKey, torrentId) {
+  if (testType === 'real_debrid') return deleteRealDebridTorrent(apiKey, torrentId)
+  if (testType === 'torbox') return deleteTorBoxTorrent(apiKey, torrentId)
+  return false
+}
+
+module.exports = {
+  fetchDebridUsage,
+  fetchRealDebridUsage,
+  fetchTorBoxUsage,
+  listEligibleTorrents,
+  deleteTorrent,
+}

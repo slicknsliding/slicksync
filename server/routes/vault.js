@@ -46,7 +46,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
           dashboardUrl: e.dashboardUrl, cost: e.cost, costCycle: e.costCycle, expiresAt: e.expiresAt, notifyDaysBefore: e.notifyDaysBefore,
           lastCheckedAt: e.lastCheckedAt, lastCheckStatus: e.lastCheckStatus, lastCheckMessage: e.lastCheckMessage,
           isActive: e.isActive, testType: e.testType, secretLabel: e.secretLabel, updatedAt: e.updatedAt,
-          position: e.position,
+          position: e.position, autoRemoveEnabled: e.autoRemoveEnabled, autoRemoveAfterDays: e.autoRemoveAfterDays,
         })),
       });
     } catch (error) {
@@ -222,6 +222,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       const {
         name, category, provider, secretLabel, secret,
         testType, testConfig, dashboardUrl, cost, costCycle, expiresAt, notifyDaysBefore, isActive, healthIgnored,
+        autoRemoveEnabled, autoRemoveAfterDays,
       } = req.body || {};
 
       if (category && !CATEGORIES.includes(category)) {
@@ -243,6 +244,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (notifyDaysBefore !== undefined) data.notifyDaysBefore = notifyDaysBefore;
       if (isActive !== undefined) data.isActive = isActive;
       if (healthIgnored !== undefined) data.healthIgnored = !!healthIgnored;
+      if (autoRemoveEnabled !== undefined) data.autoRemoveEnabled = !!autoRemoveEnabled;
+      if (autoRemoveAfterDays !== undefined) data.autoRemoveAfterDays = typeof autoRemoveAfterDays === 'number' && autoRemoveAfterDays > 0 ? autoRemoveAfterDays : 7;
 
       await prisma.vaultEntry.update({ where: { id: existing.id }, data });
       res.json({ success: true });

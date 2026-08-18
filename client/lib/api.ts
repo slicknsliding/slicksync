@@ -2355,6 +2355,10 @@ export interface VaultEntry {
   testConfig?: Record<string, any> | null;
   updatedAt: string;
   position?: number;
+  // real_debrid/torbox only - daily sweep that deletes a finished torrent
+  // from the provider's own account once it's sat idle this many days.
+  autoRemoveEnabled?: boolean;
+  autoRemoveAfterDays?: number;
 }
 
 export interface PushDevice {
@@ -2385,6 +2389,8 @@ export interface VaultEntryInput {
   costCycle?: 'monthly' | 'yearly';
   expiresAt?: string;
   notifyDaysBefore?: number;
+  autoRemoveEnabled?: boolean;
+  autoRemoveAfterDays?: number;
 }
 
 export interface Addon {
