@@ -4,13 +4,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
-import { Card, Button, Modal, PosterThumb, Badge } from '@/components/ui';
+import { Card, Button, Modal, PosterThumb, Badge, MediaDetailModal } from '@/components/ui';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
-import { api, CustomList, DescribedCatalogPreview } from '@/lib/api';
+import { api, CustomList, DescribedCatalogPreview, CustomListItem } from '@/lib/api';
 import {
   RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon, MapPinIcon, SparklesIcon,
 } from '@heroicons/react/24/outline';
@@ -588,6 +588,7 @@ function DescribeCatalogModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detailItem, setDetailItem] = useState<CustomListItem | null>(null);
 
   const handlePreview = async () => {
     if (!description.trim()) return;
@@ -637,7 +638,8 @@ function DescribeCatalogModal({
   }
 
   return (
-    <Modal isOpen onClose={onClose} title="Describe a catalog" size="md">
+    <>
+    <Modal isOpen onClose={onClose} title="Describe a catalog" size="lg">
       <div className="space-y-4">
         <div>
           <textarea
@@ -689,15 +691,18 @@ function DescribeCatalogModal({
             {preview.items.length === 0 ? (
               <p className="text-sm text-muted">No matches found - try rephrasing, or widening the runtime/decade.</p>
             ) : (
-              <div className="flex gap-1.5 overflow-x-auto pb-1">
-                {preview.items.slice(0, 10).map((item) => (
-                  <PosterThumb key={item.id} item={item} className="w-16 h-24 shrink-0" />
+              <div className="max-h-96 overflow-y-auto grid grid-cols-4 sm:grid-cols-5 gap-3 p-1">
+                {preview.items.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setDetailItem(item)}
+                    className="text-left group"
+                  >
+                    <PosterThumb item={item} className="aspect-[2/3] transition-transform group-hover:scale-[1.03] group-hover:ring-2 group-hover:ring-primary" />
+                    <p className="text-xs text-muted mt-1 truncate group-hover:text-default transition-colors" title={item.name}>{item.name}</p>
+                  </button>
                 ))}
-                {preview.items.length > 10 && (
-                  <div className="w-16 h-24 shrink-0 rounded-md bg-surface flex items-center justify-center text-xs text-muted">
-                    +{preview.items.length - 10}
-                  </div>
-                )}
               </div>
             )}
 
@@ -726,5 +731,16 @@ function DescribeCatalogModal({
         )}
       </div>
     </Modal>
+    {detailItem && (
+      <MediaDetailModal
+        isOpen={!!detailItem}
+        onClose={() => setDetailItem(null)}
+        itemId={detailItem.id}
+        itemType={detailItem.type}
+        fallbackTitle={detailItem.name}
+        fallbackPoster={detailItem.poster || undefined}
+      />
+    )}
+    </>
   );
 }

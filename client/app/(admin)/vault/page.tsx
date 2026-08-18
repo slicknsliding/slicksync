@@ -49,6 +49,18 @@ const CATEGORY_LABELS: Record<VaultCategory, string> = {
   custom: 'Custom',
 };
 
+// AI Services has its own dedicated front door in Settings -> External API
+// Keys now (with the real verify-on-save check this generic Vault form
+// doesn't run), so it's excluded from Vault's own tabs/Add Entry category
+// picker - editing the SAME underlying entry through two different forms,
+// only one of which actually confirms it works, was strictly worse than
+// just picking Settings as the one place to manage it. Still the same
+// VaultEntry row underneath (category: 'ai') - this only hides it from
+// this page's own UI, nothing about the storage changed.
+const VAULT_UI_CATEGORY_LABELS = Object.fromEntries(
+  Object.entries(CATEGORY_LABELS).filter(([key]) => key !== 'ai')
+) as Record<VaultCategory, string>;
+
 const TEST_TYPE_LABELS: Record<VaultTestType, string> = {
   manual: 'Manual (no automated check)',
   generic_http: 'Generic HTTP request',
@@ -639,7 +651,7 @@ function VaultPageContent() {
   };
 
   const filterOptions = [
-    ...Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
+    ...Object.entries(VAULT_UI_CATEGORY_LABELS).map(([key, label]) => ({
       key, label, count: categoryCounts[key] || 0,
     })),
   ];
@@ -923,7 +935,7 @@ function VaultPageContent() {
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
               style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             >
-              {Object.entries(CATEGORY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              {Object.entries(VAULT_UI_CATEGORY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
           </div>
 
