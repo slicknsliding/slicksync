@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.72.8",
+    "date": "2026-08-17",
+    "title": "feat: AI Services relocated & verified, Content Rating allowlist, Automation additions, SIMKL Trending",
+    "features": [
+      "AI Services (natural-language Catalog building) moved out of a generic Vault credential into its own front door in Settings -> External API Keys, with real verification on save (an actual test request to the provider, not just \"a key is stored\") and a live model list fetched from whichever provider you've configured instead of a hardcoded, easily-stale suggestion list.",
+      "Content Rating is now a real allowlist, not a passive review tool: check the ratings you want to keep, preview exactly what stays and what goes, apply to remove everything else - with a one-step undo, an add-time gate that rejects non-matching titles going forward, and a daily sweep that keeps the policy enforced automatically until you clear it.",
+      "Automation: a webhook action (POST any trigger's data to a URL you choose), a user.created trigger (any new user, not just ones from an invite), and a time.daily trigger for schedule-based rules.",
+      "NL catalog building now actually uses descriptive terms beyond genre/decade/runtime (\"heist,\" \"time travel\") via real TMDb keyword matching.",
+      "A SIMKL Trending row on Discover (needs only a SIMKL Client ID, no linked user)."
+    ],
+    "bugFixes": [
+      "Fixed an AI Services config that could silently fail with no explanation (a wrong model/base URL pairing looked identical to no key configured at all).",
+      "Removed the seasonal addon auto-scheduling feature (wasn't reliably doing anything).",
+      "History could credit a whole watch session's duration to the wrong day: resuming something days after last leaving it off re-stamped its ENTIRE accumulated watch time as freshly watched today, even if you only glanced at it for a few seconds. Now only genuinely new progress since it was last touched counts toward today - the rest stays on the day it actually happened."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.72.7",
     "date": "2026-08-17",
     "title": "fix: backlog watch discoveries fired live-watch notifications",
