@@ -1,4 +1,5 @@
 export * from './Button';
+export * from './CommandPalette';
 export * from './Card';
 export * from './Avatar';
 export * from './UserAvatar';

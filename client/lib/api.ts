@@ -1731,6 +1731,14 @@ class ApiClient {
   }
   // Live Real-Debrid/TorBox usage (active downloads, premium days left) -
   // usage is null for a non-debrid entry or if the live provider call failed.
+  // Command palette's AI fallback - read-only Q&A, not action-executing.
+  // Throws with a clear message when no AI key is configured (422).
+  async commandAsk(question: string) {
+    return this.fetch<{ answer: string }>('/users/command-ask', {
+      method: 'POST',
+      body: JSON.stringify({ question }),
+    });
+  }
   async getVaultEntryUsage(id: string) {
     return this.fetch<{ usage: { premiumDaysLeft: number | null; activeDownloads: number | null } | null }>(`/vault/${id}/usage`);
   }
