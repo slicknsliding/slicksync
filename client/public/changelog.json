@@ -1,5 +1,25 @@
 [
   {
+    "version": "1.73.0",
+    "date": "2026-08-18",
+    "title": "feat: catalogs as installable addons, scrobbling, CSV import/export, command palette, and more",
+    "features": [
+      "Publish any catalog as a real installable Stremio/Nuvio addon - a manifest URL you install once, kept in sync with whatever the catalog contains (Settings gear on a catalog -> Addon).",
+      "Scrobble-in API: any app with Trakt-compatible scrobbling (Infuse, Kodi's Trakt plugin, etc.) can now write into your SlickTrax history - point it at /api/scrobble with your existing API key (Settings -> API Access).",
+      "Watch-history CSV import/export on a user's detail page - bring in an IMDb or Letterboxd export, or export as a Letterboxd-compatible CSV so your data is never stuck here.",
+      "A global command palette (Ctrl+K, or Cmd+K on Mac) - jump to any page, user, addon, or catalog instantly, or ask a free-text question (addon health, etc.) when AI Services is configured.",
+      "A public, unauthenticated stats share link per user (Settings -> Public Stats Page) - total watch time, top titles, and streak, viewable by anyone with the link, no login required.",
+      "Vault: live Real-Debrid/TorBox usage (active downloads, premium days left) right on the entry card, plus an opt-in daily auto-remove for torrents that finished and sat idle past a day count you choose.",
+      "A renewal calendar & 90-day spend forecast on Vault, projecting each cost-tracked entry's own billing cycle forward instead of a single next-renewal check.",
+      "Theme sharing via copy-paste export/import codes - share a custom theme with a code instead of describing color values.",
+      "A first-run onboarding wizard for new installs, plus a \"what's new\" banner that keeps existing installs aware of new features as they ship."
+    ],
+    "bugFixes": [
+      "Fixed multi-select checkboxes being invisible until checked on Addons, Users, Groups, and Invitations - the feature worked, it just couldn't be seen or discovered."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.72.8",
     "date": "2026-08-17",
     "title": "feat: AI Services relocated & verified, Content Rating allowlist, Automation additions, SIMKL Trending",
