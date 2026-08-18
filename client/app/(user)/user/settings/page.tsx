@@ -175,6 +175,13 @@ export default function UserSettingsPage() {
   const [updating, setUpdating] = useState(false);
   const [activityVisibility, setActivityVisibility] = useState<'public' | 'private'>('private');
   const [activityVisibilityLoaded, setActivityVisibilityLoaded] = useState(false);
+
+  // Public stats share link - a genuinely public, unauthenticated link,
+  // distinct from Activity Visibility above (household-only)
+  const [publicStatsEnabled, setPublicStatsEnabled] = useState(false);
+  const [publicStatsSlug, setPublicStatsSlug] = useState<string | null>(null);
+  const [publicStatsLoaded, setPublicStatsLoaded] = useState(false);
+  const [savingPublicStats, setSavingPublicStats] = useState(false);
   
   // Discord webhook
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState('');
@@ -203,6 +210,9 @@ export default function UserSettingsPage() {
         const info = await userAuth.getUserInfo(userId, authKey);
         setActivityVisibility(info?.activityVisibility ?? 'private');
         setActivityVisibilityLoaded(true);
+        setPublicStatsEnabled(info?.publicStatsEnabled ?? false);
+        setPublicStatsSlug(info?.publicStatsSlug ?? null);
+        setPublicStatsLoaded(true);
         setDiscordWebhookUrl(info?.discordWebhookUrl || '');
         setNotifyOnWatch(info?.notifyOnWatch !== false);
         setNotifyOnWatchLoaded(true);
@@ -268,6 +278,41 @@ export default function UserSettingsPage() {
       toast.error(err.message || 'Failed to update visibility');
     } finally {
       setUpdating(false);
+    }
+  };
+
+  // Toggle the public stats share link
+  const handleTogglePublicStats = async () => {
+    if (!isReady || !userId || !authKey || savingPublicStats) return;
+    setSavingPublicStats(true);
+    try {
+      if (publicStatsEnabled) {
+        await userAuth.disablePublicStats(userId, authKey);
+        setPublicStatsEnabled(false);
+        setPublicStatsSlug(null);
+        toast.success('Public stats link disabled');
+      } else {
+        const { slug } = await userAuth.enablePublicStats(userId, authKey);
+        setPublicStatsEnabled(true);
+        setPublicStatsSlug(slug);
+        toast.success('Public stats link enabled');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update public stats link');
+    } finally {
+      setSavingPublicStats(false);
+    }
+  };
+
+  const publicStatsUrl = publicStatsSlug ? `${typeof window !== 'undefined' ? window.location.origin : ''}/u/${publicStatsSlug}` : null;
+
+  const handleCopyPublicStatsUrl = async () => {
+    if (!publicStatsUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicStatsUrl);
+      toast.success('Link copied to clipboard');
+    } catch {
+      toast.error('Failed to copy link');
     }
   };
 
@@ -606,6 +651,50 @@ export default function UserSettingsPage() {
                     disabled={updating}
                   />
                 </div>
+              )}
+            </div>
+
+            {/* Public Stats Share Link - a genuinely public, unauthenticated
+                page anyone with the link can view, unlike Activity
+                Visibility above (household members only). */}
+            <div
+              className="flex items-center justify-between p-4 rounded-lg mt-3"
+              style={{ background: 'var(--color-surface-elevated)' }}
+            >
+              <div className="flex-1">
+                <h3 className="font-medium mb-1" style={{ color: 'var(--color-text)' }}>
+                  Public Stats Page
+                </h3>
+                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  {publicStatsEnabled
+                    ? 'Anyone with this link can view your watch stats - no login required'
+                    : 'Get a shareable link to your watch stats, viewable by anyone without logging in'}
+                </p>
+                {publicStatsEnabled && publicStatsUrl && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <code
+                      className="text-xs px-2 py-1 rounded truncate max-w-[220px] sm:max-w-xs"
+                      style={{ background: 'var(--color-subtle)', color: 'var(--color-text)' }}
+                    >
+                      {publicStatsUrl}
+                    </code>
+                    <button
+                      onClick={handleCopyPublicStatsUrl}
+                      className="text-xs font-medium"
+                      style={{ color: 'var(--color-primary)' }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {publicStatsLoaded && (
+                <ToggleSwitch
+                  checked={publicStatsEnabled}
+                  onChange={handleTogglePublicStats}
+                  disabled={savingPublicStats}
+                />
               )}
             </div>
 

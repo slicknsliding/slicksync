@@ -792,7 +792,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
             createdAt: true,
             expiresAt: true,
             discordWebhookUrl: true,
-            notifyOnWatch: true
+            notifyOnWatch: true,
+            publicStatsEnabled: true,
+            publicStatsSlug: true
           }
         });
 
@@ -832,7 +834,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
             createdAt: true,
             expiresAt: true,
             discordWebhookUrl: true,
-            notifyOnWatch: true
+            notifyOnWatch: true,
+            publicStatsEnabled: true,
+            publicStatsSlug: true
           }
         });
         if (!fullUser) {
@@ -850,7 +854,9 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         createdAt: user.createdAt,
         expiresAt: user.expiresAt,
         discordWebhookUrl: user.discordWebhookUrl || null,
-        notifyOnWatch: user.notifyOnWatch !== false
+        notifyOnWatch: user.notifyOnWatch !== false,
+        publicStatsEnabled: user.publicStatsEnabled === true,
+        publicStatsSlug: user.publicStatsSlug || null
       });
     } catch (error) {
       console.error('Error getting user info:', error);
@@ -924,6 +930,74 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
       }
       
       res.status(500).json({ error: 'Failed to update activity visibility', message: error?.message });
+    }
+  });
+
+  // Public stats share link - same self-service identity check as
+  // activity-visibility above (authKey + verifyProviderIdentity), since
+  // this is a user managing their OWN share link from their own Settings
+  // page, not an admin action. Distinct from activityVisibility: that only
+  // ever exposes data to other members of the SAME account; this issues a
+  // genuinely public, unauthenticated link (see server/routes/users.js's
+  // GET /users/public-stats/:slug, which actually serves it).
+  router.post('/public-stats/enable', async (req, res) => {
+    try {
+      const { userId } = req.body;
+      const authKey = getAuthKey(req);
+      if (!userId) return res.status(400).json({ error: 'User ID is required' });
+
+      const targetUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, accountId: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true, publicStatsSlug: true }
+      });
+      if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+      const user = await verifyProviderIdentity(targetUser, authKey, req);
+      if (user.id !== userId) {
+        return res.status(403).json({ error: 'Access denied: Cannot update another user\'s share link' });
+      }
+
+      let slug = targetUser.publicStatsSlug;
+      if (!slug) {
+        const { generateApiKey } = require('../utils/apiKey');
+        slug = generateApiKey();
+      }
+      await prisma.user.update({ where: { id: userId }, data: { publicStatsEnabled: true, publicStatsSlug: slug } });
+      res.json({ slug });
+    } catch (error) {
+      console.error('Error enabling public stats:', error);
+      if (error?.message === 'USER_NOT_FOUND') return res.status(403).json({ error: 'USER_NOT_FOUND', message: 'Your account is not registered with SlickSync.' });
+      if (error?.message === 'USER_NOT_ACTIVE') return res.status(403).json({ error: 'USER_NOT_ACTIVE', message: 'Your account has been disabled.' });
+      if (error?.message === 'USER_NOT_IN_GROUP') return res.status(403).json({ error: 'USER_NOT_IN_GROUP', message: 'Your account is not part of any SlickSync group.' });
+      res.status(500).json({ error: 'Failed to enable public stats', message: error?.message });
+    }
+  });
+
+  router.post('/public-stats/disable', async (req, res) => {
+    try {
+      const { userId } = req.body;
+      const authKey = getAuthKey(req);
+      if (!userId) return res.status(400).json({ error: 'User ID is required' });
+
+      const targetUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, accountId: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
+      });
+      if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+      const user = await verifyProviderIdentity(targetUser, authKey, req);
+      if (user.id !== userId) {
+        return res.status(403).json({ error: 'Access denied: Cannot update another user\'s share link' });
+      }
+
+      await prisma.user.update({ where: { id: userId }, data: { publicStatsEnabled: false, publicStatsSlug: null } });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error disabling public stats:', error);
+      if (error?.message === 'USER_NOT_FOUND') return res.status(403).json({ error: 'USER_NOT_FOUND', message: 'Your account is not registered with SlickSync.' });
+      if (error?.message === 'USER_NOT_ACTIVE') return res.status(403).json({ error: 'USER_NOT_ACTIVE', message: 'Your account has been disabled.' });
+      if (error?.message === 'USER_NOT_IN_GROUP') return res.status(403).json({ error: 'USER_NOT_IN_GROUP', message: 'Your account is not part of any SlickSync group.' });
+      res.status(500).json({ error: 'Failed to disable public stats', message: error?.message });
     }
   });
 
