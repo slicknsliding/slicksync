@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.73.6",
+    "date": "2026-08-18",
+    "title": "fix: selection checkboxes hard to see against dark backgrounds",
+    "features": [],
+    "bugFixes": [
+      "The multi-select checkboxes on Addons/Users/Groups/Invitations (and the header \"select all\" control) were still low-contrast in their unchecked state - just a flat border against the surface color. They now carry an always-on glow ring in your theme's primary/secondary colors, the same pairing Nebula's own panel accent stripe uses, so it re-colors with whatever theme is active."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.5",
     "date": "2026-08-18",
     "title": "chore: command palette help guide - final coverage pass (61 topics)",

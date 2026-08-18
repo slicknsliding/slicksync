@@ -70,11 +70,16 @@ export function SelectAllCheckbox({
   };
 
   const getBoxShadow = () => {
-    if (isEmpty) return 'inset 0 1px 3px rgba(0,0,0,0.2)';
+    // Same always-on primary→secondary glow ring as SelectionCheckbox -
+    // a flat border against the surface color was too low-contrast to
+    // notice on a dark theme. Reads CSS vars, so it re-colors with
+    // whatever theme/custom theme is active.
+    const idleGlow = '0 0 5px color-mix(in srgb, var(--color-primary) 55%, transparent), 0 0 9px color-mix(in srgb, var(--color-secondary) 30%, transparent)';
+    if (isEmpty) return `inset 0 1px 3px rgba(0,0,0,0.2), ${idleGlow}`;
     if (isHovered && (isAllSelected || isIndeterminate)) {
       return '0 0 12px var(--color-primary-muted)';
     }
-    return 'none';
+    return idleGlow;
   };
 
   const getRingShadow = () => {
