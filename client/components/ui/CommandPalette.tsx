@@ -9,15 +9,19 @@ import {
   DocumentTextIcon, RectangleStackIcon, SparklesIcon, ArrowUpRightIcon,
 } from '@heroicons/react/24/outline';
 import { api } from '@/lib/api';
+import { searchHelp, HelpEntry } from '@/lib/helpContent';
 
 // Global Ctrl+K/Cmd+K command palette - the trigger key shown adapts to the
 // OS (Mac gets the Cmd glyph, everyone else gets Ctrl), same convention
 // every command palette (Linear, Notion, Raycast) already uses. Two tiers:
 // fast client-side fuzzy search over static nav destinations + live
 // users/addons/catalogs (fetched once on first open, not per keystroke),
-// and - only when nothing matches - an AI fallback that answers a
-// free-text question read-only (see server's own comment on why this
-// doesn't execute arbitrary write actions).
+// and - only when nothing matches - a local how-to knowledge base
+// (lib/helpContent.ts) for free-text questions. This used to call out to an
+// AI Services key for that second tier, but that only worked for whoever
+// had a key configured and added a network round-trip for something a
+// fixed, reviewed list of guides answers just as well, instantly, for
+// everyone.
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/', icon: HomeIcon, keywords: 'home' },
   { label: 'Activity', href: '/activity', icon: ClockIcon, keywords: 'watch history' },
@@ -64,10 +68,6 @@ export function CommandPalette() {
   const [entities, setEntities] = useState<Result[] | null>(null);
   const [loadingEntities, setLoadingEntities] = useState(false);
 
-  const [aiAnswer, setAiAnswer] = useState<string | null>(null);
-  const [askingAi, setAskingAi] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-
   useEffect(() => { setMac(isMac()); }, []);
 
   const loadEntities = useCallback(async () => {
@@ -105,8 +105,6 @@ export function CommandPalette() {
         setIsOpen((prev) => {
           if (prev) return prev; // already open, let it handle its own Escape
           setQuery('');
-          setAiAnswer(null);
-          setAiError(null);
           setActiveIndex(0);
           loadEntities();
           return true;
@@ -140,6 +138,13 @@ export function CommandPalette() {
     return pool.slice(0, 8);
   }, [query, navResults, entities]);
 
+  // Local how-to knowledge base fallback - only computed once nav/entity
+  // search comes up empty, same trigger point the old AI fallback used.
+  const helpResults: HelpEntry[] = useMemo(() => {
+    if (filtered.length > 0) return [];
+    return searchHelp(query);
+  }, [query, filtered]);
+
   useEffect(() => { setActiveIndex(0); }, [query]);
 
   const handleSelect = (result: Result) => {
@@ -147,32 +152,28 @@ export function CommandPalette() {
     close();
   };
 
-  const handleAskAi = async () => {
-    if (!query.trim() || askingAi) return;
-    setAskingAi(true);
-    setAiError(null);
-    setAiAnswer(null);
-    try {
-      const { answer } = await api.commandAsk(query.trim());
-      setAiAnswer(answer);
-    } catch (err: any) {
-      setAiError(err.message || 'Failed to get an answer');
-    } finally {
-      setAskingAi(false);
+  const handleSelectHelp = (entry: HelpEntry) => {
+    if (entry.href) {
+      router.push(entry.href);
+      close();
     }
   };
+
+  // Arrow-key navigation walks whichever list is actually showing - nav/
+  // entity results when there are any, otherwise the help fallback.
+  const activeListLength = filtered.length > 0 ? filtered.length : helpResults.length;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActiveIndex((i) => Math.min(i + 1, filtered.length - 1));
+      setActiveIndex((i) => Math.min(i + 1, activeListLength - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setActiveIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (filtered[activeIndex]) handleSelect(filtered[activeIndex]);
-      else if (query.trim()) handleAskAi();
+      else if (helpResults[activeIndex]) handleSelectHelp(helpResults[activeIndex]);
     }
   };
 
@@ -221,17 +222,32 @@ export function CommandPalette() {
                 </div>
 
                 <div className="max-h-80 overflow-y-auto py-2">
-                  {filtered.length === 0 && !aiAnswer && !askingAi && !aiError && (
+                  {filtered.length === 0 && query.trim() && helpResults.length === 0 && (
                     <div className="px-4 py-6 text-center">
-                      <p className="text-sm text-muted mb-3">No matches for &quot;{query}&quot;</p>
-                      <button
-                        onClick={handleAskAi}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                        style={{ background: 'var(--color-primary-muted)', color: 'var(--color-primary)' }}
-                      >
-                        <SparklesIcon className="w-3.5 h-3.5" />
-                        Ask AI instead
-                      </button>
+                      <p className="text-sm text-muted">No matches for &quot;{query}&quot;</p>
+                    </div>
+                  )}
+
+                  {filtered.length === 0 && helpResults.length > 0 && (
+                    <div className="px-2 pb-1">
+                      <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-textMuted)' }}>
+                        How to…
+                      </p>
+                      {helpResults.map((h, i) => (
+                        <button
+                          key={h.id}
+                          onClick={() => handleSelectHelp(h)}
+                          onMouseEnter={() => setActiveIndex(i)}
+                          className="w-full flex items-start gap-3 px-2 py-2.5 rounded-lg text-left transition-colors"
+                          style={{ background: i === activeIndex ? 'var(--color-surface-hover)' : 'transparent' }}
+                        >
+                          <SparklesIcon className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--color-primary)' }} />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm font-medium" style={{ color: 'var(--color-text)' }}>{h.title}</span>
+                            <span className="block text-xs mt-0.5" style={{ color: 'var(--color-textMuted)' }}>{h.answer}</span>
+                          </span>
+                        </button>
+                      ))}
                     </div>
                   )}
 
@@ -253,23 +269,6 @@ export function CommandPalette() {
                     );
                   })}
 
-                  {askingAi && (
-                    <div className="px-4 py-4 flex items-center gap-2 text-sm text-muted">
-                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      Thinking…
-                    </div>
-                  )}
-                  {aiAnswer && (
-                    <div className="mx-4 my-2 p-3 rounded-lg text-sm flex items-start gap-2" style={{ background: 'var(--color-primary-muted)', color: 'var(--color-text)' }}>
-                      <SparklesIcon className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--color-primary)' }} />
-                      <p>{aiAnswer}</p>
-                    </div>
-                  )}
-                  {aiError && (
-                    <div className="mx-4 my-2 p-3 rounded-lg text-sm" style={{ background: 'var(--color-error-muted, var(--color-surface-hover))', color: 'var(--color-error)' }}>
-                      {aiError}
-                    </div>
-                  )}
                   {loadingEntities && !query && (
                     <div className="px-4 py-2 text-xs text-muted">Loading users, addons, catalogs…</div>
                   )}

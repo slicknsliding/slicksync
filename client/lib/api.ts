@@ -1736,14 +1736,6 @@ class ApiClient {
   }
   // Live Real-Debrid/TorBox usage (active downloads, premium days left) -
   // usage is null for a non-debrid entry or if the live provider call failed.
-  // Command palette's AI fallback - read-only Q&A, not action-executing.
-  // Throws with a clear message when no AI key is configured (422).
-  async commandAsk(question: string) {
-    return this.fetch<{ answer: string }>('/users/command-ask', {
-      method: 'POST',
-      body: JSON.stringify({ question }),
-    });
-  }
   async getVaultEntryUsage(id: string) {
     return this.fetch<{ usage: { premiumDaysLeft: number | null; activeDownloads: number | null } | null }>(`/vault/${id}/usage`);
   }
@@ -2074,6 +2066,22 @@ class ApiClient {
 
   async setAddonHealthIgnored(id: string, healthIgnored: boolean) {
     return this.fetch<{ success: boolean; data: { id: string; healthIgnored: boolean } }>(`/addons/${id}/health-ignore`, {
+      method: 'PATCH',
+      body: JSON.stringify({ healthIgnored }),
+    });
+  }
+
+  async setUserHealthIgnored(id: string, healthIgnored: boolean) {
+    return this.fetch<{ success: boolean; data: { id: string; healthIgnored: boolean } }>(`/users/${id}/health-ignore`, {
+      method: 'PATCH',
+      body: JSON.stringify({ healthIgnored }),
+    });
+  }
+
+  // Proxy has no per-item entity (one shared connectivity check) - the mute
+  // lives on the account itself instead of a /:id route.
+  async setProxyHealthIgnored(healthIgnored: boolean) {
+    return this.fetch<{ healthIgnored: boolean }>('/health/proxy-ignore', {
       method: 'PATCH',
       body: JSON.stringify({ healthIgnored }),
     });
@@ -2616,6 +2624,7 @@ export interface SyncSettings {
   autoplayTrailerStartMuted?: boolean;
   enablePosterRatings?: boolean;
   enableReactions?: boolean;
+  enableWatchProviders?: boolean;
   // Opt-in (default false, unlike the toggles above) - see settings.js's own comment.
   enableAutoThemedCatalogs?: boolean;
   notifyOnAutomation?: boolean;
@@ -2988,7 +2997,8 @@ export interface HealthStatus {
   sync: {
     usersTracked: number;
     driftCount: number;
-    drifted: Array<{ title: string; body: string; url: string | null; since: string }>;
+    drifted: Array<{ userId: string; title: string; body: string; url: string | null; since: string }>;
+    ignored: Array<{ userId: string; title: string; since: string | null }>;
   };
   addons: {
     total: number;
@@ -3009,7 +3019,7 @@ export interface HealthStatus {
   // null on public multi-tenant instances - the AIOStreams proxy monitor is
   // a private-mode, single-shared-instance concept with no per-account
   // Settings field, so there's nothing real to report for a given tenant.
-  proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean } | null;
+  proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean; healthIgnored: boolean } | null;
   mismatchCount: number;
   version: { running: string; latestRelease: string | null; updateAvailable: boolean };
   timeline: Array<{

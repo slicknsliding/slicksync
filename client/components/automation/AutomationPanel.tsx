@@ -399,11 +399,11 @@ function ConditionBuilder({
           {conditions.map((c, i) => {
             const operator = operators.find((o) => o.op === c.op);
             return (
-              <div key={i} className="flex items-center gap-2">
+              <div key={i} className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                 <select
                   value={c.field}
                   onChange={(e) => updateCondition(i, { field: e.target.value })}
-                  className="flex-1 px-3 py-2 rounded-lg text-sm focus:outline-none"
+                  className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm focus:outline-none"
                   style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                 >
                   {trigger.fields.map((f) => <option key={f.name} value={f.name}>{f.label}</option>)}
@@ -411,7 +411,7 @@ function ConditionBuilder({
                 <select
                   value={c.op}
                   onChange={(e) => updateCondition(i, { op: e.target.value })}
-                  className="px-3 py-2 rounded-lg text-sm focus:outline-none"
+                  className="shrink-0 px-3 py-2 rounded-lg text-sm focus:outline-none"
                   style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                 >
                   {operators.map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
@@ -421,11 +421,16 @@ function ConditionBuilder({
                     value={String(c.value ?? '')}
                     onChange={(e) => updateCondition(i, { value: e.target.value })}
                     placeholder="value"
-                    className="flex-1 px-3 py-2 rounded-lg text-sm focus:outline-none"
+                    className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm focus:outline-none"
                     style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                   />
                 )}
-                <button onClick={() => removeCondition(i)} className="p-2 rounded-lg text-muted hover:text-error hover:bg-error-muted transition-colors shrink-0">
+                <button
+                  onClick={() => removeCondition(i)}
+                  title="Remove this condition"
+                  aria-label="Remove this condition"
+                  className="p-2 rounded-lg text-muted hover:text-error hover:bg-error-muted transition-colors shrink-0 ml-auto sm:ml-0"
+                >
                   <TrashIcon className="w-4 h-4" />
                 </button>
               </div>

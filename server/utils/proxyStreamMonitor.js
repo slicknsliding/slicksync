@@ -114,12 +114,23 @@ async function loginToAiostreams(baseUrl, username, password) {
     throw new Error(`AIOStreams login failed: ${res.status} ${res.statusText}`)
   }
 
-  const setCookie = res.headers.get('set-cookie')
-  if (!setCookie) {
+  // AIOStreams' login can set more than one cookie (session + a separate
+  // CSRF/anti-forgery cookie, confirmed on recent builds) - headers.get()
+  // on a multi-value Set-Cookie only ever returns the FIRST one (the Fetch
+  // spec special-cases Set-Cookie to not comma-join, unlike every other
+  // header), so grabbing just that dropped the second cookie and made
+  // /proxy/stats fail with 400 (missing CSRF token) rather than the 401
+  // this module already knows how to recover from. getSetCookie() (Bun/
+  // Node 18.14+) returns every Set-Cookie value as its own array entry;
+  // fall back to the old single-cookie behavior if it's ever unavailable.
+  const setCookies = typeof res.headers.getSetCookie === 'function'
+    ? res.headers.getSetCookie()
+    : (res.headers.get('set-cookie') ? [res.headers.get('set-cookie')] : [])
+  if (setCookies.length === 0) {
     throw new Error('AIOStreams login succeeded but no Set-Cookie header returned')
   }
 
-  return setCookie.split(';')[0]
+  return setCookies.map((c) => c.split(';')[0]).join('; ')
 }
 
 async function fetchProxyStats(baseUrl, username, password) {

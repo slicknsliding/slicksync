@@ -519,6 +519,7 @@ export default function SettingsPage() {
           autoplayTrailerStartMuted: settings.autoplayTrailerStartMuted !== false,
           enablePosterRatings: settings.enablePosterRatings === true,
           enableReactions: settings.enableReactions !== false,
+          enableWatchProviders: settings.enableWatchProviders !== false,
           enableAutoThemedCatalogs: settings.enableAutoThemedCatalogs === true,
         });
 
@@ -955,7 +956,7 @@ export default function SettingsPage() {
             <div className="space-y-3">
               <SettingRow
                 label="Advanced Sync"
-                description="Enable advanced sync features for more control over addon syncing"
+                description="Re-fetches each addon's live manifest before every sync, so upstream changes (new catalogs, updated resources) get pushed too - not just what's cached. Slower per sync since it hits the network for every addon."
               >
                 <ToggleSwitch
                   enabled={syncSettings.mode === 'advanced'}
@@ -1352,6 +1353,17 @@ export default function SettingsPage() {
               </SettingRow>
 
               <SettingRow
+                label="Streaming availability"
+                description={'The "Also streaming on" row in the detail modal, showing subscription/free services a title is available on (via TMDb/JustWatch).'}
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enableWatchProviders !== false}
+                  onChange={async (v) => { await handleSaveSetting('enableWatchProviders' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle streaming availability"
+                />
+              </SettingRow>
+
+              <SettingRow
                 label="Autoplay trailer"
                 description="When you open a title's detail popup, its trailer starts playing automatically instead of waiting for a Play Trailer click. Off by default - turn this on if you want it."
               >
@@ -1665,6 +1677,19 @@ export default function SettingsPage() {
                   Interactive API docs
                   <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
                 </a>
+              </div>
+
+              {/* This key is account-level (this admin console) - a
+                  genuinely different key from the per-user one Scrobbling
+                  needs, which lives behind each person's own self-service
+                  login. Called out explicitly since the two are easy to
+                  conflate and only one works for scrobbling. */}
+              <div className="pt-4 border-t border-default">
+                <p className="text-xs text-muted">
+                  Looking for the Scrobble-in API key or the Public Stats Page toggle? Those are per-user, self-service settings - log in at{' '}
+                  <a href="/login?mode=user" className="text-primary hover:underline">/login?mode=user</a>{' '}
+                  with that account&apos;s own Stremio/Nuvio credentials, then check its Settings page. This key above won&apos;t work for either.
+                </p>
               </div>
             </div>
           </Card>
