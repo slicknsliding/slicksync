@@ -1397,6 +1397,40 @@ class ApiClient {
     return response.json() as Promise<ImportConfigResult>;
   }
 
+  // Watch-history CSV import (IMDb/Letterboxd/loose-Trakt-export compatible -
+  // see server/utils/csvHistoryImport.js) for one household member.
+  async importUserHistory(userId: string, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/import-history`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+      headers: this.getAuthHeaders('POST'),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Import failed' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    return response.json() as Promise<{ imported: number; skipped: number; totalRows: number; truncated: boolean; unresolvedTitles: string[] }>;
+  }
+  // Letterboxd-import-compatible CSV export for one household member - a
+  // raw text fetch (not JSON), so the caller builds a download Blob from
+  // it, same pattern as every other "export my data" flow in this app
+  // (a plain <a href> to the API URL would bypass the auth headers this
+  // request needs).
+  async exportUserHistory(userId: string): Promise<string> {
+    const response = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/export-history.csv`, {
+      credentials: 'include',
+      headers: this.getAuthHeaders('GET'),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Export failed' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    return response.text();
+  }
+
   async resetConfig() {
     return this.fetch('/public-auth/reset', { method: 'POST' });
   }
