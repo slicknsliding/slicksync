@@ -520,6 +520,9 @@ model CustomList {
   // ownership check - this field only changes what GET / returns, not any
   // write-path authorization.
   shared           Boolean  @default(false)
+  // See schema.sqlite.prisma's comment - opt-in installable Stremio/Nuvio
+  // addon for this catalog.
+  addonEnabled     Boolean  @default(false)
   // Featured/hero treatment on the Catalogs index page - at most meaningful
   // for one catalog at a time (the client only ever shows the first pinned
   // one as the hero), but not DB-enforced as singular; a second pin just

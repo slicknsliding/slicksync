@@ -24,7 +24,7 @@ import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import {
   RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon, SparklesIcon, PhotoIcon,
-  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, ArrowPathIcon, ShareIcon, ShieldExclamationIcon,
+  CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, ArrowPathIcon, ShareIcon, ShieldExclamationIcon, PuzzlePieceIcon, ClipboardDocumentIcon,
 } from '@heroicons/react/24/outline';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
@@ -165,6 +165,7 @@ export default function ListDetailPage() {
   // pattern Discover uses for its own grid.
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
+  const [showAddonModal, setShowAddonModal] = useState(false);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ name: string; slug: string | null; url: string | null; added: number | null; existing: number | null; notFound: number | null } | null>(null);
@@ -364,6 +365,31 @@ export default function ListDetailPage() {
       toast.error(e?.message || 'Failed to update sharing');
     } finally {
       setSavingShared(false);
+    }
+  };
+
+  const [savingAddonEnabled, setSavingAddonEnabled] = useState(false);
+  const handleToggleAddonEnabled = async () => {
+    if (!list || savingAddonEnabled) return;
+    const next = !list.addonEnabled;
+    setSavingAddonEnabled(true);
+    try {
+      const updated = await api.updateList(list.id, { addonEnabled: next });
+      setList(updated);
+      toast.success(next ? 'Installable as a Stremio/Nuvio addon now' : 'No longer installable as an addon');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to update addon availability');
+    } finally {
+      setSavingAddonEnabled(false);
+    }
+  };
+  const addonManifestUrl = list ? `${typeof window !== 'undefined' ? window.location.origin : ''}/addon/catalog/${list.id}/manifest.json` : '';
+  const handleCopyAddonUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(addonManifestUrl);
+      toast.success('Manifest URL copied');
+    } catch {
+      toast.error('Failed to copy');
     }
   };
 
@@ -601,6 +627,15 @@ export default function ListDetailPage() {
         title={list.shared ? 'Visible (read-only) to other accounts on this instance - click to stop sharing' : 'Make this catalog visible (read-only) to other accounts on this instance'}
       >
         {list.shared ? 'Shared' : 'Share'}
+      </Button>
+      <Button
+        variant={list.addonEnabled ? 'primary' : 'secondary'}
+        size="sm"
+        leftIcon={<PuzzlePieceIcon className="w-4 h-4" />}
+        onClick={() => setShowAddonModal(true)}
+        title={list.addonEnabled ? 'Installable as a Stremio/Nuvio addon - click for the install link' : 'Make this catalog installable as a Stremio/Nuvio addon'}
+      >
+        {list.addonEnabled ? 'Addon Enabled' : 'Addon'}
       </Button>
       <Button
         variant={list.keptRatings.length > 0 ? 'primary' : 'secondary'}
@@ -1243,6 +1278,50 @@ export default function ListDetailPage() {
           size="lg"
           onSave={handleCoverSave}
         />
+      )}
+
+      {list && showAddonModal && (
+        <Modal isOpen={showAddonModal} onClose={() => setShowAddonModal(false)} title="Install as Addon">
+          <div className="p-6 space-y-4 max-w-lg">
+            <div className="flex items-center justify-between p-4 rounded-lg" style={{ background: 'var(--color-surface-hover)' }}>
+              <div>
+                <p className="text-sm font-medium text-default">Installable as an addon</p>
+                <p className="text-xs text-muted mt-0.5">
+                  {list.addonEnabled
+                    ? 'Anyone with the link below can install this catalog directly into Stremio/Nuvio - no login required.'
+                    : 'Turn this on to make this catalog installable directly into Stremio/Nuvio, kept in sync with whatever this catalog contains.'}
+                </p>
+              </div>
+              <ToggleSwitch checked={list.addonEnabled} onChange={handleToggleAddonEnabled} disabled={savingAddonEnabled} />
+            </div>
+
+            {list.addonEnabled && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1.5">Manifest URL</label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs px-3 py-2 rounded-lg truncate" style={{ background: 'var(--color-subtle)', color: 'var(--color-text)' }}>
+                      {addonManifestUrl}
+                    </code>
+                    <Button variant="secondary" size="sm" leftIcon={<ClipboardDocumentIcon className="w-4 h-4" />} onClick={handleCopyAddonUrl}>
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+                <a
+                  href={addonManifestUrl.replace(/^https?:\/\//, 'stremio://')}
+                  className="block w-full text-center px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
+                  style={{ background: 'var(--color-primary)', color: 'var(--color-bg)' }}
+                >
+                  Install in Stremio
+                </a>
+                <p className="text-xs text-muted text-center">
+                  On Nuvio, paste the manifest URL into "Add addon" instead - same URL works for both.
+                </p>
+              </>
+            )}
+          </div>
+        </Modal>
       )}
     </>
   );

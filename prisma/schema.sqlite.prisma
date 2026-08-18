@@ -592,6 +592,17 @@ model CustomList {
   // ownership check - this field only changes what GET / returns, not any
   // write-path authorization.
   shared           Boolean  @default(false)
+  // Owner-set opt-in: when true, this catalog is served as a real
+  // installable Stremio/Nuvio addon (server/routes/catalogAddon.js) at
+  // /addon/catalog/<this id>/manifest.json - genuinely public and
+  // unauthenticated, like a Stremio addon has to be (Stremio itself has no
+  // concept of a login for fetching a catalog). Off by default. Reuses this
+  // row's own `id` as the addon's public identifier rather than a separate
+  // slug field (unlike User.publicStatsSlug) - a cuid is already
+  // unguessable, and unlike a user's share link this is meant to be
+  // openly installable once turned on, not a "only whoever I hand the link
+  // to" link.
+  addonEnabled     Boolean  @default(false)
   // Featured/hero treatment on the Catalogs index page - at most meaningful
   // for one catalog at a time (the client only ever shows the first pinned
   // one as the hero), but not DB-enforced as singular; a second pin just
