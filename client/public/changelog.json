@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.73.2",
+    "date": "2026-08-18",
+    "title": "fix: polish pass on the v1.73.0 batch - Vault, toggles, dropdown, and more",
+    "features": [],
+    "bugFixes": [
+      "Removed catalogs-as-installable-addons - the existing MDBList/SIMKL export already covers sharing a catalog outward, and running a public addon-serving surface for it added more surface area than value.",
+      "AI Services is visible in Vault's own category list again, and its API key in Settings now shows a masked placeholder with an eye icon to reveal the real stored value on click, instead of always rendering blank.",
+      "Vault entry secrets now actually reveal on the eye-icon click in the edit form (the field is deliberately left blank on edit, so there was nothing for the old toggle to show) - fetches the real stored secret on first click instead.",
+      "Redesigned the debrid auto-remove toggle row - it's a plain toggle with the day-count field only showing once it's turned on, instead of a toggle and number input crammed into one row on every screen size.",
+      "The 90-day renewal spend forecast on Vault is now collapsed by default, showing just the total line - tap it to expand the individual renewals.",
+      "Fixed the Discover genre dropdown rendering unreadable white-on-white text in Firefox (Firefox's native dropdown popup inherits the trigger's own text color, which Chrome/Safari don't do).",
+      "Removed the floating Ctrl+K button from the bottom-right corner - it overlapped page content and duplicated the keyboard shortcut, which still works everywhere.",
+      "Redesigned the catalog detail page's action row into a couple of primary buttons plus a \"More\" menu, instead of up to 10 buttons wrapping across several lines.",
+      "The What's New banner is now a compact corner card instead of a page-spanning bar, and the onboarding wizard's \"what's different from Syncio\" step now covers every category, not just a handful of highlights.",
+      "Rebuilt the theme builder's layout into a sticky preview + grouped, labeled sections instead of one long flat list of color pickers."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.1",
     "date": "2026-08-18",
     "title": "fix: What's New banner showing at the same time as the onboarding wizard",

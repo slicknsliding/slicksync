@@ -698,15 +698,24 @@ export default function DiscoverPage() {
                   value={genre}
                   onChange={(e) => setGenre(e.target.value)}
                   aria-label="Filter by genre"
+                  // Never white text on the trigger itself (even when a
+                  // genre is active) - Firefox's native <select> popup
+                  // inherits the trigger's own `color`, unlike Chrome/Safari
+                  // which style the popup independently. text-white here
+                  // made every option in the open dropdown render white-on-
+                  // white against Firefox's light native popup background,
+                  // confirmed live. "Active" is shown with a colored
+                  // border/background instead, which the popup doesn't
+                  // inherit.
                   className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
                     genre
-                      ? 'bg-primary text-white border-transparent'
+                      ? 'bg-primary-muted text-primary border-primary'
                       : 'bg-surface-hover text-muted nav-item-hover-pill border-default'
                   }`}
                 >
-                  <option value="">All genres</option>
+                  <option value="" style={{ color: '#1a1a1a', background: '#fff' }}>All genres</option>
                   {GENRES.map((g) => (
-                    <option key={g} value={g}>{g}</option>
+                    <option key={g} value={g} style={{ color: '#1a1a1a', background: '#fff' }}>{g}</option>
                   ))}
                 </select>
               )}

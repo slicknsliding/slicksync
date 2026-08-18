@@ -603,7 +603,8 @@ export default function ThemesPage() {
               {isCustom && <Badge variant="success" size="sm">Active</Badge>}
             </div>
 
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6 items-start">
+            <div className="space-y-5 lg:sticky lg:top-6">
               {/* Live mockup — a small "app screenshot" rendered with the
                   builder's own resolved colors/font/radius/text-scale: brand
                   mark + wordmark, a stat row, the real Continue Watching
@@ -783,172 +784,6 @@ export default function ThemesPage() {
                 </select>
               </div>
 
-              <div className="flex flex-wrap gap-6">
-                <div>
-                  <label className="block text-xs font-medium mb-2 text-muted">Primary accent</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={builderPrimary}
-                      onChange={(e) => { setBuilderPrimary(e.target.value); previewCustom({ ...buildDraft(), primary: e.target.value }); }}
-                      className="w-12 h-10 rounded-lg cursor-pointer border border-default bg-transparent p-0.5"
-                    />
-                    <span className="text-xs font-mono text-muted uppercase">{builderPrimary}</span>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-2 text-muted">Secondary accent</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={builderSecondary}
-                      onChange={(e) => { setBuilderSecondary(e.target.value); previewCustom({ ...buildDraft(), secondary: e.target.value }); }}
-                      className="w-12 h-10 rounded-lg cursor-pointer border border-default bg-transparent p-0.5"
-                    />
-                    <span className="text-xs font-mono text-muted uppercase">{builderSecondary}</span>
-                  </div>
-                </div>
-                <ColorOverride
-                  label="Text color (optional)"
-                  value={builderText}
-                  seed={THEME_REAL_COLORS[builderBase].text}
-                  onSet={(v) => { setBuilderText(v); previewCustom({ ...buildDraft(), text: v }); }}
-                  onClear={() => { setBuilderText(''); previewCustom({ ...buildDraft(), text: null }); }}
-                />
-                <ColorOverride
-                  label="Muted text (optional)"
-                  value={builderTextMuted}
-                  seed={THEME_REAL_COLORS[builderBase].textMuted}
-                  onSet={(v) => { setBuilderTextMuted(v); previewCustom({ ...buildDraft(), textMuted: v }); }}
-                  onClear={() => { setBuilderTextMuted(''); previewCustom({ ...buildDraft(), textMuted: null }); }}
-                />
-                <ColorOverride
-                  label="Background (optional)"
-                  value={builderBackground}
-                  seed={themeMeta[builderBase].colors.bg}
-                  onSet={(v) => { setBuilderBackground(v); previewCustom({ ...buildDraft(), background: v }); }}
-                  onClear={() => { setBuilderBackground(''); previewCustom({ ...buildDraft(), background: null }); }}
-                />
-                <ColorOverride
-                  label="Surface / cards (optional)"
-                  value={builderSurface}
-                  seed={themeMeta[builderBase].colors.surface}
-                  onSet={(v) => { setBuilderSurface(v); previewCustom({ ...buildDraft(), surface: v }); }}
-                  onClear={() => { setBuilderSurface(''); previewCustom({ ...buildDraft(), surface: null }); }}
-                />
-                <ColorOverride
-                  label="Subtle fill (optional)"
-                  value={builderBgMuted}
-                  seed={THEME_REAL_COLORS[builderBase].bgMuted}
-                  onSet={(v) => { setBuilderBgMuted(v); previewCustom({ ...buildDraft(), bgMuted: v }); }}
-                  onClear={() => { setBuilderBgMuted(''); previewCustom({ ...buildDraft(), bgMuted: null }); }}
-                />
-                <ColorOverride
-                  label="Card borders (optional)"
-                  value={builderBorder}
-                  seed={THEME_REAL_COLORS[builderBase].border}
-                  onSet={(v) => { setBuilderBorder(v); previewCustom({ ...buildDraft(), border: v }); }}
-                  onClear={() => { setBuilderBorder(''); previewCustom({ ...buildDraft(), border: null }); }}
-                />
-                <ColorOverride
-                  label="Progress bar (optional)"
-                  value={builderProgressBar}
-                  seed={builderPrimary}
-                  onSet={(v) => { setBuilderProgressBar(v); previewCustom({ ...buildDraft(), progressBar: v }); }}
-                  onClear={() => { setBuilderProgressBar(''); previewCustom({ ...buildDraft(), progressBar: null }); }}
-                />
-                <ColorOverride
-                  label="Success accent (optional)"
-                  value={builderSuccess}
-                  seed={THEME_REAL_COLORS[builderBase].success}
-                  onSet={(v) => { setBuilderSuccess(v); previewCustom({ ...buildDraft(), success: v }); }}
-                  onClear={() => { setBuilderSuccess(''); previewCustom({ ...buildDraft(), success: null }); }}
-                />
-                <ColorOverride
-                  label="Error accent (optional)"
-                  value={builderError}
-                  seed={THEME_REAL_COLORS[builderBase].error}
-                  onSet={(v) => { setBuilderError(v); previewCustom({ ...buildDraft(), error: v }); }}
-                  onClear={() => { setBuilderError(''); previewCustom({ ...buildDraft(), error: null }); }}
-                />
-              </div>
-              <p className="text-[11px] text-muted -mt-2">
-                Progress bar overrides the resume-progress fill on Dashboard → Continue Watching (blank keeps the default primary→secondary gradient). Success/Error recolor health-check dots, badges, and confirmation toasts across the whole app.
-              </p>
-
-              <div>
-                <label className="block text-xs font-medium mb-2 text-muted">Corner roundness</label>
-                <div className="flex flex-wrap gap-2">
-                  {(Object.keys(RADIUS_PRESETS) as RadiusId[]).map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => { setBuilderRadius(id); previewCustom({ ...buildDraft(), radius: id }); }}
-                      className={`px-3 py-1.5 text-sm transition-colors ${
-                        builderRadius === id
-                          ? 'bg-primary text-white'
-                          : 'bg-surface-hover text-muted hover:text-default'
-                      }`}
-                      style={{
-                        // Preview each preset's own corner style ON the button
-                        // itself — square button for "Square", pill-ish for
-                        // "Extra rounded", etc. Reads as a live legend.
-                        borderRadius:
-                          id === 'square' ? '2px'
-                          : id === 'rounded' ? '14px'
-                          : id === 'extra' ? '20px'
-                          : '10px',
-                      }}
-                    >
-                      {RADIUS_LABELS[id]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium mb-2 text-muted">Font</label>
-                <div className="flex flex-wrap gap-2">
-                  {FONT_OPTIONS.map((f) => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => { setBuilderFont(f.id); previewCustom({ ...buildDraft(), fontDisplay: f.id }); }}
-                      style={f.family ? { fontFamily: f.family } : undefined}
-                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                        builderFont === f.id
-                          ? 'bg-primary text-white'
-                          : 'bg-surface-hover text-muted hover:text-default'
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium mb-2 text-muted">Text size</label>
-                <div className="flex flex-wrap gap-2">
-                  {(Object.keys(TEXT_SCALE_PRESETS) as TextScaleId[]).map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => { setBuilderTextScale(id); previewCustom({ ...buildDraft(), textScale: id }); }}
-                      className={`px-3 py-1.5 rounded-lg transition-colors ${
-                        builderTextScale === id
-                          ? 'bg-primary text-white'
-                          : 'bg-surface-hover text-muted hover:text-default'
-                      }`}
-                      style={{ fontSize: `${13 * TEXT_SCALE_FACTORS[id]}px` }}
-                    >
-                      {TEXT_SCALE_LABELS[id]}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[11px] text-muted mt-1.5">Scales body text and most UI chrome app-wide, not just this builder.</p>
-              </div>
-
               <div className="flex items-center gap-3 pt-1 flex-wrap">
                 {/* When a custom is currently active, offer BOTH: update it in
                     place OR fork the current builder state into a brand new
@@ -1053,6 +888,200 @@ export default function ThemesPage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Right column - the long tail of optional overrides, grouped
+                under section labels instead of one flat wrapping list, so
+                the page reads as "a few clear groups" rather than a wall of
+                identical-looking color pickers. */}
+            <div className="space-y-6">
+              <section>
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-3">Accent colors</h4>
+                <div className="grid grid-cols-2 gap-4 max-w-sm">
+                  <div>
+                    <label className="block text-xs font-medium mb-2 text-muted">Primary</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={builderPrimary}
+                        onChange={(e) => { setBuilderPrimary(e.target.value); previewCustom({ ...buildDraft(), primary: e.target.value }); }}
+                        className="w-12 h-10 rounded-lg cursor-pointer border border-default bg-transparent p-0.5"
+                      />
+                      <span className="text-xs font-mono text-muted uppercase">{builderPrimary}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-2 text-muted">Secondary</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={builderSecondary}
+                        onChange={(e) => { setBuilderSecondary(e.target.value); previewCustom({ ...buildDraft(), secondary: e.target.value }); }}
+                        className="w-12 h-10 rounded-lg cursor-pointer border border-default bg-transparent p-0.5"
+                      />
+                      <span className="text-xs font-mono text-muted uppercase">{builderSecondary}</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="pt-5" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-3">Text &amp; surface colors</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-5">
+                  <ColorOverride
+                    label="Text color"
+                    value={builderText}
+                    seed={THEME_REAL_COLORS[builderBase].text}
+                    onSet={(v) => { setBuilderText(v); previewCustom({ ...buildDraft(), text: v }); }}
+                    onClear={() => { setBuilderText(''); previewCustom({ ...buildDraft(), text: null }); }}
+                  />
+                  <ColorOverride
+                    label="Muted text"
+                    value={builderTextMuted}
+                    seed={THEME_REAL_COLORS[builderBase].textMuted}
+                    onSet={(v) => { setBuilderTextMuted(v); previewCustom({ ...buildDraft(), textMuted: v }); }}
+                    onClear={() => { setBuilderTextMuted(''); previewCustom({ ...buildDraft(), textMuted: null }); }}
+                  />
+                  <ColorOverride
+                    label="Background"
+                    value={builderBackground}
+                    seed={themeMeta[builderBase].colors.bg}
+                    onSet={(v) => { setBuilderBackground(v); previewCustom({ ...buildDraft(), background: v }); }}
+                    onClear={() => { setBuilderBackground(''); previewCustom({ ...buildDraft(), background: null }); }}
+                  />
+                  <ColorOverride
+                    label="Surface / cards"
+                    value={builderSurface}
+                    seed={themeMeta[builderBase].colors.surface}
+                    onSet={(v) => { setBuilderSurface(v); previewCustom({ ...buildDraft(), surface: v }); }}
+                    onClear={() => { setBuilderSurface(''); previewCustom({ ...buildDraft(), surface: null }); }}
+                  />
+                  <ColorOverride
+                    label="Subtle fill"
+                    value={builderBgMuted}
+                    seed={THEME_REAL_COLORS[builderBase].bgMuted}
+                    onSet={(v) => { setBuilderBgMuted(v); previewCustom({ ...buildDraft(), bgMuted: v }); }}
+                    onClear={() => { setBuilderBgMuted(''); previewCustom({ ...buildDraft(), bgMuted: null }); }}
+                  />
+                  <ColorOverride
+                    label="Card borders"
+                    value={builderBorder}
+                    seed={THEME_REAL_COLORS[builderBase].border}
+                    onSet={(v) => { setBuilderBorder(v); previewCustom({ ...buildDraft(), border: v }); }}
+                    onClear={() => { setBuilderBorder(''); previewCustom({ ...buildDraft(), border: null }); }}
+                  />
+                </div>
+                <p className="text-[11px] text-muted mt-1">All optional - each falls back to the base theme's own value until set.</p>
+              </section>
+
+              <section className="pt-5" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-3">Status &amp; accents</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-5">
+                  <ColorOverride
+                    label="Progress bar"
+                    value={builderProgressBar}
+                    seed={builderPrimary}
+                    onSet={(v) => { setBuilderProgressBar(v); previewCustom({ ...buildDraft(), progressBar: v }); }}
+                    onClear={() => { setBuilderProgressBar(''); previewCustom({ ...buildDraft(), progressBar: null }); }}
+                  />
+                  <ColorOverride
+                    label="Success accent"
+                    value={builderSuccess}
+                    seed={THEME_REAL_COLORS[builderBase].success}
+                    onSet={(v) => { setBuilderSuccess(v); previewCustom({ ...buildDraft(), success: v }); }}
+                    onClear={() => { setBuilderSuccess(''); previewCustom({ ...buildDraft(), success: null }); }}
+                  />
+                  <ColorOverride
+                    label="Error accent"
+                    value={builderError}
+                    seed={THEME_REAL_COLORS[builderBase].error}
+                    onSet={(v) => { setBuilderError(v); previewCustom({ ...buildDraft(), error: v }); }}
+                    onClear={() => { setBuilderError(''); previewCustom({ ...buildDraft(), error: null }); }}
+                  />
+                </div>
+                <p className="text-[11px] text-muted mt-1">
+                  Progress bar overrides the resume-progress fill on Dashboard → Continue Watching (blank keeps the default primary→secondary gradient). Success/Error recolor health-check dots, badges, and confirmation toasts across the whole app.
+                </p>
+              </section>
+
+              <section className="pt-5" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-3">Shape</h4>
+                <div className="flex flex-wrap gap-2">
+                  {(Object.keys(RADIUS_PRESETS) as RadiusId[]).map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => { setBuilderRadius(id); previewCustom({ ...buildDraft(), radius: id }); }}
+                      className={`px-3 py-1.5 text-sm transition-colors ${
+                        builderRadius === id
+                          ? 'bg-primary text-white'
+                          : 'bg-surface-hover text-muted hover:text-default'
+                      }`}
+                      style={{
+                        // Preview each preset's own corner style ON the button
+                        // itself — square button for "Square", pill-ish for
+                        // "Extra rounded", etc. Reads as a live legend.
+                        borderRadius:
+                          id === 'square' ? '2px'
+                          : id === 'rounded' ? '14px'
+                          : id === 'extra' ? '20px'
+                          : '10px',
+                      }}
+                    >
+                      {RADIUS_LABELS[id]}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="pt-5" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-3">Typography</h4>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium mb-2 text-muted">Font</label>
+                    <div className="flex flex-wrap gap-2">
+                      {FONT_OPTIONS.map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => { setBuilderFont(f.id); previewCustom({ ...buildDraft(), fontDisplay: f.id }); }}
+                          style={f.family ? { fontFamily: f.family } : undefined}
+                          className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                            builderFont === f.id
+                              ? 'bg-primary text-white'
+                              : 'bg-surface-hover text-muted hover:text-default'
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium mb-2 text-muted">Text size</label>
+                    <div className="flex flex-wrap gap-2">
+                      {(Object.keys(TEXT_SCALE_PRESETS) as TextScaleId[]).map((id) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => { setBuilderTextScale(id); previewCustom({ ...buildDraft(), textScale: id }); }}
+                          className={`px-3 py-1.5 rounded-lg transition-colors ${
+                            builderTextScale === id
+                              ? 'bg-primary text-white'
+                              : 'bg-surface-hover text-muted hover:text-default'
+                          }`}
+                          style={{ fontSize: `${13 * TEXT_SCALE_FACTORS[id]}px` }}
+                        >
+                          {TEXT_SCALE_LABELS[id]}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-muted mt-1.5">Scales body text and most UI chrome app-wide, not just this builder.</p>
+                  </div>
+                </div>
+              </section>
+            </div>
             </div>
           </Card>
         </PageSection>

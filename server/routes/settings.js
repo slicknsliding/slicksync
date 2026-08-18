@@ -910,6 +910,27 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // POST /account-ai-services/reveal - the real stored key, for the eye
+  // icon on Settings' AI Services field. Same CSRF-gated-POST-not-GET
+  // reasoning as vault.js's own /:id/reveal (not cacheable, never in
+  // referer headers) - this is the exact same underlying VaultEntry
+  // secret, just reached through the AI Services front door instead of
+  // needing the raw Vault entry id.
+  router.post('/account-ai-services/reveal', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const entry = await findAiVaultEntry(accountId)
+      if (!entry) return res.status(404).json({ message: 'AI Services not configured' })
+      const decrypt = require('../utils/encryption').decrypt
+      let secret
+      try { secret = decrypt(entry.encryptedSecret, req) } catch { return res.status(500).json({ message: 'Failed to decrypt secret' }) }
+      res.json({ secret })
+    } catch (e) {
+      console.error('Error revealing AI services key:', e)
+      res.status(500).json({ message: 'Failed to reveal AI services key' })
+    }
+  })
+
   // POST /account-ai-services/list-models - live model list from the
   // provider's own GET /models (the OpenAI-compatible endpoint every
   // provider in this app's suggestion list implements), instead of a
