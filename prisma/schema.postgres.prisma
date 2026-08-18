@@ -317,6 +317,11 @@ model VaultEntry {
   encryptedSecret  String    @db.Text
   testType         String    @default("manual")
   testConfig       String?   @db.Text
+  // See schema.sqlite.prisma's comment - opt-in daily auto-remove sweep for
+  // finished/idle real_debrid/torbox torrents.
+  autoRemoveEnabled   Boolean   @default(false)
+  autoRemoveAfterDays Int       @default(7)
+  lastAutoRemoveAt    DateTime?
   dashboardUrl     String?
   cost             Float? // see schema.sqlite.prisma comment
   costCycle        String    @default("monthly")

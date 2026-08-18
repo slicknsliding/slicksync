@@ -494,6 +494,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize content rating enforcement:', err)
     }
 
+    // Schedule debrid auto-remove (daily, only for real_debrid/torbox Vault
+    // entries with autoRemoveEnabled set - no-op query when nobody has it on)
+    try {
+      const { scheduleDebridAutoRemove } = require('./utils/debridAutoRemove')
+      scheduleDebridAutoRemove(prisma, decrypt)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize debrid auto-remove:', err)
+    }
+
     // Schedule SIMKL sync (pull + push, every 30m, only for users who've
     // linked a SIMKL account - no-op query when nobody has)
     try {

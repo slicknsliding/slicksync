@@ -376,6 +376,15 @@ model VaultEntry {
   encryptedSecret  String                          // encrypted API key / password / token
   testType         String    @default("manual")    // manual | generic_http | real_debrid | torbox | newznab_caps | tcp_reachability
   testConfig       String?                         // JSON: { url, method, host, port, headerName, expectStatus, bodyContains }
+  // Opt-in daily sweep (real_debrid/torbox entries only - see
+  // debridAutoRemove.js) that deletes a torrent from the provider's own
+  // account once it's finished AND has sat idle for autoRemoveAfterDays -
+  // frees up account slots automatically instead of them piling up
+  // indefinitely. Off by default: this is a real deletion on the provider's
+  // side, not just a SlickSync-local record.
+  autoRemoveEnabled   Boolean   @default(false)
+  autoRemoveAfterDays Int       @default(7)
+  lastAutoRemoveAt    DateTime?
   dashboardUrl     String?                         // optional link to the provider's own dashboard
   cost             Float?                          // what this service costs per `costCycle` (user-entered, in the account's configured currency) - feeds the Vault page's cost/spend summary; null = untracked
   costCycle        String    @default("monthly")   // "monthly" | "yearly" - the billing period `cost` is for; the summary normalizes yearly to monthly (÷12) before totaling

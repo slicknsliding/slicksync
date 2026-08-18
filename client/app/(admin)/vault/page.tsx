@@ -106,13 +106,15 @@ function ExpiryBadge({ entry }: { entry: VaultEntry }) {
   return <Badge variant="outline" size="md" className="!text-sm">{days}d left</Badge>;
 }
 
-// Live Real-Debrid/TorBox usage (active downloads, premium days left) - own
-// component (not inlined in renderEntryCard, a plain function that can't
-// hold hooks - see SortableEntryCard's own comment on the same constraint)
-// so each debrid card fetches independently on mount without re-fetching
-// every OTHER card whenever any one entry's state changes.
-function DebridUsageBadge({ entry }: { entry: VaultEntry }) {
+// Live Real-Debrid/TorBox usage (active downloads, premium days left) plus
+// the auto-remove toggle - own component (not inlined in renderEntryCard, a
+// plain function that can't hold hooks - see SortableEntryCard's own
+// comment on the same constraint) so each debrid card fetches independently
+// on mount without re-fetching every OTHER card whenever any one entry's
+// state changes.
+function DebridUsageBadge({ entry, onEntryUpdated }: { entry: VaultEntry; onEntryUpdated: (id: string, patch: Partial<VaultEntry>) => void }) {
   const [usage, setUsage] = useState<{ premiumDaysLeft: number | null; activeDownloads: number | null } | null | undefined>(undefined);
+  const [savingAutoRemove, setSavingAutoRemove] = useState(false);
 
   useEffect(() => {
     if (entry.testType !== 'real_debrid' && entry.testType !== 'torbox') return;
@@ -122,15 +124,59 @@ function DebridUsageBadge({ entry }: { entry: VaultEntry }) {
   }, [entry.id, entry.testType]);
 
   if (entry.testType !== 'real_debrid' && entry.testType !== 'torbox') return null;
-  if (!usage) return null; // undefined (loading) or null (call failed/no data) - both render nothing rather than a loading flicker on every card
 
   const parts: string[] = [];
-  if (typeof usage.activeDownloads === 'number') parts.push(`${usage.activeDownloads} active download${usage.activeDownloads === 1 ? '' : 's'}`);
-  if (typeof usage.premiumDaysLeft === 'number') parts.push(`${usage.premiumDaysLeft}d premium left`);
-  if (parts.length === 0) return null;
+  if (usage) {
+    if (typeof usage.activeDownloads === 'number') parts.push(`${usage.activeDownloads} active download${usage.activeDownloads === 1 ? '' : 's'}`);
+    if (typeof usage.premiumDaysLeft === 'number') parts.push(`${usage.premiumDaysLeft}d premium left`);
+  }
+
+  const handleToggleAutoRemove = async () => {
+    const next = !entry.autoRemoveEnabled;
+    setSavingAutoRemove(true);
+    try {
+      await api.updateVaultEntry(entry.id, { autoRemoveEnabled: next });
+      onEntryUpdated(entry.id, { autoRemoveEnabled: next });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update auto-remove');
+    } finally {
+      setSavingAutoRemove(false);
+    }
+  };
+
+  const handleChangeAutoRemoveDays = async (days: number) => {
+    if (!Number.isFinite(days) || days < 1) return;
+    try {
+      await api.updateVaultEntry(entry.id, { autoRemoveAfterDays: days });
+      onEntryUpdated(entry.id, { autoRemoveAfterDays: days });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update auto-remove');
+    }
+  };
 
   return (
-    <p className="text-xs mb-3" style={{ color: 'var(--color-textMuted)' }}>{parts.join(' · ')}</p>
+    <div className="mb-3 space-y-1.5">
+      {parts.length > 0 && (
+        <p className="text-xs" style={{ color: 'var(--color-textMuted)' }}>{parts.join(' · ')}</p>
+      )}
+      <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-textMuted)' }}>
+        <ToggleSwitch
+          checked={!!entry.autoRemoveEnabled}
+          onChange={handleToggleAutoRemove}
+          disabled={savingAutoRemove}
+        />
+        <span>Auto-remove finished torrents after</span>
+        <input
+          type="number"
+          min={1}
+          defaultValue={entry.autoRemoveAfterDays || 7}
+          onBlur={(e) => handleChangeAutoRemoveDays(parseInt(e.target.value, 10))}
+          className="w-12 px-1.5 py-0.5 rounded text-xs text-center"
+          style={{ background: 'var(--color-subtle)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+        />
+        <span>days idle</span>
+      </div>
+    </div>
   );
 }
 
@@ -753,7 +799,7 @@ function VaultPageContent() {
         <p className="text-sm mb-3" style={{ color: 'var(--color-textMuted)' }}>{entry.lastCheckMessage}</p>
       )}
 
-      <DebridUsageBadge entry={entry} />
+      <DebridUsageBadge entry={entry} onEntryUpdated={(id, patch) => setEntries(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e))} />
 
       <div className="mt-auto flex items-center gap-2 pt-2 flex-wrap" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
         {(() => {
