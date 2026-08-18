@@ -1302,7 +1302,6 @@ function AddonCard({
           <SelectionCheckbox
             checked={isSelected}
             onChange={onToggleSelect}
-            visible={isSelected}
           />
           <div className="hidden md:block">
             <ToggleSwitch
@@ -1451,7 +1450,7 @@ function AddonCard({
     >
       <div className="flex items-center gap-3 p-4">
         <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-          <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} visible={isSelected} />
+          <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} />
         </div>
         {dragHandleProps && (
           <div

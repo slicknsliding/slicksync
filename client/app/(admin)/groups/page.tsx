@@ -803,12 +803,11 @@ function GroupCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
-        {/* Selection indicator & Toggle - visible on hover or when selected */}
+        {/* Selection indicator & Toggle */}
         <div className="absolute top-4 right-4 flex items-center gap-2">
           <SelectionCheckbox
             checked={isSelected}
             onChange={onToggleSelect}
-            visible={isSelected}
           />
           <ToggleSwitch
             checked={group.isActive !== false}

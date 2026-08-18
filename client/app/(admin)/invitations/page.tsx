@@ -844,7 +844,6 @@ function InvitationCard({
             <SelectionCheckbox
               checked={isSelected}
               onChange={onToggleSelect}
-              visible={isSelected}
             />
           </div>
 

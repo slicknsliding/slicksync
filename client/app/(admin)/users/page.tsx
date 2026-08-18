@@ -975,7 +975,6 @@ function UserCard({
           <SelectionCheckbox
             checked={isSelected}
             onChange={onToggleSelect}
-            visible={isSelected}
           />
           <ToggleSwitch
             checked={user.status === 'active'}

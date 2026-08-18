@@ -99,13 +99,36 @@ async function checkTorBox(secret) {
 // Newznab-compatible indexers (NZBGeek, NinjaCentral, UsenetCrawler, DrunkenSlug, etc.)
 // t=caps doesn't require a valid key on some indexers, so we also try t=search with
 // a tiny result limit to actually exercise the key.
+// Newznab's optional <newznab:apilimits apiCurrent="X" apiMax="Y"
+// grabCurrent="Z" grabMax="W" /> element - per the spec, "clients should not
+// assume the apilimits element or any of its attributes to be present" (it's
+// entirely up to the indexer software whether to include it), and its shape
+// is only ever documented for XML, not o=json - so this check now requests
+// XML specifically and regex-extracts the element if present, rather than
+// pulling in a full XML parser dependency for one self-closing tag. Absent
+// on indexers that don't support it is expected, not an error.
+function parseNewznabApiLimits(xmlText) {
+  const m = xmlText.match(/<newznab:apilimits\b([^/>]*)\/?>/i)
+  if (!m) return null
+  const attrs = {}
+  const attrRegex = /(\w+)="([^"]*)"/g
+  let attrMatch
+  while ((attrMatch = attrRegex.exec(m[1]))) {
+    attrs[attrMatch[1]] = attrMatch[2]
+  }
+  const apiCurrent = Number(attrs.apiCurrent)
+  const apiMax = Number(attrs.apiMax)
+  if (Number.isNaN(apiCurrent) || Number.isNaN(apiMax)) return null
+  return { apiCurrent, apiMax }
+}
+
 async function checkNewznabCaps(secret, config = {}) {
   const { url } = config
   if (!url) return { ok: false, message: 'No indexer base URL configured' }
   const base = url.replace(/\/+$/, '')
   const { signal, cancel } = timeoutSignal(10000)
   try {
-    const testUrl = `${base}/api?t=caps&apikey=${encodeURIComponent(secret)}&o=json`
+    const testUrl = `${base}/api?t=caps&apikey=${encodeURIComponent(secret)}`
     // Node's fetch sends no User-Agent at all by default, which reads as a
     // bare script to a lot of indexers' own bot-protection (Cloudflare, etc.)
     // and can produce a 403 that has nothing to do with the API key itself.
@@ -119,6 +142,14 @@ async function checkNewznabCaps(secret, config = {}) {
     const text = await res.text()
     if (/error/i.test(text) && /apikey|api key|invalid/i.test(text)) {
       return { ok: false, message: 'API key rejected' }
+    }
+    const limits = parseNewznabApiLimits(text)
+    if (limits) {
+      const quotaSuffix = ` (${limits.apiCurrent}/${limits.apiMax} API calls used today)`
+      if (limits.apiCurrent >= limits.apiMax) {
+        return { ok: false, message: `Daily API quota exhausted${quotaSuffix}` }
+      }
+      return { ok: true, message: `Indexer reachable, key accepted${quotaSuffix}` }
     }
     return { ok: true, message: 'Indexer reachable, key accepted' }
   } catch (err) {

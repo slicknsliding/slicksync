@@ -3169,6 +3169,17 @@ export interface MediaDetails {
     name: string;
     parts: Array<{ id: string; title: string; poster: string | null; releaseYear: string | null }>;
   } | null;
+  // TMDb watch/providers (JustWatch data), US region - subscription/free
+  // tiers only (rent/buy excluded, see server's own comment). `link` is
+  // TMDb's required JustWatch attribution page for this title.
+  watchProviders?: {
+    link: string | null;
+    providers: Array<{ name: string; logo: string | null }>;
+  } | null;
+  // MDBList's own blended score (0-100, weighted across multiple rating
+  // sources) - null when no MDBList key is configured or MDBList has
+  // nothing for this title, same as every other optional field here.
+  mdblistScore?: number | null;
 }
 
 export interface MetricsData {
