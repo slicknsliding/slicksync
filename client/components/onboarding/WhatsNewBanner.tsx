@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { SparklesIcon, XMarkIcon } from '@heroicons/react/24/outline';
-
-const LAST_SEEN_KEY = 'slicksync-last-seen-changelog';
+import { ONBOARDING_COMPLETED_KEY, WHATS_NEW_LAST_SEEN_KEY as LAST_SEEN_KEY } from '@/lib/onboardingStorage';
 
 interface ChangelogEntry {
   version: string;
@@ -26,19 +25,21 @@ export function WhatsNewBanner() {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
+    // Onboarding not finished yet means this is a first-ever visit still
+    // mid-wizard (which covers "what's new" itself as one of its own
+    // steps) - showing this banner on top of that read as cluttered and
+    // redundant (confirmed live: both rendered at once on a fresh visit).
+    // Finishing the wizard seeds LAST_SEEN_KEY to the current version
+    // anyway, so there's nothing for this banner to show right after
+    // onboarding completes either - it only ever fires for a RETURNING
+    // visit where a newer version shipped since.
+    if (!localStorage.getItem(ONBOARDING_COMPLETED_KEY)) return;
     fetch('/changelog.json')
       .then((r) => r.json())
       .then((data: ChangelogEntry[]) => {
         if (!Array.isArray(data) || data.length === 0) return;
         const latest = data[0];
         const lastSeen = localStorage.getItem(LAST_SEEN_KEY);
-        // No stored value at all means this is either a first-ever visit
-        // (onboarding wizard's job, not this) or a pre-existing install from
-        // before this feature shipped - only the latter should actually see
-        // the banner. onboarding-completed already distinguishes them: a
-        // fresh install sets last-seen-changelog itself on completion (see
-        // OnboardingWizard), so reaching here with no stored value at all
-        // means an existing install that predates this feature.
         if (lastSeen === latest.version) return;
         setEntry(latest);
       })
@@ -87,5 +88,3 @@ export function WhatsNewBanner() {
     </AnimatePresence>
   );
 }
-
-export { LAST_SEEN_KEY as WHATS_NEW_LAST_SEEN_KEY };

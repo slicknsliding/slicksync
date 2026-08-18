@@ -7,9 +7,7 @@ import {
   UsersIcon, PuzzlePieceIcon, EnvelopeIcon, SparklesIcon, CommandLineIcon,
   CheckIcon, ArrowRightIcon, XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { WHATS_NEW_LAST_SEEN_KEY } from './WhatsNewBanner';
-
-const COMPLETED_KEY = 'slicksync-onboarding-completed';
+import { ONBOARDING_COMPLETED_KEY as COMPLETED_KEY, WHATS_NEW_LAST_SEEN_KEY } from '@/lib/onboardingStorage';
 
 // A step's own href is optional - clicking "Take me there" closes the
 // wizard and navigates; steps with no action (the welcome/tips/finish
