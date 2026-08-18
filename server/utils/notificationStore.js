@@ -24,6 +24,7 @@ const BELL_TYPE_BY_TOGGLE = {
   notifyOnSync: 'sync',
   notifyOnInvite: 'invite',
   notifyOnVault: 'vault',
+  notifyOnNewDevice: 'device',
   notifyOnBackup: 'task',
   notifyOnProxyHealth: 'proxy',
   notifyOnUpdateAvailable: 'update',

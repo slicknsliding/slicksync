@@ -232,6 +232,7 @@ export default function SettingsPage() {
     notifyOnInvite: false,
     notifyOnVault: false,
     notifyOnAddonHealth: false,
+    notifyOnNewDevice: false,
     notifyOnBackup: false,
     notifyOnProxyHealth: false,
     notifyOnUpdateAvailable: false,
@@ -480,6 +481,7 @@ export default function SettingsPage() {
           notifyOnInvite: settings.notifyOnInvite || false,
           notifyOnVault: settings.notifyOnVault || false,
           notifyOnAddonHealth: settings.notifyOnAddonHealth || false,
+          notifyOnNewDevice: settings.notifyOnNewDevice || false,
           notifyOnBackup: settings.notifyOnBackup || false,
           notifyOnProxyHealth: settings.notifyOnProxyHealth || false,
           notifyOnUpdateAvailable: settings.notifyOnUpdateAvailable || false,
@@ -732,6 +734,7 @@ export default function SettingsPage() {
       notifyOnInvite: false,
       notifyOnVault: false,
       notifyOnAddonHealth: false,
+      notifyOnNewDevice: false,
       notifyOnBackup: false,
       notifyOnProxyHealth: false,
       notifyOnUpdateAvailable: false,
@@ -750,6 +753,7 @@ export default function SettingsPage() {
         notifyOnInvite: false,
         notifyOnVault: false,
         notifyOnAddonHealth: false,
+        notifyOnNewDevice: false,
         notifyOnBackup: false,
         notifyOnProxyHealth: false,
         notifyOnUpdateAvailable: false,
@@ -1065,6 +1069,17 @@ export default function SettingsPage() {
                     enabled={syncSettings.notifyOnAddonHealth || false}
                     onChange={(v) => handleSaveSetting('notifyOnAddonHealth', v)}
                     label="Toggle addon health notifications"
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  label="New device notifications"
+                  description="Notify when a user's stream is seen from an IP we haven't confirmed for them before"
+                >
+                  <ToggleSwitch
+                    enabled={syncSettings.notifyOnNewDevice || false}
+                    onChange={(v) => handleSaveSetting('notifyOnNewDevice', v)}
+                    label="Toggle new device notifications"
                   />
                 </SettingRow>
 
