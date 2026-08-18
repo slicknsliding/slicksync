@@ -1695,6 +1695,11 @@ class ApiClient {
   async snoozeVaultEntry(id: string) {
     return this.fetch<VaultEntry>(`/vault/${id}/snooze`, { method: 'POST' });
   }
+  // Live Real-Debrid/TorBox usage (active downloads, premium days left) -
+  // usage is null for a non-debrid entry or if the live provider call failed.
+  async getVaultEntryUsage(id: string) {
+    return this.fetch<{ usage: { premiumDaysLeft: number | null; activeDownloads: number | null } | null }>(`/vault/${id}/usage`);
+  }
 
   async createVaultEntry(data: VaultEntryInput) {
     return this.fetch<{ id: string; name: string }>('/vault', {

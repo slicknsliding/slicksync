@@ -106,6 +106,34 @@ function ExpiryBadge({ entry }: { entry: VaultEntry }) {
   return <Badge variant="outline" size="md" className="!text-sm">{days}d left</Badge>;
 }
 
+// Live Real-Debrid/TorBox usage (active downloads, premium days left) - own
+// component (not inlined in renderEntryCard, a plain function that can't
+// hold hooks - see SortableEntryCard's own comment on the same constraint)
+// so each debrid card fetches independently on mount without re-fetching
+// every OTHER card whenever any one entry's state changes.
+function DebridUsageBadge({ entry }: { entry: VaultEntry }) {
+  const [usage, setUsage] = useState<{ premiumDaysLeft: number | null; activeDownloads: number | null } | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (entry.testType !== 'real_debrid' && entry.testType !== 'torbox') return;
+    let cancelled = false;
+    api.getVaultEntryUsage(entry.id).then((r) => { if (!cancelled) setUsage(r.usage); }).catch(() => { if (!cancelled) setUsage(null); });
+    return () => { cancelled = true; };
+  }, [entry.id, entry.testType]);
+
+  if (entry.testType !== 'real_debrid' && entry.testType !== 'torbox') return null;
+  if (!usage) return null; // undefined (loading) or null (call failed/no data) - both render nothing rather than a loading flicker on every card
+
+  const parts: string[] = [];
+  if (typeof usage.activeDownloads === 'number') parts.push(`${usage.activeDownloads} active download${usage.activeDownloads === 1 ? '' : 's'}`);
+  if (typeof usage.premiumDaysLeft === 'number') parts.push(`${usage.premiumDaysLeft}d premium left`);
+  if (parts.length === 0) return null;
+
+  return (
+    <p className="text-xs mb-3" style={{ color: 'var(--color-textMuted)' }}>{parts.join(' · ')}</p>
+  );
+}
+
 interface EntryFormState {
   name: string;
   category: VaultCategory;
@@ -724,6 +752,8 @@ function VaultPageContent() {
       {entry.lastCheckMessage && (
         <p className="text-sm mb-3" style={{ color: 'var(--color-textMuted)' }}>{entry.lastCheckMessage}</p>
       )}
+
+      <DebridUsageBadge entry={entry} />
 
       <div className="mt-auto flex items-center gap-2 pt-2 flex-wrap" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
         {(() => {
