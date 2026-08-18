@@ -9,7 +9,7 @@ import { PageSection } from '@/components/layout/PageContainer';
 import {
   useTheme, themeMeta, themeIds, ThemeId, FONT_OPTIONS, FontId, CustomTheme, SavedCustomTheme,
   RADIUS_PRESETS, RADIUS_LABELS, RadiusId, TEXT_SCALE_PRESETS, TEXT_SCALE_LABELS, TEXT_SCALE_FACTORS, TextScaleId,
-  THEME_REAL_COLORS,
+  THEME_REAL_COLORS, encodeThemeShareCode, decodeThemeShareCode,
 } from '@/lib/theme';
 import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId } from '@/lib/layout-mode';
 import { useDefaultViewMode } from '@/lib/viewMode';
@@ -432,6 +432,34 @@ export default function ThemesPage() {
     radius: builderRadius,
     textScale: builderTextScale,
   });
+
+  // Theme sharing via a compact copy-paste code - no server round-trip,
+  // themes are already purely client-side. See lib/theme.tsx's own comment.
+  const [showImportCode, setShowImportCode] = useState(false);
+  const [importCodeValue, setImportCodeValue] = useState('');
+
+  const handleExportCode = async () => {
+    const code = encodeThemeShareCode(buildDraft(), builderName.trim() || activeCustomTheme?.name || 'My theme');
+    try {
+      await navigator.clipboard.writeText(code);
+      toast.success('Theme code copied - paste it anywhere to share');
+    } catch {
+      toast.error('Failed to copy - your browser may be blocking clipboard access');
+    }
+  };
+
+  const handleImportCode = () => {
+    const decoded = decodeThemeShareCode(importCodeValue);
+    if (!decoded) {
+      toast.error('That doesn\'t look like a valid theme code');
+      return;
+    }
+    saveCustomTheme(decoded.theme, decoded.name);
+    toast.success(`Imported "${decoded.name}"`);
+    setImportCodeValue('');
+    setShowImportCode(false);
+  };
+
   // Re-seed the builder when the active custom theme changes out from under
   // it (cross-device sync, or the user selects a different custom to edit).
   useEffect(() => {
@@ -992,6 +1020,38 @@ export default function ThemesPage() {
                 >
                   Reset preview
                 </button>
+              </div>
+
+              {/* Theme sharing via a compact copy-paste code - no server
+                  round-trip needed, themes are already purely client-side. */}
+              <div className="pt-3" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Button variant="secondary" size="sm" onClick={handleExportCode}>
+                    Copy theme code
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setShowImportCode((v) => !v)}
+                    className="text-xs text-muted hover:text-default transition-colors"
+                  >
+                    {showImportCode ? 'Cancel import' : 'Import from a code'}
+                  </button>
+                </div>
+                {showImportCode && (
+                  <div className="flex items-center gap-2 mt-3">
+                    <input
+                      type="text"
+                      value={importCodeValue}
+                      onChange={(e) => setImportCodeValue(e.target.value)}
+                      placeholder="Paste a theme code here (starts with SST1:)"
+                      className="flex-1 px-3 py-2 rounded-lg text-sm font-mono"
+                      style={{ background: 'var(--color-subtle)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                    />
+                    <Button variant="primary" size="sm" onClick={handleImportCode} disabled={!importCodeValue.trim()}>
+                      Import
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </Card>
