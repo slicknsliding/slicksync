@@ -931,7 +931,7 @@ export default function TasksPage() {
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-6 lg:p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={{ maxWidth: layoutMode === 'nebula' ? '72rem' : '768px' }}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={{ maxWidth: layoutMode === 'nebula' ? 'min(120rem, 92vw)' : '768px' }}>
       {layoutMode === 'nebula' && (
         <NebulaPageHeading title="Tasks" subtitle="Manage and export all your SlickSync data" />
       )}

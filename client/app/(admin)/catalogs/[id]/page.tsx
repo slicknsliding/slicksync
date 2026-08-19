@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import {
   Card, Button, Badge, Modal, ConfirmModal, MediaDetailModal, PosterCard, PosterCardItem,
@@ -203,6 +203,7 @@ export default function ListDetailPage() {
   const { layoutMode } = useLayoutMode();
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const listId = params.id as string;
 
   const [list, setList] = useState<CustomList | null>(null);
@@ -482,6 +483,20 @@ export default function ListDetailPage() {
     setDraftRatings((prev) => (prev.includes(rating) ? prev.filter((r) => r !== rating) : [...prev, rating]));
   };
 
+  // Auto-open Content Rating when arriving via ?openRating=1 (the Catalogs
+  // list page's right-click menu links here instead of duplicating this
+  // page's own modal). Waits for `list` so draftRatings seeds correctly
+  // from the real keptRatings, and only fires once - the query param is
+  // then stripped so a refresh or the back button doesn't reopen it.
+  const hasAutoOpenedRatingRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoOpenedRatingRef.current || !list) return;
+    if (searchParams.get('openRating') !== '1') return;
+    hasAutoOpenedRatingRef.current = true;
+    openPolicyModal();
+    router.replace(`/catalogs/${listId}`);
+  }, [list, searchParams, listId, router]);
+
   const [previewing, setPreviewing] = useState(false);
   const [previewResult, setPreviewResult] = useState<{ keep: CustomListItem[]; remove: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number } | null>(null);
   const handlePreview = async () => {
@@ -667,6 +682,15 @@ export default function ListDetailPage() {
   // action at once instead of needing a per-button check.
   const editActions = list && !isLoading && !notFound && list.isOwner ? (
     <div className="flex items-center gap-2 flex-wrap justify-end">
+      <Button
+        variant={list.keptRatings.length > 0 ? 'primary' : 'secondary'}
+        size="sm"
+        leftIcon={<ShieldExclamationIcon className="w-4 h-4" />}
+        onClick={openPolicyModal}
+        title={list.keptRatings.length > 0 ? `Keeping only: ${list.keptRatings.join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
+      >
+        {list.keptRatings.length > 0 ? `Content Rating (${list.keptRatings.length})` : 'Content Rating'}
+      </Button>
       <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
         Suggest titles
       </Button>
@@ -716,7 +740,7 @@ export default function ListDetailPage() {
                     </MoreMenuItem>
                   </MoreMenuSection>
 
-                  <MoreMenuSection label="Share &amp; policy">
+                  <MoreMenuSection label="Share">
                     <MoreMenuItem
                       icon={<ShareIcon className="w-4 h-4" />}
                       tint="primary"
@@ -726,15 +750,10 @@ export default function ListDetailPage() {
                     >
                       {list.shared ? 'Shared (click to unshare)' : 'Share'}
                     </MoreMenuItem>
-                    <MoreMenuItem
-                      icon={<ShieldExclamationIcon className="w-4 h-4" />}
-                      tint="primary"
-                      active={list.keptRatings.length > 0}
-                      onClick={() => { setShowMoreMenu(false); openPolicyModal(); }}
-                      title={list.keptRatings.length > 0 ? `Keeping only: ${list.keptRatings.join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
-                    >
-                      {list.keptRatings.length > 0 ? `Content Rating (${list.keptRatings.length})` : 'Content Rating'}
-                    </MoreMenuItem>
+                    {/* Content Rating moved to its own always-visible button
+                        next to Suggest titles - stays here only as the
+                        "undo" for a removal it triggered, since that's rare
+                        enough to belong in the overflow menu. */}
                     {list.lastRemovalAt && (
                       <MoreMenuItem
                         icon={<ArrowPathIcon className="w-4 h-4" />}
@@ -806,7 +825,7 @@ export default function ListDetailPage() {
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
         {layoutMode === 'nebula' && (
           <NebulaPageHeading title={title} subtitle={subtitle || 'Catalogs'} leading={backButton} actions={editActions} />
         )}
