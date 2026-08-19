@@ -32,6 +32,7 @@ import {
   ChevronDownIcon,
   CodeBracketIcon,
   Cog6ToothIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 
 // Helper to compute configure URL from manifest URL
@@ -1256,7 +1257,7 @@ export default function AddonDetailPage() {
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
       {layoutMode === 'nebula' && (
         <NebulaPageHeading title={addon.name} subtitle="Addons" actions={detailActions} />
       )}
@@ -2606,6 +2607,11 @@ function AddonHealthHistorySection({ addonId }: { addonId: string }) {
   const [loading, setLoading] = useState(true);
   const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Null while loading/not-yet-fetched or when there's nothing to summarize
+  // (clean history, or no AI key configured) - the raw log below covers
+  // both cases fine on its own, so this only ever renders when it has
+  // something genuinely useful to add.
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -2621,7 +2627,8 @@ function AddonHealthHistorySection({ addonId }: { addonId: string }) {
 
   useEffect(() => {
     fetchHistory();
-  }, [fetchHistory]);
+    api.getAddonHealthSummary(addonId).then((r) => setAiSummary(r.summary)).catch(() => setAiSummary(null));
+  }, [fetchHistory, addonId]);
 
   const handleCheckNow = async () => {
     setIsChecking(true);
@@ -2630,6 +2637,7 @@ function AddonHealthHistorySection({ addonId }: { addonId: string }) {
       // Give the server a moment to complete the check then refresh
       await new Promise(resolve => setTimeout(resolve, 2500));
       await fetchHistory();
+      api.getAddonHealthSummary(addonId).then((r) => setAiSummary(r.summary)).catch(() => {});
       toast.success('Health check complete');
     } catch (err: any) {
       toast.error(err.message || 'Health check failed');
@@ -2721,6 +2729,16 @@ function AddonHealthHistorySection({ addonId }: { addonId: string }) {
           Check Now
         </Button>
       </div>
+
+      {aiSummary && (
+        <div
+          className="flex items-start gap-2.5 p-3 mb-4 rounded-xl text-sm"
+          style={{ background: 'var(--color-primary-muted)', color: 'var(--color-text)', border: '1px solid var(--color-surface-border)' }}
+        >
+          <SparklesIcon className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--color-primary)' }} />
+          <p>{aiSummary}</p>
+        </div>
+      )}
 
       {(error || history.length === 0) ? (
         <div className="flex flex-col items-center justify-center py-8 text-center">

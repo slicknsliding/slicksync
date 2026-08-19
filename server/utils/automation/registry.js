@@ -86,6 +86,44 @@ const TRIGGERS = {
       { name: 'providerType', label: 'Provider', type: 'string' },
     ],
   },
+  // Broader than invite.accepted - fires for ANY new user, including ones
+  // created directly from the Users page (Add User), which invite.accepted
+  // never sees since there's no invite involved. Also fires for invited
+  // users (both emit on the same creation), so a rule that genuinely only
+  // cares about invites should still use invite.accepted for its inviteCode
+  // field - this one carries no invite context at all.
+  'user.created': {
+    label: 'A new user is created',
+    description: 'Fires for any new user - via an invitation or created directly from the Users page.',
+    fields: [
+      { name: 'username', label: 'Username', type: 'string' },
+      { name: 'userId', label: 'User ID', type: 'string' },
+      { name: 'email', label: 'Email', type: 'string' },
+      { name: 'providerType', label: 'Provider', type: 'string' },
+    ],
+  },
+  // Fires on a recurring daily schedule rather than in response to
+  // something happening elsewhere in the app - the odd one out among these
+  // triggers, which is why it's the only one with its own triggerConfig
+  // (hour/minute, account-timezone aware) instead of relying purely on
+  // conditions. See automation/scheduler.js for the tick that fires this.
+  'time.daily': {
+    label: 'At a scheduled time each day',
+    description: 'Fires once a day at the time you set below, in your account\'s timezone (Settings -> Privacy & Display).',
+    fields: [
+      { name: 'hour', label: 'Hour (0-23)', type: 'number' },
+      { name: 'minute', label: 'Minute (0-59)', type: 'number' },
+    ],
+    // Distinct from `fields` (the event payload/condition fields) - this
+    // describes the trigger's OWN configuration, only meaningful for a
+    // schedule-driven trigger like this one. The rule builder shows a time
+    // picker writing into rule.triggerConfig when this trigger is selected;
+    // every other trigger type has no use for triggerConfig at all.
+    triggerConfigFields: [
+      { name: 'hour', label: 'Hour (0-23)', type: 'number', required: true },
+      { name: 'minute', label: 'Minute (0-59)', type: 'number', required: true },
+    ],
+  },
 }
 
 // ---- Condition operators ---------------------------------------------------
@@ -128,9 +166,50 @@ const ACTIONS = {
     },
   },
 
+  webhook: {
+    label: 'Call a webhook',
+    description: 'POSTs the trigger\'s data as JSON to a URL you choose - for reaching anything outside SlickSync\'s built-in channels (Home Assistant, ntfy, a custom script, n8n/Zapier, etc).',
+    configFields: [
+      { name: 'url', label: 'URL', type: 'string', required: true },
+      { name: 'headers', label: 'Extra headers (optional)', type: 'text', hint: 'One per line, e.g. Authorization: Bearer xxx' },
+    ],
+    // Same trust model as the Discord webhook URL already configurable in
+    // Settings - only an account admin can create/edit an automation rule,
+    // so a URL pointed at an internal address is exactly as much (and no
+    // more) of a concern as that existing feature already is. Not treating
+    // this as a new attack surface requiring SSRF guarding the Discord path
+    // never needed either.
+    async run({ config, payload }) {
+      const url = typeof config.url === 'string' ? config.url.trim() : ''
+      if (!url) throw new Error('No webhook URL configured')
+      let parsed
+      try { parsed = new URL(url) } catch { throw new Error('Invalid webhook URL') }
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('Webhook URL must be http or https')
+
+      const headers = { 'Content-Type': 'application/json' }
+      for (const line of String(config.headers || '').split('\n')) {
+        const idx = line.indexOf(':')
+        if (idx === -1) continue
+        const key = line.slice(0, idx).trim()
+        const value = line.slice(idx + 1).trim()
+        if (key) headers[key] = value
+      }
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
+      try {
+        const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload || {}), signal: controller.signal })
+        if (!res.ok) throw new Error(`Webhook returned ${res.status}`)
+        return `Called webhook (${res.status})`
+      } finally {
+        clearTimeout(timeoutId)
+      }
+    },
+  },
+
   'addon.disable': {
     label: 'Disable an addon',
-    description: 'Turns off a specific addon (the same isActive flag the seasonal scheduler uses).',
+    description: 'Turns off a specific addon.',
     configFields: [
       { name: 'addonId', label: 'Addon', type: 'addon', required: true, hint: 'Leave blank to act on the addon from the trigger.' },
     ],
@@ -235,6 +314,7 @@ function describeRegistry() {
   return {
     triggers: Object.entries(TRIGGERS).map(([type, t]) => ({
       type, label: t.label, description: t.description, fields: t.fields,
+      ...(t.triggerConfigFields ? { triggerConfigFields: t.triggerConfigFields } : {}),
     })),
     operators: Object.entries(OPERATORS).map(([op, o]) => ({ op, label: o.label, unary: !!o.unary })),
     actions: Object.entries(ACTIONS).map(([type, a]) => ({

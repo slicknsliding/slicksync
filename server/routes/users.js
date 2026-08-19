@@ -374,6 +374,315 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   }
 
+  // TMDb "where to watch" (JustWatch data via TMDb) - answers "do I even
+  // need an addon for this" right on the detail popup. Hardcoded to the US
+  // region for now - TMDb's response covers every region in one call, but
+  // there's no per-account locale/country setting anywhere in this codebase
+  // yet to pick from, and US is the most complete JustWatch dataset by far.
+  // Only flatrate (subscription) and free (ad-supported) tiers are surfaced -
+  // rent/buy costs money too, which defeats the entire "you already have
+  // this" point of the badge. `link` is TMDb's own JustWatch attribution
+  // page - their API terms require linking back to it when this data is
+  // shown, not just displaying provider logos on their own.
+  const watchProvidersCache = new Map()
+  const WATCH_PROVIDERS_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+  async function fetchTmdbWatchProviders(imdbId, type, req) {
+    if (!imdbId || !/^tt\d+$/.test(imdbId)) return null
+    const cacheKey = `${imdbId}:${type}`
+    const cached = watchProvidersCache.get(cacheKey)
+    if (cached && (Date.now() - cached.at) < WATCH_PROVIDERS_CACHE_TTL_MS) return cached.value
+    const key = await resolveTmdbKeyForBackdrop(req)
+    if (!key) return null
+    try {
+      const findRsp = await fetch(`https://api.themoviedb.org/3/find/${imdbId}?api_key=${encodeURIComponent(key)}&external_source=imdb_id`)
+      if (!findRsp.ok) return null
+      const findData = await findRsp.json()
+      const tmdbType = type === 'series' ? 'tv' : 'movie'
+      const hit = (tmdbType === 'tv' ? findData.tv_results : findData.movie_results)?.[0]
+      if (!hit?.id) {
+        watchProvidersCache.set(cacheKey, { value: null, at: Date.now() })
+        return null
+      }
+
+      const provRsp = await fetch(`https://api.themoviedb.org/3/${tmdbType}/${hit.id}/watch/providers?api_key=${encodeURIComponent(key)}`)
+      if (!provRsp.ok) return null
+      const provData = await provRsp.json()
+      const usResult = provData.results?.US
+      if (!usResult) {
+        watchProvidersCache.set(cacheKey, { value: null, at: Date.now() })
+        return null
+      }
+
+      const mapProvider = (p) => ({ name: p.provider_name, logo: p.logo_path ? `https://image.tmdb.org/t/p/w92${p.logo_path}` : null })
+      const providers = [...(usResult.flatrate || []), ...(usResult.free || [])].map(mapProvider)
+      // Dedupe - the same service can appear in both flatrate and free tiers
+      // for different content on the same title (rare but confirmed possible).
+      const seen = new Set()
+      const deduped = providers.filter((p) => (seen.has(p.name) ? false : (seen.add(p.name), true)))
+
+      const finalValue = deduped.length > 0 ? { link: usResult.link || null, providers: deduped } : null
+      watchProvidersCache.set(cacheKey, { value: finalValue, at: Date.now() })
+      return finalValue
+    } catch {
+      return null
+    }
+  }
+
+  // MDBList's own blended `score` (0-100, weighted across IMDb/RT/Metacritic/
+  // Letterboxd/Trakt etc, not any single source) - the mdblistApiKey was
+  // previously only ever used for whole-list import/export (listImport.js),
+  // never this per-title lookup. Confirmed against MDBList's own OpenAPI
+  // schema (https://api.mdblist.com/schema/): GET /{provider}/{media_type}/
+  // {media_id}/ returns `score` at the top level. Silently absent (not an
+  // error) when no MDBList key is configured, same as every other optional
+  // metadata source on this endpoint.
+  const mdblistScoreCache = new Map()
+  const MDBLIST_SCORE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+  async function fetchMdblistScore(imdbId, type, apiKey) {
+    if (!apiKey || !imdbId || !/^tt\d+$/.test(imdbId)) return null
+    const cacheKey = `${imdbId}:${type}`
+    const cached = mdblistScoreCache.get(cacheKey)
+    if (cached && (Date.now() - cached.at) < MDBLIST_SCORE_CACHE_TTL_MS) return cached.value
+    try {
+      const mediaType = type === 'series' ? 'show' : 'movie'
+      const rsp = await fetch(`https://api.mdblist.com/imdb/${mediaType}/${imdbId}/?apikey=${encodeURIComponent(apiKey)}`)
+      if (!rsp.ok) return null
+      const data = await rsp.json()
+      const finalValue = typeof data.score === 'number' ? data.score : null
+      mdblistScoreCache.set(cacheKey, { value: finalValue, at: Date.now() })
+      return finalValue
+    } catch {
+      return null
+    }
+  }
+
+  // ==================== PUBLIC STATS ====================
+  // A genuinely public, unauthenticated share link - distinct from
+  // activityVisibility (which only ever exposes data to other members of
+  // the SAME account). Opt-in per user, off by default, enabled from the
+  // user's own Settings page (see routes/publicLibrary.js's POST
+  // /public-stats/enable|disable, which use that self-service authKey
+  // identity check instead of an admin session). The slug (not the user's
+  // real id) is what a public visitor presents - no accountId/getAccountId
+  // check on the GET below, since a visitor has no session at all; the
+  // slug itself, a random 32-char token unguessable by brute force, is the
+  // only "auth" this needs.
+
+  // GET /users/public-stats/:slug - the actual public payload. No auth, no
+  // accountId scoping (the slug IS the scope - it's globally unique). Only
+  // ever returns a small, deliberately curated set of fields: username,
+  // avatar, total watch time, top titles, streak. Never email, never
+  // provider details, never anything else on the account.
+  router.get('/public-stats/:slug', async (req, res) => {
+    try {
+      const user = await prisma.user.findFirst({
+        where: { publicStatsSlug: req.params.slug, publicStatsEnabled: true },
+        select: { id: true, accountId: true, username: true, avatarUrl: true, colorIndex: true },
+      })
+      if (!user) return res.status(404).json({ error: 'This stats page is not available' })
+
+      const [movies, episodes] = await Promise.all([
+        prisma.movieWatchHistory.findMany({
+          where: { accountId: user.accountId || 'default', userId: user.id },
+          select: { itemName: true, poster: true, durationSeconds: true, watchedAt: true },
+        }),
+        prisma.episodeWatchHistory.findMany({
+          where: { accountId: user.accountId || 'default', userId: user.id },
+          select: { showName: true, poster: true, durationSeconds: true, watchedAt: true },
+        }),
+      ])
+
+      const totalWatchSeconds = [...movies, ...episodes].reduce((sum, r) => sum + (r.durationSeconds || 0), 0)
+
+      // Top titles by accumulated duration - movies and episodes of the same
+      // show grouped together under the show's own name.
+      const byTitle = new Map()
+      for (const m of movies) {
+        if (!m.itemName) continue
+        const key = m.itemName
+        const cur = byTitle.get(key) || { name: m.itemName, poster: m.poster, seconds: 0 }
+        cur.seconds += m.durationSeconds || 0
+        byTitle.set(key, cur)
+      }
+      for (const e of episodes) {
+        if (!e.showName) continue
+        const key = e.showName
+        const cur = byTitle.get(key) || { name: e.showName, poster: e.poster, seconds: 0 }
+        cur.seconds += e.durationSeconds || 0
+        if (!cur.poster && e.poster) cur.poster = e.poster
+        byTitle.set(key, cur)
+      }
+      const topTitles = Array.from(byTitle.values())
+        .sort((a, b) => b.seconds - a.seconds)
+        .slice(0, 10)
+        .map((t) => ({ name: t.name, poster: t.poster }))
+
+      // Simple day-streak over this user's own watchedAt dates - ending
+      // today or yesterday (so a streak survives up until the point the
+      // account's actual "today" catches up), consecutive days back from
+      // there. Self-contained rather than reusing buildMetricsForAccount's
+      // version, which is entangled with a full account-wide, period-
+      // filtered aggregation this lightweight public endpoint has no need for.
+      const dateSet = new Set(
+        [...movies, ...episodes]
+          .filter((r) => r.watchedAt)
+          .map((r) => new Date(r.watchedAt).toISOString().split('T')[0])
+      )
+      let streak = 0
+      const today = new Date().toISOString().split('T')[0]
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+      let checkDateStr = dateSet.has(today) ? today : (dateSet.has(yesterday) ? yesterday : null)
+      if (checkDateStr) {
+        let checkDate = new Date(checkDateStr)
+        while (dateSet.has(checkDate.toISOString().split('T')[0])) {
+          streak++
+          checkDate.setDate(checkDate.getDate() - 1)
+        }
+      }
+
+      res.json({
+        username: user.username,
+        avatarUrl: user.avatarUrl,
+        colorIndex: user.colorIndex,
+        totalWatchHours: Math.round((totalWatchSeconds / 3600) * 10) / 10,
+        totalTitles: byTitle.size,
+        streak,
+        topTitles,
+      })
+    } catch (error) {
+      console.error('Error fetching public stats:', error)
+      res.status(500).json({ error: 'Failed to fetch public stats' })
+    }
+  })
+
+  // ==================== HISTORY CSV IMPORT/EXPORT ====================
+  // The biggest adoption blocker for a Trakt alternative is leaving your
+  // history behind - see csvHistoryImport.js's own comment for why this
+  // reads by flexible column name (IMDb/Letterboxd/loose-Trakt-export
+  // compatible) rather than three hardcoded exact formats.
+  const { createMulterInstance } = require('../utils/helpers/multer')
+  const csvUpload = createMulterInstance({
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      const looksLikeCsv = file.mimetype === 'text/csv' || file.mimetype === 'application/vnd.ms-excel' || /\.csv$/i.test(file.originalname || '')
+      if (looksLikeCsv) return cb(null, true)
+      cb(new Error('Only .csv files are allowed'), false)
+    },
+  })
+
+  // POST /users/:id/import-history - multipart file upload (field name
+  // "file"). Must be before /:id route.
+  router.post('/:id/import-history', csvUpload.single('file'), async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded (expected multipart field "file")' })
+
+      const { parseCsv, mapColumns, resolveRowToImdbItem, parseWatchedDate, normalizeRating } = require('../utils/csvHistoryImport')
+      const { resolveSinglePoster } = require('../utils/libraryHelpers')
+      const { resolveOmdbKeyForAccount } = require('../utils/listImport')
+
+      const text = req.file.buffer.toString('utf8')
+      const { headers, records } = parseCsv(text)
+      if (records.length === 0) return res.status(400).json({ error: 'No rows found in that CSV' })
+      const colMap = mapColumns(headers)
+      const omdbApiKey = await resolveOmdbKeyForAccount(prisma, accountId).catch(() => null)
+
+      // Capped so one enormous export (a decade of Letterboxd diary
+      // entries) can't turn a single request into thousands of sequential
+      // OMDb lookups - matches the same protective cap listImport.js's own
+      // MAX_IMPORT_ITEMS already applies to title-based catalog imports.
+      const MAX_ROWS = 2000
+      const rows = records.slice(0, MAX_ROWS)
+
+      let imported = 0
+      let skipped = 0
+      const unresolved = []
+
+      for (const row of rows) {
+        const resolved = await resolveRowToImdbItem(row, colMap, omdbApiKey)
+        if (!resolved) {
+          skipped++
+          if (colMap.title && row[colMap.title]) unresolved.push(row[colMap.title])
+          continue
+        }
+        const watchedAt = colMap.watchedDate ? (parseWatchedDate(row[colMap.watchedDate]) || new Date()) : new Date()
+        const rating = colMap.rating ? normalizeRating(row[colMap.rating]) : null
+
+        try {
+          const poster = await resolveSinglePoster(resolved.imdbId, 'movie', null)
+          await prisma.movieWatchHistory.upsert({
+            where: { accountId_userId_itemId: { accountId, userId: user.id, itemId: resolved.imdbId } },
+            create: { accountId, userId: user.id, itemId: resolved.imdbId, itemName: resolved.title || resolved.imdbId, poster, profileLabel: 'Imported', completed: true, watchedAt },
+            update: {}, // never overwrite an existing native record with an imported one
+          })
+          if (rating) {
+            await prisma.titleRating.upsert({
+              where: { accountId_itemId_season: { accountId, itemId: resolved.imdbId, season: 0 } },
+              create: { accountId, itemId: resolved.imdbId, itemType: 'movie', season: 0, rating, itemName: resolved.title || null },
+              update: {},
+            }).catch(() => {}) // best-effort - a rating conflict must never fail the whole import
+          }
+          imported++
+        } catch (e) {
+          skipped++
+        }
+      }
+
+      res.json({
+        imported,
+        skipped,
+        totalRows: records.length,
+        truncated: records.length > MAX_ROWS,
+        unresolvedTitles: unresolved.slice(0, 20),
+      })
+    } catch (error) {
+      console.error('Error importing history CSV:', error)
+      res.status(500).json({ error: error?.message || 'Failed to import history' })
+    }
+  })
+
+  // GET /users/:id/export-history.csv - Letterboxd-import-compatible CSV
+  // (Title,Year,imdbID,WatchedDate,Rating10 - the exact column names
+  // Letterboxd's own importer accepts, confirmed against
+  // letterboxd.com/about/importing-data/). Must be before /:id route.
+  router.get('/:id/export-history.csv', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+
+      const movies = await prisma.movieWatchHistory.findMany({
+        where: { accountId, userId: user.id },
+        orderBy: { watchedAt: 'desc' },
+      })
+      const ratings = await prisma.titleRating.findMany({ where: { accountId, itemId: { in: movies.map((m) => m.itemId) } } })
+      const ratingByItemId = new Map(ratings.map((r) => [r.itemId, r.rating]))
+
+      const escapeCsv = (v) => {
+        const s = String(v ?? '')
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+      }
+      const lines = ['Title,Year,imdbID,WatchedDate,Rating10']
+      for (const m of movies) {
+        const year = '' // MovieWatchHistory doesn't store release year separately
+        const watchedDate = m.watchedAt ? new Date(m.watchedAt).toISOString().split('T')[0] : ''
+        const rating = ratingByItemId.get(m.itemId) || ''
+        lines.push([escapeCsv(m.itemName), year, m.itemId, watchedDate, rating].join(','))
+      }
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="${user.username || 'watch-history'}.csv"`)
+      res.send(lines.join('\n'))
+    } catch (error) {
+      console.error('Error exporting history CSV:', error)
+      res.status(500).json({ error: 'Failed to export history' })
+    }
+  })
+
   // GET /users/media-details - Cinemeta detail lookup for the Activity page's
   // poster-click modal (cast, rating, genres, etc). Must be before /:id route.
   router.get('/media-details', async (req, res) => {
@@ -388,7 +697,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ error: 'itemId and type are required' })
       }
 
-      const { resolveOmdbKey } = require('../utils/listImport')
+      const { resolveOmdbKey, resolveMdblistKey } = require('../utils/listImport')
       const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
       const metadata = await fetchMetadata(itemId, type, videoId || null, omdbApiKey)
       if (!metadata) {
@@ -403,11 +712,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // opening animation on mobile. Stripped at the response boundary only -
       // fetchMetadata's cache entry (shared with Continue Watching) still has it.
       const { allEpisodes, ...detailsForClient } = metadata
-      const [backdrop, collection] = await Promise.all([
+      const mdblistKey = await resolveMdblistKey(prisma, getAccountId, req)
+      const [backdrop, collection, watchProviders, mdblistScore] = await Promise.all([
         fetchTmdbBackdrop(itemId, req),
         fetchTmdbCollection(itemId, type, req),
+        fetchTmdbWatchProviders(itemId, type, req),
+        fetchMdblistScore(itemId, type, mdblistKey),
       ])
-      res.json({ ...detailsForClient, backdrop, collection })
+      res.json({ ...detailsForClient, backdrop, collection, watchProviders, mdblistScore })
     } catch (error) {
       console.error('Error fetching media details:', error)
       res.status(500).json({ error: 'Failed to fetch media details' })
@@ -2880,6 +3192,30 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   });
 
   // Patch user (partial update)
+  // PATCH /api/users/:id/health-ignore - hide this user's Sync Guardian
+  // drift alert from the Health page's Attention list, same treatment as
+  // Addon/VaultEntry's own healthIgnored (see addons.js's /:id/health-ignore
+  // for the identical pattern). Sync Guardian re-derives drift on its own
+  // schedule regardless of this flag - it only controls whether Health
+  // surfaces it as Attention, not whether the underlying drift gets fixed.
+  router.patch('/:id/health-ignore', async (req, res) => {
+    try {
+      const { id } = req.params
+      const { healthIgnored } = req.body
+
+      const user = await dbUtils.findEntity(prisma, 'user', id, getAccountId(req))
+      if (!user) {
+        return responseUtils.notFound(res, 'User')
+      }
+
+      const updated = await dbUtils.updateEntity(prisma, 'user', id, { healthIgnored: !!healthIgnored }, getAccountId(req))
+      return responseUtils.success(res, { id: updated.id, healthIgnored: updated.healthIgnored })
+    } catch (error) {
+      console.error('Error updating user health-ignore state:', error)
+      return responseUtils.internalError(res, error.message)
+    }
+  })
+
   router.patch('/:id', async (req, res) => {
     try {
       const { id } = req.params

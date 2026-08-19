@@ -45,6 +45,15 @@ model User {
   notifyOnWatch      Boolean   @default(true) // Whether THIS user's watch activity (started/watched) triggers a notification at all. When discordWebhookUrl is set, their watch pings route there instead of the account's shared webhook.
   apiKey             String? // User-specific API key for accessing own metrics
   activityVisibility String    @default("private") // "public" or "private" - when public, group members can see this user's library/history
+  // A genuinely public, unauthenticated share link (unlike activityVisibility
+  // above, which only ever exposes data to other members of THIS account) -
+  // opt-in per user, off by default. publicStatsSlug is a random unguessable
+  // token (not the user's real id) so the link can be shared without
+  // exposing anything else about the account. Disabling clears the slug
+  // entirely rather than just flipping the flag, so a previously-shared link
+  // can never work again even if re-enabled later (a fresh slug is issued).
+  publicStatsEnabled Boolean   @default(false)
+  publicStatsSlug    String?   @unique
   lastSyncedAt       DateTime? // When user addons were last successfully synced
   syncStatus         String? // "idle", "syncing", "success", "error"
   syncErrorMessage   String? // Last sync error message if any
@@ -61,6 +70,11 @@ model User {
   providerConnectionError   String?
   providerConnectionErrorAt DateTime?
   createdAt          DateTime  @default(now())
+  // Hides this user's Sync Guardian drift alert from the Health page's
+  // Attention list/notifications entirely - same treatment as Addon/
+  // VaultEntry's own healthIgnored, for a known drift the admin doesn't
+  // want repeated pinging about.
+  healthIgnored      Boolean   @default(false)
 
   // Relationships
 
@@ -153,20 +167,6 @@ model Addon {
   // clears it (sets back to null) off every addon that had it.
   customTag        String?
 
-  // Seasonal auto-scheduling (server/utils/addonScheduler.js) - opt-in
-  // per addon, year-agnostic recurring MM-DD window (e.g. a Halloween
-  // addon: start 10-01, end 11-01). The scheduler flips isActive to match
-  // whether "today" (account-timezone-aware, see dateUtils.js's
-  // getAccountMonthDay) falls inside the window - manually toggling
-  // isActive outside the window still works, the next scheduler tick just
-  // corrects it back. A window where start > end (by month-day ordering)
-  // wraps the year boundary (e.g. 12-01 -> 01-01 for "all of December").
-  scheduleEnabled    Boolean @default(false)
-  scheduleStartMonth Int?
-  scheduleStartDay   Int?
-  scheduleEndMonth   Int?
-  scheduleEndDay     Int?
-
   // Relationships
   groupAddons GroupAddon[]
   healthHistory AddonHealthHistory[]
@@ -218,6 +218,10 @@ model AppAccount {
   passwordHash String?
   // SQLite does not support Prisma Json type; store as TEXT (stringified JSON)
   sync         String?
+  // Mutes the Health page's Proxy connectivity card - it's one global
+  // account-wide check (no per-item entity like Addon/VaultEntry to hang a
+  // healthIgnored flag off), so the mute lives here instead.
+  proxyHealthIgnored Boolean @default(false)
   apiKeyHash   String? // Encrypted API key
   aiometadataManifestUrl String? // User-editable AIOMetadata addon manifest URL, used to look up posters for AIOStreams-proxy-detected Now Playing entries that have no WatchSession match
   avatarUrl    String? // Admin's own profile picture: full URL or /uploads/avatars/<file> for uploaded images
@@ -390,6 +394,15 @@ model VaultEntry {
   encryptedSecret  String                          // encrypted API key / password / token
   testType         String    @default("manual")    // manual | generic_http | real_debrid | torbox | newznab_caps | tcp_reachability
   testConfig       String?                         // JSON: { url, method, host, port, headerName, expectStatus, bodyContains }
+  // Opt-in daily sweep (real_debrid/torbox entries only - see
+  // debridAutoRemove.js) that deletes a torrent from the provider's own
+  // account once it's finished AND has sat idle for autoRemoveAfterDays -
+  // frees up account slots automatically instead of them piling up
+  // indefinitely. Off by default: this is a real deletion on the provider's
+  // side, not just a SlickSync-local record.
+  autoRemoveEnabled   Boolean   @default(false)
+  autoRemoveAfterDays Int       @default(7)
+  lastAutoRemoveAt    DateTime?
   dashboardUrl     String?                         // optional link to the provider's own dashboard
   cost             Float?                          // what this service costs per `costCycle` (user-entered, in the account's configured currency) - feeds the Vault page's cost/spend summary; null = untracked
   costCycle        String    @default("monthly")   // "monthly" | "yearly" - the billing period `cost` is for; the summary normalizes yearly to monthly (÷12) before totaling
@@ -593,15 +606,22 @@ model CustomList {
   // one as the hero), but not DB-enforced as singular; a second pin just
   // means the client picks the most-recently-updated one to feature.
   pinned           Boolean  @default(false)
-  // Opt-in content-rating policy for this catalog (e.g. a "Kids" catalog
+  // Opt-in content-rating ALLOWLIST for this catalog (e.g. a "Kids" catalog
   // whose contents feed a restricted group's addon catalogs) - a JSON array
-  // of OMDb "Rated" values to flag ("R","NC-17","TV-MA","TV-14","Not Rated").
-  // Null/empty = no policy (default). Deliberately a review tool, not an
-  // add-time block: GET /:id/flagged checks existing items against this on
-  // demand, since titles reach a catalog from several different entry
-  // points across the app and a hard block at every one of them would be a
-  // much larger surface to get right. See server/utils/contentRating.js.
-  blockedRatings   String?
+  // of OMDb "Rated" values to KEEP ("G","PG","TV-Y", etc). Null/empty = no
+  // policy (default, nothing touched). Renamed from blockedRatings
+  // (formerly a flag-only review list) - this is now an active filter:
+  // applying it removes every item whose rating isn't in this list. See
+  // server/utils/contentRating.js and lastRemovalSnapshot below.
+  keptRatings      String?
+  // Full itemsJson as it was immediately before the most recent content-
+  // rating removal - a one-step undo for what's otherwise a destructive
+  // action, not a full history stack. Cleared (both fields null) once
+  // restored, or overwritten by the next removal. null = nothing to
+  // restore, either because no removal has ever run or it was already
+  // restored/superseded.
+  lastRemovalSnapshot String?
+  lastRemovalAt    DateTime?
   // Auto-generated themed catalog (opt-in, Settings -> SlickTrax -> Auto-
   // generated catalogs; see server/utils/autoThemedCatalogs.js). False/null
   // for every hand-made or imported catalog. autoGeneratedKey is a stable

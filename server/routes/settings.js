@@ -442,6 +442,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           autoplayTrailerStartMuted: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.autoplayTrailerStartMuted === 'boolean') ? syncCfg.autoplayTrailerStartMuted : true,
           enablePosterRatings: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enablePosterRatings === 'boolean') ? syncCfg.enablePosterRatings : false,
           enableReactions: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableReactions === 'boolean') ? syncCfg.enableReactions : true,
+          enableWatchProviders: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchProviders === 'boolean') ? syncCfg.enableWatchProviders : true,
           // Opt-in, not opt-out (like enableAutoplayTrailer above) - auto-
           // generating and persisting a new Catalog from a detected taste
           // cluster is a bigger, more visible change than a scrolling
@@ -493,6 +494,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           autoplayTrailerStartMuted: typeof syncCfg.autoplayTrailerStartMuted === 'boolean' ? syncCfg.autoplayTrailerStartMuted : true,
           enablePosterRatings: typeof syncCfg.enablePosterRatings === 'boolean' ? syncCfg.enablePosterRatings : false,
           enableReactions: typeof syncCfg.enableReactions === 'boolean' ? syncCfg.enableReactions : true,
+          enableWatchProviders: typeof syncCfg.enableWatchProviders === 'boolean' ? syncCfg.enableWatchProviders : true,
           enableAutoThemedCatalogs: typeof syncCfg.enableAutoThemedCatalogs === 'boolean' ? syncCfg.enableAutoThemedCatalogs : false,
           tmdbApiKey: typeof syncCfg.tmdbApiKey === 'string' ? syncCfg.tmdbApiKey : '',
           mdblistApiKey: typeof syncCfg.mdblistApiKey === 'string' ? syncCfg.mdblistApiKey : '',
@@ -502,7 +504,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableAutoThemedCatalogs: false })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableWatchProviders: true, enableAutoThemedCatalogs: false })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -510,7 +512,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -584,6 +586,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           autoplayTrailerStartMuted: autoplayTrailerStartMuted !== undefined ? !!autoplayTrailerStartMuted : (typeof baseCfg.autoplayTrailerStartMuted === 'boolean' ? baseCfg.autoplayTrailerStartMuted : true),
           enablePosterRatings: enablePosterRatings !== undefined ? !!enablePosterRatings : (typeof baseCfg.enablePosterRatings === 'boolean' ? baseCfg.enablePosterRatings : false),
           enableReactions: enableReactions !== undefined ? !!enableReactions : (typeof baseCfg.enableReactions === 'boolean' ? baseCfg.enableReactions : true),
+          enableWatchProviders: enableWatchProviders !== undefined ? !!enableWatchProviders : (typeof baseCfg.enableWatchProviders === 'boolean' ? baseCfg.enableWatchProviders : true),
           enableAutoThemedCatalogs: enableAutoThemedCatalogs !== undefined ? !!enableAutoThemedCatalogs : (typeof baseCfg.enableAutoThemedCatalogs === 'boolean' ? baseCfg.enableAutoThemedCatalogs : false),
           // Optional TMDb API key for the cast/crew deep-dive. Trimmed; empty
           // string clears it (falls back to the TMDB_API_KEY env var, if any).
@@ -652,6 +655,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (autoplayTrailerStartMuted !== undefined) partial.autoplayTrailerStartMuted = !!autoplayTrailerStartMuted
       if (enablePosterRatings !== undefined) partial.enablePosterRatings = !!enablePosterRatings
       if (enableReactions !== undefined) partial.enableReactions = !!enableReactions
+      if (enableWatchProviders !== undefined) partial.enableWatchProviders = !!enableWatchProviders
       if (enableAutoThemedCatalogs !== undefined) partial.enableAutoThemedCatalogs = !!enableAutoThemedCatalogs
       if (tmdbApiKey !== undefined) partial.tmdbApiKey = typeof tmdbApiKey === 'string' ? tmdbApiKey.trim() : ''
       if (mdblistApiKey !== undefined) partial.mdblistApiKey = typeof mdblistApiKey === 'string' ? mdblistApiKey.trim() : ''
@@ -861,6 +865,219 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       return res.json({ message: 'API key revoked' })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to revoke API key' })
+    }
+  })
+
+  // AI Services (natural-language Catalog building - server/utils/nlCatalog.js).
+  // Storage is still a Vault entry underneath (category 'ai') - see
+  // nlCatalog.js's resolveAiCredentials comment for why that stays a real,
+  // rotatable Vault credential rather than a lightweight settings key like
+  // TMDb/MDBList/OMDb above. This is just a focused, Settings-native form
+  // for it: most people configuring one AI key don't need Vault's full
+  // generic entry form (name/provider/testType/cost/expiry/etc.) to get
+  // there, and having it live only in Vault with no explanation of what it
+  // powers was exactly the "does putting a key in Vault even do anything?"
+  // confusion this exists to fix. The entry is still fully visible/editable
+  // from Vault itself for anyone who wants that (rotation history, cost
+  // tracking, expiry reminders) - this doesn't replace Vault, just adds a
+  // clearer front door to the same underlying entry.
+  async function findAiVaultEntry(accountId) {
+    return prisma.vaultEntry.findFirst({
+      where: { accountId, category: 'ai', isActive: true },
+      orderBy: [{ position: 'asc' }, { updatedAt: 'desc' }],
+    })
+  }
+
+  // GET /account-ai-services - status only, secret never returned (same
+  // pattern as /account-api above). lastCheckStatus/Message come from the
+  // real verification PUT performs on every save (see below) - "configured"
+  // alone used to be all this reported, which meant a garbage key showed
+  // exactly the same as a working one until someone actually tried the
+  // feature and it silently fell back to the keyword parser.
+  router.get('/account-ai-services', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const entry = await findAiVaultEntry(accountId)
+      if (!entry) return res.json({ configured: false })
+      let config = {}
+      try { config = entry.testConfig ? JSON.parse(entry.testConfig) : {} } catch { config = {} }
+      return res.json({
+        configured: true,
+        baseUrl: config.baseUrl || null,
+        model: config.model || null,
+        lastCheckStatus: entry.lastCheckStatus || null,
+        lastCheckMessage: entry.lastCheckMessage || null,
+      })
+    } catch (e) {
+      console.error('Error fetching AI services status:', e)
+      return res.status(500).json({ message: 'Failed to fetch AI services status' })
+    }
+  })
+
+  // POST /account-ai-services/reveal - the real stored key, for the eye
+  // icon on Settings' AI Services field. Same CSRF-gated-POST-not-GET
+  // reasoning as vault.js's own /:id/reveal (not cacheable, never in
+  // referer headers) - this is the exact same underlying VaultEntry
+  // secret, just reached through the AI Services front door instead of
+  // needing the raw Vault entry id.
+  router.post('/account-ai-services/reveal', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const entry = await findAiVaultEntry(accountId)
+      if (!entry) return res.status(404).json({ message: 'AI Services not configured' })
+      const decrypt = require('../utils/encryption').decrypt
+      let secret
+      try { secret = decrypt(entry.encryptedSecret, req) } catch { return res.status(500).json({ message: 'Failed to decrypt secret' }) }
+      res.json({ secret })
+    } catch (e) {
+      console.error('Error revealing AI services key:', e)
+      res.status(500).json({ message: 'Failed to reveal AI services key' })
+    }
+  })
+
+  // POST /account-ai-services/list-models - live model list from the
+  // provider's own GET /models (the OpenAI-compatible endpoint every
+  // provider in this app's suggestion list implements), instead of a
+  // hardcoded guess. Hardcoded model names go stale fast (confirmed real
+  // case: gemini-2.0-flash, gpt-4o-mini, and llama-3.3-70b-versatile were
+  // ALL retired/deprecated by their providers since this feature's
+  // suggestions were written) - a live call is the only version of this
+  // that doesn't need updating every time a provider reshuffles its lineup.
+  // Takes { apiKey, baseUrl } from the form directly (not necessarily
+  // saved yet) so models can be browsed before committing; apiKey blank
+  // falls back to the already-saved key, same "leave blank to keep
+  // current" convention as the save endpoint itself.
+  router.post('/account-ai-services/list-models', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const { apiKey, baseUrl } = req.body || {}
+      let effectiveKey = typeof apiKey === 'string' ? apiKey.trim() : ''
+      if (!effectiveKey) {
+        const entry = await findAiVaultEntry(accountId)
+        if (entry) effectiveKey = decrypt(entry.encryptedSecret, req)
+      }
+      if (!effectiveKey) return res.status(400).json({ message: 'No API key to list models with' })
+
+      const effectiveBaseUrl = (typeof baseUrl === 'string' && baseUrl.trim()) ? baseUrl.trim().replace(/\/+$/, '') : 'https://api.openai.com/v1'
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
+      let response
+      try {
+        response = await fetch(`${effectiveBaseUrl}/models`, {
+          headers: { Authorization: `Bearer ${effectiveKey}` },
+          signal: controller.signal,
+        })
+      } finally {
+        clearTimeout(timeoutId)
+      }
+      if (!response.ok) {
+        return res.status(400).json({ message: `Provider returned ${response.status} listing models` })
+      }
+      const data = await response.json().catch(() => null)
+      // OpenAI-compatible shape: { data: [{ id: "..." }, ...] }. Some
+      // providers (confirmed: Google's compat layer) instead return a bare
+      // array - handled either way rather than assuming one shape.
+      const rawList = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []
+      const models = rawList
+        .map((m) => (typeof m === 'string' ? m : m?.id))
+        .filter((id) => typeof id === 'string' && id.trim())
+        .sort()
+      return res.json({ models })
+    } catch (e) {
+      console.error('Error listing AI models:', e)
+      return res.status(400).json({ message: e?.message || 'Failed to list models' })
+    }
+  })
+
+  // Runs the real request the feature itself sends (nlCatalog.js's callAi,
+  // with a throwaway description) and writes the verdict onto the entry's
+  // existing lastCheckStatus/lastCheckMessage fields (VaultEntry already has
+  // these for every other category's checker - AI was just the one category
+  // that never actually used them, testType: 'manual' from the start).
+  async function verifyAndRecordAiServices(accountId, entry) {
+    const { resolveAiCredentials, callAi } = require('../utils/nlCatalog')
+    try {
+      const creds = await resolveAiCredentials(prisma, accountId, decrypt)
+      if (!creds) throw new Error('No credentials to verify')
+      await callAi('test', creds)
+      await prisma.vaultEntry.update({
+        where: { id: entry.id },
+        data: { lastCheckedAt: new Date(), lastCheckStatus: 'ok', lastCheckMessage: null },
+      })
+      return { lastCheckStatus: 'ok', lastCheckMessage: null }
+    } catch (err) {
+      const message = err?.message || 'Verification failed'
+      await prisma.vaultEntry.update({
+        where: { id: entry.id },
+        data: { lastCheckedAt: new Date(), lastCheckStatus: 'error', lastCheckMessage: message },
+      }).catch(() => {}) // best-effort - a failed status write must not turn a reported verification failure into a 500
+      return { lastCheckStatus: 'error', lastCheckMessage: message }
+    }
+  }
+
+  // PUT /account-ai-services - create the entry on first save, update it
+  // (in place) on every save after. apiKey is optional on update (blank =
+  // keep the existing key, same convention as Vault's own PUT /:id) but
+  // required to create one in the first place. Verifies with a real request
+  // before responding, so "configured: true" always means "this was proven
+  // to work just now," not just "something got saved."
+  router.put('/account-ai-services', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const { apiKey, baseUrl, model } = req.body || {}
+      const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() : ''
+      const testConfig = (baseUrl || model)
+        ? JSON.stringify({ baseUrl: (baseUrl || '').trim() || undefined, model: (model || '').trim() || undefined })
+        : null
+
+      const existing = await findAiVaultEntry(accountId)
+      if (existing) {
+        const data = { testConfig }
+        if (trimmedKey) data.encryptedSecret = encrypt(trimmedKey, req)
+        const updated = await prisma.vaultEntry.update({ where: { id: existing.id }, data })
+        const verdict = await verifyAndRecordAiServices(accountId, updated)
+        return res.json({ configured: true, ...verdict })
+      }
+
+      if (!trimmedKey) {
+        return res.status(400).json({ message: 'API key is required' })
+      }
+      const maxPositionEntry = await prisma.vaultEntry.findFirst({
+        where: { accountId, category: 'ai' },
+        orderBy: { position: 'desc' },
+        select: { position: true },
+      })
+      const created = await prisma.vaultEntry.create({
+        data: {
+          accountId,
+          name: 'AI Services',
+          category: 'ai',
+          secretLabel: 'API Key',
+          encryptedSecret: encrypt(trimmedKey, req),
+          testType: 'manual',
+          testConfig,
+          position: (maxPositionEntry?.position ?? -1) + 1,
+        },
+      })
+      const verdict = await verifyAndRecordAiServices(accountId, created)
+      return res.status(201).json({ configured: true, ...verdict })
+    } catch (e) {
+      console.error('Error saving AI services config:', e)
+      return res.status(500).json({ message: 'Failed to save AI services config' })
+    }
+  })
+
+  // DELETE /account-ai-services - removes the underlying Vault entry entirely.
+  router.delete('/account-ai-services', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const existing = await findAiVaultEntry(accountId)
+      if (existing) await prisma.vaultEntry.delete({ where: { id: existing.id } })
+      return res.json({ configured: false })
+    } catch (e) {
+      console.error('Error removing AI services config:', e)
+      return res.status(500).json({ message: 'Failed to remove AI services config' })
     }
   })
 

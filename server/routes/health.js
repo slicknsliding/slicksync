@@ -18,7 +18,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
 
       const { getVersionStatus } = require('../utils/versionCheck');
 
-      const [addons, vaultEntries, driftNotifications, mismatchCount, users, version, addonEvents, vaultProxyEvents] = await Promise.all([
+      const [addons, vaultEntries, driftNotifications, mismatchCount, users, version, addonEvents, vaultProxyEvents, appAccount] = await Promise.all([
         prisma.addon.findMany({
           where: { accountId },
           select: { id: true, name: true, isOnline: true, lastHealthCheck: true, healthCheckError: true, healthIgnored: true },
@@ -27,12 +27,15 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
           where: { accountId, isActive: true },
           select: { id: true, name: true, provider: true, lastCheckStatus: true, lastCheckMessage: true, lastCheckedAt: true, expiresAt: true, notifyDaysBefore: true, healthIgnored: true },
         }),
+        // dedupeKey is `sync-guardian-${user.id}` (see syncGuardian.js) - kept
+        // in the select so a drifted user's own healthIgnored flag can be
+        // checked below without a second query.
         prisma.notification.findMany({
           where: { accountId, type: 'sync', dedupeKey: { startsWith: 'sync-guardian-' } },
-          select: { title: true, body: true, url: true, createdAt: true },
+          select: { title: true, body: true, url: true, createdAt: true, dedupeKey: true },
         }),
         prisma.notification.count({ where: { accountId, type: 'mismatch' } }),
-        prisma.user.findMany({ where: { accountId, isActive: true }, select: { id: true } }),
+        prisma.user.findMany({ where: { accountId, isActive: true }, select: { id: true, username: true, healthIgnored: true } }),
         getVersionStatus(),
         // Unified incident timeline, part 1: addon offline/online edge events
         // (AddonHealthAlert already logs exactly this - see the model's own
@@ -54,6 +57,10 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
           orderBy: { createdAt: 'desc' },
           take: 50,
         }),
+        // Proxy has no per-item entity to hang a healthIgnored flag off of
+        // (it's one global connectivity check, not a list) - the mute lives
+        // on the account itself instead.
+        prisma.appAccount.findUnique({ where: { id: accountId }, select: { proxyHealthIgnored: true } }),
       ]);
 
       const timeline = [
@@ -111,6 +118,13 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
       });
       const vaultIgnored = vaultEntries.filter((v) => v.healthIgnored);
 
+      // Sync - same healthIgnored treatment as addons/vault above, keyed by
+      // user since that's what dedupeKey encodes (`sync-guardian-${userId}`).
+      const ignoredUserIds = new Set(users.filter((u) => u.healthIgnored).map((u) => u.id));
+      const driftedUserId = (n) => (n.dedupeKey || '').replace(/^sync-guardian-/, '');
+      const driftVisible = driftNotifications.filter((n) => !ignoredUserIds.has(driftedUserId(n)));
+      const driftIgnored = driftNotifications.filter((n) => ignoredUserIds.has(driftedUserId(n)));
+
       // Proxy connectivity - last poll outcome, in-memory (single-instance
       // deploy). This entire concept is private-mode-only: the monitor is
       // wired up once at boot against ONE shared AIOSTREAMS_URL env var for
@@ -126,11 +140,12 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
           const { getProxyMonitorStatus } = require('../utils/proxyStreamMonitor');
           proxy = { ...getProxyMonitorStatus(), configured: !!process.env.AIOSTREAMS_URL };
         } catch {}
+        proxy.healthIgnored = !!appAccount?.proxyHealthIgnored;
       }
 
       const overall =
-        addonsOffline.length === 0 && vaultFailing.length === 0 && driftNotifications.length === 0 &&
-        (!proxy || proxy.ok !== false)
+        addonsOffline.length === 0 && vaultFailing.length === 0 && driftVisible.length === 0 &&
+        (!proxy || proxy.ok !== false || proxy.healthIgnored)
           ? 'healthy'
           : 'attention';
 
@@ -139,8 +154,16 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
         checkedAt: new Date().toISOString(),
         sync: {
           usersTracked: users.length,
-          driftCount: driftNotifications.length,
-          drifted: driftNotifications.map((n) => ({ title: n.title, body: n.body, url: n.url, since: n.createdAt })),
+          driftCount: driftVisible.length,
+          drifted: driftVisible.map((n) => ({ userId: driftedUserId(n), title: n.title, body: n.body, url: n.url, since: n.createdAt })),
+          ignored: driftIgnored.map((n) => ({ userId: driftedUserId(n), title: n.title, since: n.createdAt })).concat(
+            // A user can be marked ignored before they've ever actually
+            // drifted (pre-emptive mute) - driftIgnored above only covers
+            // ones with a live drift notification right now, so also list
+            // any healthIgnored user who isn't already in that set.
+            users.filter((u) => u.healthIgnored && !driftIgnored.some((n) => driftedUserId(n) === u.id))
+              .map((u) => ({ userId: u.id, title: u.username, since: null }))
+          ),
         },
         addons: {
           total: addons.length,
@@ -166,6 +189,25 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE }) => {
     } catch (error) {
       console.error('Error building health status:', error);
       res.status(500).json({ error: 'Failed to build health status' });
+    }
+  });
+
+  // PATCH /api/health/proxy-ignore - mute the AIOStreams proxy connectivity
+  // card's Attention state. Account-level (see proxy's own comment above for
+  // why: one shared monitor, no per-item entity to hang a flag off of).
+  router.patch('/proxy-ignore', async (req, res) => {
+    try {
+      const { healthIgnored } = req.body;
+      const accountId = getAccountId(req) || 'default';
+      const updated = await prisma.appAccount.update({
+        where: { id: accountId },
+        data: { proxyHealthIgnored: !!healthIgnored },
+        select: { proxyHealthIgnored: true },
+      });
+      res.json({ healthIgnored: updated.proxyHealthIgnored });
+    } catch (error) {
+      console.error('Error updating proxy health-ignore state:', error);
+      res.status(500).json({ error: 'Failed to update proxy health-ignore state' });
     }
   });
 

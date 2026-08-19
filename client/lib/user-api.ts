@@ -63,6 +63,8 @@ export interface UserInfo {
   expiresAt?: string;
   discordWebhookUrl?: string | null;
   notifyOnWatch?: boolean;
+  publicStatsEnabled?: boolean;
+  publicStatsSlug?: string | null;
 }
 
 export interface LibraryItem {
@@ -406,6 +408,26 @@ export const userAuth = {
     return request('/public-library/activity-visibility', {
       method: 'PATCH',
       body: JSON.stringify({ userId, activityVisibility: visibility }),
+      authKey,
+    });
+  },
+
+  /**
+   * Enable/disable the public, unauthenticated stats share link. Enabling
+   * returns the slug (not the full URL) - the caller builds the shareable
+   * link from it. Distinct from activityVisibility above (household-only).
+   */
+  async enablePublicStats(userId: string, authKey: string): Promise<{ slug: string }> {
+    return request('/public-library/public-stats/enable', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+      authKey,
+    });
+  },
+  async disablePublicStats(userId: string, authKey: string): Promise<{ success: boolean }> {
+    return request('/public-library/public-stats/disable', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
       authKey,
     });
   },

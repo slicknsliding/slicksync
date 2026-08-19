@@ -769,6 +769,12 @@ class ApiClient {
     }>(`/addons/${id}/health-history?limit=${limit}`);
   }
 
+  // AI incident summary of recent health-check history - null when the
+  // history is clean (nothing to summarize) or no AI key is configured.
+  async getAddonHealthSummary(id: string) {
+    return this.fetch<{ summary: string | null }>(`/addons/${id}/health-summary`);
+  }
+
   // Backup Management
   async getAddonBackup(id: string) {
     return this.fetch<{
@@ -1002,6 +1008,42 @@ class ApiClient {
   async rotateApiKey() {
     return this.fetch<{ apiKey: string }>('/settings/account-api-key', {
       method: 'PUT',
+    });
+  }
+
+  // AI Services - powers natural-language Catalog building (Catalogs ->
+  // "Describe a catalog"). Stored as a Vault entry underneath, but this is
+  // the focused Settings-native form for it - see server/routes/settings.js's
+  // account-ai-services comment for why.
+  async getAiServicesStatus() {
+    return this.fetch<{ configured: boolean; baseUrl?: string | null; model?: string | null; lastCheckStatus?: 'ok' | 'error' | null; lastCheckMessage?: string | null }>('/settings/account-ai-services');
+  }
+  // The real stored key, for the eye icon's reveal - same underlying
+  // VaultEntry secret as vault.js's own /:id/reveal.
+  async revealAiServicesKey() {
+    return this.fetch<{ secret: string }>('/settings/account-ai-services/reveal', { method: 'POST' });
+  }
+  // Saving always re-verifies with a real request (see settings.js's own
+  // comment) - the response's lastCheckStatus/Message reflect that just-run
+  // check, not merely "something got saved."
+  async setAiServices(data: { apiKey?: string; baseUrl?: string; model?: string }) {
+    return this.fetch<{ configured: boolean; lastCheckStatus: 'ok' | 'error'; lastCheckMessage: string | null }>('/settings/account-ai-services', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+  // Live model list from the provider itself, not a hardcoded guess - see
+  // settings.js's own comment on why (model names go stale fast). apiKey
+  // blank falls back to whatever's already saved.
+  async listAiModels(data: { apiKey?: string; baseUrl?: string }) {
+    return this.fetch<{ models: string[] }>('/settings/account-ai-services/list-models', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+  async removeAiServices() {
+    return this.fetch<{ configured: boolean }>('/settings/account-ai-services', {
+      method: 'DELETE',
     });
   }
 
@@ -1360,6 +1402,40 @@ class ApiClient {
     return response.json() as Promise<ImportConfigResult>;
   }
 
+  // Watch-history CSV import (IMDb/Letterboxd/loose-Trakt-export compatible -
+  // see server/utils/csvHistoryImport.js) for one household member.
+  async importUserHistory(userId: string, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/import-history`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+      headers: this.getAuthHeaders('POST'),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Import failed' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    return response.json() as Promise<{ imported: number; skipped: number; totalRows: number; truncated: boolean; unresolvedTitles: string[] }>;
+  }
+  // Letterboxd-import-compatible CSV export for one household member - a
+  // raw text fetch (not JSON), so the caller builds a download Blob from
+  // it, same pattern as every other "export my data" flow in this app
+  // (a plain <a href> to the API URL would bypass the auth headers this
+  // request needs).
+  async exportUserHistory(userId: string): Promise<string> {
+    const response = await fetch(`${API_BASE}/users/${encodeURIComponent(userId)}/export-history.csv`, {
+      credentials: 'include',
+      headers: this.getAuthHeaders('GET'),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Export failed' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    return response.text();
+  }
+
   async resetConfig() {
     return this.fetch('/public-auth/reset', { method: 'POST' });
   }
@@ -1658,6 +1734,11 @@ class ApiClient {
   async snoozeVaultEntry(id: string) {
     return this.fetch<VaultEntry>(`/vault/${id}/snooze`, { method: 'POST' });
   }
+  // Live Real-Debrid/TorBox usage (active downloads, premium days left) -
+  // usage is null for a non-debrid entry or if the live provider call failed.
+  async getVaultEntryUsage(id: string) {
+    return this.fetch<{ usage: { premiumDaysLeft: number | null; activeDownloads: number | null } | null }>(`/vault/${id}/usage`);
+  }
 
   async createVaultEntry(data: VaultEntryInput) {
     return this.fetch<{ id: string; name: string }>('/vault', {
@@ -1726,14 +1807,6 @@ class ApiClient {
     return this.fetch<{ tagColors: Record<string, string> }>(`/addons/tags/${encodeURIComponent(name)}/color`, {
       method: 'PUT',
       body: JSON.stringify({ color }),
-    });
-  }
-  // Seasonal auto-scheduling (server/utils/addonScheduler.js). Pass just
-  // scheduleEnabled to toggle without touching a previously-saved window.
-  async setAddonSchedule(addonId: string, data: { scheduleEnabled?: boolean; scheduleStartMonth?: number; scheduleStartDay?: number; scheduleEndMonth?: number; scheduleEndDay?: number }) {
-    return this.fetch<{ scheduleEnabled: boolean; scheduleStartMonth: number | null; scheduleStartDay: number | null; scheduleEndMonth: number | null; scheduleEndDay: number | null }>(`/addons/${addonId}/schedule`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
     });
   }
   async setAddonProtected(addonId: string, protectedFlag: boolean, unsafe?: boolean) {
@@ -1842,7 +1915,7 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
-  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean; blockedRatings?: string[] }) {
+  async updateList(id: string, data: { name?: string; description?: string; coverImageUrl?: string | null; coverColorIndex?: number | null; pinned?: boolean; autoRefresh?: boolean; autoRefreshFrequency?: 'daily' | 'weekly'; shared?: boolean }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -1874,13 +1947,32 @@ class ApiClient {
     const qs = ruleId ? `?ruleId=${encodeURIComponent(ruleId)}` : '';
     return this.fetch<AutomationRun[]>(`/automation/runs${qs}`);
   }
-  // Checks this catalog's current items against its own current
-  // blockedRatings policy (server/utils/contentRating.js) - a review tool,
-  // run on demand, not a live gate. Requires an OMDb key.
-  async getFlaggedContent(id: string) {
-    return this.fetch<{ flagged: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number; policy: string[] }>(
-      `/lists/${encodeURIComponent(id)}/flagged`
+  // Content rating is now a destructive allowlist (server/utils/
+  // contentRating.js) - preview shows what a candidate list would do
+  // without changing anything; apply actually removes non-matching items
+  // (and snapshots for undo); restore undoes the single most recent apply.
+  // What's currently in the catalog by rating, independent of any candidate
+  // policy - shown before anyone checks a box, so "what's actually in here"
+  // doesn't stay hidden until after picking ratings and hitting Preview.
+  async getContentRatingBreakdown(id: string) {
+    return this.fetch<{ counts: Record<string, number>; unknownCount: number; checked: number }>(
+      `/lists/${encodeURIComponent(id)}/content-rating-breakdown`
     );
+  }
+  async previewContentRating(id: string, keptRatings: string[]) {
+    const qs = keptRatings.length ? `?keep=${encodeURIComponent(keptRatings.join(','))}` : '';
+    return this.fetch<{ keep: CustomListItem[]; remove: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number }>(
+      `/lists/${encodeURIComponent(id)}/preview-content-rating${qs}`
+    );
+  }
+  async applyContentRating(id: string, keptRatings: string[]) {
+    return this.fetch<CustomList & { removedCount: number }>(`/lists/${encodeURIComponent(id)}/apply-content-rating`, {
+      method: 'POST',
+      body: JSON.stringify({ keptRatings }),
+    });
+  }
+  async restoreContentRatingRemoval(id: string) {
+    return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/restore-content-rating`, { method: 'POST' });
   }
   async addToList(id: string, item: { id: string; type: 'movie' | 'series'; name: string; poster?: string | null; year?: number | string | null }) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items`, {
@@ -1974,6 +2066,22 @@ class ApiClient {
 
   async setAddonHealthIgnored(id: string, healthIgnored: boolean) {
     return this.fetch<{ success: boolean; data: { id: string; healthIgnored: boolean } }>(`/addons/${id}/health-ignore`, {
+      method: 'PATCH',
+      body: JSON.stringify({ healthIgnored }),
+    });
+  }
+
+  async setUserHealthIgnored(id: string, healthIgnored: boolean) {
+    return this.fetch<{ success: boolean; data: { id: string; healthIgnored: boolean } }>(`/users/${id}/health-ignore`, {
+      method: 'PATCH',
+      body: JSON.stringify({ healthIgnored }),
+    });
+  }
+
+  // Proxy has no per-item entity (one shared connectivity check) - the mute
+  // lives on the account itself instead of a /:id route.
+  async setProxyHealthIgnored(healthIgnored: boolean) {
+    return this.fetch<{ healthIgnored: boolean }>('/health/proxy-ignore', {
       method: 'PATCH',
       body: JSON.stringify({ healthIgnored }),
     });
@@ -2152,6 +2260,20 @@ class ApiClient {
     }
   }
 
+  // Discover row backed by SIMKL's public Trending/Most Anticipated feeds -
+  // needs only a SIMKL Client ID (Settings -> External API Keys), not a
+  // linked user. Returns [] rather than throwing on any failure (missing
+  // key, SIMKL down) so callers can render nothing instead of an error
+  // state for what's a bonus row, not core functionality.
+  async getSimklDiscoverRow(list: 'trending' | 'anticipated', type: 'movies' | 'shows') {
+    try {
+      const result = await this.fetch<{ items: SimklDiscoverItem[] }>(`/lists/simkl-discover?list=${list}&type=${type}`);
+      return result.items || [];
+    } catch {
+      return [];
+    }
+  }
+
   async discoverSearch(type: 'movie' | 'series', query: string) {
     const params = new URLSearchParams({ type, query });
     try {
@@ -2288,6 +2410,10 @@ export interface VaultEntry {
   testConfig?: Record<string, any> | null;
   updatedAt: string;
   position?: number;
+  // real_debrid/torbox only - daily sweep that deletes a finished torrent
+  // from the provider's own account once it's sat idle this many days.
+  autoRemoveEnabled?: boolean;
+  autoRemoveAfterDays?: number;
 }
 
 export interface PushDevice {
@@ -2318,6 +2444,8 @@ export interface VaultEntryInput {
   costCycle?: 'monthly' | 'yearly';
   expiresAt?: string;
   notifyDaysBefore?: number;
+  autoRemoveEnabled?: boolean;
+  autoRemoveAfterDays?: number;
 }
 
 export interface Addon {
@@ -2354,14 +2482,6 @@ export interface Addon {
   // routes/addons.js's /:id/protect) and the user-defined custom tag.
   isProtected?: boolean;
   customTag?: string | null;
-  // Seasonal auto-scheduling (server/utils/addonScheduler.js) - a
-  // year-agnostic recurring MM-DD window this addon auto-enables/disables
-  // for. Null dates = never configured yet.
-  scheduleEnabled?: boolean;
-  scheduleStartMonth?: number | null;
-  scheduleStartDay?: number | null;
-  scheduleEndMonth?: number | null;
-  scheduleEndDay?: number | null;
 }
 
 export interface CreateAddonData {
@@ -2486,6 +2606,7 @@ export interface SyncSettings {
   notifyOnInvite?: boolean;
   notifyOnVault?: boolean;
   notifyOnAddonHealth?: boolean;
+  notifyOnNewDevice?: boolean;
   notifyOnBackup?: boolean;
   notifyOnProxyHealth?: boolean;
   notifyOnUpdateAvailable?: boolean;
@@ -2503,6 +2624,7 @@ export interface SyncSettings {
   autoplayTrailerStartMuted?: boolean;
   enablePosterRatings?: boolean;
   enableReactions?: boolean;
+  enableWatchProviders?: boolean;
   // Opt-in (default false, unlike the toggles above) - see settings.js's own comment.
   enableAutoThemedCatalogs?: boolean;
   notifyOnAutomation?: boolean;
@@ -2622,6 +2744,12 @@ export interface DescribedCatalogPreview {
   items: CustomListItem[];
   query: DescribedCatalogQuery;
   usedAi: boolean;
+  // Set only when an AI key IS configured but the call itself failed (wrong
+  // model/baseUrl pairing, invalid key, provider outage) - null whenever no
+  // AI key is configured at all, since that's not an error, just the
+  // expected zero-setup path. Lets the UI say *why* it fell back instead of
+  // leaving a configured-looking key silently unused with no explanation.
+  aiError: string | null;
   mediaType: 'movie' | 'tv';
 }
 
@@ -2650,10 +2778,14 @@ export interface CustomList {
   // stored - a shared catalog you don't own comes back with isOwner: false
   // and the client must hide every mutating affordance for it.
   shared: boolean;
-  // Content-rating review policy - OMDb "Rated" values to flag when
-  // checking this catalog (GET /:id/flagged), e.g. a "Kids" catalog set to
-  // flag ["R","TV-MA"]. Empty = no policy. See server/utils/contentRating.js.
-  blockedRatings: string[];
+  // Content-rating ALLOWLIST - OMDb "Rated" values to KEEP, e.g. a "Kids"
+  // catalog set to ["G","PG"]. Empty = no policy (nothing touched). Only
+  // changes via applyContentRating, which also performs the removal - see
+  // server/utils/contentRating.js.
+  keptRatings: string[];
+  // When a content-rating removal is undoable via restoreContentRatingRemoval -
+  // null means nothing to restore (never applied, or already restored).
+  lastRemovalAt: string | null;
   // True for a catalog server/utils/autoThemedCatalogs.js created from a
   // detected taste cluster (Settings -> SlickTrax -> Auto-generated
   // catalogs). Purely informational client-side - deleting it works the
@@ -2673,12 +2805,17 @@ export interface AutomationField {
   name: string;
   label: string;
   type: 'string' | 'number' | 'boolean';
+  required?: boolean;
 }
 export interface AutomationTriggerDef {
   type: string;
   label: string;
   description: string;
   fields: AutomationField[];
+  // Only schedule-driven triggers (time.daily) have this - the rule
+  // builder shows a config form (writing into rule.triggerConfig) instead
+  // of/alongside the normal condition builder when present.
+  triggerConfigFields?: AutomationField[];
 }
 export interface AutomationOperatorDef {
   op: string;
@@ -2860,7 +2997,8 @@ export interface HealthStatus {
   sync: {
     usersTracked: number;
     driftCount: number;
-    drifted: Array<{ title: string; body: string; url: string | null; since: string }>;
+    drifted: Array<{ userId: string; title: string; body: string; url: string | null; since: string }>;
+    ignored: Array<{ userId: string; title: string; since: string | null }>;
   };
   addons: {
     total: number;
@@ -2881,7 +3019,7 @@ export interface HealthStatus {
   // null on public multi-tenant instances - the AIOStreams proxy monitor is
   // a private-mode, single-shared-instance concept with no per-account
   // Settings field, so there's nothing real to report for a given tenant.
-  proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean } | null;
+  proxy: { ok: boolean | null; at: string | null; error: string | null; configured: boolean; healthIgnored: boolean } | null;
   mismatchCount: number;
   version: { running: string; latestRelease: string | null; updateAvailable: boolean };
   timeline: Array<{
@@ -3045,6 +3183,17 @@ export interface DiscoverItem {
   metacritic?: string | null;
 }
 
+// getSimklDiscoverRow's item shape - deliberately lighter than DiscoverItem
+// (no genres/imdbRating - SIMKL's trending/anticipated payload doesn't
+// carry either), matches PosterCardItem's actual minimum requirements.
+export interface SimklDiscoverItem {
+  id: string;
+  type: 'movie' | 'series';
+  name: string;
+  poster: string | null;
+  year: string | null;
+}
+
 export interface RatingsBatchEntry {
   imdbRating: string | null;
   rottenTomatoes: string | null;
@@ -3068,6 +3217,10 @@ export interface MediaDetails {
   imdbRating: string | null;
   rottenTomatoes: string | null;
   metacritic: string | null;
+  // Content/age rating (MPAA "PG-13"/"R" or TV parental guidelines
+  // "TV-14"/"TV-MA"), NOT a quality score - see server/utils/omdb.js's own
+  // comment on why "Not Rated" is kept as a real value distinct from null.
+  rated: string | null;
   runtime: string | null;
   releaseInfo: string | null;
   country: string | null;
@@ -3091,6 +3244,17 @@ export interface MediaDetails {
     name: string;
     parts: Array<{ id: string; title: string; poster: string | null; releaseYear: string | null }>;
   } | null;
+  // TMDb watch/providers (JustWatch data), US region - subscription/free
+  // tiers only (rent/buy excluded, see server's own comment). `link` is
+  // TMDb's required JustWatch attribution page for this title.
+  watchProviders?: {
+    link: string | null;
+    providers: Array<{ name: string; logo: string | null }>;
+  } | null;
+  // MDBList's own blended score (0-100, weighted across multiple rating
+  // sources) - null when no MDBList key is configured or MDBList has
+  // nothing for this title, same as every other optional field here.
+  mdblistScore?: number | null;
 }
 
 export interface MetricsData {

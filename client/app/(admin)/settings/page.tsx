@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
-import { Button, Card, Badge, Modal, ConfirmModal, Avatar } from '@/components/ui';
+import { Button, Card, Badge, Modal, ConfirmModal, Avatar, ComboBox } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { useTheme } from '@/lib/theme';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -159,6 +159,57 @@ function SettingRow({
   );
 }
 
+// Suggestions for the AI Services ComboBoxes below - never the only valid
+// values (both still take arbitrary text), just the common cases someone
+// shouldn't have to remember/retype from a provider's docs.
+const AI_BASE_URL_OPTIONS = [
+  { value: 'https://api.openai.com/v1', label: 'OpenAI' },
+  { value: 'https://openrouter.ai/api/v1', label: 'OpenRouter' },
+  { value: 'https://api.groq.com/openai/v1', label: 'Groq' },
+  { value: 'https://generativelanguage.googleapis.com/v1beta/openai', label: 'Google Gemini' },
+  { value: 'https://api.deepseek.com', label: 'DeepSeek' },
+];
+// Keyed by base URL, NOT one flat combined list - a model name only means
+// something in the context of which endpoint it's sent to (OpenRouter's
+// "google/gemini-2.0-flash-001" slug format vs Google's own native
+// "gemini-2.0-flash" are genuinely different strings for effectively the
+// same model), and a flat list let someone pick a Google-formatted URL
+// alongside an OpenRouter-formatted model with nothing stopping the
+// mismatch - confirmed real case, a user did exactly that and got a 404
+// with no clue why until the AI Services error surfacing was added. Now
+// the model list itself narrows to only what actually works with whatever
+// base URL is currently selected.
+const AI_MODEL_OPTIONS_BY_PROVIDER: Record<string, { value: string; label: string }[]> = {
+  'https://api.openai.com/v1': [
+    { value: 'gpt-5.2-mini', label: 'gpt-5.2-mini' },
+    { value: 'gpt-5.2-chat-latest', label: 'gpt-5.2-chat-latest' },
+    { value: 'gpt-5.4-mini', label: 'gpt-5.4-mini' },
+  ],
+  'https://openrouter.ai/api/v1': [
+    { value: 'openai/gpt-5.2-mini', label: 'GPT-5.2 mini' },
+    { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
+    { value: 'google/gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
+    { value: 'meta-llama/llama-4-scout', label: 'Llama 4 Scout' },
+  ],
+  'https://api.groq.com/openai/v1': [
+    { value: 'llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout' },
+    { value: 'llama-4-maverick-17b-128e-instruct', label: 'Llama 4 Maverick' },
+    { value: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B' },
+  ],
+  'https://generativelanguage.googleapis.com/v1beta/openai': [
+    { value: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash (latest)' },
+    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+  ],
+  'https://api.deepseek.com': [
+    { value: 'deepseek-chat', label: 'DeepSeek Chat' },
+  ],
+};
+// Fallback for a custom/unrecognized base URL (a local proxy, something not
+// in the preset list) - can't narrow to a known-correct set, so show
+// everything rather than nothing.
+const AI_MODEL_OPTIONS_ALL = Object.values(AI_MODEL_OPTIONS_BY_PROVIDER).flat();
+
 export default function SettingsPage() {
   // Theme picking + the theme builder now live on their own page (Themes) —
   // only the sensitive-data toggle from useTheme() is still needed here.
@@ -181,6 +232,7 @@ export default function SettingsPage() {
     notifyOnInvite: false,
     notifyOnVault: false,
     notifyOnAddonHealth: false,
+    notifyOnNewDevice: false,
     notifyOnBackup: false,
     notifyOnProxyHealth: false,
     notifyOnUpdateAvailable: false,
@@ -189,6 +241,132 @@ export default function SettingsPage() {
     notifyDigestFrequency: 'daily' as 'daily' | 'weekly',
     accountTimezone: '',
   });
+
+  // AI Services (Settings > External API Keys) - powers natural-language
+  // Catalog building (Catalogs -> "Describe a catalog"). Stored as a Vault
+  // entry underneath (see api.ts's getAiServicesStatus comment) - the
+  // status endpoint never returns the key itself, only whether one is set,
+  // same as the account API key above.
+  const [aiConfigured, setAiConfigured] = useState(false);
+  const [aiApiKey, setAiApiKey] = useState('');
+  // Reveal state for the API key field's eye icon - lazy-fetches the real
+  // stored key on first click (this field is a plain <input>, not the
+  // shared Input component, so this is hand-rolled rather than that
+  // component's built-in onRevealClick).
+  const [aiKeyVisible, setAiKeyVisible] = useState(false);
+  const [aiBaseUrl, setAiBaseUrl] = useState('');
+  const [aiModel, setAiModel] = useState('');
+  const [isSavingAi, setIsSavingAi] = useState(false);
+  // liveAiModels comes from the provider's own GET /models (fetched below)
+  // once a key is available - the real, current list, not a hardcoded guess
+  // that inevitably drifts as providers retire/rename models (confirmed
+  // real case: every hardcoded suggestion here had already gone stale).
+  // Falls back to the static per-provider list only until that live fetch
+  // has something, so the field isn't empty before a key exists to fetch
+  // with.
+  const [liveAiModels, setLiveAiModels] = useState<string[]>([]);
+  const [loadingAiModels, setLoadingAiModels] = useState(false);
+  const staticAiModelOptions = AI_MODEL_OPTIONS_BY_PROVIDER[aiBaseUrl.trim() || 'https://api.openai.com/v1'] || AI_MODEL_OPTIONS_ALL;
+  const aiModelOptions = liveAiModels.length > 0
+    ? liveAiModels.map((m) => ({ value: m, label: m }))
+    : staticAiModelOptions;
+
+  // Both overrides exist because React state updates are async - a caller
+  // that just called setAiBaseUrl()/setAiConfigured() moments ago
+  // (loadAiServicesStatus, on mount) can't rely on those closure values
+  // reflecting the update yet.
+  const fetchLiveAiModels = async (opts?: { baseUrl?: string; hasKey?: boolean }) => {
+    const effectiveBaseUrl = opts?.baseUrl ?? aiBaseUrl;
+    const hasKey = opts?.hasKey ?? (!!aiApiKey.trim() || aiConfigured);
+    if (!hasKey) return; // nothing to fetch with yet
+    setLoadingAiModels(true);
+    try {
+      const { models } = await api.listAiModels({ apiKey: aiApiKey.trim() || undefined, baseUrl: effectiveBaseUrl.trim() });
+      setLiveAiModels(models);
+    } catch {
+      setLiveAiModels([]); // fails silently - falls back to the static suggestions, same "bonus, not required" treatment as everywhere else this pattern is used
+    } finally {
+      setLoadingAiModels(false);
+    }
+  };
+  // Real verification result from the last save (settings.js actually calls
+  // the provider, not just "was something written to the DB") - null means
+  // never checked yet (fresh page load before any save, or an entry saved
+  // before this check existed). Previously "Connected" meant only "a key is
+  // stored," true even for garbage input - this is what makes the badge
+  // mean something.
+  const [aiCheckStatus, setAiCheckStatus] = useState<'ok' | 'error' | null>(null);
+  const [aiCheckMessage, setAiCheckMessage] = useState<string | null>(null);
+
+  const loadAiServicesStatus = async () => {
+    try {
+      const status = await api.getAiServicesStatus();
+      setAiConfigured(!!status.configured);
+      setAiBaseUrl(status.baseUrl || '');
+      setAiModel(status.model || '');
+      setAiCheckStatus(status.lastCheckStatus || null);
+      setAiCheckMessage(status.lastCheckMessage || null);
+      if (status.configured) fetchLiveAiModels({ baseUrl: status.baseUrl || '', hasKey: true });
+    } catch {
+      // Endpoint may not exist yet on an older backend - stay silent.
+    }
+  };
+
+  // Auto-saves on blur, same as every other API key field on this page (no
+  // separate Save button) - always sends baseUrl/model together (they share
+  // one testConfig JSON server-side) plus apiKey only when the admin
+  // actually typed a new one, so blurring baseUrl right after typing a key
+  // doesn't accidentally save an empty key over it.
+  const handleAiFieldBlur = async () => {
+    if (!aiApiKey.trim() && !aiConfigured) return; // nothing to save yet
+    setIsSavingAi(true);
+    try {
+      const result = await api.setAiServices({ apiKey: aiApiKey.trim() || undefined, baseUrl: aiBaseUrl.trim(), model: aiModel.trim() });
+      setAiApiKey('');
+      setAiConfigured(true);
+      setAiCheckStatus(result.lastCheckStatus);
+      setAiCheckMessage(result.lastCheckMessage);
+      if (result.lastCheckStatus === 'ok') toast.success('AI Services verified and saved');
+      else toast.error(`Saved, but verification failed: ${result.lastCheckMessage}`);
+      fetchLiveAiModels({ hasKey: true }); // refresh the model dropdown against whatever key/URL just got saved
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to save AI Services');
+    } finally {
+      setIsSavingAi(false);
+    }
+  };
+
+  // Lazy-fills the field with the real stored key the first time the eye
+  // icon reveals (not on hide) - only when it's still blank, so it never
+  // clobbers something already being typed to replace it.
+  const handleRevealAiKey = async () => {
+    if (aiApiKey) return;
+    try {
+      const result = await api.revealAiServicesKey();
+      setAiApiKey(result.secret);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to reveal API key');
+    }
+  };
+
+  // Blank password field can't double as "clear" the way a plain visible-
+  // value field can (an untouched blur would look identical to "I want to
+  // delete this"), so this stays a distinct affordance - just a small icon
+  // action now rather than a full button, since it's the only one left.
+  const handleRemoveAiServices = async () => {
+    try {
+      await api.removeAiServices();
+      setAiConfigured(false);
+      setAiApiKey('');
+      setAiBaseUrl('');
+      setAiModel('');
+      setAiCheckStatus(null);
+      setAiCheckMessage(null);
+      toast.success('AI Services removed');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to remove AI Services');
+    }
+  };
 
   // Push-subscribed devices (Settings > Notifications > Devices) - every
   // browser/phone currently subscribed to push on this account, with zero
@@ -321,6 +499,7 @@ export default function SettingsPage() {
           notifyOnInvite: settings.notifyOnInvite || false,
           notifyOnVault: settings.notifyOnVault || false,
           notifyOnAddonHealth: settings.notifyOnAddonHealth || false,
+          notifyOnNewDevice: settings.notifyOnNewDevice || false,
           notifyOnBackup: settings.notifyOnBackup || false,
           notifyOnProxyHealth: settings.notifyOnProxyHealth || false,
           notifyOnUpdateAvailable: settings.notifyOnUpdateAvailable || false,
@@ -340,6 +519,7 @@ export default function SettingsPage() {
           autoplayTrailerStartMuted: settings.autoplayTrailerStartMuted !== false,
           enablePosterRatings: settings.enablePosterRatings === true,
           enableReactions: settings.enableReactions !== false,
+          enableWatchProviders: settings.enableWatchProviders !== false,
           enableAutoThemedCatalogs: settings.enableAutoThemedCatalogs === true,
         });
 
@@ -390,6 +570,7 @@ export default function SettingsPage() {
 
     loadSettings();
     loadPushDevices();
+    loadAiServicesStatus();
   }, []);
 
   const handleSaveSetting = async (key: keyof SyncSettings, value: any) => {
@@ -572,6 +753,7 @@ export default function SettingsPage() {
       notifyOnInvite: false,
       notifyOnVault: false,
       notifyOnAddonHealth: false,
+      notifyOnNewDevice: false,
       notifyOnBackup: false,
       notifyOnProxyHealth: false,
       notifyOnUpdateAvailable: false,
@@ -590,6 +772,7 @@ export default function SettingsPage() {
         notifyOnInvite: false,
         notifyOnVault: false,
         notifyOnAddonHealth: false,
+        notifyOnNewDevice: false,
         notifyOnBackup: false,
         notifyOnProxyHealth: false,
         notifyOnUpdateAvailable: false,
@@ -635,7 +818,7 @@ export default function SettingsPage() {
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-6 lg:p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={{ maxWidth: layoutMode === 'nebula' ? '72rem' : '896px' }}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={{ maxWidth: layoutMode === 'nebula' ? 'min(120rem, 92vw)' : '896px' }}>
       {layoutMode === 'nebula' && (
         <NebulaPageHeading title="Settings" subtitle="Customize your SlickSync experience" />
       )}
@@ -773,7 +956,7 @@ export default function SettingsPage() {
             <div className="space-y-3">
               <SettingRow
                 label="Advanced Sync"
-                description="Enable advanced sync features for more control over addon syncing"
+                description="Re-fetches each addon's live manifest before every sync, so upstream changes (new catalogs, updated resources) get pushed too - not just what's cached. Slower per sync since it hits the network for every addon."
               >
                 <ToggleSwitch
                   enabled={syncSettings.mode === 'advanced'}
@@ -905,6 +1088,17 @@ export default function SettingsPage() {
                     enabled={syncSettings.notifyOnAddonHealth || false}
                     onChange={(v) => handleSaveSetting('notifyOnAddonHealth', v)}
                     label="Toggle addon health notifications"
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  label="New device notifications"
+                  description="Notify when a user's stream is seen from an IP we haven't confirmed for them before"
+                >
+                  <ToggleSwitch
+                    enabled={syncSettings.notifyOnNewDevice || false}
+                    onChange={(v) => handleSaveSetting('notifyOnNewDevice', v)}
+                    label="Toggle new device notifications"
                   />
                 </SettingRow>
 
@@ -1159,6 +1353,17 @@ export default function SettingsPage() {
               </SettingRow>
 
               <SettingRow
+                label="Streaming availability"
+                description={'The "Also streaming on" row in the detail modal, showing subscription/free services a title is available on (via TMDb/JustWatch).'}
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enableWatchProviders !== false}
+                  onChange={async (v) => { await handleSaveSetting('enableWatchProviders' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle streaming availability"
+                />
+              </SettingRow>
+
+              <SettingRow
                 label="Autoplay trailer"
                 description="When you open a title's detail popup, its trailer starts playing automatically instead of waiting for a Play Trailer click. Off by default - turn this on if you want it."
               >
@@ -1203,6 +1408,104 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-3">
+              {/* AI Services key - powers natural-language Catalog building
+                  (Catalogs -> "Describe a catalog"). Placed first/most
+                  prominent of this group deliberately: this used to only be
+                  configurable from a generic Vault "add credential" entry
+                  with no explanation of what it did, which made it easy to
+                  add a key there and have no idea whether it was doing
+                  anything. Still stored as a Vault entry underneath (see
+                  api.ts), just with a clear, focused front door here. */}
+              <div className="rounded-xl p-3" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)' }}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-default">AI Services <span className="text-subtle font-normal">(optional)</span></label>
+                  <div className="flex items-center gap-2">
+                    {isSavingAi && <span className="text-xs text-subtle">Verifying...</span>}
+                    {!isSavingAi && aiConfigured && aiCheckStatus === 'ok' && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--color-success-muted)', color: 'var(--color-success)' }}>
+                        Verified
+                      </span>
+                    )}
+                    {!isSavingAi && aiConfigured && aiCheckStatus === 'error' && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--color-error-muted)', color: 'var(--color-error)' }} title={aiCheckMessage || undefined}>
+                        Check failed
+                      </span>
+                    )}
+                    {!isSavingAi && aiConfigured && !aiCheckStatus && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--color-surface-border)', color: 'var(--color-text-muted)' }}>
+                        Not yet verified
+                      </span>
+                    )}
+                    {aiConfigured && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveAiServices}
+                        className="text-subtle hover:text-error transition-colors"
+                        title="Remove AI Services"
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-muted mb-2">
+                  Powers natural-language Catalog building (Catalogs → &quot;Describe a catalog&quot;) — describe what you want in plain English and get a real saved Catalog back. Works without a key too, using a built-in keyword parser; adding one here just makes it understand nuanced descriptions better. Defaults to OpenAI, but any OpenAI-compatible endpoint works (OpenRouter, Groq, a local proxy) - the base URL and model need to actually match each other (a Gemini model name against OpenAI&apos;s own endpoint will fail).
+                </p>
+                {aiCheckStatus === 'error' && aiCheckMessage && (
+                  <p className="text-xs mb-2" style={{ color: 'var(--color-error)' }}>{aiCheckMessage}</p>
+                )}
+                <div className="space-y-2">
+                  <div className="relative">
+                    <input
+                      type={aiKeyVisible ? 'text' : 'password'}
+                      value={aiApiKey}
+                      onChange={(e) => setAiApiKey(e.target.value)}
+                      onBlur={handleAiFieldBlur}
+                      placeholder={aiConfigured ? '•••••••• (leave blank to keep current)' : 'API key'}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="input-base w-full px-3 py-2 pr-10 text-sm"
+                    />
+                    {aiConfigured && (
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onMouseDown={(e) => e.preventDefault()} // don't steal focus from the input before the click registers
+                        onClick={() => { if (!aiKeyVisible) handleRevealAiKey(); setAiKeyVisible((v) => !v); }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-surface-hover transition-colors"
+                        style={{ color: 'var(--color-textMuted)' }}
+                        title={aiKeyVisible ? 'Hide key' : 'Show key'}
+                      >
+                        {aiKeyVisible ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <ComboBox
+                      value={aiBaseUrl}
+                      onChange={setAiBaseUrl}
+                      onBlur={handleAiFieldBlur}
+                      placeholder="API base URL (optional, default OpenAI)"
+                      options={AI_BASE_URL_OPTIONS}
+                    />
+                    <ComboBox
+                      value={aiModel}
+                      onChange={setAiModel}
+                      onBlur={handleAiFieldBlur}
+                      placeholder="Model (optional, default gpt-5.2-mini)"
+                      options={aiModelOptions}
+                    />
+                  </div>
+                  <p className="text-[11px] text-subtle">
+                    {loadingAiModels
+                      ? 'Loading current models from the provider...'
+                      : liveAiModels.length > 0
+                        ? `${liveAiModels.length} models loaded live from the provider.`
+                        : 'Showing common suggestions - enter a key to load the provider\'s actual current model list.'}
+                  </p>
+                </div>
+              </div>
+
               {/* TMDb key for the cast/crew deep-dive. Text field, not a
                   toggle - the feature simply appears once a valid key is set.
                   Free from themoviedb.org (Settings -> API). Saved on blur,
@@ -1374,6 +1677,19 @@ export default function SettingsPage() {
                   Interactive API docs
                   <ArrowTopRightOnSquareIcon className="w-3.5 h-3.5" />
                 </a>
+              </div>
+
+              {/* This key is account-level (this admin console) - a
+                  genuinely different key from the per-user one Scrobbling
+                  needs, which lives behind each person's own self-service
+                  login. Called out explicitly since the two are easy to
+                  conflate and only one works for scrobbling. */}
+              <div className="pt-4 border-t border-default">
+                <p className="text-xs text-muted">
+                  Looking for the Scrobble-in API key or the Public Stats Page toggle? Those are per-user, self-service settings - log in at{' '}
+                  <a href="/login?mode=user" className="text-primary hover:underline">/login?mode=user</a>{' '}
+                  with that account&apos;s own Stremio/Nuvio credentials, then check its Settings page. This key above won&apos;t work for either.
+                </p>
               </div>
             </div>
           </Card>

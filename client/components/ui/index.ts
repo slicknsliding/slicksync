@@ -1,4 +1,5 @@
 export * from './Button';
+export * from './CommandPalette';
 export * from './Card';
 export * from './Avatar';
 export * from './UserAvatar';
@@ -25,3 +26,4 @@ export * from './PageToolbar';
 export * from './DragSortable';
 export * from './RatingBadges';
 export * from './PosterCard';
+export * from './ComboBox';

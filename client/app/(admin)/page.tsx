@@ -736,7 +736,7 @@ export default function DashboardPage() {
               (globals.css's unlayered `* { max-width: 100vw }` silently
               no-ops the max-w-6xl class) - keeps the whole page reading as
               one centered column instead of stretching into dead space. */}
-          <div className="mx-auto" style={{ maxWidth: '72rem' }}>
+          <div className="mx-auto" style={{ maxWidth: 'min(120rem, 92vw)' }}>
             <NebulaPageHeading
               title="Dashboard"
               subtitle="Welcome back! Here's what's happening with SlickSync."

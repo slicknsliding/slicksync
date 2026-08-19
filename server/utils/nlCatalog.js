@@ -62,7 +62,14 @@ async function resolveAiCredentials(prisma, accountId, decrypt) {
     return {
       apiKey,
       baseUrl: (typeof config.baseUrl === 'string' && config.baseUrl.trim()) ? config.baseUrl.trim().replace(/\/+$/, '') : 'https://api.openai.com/v1',
-      model: (typeof config.model === 'string' && config.model.trim()) ? config.model.trim() : 'gpt-4o-mini',
+      // Was 'gpt-4o-mini' - OpenAI retired that model. This default only
+      // matters for someone who saved a key with the model field left
+      // blank; anyone who picks a model explicitly (the Settings dropdown
+      // now suggests live options from the provider itself) never hits it.
+      // Providers rotate their lineups fast enough that even this fallback
+      // will need occasional updates - it's a "reasonably current as of
+      // when this was written" default, not a permanent guarantee.
+      model: (typeof config.model === 'string' && config.model.trim()) ? config.model.trim() : 'gpt-5.2-mini',
       entryName: entry.name,
     }
   } catch {
@@ -104,7 +111,17 @@ async function callAi(description, creds) {
       signal,
     })
     cancel()
-    if (!res.ok) throw new Error(`AI provider returned ${res.status}`)
+    if (!res.ok) {
+      // Include the provider's own error body when there is one (wrong
+      // model name, invalid key, etc.) - a bare status code alone left
+      // literally every failure mode looking identical from the outside.
+      let detail = ''
+      try {
+        const body = await res.json()
+        detail = body?.error?.message || body?.message || ''
+      } catch { /* body wasn't JSON, or was empty - status code is all we get */ }
+      throw new Error(`AI provider returned ${res.status}${detail ? `: ${detail}` : ''}`)
+    }
     const data = await res.json()
     const content = data?.choices?.[0]?.message?.content
     if (!content) throw new Error('AI provider returned no content')
@@ -208,18 +225,25 @@ function normalizeQuery(raw) {
   }
 }
 
-/** @returns {Promise<{query: object, usedAi: boolean}>} */
+/** @returns {Promise<{query: object, usedAi: boolean, aiError: string|null}>} */
 async function parseDescription(prisma, accountId, decrypt, description) {
   const creds = await resolveAiCredentials(prisma, accountId, decrypt)
   if (creds) {
     try {
       const query = await callAi(description, creds)
-      return { query, usedAi: true }
+      return { query, usedAi: true, aiError: null }
     } catch (err) {
+      // Previously silent - a wrong model/baseUrl pairing (e.g. a Gemini
+      // model name against OpenAI's own endpoint) failed exactly like a
+      // missing key would, from the client's perspective: no error, just a
+      // fallback to the keyword parser with no way to tell why. Surfacing
+      // this specifically so a misconfigured key doesn't read as "not
+      // working" with no further information.
       console.warn('[NLCatalog] AI parse failed, falling back to keyword parser:', err?.message || err)
+      return { query: parseDescriptionFallback(description), usedAi: false, aiError: err?.message || 'AI request failed' }
     }
   }
-  return { query: parseDescriptionFallback(description), usedAi: false }
+  return { query: parseDescriptionFallback(description), usedAi: false, aiError: null }
 }
 
 // ---- Stage 2: structured query -> TMDb Discover -> IMDb items -------------
@@ -254,6 +278,47 @@ function resolveGenreIds(genres, mediaType, maps) {
   return ids
 }
 
+// TMDb's Discover endpoint filters by keyword ID, not text - "heist",
+// "time travel", "based on a true story" etc. only work as with_keywords
+// once resolved through TMDb's own /search/keyword. A short cache avoids
+// re-resolving the same common phrase across different descriptions in the
+// same window; unlike genres (a small fixed set worth caching for a day),
+// keyword phrases are open-ended, so this is capped and short-lived rather
+// than an unbounded growing map.
+const KEYWORD_CACHE_TTL_MS = 60 * 60 * 1000
+const KEYWORD_CACHE_MAX = 200
+const keywordCache = new Map() // lowercase phrase -> { id: number|null, at: number }
+
+async function resolveKeywordId(phrase, tmdbKey) {
+  const key = phrase.toLowerCase().trim()
+  const cached = keywordCache.get(key)
+  if (cached && (Date.now() - cached.at) < KEYWORD_CACHE_TTL_MS) return cached.id
+
+  let id = null
+  try {
+    const res = await fetch(`https://api.themoviedb.org/3/search/keyword?api_key=${encodeURIComponent(tmdbKey)}&query=${encodeURIComponent(key)}`)
+    if (res.ok) {
+      const data = await res.json()
+      // TMDb's keyword search has no relevance score beyond result order -
+      // for a short, well-formed phrase (what the parser/AI extracts, not
+      // raw freeform text) the first result is reliably the intended match.
+      id = data.results?.[0]?.id ?? null
+    }
+  } catch { /* leave id null - a keyword TMDb can't resolve just drops out, same as an unmatched genre */ }
+
+  if (keywordCache.size >= KEYWORD_CACHE_MAX) keywordCache.clear() // simple bound, not LRU - this cache is a minor optimization, not correctness-critical
+  keywordCache.set(key, { id, at: Date.now() })
+  return id
+}
+
+/** keyword phrases -> real TMDb keyword ids. Unmatched phrases are dropped, not an error - same "fewer filters than requested still returns something" contract as resolveGenreIds. */
+async function resolveKeywordIds(keywords, tmdbKey) {
+  if (!keywords || keywords.length === 0) return []
+  const { mapLimit } = require('./listImport')
+  const ids = await mapLimit(keywords, 3, (kw) => resolveKeywordId(kw, tmdbKey))
+  return ids.filter((id) => id !== null)
+}
+
 async function discoverFromQuery(query, tmdbKey) {
   const mediaType = query.type === 'series' ? 'tv' : 'movie' // default to movie when unspecified - the common case for a casual description
   const maps = await loadGenreMaps(tmdbKey)
@@ -267,7 +332,14 @@ async function discoverFromQuery(query, tmdbKey) {
   })
   if (genreIds.length) params.set('with_genres', genreIds.join(','))
   if (query.maxRuntimeMinutes) params.set('with_runtime.lte', String(query.maxRuntimeMinutes))
-  if (query.keywords.length) params.set('with_keywords', '') // TMDb keyword ids would need a lookup call; left as a future refinement, not silently mismapped to plain text
+  if (query.keywords.length) {
+    const keywordIds = await resolveKeywordIds(query.keywords, tmdbKey)
+    // Pipe = OR, not comma (AND) - these are independent descriptive terms
+    // pulled from a loose description ("heist", "time travel"), not a
+    // checklist every result must satisfy. Requiring all of them would
+    // return near-empty results for anything but a very literal match.
+    if (keywordIds.length) params.set('with_keywords', keywordIds.join('|'))
+  }
 
   const dateField = mediaType === 'tv' ? 'first_air_date' : 'primary_release_date'
   if (query.yearFrom) params.set(`${dateField}.gte`, `${query.yearFrom}-01-01`)
@@ -315,7 +387,7 @@ async function buildWatchedIdSet(prisma, accountId) {
 
 /**
  * The full pipeline: free-text description -> saved-catalog-ready items.
- * @returns {Promise<{ items: Array, query: object, usedAi: boolean, mediaType: 'movie'|'tv' }>}
+ * @returns {Promise<{ items: Array, query: object, usedAi: boolean, aiError: string|null, mediaType: 'movie'|'tv' }>}
  */
 async function generateCatalogFromDescription(prisma, accountId, decrypt, description) {
   const trimmed = (description || '').trim()
@@ -329,16 +401,48 @@ async function generateCatalogFromDescription(prisma, accountId, decrypt, descri
   const tmdbKey = await resolveTmdbKey(prisma, () => accountId, null)
   if (!tmdbKey) throw new Error('A TMDb API key is required for this feature (Settings -> External API Keys)')
 
-  const { query, usedAi } = await parseDescription(prisma, accountId, decrypt, trimmed)
+  const { query, usedAi, aiError } = await parseDescription(prisma, accountId, decrypt, trimmed)
   const { mediaType, results } = await discoverFromQuery(query, tmdbKey)
-  if (results.length === 0) return { items: [], query, usedAi, mediaType }
+  if (results.length === 0) return { items: [], query, usedAi, aiError, mediaType }
 
   const watchedIds = await buildWatchedIdSet(prisma, accountId)
   const { mapLimit } = require('./listImport')
   const resolved = await mapLimit(results, 5, (r) => resolveToImdbItem(r, mediaType, tmdbKey))
 
   const items = resolved.filter((item) => item && !watchedIds.has(item.id)).slice(0, MAX_ITEMS)
-  return { items, query, usedAi, mediaType }
+  return { items, query, usedAi, aiError, mediaType }
+}
+
+// Generic plain-text completion, for AI uses beyond catalog-building's own
+// structured-JSON callAi above (recommendation "why this matches" one-liners,
+// addon health incident summaries). Same credential shape (resolveAiCredentials)
+// and timeout pattern, just no schema/JSON parsing - callers get the model's
+// raw text back, trimmed. A short maxTokens keeps this cheap to call from a
+// hot GET path (a one-liner doesn't need a token budget built for prose).
+async function callAiText(prompt, creds, { maxTokens = 60, timeoutMs = FETCH_TIMEOUT_MS } = {}) {
+  const { signal, cancel } = timeoutSignal(timeoutMs)
+  try {
+    const res = await fetch(`${creds.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${creds.apiKey}` },
+      body: JSON.stringify({
+        model: creds.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.5,
+        max_tokens: maxTokens,
+      }),
+      signal,
+    })
+    cancel()
+    if (!res.ok) throw new Error(`AI provider returned ${res.status}`)
+    const data = await res.json()
+    const content = data?.choices?.[0]?.message?.content
+    if (!content) throw new Error('AI provider returned no content')
+    return content.trim().replace(/^["']|["']$/g, '') // strip stray wrapping quotes some models add
+  } catch (err) {
+    cancel()
+    throw err
+  }
 }
 
 module.exports = {
@@ -347,6 +451,14 @@ module.exports = {
   parseDescriptionFallback,
   discoverFromQuery,
   resolveGenreIds,
+  resolveKeywordIds,
   generateCatalogFromDescription,
   normalizeQuery,
+  // Exported for Settings' "verify on save" check (server/routes/settings.js)
+  // specifically so that check exercises the EXACT same request shape the
+  // real feature sends - a generic "does this endpoint respond at all" ping
+  // would have passed for the wrong-model-for-this-provider case that
+  // originally prompted adding real verification at all.
+  callAi,
+  callAiText,
 }

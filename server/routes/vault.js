@@ -46,7 +46,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
           dashboardUrl: e.dashboardUrl, cost: e.cost, costCycle: e.costCycle, expiresAt: e.expiresAt, notifyDaysBefore: e.notifyDaysBefore,
           lastCheckedAt: e.lastCheckedAt, lastCheckStatus: e.lastCheckStatus, lastCheckMessage: e.lastCheckMessage,
           isActive: e.isActive, testType: e.testType, secretLabel: e.secretLabel, updatedAt: e.updatedAt,
-          position: e.position,
+          position: e.position, autoRemoveEnabled: e.autoRemoveEnabled, autoRemoveAfterDays: e.autoRemoveAfterDays,
         })),
       });
     } catch (error) {
@@ -101,6 +101,30 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
     } catch (error) {
       console.error('Error snoozing vault entry:', error);
       res.status(500).json({ error: 'Failed to snooze vault entry' });
+    }
+  });
+
+  // GET /api/vault/:id/usage - live debrid usage (active downloads, premium
+  // days left) for a real_debrid/torbox entry. See debridUsage.js's own
+  // comment for why this is scoped to just those two fields. Null (not an
+  // error) for a non-debrid entry, or if the live call itself fails -
+  // Vault's own check status already covers "is this key broken."
+  router.get('/:id/usage', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const entry = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });
+      if (!entry) return res.status(404).json({ error: 'Vault entry not found' });
+      if (entry.testType !== 'real_debrid' && entry.testType !== 'torbox') {
+        return res.json({ usage: null });
+      }
+      let secret;
+      try { secret = decrypt(entry.encryptedSecret, req); } catch { return res.json({ usage: null }); }
+      const { fetchDebridUsage } = require('../utils/debridUsage');
+      const usage = await fetchDebridUsage(entry.testType, secret);
+      res.json({ usage });
+    } catch (error) {
+      console.error('Error fetching vault entry usage:', error);
+      res.status(500).json({ error: 'Failed to fetch usage' });
     }
   });
 
@@ -198,6 +222,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       const {
         name, category, provider, secretLabel, secret,
         testType, testConfig, dashboardUrl, cost, costCycle, expiresAt, notifyDaysBefore, isActive, healthIgnored,
+        autoRemoveEnabled, autoRemoveAfterDays,
       } = req.body || {};
 
       if (category && !CATEGORIES.includes(category)) {
@@ -219,6 +244,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (notifyDaysBefore !== undefined) data.notifyDaysBefore = notifyDaysBefore;
       if (isActive !== undefined) data.isActive = isActive;
       if (healthIgnored !== undefined) data.healthIgnored = !!healthIgnored;
+      if (autoRemoveEnabled !== undefined) data.autoRemoveEnabled = !!autoRemoveEnabled;
+      if (autoRemoveAfterDays !== undefined) data.autoRemoveAfterDays = typeof autoRemoveAfterDays === 'number' && autoRemoveAfterDays > 0 ? autoRemoveAfterDays : 7;
 
       await prisma.vaultEntry.update({ where: { id: existing.id }, data });
       res.json({ success: true });

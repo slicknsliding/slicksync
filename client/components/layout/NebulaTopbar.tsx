@@ -228,17 +228,24 @@ export function NebulaTopbar() {
         blur), so scrolled content stays visible through the padding gaps
         around it instead of being hidden behind a solid block. */}
     <div className={isTV ? 'px-4 pt-2 pb-2 sticky top-0 z-30' : 'px-4 pt-4 md:px-6 md:pt-6 pb-4 sticky top-0 z-30'}>
-      {/* Caps the bar at 72rem so it reads as a floating island on wide
-          desktop viewports instead of stretching edge-to-edge into empty
-          space. Set inline, not via the max-w-6xl class - globals.css has a
-          global `* { max-width: 100vw }` (unlayered, so it beats ANY
-          Tailwind utility class regardless of specificity per the CSS
-          Cascade Layers spec) that silently no-ops every max-w-* class in
-          the app. An inline style always wins over both. */}
+      {/* Caps the bar so it reads as a floating island on wide desktop
+          viewports instead of stretching edge-to-edge into empty space -
+          but scales with the viewport (min() against 92vw) instead of a
+          flat 72rem, which left most of a real wide monitor's width
+          unused and, worse, paradoxically made grid cards elsewhere in the
+          app NARROWER at full window width than at half-width (Tailwind's
+          grid-cols-N breakpoints key off viewport width, not this capped
+          container's actual width, so a wider viewport was picking a
+          higher column count within the exact same ~72rem box). Set
+          inline, not via the max-w-6xl class - globals.css has a global
+          `* { max-width: 100vw }` (unlayered, so it beats ANY Tailwind
+          utility class regardless of specificity per the CSS Cascade
+          Layers spec) that silently no-ops every max-w-* class in the
+          app. An inline style always wins over both. */}
       <div
         className={isTV ? 'mx-auto rounded-2xl p-2' : 'mx-auto rounded-3xl p-5 md:p-6'}
         style={{
-          maxWidth: '72rem',
+          maxWidth: 'min(120rem, 92vw)',
           background: 'color-mix(in srgb, var(--color-surface) 70%, transparent)',
           backdropFilter: 'blur(18px)',
           WebkitBackdropFilter: 'blur(18px)',

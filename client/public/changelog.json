@@ -1,5 +1,207 @@
 [
   {
+    "version": "1.73.13",
+    "date": "2026-08-19",
+    "title": "fix: content wasn't using the space on a real wide monitor - and got MORE cramped, not less",
+    "features": [
+      "Catalog detail page: Content Rating moved out of the More menu into its own always-visible button next to Suggest titles.",
+      "Catalogs list: right-click a catalog for Pin to top / Cover art / Rename / Content Rating / Delete - the same actions the always-visible icon row already has, now reachable without hunting for the tiny icons too."
+    ],
+    "bugFixes": [
+      "The Nebula layout's content width was hard-capped at 72rem (1152px) on every page, deliberately, for a \"floating island\" look - but on a real wide (32\") monitor this wasted most of the screen, and paradoxically made grid cards NARROWER at full window width than at half-width: Tailwind's column-count breakpoints key off viewport width, not this capped container's actual width, so a wider window picked a higher column count within the exact same ~1152px box, cramming each card's own content tighter (confirmed: addon names truncating at full screen but not at half screen). Now scales with the viewport instead of a flat value - verified via direct measurement at a 2560px viewport: content wrapper is 1920px (was 1152px) and zero names truncate."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.12",
+    "date": "2026-08-18",
+    "title": "fix: checkbox placement - under the version tag / toggle, precisely, verified live",
+    "features": [],
+    "bugFixes": [
+      "Addons (mobile): the selection checkbox now sits directly under the version tag - both share the same right edge, confirmed via pixel measurement (checkbox 33px below, right-aligned to the same 313px edge).",
+      "Addons/Users/Groups (PC and mobile): the selection checkbox and the active/inactive toggle were side-by-side in the corner; now stacked with the checkbox directly under the toggle instead of next to it - confirmed via measurement (30px below, same right edge)."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.11",
+    "date": "2026-08-18",
+    "title": "fix: mobile addons checkbox was overlapping content, not under it - real fix, verified live",
+    "features": [],
+    "bugFixes": [
+      "The last three releases fixed the wrong component: mobile is forced into grid view regardless of the user's view-mode preference, so the row/list layout those releases targeted was never what actually renders on a phone. The real issue was the grid card's selection checkbox - absolutely positioned in the top-right corner with clearance padding that's desktop-only, so on mobile it sat directly on top of the name/version row instead of near it. Now hidden on mobile and replaced with an in-flow checkbox directly under that row - confirmed via direct on-device measurement (33px below the version tag) before shipping, not just visual inspection."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.10",
+    "date": "2026-08-18",
+    "title": "fix: addons row checkbox still wasn't wrapping under the version tag",
+    "features": [],
+    "bugFixes": [
+      "The v1.73.9 fix moved the checkbox into the right row but relied on flex-wrap to push it below - which only wraps when the row actually overflows, so a short addon name left it sitting on the SAME line as the version tag, just pushed to the right edge (confirmed live, unchanged from the user's report). Added a flex-basis spacer that forces it onto its own line unconditionally, verified via direct DOM inspection on betatest before shipping this time."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.9",
+    "date": "2026-08-18",
+    "title": "fix: addons row selection checkbox was in the wrong badges row",
+    "features": [],
+    "bugFixes": [
+      "The v1.73.8 addons-row checkbox relocation landed it in the resources/user-count row instead of the name/version-tag row it was supposed to sit under - moved to the correct row, so it now actually wraps under the version tag/health dot on a narrow screen instead of several unrelated badges later."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.8",
+    "date": "2026-08-18",
+    "title": "fix: selection checkbox glow strength, More menu redesign, addons row layout",
+    "features": [],
+    "bugFixes": [
+      "The selection checkbox glow (v1.73.6) was verified correct in the DOM but too subtle to actually register at normal viewing distance - substantially brighter now on both the individual and \"select all\" checkboxes, with a tinted border to match.",
+      "Redesigned the catalog detail page's \"More\" action menu - grouped into labeled sections (Organize / Share & policy / Export) with tinted icon chips and a caret pointing at the trigger, instead of one flat undifferentiated list.",
+      "Addons list view: the selection checkbox no longer sits at the very start of every row (crowding a phone-width row alongside the drag handle and icon) - moved down next to the version tag/health dot it now wraps under on narrow screens.",
+      "Vault's auto-remove \"days idle\" field only saved on blur - clicking the number input's spin-button arrows changes the value without blurring it, so refreshing or navigating away right after clicking an arrow silently lost the change. Now saves on every change, typed or via the arrows."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.7",
+    "date": "2026-08-18",
+    "title": "fix: Now Playing for proxy-routed streams was silently dead - real root cause of the recurring Proxy 400",
+    "features": [],
+    "bugFixes": [
+      "Found the real cause of the recurring \"AIOStreams /proxy/stats failed: 400 Bad Request\" Health alert: recent AIOStreams builds (nightly, confirmed live 2026-08-18) moved the stats endpoint from /api/v1/proxy/stats to a new unified /api/v1/dashboard/streams/live route - the old path now 400s instead of 404ing, which made it look like an auth problem rather than a moved endpoint. Since every 30s poll was failing outright, this wasn't just a cosmetic Health-page error - Now Playing detection for every proxy-routed stream (Stremio/Nuvio via debrid) had been silently dead on any instance running an affected AIOStreams build. Updated to the new endpoint, with a fallback to the old one for instances on older AIOStreams builds where it still works.",
+      "The new AIOStreams endpoint also unifies proxy and usenet sessions into one response with real per-session identity, replacing the old two-endpoint setup and its usenet-specific synthetic-user workaround with a single, simpler code path."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.6",
+    "date": "2026-08-18",
+    "title": "fix: selection checkboxes hard to see against dark backgrounds",
+    "features": [],
+    "bugFixes": [
+      "The multi-select checkboxes on Addons/Users/Groups/Invitations (and the header \"select all\" control) were still low-contrast in their unchecked state - just a flat border against the surface color. They now carry an always-on glow ring in your theme's primary/secondary colors, the same pairing Nebula's own panel accent stripe uses, so it re-colors with whatever theme is active."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.5",
+    "date": "2026-08-18",
+    "title": "chore: command palette help guide - final coverage pass (61 topics)",
+    "features": [
+      "One more audit pass against every Settings toggle and page in the app: added Private Mode, Custom Addon Names, Timezone, Unsafe Mode, Auto-generated Catalogs, Account ID/Danger Zone, Protected Addons, addon import/export, bulk sync/delete for Users and Groups, Library/History export/clear, and Configuration import/export/reset. 61 topics total."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.4",
+    "date": "2026-08-18",
+    "title": "chore: command palette help guide expanded to close real coverage gaps",
+    "features": [
+      "The command palette's built-in how-to guide (new in v1.73.3) went through two more audit passes against the full feature list. It now covers 61 topics - every page and most Settings toggles, not just the newest features: Groups, Discover, Nuvio Collections, TV mode, 2FA/SSO, notifications, poster ratings, Year in Review, account merge, Now Playing, SIMKL linking, Vault organization/cost tracking, addon protection/import-export, config import/export/reset, and more."
+    ],
+    "bugFixes": [],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.3",
+    "date": "2026-08-18",
+    "title": "feat: detail modal cleanup, per-user Health ignore, local command palette help",
+    "features": [
+      "The command palette's free-text \"ask a question\" no longer needs an AI Services key - it now searches a built-in how-to guide covering Automation, Catalogs, Vault, the Scrobble API, theming, and more, answering instantly for everyone.",
+      "Metrics -> Health: Sync (per drifted user) and Proxy (a mute toggle, since it's a single check) now support the same \"ignore\" treatment Addons and Vault already had.",
+      "A new Settings -> SlickTrax toggle for the detail modal's \"Also streaming on\" row, on by default.",
+      "Settings now clarifies that the account-level API key doesn't work for the Scrobble API or Public Stats Page - those are per-user, self-service settings reached via /login?mode=user, with a direct link."
+    ],
+    "bugFixes": [
+      "Automation: a condition row's remove button could get squeezed off the edge of the New Rule modal on narrower screens - the row now shrinks its fields properly instead of overflowing.",
+      "A real bug in how the proxy monitor's login handled multiple Set-Cookie headers, fixed defensively here - but turned out not to be the actual cause of the \"AIOStreams /proxy/stats failed: 400 Bad Request\" Health alert some instances kept seeing. The real fix landed in v1.73.7 - see that entry.",
+      "Detail modal: reactions (thumbs up/down) moved next to the rating row instead of a separate row competing with the action buttons; Cast now appears before the Overview paragraph so it doesn't need scrolling past a long synopsis to reach; the 4 action buttons (Watchlist/catalog/Stremio/Nuvio) now lay out as 2x2 on mobile instead of 4 stacked full-width rows."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.2",
+    "date": "2026-08-18",
+    "title": "fix: polish pass on the v1.73.0 batch - Vault, toggles, dropdown, and more",
+    "features": [],
+    "bugFixes": [
+      "Removed catalogs-as-installable-addons - the existing MDBList/SIMKL export already covers sharing a catalog outward, and running a public addon-serving surface for it added more surface area than value.",
+      "AI Services is visible in Vault's own category list again, and its API key in Settings now shows a masked placeholder with an eye icon to reveal the real stored value on click, instead of always rendering blank.",
+      "Vault entry secrets now actually reveal on the eye-icon click in the edit form (the field is deliberately left blank on edit, so there was nothing for the old toggle to show) - fetches the real stored secret on first click instead.",
+      "Redesigned the debrid auto-remove toggle row - it's a plain toggle with the day-count field only showing once it's turned on, instead of a toggle and number input crammed into one row on every screen size.",
+      "The 90-day renewal spend forecast on Vault is now collapsed by default, showing just the total line - tap it to expand the individual renewals.",
+      "Fixed the Discover genre dropdown rendering unreadable white-on-white text in Firefox (Firefox's native dropdown popup inherits the trigger's own text color, which Chrome/Safari don't do).",
+      "Removed the floating Ctrl+K button from the bottom-right corner - it overlapped page content and duplicated the keyboard shortcut, which still works everywhere.",
+      "Redesigned the catalog detail page's action row into a couple of primary buttons plus a \"More\" menu, instead of up to 10 buttons wrapping across several lines.",
+      "The What's New banner is now a compact corner card instead of a page-spanning bar, and the onboarding wizard's \"what's different from Syncio\" step now covers every category, not just a handful of highlights.",
+      "Rebuilt the theme builder's layout into a sticky preview + grouped, labeled sections instead of one long flat list of color pickers."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.1",
+    "date": "2026-08-18",
+    "title": "fix: What's New banner showing at the same time as the onboarding wizard",
+    "features": [],
+    "bugFixes": [
+      "The new What's New banner and the first-run onboarding wizard could both show at once on a brand-new install - onboarding already covers what's new as one of its own steps, so the banner now waits until onboarding is actually finished."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.73.0",
+    "date": "2026-08-18",
+    "title": "feat: catalogs as installable addons, scrobbling, CSV import/export, command palette, and more",
+    "features": [
+      "Publish any catalog as a real installable Stremio/Nuvio addon - a manifest URL you install once, kept in sync with whatever the catalog contains (Settings gear on a catalog -> Addon).",
+      "Scrobble-in API: any app with Trakt-compatible scrobbling (Infuse, Kodi's Trakt plugin, etc.) can now write into your SlickTrax history - point it at /api/scrobble with your existing API key (Settings -> API Access).",
+      "Watch-history CSV import/export on a user's detail page - bring in an IMDb or Letterboxd export, or export as a Letterboxd-compatible CSV so your data is never stuck here.",
+      "A global command palette (Ctrl+K, or Cmd+K on Mac) - jump to any page, user, addon, or catalog instantly, or ask a free-text question (addon health, etc.) when AI Services is configured.",
+      "A public, unauthenticated stats share link per user (Settings -> Public Stats Page) - total watch time, top titles, and streak, viewable by anyone with the link, no login required.",
+      "Vault: live Real-Debrid/TorBox usage (active downloads, premium days left) right on the entry card, plus an opt-in daily auto-remove for torrents that finished and sat idle past a day count you choose.",
+      "A renewal calendar & 90-day spend forecast on Vault, projecting each cost-tracked entry's own billing cycle forward instead of a single next-renewal check.",
+      "Theme sharing via copy-paste export/import codes - share a custom theme with a code instead of describing color values.",
+      "A first-run onboarding wizard for new installs, plus a \"what's new\" banner that keeps existing installs aware of new features as they ship."
+    ],
+    "bugFixes": [
+      "Fixed multi-select checkboxes being invisible until checked on Addons, Users, Groups, and Invitations - the feature worked, it just couldn't be seen or discovered."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.72.8",
+    "date": "2026-08-17",
+    "title": "feat: AI Services relocated & verified, Content Rating allowlist, Automation additions, SIMKL Trending",
+    "features": [
+      "AI Services (natural-language Catalog building) moved out of a generic Vault credential into its own front door in Settings -> External API Keys, with real verification on save (an actual test request to the provider, not just \"a key is stored\") and a live model list fetched from whichever provider you've configured instead of a hardcoded, easily-stale suggestion list.",
+      "Content Rating is now a real allowlist, not a passive review tool: check the ratings you want to keep, preview exactly what stays and what goes, apply to remove everything else - with a one-step undo, an add-time gate that rejects non-matching titles going forward, and a daily sweep that keeps the policy enforced automatically until you clear it.",
+      "Automation: a webhook action (POST any trigger's data to a URL you choose), a user.created trigger (any new user, not just ones from an invite), and a time.daily trigger for schedule-based rules.",
+      "NL catalog building now actually uses descriptive terms beyond genre/decade/runtime (\"heist,\" \"time travel\") via real TMDb keyword matching.",
+      "A SIMKL Trending row on Discover (needs only a SIMKL Client ID, no linked user)."
+    ],
+    "bugFixes": [
+      "Fixed an AI Services config that could silently fail with no explanation (a wrong model/base URL pairing looked identical to no key configured at all).",
+      "Removed the seasonal addon auto-scheduling feature (wasn't reliably doing anything).",
+      "History could credit a whole watch session's duration to the wrong day: resuming something days after last leaving it off re-stamped its ENTIRE accumulated watch time as freshly watched today, even if you only glanced at it for a few seconds. Now only genuinely new progress since it was last touched counts toward today - the rest stays on the day it actually happened."
+    ],
+    "miscChores": []
+  },
+  {
+    "version": "1.72.7",
+    "date": "2026-08-17",
+    "title": "fix: backlog watch discoveries fired live-watch notifications",
+    "features": [],
+    "bugFixes": [
+      "A watch native tracking only just discovered - e.g. after a provider connection hiccup healed itself, or a large first-time history catch-up - fired the exact same \"watched X\" notification as something genuinely just watched, regardless of how old the actual watch was. It now only notifies for watches discovered within a couple hours of actually happening; older discoveries still show up in History normally, they just stay quiet."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.72.6",
     "date": "2026-08-14",
     "title": "fix: group addon reorder not syncing to users; proxy watch misattribution",

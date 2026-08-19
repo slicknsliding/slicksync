@@ -344,7 +344,7 @@ export default function GroupsPage() {
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Groups"
@@ -803,13 +803,10 @@ function GroupCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
-        {/* Selection indicator & Toggle - visible on hover or when selected */}
-        <div className="absolute top-4 right-4 flex items-center gap-2">
-          <SelectionCheckbox
-            checked={isSelected}
-            onChange={onToggleSelect}
-            visible={isSelected}
-          />
+        {/* Selection indicator & Toggle - stacked (toggle above, checkbox
+            below) rather than side-by-side, so the checkbox sits directly
+            under the toggle instead of next to it. */}
+        <div className="absolute top-4 right-4 flex flex-col items-end gap-1.5">
           <ToggleSwitch
             checked={group.isActive !== false}
             onChange={async () => {
@@ -822,6 +819,10 @@ function GroupCard({
                 toast.error(err.message || `Failed to toggle ${group.name}`);
               }
             }}
+          />
+          <SelectionCheckbox
+            checked={isSelected}
+            onChange={onToggleSelect}
           />
         </div>
 

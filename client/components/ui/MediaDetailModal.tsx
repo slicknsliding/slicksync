@@ -125,6 +125,13 @@ export function MediaDetailModal({
 
   const openPerson = useCallback(async (member: { name: string; tmdbId?: number | string | null }) => {
     if (member.tmdbId == null || member.tmdbId === '') return;
+    // Clicking the same cast member again closes the filmography row
+    // instead of re-fetching the same data - reads as a toggle, same as
+    // any other disclosure in this modal.
+    if (personView && personView.id === member.tmdbId) {
+      setPersonView(null);
+      return;
+    }
     setPersonView({ id: member.tmdbId, name: member.name, loading: true, credits: [] });
     const res = await api.getPersonCredits(member.tmdbId);
     if (!res) {
@@ -132,7 +139,7 @@ export function MediaDetailModal({
       return;
     }
     setPersonView({ id: member.tmdbId, name: res.person?.name || member.name, loading: false, credits: res.credits });
-  }, []);
+  }, [personView]);
 
   // Mouse grab-drag for the person-filmography row (touch/trackpad scroll it
   // natively already; this adds the desktop drag affordance it was missing).
@@ -167,7 +174,7 @@ export function MediaDetailModal({
   const effectiveFallbackRottenTomatoes = overrideItem ? null : fallbackRottenTomatoes;
   const effectiveFallbackMetacritic = overrideItem ? null : fallbackMetacritic;
 
-  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions } = usePersonalFeatures();
+  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions, enableWatchProviders } = usePersonalFeatures();
   const isTV = useIsTV();
 
   // usePersonalFeatures resolves asynchronously (starts from a default of
@@ -744,6 +751,15 @@ export function MediaDetailModal({
                     {details.runtime}
                   </span>
                 )}
+                {details.rated && (
+                  <span
+                    className="px-2 py-0.5 rounded-md text-sm font-semibold border"
+                    style={{ color: 'var(--color-text)', borderColor: 'var(--color-surface-border)' }}
+                    title="Content rating"
+                  >
+                    {details.rated}
+                  </span>
+                )}
                 {(effectiveFallbackRating || details.imdbRating) && (
                   <span className="flex items-center gap-1.5 text-amber-400 font-medium">
                     <StarIcon className="w-5 h-5" />
@@ -761,6 +777,12 @@ export function MediaDetailModal({
                   <span className="flex items-center gap-1.5 font-medium" style={{ color: metacriticTextColor(effectiveFallbackMetacritic || details.metacritic || '') }} title="Metacritic score">
                     <span aria-hidden>Ⓜ</span>
                     {effectiveFallbackMetacritic || details.metacritic}
+                  </span>
+                )}
+                {typeof details.mdblistScore === 'number' && (
+                  <span className="flex items-center gap-1.5 font-medium text-primary" title="MDBList Score (blended across multiple rating sources)">
+                    <span aria-hidden className="text-[10px] font-bold px-1 py-0.5 rounded border border-current leading-none">MDB</span>
+                    {details.mdblistScore}%
                   </span>
                 )}
                 {details.imdb_id && (
@@ -783,7 +805,74 @@ export function MediaDetailModal({
                     TMDb
                   </a>
                 )}
+
+                {/* Reactions - moved in next to the rating row (reads as
+                    "your own rating," right next to everyone else's) rather
+                    than a standalone row competing with the action buttons
+                    below. Feeds recommendation scoring (see the state block
+                    above), not just decoration. No TV-focus wiring yet
+                    (unlike the action row below) - visible and usable with a
+                    mouse/touch on PC and Mobile, just not yet D-pad-reachable
+                    on TV. ml-auto pins it to the row's right edge on wide
+                    screens; it simply wraps onto its own line on narrow ones. */}
+                {enableReactions && (
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <button
+                      type="button"
+                      onClick={() => toggleReaction('happy')}
+                      disabled={reactionBusy}
+                      aria-label="Thumbs up"
+                      title="Thumbs up"
+                      className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
+                        reaction === 'happy' ? 'bg-success/20 ring-1 ring-success text-success' : 'bg-surface-hover hover:bg-success/10 text-muted'
+                      } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
+                    >
+                      <HandThumbUpIcon className="w-5 h-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleReaction('sad')}
+                      disabled={reactionBusy}
+                      aria-label="Thumbs down"
+                      title="Thumbs down"
+                      className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
+                        reaction === 'sad' ? 'bg-error/20 ring-1 ring-error text-error' : 'bg-surface-hover hover:bg-error/10 text-muted'
+                      } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
+                    >
+                      <HandThumbDownIcon className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {/* "You might not even need an addon for this" - shown
+                  unconditionally (not behind a disclosure like Collection
+                  below) since it's meant to be seen at a glance, not opted
+                  into. Subscription/free tiers only, see the type's own
+                  comment for why rent/buy is excluded. Links to TMDb's
+                  JustWatch attribution page, required by their API terms
+                  when this data is displayed. */}
+              {enableWatchProviders && details.watchProviders && details.watchProviders.providers.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-muted">Also streaming on</span>
+                  {details.watchProviders.providers.map((p) => (
+                    <a
+                      key={p.name}
+                      href={details.watchProviders!.link || undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={p.name}
+                      className="flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full border transition-colors hover:border-primary"
+                      style={{ borderColor: 'var(--color-surface-border)', background: 'var(--color-surface-hover)' }}
+                    >
+                      {p.logo ? (
+                        <img src={p.logo} alt="" className="w-5 h-5 rounded-full" />
+                      ) : null}
+                      <span className="text-xs font-medium text-default">{p.name}</span>
+                    </a>
+                  ))}
+                </div>
+              )}
 
               {/* Neither link can "detect and fall back" if the target app
                   isn't installed/registered - a plain native <a href>, same
@@ -798,6 +887,12 @@ export function MediaDetailModal({
                   generic accent color, so these read as "this specific
                   provider" the same way the badges already do. */}
               {details.imdb_id && (() => {
+                // sm:w-auto justify-center on each control - the mobile
+                // grid below (2 columns) needs every cell's control to fill
+                // its cell to actually read as a 2x2 grid rather than 4
+                // left-aligned buttons in narrow cells; sm:contents/w-auto
+                // hands width back to flex-wrap's own auto-sizing at the
+                // desktop breakpoint where the old single-row layout stays.
                 const watchlistBtn = enableWatchlist && (
                   <button
                     type="button"
@@ -805,7 +900,7 @@ export function MediaDetailModal({
                     disabled={watchlistBusy}
                     aria-label={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
                     title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${
                       inWatchlist
                         ? 'bg-primary text-white'
                         : 'bg-surface-hover text-default hover:bg-primary/20 hover:text-primary'
@@ -821,7 +916,7 @@ export function MediaDetailModal({
                   <a
                     href={buildStremioAppUrl(details.imdb_id, effectiveType)}
                     tabIndex={isTV ? -1 : undefined}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto"
                     style={{
                       background: 'rgba(167, 139, 250, 0.15)',
                       color: 'rgb(196, 181, 253)',
@@ -836,7 +931,7 @@ export function MediaDetailModal({
                   <a
                     href={buildNuvioAppUrl(details.imdb_id, effectiveType)}
                     tabIndex={isTV ? -1 : undefined}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto"
                     style={{
                       // Blue/orange Nuvio identity split by a `/` diagonal
                       // (see Badge.tsx's 'nuvio' variant for the same treatment).
@@ -874,48 +969,19 @@ export function MediaDetailModal({
                 }
 
                 return (
-                  <div className="flex flex-wrap gap-2 items-center">
+                  // 2 columns on mobile (Watchlist+catalog, Stremio+Nuvio -
+                  // 2 rows instead of 4 full-width stacked buttons), back to
+                  // the original single-row flex-wrap from sm: up.
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                     {watchlistBtn}
-                    <AddToListButton item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
+                    <div className="flex justify-center sm:contents">
+                      <AddToListButton item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
+                    </div>
                     {stremioBtn}
                     {nuvioBtn}
                   </div>
                 );
               })()}
-
-              {/* Reactions - two buttons, no legend needed. Feeds
-                  recommendation scoring (see the state block above), not
-                  just decoration. No TV-focus wiring yet (unlike the action
-                  row above) - visible and usable with a mouse/touch on PC
-                  and Mobile, just not yet D-pad-reachable on TV. */}
-              {enableReactions && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => toggleReaction('happy')}
-                    disabled={reactionBusy}
-                    aria-label="Thumbs up"
-                    title="Thumbs up"
-                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
-                      reaction === 'happy' ? 'bg-success/20 ring-1 ring-success text-success' : 'bg-surface-hover hover:bg-success/10 text-muted'
-                    } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
-                  >
-                    <HandThumbUpIcon className="w-5 h-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => toggleReaction('sad')}
-                    disabled={reactionBusy}
-                    aria-label="Thumbs down"
-                    title="Thumbs down"
-                    className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors ${
-                      reaction === 'sad' ? 'bg-error/20 ring-1 ring-error text-error' : 'bg-surface-hover hover:bg-error/10 text-muted'
-                    } ${reactionBusy ? 'opacity-60 cursor-wait' : ''}`}
-                  >
-                    <HandThumbDownIcon className="w-5 h-5" />
-                  </button>
-                </div>
-              )}
 
               {details.genres && details.genres.length > 0 && (
                 <div className="flex flex-wrap gap-2">

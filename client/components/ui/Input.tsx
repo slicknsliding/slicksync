@@ -12,10 +12,19 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   size?: 'sm' | 'md';
+  // Fires right before the eye icon reveals (not on hide) a password field -
+  // lets a caller lazy-fetch a real stored value first instead of the eye
+  // just toggling visibility of whatever's already typed (which is nothing,
+  // for an edit form's deliberately-blank "leave empty to keep current"
+  // field - confirmed real confusion: the field LOOKS like it holds the
+  // current secret since it shows placeholder dots, but reveal showed
+  // nothing because there was nothing typed to reveal). Optional; every
+  // existing caller keeps the plain show/hide toggle unchanged.
+  onRevealClick?: () => void;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, leftIcon, rightIcon, size = 'md', className, ...props }, ref) => {
+  ({ label, error, hint, leftIcon, rightIcon, size = 'md', className, onRevealClick, ...props }, ref) => {
     const sizeStyles = {
       sm: 'px-3 py-1.5 text-sm',
       md: 'px-4 py-3',
@@ -40,7 +49,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       <button
         type="button"
         tabIndex={-1}
-        onClick={() => setPasswordVisible((v) => !v)}
+        onClick={() => {
+          if (!passwordVisible) onRevealClick?.();
+          setPasswordVisible((v) => !v);
+        }}
         className="pointer-events-auto p-1 -m-1 rounded-md hover:bg-surface-hover transition-colors"
         aria-label={passwordVisible ? 'Hide password' : 'Show password'}
         title={passwordVisible ? 'Hide password' : 'Show password'}

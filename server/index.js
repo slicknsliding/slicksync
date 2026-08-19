@@ -287,6 +287,7 @@ app.use('/api/public-auth', publicAuthRouterInstance);
 app.use('/api/addons', addonsRouter({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifestUrl, scopedWhere, INSTANCE_TYPE, manifestHash, filterManifestByResources, filterManifestByCatalogs, manifestUrlHmac }));
 app.use('/api/groups', groupsRouter({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUserToGroup, getDecryptedManifestUrl, manifestUrlHmac, decrypt, createProvider }));
 app.use('/api/users', usersRouter({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, encrypt, parseAddonIds, parseProtectedAddons, getDecryptedManifestUrl, StremioAPIClient, StremioAPIStore, assignUserToGroup, debug, defaultAddons, canonicalizeManifestUrl, getAccountDek, getServerKey, aesGcmDecrypt, validateStremioAuthKey, manifestUrlHmac, manifestHash, createProvider }));
+app.use('/api/scrobble', require('./routes/scrobble')({ prisma }));
 app.use('/api/stremio', stremioRouter({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, INSTANCE_TYPE }));
 app.use('/api/nuvio', nuvioRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/snapshots', snapshotsRouter({ prisma, getAccountId, encrypt, decrypt, createProvider }));
@@ -485,6 +486,24 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize catalog auto-refresh:', err)
     }
 
+    // Schedule content-rating enforcement (daily, only for catalogs with an
+    // active keptRatings policy - no-op query when nobody has one set)
+    try {
+      const { scheduleContentRatingEnforcement } = require('./utils/contentRatingEnforcement')
+      scheduleContentRatingEnforcement(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize content rating enforcement:', err)
+    }
+
+    // Schedule debrid auto-remove (daily, only for real_debrid/torbox Vault
+    // entries with autoRemoveEnabled set - no-op query when nobody has it on)
+    try {
+      const { scheduleDebridAutoRemove } = require('./utils/debridAutoRemove')
+      scheduleDebridAutoRemove(prisma, decrypt)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize debrid auto-remove:', err)
+    }
+
     // Schedule SIMKL sync (pull + push, every 30m, only for users who've
     // linked a SIMKL account - no-op query when nobody has)
     try {
@@ -494,13 +513,13 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize SIMKL sync:', err)
     }
 
-    // Schedule seasonal addon auto-scheduling (every 6h, only for addons
-    // that opted in to scheduleEnabled - no-op query when nobody has)
+    // Schedule Automation's own time.daily trigger (every 1m, only for
+    // accounts with an enabled time.daily rule - no-op query otherwise)
     try {
-      const { scheduleAddonScheduler } = require('./utils/addonScheduler')
-      scheduleAddonScheduler(prisma)
+      const { scheduleAutomationTimeTriggers } = require('./utils/automation/scheduler')
+      scheduleAutomationTimeTriggers(prisma)
     } catch (err) {
-      console.error('⚠️ Failed to initialize addon scheduler:', err)
+      console.error('⚠️ Failed to initialize automation scheduler:', err)
     }
 
     // Schedule auto-generated themed catalogs (daily, only for accounts

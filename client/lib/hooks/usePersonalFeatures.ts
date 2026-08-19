@@ -46,6 +46,10 @@ export interface PersonalFeatures {
   // Recommendations above. Personal 1-10 ratings share the same backend
   // and toggle but have no UI yet (see MediaDetailModal.tsx).
   enableReactions: boolean;
+  // "Also streaming on" (JustWatch subscription/free-tier availability) row
+  // in the detail modal. Default true, same opt-out treatment as Watchlist/
+  // Watched indicators/Recommendations/Reactions above.
+  enableWatchProviders: boolean;
 }
 
 const DEFAULT: PersonalFeatures = {
@@ -57,6 +61,7 @@ const DEFAULT: PersonalFeatures = {
   rpdbEnabled: false,
   enablePosterRatings: false,
   enableReactions: true,
+  enableWatchProviders: true,
 };
 
 // One in-flight promise + one cached value shared across every hook
@@ -81,6 +86,7 @@ async function fetchOnce(): Promise<PersonalFeatures> {
         rpdbEnabled: !!(s?.rpdbApiKey && s.rpdbApiKey.trim()) && s?.enablePosterRatings === true,
         enablePosterRatings: s?.enablePosterRatings === true,
         enableReactions: s?.enableReactions !== false,
+        enableWatchProviders: s?.enableWatchProviders !== false,
       };
       inFlight = null;
       return cached;

@@ -247,6 +247,7 @@ function RuleEditorModal({
 }) {
   const [name, setName] = useState(rule?.name || '');
   const [triggerType, setTriggerType] = useState(rule?.triggerType || registry.triggers[0]?.type || '');
+  const [triggerConfig, setTriggerConfig] = useState<Record<string, unknown>>(rule?.triggerConfig || {});
   const [conditions, setConditions] = useState<AutomationCondition[]>(rule?.conditions || []);
   const [actions, setActions] = useState<AutomationActionConfig[]>(rule?.actions || (registry.actions[0] ? [{ type: registry.actions[0].type, config: {} }] : []));
   const [saving, setSaving] = useState(false);
@@ -255,18 +256,27 @@ function RuleEditorModal({
 
   // Changing the trigger invalidates any condition whose field belonged to the
   // old one - silently keeping a stale field around would save a rule that
-  // fails validation the moment it's re-opened.
+  // fails validation the moment it's re-opened. Same for triggerConfig - a
+  // leftover hour/minute from a previous time.daily selection has no meaning
+  // once the trigger's changed to something else.
   const handleTriggerChange = (nextType: string) => {
     setTriggerType(nextType);
     setConditions([]);
+    setTriggerConfig({});
   };
 
   const handleSave = async () => {
     if (!name.trim()) { toast.error('Give this rule a name'); return; }
     if (actions.length === 0) { toast.error('Add at least one action'); return; }
+    for (const field of trigger?.triggerConfigFields || []) {
+      if (field.required && (triggerConfig[field.name] === undefined || triggerConfig[field.name] === '')) {
+        toast.error(`"${trigger?.label}" needs ${field.label}`);
+        return;
+      }
+    }
     setSaving(true);
     try {
-      const payload = { name: name.trim(), triggerType, conditions, actions, enabled: rule?.enabled ?? true };
+      const payload = { name: name.trim(), triggerType, triggerConfig, conditions, actions, enabled: rule?.enabled ?? true };
       const saved = rule
         ? await api.updateAutomationRule(rule.id, payload)
         : await api.createAutomationRule(payload);
@@ -305,6 +315,28 @@ function RuleEditorModal({
           </select>
           {trigger && <p className="text-xs text-muted mt-1.5">{trigger.description}</p>}
         </div>
+
+        {/* Only time.daily has triggerConfigFields today - a schedule isn't
+            a condition on an event's payload, it's the trigger's own
+            configuration, so it gets its own small form here rather than
+            living in ConditionBuilder below. */}
+        {trigger && trigger.triggerConfigFields && trigger.triggerConfigFields.length > 0 && (
+          <div className="flex gap-3">
+            {trigger.triggerConfigFields.map((field) => (
+              <div key={field.name} className="flex-1">
+                <label className="block text-xs font-medium mb-1.5 text-muted">{field.label}</label>
+                <input
+                  type="number"
+                  value={typeof triggerConfig[field.name] === 'number' ? (triggerConfig[field.name] as number) : ''}
+                  onChange={(e) => setTriggerConfig({ ...triggerConfig, [field.name]: e.target.value === '' ? undefined : Number(e.target.value) })}
+                  placeholder={field.label}
+                  className="w-full px-4 py-2.5 rounded-xl focus:outline-none"
+                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
 
         {trigger && (
           <ConditionBuilder
@@ -367,11 +399,11 @@ function ConditionBuilder({
           {conditions.map((c, i) => {
             const operator = operators.find((o) => o.op === c.op);
             return (
-              <div key={i} className="flex items-center gap-2">
+              <div key={i} className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                 <select
                   value={c.field}
                   onChange={(e) => updateCondition(i, { field: e.target.value })}
-                  className="flex-1 px-3 py-2 rounded-lg text-sm focus:outline-none"
+                  className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm focus:outline-none"
                   style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                 >
                   {trigger.fields.map((f) => <option key={f.name} value={f.name}>{f.label}</option>)}
@@ -379,7 +411,7 @@ function ConditionBuilder({
                 <select
                   value={c.op}
                   onChange={(e) => updateCondition(i, { op: e.target.value })}
-                  className="px-3 py-2 rounded-lg text-sm focus:outline-none"
+                  className="shrink-0 px-3 py-2 rounded-lg text-sm focus:outline-none"
                   style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                 >
                   {operators.map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
@@ -389,11 +421,16 @@ function ConditionBuilder({
                     value={String(c.value ?? '')}
                     onChange={(e) => updateCondition(i, { value: e.target.value })}
                     placeholder="value"
-                    className="flex-1 px-3 py-2 rounded-lg text-sm focus:outline-none"
+                    className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm focus:outline-none"
                     style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                   />
                 )}
-                <button onClick={() => removeCondition(i)} className="p-2 rounded-lg text-muted hover:text-error hover:bg-error-muted transition-colors shrink-0">
+                <button
+                  onClick={() => removeCondition(i)}
+                  title="Remove this condition"
+                  aria-label="Remove this condition"
+                  className="p-2 rounded-lg text-muted hover:text-error hover:bg-error-muted transition-colors shrink-0 ml-auto sm:ml-0"
+                >
                   <TrashIcon className="w-4 h-4" />
                 </button>
               </div>

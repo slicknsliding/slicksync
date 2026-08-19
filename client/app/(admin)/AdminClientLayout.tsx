@@ -12,6 +12,9 @@ import { useSortableSensors } from "@/components/ui/DragSortable";
 import { pointerWithin } from "@dnd-kit/core";
 import { VaultDragProvider, useVaultDrag } from "@/components/providers/VaultDragContext";
 import { TVBackButton } from "@/components/tv/TVBackButton";
+import { CommandPalette } from "@/components/ui/CommandPalette";
+import { useIsTV } from "@/lib/hooks/useIsTV";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import type { DragStartEvent, DragEndEvent, CollisionDetection } from "@dnd-kit/core";
 
 interface MobileMenuContextType {
@@ -91,6 +94,7 @@ export default function AdminClientLayout({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
   const { layoutMode } = useLayoutMode();
+  const isTV = useIsTV();
   // Dashboard/Activity render their own top-nav chrome in Nebula mode, so
   // the shared sidebar (and the content offset that reserves space for it)
   // needs to get out of the way on exactly those two routes - every other
@@ -152,6 +156,10 @@ export default function AdminClientLayout({
     <AdminAuthGate>
       <MobileMenuContext.Provider value={{ isOpen: isMobileMenuOpen, onOpen: handleOpen, onClose: handleClose }}>
         <TVBackButton />
+        {/* No keyboard on a D-pad-only TV interface - a floating Ctrl+K
+            hint/shortcut makes no sense there. */}
+        {!isTV && <CommandPalette />}
+        {!isTV && <OnboardingWizard />}
         <VaultDragProvider>
           <LayoutDndWrapper>
             <div className="relative min-h-screen">

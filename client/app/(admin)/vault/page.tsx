@@ -1,7 +1,7 @@
 'use client';
 
 import Head from 'next/head';
-import { useState, useEffect, useCallback, Suspense, Fragment } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { useIsTV } from '@/lib/hooks/useIsTV';
@@ -34,6 +34,8 @@ import {
   CreditCardIcon,
   DocumentDuplicateIcon,
   BellSlashIcon,
+  CalendarDaysIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 
 const CATEGORY_LABELS: Record<VaultCategory, string> = {
@@ -48,6 +50,16 @@ const CATEGORY_LABELS: Record<VaultCategory, string> = {
   aiostreams: 'AIOStreams',
   custom: 'Custom',
 };
+
+// AI Services also has its own dedicated front door in Settings -> External
+// API Keys (with a real verify-on-save check this generic Vault form
+// doesn't run) - but it's still the same underlying VaultEntry row
+// (category: 'ai'), so it stays visible here too rather than hidden from
+// Vault's own tabs/Add Entry picker. Managing it from Settings gets you
+// live verification; managing it here gets you the same expiry/cost
+// tracking and drag-to-reorder every other entry has - both write to the
+// same place.
+const VAULT_UI_CATEGORY_LABELS = CATEGORY_LABELS;
 
 const TEST_TYPE_LABELS: Record<VaultTestType, string> = {
   manual: 'Manual (no automated check)',
@@ -92,6 +104,116 @@ function ExpiryBadge({ entry }: { entry: VaultEntry }) {
   if (days < 0) return <Badge variant="error" size="md" className="!text-sm">Expired</Badge>;
   if (days <= entry.notifyDaysBefore) return <Badge variant="warning" size="md" className="!text-sm">{days}d left</Badge>;
   return <Badge variant="outline" size="md" className="!text-sm">{days}d left</Badge>;
+}
+
+// Live Real-Debrid/TorBox usage (active downloads, premium days left) plus
+// the auto-remove toggle - own component (not inlined in renderEntryCard, a
+// plain function that can't hold hooks - see SortableEntryCard's own
+// comment on the same constraint) so each debrid card fetches independently
+// on mount without re-fetching every OTHER card whenever any one entry's
+// state changes.
+function DebridUsageBadge({ entry, onEntryUpdated }: { entry: VaultEntry; onEntryUpdated: (id: string, patch: Partial<VaultEntry>) => void }) {
+  const [usage, setUsage] = useState<{ premiumDaysLeft: number | null; activeDownloads: number | null } | null | undefined>(undefined);
+  const [savingAutoRemove, setSavingAutoRemove] = useState(false);
+  // Controlled (was uncontrolled + save-on-blur only) - clicking the
+  // native spin-button arrows changes the value without ever blurring the
+  // input, so a blur-only save silently dropped the change if the user
+  // then refreshed or navigated away before clicking elsewhere. Saving on
+  // every change (typed or via the arrows) instead of only on blur means
+  // there's never a window where a real change sits unsaved.
+  const [daysValue, setDaysValue] = useState(String(entry.autoRemoveAfterDays || 7));
+
+  useEffect(() => {
+    if (entry.testType !== 'real_debrid' && entry.testType !== 'torbox') return;
+    let cancelled = false;
+    api.getVaultEntryUsage(entry.id).then((r) => { if (!cancelled) setUsage(r.usage); }).catch(() => { if (!cancelled) setUsage(null); });
+    return () => { cancelled = true; };
+  }, [entry.id, entry.testType]);
+
+  if (entry.testType !== 'real_debrid' && entry.testType !== 'torbox') return null;
+
+  const parts: string[] = [];
+  if (usage) {
+    if (typeof usage.activeDownloads === 'number') parts.push(`${usage.activeDownloads} active download${usage.activeDownloads === 1 ? '' : 's'}`);
+    if (typeof usage.premiumDaysLeft === 'number') parts.push(`${usage.premiumDaysLeft}d premium left`);
+  }
+
+  const handleToggleAutoRemove = async () => {
+    const next = !entry.autoRemoveEnabled;
+    setSavingAutoRemove(true);
+    try {
+      await api.updateVaultEntry(entry.id, { autoRemoveEnabled: next });
+      onEntryUpdated(entry.id, { autoRemoveEnabled: next });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update auto-remove');
+    } finally {
+      setSavingAutoRemove(false);
+    }
+  };
+
+  const handleChangeAutoRemoveDays = async (days: number) => {
+    if (!Number.isFinite(days) || days < 1) return;
+    try {
+      await api.updateVaultEntry(entry.id, { autoRemoveAfterDays: days });
+      onEntryUpdated(entry.id, { autoRemoveAfterDays: days });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update auto-remove');
+    }
+  };
+
+  return (
+    <div className="mb-3 space-y-1.5">
+      {parts.length > 0 && (
+        <p className="text-xs" style={{ color: 'var(--color-textMuted)' }}>{parts.join(' · ')}</p>
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs" style={{ color: 'var(--color-textMuted)' }}>Auto-remove finished torrents</span>
+        <ToggleSwitch
+          size="sm"
+          checked={!!entry.autoRemoveEnabled}
+          onChange={handleToggleAutoRemove}
+          disabled={savingAutoRemove}
+        />
+      </div>
+      {/* Day-count control only shown once auto-remove is actually on -
+          confirmed cramped/mismatched on both PC and mobile when it was
+          always inline next to the toggle regardless of state (a size="md"
+          toggle next to text-xs text plus a number input, all fighting for
+          space on an already-narrow card). */}
+      {entry.autoRemoveEnabled && (
+        <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-textMuted)' }}>
+          <span>After</span>
+          <input
+            type="number"
+            min={1}
+            value={daysValue}
+            onChange={(e) => {
+              setDaysValue(e.target.value);
+              const parsed = parseInt(e.target.value, 10);
+              // Saves on every valid change (typing a digit or clicking a
+              // spin-button arrow) - not just on blur, so a value changed
+              // via the arrows and never blurred (e.g. the user immediately
+              // refreshes or navigates away) still persists. An empty or
+              // mid-edit value (e.g. briefly clearing the field to retype)
+              // just doesn't save yet, rather than saving a bad number.
+              if (Number.isFinite(parsed) && parsed >= 1) handleChangeAutoRemoveDays(parsed);
+            }}
+            onBlur={(e) => {
+              // Safety net: if what's left in the field on blur never
+              // resolved to a valid save above (e.g. the user left it
+              // empty), fall back to the last known-good value instead of
+              // leaving the field blank.
+              const parsed = parseInt(e.target.value, 10);
+              if (!Number.isFinite(parsed) || parsed < 1) setDaysValue(String(entry.autoRemoveAfterDays || 7));
+            }}
+            className="w-12 px-1.5 py-0.5 rounded text-xs text-center"
+            style={{ background: 'var(--color-subtle)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+          />
+          <span>days idle</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface EntryFormState {
@@ -279,6 +401,10 @@ function VaultPageContent() {
   const [hoursLast30, setHoursLast30] = useState<number | null>(null);
   const [currency, setCurrency] = useState('USD');
   const [costRefreshKey, setCostRefreshKey] = useState(0);
+  // Renewal calendar starts collapsed to just its one summary line - the
+  // detail list of every individual upcoming renewal is worth having but
+  // not worth always taking up vertical space for.
+  const [renewalExpanded, setRenewalExpanded] = useState(false);
   useEffect(() => {
     api.getVaultEntries().then((d) => {
       setAllCostEntries(d.entries);
@@ -323,6 +449,36 @@ function VaultPageContent() {
   const monthlyTotal = allCostEntries.reduce((sum, e) => sum + toMonthly(e), 0);
   const trackedCount = allCostEntries.filter((e) => e.cost != null && e.cost > 0).length;
   const costPerHour = hoursLast30 && hoursLast30 > 0 ? monthlyTotal / hoursLast30 : null;
+
+  // Renewal calendar: projects each cost-tracked entry's OWN renewal cycle
+  // forward from its current expiresAt (not just a single "next renewal"
+  // check) - a monthly service renews up to 3 times within a 90-day window,
+  // and each occurrence is a real, separate charge, not one. expiresAt is
+  // kept current either by Real-Debrid/TorBox's own auto-check (see
+  // vaultCheckers.js) or manually whenever the admin renews something else -
+  // this only ever projects forward from whatever that value currently is,
+  // never guesses at a renewal that hasn't happened.
+  const FORECAST_WINDOW_DAYS = 90;
+  const upcomingRenewals = useMemo(() => {
+    const now = Date.now();
+    const windowEnd = now + FORECAST_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    const occurrences: Array<{ entryId: string; name: string; date: Date; amount: number }> = [];
+    for (const e of allCostEntries) {
+      if (!e.cost || e.cost <= 0 || !e.expiresAt || !e.isActive) continue;
+      const cycleDays = e.costCycle === 'yearly' ? 365 : 30;
+      let next = new Date(e.expiresAt).getTime();
+      // Catch up past-due entries (expiresAt already passed but never
+      // updated) to the next real occurrence instead of skipping the
+      // window entirely or double-counting a stale date.
+      while (next < now) next += cycleDays * 24 * 60 * 60 * 1000;
+      while (next <= windowEnd) {
+        occurrences.push({ entryId: e.id, name: e.name, date: new Date(next), amount: e.cost });
+        next += cycleDays * 24 * 60 * 60 * 1000;
+      }
+    }
+    return occurrences.sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [allCostEntries]);
+  const forecastTotal = upcomingRenewals.reduce((sum, r) => sum + r.amount, 0);
 
   const load = useCallback(async () => {
     try {
@@ -611,6 +767,21 @@ function VaultPageContent() {
     }
   };
 
+  // Lazy-fills the edit form's Secret field with the real stored value the
+  // first time its eye icon is clicked to reveal (see Input's own
+  // onRevealClick comment) - only when the field is still exactly the
+  // placeholder-blank "leave empty to keep current" state, so it never
+  // clobbers something the user already started typing to replace it with.
+  const handleRevealInEditForm = async () => {
+    if (!editingId || form.secret) return;
+    try {
+      const result = await api.revealVaultSecret(editingId);
+      setForm(f => ({ ...f, secret: result.secret }));
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to reveal secret');
+    }
+  };
+
   // Copies the secret without requiring "Reveal" first - reuses whatever's
   // already revealed on screen if present, otherwise fetches it quietly
   // (never stores it into `revealed`, so the card stays masked).
@@ -639,7 +810,7 @@ function VaultPageContent() {
   };
 
   const filterOptions = [
-    ...Object.entries(CATEGORY_LABELS).map(([key, label]) => ({
+    ...Object.entries(VAULT_UI_CATEGORY_LABELS).map(([key, label]) => ({
       key, label, count: categoryCounts[key] || 0,
     })),
   ];
@@ -712,6 +883,8 @@ function VaultPageContent() {
       {entry.lastCheckMessage && (
         <p className="text-sm mb-3" style={{ color: 'var(--color-textMuted)' }}>{entry.lastCheckMessage}</p>
       )}
+
+      <DebridUsageBadge entry={entry} onEntryUpdated={(id, patch) => setEntries(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e))} />
 
       <div className="mt-auto flex items-center gap-2 pt-2 flex-wrap" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
         {(() => {
@@ -790,7 +963,7 @@ function VaultPageContent() {
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'px-4 md:px-6 pb-6'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Vault"
@@ -849,6 +1022,41 @@ function VaultPageContent() {
               );
             })}
           </div>
+
+          {upcomingRenewals.length > 0 && (
+            <div className={`${NEBULA_GLASS_CLASS} p-4 sm:p-5 mb-4`} style={nebulaGlassStyle}>
+              <NebulaGlassStripe />
+              <button
+                type="button"
+                onClick={() => setRenewalExpanded((v) => !v)}
+                className="w-full flex items-center gap-2 text-left"
+              >
+                <CalendarDaysIcon className="w-5 h-5 shrink-0" style={{ color: 'var(--color-primary)' }} />
+                <h3 className="text-sm font-semibold text-default flex-1">
+                  Next {FORECAST_WINDOW_DAYS} days: {fmtMoney(forecastTotal)} across {upcomingRenewals.length} renewal{upcomingRenewals.length !== 1 ? 's' : ''}
+                </h3>
+                <ChevronDownIcon
+                  className="w-4 h-4 shrink-0 transition-transform"
+                  style={{ color: 'var(--color-textMuted)', transform: renewalExpanded ? 'rotate(180deg)' : undefined }}
+                />
+              </button>
+              {renewalExpanded && (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto mt-3 pt-3" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
+                  {upcomingRenewals.map((r, i) => {
+                    const days = Math.max(0, Math.round((r.date.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                    return (
+                      <div key={`${r.entryId}-${i}`} className="flex items-center justify-between text-xs py-1">
+                        <span className="text-default truncate">{r.name}</span>
+                        <span className="text-muted shrink-0 ml-2">
+                          {days === 0 ? 'today' : `in ${days}d`} · {fmtMoney(r.amount)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
@@ -923,7 +1131,7 @@ function VaultPageContent() {
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
               style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             >
-              {Object.entries(CATEGORY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              {Object.entries(VAULT_UI_CATEGORY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
           </div>
 
@@ -939,6 +1147,7 @@ function VaultPageContent() {
                 placeholder={editingId ? '••••••••' : 'Account password'}
                 value={form.secret}
                 onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+                onRevealClick={editingId ? handleRevealInEditForm : undefined}
               />
             </>
           )}
@@ -952,6 +1161,7 @@ function VaultPageContent() {
                 placeholder={editingId ? '••••••••' : 'Indexer API key'}
                 value={form.secret}
                 onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+                onRevealClick={editingId ? handleRevealInEditForm : undefined}
               />
             </>
           )}
@@ -970,6 +1180,7 @@ function VaultPageContent() {
                   placeholder={editingId ? '••••••••' : 'Account password'}
                   value={form.secret}
                   onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+                  onRevealClick={editingId ? handleRevealInEditForm : undefined}
                 />
               </div>
               <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
@@ -990,6 +1201,7 @@ function VaultPageContent() {
                 placeholder={editingId ? '••••••••' : 'Paste API key / password / token'}
                 value={form.secret}
                 onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
+                onRevealClick={editingId ? handleRevealInEditForm : undefined}
               />
 
               {form.category === 'ai' ? (

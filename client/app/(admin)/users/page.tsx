@@ -427,7 +427,7 @@ export default function UsersPage() {
           on the page background - so this is a real structural addition,
           not a recolor. UserCard itself is completely unchanged either way. */}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Users"
@@ -970,13 +970,10 @@ function UserCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
-        {/* Selection indicator & Toggle */}
-        <div className="absolute top-4 right-4 flex items-center gap-2">
-          <SelectionCheckbox
-            checked={isSelected}
-            onChange={onToggleSelect}
-            visible={isSelected}
-          />
+        {/* Selection indicator & Toggle - stacked (toggle above, checkbox
+            below) rather than side-by-side, so the checkbox sits directly
+            under the toggle instead of next to it. */}
+        <div className="absolute top-4 right-4 flex flex-col items-end gap-1.5">
           <ToggleSwitch
             checked={user.status === 'active'}
             onChange={async () => {
@@ -989,6 +986,10 @@ function UserCard({
                 toast.error(err.message || 'Failed to toggle user status');
               }
             }}
+          />
+          <SelectionCheckbox
+            checked={isSelected}
+            onChange={onToggleSelect}
           />
         </div>
 

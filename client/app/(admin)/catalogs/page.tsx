@@ -2,16 +2,18 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
-import { Card, Button, Modal, PosterThumb, Badge } from '@/components/ui';
+import { Card, Button, Modal, PosterThumb, Badge, MediaDetailModal, ContextMenu, useContextMenu } from '@/components/ui';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
-import { api, CustomList, DescribedCatalogPreview } from '@/lib/api';
+import { api, CustomList, DescribedCatalogPreview, CustomListItem } from '@/lib/api';
 import {
   RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon, MapPinIcon, SparklesIcon,
+  ShieldExclamationIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid, PlayIcon } from '@heroicons/react/24/solid';
 
@@ -150,6 +152,19 @@ export default function ListsPage() {
     catch { toast.error('Failed to delete'); load(); }
   };
 
+  // Right-click context menu - one shared instance for every card, tracking
+  // which list it's currently open for, rather than a per-card hook
+  // instance (cards render inline in a .map() here, not as their own
+  // component, so a per-card useContextMenu()/useLongPress() isn't an
+  // option - hooks can't be called a variable number of times per render).
+  const { isOpen: menuOpen, position: menuPosition, handleContextMenu, close: closeMenu } = useContextMenu();
+  const [menuTarget, setMenuTarget] = useState<CustomList | null>(null);
+  const openContextMenuFor = (list: CustomList, e: React.MouseEvent) => {
+    if (!list.isOwner) return; // read-only shared catalog - nothing to mutate
+    setMenuTarget(list);
+    handleContextMenu(e, e.clientX, e.clientY);
+  };
+
   // AvatarPickerModal's onSave only includes the key(s) for the tab that was
   // actually saved (color tab sends both colorIndex + a clearing avatarUrl,
   // URL/upload tabs send only avatarUrl) - forward exactly that presence
@@ -218,7 +233,7 @@ export default function ListsPage() {
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
         {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={nuvioCollectionsButton} />}
 
         <PageSection>
@@ -310,7 +325,7 @@ export default function ListsPage() {
             return (
               <div className="space-y-4">
                 {hero && (
-                  <Card padding="none" className="overflow-hidden">
+                  <Card padding="none" className="overflow-hidden" onContextMenu={(e) => openContextMenuFor(hero, e)}>
                     <button type="button" onClick={() => router.push(`/catalogs/${hero.id}`)} className="w-full text-left block relative group">
                       <div className="relative h-48 md:h-72 bg-black">
                         {hero.coverImageUrl ? (
@@ -357,7 +372,7 @@ export default function ListsPage() {
                 {rest.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {rest.map((list) => (
-                      <Card key={list.id} padding="md">
+                      <Card key={list.id} padding="md" onContextMenu={(e) => openContextMenuFor(list, e)}>
                         <button
                           type="button"
                           onClick={() => router.push(`/catalogs/${list.id}`)}
@@ -421,6 +436,54 @@ export default function ListsPage() {
         </PageSection>
       </div>
       </div>
+
+      {/* Right-click actions - same set the always-visible icon row already
+          offers (Pin/Cover art/Rename/Delete), plus Content Rating, which
+          only lived on the catalog's own detail page before. Content Rating
+          navigates there with a query flag that auto-opens the policy modal
+          on load, reusing that page's existing modal instead of duplicating
+          it here. */}
+      <ContextMenu isOpen={menuOpen} position={menuPosition} onClose={closeMenu}>
+        {menuTarget && (
+          <>
+            <button
+              onClick={() => { handleTogglePin(menuTarget); closeMenu(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              {menuTarget.pinned ? <MapPinIconSolid className="w-4 h-4 text-primary" /> : <MapPinIcon className="w-4 h-4" />}
+              {menuTarget.pinned ? 'Unpin from top' : 'Pin to top'}
+            </button>
+            <button
+              onClick={() => { setCoverPicker(menuTarget); closeMenu(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              <PhotoIcon className="w-4 h-4" />
+              Cover art
+            </button>
+            <button
+              onClick={() => { setRenaming(menuTarget); setRenameValue(menuTarget.name); closeMenu(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              <PencilSquareIcon className="w-4 h-4" />
+              Rename
+            </button>
+            <button
+              onClick={() => { router.push(`/catalogs/${menuTarget.id}?openRating=1`); closeMenu(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+            >
+              <ShieldExclamationIcon className="w-4 h-4" />
+              Content Rating
+            </button>
+            <button
+              onClick={() => { setDeleting(menuTarget); closeMenu(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-hover transition-colors text-error"
+            >
+              <TrashIcon className="w-4 h-4" />
+              Delete catalog
+            </button>
+          </>
+        )}
+      </ContextMenu>
 
       {/* Create catalog */}
       <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="New catalog" size="sm">
@@ -587,6 +650,7 @@ function DescribeCatalogModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detailItem, setDetailItem] = useState<CustomListItem | null>(null);
 
   const handlePreview = async () => {
     if (!description.trim()) return;
@@ -636,7 +700,8 @@ function DescribeCatalogModal({
   }
 
   return (
-    <Modal isOpen onClose={onClose} title="Describe a catalog" size="md">
+    <>
+    <Modal isOpen onClose={onClose} title="Describe a catalog" size="lg">
       <div className="space-y-4">
         <div>
           <textarea
@@ -673,20 +738,33 @@ function DescribeCatalogModal({
               <p className="text-sm text-default">
                 {queryParts.length > 0 ? queryParts.join(' · ') : 'No specific filters detected - showing top-rated results'}
               </p>
+              {!preview.usedAi && preview.aiError && (
+                <p className="text-xs mt-1.5" style={{ color: 'var(--color-error)' }}>
+                  Your configured AI key didn&apos;t work ({preview.aiError}) - used the built-in keyword parser instead. Check the model/base URL pairing in <Link href="/settings" className="underline hover:text-default">Settings</Link>.
+                </p>
+              )}
+              {!preview.usedAi && !preview.aiError && (
+                <p className="text-xs text-subtle mt-1.5">
+                  Using the built-in keyword parser. <Link href="/settings" className="underline hover:text-default">Add an AI key in Settings</Link> for better understanding of nuanced descriptions.
+                </p>
+              )}
             </div>
 
             {preview.items.length === 0 ? (
               <p className="text-sm text-muted">No matches found - try rephrasing, or widening the runtime/decade.</p>
             ) : (
-              <div className="flex gap-1.5 overflow-x-auto pb-1">
-                {preview.items.slice(0, 10).map((item) => (
-                  <PosterThumb key={item.id} item={item} className="w-16 h-24 shrink-0" />
+              <div className="max-h-96 overflow-y-auto grid grid-cols-4 sm:grid-cols-5 gap-3 p-1">
+                {preview.items.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setDetailItem(item)}
+                    className="text-left group"
+                  >
+                    <PosterThumb item={item} className="aspect-[2/3] transition-transform group-hover:scale-[1.03] group-hover:ring-2 group-hover:ring-primary" />
+                    <p className="text-xs text-muted mt-1 truncate group-hover:text-default transition-colors" title={item.name}>{item.name}</p>
+                  </button>
                 ))}
-                {preview.items.length > 10 && (
-                  <div className="w-16 h-24 shrink-0 rounded-md bg-surface flex items-center justify-center text-xs text-muted">
-                    +{preview.items.length - 10}
-                  </div>
-                )}
               </div>
             )}
 
@@ -715,5 +793,16 @@ function DescribeCatalogModal({
         )}
       </div>
     </Modal>
+    {detailItem && (
+      <MediaDetailModal
+        isOpen={!!detailItem}
+        onClose={() => setDetailItem(null)}
+        itemId={detailItem.id}
+        itemType={detailItem.type}
+        fallbackTitle={detailItem.name}
+        fallbackPoster={detailItem.poster || undefined}
+      />
+    )}
+    </>
   );
 }

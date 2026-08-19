@@ -709,12 +709,6 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
           catalogs: (() => { try { return addon.catalogs ? JSON.parse(addon.catalogs) : [] } catch { return [] } })(),
           isProtected: protectedNameSet.has((addon.name || '').trim().toLowerCase()),
           customTag: addon.customTag || null,
-          // Seasonal auto-scheduling (server/utils/addonScheduler.js)
-          scheduleEnabled: addon.scheduleEnabled || false,
-          scheduleStartMonth: addon.scheduleStartMonth ?? null,
-          scheduleStartDay: addon.scheduleStartDay ?? null,
-          scheduleEndMonth: addon.scheduleEndMonth ?? null,
-          scheduleEndDay: addon.scheduleEndDay ?? null,
           // Proxy info
           proxyEnabled: addon.proxyEnabled || false,
           proxyUuid: addon.proxyUuid || null,
@@ -846,50 +840,6 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       }, `Addon ${isActive ? 'enabled' : 'disabled'} successfully`)
     } catch (error) {
       console.error('Error toggling addon status:', error)
-      return responseUtils.internalError(res, error.message)
-    }
-  })
-
-  // PATCH /api/addons/:id/schedule - seasonal auto-enable/disable window
-  // (server/utils/addonScheduler.js). { scheduleEnabled, scheduleStartMonth,
-  // scheduleStartDay, scheduleEndMonth, scheduleEndDay } - all four date
-  // fields required together when enabling; pass scheduleEnabled: false
-  // alone to turn scheduling off without clearing the saved window (so
-  // re-enabling later doesn't need the dates re-entered).
-  router.patch('/:id/schedule', async (req, res) => {
-    try {
-      const { id } = req.params
-      const { scheduleEnabled, scheduleStartMonth, scheduleStartDay, scheduleEndMonth, scheduleEndDay } = req.body || {}
-
-      const addon = await dbUtils.findEntity(prisma, 'addon', id, getAccountId(req))
-      if (!addon) return responseUtils.notFound(res, 'Addon')
-
-      const data = {}
-      if (typeof scheduleEnabled === 'boolean') data.scheduleEnabled = scheduleEnabled
-      const hasAllDates = [scheduleStartMonth, scheduleStartDay, scheduleEndMonth, scheduleEndDay].every((v) => Number.isInteger(v))
-      if (hasAllDates) {
-        const valid = (m, d) => m >= 1 && m <= 12 && d >= 1 && d <= 31
-        if (!valid(scheduleStartMonth, scheduleStartDay) || !valid(scheduleEndMonth, scheduleEndDay)) {
-          return responseUtils.badRequest(res, 'Invalid month/day')
-        }
-        data.scheduleStartMonth = scheduleStartMonth
-        data.scheduleStartDay = scheduleStartDay
-        data.scheduleEndMonth = scheduleEndMonth
-        data.scheduleEndDay = scheduleEndDay
-      } else if (data.scheduleEnabled === true) {
-        return responseUtils.badRequest(res, 'scheduleStartMonth/Day and scheduleEndMonth/Day are required to enable scheduling')
-      }
-
-      const updated = await dbUtils.updateEntity(prisma, 'addon', id, data, getAccountId(req))
-      return responseUtils.success(res, {
-        scheduleEnabled: updated.scheduleEnabled,
-        scheduleStartMonth: updated.scheduleStartMonth,
-        scheduleStartDay: updated.scheduleStartDay,
-        scheduleEndMonth: updated.scheduleEndMonth,
-        scheduleEndDay: updated.scheduleEndDay,
-      })
-    } catch (error) {
-      console.error('Error updating addon schedule:', error)
       return responseUtils.internalError(res, error.message)
     }
   })
@@ -1527,11 +1477,6 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
         resources: (() => { try { return addon.resources ? JSON.parse(addon.resources) : [] } catch { return [] } })(),
         catalogs: (() => { try { return addon.catalogs ? JSON.parse(addon.catalogs) : [] } catch { return [] } })(),
         customLogo: addon.customLogo || null,
-        scheduleEnabled: addon.scheduleEnabled || false,
-        scheduleStartMonth: addon.scheduleStartMonth ?? null,
-        scheduleStartDay: addon.scheduleStartDay ?? null,
-        scheduleEndMonth: addon.scheduleEndMonth ?? null,
-        scheduleEndDay: addon.scheduleEndDay ?? null,
         originalManifest: (() => {
           try {
             if (addon.originalManifest) return JSON.parse(decrypt(addon.originalManifest, req))
@@ -1629,6 +1574,62 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
     } catch (error) {
       console.error('Error fetching addon health history:', error);
       res.status(500).json({ error: 'Failed to fetch health history' });
+    }
+  });
+
+  // AI incident summary - turns a run of raw health-check rows into one
+  // plain-English paragraph instead of making an admin read a timestamped
+  // log to piece together what happened. Only worth generating when there's
+  // an actual incident to explain (at least MIN_OFFLINE_FOR_SUMMARY offline
+  // rows in the most recent HISTORY_WINDOW checks) - a clean history has
+  // nothing to summarize, and this endpoint returns null rather than an AI
+  // call forcing a "everything's fine!" filler sentence. Silently null (not
+  // an error) when no AI key is configured, same as every other optional
+  // AI-backed field in this codebase.
+  const MIN_OFFLINE_FOR_SUMMARY = 2
+  const HISTORY_WINDOW = 30
+  router.get('/:id/health-summary', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const addon = await prisma.addon.findFirst({ where: { id }, select: { id: true, name: true, accountId: true } });
+      if (!addon) return res.status(404).json({ error: 'Addon not found' });
+
+      const history = await prisma.addonHealthHistory.findMany({
+        where: { addonId: id },
+        orderBy: { checkedAt: 'desc' },
+        take: HISTORY_WINDOW,
+        select: { isOnline: true, error: true, checkedAt: true },
+      });
+
+      const offlineCount = history.filter((h) => !h.isOnline).length;
+      if (offlineCount < MIN_OFFLINE_FOR_SUMMARY) {
+        return res.json({ summary: null });
+      }
+
+      const { resolveAiCredentials, callAiText } = require('../utils/nlCatalog');
+      const creds = await resolveAiCredentials(prisma, addon.accountId, decrypt);
+      if (!creds) return res.json({ summary: null });
+
+      // Oldest-first for the prompt - a timeline reads more naturally in
+      // chronological order than the newest-first order the table itself uses.
+      const timeline = [...history].reverse().map((h) => {
+        const when = new Date(h.checkedAt).toISOString();
+        return h.isOnline ? `${when}: online` : `${when}: offline${h.error ? ` (${h.error})` : ''}`;
+      }).join('\n');
+
+      const prompt = `You're summarizing a Stremio/Nuvio addon's recent health-check log for a self-hosted admin dashboard. Addon: "${addon.name}". Write ONE short paragraph (2-3 sentences, plain English, no markdown) covering: what broke, roughly when/how often, and whether it's currently back up. Log (oldest first):\n${timeline}`;
+
+      let summary = null;
+      try {
+        summary = await callAiText(prompt, creds, { maxTokens: 120, timeoutMs: 6000 });
+      } catch {
+        return res.json({ summary: null }); // best-effort - the raw log below is still there either way
+      }
+
+      res.json({ summary });
+    } catch (error) {
+      console.error('Error generating addon health summary:', error);
+      res.status(500).json({ error: 'Failed to generate health summary' });
     }
   });
 

@@ -39,14 +39,10 @@ import {
   UsersIcon,
   Cog6ToothIcon,
   TagIcon,
-  CalendarDaysIcon,
   XCircleIcon,
   ArrowLeftIcon,
   Bars3Icon,
 } from '@heroicons/react/24/outline';
-
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const DAY_NUMBERS = Array.from({ length: 31 }, (_, i) => i + 1);
 
 const ADDON_VAULT_CATEGORIES = [
   { value: 'aiostreams', label: 'AIOStreams' },
@@ -93,11 +89,6 @@ interface AddonDisplay {
   isOnline?: boolean;
   lastHealthCheck?: string;
   healthCheckError?: string;
-  scheduleEnabled?: boolean;
-  scheduleStartMonth?: number | null;
-  scheduleStartDay?: number | null;
-  scheduleEndMonth?: number | null;
-  scheduleEndDay?: number | null;
 }
 
 // Wraps an addon card with dnd-kit's sortable drag state, matching Vault's
@@ -232,9 +223,6 @@ export default function AddonsPage() {
   // Clone state
   const [cloneTarget, setCloneTarget] = useState<AddonDisplay | null>(null);
   const [moveToVaultTarget, setMoveToVaultTarget] = useState<AddonDisplay | null>(null);
-  const [schedulingAddon, setSchedulingAddon] = useState<AddonDisplay | null>(null);
-  const [scheduleForm, setScheduleForm] = useState({ enabled: false, startMonth: 12, startDay: 1, endMonth: 1, endDay: 1 });
-  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [moveToVaultCategory, setMoveToVaultCategory] = useState('custom');
   const [isMovingToVault, setIsMovingToVault] = useState(false);
   const [isBulkMoveToVaultOpen, setIsBulkMoveToVaultOpen] = useState(false);
@@ -302,11 +290,6 @@ export default function AddonsPage() {
         isOnline: addon.isOnline,
         lastHealthCheck: addon.lastHealthCheck,
         healthCheckError: addon.healthCheckError,
-        scheduleEnabled: !!anyAddon.scheduleEnabled,
-        scheduleStartMonth: anyAddon.scheduleStartMonth ?? null,
-        scheduleStartDay: anyAddon.scheduleStartDay ?? null,
-        scheduleEndMonth: anyAddon.scheduleEndMonth ?? null,
-        scheduleEndDay: anyAddon.scheduleEndDay ?? null,
       };
     });
   }, [addons]);
@@ -453,41 +436,6 @@ export default function AddonsPage() {
       toast.error(err.message || 'Failed to update protection');
     }
   }, []);
-
-  const openSchedule = useCallback((addon: AddonDisplay) => {
-    setScheduleForm({
-      enabled: !!addon.scheduleEnabled,
-      startMonth: addon.scheduleStartMonth ?? 12,
-      startDay: addon.scheduleStartDay ?? 1,
-      endMonth: addon.scheduleEndMonth ?? 1,
-      endDay: addon.scheduleEndDay ?? 1,
-    });
-    setSchedulingAddon(addon);
-  }, []);
-
-  const handleSaveSchedule = useCallback(async () => {
-    if (!schedulingAddon) return;
-    setIsSavingSchedule(true);
-    try {
-      const payload = scheduleForm.enabled
-        ? {
-            scheduleEnabled: true,
-            scheduleStartMonth: scheduleForm.startMonth,
-            scheduleStartDay: scheduleForm.startDay,
-            scheduleEndMonth: scheduleForm.endMonth,
-            scheduleEndDay: scheduleForm.endDay,
-          }
-        : { scheduleEnabled: false };
-      await api.setAddonSchedule(schedulingAddon.id, payload);
-      setAddons(prev => prev.map(a => a.id === schedulingAddon.id ? ({ ...a, ...payload } as any) : a));
-      toast.success(scheduleForm.enabled ? `Seasonal schedule set for "${schedulingAddon.name}"` : `Seasonal schedule cleared for "${schedulingAddon.name}"`);
-      setSchedulingAddon(null);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update schedule');
-    } finally {
-      setIsSavingSchedule(false);
-    }
-  }, [schedulingAddon, scheduleForm]);
 
   // Drag an addon card onto a tag pill to tag it (or clear via context menu).
   const handleSetTag = useCallback(async (addon: AddonDisplay, tag: string | null) => {
@@ -682,7 +630,7 @@ export default function AddonsPage() {
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Addons"
@@ -858,7 +806,6 @@ export default function AddonsPage() {
                                   ));
                                 }}
                                 onToggleProtect={(next) => handleToggleProtect(addon, next)}
-                                onOpenSchedule={() => openSchedule(addon)}
                                 onClearTag={() => handleSetTag(addon, null)}
                                 addonTags={addonTags}
                                 addonTagColors={addonTagColors}
@@ -905,7 +852,6 @@ export default function AddonsPage() {
                                   ));
                                 }}
                                 onToggleProtect={(next) => handleToggleProtect(addon, next)}
-                                onOpenSchedule={() => openSchedule(addon)}
                                 onClearTag={() => handleSetTag(addon, null)}
                                 addonTags={addonTags}
                                 addonTagColors={addonTagColors}
@@ -1143,84 +1089,6 @@ export default function AddonsPage() {
         </div>
       </Modal>
 
-      {/* Seasonal Schedule Modal */}
-      <Modal
-        isOpen={!!schedulingAddon}
-        onClose={() => setSchedulingAddon(null)}
-        title="Seasonal Schedule"
-        description={`Automatically enable "${schedulingAddon?.name}" during a recurring date window each year, and disable it outside that window.`}
-        size="md"
-      >
-        <div className="space-y-4">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={scheduleForm.enabled}
-              onChange={e => setScheduleForm(f => ({ ...f, enabled: e.target.checked }))}
-              className="w-4 h-4 rounded"
-            />
-            <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>Enable seasonal schedule</span>
-          </label>
-
-          {scheduleForm.enabled && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>Start date</label>
-                <div className="flex gap-2">
-                  <select
-                    value={scheduleForm.startMonth}
-                    onChange={e => setScheduleForm(f => ({ ...f, startMonth: Number(e.target.value) }))}
-                    className="w-full px-3 py-2 rounded-xl focus:outline-none"
-                    style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-                  >
-                    {MONTH_NAMES.map((name, i) => <option key={i} value={i + 1}>{name}</option>)}
-                  </select>
-                  <select
-                    value={scheduleForm.startDay}
-                    onChange={e => setScheduleForm(f => ({ ...f, startDay: Number(e.target.value) }))}
-                    className="w-24 px-3 py-2 rounded-xl focus:outline-none"
-                    style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-                  >
-                    {DAY_NUMBERS.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>End date</label>
-                <div className="flex gap-2">
-                  <select
-                    value={scheduleForm.endMonth}
-                    onChange={e => setScheduleForm(f => ({ ...f, endMonth: Number(e.target.value) }))}
-                    className="w-full px-3 py-2 rounded-xl focus:outline-none"
-                    style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-                  >
-                    {MONTH_NAMES.map((name, i) => <option key={i} value={i + 1}>{name}</option>)}
-                  </select>
-                  <select
-                    value={scheduleForm.endDay}
-                    onChange={e => setScheduleForm(f => ({ ...f, endDay: Number(e.target.value) }))}
-                    className="w-24 px-3 py-2 rounded-xl focus:outline-none"
-                    style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-                  >
-                    {DAY_NUMBERS.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                </div>
-              </div>
-              <p className="col-span-2 text-xs" style={{ color: 'var(--color-textMuted)' }}>
-                The addon turns on at the start of the start date and off at the start of the end date, recurring every year. For a window spanning New Year&apos;s (e.g. all of December), set an end date in January.
-              </p>
-            </div>
-          )}
-
-          <div className="flex gap-3 justify-end pt-2">
-            <Button variant="secondary" onClick={() => setSchedulingAddon(null)}>Cancel</Button>
-            <Button onClick={handleSaveSchedule} disabled={isSavingSchedule}>
-              {isSavingSchedule ? 'Saving...' : 'Save Schedule'}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
       {/* Bulk Move to Vault Modal */}
       <Modal
         isOpen={isBulkMoveToVaultOpen}
@@ -1299,7 +1167,6 @@ function AddonCard({
   addonTagColors,
   onSetTag,
   onCreateLabel,
-  onOpenSchedule,
   focusable = false,
   dragHandleProps,
   layout = 'grid',
@@ -1318,8 +1185,6 @@ function AddonCard({
   addonTagColors?: Record<string, string>;
   onSetTag?: (tag: string) => void;
   onCreateLabel?: (name: string) => void;
-  /** Opens the seasonal-schedule editor modal (lives at the page level). */
-  onOpenSchedule?: () => void;
   /** TV mode: wraps the card in a D-pad-focusable container, Enter/OK opens
    *  the same detail page a click would. */
   focusable?: boolean;
@@ -1432,28 +1297,34 @@ function AddonCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
-        {/* Selection indicator & Toggle - hidden on mobile, use context menu */}
-        <div className="absolute top-4 right-4 z-10 flex items-center gap-3">
+        {/* Selection checkbox is md:-only here - the pr-24 clearance below
+            that keeps it from overlapping the name/version row is ALSO
+            md:-only (a narrow mobile card never had that clearance), so on
+            mobile it sat directly on top of the name/version content
+            instead of near it. Moved to a normal in-flow spot under the
+            version tag on mobile instead (below), rather than trying to
+            carve out corner clearance on an already-tight card width.
+            Stacked (toggle above, checkbox below) rather than side-by-side
+            on PC too - checkbox sits directly under the toggle, not next
+            to it. */}
+        <div className="hidden md:flex absolute top-4 right-4 z-10 flex-col items-end gap-1.5">
+          <ToggleSwitch
+            checked={addon.isActive !== false}
+            onChange={async () => {
+              try {
+                const newStatus = !addon.isActive;
+                await api.toggleAddonStatus(addon.id, newStatus);
+                toast.success(`Addon ${newStatus ? 'activated' : 'deactivated'}`);
+                onToggleStatus?.(addon.id, newStatus);
+              } catch (err: any) {
+                toast.error(err.message || `Failed to toggle ${addon.name}`);
+              }
+            }}
+          />
           <SelectionCheckbox
             checked={isSelected}
             onChange={onToggleSelect}
-            visible={isSelected}
           />
-          <div className="hidden md:block">
-            <ToggleSwitch
-              checked={addon.isActive !== false}
-              onChange={async () => {
-                try {
-                  const newStatus = !addon.isActive;
-                  await api.toggleAddonStatus(addon.id, newStatus);
-                  toast.success(`Addon ${newStatus ? 'activated' : 'deactivated'}`);
-                  onToggleStatus?.(addon.id, newStatus);
-                } catch (err: any) {
-                  toast.error(err.message || `Failed to toggle ${addon.name}`);
-                }
-              }}
-            />
-          </div>
         </div>
 
         {/* Header. md:pr-24 reserves clearance for the absolutely-positioned
@@ -1522,6 +1393,15 @@ function AddonCard({
                   <ShieldCheckIcon className="w-5 h-5 shrink-0 text-success" title="Protected" />
                 )}
               </div>
+              {/* Mobile-only selection checkbox, sitting right under the
+                  version tag above (the md: corner checkbox is hidden below
+                  this breakpoint - see its own comment). Right-aligned to
+                  land directly under the version tag, which is also on the
+                  right side of that row - not under the name/icon on the
+                  left, where a plain block-level div would otherwise sit. */}
+              <div className="md:hidden mb-2 flex justify-end" onClick={(e) => e.stopPropagation()}>
+                <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} />
+              </div>
               {/* Stats inline */}
               <div className="flex items-center gap-3 text-sm text-muted">
                 <span className="flex items-center gap-1.5">
@@ -1585,9 +1465,6 @@ function AddonCard({
       {...longPress}
     >
       <div className="flex items-center gap-3 p-4">
-        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-          <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} visible={isSelected} />
-        </div>
         {dragHandleProps && (
           <div
             {...dragHandleProps}
@@ -1649,6 +1526,17 @@ function AddonCard({
                 {addon.customTag}
               </span>
             )}
+            {/* Moved out of its old leading spot (before the drag handle,
+                crowding every row's start on mobile). A flex-basis:100%
+                spacer forces this onto its own line UNCONDITIONALLY - a
+                plain ml-auto sibling only wraps if the row happens to
+                overflow, which a short addon name never does, so it just
+                sat inline at the row's right edge instead of moving at all
+                (confirmed live: same line as the version tag, not under it). */}
+            <span className="basis-full h-0" aria-hidden="true" />
+            <span className="shrink-0 ml-auto" onClick={(e) => e.stopPropagation()}>
+              <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} />
+            </span>
           </div>
           {addon.description && (
             <p className="text-sm text-muted mt-0.5 line-clamp-2">{addon.description}</p>
@@ -1775,17 +1663,6 @@ function AddonCard({
             >
               <ShieldCheckIcon className="w-4 h-4" />
               {addon.isProtected ? 'Unprotect' : 'Protect'}
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                close();
-                onOpenSchedule?.();
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
-            >
-              <CalendarDaysIcon className="w-4 h-4" />
-              {addon.scheduleEnabled ? 'Seasonal schedule (on)' : 'Seasonal schedule'}
             </button>
             <button
               onClick={(e) => {

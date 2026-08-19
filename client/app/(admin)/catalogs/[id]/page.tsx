@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import {
   Card, Button, Badge, Modal, ConfirmModal, MediaDetailModal, PosterCard, PosterCardItem,
@@ -25,6 +25,7 @@ import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import {
   RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon, SparklesIcon, PhotoIcon,
   CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, ArrowPathIcon, ShareIcon, ShieldExclamationIcon,
+  EllipsisVerticalIcon,
 } from '@heroicons/react/24/outline';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
@@ -32,6 +33,65 @@ import {
 // on both surfaces.
 function coverColorStyle(colorIndex: number): React.CSSProperties {
   return { background: `color-mix(in srgb, var(--color-${colorIndex < 4 ? 'primary' : 'secondary'}) ${100 - (colorIndex % 4) * 25}%, white)` };
+}
+
+// "More" action menu building blocks (the catalog detail page's secondary
+// actions, everything past Suggest titles/Refresh - see editActions below).
+// A small uppercase label over a group of related rows, matching the
+// section-header treatment used elsewhere (e.g. HealthIgnoredList,
+// SettingsSection headers) rather than one flat undifferentiated list.
+function MoreMenuSection({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="px-2 py-1">
+      <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-textMuted)' }}>
+        {label}
+      </p>
+      <div className="space-y-0.5">{children}</div>
+    </div>
+  );
+}
+
+// One row: icon in a small tinted chip (reads as "designed", not a bare
+// glyph floating next to text) + label, with an active/pressed state for
+// toggles (Share, Content Rating) that stay relevant after closing.
+function MoreMenuItem({
+  icon, tint, children, onClick, disabled, active, title,
+}: {
+  icon: React.ReactNode;
+  tint: 'primary' | 'secondary' | 'error';
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  title?: string;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const tintVar = `var(--color-${tint})`;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-sm text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      style={{ background: hovered && !disabled ? 'var(--color-surfaceHover)' : 'transparent' }}
+    >
+      <span
+        className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+        style={{
+          background: active ? tintVar : `color-mix(in srgb, ${tintVar} 16%, transparent)`,
+          color: active ? 'var(--color-bg)' : tintVar,
+        }}
+      >
+        {icon}
+      </span>
+      <span style={{ color: active ? tintVar : 'var(--color-text)' }} className="truncate">
+        {children}
+      </span>
+    </button>
+  );
 }
 
 // PosterCard only needs this narrowed shape (see its own comment) - a
@@ -143,6 +203,7 @@ export default function ListDetailPage() {
   const { layoutMode } = useLayoutMode();
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const listId = params.id as string;
 
   const [list, setList] = useState<CustomList | null>(null);
@@ -165,6 +226,13 @@ export default function ListDetailPage() {
   // pattern Discover uses for its own grid.
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
+  // "More" overflow menu for the secondary edit actions (everything past
+  // Suggest titles / Refresh) - those two are common enough to earn a
+  // permanent slot, the rest were making the header row wrap onto 2-3
+  // lines on both PC and mobile.
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const moreMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ name: string; slug: string | null; url: string | null; added: number | null; existing: number | null; notFound: number | null } | null>(null);
@@ -216,6 +284,27 @@ export default function ListDetailPage() {
       .finally(() => setIsLoading(false));
   }, [listId]);
   useEffect(() => { if (listId) load(); }, [listId, load]);
+
+  // Close the "More" actions menu on outside click or Escape.
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      const withinMenu = moreMenuRef.current?.contains(target);
+      const withinButton = moreMenuButtonRef.current?.contains(target);
+      if (!withinMenu && !withinButton) setShowMoreMenu(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowMoreMenu(false); };
+    document.addEventListener('mousedown', onPointerDown, true);
+    document.addEventListener('touchstart', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown, true);
+      document.removeEventListener('touchstart', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [showMoreMenu]);
 
   const handleRename = async () => {
     if (!list) return;
@@ -367,53 +456,97 @@ export default function ListDetailPage() {
     }
   };
 
-  // Content-rating review policy (server/utils/contentRating.js) - a
-  // "Kids" catalog can flag mature OMDb ratings; GET /flagged checks
-  // current items against it on demand, not a live add-time gate.
-  const RATING_OPTIONS = ['PG-13', 'R', 'NC-17', 'TV-14', 'TV-MA', 'Not Rated', 'Unrated'] as const;
+
+  // Content-rating ALLOWLIST (server/utils/contentRating.js) - checking a
+  // rating means KEEP it; applying removes every item whose rating isn't
+  // checked. Destructive, so the flow is always preview (see what would
+  // happen) before apply (actually do it), and apply always leaves a
+  // one-step undo available via lastRemovalAt/restoreContentRatingRemoval.
+  const RATING_OPTIONS = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', 'Not Rated', 'Unrated'] as const;
   const [showPolicyModal, setShowPolicyModal] = useState(false);
   const [draftRatings, setDraftRatings] = useState<string[]>([]);
-  const [savingPolicy, setSavingPolicy] = useState(false);
+  const [loadingBreakdown, setLoadingBreakdown] = useState(false);
+  const [ratingBreakdown, setRatingBreakdown] = useState<{ counts: Record<string, number>; unknownCount: number; checked: number } | null>(null);
   const openPolicyModal = () => {
-    setDraftRatings(list?.blockedRatings || []);
+    setDraftRatings(list?.keptRatings || []);
+    setPreviewResult(null);
     setShowPolicyModal(true);
+    if (list) {
+      setLoadingBreakdown(true);
+      api.getContentRatingBreakdown(list.id)
+        .then(setRatingBreakdown)
+        .catch(() => setRatingBreakdown(null))
+        .finally(() => setLoadingBreakdown(false));
+    }
   };
   const toggleDraftRating = (rating: string) => {
     setDraftRatings((prev) => (prev.includes(rating) ? prev.filter((r) => r !== rating) : [...prev, rating]));
   };
-  const handleSavePolicy = async () => {
+
+  // Auto-open Content Rating when arriving via ?openRating=1 (the Catalogs
+  // list page's right-click menu links here instead of duplicating this
+  // page's own modal). Waits for `list` so draftRatings seeds correctly
+  // from the real keptRatings, and only fires once - the query param is
+  // then stripped so a refresh or the back button doesn't reopen it.
+  const hasAutoOpenedRatingRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoOpenedRatingRef.current || !list) return;
+    if (searchParams.get('openRating') !== '1') return;
+    hasAutoOpenedRatingRef.current = true;
+    openPolicyModal();
+    router.replace(`/catalogs/${listId}`);
+  }, [list, searchParams, listId, router]);
+
+  const [previewing, setPreviewing] = useState(false);
+  const [previewResult, setPreviewResult] = useState<{ keep: CustomListItem[]; remove: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number } | null>(null);
+  const handlePreview = async () => {
     if (!list) return;
-    setSavingPolicy(true);
+    setPreviewing(true);
     try {
-      const updated = await api.updateList(list.id, { blockedRatings: draftRatings });
-      setList(updated);
-      setShowPolicyModal(false);
-      toast.success(draftRatings.length ? 'Content rating policy saved' : 'Content rating policy cleared');
+      setPreviewResult(await api.previewContentRating(list.id, draftRatings));
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to save policy');
+      toast.error(e?.message || 'Failed to preview content rating');
     } finally {
-      setSavingPolicy(false);
+      setPreviewing(false);
     }
   };
 
-  const [checkingFlagged, setCheckingFlagged] = useState(false);
-  const [flaggedResult, setFlaggedResult] = useState<{ flagged: (CustomListItem & { rated: string })[]; unknown: CustomListItem[]; checked: number } | null>(null);
-  const handleCheckContent = async () => {
+  const [applying, setApplying] = useState(false);
+  const handleApply = async () => {
     if (!list) return;
-    setCheckingFlagged(true);
+    setApplying(true);
     try {
-      const result = await api.getFlaggedContent(list.id);
-      setFlaggedResult(result);
+      const { removedCount, ...updated } = await api.applyContentRating(list.id, draftRatings);
+      setList(updated);
+      setShowPolicyModal(false);
+      setPreviewResult(null);
+      toast.success(
+        draftRatings.length === 0
+          ? 'Content rating policy cleared'
+          : removedCount > 0
+            ? `Removed ${removedCount} title${removedCount !== 1 ? 's' : ''} - use "Restore last removal" to undo`
+            : 'Policy saved - nothing to remove'
+      );
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to check content ratings');
+      toast.error(e?.message || 'Failed to apply content rating');
     } finally {
-      setCheckingFlagged(false);
+      setApplying(false);
     }
   };
-  const handleRemoveFlagged = async (item: CustomListItem) => {
+
+  const [restoring, setRestoring] = useState(false);
+  const handleRestoreRemoval = async () => {
     if (!list) return;
-    await handleRemoveItem(item);
-    setFlaggedResult((prev) => prev ? { ...prev, flagged: prev.flagged.filter((f) => f.id !== item.id) } : prev);
+    setRestoring(true);
+    try {
+      const updated = await api.restoreContentRatingRemoval(list.id);
+      setList(updated);
+      toast.success('Restored the last content-rating removal');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to restore');
+    } finally {
+      setRestoring(false);
+    }
   };
 
   const handleRemoveItem = async (item: CustomListItem) => {
@@ -549,6 +682,15 @@ export default function ListDetailPage() {
   // action at once instead of needing a per-button check.
   const editActions = list && !isLoading && !notFound && list.isOwner ? (
     <div className="flex items-center gap-2 flex-wrap justify-end">
+      <Button
+        variant={list.keptRatings.length > 0 ? 'primary' : 'secondary'}
+        size="sm"
+        leftIcon={<ShieldExclamationIcon className="w-4 h-4" />}
+        onClick={openPolicyModal}
+        title={list.keptRatings.length > 0 ? `Keeping only: ${list.keptRatings.join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
+      >
+        {list.keptRatings.length > 0 ? `Content Rating (${list.keptRatings.length})` : 'Content Rating'}
+      </Button>
       <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
         Suggest titles
       </Button>
@@ -557,54 +699,106 @@ export default function ListDetailPage() {
           Refresh
         </Button>
       )}
-      <Button variant="secondary" size="sm" leftIcon={<PhotoIcon className="w-4 h-4" />} onClick={() => setShowCoverPicker(true)}>
-        Cover art
-      </Button>
-      <Button variant="secondary" size="sm" leftIcon={<PencilSquareIcon className="w-4 h-4" />} onClick={() => { setRenameValue(list.name); setRenaming(true); }}>
-        Rename
-      </Button>
-      <Button
-        variant={list.shared ? 'primary' : 'secondary'}
-        size="sm"
-        leftIcon={<ShareIcon className="w-4 h-4" />}
-        onClick={handleToggleShared}
-        isLoading={savingShared}
-        title={list.shared ? 'Visible (read-only) to other accounts on this instance - click to stop sharing' : 'Make this catalog visible (read-only) to other accounts on this instance'}
-      >
-        {list.shared ? 'Shared' : 'Share'}
-      </Button>
-      <Button
-        variant={list.blockedRatings.length > 0 ? 'primary' : 'secondary'}
-        size="sm"
-        leftIcon={<ShieldExclamationIcon className="w-4 h-4" />}
-        onClick={openPolicyModal}
-        title={list.blockedRatings.length > 0 ? `Flags: ${list.blockedRatings.join(', ')}` : 'Set a content rating policy for this catalog (e.g. a Kids catalog)'}
-      >
-        {list.blockedRatings.length > 0 ? `Content Rating (${list.blockedRatings.length})` : 'Content Rating'}
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
-        onClick={() => setShowExportConfirm(true)}
-        disabled={list.items.length === 0}
-        title={list.items.length === 0 ? 'Add titles first' : undefined}
-      >
-        Export to MDBList
-      </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />}
-        onClick={handleOpenExportSimkl}
-        disabled={list.items.length === 0}
-        title={list.items.length === 0 ? 'Add titles first' : undefined}
-      >
-        Export to SIMKL
-      </Button>
-      <Button variant="danger" size="sm" leftIcon={<TrashIcon className="w-4 h-4" />} onClick={() => setDeleting(true)}>
-        Delete
-      </Button>
+      <div className="relative" ref={moreMenuRef}>
+        <Button
+          ref={moreMenuButtonRef}
+          variant="secondary"
+          size="sm"
+          onClick={() => setShowMoreMenu((v) => !v)}
+          aria-label="More actions"
+          aria-expanded={showMoreMenu}
+          className="!px-2.5"
+        >
+          <EllipsisVerticalIcon className="w-4 h-4" />
+        </Button>
+        <AnimatePresence>
+          {showMoreMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                transition={{ duration: 0.15 }}
+                className="absolute right-0 top-full mt-2.5 z-50 w-72 rounded-2xl overflow-hidden"
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', boxShadow: '0 20px 40px -12px rgba(0,0,0,0.5)' }}
+              >
+                {/* Small caret pointing up at the button that opened this -
+                    same speech-bubble trick NotificationsDropdown uses, so
+                    the panel reads unambiguously as coming from that button. */}
+                <div
+                  className="absolute -top-1 right-4 w-3 h-3 rotate-45 border-l border-t border-default"
+                  style={{ background: 'var(--color-surface)' }}
+                />
+                <div className="relative py-2">
+                  <MoreMenuSection label="Organize">
+                    <MoreMenuItem icon={<PhotoIcon className="w-4 h-4" />} tint="secondary" onClick={() => { setShowMoreMenu(false); setShowCoverPicker(true); }}>
+                      Cover art
+                    </MoreMenuItem>
+                    <MoreMenuItem icon={<PencilSquareIcon className="w-4 h-4" />} tint="secondary" onClick={() => { setShowMoreMenu(false); setRenameValue(list.name); setRenaming(true); }}>
+                      Rename
+                    </MoreMenuItem>
+                  </MoreMenuSection>
+
+                  <MoreMenuSection label="Share">
+                    <MoreMenuItem
+                      icon={<ShareIcon className="w-4 h-4" />}
+                      tint="primary"
+                      active={list.shared}
+                      onClick={() => { setShowMoreMenu(false); handleToggleShared(); }}
+                      title={list.shared ? 'Visible (read-only) to other accounts on this instance - click to stop sharing' : 'Make this catalog visible (read-only) to other accounts on this instance'}
+                    >
+                      {list.shared ? 'Shared (click to unshare)' : 'Share'}
+                    </MoreMenuItem>
+                    {/* Content Rating moved to its own always-visible button
+                        next to Suggest titles - stays here only as the
+                        "undo" for a removal it triggered, since that's rare
+                        enough to belong in the overflow menu. */}
+                    {list.lastRemovalAt && (
+                      <MoreMenuItem
+                        icon={<ArrowPathIcon className="w-4 h-4" />}
+                        tint="primary"
+                        onClick={() => { setShowMoreMenu(false); handleRestoreRemoval(); }}
+                        title={`Undo the content-rating removal from ${new Date(list.lastRemovalAt).toLocaleString()}`}
+                      >
+                        Restore last removal
+                      </MoreMenuItem>
+                    )}
+                  </MoreMenuSection>
+
+                  <MoreMenuSection label="Export">
+                    <MoreMenuItem
+                      icon={<ArrowUpTrayIcon className="w-4 h-4" />}
+                      tint="secondary"
+                      disabled={list.items.length === 0}
+                      onClick={() => { setShowMoreMenu(false); setShowExportConfirm(true); }}
+                      title={list.items.length === 0 ? 'Add titles first' : undefined}
+                    >
+                      Export to MDBList
+                    </MoreMenuItem>
+                    <MoreMenuItem
+                      icon={<ArrowUpTrayIcon className="w-4 h-4" />}
+                      tint="secondary"
+                      disabled={list.items.length === 0}
+                      onClick={() => { setShowMoreMenu(false); handleOpenExportSimkl(); }}
+                      title={list.items.length === 0 ? 'Add titles first' : undefined}
+                    >
+                      Export to SIMKL
+                    </MoreMenuItem>
+                  </MoreMenuSection>
+
+                  <div className="mx-2 my-1.5 border-t border-default" />
+                  <div className="px-2">
+                    <MoreMenuItem icon={<TrashIcon className="w-4 h-4" />} tint="error" onClick={() => { setShowMoreMenu(false); setDeleting(true); }}>
+                      Delete catalog
+                    </MoreMenuItem>
+                  </div>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   ) : null;
 
@@ -631,7 +825,7 @@ export default function ListDetailPage() {
       )}
 
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
         {layoutMode === 'nebula' && (
           <NebulaPageHeading title={title} subtitle={subtitle || 'Catalogs'} leading={backButton} actions={editActions} />
         )}
@@ -936,14 +1130,23 @@ export default function ListDetailPage() {
         )}
       </Modal>
 
-      {/* Content rating policy - a review tool (see server/utils/
-          contentRating.js), not a live gate on adding titles. Saving just
-          sets which OMDb ratings to flag; actually checking current items
-          against it happens separately via "Check content" below. */}
-      <Modal isOpen={showPolicyModal} onClose={() => setShowPolicyModal(false)} title="Content Rating" size="sm">
+      {/* Content rating ALLOWLIST (server/utils/contentRating.js) - checking
+          a rating means KEEP it. Applying removes everything else from this
+          catalog right now. Always preview before apply; apply always
+          leaves a one-step undo (the "Restore last removal" button above,
+          shown whenever list.lastRemovalAt is set). */}
+      <Modal isOpen={showPolicyModal} onClose={() => setShowPolicyModal(false)} title="Content Rating" size="lg">
         <div className="space-y-4">
-          <p className="text-sm text-muted">
-            Flag titles rated any of the following when you check this catalog&apos;s content (below). Doesn&apos;t block adding anything - review when you want to.
+          <div
+            className="text-sm rounded-lg p-3"
+            style={{ background: 'var(--color-warning-muted)', color: 'var(--color-warning)', border: '1px solid var(--color-warning)' }}
+          >
+            <strong>This removes titles from the catalog, and stays enforced automatically</strong> - any title added later that doesn&apos;t match gets rejected, and a daily sweep catches anything that slips in another way (import, refresh, etc.), until you clear the policy. Check the ratings you want to KEEP - everything else gets removed when you apply. Preview shows exactly what stays and what goes before anything changes, and the most recent removal can always be undone afterward.
+          </div>
+          <p className="text-xs text-subtle">
+            {loadingBreakdown ? 'Checking what\'s currently in this catalog...' : ratingBreakdown
+              ? `Currently: ${Object.entries(ratingBreakdown.counts).map(([r, n]) => `${n} ${r}`).join(', ') || 'nothing rated yet'}${ratingBreakdown.unknownCount > 0 ? `, ${ratingBreakdown.unknownCount} unrated/unknown` : ''} (${ratingBreakdown.checked} total).`
+              : null}
           </p>
           <div className="grid grid-cols-2 gap-2">
             {RATING_OPTIONS.map((rating) => (
@@ -951,67 +1154,64 @@ export default function ListDetailPage() {
                 <input
                   type="checkbox"
                   checked={draftRatings.includes(rating)}
-                  onChange={() => toggleDraftRating(rating)}
+                  onChange={() => { toggleDraftRating(rating); setPreviewResult(null); }}
                   className="rounded"
                 />
                 {rating}
+                {ratingBreakdown?.counts[rating] ? (
+                  <span className="text-subtle">({ratingBreakdown.counts[rating]})</span>
+                ) : null}
               </label>
             ))}
           </div>
-          {list && list.blockedRatings.length > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              leftIcon={<ShieldExclamationIcon className="w-4 h-4" />}
-              onClick={() => { setShowPolicyModal(false); handleCheckContent(); }}
-              isLoading={checkingFlagged}
-              className="w-full"
-            >
-              Check content against saved policy
-            </Button>
+
+          {previewResult && (
+            <div className="space-y-2 pt-1">
+              <p className="text-sm font-medium text-default">
+                {previewResult.remove.length === 0
+                  ? 'Nothing would be removed.'
+                  : `${previewResult.remove.length} of ${previewResult.checked} would be removed, ${previewResult.keep.length} would stay.`}
+              </p>
+              {previewResult.remove.length > 0 && (
+                <div className="max-h-72 overflow-y-auto grid grid-cols-4 sm:grid-cols-5 gap-2 rounded-lg p-2" style={{ background: 'var(--color-surface-hover)' }}>
+                  {previewResult.remove.map((item) => (
+                    <div key={item.id} className="text-left">
+                      <div className="relative rounded-md overflow-hidden aspect-[2/3] bg-surface border border-default">
+                        {item.poster ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={item.poster} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-[10px] text-subtle p-1 text-center">{item.name}</div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/0 to-black/0" />
+                        <Badge variant="error" size="sm" className="absolute bottom-1 left-1 right-1 justify-center">{item.rated}</Badge>
+                      </div>
+                      <p className="text-[10px] text-muted mt-0.5 truncate" title={item.name}>{item.name}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {previewResult.unknown.length > 0 && (
+                <p className="text-xs text-subtle">
+                  {previewResult.unknown.length} title{previewResult.unknown.length !== 1 ? 's have' : ' has'} no rating on file (OMDb doesn&apos;t have one, or it hasn&apos;t been looked up) - kept either way, since an unknown rating is never auto-removed.
+                </p>
+              )}
+            </div>
           )}
+
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" size="sm" onClick={() => setShowPolicyModal(false)} disabled={savingPolicy}>Cancel</Button>
-            <Button variant="primary" size="sm" onClick={handleSavePolicy} isLoading={savingPolicy}>
-              Save policy
-            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setShowPolicyModal(false)} disabled={applying}>Cancel</Button>
+            {!previewResult ? (
+              <Button variant="secondary" size="sm" onClick={handlePreview} isLoading={previewing}>
+                Preview
+              </Button>
+            ) : (
+              <Button variant="danger" size="sm" onClick={handleApply} isLoading={applying}>
+                {draftRatings.length === 0 ? 'Save (clear policy)' : `Apply${previewResult.remove.length > 0 ? ` & Remove ${previewResult.remove.length}` : ''}`}
+              </Button>
+            )}
           </div>
         </div>
-      </Modal>
-
-      {/* Flagged-content results - shown after "Check content", either from
-          the policy modal above or re-run any time from there. Removing a
-          flagged item here just calls the normal remove-from-catalog path. */}
-      <Modal isOpen={!!flaggedResult} onClose={() => setFlaggedResult(null)} title="Content Rating Check" size="md">
-        {flaggedResult && (
-          <div className="space-y-4">
-            <p className="text-sm text-muted">
-              Checked {flaggedResult.checked} title{flaggedResult.checked !== 1 ? 's' : ''} against this catalog&apos;s policy.
-            </p>
-            {flaggedResult.flagged.length === 0 ? (
-              <p className="text-sm text-default">Nothing flagged.</p>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-default">{flaggedResult.flagged.length} flagged:</p>
-                {flaggedResult.flagged.map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg bg-surface-hover">
-                    <p className="flex-1 min-w-0 text-sm text-default truncate">{item.name}</p>
-                    <Badge variant="error" size="sm">{item.rated}</Badge>
-                    <Button variant="danger" size="sm" onClick={() => handleRemoveFlagged(item)}>Remove</Button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {flaggedResult.unknown.length > 0 && (
-              <p className="text-xs text-subtle">
-                {flaggedResult.unknown.length} title{flaggedResult.unknown.length !== 1 ? 's have' : ' has'} no rating on file (OMDb doesn&apos;t have one, or it hasn&apos;t been looked up) - not automatically flagged either way, worth a manual look if you want full coverage.
-              </p>
-            )}
-            <div className="flex justify-end pt-2">
-              <Button variant="ghost" size="sm" onClick={() => setFlaggedResult(null)}>Close</Button>
-            </div>
-          </div>
-        )}
       </Modal>
 
       {/* Refresh from source - never a silent replace. Shows exactly what
@@ -1198,6 +1398,7 @@ export default function ListDetailPage() {
           onSave={handleCoverSave}
         />
       )}
+
     </>
   );
 }

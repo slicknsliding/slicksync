@@ -589,11 +589,21 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
           // genuine viewing. Used below to withhold the near-complete seed
           // in exactly that transition window.
           let cameFromSiblingEpisode = false
+          // Last known playback position for this exact item/episode, from
+          // whenever its row was last touched - regardless of how long ago
+          // that was (unlike priorDurationSeconds below, which only looks
+          // back CHECK_INTERVAL_MS). Used below so the seeding step can tell
+          // "resumed near where it was left off" apart from "genuinely
+          // watched this much fresh in one sitting".
+          let priorLastPosition = null
           try {
             const priorRow = await prisma.watchSession.findUnique({
               where: { accountId_userId_itemId: { accountId: accountIdValue, userId, itemId } },
-              select: { durationSeconds: true, endTime: true, videoId: true }
+              select: { durationSeconds: true, endTime: true, videoId: true, lastPosition: true }
             })
+            if (priorRow && (!priorRow.videoId || priorRow.videoId === videoId)) {
+              priorLastPosition = priorRow.lastPosition ?? null
+            }
             if (priorRow?.endTime && (nowMs - priorRow.endTime.getTime()) <= CHECK_INTERVAL_MS) {
               if (priorRow.videoId && priorRow.videoId !== videoId) {
                 // Different episode - the "still continuing, don't reset to
@@ -661,7 +671,18 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
             // sibling episode closing out - see cameFromSiblingEpisode above.
             if (!alreadyNearComplete || (finishedRecently && !cameFromSiblingEpisode)) {
               const cappedMs = hasRealDuration ? Math.min(state.timeOffset, durationMs) : state.timeOffset
-              seedDurationSeconds = Math.max(0, Math.floor(cappedMs / 1000))
+              // Reactivating a session closed long enough ago that
+              // priorDurationSeconds above didn't inherit it still
+              // remembers its last known position - crediting the FULL
+              // current position as freshly-watched double-counts whatever
+              // had already accumulated in an earlier sitting (confirmed
+              // real case: a movie resumed at the same ~33min mark it was
+              // left at the day before re-credited the whole 33min as
+              // "just watched" even though the position had barely moved
+              // since). Only the portion beyond the last known position is
+              // genuinely new.
+              const baselineMs = priorLastPosition != null ? priorLastPosition : 0
+              seedDurationSeconds = Math.max(0, Math.floor((cappedMs - baselineMs) / 1000))
             }
           }
           const initialDurationSeconds = Math.max(priorDurationSeconds, seedDurationSeconds)
