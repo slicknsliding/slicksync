@@ -1510,6 +1510,14 @@ function AddonCard({
                 {addon.customTag}
               </span>
             )}
+            {/* Moved out of its old leading spot (before the drag handle,
+                crowding every row's start on mobile). Lives in THIS row
+                (not the resources/user-count row below) so it wraps
+                directly under the version tag/health dot on a narrow row,
+                not several unrelated badges later. */}
+            <span className="shrink-0 ml-auto" onClick={(e) => e.stopPropagation()}>
+              <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} />
+            </span>
           </div>
           {addon.description && (
             <p className="text-sm text-muted mt-0.5 line-clamp-2">{addon.description}</p>
@@ -1525,13 +1533,6 @@ function AddonCard({
             <span className="text-xs text-muted flex items-center gap-1">
               <PuzzlePieceIcon className="w-3.5 h-3.5 text-secondary" />
               {addon.groupCount} group{addon.groupCount !== 1 ? 's' : ''}
-            </span>
-            {/* Moved out of its old leading spot (before the drag handle,
-                crowding every row's start on mobile) - sits with the other
-                per-addon metadata now, right under the version tag/health
-                dot it wraps below on a narrow row. */}
-            <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
-              <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} />
             </span>
           </div>
         </div>
