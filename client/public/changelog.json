@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.73.11",
+    "date": "2026-08-18",
+    "title": "fix: mobile addons checkbox was overlapping content, not under it - real fix, verified live",
+    "features": [],
+    "bugFixes": [
+      "The last three releases fixed the wrong component: mobile is forced into grid view regardless of the user's view-mode preference, so the row/list layout those releases targeted was never what actually renders on a phone. The real issue was the grid card's selection checkbox - absolutely positioned in the top-right corner with clearance padding that's desktop-only, so on mobile it sat directly on top of the name/version row instead of near it. Now hidden on mobile and replaced with an in-flow checkbox directly under that row - confirmed via direct on-device measurement (33px below the version tag) before shipping, not just visual inspection."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.10",
     "date": "2026-08-18",
     "title": "fix: addons row checkbox still wasn't wrapping under the version tag",
