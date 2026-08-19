@@ -970,12 +970,10 @@ function UserCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
-        {/* Selection indicator & Toggle */}
-        <div className="absolute top-4 right-4 flex items-center gap-2">
-          <SelectionCheckbox
-            checked={isSelected}
-            onChange={onToggleSelect}
-          />
+        {/* Selection indicator & Toggle - stacked (toggle above, checkbox
+            below) rather than side-by-side, so the checkbox sits directly
+            under the toggle instead of next to it. */}
+        <div className="absolute top-4 right-4 flex flex-col items-end gap-1.5">
           <ToggleSwitch
             checked={user.status === 'active'}
             onChange={async () => {
@@ -988,6 +986,10 @@ function UserCard({
                 toast.error(err.message || 'Failed to toggle user status');
               }
             }}
+          />
+          <SelectionCheckbox
+            checked={isSelected}
+            onChange={onToggleSelect}
           />
         </div>
 
