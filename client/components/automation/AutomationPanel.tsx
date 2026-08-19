@@ -299,7 +299,7 @@ function RuleEditorModal({
             onChange={(e) => setName(e.target.value)}
             placeholder='e.g. "Notify me when a vault credential expires"'
             className="w-full px-4 py-3 rounded-xl focus:outline-none"
-            style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
           />
         </div>
 
@@ -309,7 +309,7 @@ function RuleEditorModal({
             value={triggerType}
             onChange={(e) => handleTriggerChange(e.target.value)}
             className="w-full px-4 py-3 rounded-xl focus:outline-none"
-            style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
           >
             {registry.triggers.map((t) => <option key={t.type} value={t.type}>{t.label}</option>)}
           </select>
@@ -331,7 +331,7 @@ function RuleEditorModal({
                   onChange={(e) => setTriggerConfig({ ...triggerConfig, [field.name]: e.target.value === '' ? undefined : Number(e.target.value) })}
                   placeholder={field.label}
                   className="w-full px-4 py-2.5 rounded-xl focus:outline-none"
-                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                  style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                 />
               </div>
             ))}
@@ -404,7 +404,7 @@ function ConditionBuilder({
                   value={c.field}
                   onChange={(e) => updateCondition(i, { field: e.target.value })}
                   className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm focus:outline-none"
-                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                  style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                 >
                   {trigger.fields.map((f) => <option key={f.name} value={f.name}>{f.label}</option>)}
                 </select>
@@ -412,7 +412,7 @@ function ConditionBuilder({
                   value={c.op}
                   onChange={(e) => updateCondition(i, { op: e.target.value })}
                   className="shrink-0 px-3 py-2 rounded-lg text-sm focus:outline-none"
-                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                  style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                 >
                   {operators.map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
                 </select>
@@ -422,7 +422,7 @@ function ConditionBuilder({
                     onChange={(e) => updateCondition(i, { value: e.target.value })}
                     placeholder="value"
                     className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm focus:outline-none"
-                    style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                    style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                   />
                 )}
                 <button

@@ -537,9 +537,9 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 rounded-lg transition-colors"
-        style={{ color: 'var(--color-textMuted)' }}
+        style={{ color: 'var(--color-text-muted)' }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'var(--color-surfaceHover)';
+          e.currentTarget.style.background = 'var(--color-surface-hover)';
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.background = 'transparent';

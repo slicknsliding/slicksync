@@ -118,7 +118,7 @@ export function StatCard({ label, value, icon, trend, delay = 0, onClick }: Stat
 
       <div className="relative flex items-start justify-between h-full">
         <div className="flex flex-col justify-between h-full">
-          <p className="text-xs font-medium" style={{ color: 'var(--color-textMuted)' }}>
+          <p className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
             {label}
           </p>
           <div>

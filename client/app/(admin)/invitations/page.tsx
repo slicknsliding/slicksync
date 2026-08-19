@@ -1466,7 +1466,7 @@ function CreateInvitationModal({
                           <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
                             Create Invitation
                           </h2>
-                          <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                             Generate an invite code for new users
                           </p>
                         </div>
@@ -1474,7 +1474,7 @@ function CreateInvitationModal({
                         {/* Form */}
                         <div className="space-y-5">
                           <div>
-                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                               Invitation Name
                             </label>
                             <input
@@ -1489,13 +1489,13 @@ function CreateInvitationModal({
                                 color: 'var(--color-text)'
                               }}
                             />
-                            <p className="mt-1.5 text-xs" style={{ color: 'var(--color-textSubtle)' }}>
+                            <p className="mt-1.5 text-xs" style={{ color: 'var(--color-text-subtle)' }}>
                               Optional. If empty, the invite code will be used.
                             </p>
                           </div>
 
                           <div>
-                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                               Assign to Group
                             </label>
                             <select
@@ -1516,7 +1516,7 @@ function CreateInvitationModal({
                           </div>
 
                           <div>
-                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                               Max Uses
                             </label>
                             <input
@@ -1535,7 +1535,7 @@ function CreateInvitationModal({
 
                           {/* Expiration presets */}
                           <div>
-                            <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-textMuted)' }}>Expiration</label>
+                            <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-text-muted)' }}>Expiration</label>
                             <div className="flex flex-wrap gap-2 mb-3">
                               {expirationPresets.map((preset) => (
                                 <motion.button
@@ -1551,7 +1551,7 @@ function CreateInvitationModal({
                                       : 'var(--color-subtle)',
                                     color: selectedPreset === preset.minutes && !useCustomExpiration
                                       ? 'white'
-                                      : 'var(--color-textMuted)'
+                                      : 'var(--color-text-muted)'
                                   }}
                                 >
                                   {preset.label}
@@ -1573,14 +1573,14 @@ function CreateInvitationModal({
                                     : 'var(--color-subtle)',
                                   color: !formData.expiresAt && !useCustomExpiration
                                     ? 'white'
-                                    : 'var(--color-textMuted)'
+                                    : 'var(--color-text-muted)'
                                 }}
                               >
                                 Never
                               </motion.button>
                             </div>
                             {formData.expiresAt && (
-                              <p className="text-xs" style={{ color: 'var(--color-textMuted)' }}>
+                              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                                 Expires: {new Date(formData.expiresAt).toLocaleString()}
                               </p>
                             )}
@@ -1588,7 +1588,7 @@ function CreateInvitationModal({
 
                           {/* Membership Duration */}
                           <div>
-                            <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-textMuted)' }}>Membership Duration</label>
+                            <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-text-muted)' }}>Membership Duration</label>
                             <div className="flex flex-wrap gap-2">
                               {membershipPresets.map((preset) => (
                                 <motion.button
@@ -1604,7 +1604,7 @@ function CreateInvitationModal({
                                       : 'var(--color-subtle)',
                                     color: (preset.days === 0 && !formData.membershipDuration) || formData.membershipDuration === preset.days.toString()
                                       ? 'white'
-                                      : 'var(--color-textMuted)'
+                                      : 'var(--color-text-muted)'
                                   }}
                                 >
                                   {preset.label}
@@ -1637,7 +1637,7 @@ function CreateInvitationModal({
                             </div>
                             <div className="text-left">
                               <p className="font-medium" style={{ color: 'var(--color-text)' }}>Sync on Join</p>
-                              <p className="text-xs" style={{ color: 'var(--color-textMuted)' }}>
+                              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                                 {formData.groupId ? 'Automatically sync addons when user joins' : 'Select a group first'}
                               </p>
                             </div>
@@ -1689,7 +1689,7 @@ function CreateInvitationModal({
                         <h3 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
                           Invitation Created!
                         </h3>
-                        <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                           {formData.name || 'New invite'} is ready to share
                         </p>
                       </motion.div>

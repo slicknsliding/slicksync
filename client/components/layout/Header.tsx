@@ -107,7 +107,7 @@ export function Header({
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.2 }}
                 className="text-sm mt-0.5 hidden sm:block"
-                style={{ color: 'var(--color-textMuted)' }}
+                style={{ color: 'var(--color-text-muted)' }}
               >
                 {subtitle}
               </motion.p>
@@ -160,7 +160,7 @@ interface BreadcrumbsProps {
 
 export function Breadcrumbs({ items, className }: BreadcrumbsProps) {
   return (
-    <nav className={`flex items-center gap-2 ${className || 'text-sm'}`} style={{ color: 'var(--color-textMuted)' }}>
+    <nav className={`flex items-center gap-2 ${className || 'text-sm'}`} style={{ color: 'var(--color-text-muted)' }}>
       {items.map((item, index) => (
         <motion.div
           key={index}
@@ -169,12 +169,12 @@ export function Breadcrumbs({ items, className }: BreadcrumbsProps) {
           transition={{ delay: index * 0.05 }}
           className="flex items-center gap-2"
         >
-          {index > 0 && <span style={{ color: 'var(--color-textSubtle)' }}>/</span>}
+          {index > 0 && <span style={{ color: 'var(--color-text-subtle)' }}>/</span>}
           {item.href ? (
             <a
               href={item.href}
               className="transition-colors hover:text-[var(--color-text)]"
-              style={{ color: 'var(--color-textMuted)' }}
+              style={{ color: 'var(--color-text-muted)' }}
             >
               {item.label}
             </a>

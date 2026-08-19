@@ -1024,7 +1024,7 @@ function ProxyHistoryView() {
               style={
                 layoutMode === 'nebula'
                   ? { background: 'color-mix(in srgb, var(--color-surface) 50%, transparent)', border: '1px solid var(--color-surface-border)' }
-                  : { background: 'var(--color-surface-hover)', border: '1px solid var(--color-border)' }
+                  : { background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)' }
               }
             >
                 <div className="flex-shrink-0">

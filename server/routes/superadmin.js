@@ -48,16 +48,21 @@ module.exports = ({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }) =
   };
 
   router.post('/login', async (req, res) => {
-    const configured = (process.env.SUPERADMIN_PASSWORD || '').trim();
-    if (!configured) {
-      return res.status(503).json({ message: 'Superadmin panel is not configured on this instance (set SUPERADMIN_PASSWORD)' });
+    try {
+      const configured = (process.env.SUPERADMIN_PASSWORD || '').trim();
+      if (!configured) {
+        return res.status(503).json({ message: 'Superadmin panel is not configured on this instance (set SUPERADMIN_PASSWORD)' });
+      }
+      const { password } = req.body || {};
+      if (!password || String(password) !== configured) {
+        return res.status(401).json({ message: 'Incorrect password' });
+      }
+      res.cookie(COOKIE, issueSuperAdminToken(), cookieOpts);
+      return res.json({ message: 'Signed in' });
+    } catch (error) {
+      console.error('Error signing in to superadmin panel:', error);
+      return res.status(500).json({ message: 'Failed to sign in' });
     }
-    const { password } = req.body || {};
-    if (!password || String(password) !== configured) {
-      return res.status(401).json({ message: 'Incorrect password' });
-    }
-    res.cookie(COOKIE, issueSuperAdminToken(), cookieOpts);
-    return res.json({ message: 'Signed in' });
   });
 
   router.post('/logout', (req, res) => {

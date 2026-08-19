@@ -9,7 +9,7 @@
  * - If item activity stopped (old _mtime), close the active session
  */
 
-const { fetchKitsuMetadata, extractSeasonEpisode } = require('./kitsuUtils')
+const { extractSeasonEpisode } = require('./kitsuUtils')
 const { postDiscord, fetchMetadata } = require('./notify')
 const { getUserAvatarUrl } = require('./avatarUtils')
 const { resolveSinglePoster } = require('./libraryHelpers')

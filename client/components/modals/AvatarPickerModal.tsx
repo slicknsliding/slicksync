@@ -245,8 +245,8 @@ export function AvatarPickerModal({
   const filterButtonClass = (active: boolean) =>
     `px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${active ? '' : 'hover:bg-surface-hover'}`;
   const filterButtonStyle = (active: boolean) => ({
-    background: active ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
-    color: active ? 'white' : 'var(--color-textMuted)',
+    background: active ? 'var(--color-primary)' : 'var(--color-surface-hover)',
+    color: active ? 'white' : 'var(--color-text-muted)',
   });
 
   // The Nuvio Covers grid needs real room to actually be pickable from - a
@@ -335,7 +335,7 @@ export function AvatarPickerModal({
                     className="flex-1 py-2 text-sm font-medium rounded-lg capitalize transition-all whitespace-nowrap"
                     style={{
                       background: tab === t ? 'var(--color-primary)' : 'transparent',
-                      color: tab === t ? 'white' : 'var(--color-textMuted)',
+                      color: tab === t ? 'white' : 'var(--color-text-muted)',
                     }}
                   >
                     {tabLabel[t]}
@@ -355,7 +355,7 @@ export function AvatarPickerModal({
                     onChange={(e) => setNuvioSearch(e.target.value)}
                     placeholder="Search by title (e.g. Netflix)..."
                     className="w-full px-3 py-2 rounded-xl text-sm focus:outline-none"
-                    style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                    style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                   />
 
                   <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
@@ -425,7 +425,7 @@ export function AvatarPickerModal({
               value={urlInput}
               onChange={(e) => { setUrlInput(e.target.value); setPreviewUrl(e.target.value); }}
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
-              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+              style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             />
             <p className="text-xs text-center text-muted">
               A .gif URL plays animated - any direct image link works, static or animated.

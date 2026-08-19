@@ -1,5 +1,7 @@
 const express = require('express');
 const { createHealthCheckHandler } = require('../utils/helpers');
+const { decrypt } = require('../utils/encryption');
+const { StremioAPIClient } = require('stremio-api-client');
 
 module.exports = ({ prisma, getDecryptedManifestUrl, getAccountId }) => {
   const router = express.Router();

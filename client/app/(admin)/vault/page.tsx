@@ -164,10 +164,10 @@ function DebridUsageBadge({ entry, onEntryUpdated }: { entry: VaultEntry; onEntr
   return (
     <div className="mb-3 space-y-1.5">
       {parts.length > 0 && (
-        <p className="text-xs" style={{ color: 'var(--color-textMuted)' }}>{parts.join(' · ')}</p>
+        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{parts.join(' · ')}</p>
       )}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs" style={{ color: 'var(--color-textMuted)' }}>Auto-remove finished torrents</span>
+        <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Auto-remove finished torrents</span>
         <ToggleSwitch
           size="sm"
           checked={!!entry.autoRemoveEnabled}
@@ -181,7 +181,7 @@ function DebridUsageBadge({ entry, onEntryUpdated }: { entry: VaultEntry; onEntr
           toggle next to text-xs text plus a number input, all fighting for
           space on an already-narrow card). */}
       {entry.autoRemoveEnabled && (
-        <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-textMuted)' }}>
+        <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-text-muted)' }}>
           <span>After</span>
           <input
             type="number"
@@ -821,12 +821,12 @@ function VaultPageContent() {
         <div className="min-w-0 flex items-center gap-2">
           {dragHandleProps && (
             <div {...dragHandleProps} className="cursor-grab active:cursor-grabbing p-1 -ml-1 rounded hover:bg-surface-hover shrink-0">
-              <Bars3Icon className="w-4 h-4" style={{ color: 'var(--color-textMuted)' }} />
+              <Bars3Icon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
             </div>
           )}
           <div className="min-w-0">
             <h3 className="font-semibold truncate" style={{ color: 'var(--color-text)' }}>{entry.name}</h3>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--color-textMuted)' }}>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
               {CATEGORY_LABELS[entry.category]}{entry.provider ? ` • ${entry.provider}` : ''}
             </p>
           </div>
@@ -846,7 +846,7 @@ function VaultPageContent() {
                 onClick={() => handleSnooze(entry)}
                 title="Snooze this expiry alert for 7 days"
                 className="shrink-0"
-                style={{ color: 'var(--color-textMuted)' }}
+                style={{ color: 'var(--color-text-muted)' }}
               >
                 <BellSlashIcon className="w-3.5 h-3.5" />
               </button>
@@ -863,7 +863,7 @@ function VaultPageContent() {
         <div className="flex items-center gap-2 shrink-0">
           {(() => {
             const btn = (
-              <button onClick={() => handleCopy(entry)} title="Copy to clipboard" style={{ color: 'var(--color-textMuted)' }}>
+              <button onClick={() => handleCopy(entry)} title="Copy to clipboard" style={{ color: 'var(--color-text-muted)' }}>
                 <DocumentDuplicateIcon className="w-4 h-4" />
               </button>
             );
@@ -871,7 +871,7 @@ function VaultPageContent() {
           })()}
           {(() => {
             const btn = (
-              <button onClick={() => handleReveal(entry)} style={{ color: 'var(--color-textMuted)' }}>
+              <button onClick={() => handleReveal(entry)} title={revealed[entry.id] ? 'Hide value' : 'Reveal value'} aria-label={revealed[entry.id] ? 'Hide value' : 'Reveal value'} style={{ color: 'var(--color-text-muted)' }}>
                 {revealed[entry.id] ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
               </button>
             );
@@ -881,7 +881,7 @@ function VaultPageContent() {
       </div>
 
       {entry.lastCheckMessage && (
-        <p className="text-sm mb-3" style={{ color: 'var(--color-textMuted)' }}>{entry.lastCheckMessage}</p>
+        <p className="text-sm mb-3" style={{ color: 'var(--color-text-muted)' }}>{entry.lastCheckMessage}</p>
       )}
 
       <DebridUsageBadge entry={entry} onEntryUpdated={(id, patch) => setEntries(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e))} />
@@ -894,7 +894,7 @@ function VaultPageContent() {
               disabled={testingId === entry.id || entry.testType === 'manual'}
               title={entry.testType === 'manual' ? 'No automated check configured' : 'Run check now'}
               className="p-2 rounded-lg transition-colors disabled:opacity-40"
-              style={{ background: 'var(--color-surfaceHover)' }}
+              style={{ background: 'var(--color-surface-hover)' }}
             >
               <ArrowPathIcon className={`w-4 h-4 ${testingId === entry.id ? 'animate-spin' : ''}`} style={{ color: 'var(--color-text)' }} />
             </button>
@@ -903,7 +903,7 @@ function VaultPageContent() {
         })()}
         {(() => {
           const btn = (
-            <button onClick={() => openEditModal(entry)} className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surfaceHover)' }}>
+            <button onClick={() => openEditModal(entry)} title="Edit" aria-label="Edit" className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surface-hover)' }}>
               <PencilIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
             </button>
           );
@@ -911,7 +911,7 @@ function VaultPageContent() {
         })()}
         {entry.dashboardUrl && (() => {
           const link = (
-            <a href={entry.dashboardUrl} target="_blank" rel="noreferrer" className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surfaceHover)' }}>
+            <a href={entry.dashboardUrl} target="_blank" rel="noreferrer" className="p-2 rounded-lg transition-colors" style={{ background: 'var(--color-surface-hover)' }}>
               <ArrowTopRightOnSquareIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
             </a>
           );
@@ -926,7 +926,7 @@ function VaultPageContent() {
               disabled={movingToAddonsId === entry.id}
               title="Move to Addons"
               className="p-2 rounded-lg transition-colors disabled:opacity-40"
-              style={{ background: 'var(--color-surfaceHover)' }}
+              style={{ background: 'var(--color-surface-hover)' }}
             >
               <PuzzlePieceIcon className="w-4 h-4" style={{ color: 'var(--color-text)' }} />
             </button>
@@ -935,7 +935,7 @@ function VaultPageContent() {
         })()}
         {(() => {
           const btn = (
-            <button onClick={() => handleDelete(entry)} className="p-2 rounded-lg transition-colors ml-auto" style={{ background: 'var(--color-surfaceHover)' }}>
+            <button onClick={() => handleDelete(entry)} title="Delete" aria-label="Delete" className="p-2 rounded-lg transition-colors ml-auto" style={{ background: 'var(--color-surface-hover)' }}>
               <TrashIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
             </button>
           );
@@ -1037,7 +1037,7 @@ function VaultPageContent() {
                 </h3>
                 <ChevronDownIcon
                   className="w-4 h-4 shrink-0 transition-transform"
-                  style={{ color: 'var(--color-textMuted)', transform: renewalExpanded ? 'rotate(180deg)' : undefined }}
+                  style={{ color: 'var(--color-text-muted)', transform: renewalExpanded ? 'rotate(180deg)' : undefined }}
                 />
               </button>
               {renewalExpanded && (
@@ -1066,12 +1066,12 @@ function VaultPageContent() {
         </div>
 
         {isLoading ? (
-          <div className="text-center py-16" style={{ color: 'var(--color-textMuted)' }}>Loading vault...</div>
+          <div className="text-center py-16" style={{ color: 'var(--color-text-muted)' }}>Loading vault...</div>
         ) : entries.length === 0 ? (
           <Card variant="bordered" className="text-center py-16">
-            <ShieldCheckIcon className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--color-textMuted)' }} />
+            <ShieldCheckIcon className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--color-text-muted)' }} />
             <h3 className="text-lg font-semibold mb-1" style={{ color: 'var(--color-text)' }}>No entries yet</h3>
-            <p className="text-sm mb-4" style={{ color: 'var(--color-textMuted)' }}>
+            <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>
               Track API keys, accounts, and credentials with expiry alerts and active-checks.
             </p>
             <Button variant="primary" leftIcon={<PlusIcon className="w-5 h-5" />} onClick={openAddModal}>
@@ -1080,7 +1080,7 @@ function VaultPageContent() {
           </Card>
         ) : (
           <>
-            <p className="text-xs mb-3" style={{ color: 'var(--color-textMuted)' }}>
+            <p className="text-xs mb-3" style={{ color: 'var(--color-text-muted)' }}>
               Drag the handle to reorder within a category, drop onto a category tab above to recategorize, or drop onto "Addons" in the sidebar to move it there.
             </p>
             <SortableContext items={entries.map(e => e.id)} strategy={rectSortingStrategy}>
@@ -1124,12 +1124,12 @@ function VaultPageContent() {
           <Input label="Name" placeholder="e.g. Newshosting account" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
 
           <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>Category</label>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Category</label>
             <select
               value={form.category}
               onChange={e => handleCategoryChange(e.target.value as VaultCategory)}
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
-              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+              style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             >
               {Object.entries(VAULT_UI_CATEGORY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
@@ -1137,7 +1137,7 @@ function VaultPageContent() {
 
           {categoryFieldMode(form.category) === 'credentials' && (
             <>
-              <p className="text-xs -mt-2" style={{ color: 'var(--color-textMuted)' }}>
+              <p className="text-xs -mt-2" style={{ color: 'var(--color-text-muted)' }}>
                 Stored credentials are validated by logging into {form.category === 'nuvio' ? 'Nuvio' : 'Stremio'} directly when you hit Test.
               </p>
               <Input label="Email or Username" placeholder="you@example.com" value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} />
@@ -1217,12 +1217,12 @@ function VaultPageContent() {
               ) : (
                 <>
                   <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>Active check</label>
+                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Active check</label>
                     <select
                       value={form.testType}
                       onChange={e => setForm(f => ({ ...f, testType: e.target.value as VaultTestType }))}
                       className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                      style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                      style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                     >
                       {Object.entries(TEST_TYPE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                     </select>
@@ -1268,7 +1268,7 @@ function VaultPageContent() {
               type="button"
               onClick={() => setIsAddOpen(false)}
               className="flex-1 py-3 text-sm font-medium rounded-xl transition-colors"
-              style={{ background: 'var(--color-surfaceHover)', color: 'var(--color-text)' }}
+              style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text)' }}
             >
               Cancel
             </button>
