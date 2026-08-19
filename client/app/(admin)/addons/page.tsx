@@ -1511,10 +1511,13 @@ function AddonCard({
               </span>
             )}
             {/* Moved out of its old leading spot (before the drag handle,
-                crowding every row's start on mobile). Lives in THIS row
-                (not the resources/user-count row below) so it wraps
-                directly under the version tag/health dot on a narrow row,
-                not several unrelated badges later. */}
+                crowding every row's start on mobile). A flex-basis:100%
+                spacer forces this onto its own line UNCONDITIONALLY - a
+                plain ml-auto sibling only wraps if the row happens to
+                overflow, which a short addon name never does, so it just
+                sat inline at the row's right edge instead of moving at all
+                (confirmed live: same line as the version tag, not under it). */}
+            <span className="basis-full h-0" aria-hidden="true" />
             <span className="shrink-0 ml-auto" onClick={(e) => e.stopPropagation()}>
               <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} />
             </span>
