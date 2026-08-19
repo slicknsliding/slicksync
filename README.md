@@ -27,6 +27,8 @@ Can't self-host? **[slicksync.vip](https://slicksync.vip)** runs the same code i
 - [Notifications](#-notifications)
 - [PWA & Push](#-pwa--push)
 - [Addons](#-addons)
+- [Automation](#-automation)
+- [Command Palette](#️-command-palette)
 - [Themes](#-themes)
 - [Metrics](#-metrics)
 - [System Health](#-system-health)
@@ -67,7 +69,8 @@ Can't self-host? **[slicksync.vip](https://slicksync.vip)** runs the same code i
 - **Cast & crew deep-dive** — click any actor/director on a detail popup to see their real filmography (optional TMDb key) and jump straight into any of it.
 - **Discover**: browse Popular / New / Top Rated, genre filter, infinite scroll, "Open in Stremio/Nuvio" on every result. Sort by title, year, or rating; filter to unwatched/watched only.
 - **People search** — a separate mode from title search, so looking up an actor/director shows only their verified credits, never an unrelated title that happened to loosely match the name.
-- Four sources side by side: Discover, ★ Watchlist, ✨ For You, and household "nobody's seen it yet" picks.
+- Four sources side by side: Discover, ★ Watchlist, ✨ For You, and household "nobody's seen it yet" picks, plus an optional **SIMKL Trending** row for anyone with SIMKL linked.
+- **Where to watch** — TMDb watch-provider logos and an **MDBList score** on the detail popup, alongside the existing IMDb/RT/Metacritic ratings.
 - Deep links use each provider's real format (`stremio:///detail/...`, `nuvio://meta?...`) — no guessing, no account-specific data in the link.
 - Continue Watching row on the Dashboard — drag to scroll, right-click/long-press to remove.
 - Right-click (desktop) or long-press (mobile) any poster for a quick-action menu — Add to Watchlist, Add to Catalogs, Mark Watched — without opening the detail popup first.
@@ -83,6 +86,8 @@ Named collections of titles, separate from the Watchlist — build a "Halloween 
 - **SIMKL**: import a linked user's SIMKL "Plan to Watch" as a new catalog, or export a catalog onto one — SIMKL doesn't expose named Custom Lists via its API yet, so this targets the closest real equivalent instead of doing nothing.
 - **Refresh** an imported catalog against its original source URL any time, with a diff preview before applying, or opt a catalog into **daily auto-refresh** so it stays in sync with its source with no manual click.
 - **Suggest Titles** — match a catalog's own name (e.g. "Halloween", "90s Movies", "30 Days of Halloween") against TMDb's real keyword taxonomy and release-date ranges, review a batch of matching posters, and add only what you keep. Requires a (free) TMDb key.
+- **Build from a description** — type what you want ("90s horror movies", "cozy holiday films") and TMDb's keyword/genre/date-range matching generates a starter catalog for you to review and keep from, instead of adding titles one at a time.
+- **Content Rating** — set a catalog to only ever show certain certifications (e.g. no R/NC-17); enforced continuously rather than applied once, so a re-imported or later-recertified title can't slip back in.
 - Sort by title, year, or rating; each entry opens the same rich detail popup as everywhere else.
 
 ### 🗂️ Nuvio Collections
@@ -104,7 +109,10 @@ Built-in Trakt-alternative — no external service, no tokens.
 - **For You recommendations** — up to 3 genre rows from real weighted watch time (recency-decayed), independently toggleable.
 - **More Like This** on every detail popup, biased by real household affinity, always fresh/unwatched results.
 - **✨ Real match** badge on any For You/More Like This row backed by genuine household viewing — reads differently at a glance from a pure genre-fallback guess.
+- Optional **AI "why this matches"** one-line explanation on a real-match row, using your own OpenAI-compatible key (Settings → AI Services) — never required, every recommendation still works with it off.
 - **Not Interested** feedback downweights similar titles, not just the one dismissed.
+- **Trakt-compatible scrobble-in API** (`/api/scrobble`) — point a real Trakt-scrobbling client (Infuse, Kodi's Trakt plugin, etc.) at it with a per-user API key and it writes straight into SlickTrax history, no Trakt account involved.
+- **Watch-history import/export** — import a Trakt/Letterboxd/IMDb CSV export into a user's history, or export SlickTrax history as a Letterboxd-compatible CSV.
 
 ### 🔐 Vault
 Credential tracking with expiry alerts and real active-checks.
@@ -115,11 +123,15 @@ Credential tracking with expiry alerts and real active-checks.
 - **Rotate Now** — one click opens both the entry's provider dashboard and its edit form together, instead of hunting down the dashboard URL yourself first.
 - "Fix now" links straight from an alert to the entry, ready to edit.
 - Drag-and-drop reordering; move addons between Addons and Vault without deleting them.
+- **Live Real-Debrid/TorBox usage** on the entry card — active downloads and premium days remaining, pulled from the provider's own API.
+- **Auto-remove** (opt-in, per entry) clears finished/idle Real-Debrid or TorBox torrents once they've sat past a day count you choose.
+- **Renewal calendar & spend forecast** — a 90-day forward projection of every cost-tracked entry's own billing cycle, collapsed by default.
 
 ### 🔔 Notifications
 **Push + the in-app bell are primary; Discord is entirely optional** — every notification type below works with zero Discord setup, and a webhook just adds Discord delivery on top for whichever types you want it for.
 - Per-type toggles: activity, sync, invites, Vault, addon health, backups, **proxy connectivity**, and monthly recap.
 - Instant "started watching" ping from the live proxy signal.
+- **Unconfirmed-device alert** — a push+bell (and Discord, if set) notice when a stream shows up from an IP not yet seen on that account.
 - Per-user notification opt-out and personal webhook override.
 - New-episode alerts + a "Coming up" calendar on the Dashboard.
 - **Monthly poster-mosaic recap**, posted automatically on the 1st — a real collage image to Discord if a webhook's set, otherwise a plain push+bell text summary ("14 titles watched this month").
@@ -134,19 +146,27 @@ Credential tracking with expiry alerts and real active-checks.
 ### 🧩 Addons
 Drag-and-drop reordering, drag-to-protect or drag-to-label with color-coded custom tags, order-insensitive sync comparison, provider-agnostic live addon counts, and a template library (**Addon Snapshots**) to save/deploy a named addon set to any user.
 
+### ⚙️ Automation
+Rule-based actions that fire on real events, no external workflow tool needed — trigger on a new user being created or a daily schedule, and call an outgoing **webhook** as the action. Runs on the same engine that already drives notifications and health checks.
+
+### ⌨️ Command Palette
+**Ctrl+K** / **Cmd+K** from anywhere — jump straight to any page, user, addon, or catalog by typing a few letters, or ask a free-text question and get an answer from a built-in help guide covering every feature on this page. No AI key required; an **AI Services** key (Settings) only powers the optional extras noted above (For You explanations, addon-incident summaries) and is never needed for the palette itself.
+
 ### 🎨 Themes
-Ten full themes, switchable live, synced across devices. Build your own on top of any base — accent colors, success/error overrides, corner-roundness, text scale, and a choice of 11 display fonts — with a live preview mockup. Two layout modes: the original sidebar, or **Nebula** (top nav + glass panels, default).
+Ten full themes, switchable live, synced across devices. Build your own on top of any base — accent colors, success/error overrides, corner-roundness, text scale, and a choice of 11 display fonts — with a live preview mockup. Two layout modes: the original sidebar, or **Nebula** (top nav + glass panels, default). **Share a theme** as a compact copy-paste code — no server round-trip, since themes are already client-side.
 
 ### 📊 Metrics
 User leaderboard, watch streaks, watch-time trend, Top Viewers/Recent Activity/Recent Addons on the Dashboard, provider parity view, and a per-group activity dashboard.
 - Same-email Stremio/Nuvio pairs are deduped in every leaderboard and total — one household member never counts as two.
 - **Taste Profiles** — a per-user viewing fingerprint (favorite genres, habits) built from real watch history, not a guess.
 - **Year in Review** — a Wrapped-style yearly recap: total watch time, top shows, most-rewatched titles, a by-month chart, and a per-user breakdown.
+- **Public stats page** — an opt-in, unauthenticated share link (`/u/[slug]`) for a single user's own total watch time, top titles, and streak, off by default per user.
 
 ### 🩺 System Health
 One page answering "is everything actually working right now" — Sync drift, addon reachability, Vault credential checks, and AIOStreams proxy connectivity, all read from state existing background monitors already maintain.
 - **Ignore** a known, accepted failure (an addon you've intentionally left offline, an indexer that blocks your server's IP) to drop it out of Attention and its notifications — reversible any time from the same card.
 - **Addon uptime %** over the last 7/30 days, reconstructed from the same health-check history the offline/online alerts already log.
+- Optional **AI-generated incident summary** on an addon-down alert, using the same AI Services key as SlickTrax's "why this matches" — off unless you've set one.
 - **Version card** — what's actually running, and whether a newer stable release has been published, without needing to check GitHub or `docker exec` in to find out.
 
 ### 💾 Backup & Disaster Recovery
