@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.73.12",
+    "date": "2026-08-18",
+    "title": "fix: checkbox placement - under the version tag / toggle, precisely, verified live",
+    "features": [],
+    "bugFixes": [
+      "Addons (mobile): the selection checkbox now sits directly under the version tag - both share the same right edge, confirmed via pixel measurement (checkbox 33px below, right-aligned to the same 313px edge).",
+      "Addons/Users/Groups (PC and mobile): the selection checkbox and the active/inactive toggle were side-by-side in the corner; now stacked with the checkbox directly under the toggle instead of next to it - confirmed via measurement (30px below, same right edge)."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.11",
     "date": "2026-08-18",
     "title": "fix: mobile addons checkbox was overlapping content, not under it - real fix, verified live",
