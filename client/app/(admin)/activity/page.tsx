@@ -1189,10 +1189,28 @@ function NowPlayingItemBody({
         {(() => {
           let session: NonNullable<typeof metricsData.watchSessions>[0] | undefined = undefined;
           let startMs: number | null = null;
+          const isProxySourced = np.source === 'aiostreams-proxy';
+
+          // Proxy-sourced entries carry their own real connection-start
+          // timestamp (np.watchedAtTimestamp) and must never borrow a native
+          // WatchSession's startTime for it - sessionTracker.js can close and
+          // reopen a WatchSession after a native polling gap even while the
+          // proxy connection has stayed open the whole time, which reset this
+          // display to "Watching for 1s" mid-stream (confirmed live 2026-08-19)
+          // despite the proxy itself never having dropped. The session-match
+          // below is still used for its own durationSeconds fallback on
+          // non-proxy (native-only, e.g. usenet) entries, which have no proxy
+          // signal to fall back on.
+          if (isProxySourced && np.watchedAtTimestamp) {
+            const watchedAtMs = typeof np.watchedAtTimestamp === 'number'
+              ? np.watchedAtTimestamp
+              : new Date(np.watchedAt).getTime();
+            if (!Number.isNaN(watchedAtMs)) startMs = watchedAtMs;
+          }
 
           // Find matching active session from watchSessions
           // Match by: userId + itemId + videoId (for series) or userId + itemId (for movies)
-          if (metricsData?.watchSessions && metricsData.watchSessions.length > 0) {
+          if (!isProxySourced && metricsData?.watchSessions && metricsData.watchSessions.length > 0) {
             const matchingSessions = metricsData.watchSessions.filter((s) => {
               // Must be active and match user + item
               if (!s.isActive || s.user.id !== np.user.id || s.item.id !== np.item.id) {
@@ -1251,22 +1269,18 @@ function NowPlayingItemBody({
             }
           }
 
-          // Fallback: If no matching session found, use watchedAtTimestamp from nowPlaying item.
+          // Fallback for native entries with no matched session: use
+          // watchedAtTimestamp, but only if recent (within 5 minutes) - those
+          // watchedAt values can be stale (last checkpoint, not "now"), and
+          // the cap prevents showing an inflated/resetting duration before a
+          // real session row exists. Proxy-sourced entries already had their
+          // startMs set above and never reach this branch.
           if (!startMs && np.watchedAtTimestamp) {
             const watchedAtMs = typeof np.watchedAtTimestamp === 'number'
               ? np.watchedAtTimestamp
               : new Date(np.watchedAt).getTime();
-
-            // Proxy-sourced entries carry the real connection start time and
-            // never have a WatchSession to match, so trust it directly - a
-            // watch longer than 5 minutes must still show "Watching for X".
-            // For other (native) entries, keep the 5-minute guard: those
-            // watchedAt values can be stale (last checkpoint, not "now"), and
-            // the cap prevents showing an inflated/resetting duration before a
-            // real session row exists.
-            const isProxyEntry = np.source === 'aiostreams-proxy';
             const ageMs = nowTick - watchedAtMs;
-            if (isProxyEntry ? ageMs >= 0 : (ageMs >= 0 && ageMs <= 300000)) {
+            if (ageMs >= 0 && ageMs <= 300000) {
               startMs = watchedAtMs;
             }
           }
