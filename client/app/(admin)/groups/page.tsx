@@ -1060,7 +1060,7 @@ function CreateGroupModal({
                           <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
                             Create New Group
                           </h2>
-                          <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                             Organize users and manage shared addons
                           </p>
                         </div>
@@ -1068,7 +1068,7 @@ function CreateGroupModal({
                         {/* Form */}
                         <div className="space-y-5">
                           <div>
-                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                               Group Name <span style={{ color: 'var(--color-error)' }}>*</span>
                             </label>
                             <input
@@ -1086,7 +1086,7 @@ function CreateGroupModal({
                           </div>
 
                           <div>
-                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                               Description
                             </label>
                             <input
@@ -1104,7 +1104,7 @@ function CreateGroupModal({
                           </div>
 
                           <div>
-                            <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-textMuted)' }}>
+                            <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-text-muted)' }}>
                               Group Color
                             </label>
                             <div className="flex flex-wrap gap-3">
@@ -1173,7 +1173,7 @@ function CreateGroupModal({
                         <h3 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
                           Group Created!
                         </h3>
-                        <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                           {name} is ready to use
                         </p>
                       </motion.div>
@@ -1304,14 +1304,14 @@ function CloneGroupModal({
                     <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
                       Clone Group
                     </h2>
-                    <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                    <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                       Create a copy of "{group.name}"
                     </p>
                   </div>
 
                   <div className="space-y-5">
                     <div>
-                      <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                      <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                         Group Name <span style={{ color: 'var(--color-error)' }}>*</span>
                       </label>
                       <input
@@ -1328,7 +1328,7 @@ function CloneGroupModal({
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                      <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                         Description
                       </label>
                       <input
@@ -1345,7 +1345,7 @@ function CloneGroupModal({
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-textMuted)' }}>
+                      <label className="block text-sm font-medium mb-3" style={{ color: 'var(--color-text-muted)' }}>
                         Group Color
                       </label>
                       <div className="flex flex-wrap gap-3">
@@ -1390,7 +1390,7 @@ function CloneGroupModal({
                       </div>
                       <div className="text-left">
                         <p className="font-medium" style={{ color: 'var(--color-text)' }}>Include Users</p>
-                        <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                           Copy all {group.users.length} user{group.users.length !== 1 ? 's' : ''} to the new group
                         </p>
                       </div>

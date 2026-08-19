@@ -97,8 +97,8 @@ export function DateTimePicker({
         onClick={() => setIsOpen(!isOpen)}
         className="w-full px-4 py-3 rounded-xl transition-all duration-300 focus:outline-none border border-theme-surface-border focus:border-theme-secondary flex items-center gap-2 justify-between"
         style={{
-          background: 'var(--color-bgSubtle)',
-          color: value ? 'var(--color-text)' : 'var(--color-textSubtle)',
+          background: 'var(--color-bg-subtle)',
+          color: value ? 'var(--color-text)' : 'var(--color-text-subtle)',
         }}
       >
         <div className="flex items-center gap-2">
@@ -141,7 +141,7 @@ export function DateTimePicker({
                   min={minDate}
                   className="w-full px-4 py-2 rounded-lg transition-all focus:outline-none border border-theme-surface-border focus:border-theme-secondary"
                   style={{
-                    background: 'var(--color-bgSubtle)',
+                    background: 'var(--color-bg-subtle)',
                     color: 'var(--color-text)',
                   }}
                 />
@@ -155,7 +155,7 @@ export function DateTimePicker({
                   min={dateValue === minDate ? minTime : undefined}
                   className="w-full px-4 py-2 rounded-lg transition-all focus:outline-none border border-theme-surface-border focus:border-theme-secondary"
                   style={{
-                    background: 'var(--color-bgSubtle)',
+                    background: 'var(--color-bg-subtle)',
                     color: 'var(--color-text)',
                   }}
                 />

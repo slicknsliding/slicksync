@@ -1050,12 +1050,12 @@ export default function AddonsPage() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>Vault category</label>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Vault category</label>
             <select
               value={moveToVaultCategory}
               onChange={e => setMoveToVaultCategory(e.target.value)}
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
-              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+              style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             >
               {ADDON_VAULT_CATEGORIES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
             </select>
@@ -1099,12 +1099,12 @@ export default function AddonsPage() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>Vault category</label>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>Vault category</label>
             <select
               value={bulkMoveToVaultCategory}
               onChange={e => setBulkMoveToVaultCategory(e.target.value)}
               className="w-full px-4 py-3 rounded-xl focus:outline-none"
-              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+              style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             >
               {ADDON_VAULT_CATEGORIES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
             </select>
@@ -1996,7 +1996,7 @@ function AddAddonModal({
                               <VersionBadge version={manifestData.version} size="md" />
                             )}
                           </h2>
-                          <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                             {manifestData?.description || 'Enter the manifest URL to add an addon'}
                           </p>
 
@@ -2024,11 +2024,11 @@ function AddAddonModal({
                         {/* Form */}
                         <div className="space-y-5">
                           <div>
-                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                               Manifest URL <span style={{ color: 'var(--color-error)' }}>*</span>
                             </label>
                             <div className="relative">
-                              <div className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-textMuted)' }}>
+                              <div className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--color-text-muted)' }}>
                                 <LinkIcon className="w-5 h-5" />
                               </div>
                               <input
@@ -2048,7 +2048,7 @@ function AddAddonModal({
                               <p className="mt-2 text-sm" style={{ color: 'var(--color-error)' }}>{error || urlError}</p>
                             )}
                             {!manifestUrl.trim() && !error && !urlError && (
-                              <p className="mt-2 text-xs" style={{ color: 'var(--color-textSubtle)' }}>
+                              <p className="mt-2 text-xs" style={{ color: 'var(--color-text-subtle)' }}>
                                 Enter the full URL to the addon's manifest.json file
                               </p>
                             )}
@@ -2063,7 +2063,7 @@ function AddAddonModal({
                               style={{ background: 'var(--color-subtle)' }}
                             >
                               <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                              <span className="text-sm" style={{ color: 'var(--color-textMuted)' }}>Loading manifest...</span>
+                              <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading manifest...</span>
                             </motion.div>
                           )}
 
@@ -2074,11 +2074,11 @@ function AddAddonModal({
                               animate={{ opacity: 1, y: 0 }}
                             >
                               <div className="flex items-center justify-between mb-3">
-                                <label className="block text-sm font-medium" style={{ color: 'var(--color-textMuted)' }}>
+                                <label className="block text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
                                   <UsersIcon className="w-4 h-4 inline mr-2" />
                                   Assign to Groups
                                 </label>
-                                <span className="text-xs" style={{ color: 'var(--color-textSubtle)' }}>
+                                <span className="text-xs" style={{ color: 'var(--color-text-subtle)' }}>
                                   {selectedGroupIds.size === 0
                                     ? 'No groups selected'
                                     : `${selectedGroupIds.size} group${selectedGroupIds.size > 1 ? 's' : ''} selected`}
@@ -2143,7 +2143,7 @@ function AddAddonModal({
                                   );
                                 })}
                               </div>
-                              <p className="mt-2 text-xs" style={{ color: 'var(--color-textSubtle)' }}>
+                              <p className="mt-2 text-xs" style={{ color: 'var(--color-text-subtle)' }}>
                                 Click to select groups. You can assign this addon to groups later.
                               </p>
                             </motion.div>
@@ -2196,7 +2196,7 @@ function AddAddonModal({
                         <h3 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
                           Addon Added!
                         </h3>
-                        <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                           {manifestData?.name || 'New addon'} is ready to use
                         </p>
                       </motion.div>

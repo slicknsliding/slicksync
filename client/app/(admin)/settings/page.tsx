@@ -1473,7 +1473,7 @@ export default function SettingsPage() {
                         onMouseDown={(e) => e.preventDefault()} // don't steal focus from the input before the click registers
                         onClick={() => { if (!aiKeyVisible) handleRevealAiKey(); setAiKeyVisible((v) => !v); }}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-surface-hover transition-colors"
-                        style={{ color: 'var(--color-textMuted)' }}
+                        style={{ color: 'var(--color-text-muted)' }}
                         title={aiKeyVisible ? 'Hide key' : 'Show key'}
                       >
                         {aiKeyVisible ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
