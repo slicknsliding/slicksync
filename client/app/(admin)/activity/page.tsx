@@ -1828,7 +1828,7 @@ function ActivityPageContent() {
           calc a bit further down) that isn't worth the risk of duplicating
           into a second copy right now. */}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
-      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: '72rem' } : undefined}>
+      <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
       {layoutMode === 'nebula' && (
         <NebulaPageHeading
           title="Activity"
