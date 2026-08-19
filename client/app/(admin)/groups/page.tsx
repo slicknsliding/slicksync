@@ -803,12 +803,10 @@ function GroupCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
-        {/* Selection indicator & Toggle */}
-        <div className="absolute top-4 right-4 flex items-center gap-2">
-          <SelectionCheckbox
-            checked={isSelected}
-            onChange={onToggleSelect}
-          />
+        {/* Selection indicator & Toggle - stacked (toggle above, checkbox
+            below) rather than side-by-side, so the checkbox sits directly
+            under the toggle instead of next to it. */}
+        <div className="absolute top-4 right-4 flex flex-col items-end gap-1.5">
           <ToggleSwitch
             checked={group.isActive !== false}
             onChange={async () => {
@@ -821,6 +819,10 @@ function GroupCard({
                 toast.error(err.message || `Failed to toggle ${group.name}`);
               }
             }}
+          />
+          <SelectionCheckbox
+            checked={isSelected}
+            onChange={onToggleSelect}
           />
         </div>
 

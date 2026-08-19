@@ -1303,12 +1303,11 @@ function AddonCard({
             mobile it sat directly on top of the name/version content
             instead of near it. Moved to a normal in-flow spot under the
             version tag on mobile instead (below), rather than trying to
-            carve out corner clearance on an already-tight card width. */}
-        <div className="hidden md:flex absolute top-4 right-4 z-10 items-center gap-3">
-          <SelectionCheckbox
-            checked={isSelected}
-            onChange={onToggleSelect}
-          />
+            carve out corner clearance on an already-tight card width.
+            Stacked (toggle above, checkbox below) rather than side-by-side
+            on PC too - checkbox sits directly under the toggle, not next
+            to it. */}
+        <div className="hidden md:flex absolute top-4 right-4 z-10 flex-col items-end gap-1.5">
           <ToggleSwitch
             checked={addon.isActive !== false}
             onChange={async () => {
@@ -1321,6 +1320,10 @@ function AddonCard({
                 toast.error(err.message || `Failed to toggle ${addon.name}`);
               }
             }}
+          />
+          <SelectionCheckbox
+            checked={isSelected}
+            onChange={onToggleSelect}
           />
         </div>
 
@@ -1391,9 +1394,12 @@ function AddonCard({
                 )}
               </div>
               {/* Mobile-only selection checkbox, sitting right under the
-                  name/version/health-dot row above (the md: corner checkbox
-                  is hidden below this breakpoint - see its own comment). */}
-              <div className="md:hidden mb-2" onClick={(e) => e.stopPropagation()}>
+                  version tag above (the md: corner checkbox is hidden below
+                  this breakpoint - see its own comment). Right-aligned to
+                  land directly under the version tag, which is also on the
+                  right side of that row - not under the name/icon on the
+                  left, where a plain block-level div would otherwise sit. */}
+              <div className="md:hidden mb-2 flex justify-end" onClick={(e) => e.stopPropagation()}>
                 <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} />
               </div>
               {/* Stats inline */}
