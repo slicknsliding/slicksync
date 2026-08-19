@@ -712,7 +712,7 @@ function DescribeCatalogModal({
             rows={2}
             maxLength={500}
             className="w-full px-4 py-3 rounded-xl focus:outline-none resize-none"
-            style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
           />
           <p className="text-xs text-muted mt-1.5">Genre, decade, runtime, movie or series - whatever you mention gets used. Already-watched titles are always excluded.</p>
         </div>
@@ -774,7 +774,7 @@ function DescribeCatalogModal({
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Catalog name"
                 className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
               />
             )}
 

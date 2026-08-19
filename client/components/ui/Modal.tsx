@@ -140,7 +140,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
               <button
                 onClick={onClose}
                 className="absolute top-3 right-3 z-20 p-2 rounded-lg backdrop-blur-sm transition-colors"
-                style={{ color: 'var(--color-textMuted)', background: 'color-mix(in srgb, var(--color-surface) 70%, transparent)' }}
+                style={{ color: 'var(--color-text-muted)', background: 'color-mix(in srgb, var(--color-surface) 70%, transparent)' }}
                 aria-label="Close"
               >
                 <XMarkIcon className="w-5 h-5" />
@@ -162,7 +162,7 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
                     </DialogTitle>
                   )}
                   {description && (
-                    <p className="mt-1 text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                    <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>
                       {description}
                     </p>
                   )}
@@ -207,14 +207,14 @@ export function ConfirmModal({
 }: ConfirmModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
-      <p className="mb-6" style={{ color: 'var(--color-textMuted)' }}>{description}</p>
+      <p className="mb-6" style={{ color: 'var(--color-text-muted)' }}>{description}</p>
       <div className="flex gap-3 justify-end">
         <button
           onClick={onClose}
           disabled={isLoading}
           className="px-6 py-3 rounded-xl font-medium transition-all duration-300"
           style={{
-            background: 'var(--color-surfaceHover)',
+            background: 'var(--color-surface-hover)',
             color: 'var(--color-text)',
             border: '1px solid var(--color-surface-border)'
           }}

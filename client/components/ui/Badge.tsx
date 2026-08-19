@@ -58,13 +58,13 @@ function getBadgeStyles(variant: BadgeVariant) {
     case 'outline':
       return {
         background: 'transparent',
-        color: 'var(--color-textMuted)',
+        color: 'var(--color-text-muted)',
         borderColor: 'var(--color-surface-border)',
       };
     case 'muted':
       return {
-        background: 'var(--color-bgMuted)',
-        color: 'var(--color-textSubtle)',
+        background: 'var(--color-bg-muted)',
+        color: 'var(--color-text-subtle)',
         borderColor: 'transparent',
       };
     // Fixed colors, independent of the active theme - these are provider
@@ -94,8 +94,8 @@ function getBadgeStyles(variant: BadgeVariant) {
     case 'neutral':
     default:
       return {
-        background: 'var(--color-bgMuted)',
-        color: 'var(--color-textMuted)',
+        background: 'var(--color-bg-muted)',
+        color: 'var(--color-text-muted)',
         borderColor: 'transparent',
       };
   }
@@ -116,7 +116,7 @@ function getPulseColor(variant: BadgeVariant) {
     case 'error':
       return 'var(--color-error)';
     default:
-      return 'var(--color-textMuted)';
+      return 'var(--color-text-muted)';
   }
 }
 

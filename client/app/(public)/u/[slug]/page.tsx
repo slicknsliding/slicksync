@@ -55,7 +55,7 @@ export default function PublicStatsPage() {
       <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'var(--color-bg)' }}>
         <div className="text-center">
           <h1 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text)' }}>This stats page isn't available</h1>
-          <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>The link may have been disabled by its owner.</p>
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>The link may have been disabled by its owner.</p>
         </div>
       </div>
     );
@@ -67,7 +67,7 @@ export default function PublicStatsPage() {
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center text-center mb-10">
           <Avatar name={stats.username} src={stats.avatarUrl || undefined} colorIndex={stats.colorIndex ?? undefined} size="lg" />
           <h1 className="text-2xl font-bold font-display mt-4" style={{ color: 'var(--color-text)' }}>{stats.username}'s Watch Stats</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-textMuted)' }}>Powered by SlickSync</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>Powered by SlickSync</p>
         </motion.div>
 
         <motion.div
@@ -88,7 +88,7 @@ export default function PublicStatsPage() {
             >
               <div className="flex justify-center mb-2" style={{ color: 'var(--color-primary)' }}>{s.icon}</div>
               <p className="text-xl font-bold font-display" style={{ color: 'var(--color-text)' }}>{s.value}</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--color-textMuted)' }}>{s.label}</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{s.label}</p>
             </div>
           ))}
         </motion.div>
@@ -107,11 +107,11 @@ export default function PublicStatsPage() {
                       <img src={t.poster} alt={t.name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <FilmIcon className="w-6 h-6" style={{ color: 'var(--color-textMuted)' }} />
+                        <FilmIcon className="w-6 h-6" style={{ color: 'var(--color-text-muted)' }} />
                       </div>
                     )}
                   </div>
-                  <p className="text-[11px] leading-tight truncate" style={{ color: 'var(--color-textMuted)' }} title={t.name}>{t.name}</p>
+                  <p className="text-[11px] leading-tight truncate" style={{ color: 'var(--color-text-muted)' }} title={t.name}>{t.name}</p>
                 </div>
               ))}
             </div>

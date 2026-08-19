@@ -43,7 +43,7 @@ function coverColorStyle(colorIndex: number): React.CSSProperties {
 function MoreMenuSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="px-2 py-1">
-      <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-textMuted)' }}>
+      <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
         {label}
       </p>
       <div className="space-y-0.5">{children}</div>
@@ -76,7 +76,7 @@ function MoreMenuItem({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       className="w-full flex items-center gap-3 px-2 py-2 rounded-xl text-sm text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-      style={{ background: hovered && !disabled ? 'var(--color-surfaceHover)' : 'transparent' }}
+      style={{ background: hovered && !disabled ? 'var(--color-surface-hover)' : 'transparent' }}
     >
       <span
         className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
@@ -1254,7 +1254,7 @@ export default function ListDetailPage() {
                           className="px-2.5 py-1 rounded-lg text-xs font-medium capitalize transition-colors disabled:opacity-50"
                           style={{
                             background: active ? 'var(--color-primary)' : 'var(--color-subtle)',
-                            color: active ? 'white' : 'var(--color-textMuted)',
+                            color: active ? 'white' : 'var(--color-text-muted)',
                           }}
                         >
                           {freq}

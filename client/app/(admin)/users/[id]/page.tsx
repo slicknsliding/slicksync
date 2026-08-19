@@ -1956,7 +1956,7 @@ export default function UserDetailPage() {
               onChange={(e) => setMergePickerSearch(e.target.value)}
               placeholder="Search users..."
               className="w-full pl-9 pr-4 py-2.5 rounded-xl focus:outline-none"
-              style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+              style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
             />
           </div>
           <div className="max-h-80 overflow-y-auto space-y-1">
@@ -2181,7 +2181,7 @@ function SimklLinkModal({
             <p className="text-sm text-muted">
               Go to <a href={verificationUrl || undefined} target="_blank" rel="noreferrer" className="text-primary underline">{verificationUrl}</a> and enter this code:
             </p>
-            <div className="text-3xl font-mono font-bold tracking-widest py-3 rounded-xl" style={{ background: 'var(--color-surfaceHover)' }}>
+            <div className="text-3xl font-mono font-bold tracking-widest py-3 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
               {userCode}
             </div>
             <p className="text-xs text-muted">Waiting for you to authorize on SIMKL...</p>

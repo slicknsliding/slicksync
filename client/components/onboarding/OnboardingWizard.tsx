@@ -166,7 +166,7 @@ export function OnboardingWizard() {
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--color-primary-muted)' }}>
                     <Icon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
                   </div>
-                  <button onClick={finish} title="Skip" style={{ color: 'var(--color-textMuted)' }}>
+                  <button onClick={finish} title="Skip" style={{ color: 'var(--color-text-muted)' }}>
                     <XMarkIcon className="w-5 h-5" />
                   </button>
                 </div>

@@ -536,7 +536,7 @@ export function CreateUserModal({
                         <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
                           {isReconnect ? 'Reconnect Stremio Account' : 'Add New User'}
                         </h2>
-                        <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                           {isReconnect 
                             ? `Choose how you'd like to reconnect ${userName}'s Stremio account`
                             : "Choose how you'd like to add this user"}
@@ -551,7 +551,7 @@ export function CreateUserModal({
                             className="flex-1 py-2 text-sm font-semibold rounded-lg transition-all"
                             style={{
                               background: provider === 'stremio' ? 'var(--color-primary)' : 'transparent',
-                              color: provider === 'stremio' ? 'white' : 'var(--color-textMuted)'
+                              color: provider === 'stremio' ? 'white' : 'var(--color-text-muted)'
                             }}
                           >
                             Stremio
@@ -562,7 +562,7 @@ export function CreateUserModal({
                             className="flex-1 py-2 text-sm font-semibold rounded-lg transition-all"
                             style={{
                               background: provider === 'nuvio' ? 'var(--color-primary)' : 'transparent',
-                              color: provider === 'nuvio' ? 'white' : 'var(--color-textMuted)'
+                              color: provider === 'nuvio' ? 'white' : 'var(--color-text-muted)'
                             }}
                           >
                             Nuvio
@@ -582,7 +582,7 @@ export function CreateUserModal({
                           onClick={() => setAuthMethod('credentials')}
                           className="w-full p-4 rounded-2xl text-left transition-all group relative overflow-hidden"
                           style={{
-                            background: authMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
+                            background: authMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surface-hover)',
                             border: `1px solid ${authMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surface-border)'}`,
                             opacity: authMethod === 'credentials' ? 1 : 0.85
                           }}
@@ -594,7 +594,7 @@ export function CreateUserModal({
                                 background: authMethod === 'credentials' ? 'rgba(255,255,255,0.2)' : 'var(--color-subtle)'
                               }}
                             >
-                              <svg className="w-5 h-5" style={{ color: authMethod === 'credentials' ? 'white' : 'var(--color-textMuted)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <svg className="w-5 h-5" style={{ color: authMethod === 'credentials' ? 'white' : 'var(--color-text-muted)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                               </svg>
                             </div>
@@ -602,7 +602,7 @@ export function CreateUserModal({
                               <span className="font-semibold" style={{ color: authMethod === 'credentials' ? 'white' : 'var(--color-text)' }}>
                                 Credentials
                               </span>
-                              <p className="text-sm mt-0.5" style={{ color: authMethod === 'credentials' ? 'rgba(255,255,255,0.8)' : 'var(--color-textMuted)' }}>
+                              <p className="text-sm mt-0.5" style={{ color: authMethod === 'credentials' ? 'rgba(255,255,255,0.8)' : 'var(--color-text-muted)' }}>
                                 Email and password
                               </p>
                             </div>
@@ -617,7 +617,7 @@ export function CreateUserModal({
                           onClick={() => setAuthMethod('authKey')}
                           className="w-full p-4 rounded-2xl text-left transition-all group relative overflow-hidden"
                           style={{
-                            background: authMethod === 'authKey' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
+                            background: authMethod === 'authKey' ? 'var(--color-primary)' : 'var(--color-surface-hover)',
                             border: `1px solid ${authMethod === 'authKey' ? 'var(--color-primary)' : 'var(--color-surface-border)'}`,
                             opacity: authMethod === 'authKey' ? 1 : 0.85
                           }}
@@ -629,7 +629,7 @@ export function CreateUserModal({
                                 background: authMethod === 'authKey' ? 'rgba(255,255,255,0.2)' : 'var(--color-subtle)'
                               }}
                             >
-                              <svg className="w-5 h-5" style={{ color: authMethod === 'authKey' ? 'white' : 'var(--color-textMuted)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <svg className="w-5 h-5" style={{ color: authMethod === 'authKey' ? 'white' : 'var(--color-text-muted)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                               </svg>
                             </div>
@@ -637,7 +637,7 @@ export function CreateUserModal({
                               <span className="font-semibold" style={{ color: authMethod === 'authKey' ? 'white' : 'var(--color-text)' }}>
                                 Auth Key
                               </span>
-                              <p className="text-sm mt-0.5" style={{ color: authMethod === 'authKey' ? 'rgba(255,255,255,0.8)' : 'var(--color-textMuted)' }}>
+                              <p className="text-sm mt-0.5" style={{ color: authMethod === 'authKey' ? 'rgba(255,255,255,0.8)' : 'var(--color-text-muted)' }}>
                                 Paste from Stremio settings
                               </p>
                             </div>
@@ -656,7 +656,7 @@ export function CreateUserModal({
                           }}
                           className="w-full p-4 rounded-2xl text-left transition-all group relative overflow-hidden"
                           style={{
-                            background: authMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
+                            background: authMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surface-hover)',
                             border: `1px solid ${authMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surface-border)'}`,
                             opacity: authMethod === 'oauth' ? 1 : 0.85
                           }}
@@ -692,7 +692,7 @@ export function CreateUserModal({
                                   Recommended
                                 </span>
                               </div>
-                              <p className="text-sm mt-0.5" style={{ color: authMethod === 'oauth' ? 'rgba(255,255,255,0.8)' : 'var(--color-textMuted)' }}>
+                              <p className="text-sm mt-0.5" style={{ color: authMethod === 'oauth' ? 'rgba(255,255,255,0.8)' : 'var(--color-text-muted)' }}>
                                 Securely link via OAuth
                               </p>
                             </div>
@@ -706,7 +706,7 @@ export function CreateUserModal({
                           <div className="space-y-4">
                             {!isReconnect && (
                               <div>
-                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                                   Username <span style={{ color: 'var(--color-error)' }}>*</span>
                                 </label>
                                 <input
@@ -716,7 +716,7 @@ export function CreateUserModal({
                                   onChange={(e) => setUsername(e.target.value)}
                                   className="w-full px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none"
                                   style={{
-                                    background: 'var(--color-surfaceHover)',
+                                    background: 'var(--color-surface-hover)',
                                     border: '1px solid var(--color-surface-border)',
                                     color: 'var(--color-text)'
                                   }}
@@ -727,7 +727,7 @@ export function CreateUserModal({
                             {authMethod === 'credentials' && (
                               <>
                                 <div>
-                                  <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                                  <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                                     Email <span style={{ color: 'var(--color-error)' }}>*</span>
                                   </label>
                                   <input
@@ -737,7 +737,7 @@ export function CreateUserModal({
                                     onChange={(e) => setEmail(e.target.value)}
                                     className="w-full px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none"
                                     style={{
-                                      background: 'var(--color-surfaceHover)',
+                                      background: 'var(--color-surface-hover)',
                                       border: '1px solid var(--color-surface-border)',
                                       color: 'var(--color-text)'
                                     }}
@@ -745,7 +745,7 @@ export function CreateUserModal({
                                 </div>
 
                                 <div>
-                                  <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                                  <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                                     Password <span style={{ color: 'var(--color-error)' }}>*</span>
                                   </label>
                                   <div className="relative">
@@ -756,7 +756,7 @@ export function CreateUserModal({
                                       onChange={(e) => setPassword(e.target.value)}
                                       className="w-full pl-4 pr-12 py-3 rounded-xl transition-all duration-200 focus:outline-none"
                                       style={{
-                                        background: 'var(--color-surfaceHover)',
+                                        background: 'var(--color-surface-hover)',
                                         border: '1px solid var(--color-surface-border)',
                                         color: 'var(--color-text)'
                                       }}
@@ -774,7 +774,7 @@ export function CreateUserModal({
                                       onChange={(e) => setRegisterNew(e.target.checked)}
                                       className="w-4 h-4 rounded"
                                     />
-                                    <label htmlFor="register-new" className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                                    <label htmlFor="register-new" className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                                       Register new Stremio account
                                     </label>
                                   </div>
@@ -784,7 +784,7 @@ export function CreateUserModal({
 
                             {authMethod === 'authKey' && (
                               <div>
-                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                                   Stremio Auth Key
                                 </label>
                                 <div className="relative">
@@ -795,14 +795,14 @@ export function CreateUserModal({
                                     onChange={(e) => setAuthKey(e.target.value)}
                                     className="w-full pl-4 pr-12 py-3 rounded-xl transition-all duration-200 focus:outline-none"
                                     style={{
-                                      background: 'var(--color-surfaceHover)',
+                                      background: 'var(--color-surface-hover)',
                                       border: '1px solid var(--color-surface-border)',
                                       color: 'var(--color-text)'
                                     }}
                                   />
                                   <PasswordToggleButton visible={authKeyVisible} onToggle={() => setAuthKeyVisible((v) => !v)} />
                                 </div>
-                                <p className="mt-2 text-xs" style={{ color: 'var(--color-textSubtle)' }}>
+                                <p className="mt-2 text-xs" style={{ color: 'var(--color-text-subtle)' }}>
                                   Find this in Stremio → Settings → Account
                                 </p>
                               </div>
@@ -815,7 +815,7 @@ export function CreateUserModal({
                               onClick={onClose}
                               className="flex-1 py-3 text-sm font-medium rounded-xl transition-colors"
                               style={{
-                                background: 'var(--color-surfaceHover)',
+                                background: 'var(--color-surface-hover)',
                                 color: 'var(--color-text)'
                               }}
                             >
@@ -844,14 +844,14 @@ export function CreateUserModal({
                             onClick={() => setNuvioAuthMethod('credentials')}
                             className="w-full p-4 rounded-2xl text-left transition-all"
                             style={{
-                              background: nuvioAuthMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
+                              background: nuvioAuthMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surface-hover)',
                               border: `1px solid ${nuvioAuthMethod === 'credentials' ? 'var(--color-primary)' : 'var(--color-surface-border)'}`,
                             }}
                           >
                             <span className="font-semibold" style={{ color: nuvioAuthMethod === 'credentials' ? 'white' : 'var(--color-text)' }}>
                               Credentials
                             </span>
-                            <p className="text-sm mt-0.5" style={{ color: nuvioAuthMethod === 'credentials' ? 'rgba(255,255,255,0.8)' : 'var(--color-textMuted)' }}>
+                            <p className="text-sm mt-0.5" style={{ color: nuvioAuthMethod === 'credentials' ? 'rgba(255,255,255,0.8)' : 'var(--color-text-muted)' }}>
                               Email and password
                             </p>
                           </button>
@@ -865,7 +865,7 @@ export function CreateUserModal({
                             }}
                             className="w-full p-4 rounded-2xl text-left transition-all"
                             style={{
-                              background: nuvioAuthMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surfaceHover)',
+                              background: nuvioAuthMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surface-hover)',
                               border: `1px solid ${nuvioAuthMethod === 'oauth' ? 'var(--color-primary)' : 'var(--color-surface-border)'}`,
                             }}
                           >
@@ -880,7 +880,7 @@ export function CreateUserModal({
                                 Recommended
                               </span>
                             </div>
-                            <p className="text-sm mt-0.5" style={{ color: nuvioAuthMethod === 'oauth' ? 'rgba(255,255,255,0.8)' : 'var(--color-textMuted)' }}>
+                            <p className="text-sm mt-0.5" style={{ color: nuvioAuthMethod === 'oauth' ? 'rgba(255,255,255,0.8)' : 'var(--color-text-muted)' }}>
                               Approve on your device — no password shared
                             </p>
                           </button>
@@ -890,7 +890,7 @@ export function CreateUserModal({
                           <div className="mt-6 p-4 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
                             <div className="space-y-4">
                               <div>
-                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                                   Username <span style={{ color: 'var(--color-error)' }}>*</span>
                                 </label>
                                 <input
@@ -899,11 +899,11 @@ export function CreateUserModal({
                                   value={username}
                                   onChange={(e) => setUsername(e.target.value)}
                                   className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                                  style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                                 />
                               </div>
                               <div>
-                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                                   Email <span style={{ color: 'var(--color-error)' }}>*</span>
                                 </label>
                                 <input
@@ -912,11 +912,11 @@ export function CreateUserModal({
                                   value={nuvioEmail}
                                   onChange={(e) => setNuvioEmail(e.target.value)}
                                   className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                                  style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                                  style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                                 />
                               </div>
                               <div>
-                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                                   Password <span style={{ color: 'var(--color-error)' }}>*</span>
                                 </label>
                                 <div className="relative">
@@ -926,7 +926,7 @@ export function CreateUserModal({
                                     value={nuvioPassword}
                                     onChange={(e) => setNuvioPassword(e.target.value)}
                                     className="w-full pl-4 pr-12 py-3 rounded-xl focus:outline-none"
-                                    style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                                    style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                                   />
                                   <PasswordToggleButton visible={nuvioPasswordVisible} onToggle={() => setNuvioPasswordVisible((v) => !v)} />
                                 </div>
@@ -937,7 +937,7 @@ export function CreateUserModal({
                                 type="button"
                                 onClick={onClose}
                                 className="flex-1 py-3 text-sm font-medium rounded-xl transition-colors"
-                                style={{ background: 'var(--color-surfaceHover)', color: 'var(--color-text)' }}
+                                style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text)' }}
                               >
                                 Cancel
                               </button>
@@ -1042,7 +1042,7 @@ export function CreateUserModal({
                           {oauthStatus === 'completed' && (isReconnect ? 'Reconnected!' : 'Connected!')}
                           {oauthStatus === 'error' && 'Connection Failed'}
                         </h3>
-                        <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                           {oauthStatus === 'connecting' && 'Opening Stremio...'}
                           {oauthStatus === 'waiting' && 'Complete the authorization in the Stremio tab'}
                           {oauthStatus === 'completed' && (isReconnect ? 'Stremio account reconnected successfully' : 'Stremio account linked successfully')}
@@ -1066,7 +1066,7 @@ export function CreateUserModal({
                               height={160}
                             />
                           </div>
-                          <p className="text-xs" style={{ color: 'var(--color-textMuted)' }}>
+                          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                             Scan with your phone to continue
                           </p>
                         </div>
@@ -1079,8 +1079,8 @@ export function CreateUserModal({
                             className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm"
                             style={{ background: 'var(--color-subtle)' }}
                           >
-                            <ClockIcon className="w-4 h-4" style={{ color: 'var(--color-textMuted)' }} />
-                            <span style={{ color: 'var(--color-textMuted)' }}>
+                            <ClockIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                            <span style={{ color: 'var(--color-text-muted)' }}>
                               Link expires in <span className="font-mono font-medium" style={{ color: 'var(--color-text)' }}>{formatCountdown(countdown)}</span>
                             </span>
                           </div>
@@ -1146,7 +1146,7 @@ export function CreateUserModal({
                           {nuvioOauthStatus === 'completed' && 'Connected!'}
                           {nuvioOauthStatus === 'error' && 'Connection Failed'}
                         </h3>
-                        <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                           {nuvioOauthStatus === 'connecting' && 'Starting Nuvio login...'}
                           {nuvioOauthStatus === 'waiting' && 'Open the link below and approve this login on your device'}
                           {nuvioOauthStatus === 'completed' && 'Nuvio account linked successfully'}
@@ -1170,12 +1170,12 @@ export function CreateUserModal({
                                   height={160}
                                 />
                               </div>
-                              <p className="text-xs" style={{ color: 'var(--color-textMuted)' }}>
+                              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                                 Scan with your phone to continue
                               </p>
                             </div>
                           )}
-                          <p className="text-xs mb-2" style={{ color: 'var(--color-textMuted)' }}>Approval code</p>
+                          <p className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>Approval code</p>
                           <p className="text-2xl font-mono font-bold tracking-widest mb-4" style={{ color: 'var(--color-text)' }}>{nuvioCode}</p>
                           {nuvioWebUrl && (
                             <Button variant="secondary" className="w-full" onClick={() => window.open(nuvioWebUrl, '_blank')}>
@@ -1188,8 +1188,8 @@ export function CreateUserModal({
                       {(nuvioOauthStatus === 'waiting' || nuvioOauthStatus === 'connecting') && nuvioCountdown > 0 && (
                         <div className="mb-6">
                           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm" style={{ background: 'var(--color-subtle)' }}>
-                            <ClockIcon className="w-4 h-4" style={{ color: 'var(--color-textMuted)' }} />
-                            <span style={{ color: 'var(--color-textMuted)' }}>
+                            <ClockIcon className="w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
+                            <span style={{ color: 'var(--color-text-muted)' }}>
                               Expires in <span className="font-mono font-medium" style={{ color: 'var(--color-text)' }}>{formatCountdown(nuvioCountdown)}</span>
                             </span>
                           </div>
@@ -1225,12 +1225,12 @@ export function CreateUserModal({
                     >
                       <div className="text-center mb-6">
                         <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>Almost done</h2>
-                        <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                           {nuvioResolvedUser?.email ? `Connected as ${nuvioResolvedUser.email}` : 'Choose a username for this SlickSync user'}
                         </p>
                       </div>
                       <div className="p-4 rounded-xl" style={{ background: 'var(--color-subtle)' }}>
-                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                        <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                           Username <span style={{ color: 'var(--color-error)' }}>*</span>
                         </label>
                         <input
@@ -1239,14 +1239,14 @@ export function CreateUserModal({
                           value={username}
                           onChange={(e) => setUsername(e.target.value)}
                           className="w-full px-4 py-3 rounded-xl focus:outline-none"
-                          style={{ background: 'var(--color-surfaceHover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                          style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
                         />
                         <div className="flex gap-3 mt-6">
                           <button
                             type="button"
                             onClick={() => setStep('tabs')}
                             className="flex-1 py-3 text-sm font-medium rounded-xl transition-colors"
-                            style={{ background: 'var(--color-surfaceHover)', color: 'var(--color-text)' }}
+                            style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text)' }}
                           >
                             Back
                           </button>
@@ -1281,7 +1281,7 @@ export function CreateUserModal({
                           <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
                             Stremio Connected
                           </p>
-                          <p className="text-xs" style={{ color: 'var(--color-textMuted)' }}>
+                          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                             {email || 'Account linked successfully'}
                           </p>
                         </div>
@@ -1290,13 +1290,13 @@ export function CreateUserModal({
                       <h2 className="text-xl font-bold mb-1" style={{ color: 'var(--color-text)' }}>
                         Finish Setup
                       </h2>
-                      <p className="text-sm mb-6" style={{ color: 'var(--color-textMuted)' }}>
+                      <p className="text-sm mb-6" style={{ color: 'var(--color-text-muted)' }}>
                         Confirm the details for this user
                       </p>
 
                       <div className="space-y-4">
                         <div>
-                          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-textMuted)' }}>
+                          <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text-muted)' }}>
                             Username <span style={{ color: 'var(--color-error)' }}>*</span>
                           </label>
                           <input
@@ -1369,7 +1369,7 @@ export function CreateUserModal({
                       <h3 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
                         User Created!
                       </h3>
-                      <p className="text-sm" style={{ color: 'var(--color-textMuted)' }}>
+                      <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                         {username} has been added successfully
                       </p>
                     </motion.div>
