@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.73.10",
+    "date": "2026-08-18",
+    "title": "fix: addons row checkbox still wasn't wrapping under the version tag",
+    "features": [],
+    "bugFixes": [
+      "The v1.73.9 fix moved the checkbox into the right row but relied on flex-wrap to push it below - which only wraps when the row actually overflows, so a short addon name left it sitting on the SAME line as the version tag, just pushed to the right edge (confirmed live, unchanged from the user's report). Added a flex-basis spacer that forces it onto its own line unconditionally, verified via direct DOM inspection on betatest before shipping this time."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.9",
     "date": "2026-08-18",
     "title": "fix: addons row selection checkbox was in the wrong badges row",
