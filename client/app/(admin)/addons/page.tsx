@@ -1297,27 +1297,31 @@ function AddonCard({
         onContextMenu={handleContextMenu}
         {...longPress}
       >
-        {/* Selection indicator & Toggle - hidden on mobile, use context menu */}
-        <div className="absolute top-4 right-4 z-10 flex items-center gap-3">
+        {/* Selection checkbox is md:-only here - the pr-24 clearance below
+            that keeps it from overlapping the name/version row is ALSO
+            md:-only (a narrow mobile card never had that clearance), so on
+            mobile it sat directly on top of the name/version content
+            instead of near it. Moved to a normal in-flow spot under the
+            version tag on mobile instead (below), rather than trying to
+            carve out corner clearance on an already-tight card width. */}
+        <div className="hidden md:flex absolute top-4 right-4 z-10 items-center gap-3">
           <SelectionCheckbox
             checked={isSelected}
             onChange={onToggleSelect}
           />
-          <div className="hidden md:block">
-            <ToggleSwitch
-              checked={addon.isActive !== false}
-              onChange={async () => {
-                try {
-                  const newStatus = !addon.isActive;
-                  await api.toggleAddonStatus(addon.id, newStatus);
-                  toast.success(`Addon ${newStatus ? 'activated' : 'deactivated'}`);
-                  onToggleStatus?.(addon.id, newStatus);
-                } catch (err: any) {
-                  toast.error(err.message || `Failed to toggle ${addon.name}`);
-                }
-              }}
-            />
-          </div>
+          <ToggleSwitch
+            checked={addon.isActive !== false}
+            onChange={async () => {
+              try {
+                const newStatus = !addon.isActive;
+                await api.toggleAddonStatus(addon.id, newStatus);
+                toast.success(`Addon ${newStatus ? 'activated' : 'deactivated'}`);
+                onToggleStatus?.(addon.id, newStatus);
+              } catch (err: any) {
+                toast.error(err.message || `Failed to toggle ${addon.name}`);
+              }
+            }}
+          />
         </div>
 
         {/* Header. md:pr-24 reserves clearance for the absolutely-positioned
@@ -1385,6 +1389,12 @@ function AddonCard({
                 {addon.isProtected && (
                   <ShieldCheckIcon className="w-5 h-5 shrink-0 text-success" title="Protected" />
                 )}
+              </div>
+              {/* Mobile-only selection checkbox, sitting right under the
+                  name/version/health-dot row above (the md: corner checkbox
+                  is hidden below this breakpoint - see its own comment). */}
+              <div className="md:hidden mb-2" onClick={(e) => e.stopPropagation()}>
+                <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} />
               </div>
               {/* Stats inline */}
               <div className="flex items-center gap-3 text-sm text-muted">
