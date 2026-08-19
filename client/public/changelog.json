@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.73.13",
+    "date": "2026-08-19",
+    "title": "fix: content wasn't using the space on a real wide monitor - and got MORE cramped, not less",
+    "features": [
+      "Catalog detail page: Content Rating moved out of the More menu into its own always-visible button next to Suggest titles.",
+      "Catalogs list: right-click a catalog for Pin to top / Cover art / Rename / Content Rating / Delete - the same actions the always-visible icon row already has, now reachable without hunting for the tiny icons too."
+    ],
+    "bugFixes": [
+      "The Nebula layout's content width was hard-capped at 72rem (1152px) on every page, deliberately, for a \"floating island\" look - but on a real wide (32\") monitor this wasted most of the screen, and paradoxically made grid cards NARROWER at full window width than at half-width: Tailwind's column-count breakpoints key off viewport width, not this capped container's actual width, so a wider window picked a higher column count within the exact same ~1152px box, cramming each card's own content tighter (confirmed: addon names truncating at full screen but not at half screen). Now scales with the viewport instead of a flat value - verified via direct measurement at a 2560px viewport: content wrapper is 1920px (was 1152px) and zero names truncate."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.12",
     "date": "2026-08-18",
     "title": "fix: checkbox placement - under the version tag / toggle, precisely, verified live",
