@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.73.9",
+    "date": "2026-08-18",
+    "title": "fix: addons row selection checkbox was in the wrong badges row",
+    "features": [],
+    "bugFixes": [
+      "The v1.73.8 addons-row checkbox relocation landed it in the resources/user-count row instead of the name/version-tag row it was supposed to sit under - moved to the correct row, so it now actually wraps under the version tag/health dot on a narrow screen instead of several unrelated badges later."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.8",
     "date": "2026-08-18",
     "title": "fix: selection checkbox glow strength, More menu redesign, addons row layout",
