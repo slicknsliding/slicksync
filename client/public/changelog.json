@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.73.16",
+    "date": "2026-08-20",
+    "title": "fix: v1.73.15 broke boot entirely on Postgres instances - hotfix",
+    "features": [],
+    "bugFixes": [
+      "The v1.73.15 schema-drift script (safe-db-push.js) was a real improvement but exited non-zero when it found pending destructive changes it correctly refused to auto-apply - and start.sh runs under , so that non-zero exit aborted the ENTIRE boot script before the server ever started. That took slicksync.vip down a second time, immediately after fixing the first outage - worse than the original bug, since the container now failed to boot at all instead of serving everything except the affected routes. The script still logs pending destructive drift loudly (never silently), but no longer treats it as fatal to booting."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.15",
     "date": "2026-08-20",
     "title": "fix: production outage prevention (schema drift), live watch timer reset, onboarding back button",
