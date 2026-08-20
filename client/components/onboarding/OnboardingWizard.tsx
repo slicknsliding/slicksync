@@ -208,11 +208,11 @@ const STEPS: Step[] = [
     bullets: [
       'Typing a question searches a built-in guide covering every page and setting - no AI key needed.',
       'Picking a result opens the full guide, with step-by-step instructions and the gotchas worth knowing.',
-      'The whole library is browsable any time from the Help page.',
+      'The whole library is browsable any time from the Guides page.',
     ],
     helpId: 'command-palette',
-    href: '/help',
-    actionLabel: 'Open Help',
+    href: '/guides',
+    actionLabel: 'Open Guides',
   },
 ];
 
@@ -289,7 +289,14 @@ export function OnboardingWizard() {
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[101] w-full max-w-lg mx-4"
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[101] w-full px-4"
+            // maxWidth has to be an inline style, NOT a Tailwind max-w-*
+            // class: globals.css has an unlayered `* { max-width: 100vw }`
+            // rule which beats any layered utility class regardless of
+            // specificity, so max-w-lg was silently doing nothing and this
+            // modal stretched to the full viewport width on a desktop
+            // monitor (confirmed live 2026-08-20).
+            style={{ maxWidth: 'min(34rem, 100%)' }}
           >
             <div
               className="rounded-2xl overflow-hidden shadow-2xl"
@@ -303,41 +310,44 @@ export function OnboardingWizard() {
                 style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-secondary))' }}
               />
 
-              <div className="p-6">
-                {/* Header: icon chip + step counter + skip */}
-                <div className="flex items-start justify-between mb-4 gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                      style={{ background: 'var(--color-primary-muted)' }}
-                    >
-                      <Icon className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-primary)' }}>
-                        {current.label}
-                      </p>
-                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                        Step {step + 1} of {STEPS.length}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={finish}
-                    title="Skip the tour"
-                    aria-label="Skip the tour"
-                    className="shrink-0 p-1 rounded-lg transition-colors hover:bg-surface-hover"
-                    style={{ color: 'var(--color-text-muted)' }}
+              <div className="relative p-6 pt-5">
+                {/* Skip sits absolutely in the corner so the header block
+                    below can be genuinely centred rather than centred-ish
+                    around a button on one side. */}
+                <button
+                  onClick={finish}
+                  title="Skip the tour"
+                  aria-label="Skip the tour"
+                  className="absolute top-4 right-4 p-1.5 rounded-lg transition-colors hover:bg-surface-hover"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  <XMarkIcon className="w-5 h-5" />
+                </button>
+
+                {/* Centred header: icon, where-you-are, title, intro. The
+                    intro paragraph is centred with it; the bullets below
+                    stay left-aligned, since centring a list makes every
+                    line start at a different x and is genuinely harder to
+                    scan. */}
+                <div className="flex flex-col items-center text-center px-2">
+                  <div
+                    className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
+                    style={{ background: 'var(--color-primary-muted)' }}
                   >
-                    <XMarkIcon className="w-5 h-5" />
-                  </button>
+                    <Icon className="w-6 h-6" style={{ color: 'var(--color-primary)' }} />
+                  </div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] mb-1" style={{ color: 'var(--color-primary)' }}>
+                    {current.label}
+                    <span style={{ color: 'var(--color-text-muted)' }}>
+                      {'  ·  '}Step {step + 1} of {STEPS.length}
+                    </span>
+                  </p>
+                  <h2 className="text-xl font-bold font-display text-default mb-2 text-balance">{current.title}</h2>
+                  <div className="text-sm text-muted leading-relaxed">{current.body}</div>
                 </div>
 
-                <h2 className="text-lg font-bold font-display text-default mb-2">{current.title}</h2>
-                <div className="text-sm text-muted leading-relaxed">{current.body}</div>
-
                 {current.bullets && current.bullets.length > 0 && (
-                  <ul className="mt-4 space-y-2">
+                  <ul className="mt-5 space-y-2.5 rounded-xl p-4" style={{ background: 'var(--color-bg-muted)' }}>
                     {current.bullets.map((b) => (
                       <li key={b} className="flex items-start gap-2.5">
                         <CheckIcon className="w-3.5 h-3.5 mt-[3px] shrink-0" style={{ color: 'var(--color-primary)' }} />
@@ -348,14 +358,16 @@ export function OnboardingWizard() {
                 )}
 
                 {current.helpId && (
-                  <button
-                    onClick={() => goTo(`/help/${current.helpId}`)}
-                    className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium transition-opacity hover:opacity-80"
-                    style={{ color: 'var(--color-secondary)' }}
-                  >
-                    <BookOpenIcon className="w-3.5 h-3.5" />
-                    Read the full guide
-                  </button>
+                  <div className="flex justify-center mt-4">
+                    <button
+                      onClick={() => goTo(`/guides/${current.helpId}`)}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium transition-opacity hover:opacity-80"
+                      style={{ color: 'var(--color-secondary)' }}
+                    >
+                      <BookOpenIcon className="w-3.5 h-3.5" />
+                      Read the full guide
+                    </button>
+                  </div>
                 )}
 
                 {/* Progress bar - a continuous bar reads more clearly at a

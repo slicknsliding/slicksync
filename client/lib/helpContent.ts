@@ -22,7 +22,7 @@ export type HelpCategory =
   | 'Security & account'
   | 'Troubleshooting';
 
-// Order categories appear in on the Help page - roughly "what a new user
+// Order categories appear in on the Guides page - roughly "what a new user
 // needs first" down to "what you only read when something's wrong".
 export const HELP_CATEGORY_ORDER: HelpCategory[] = [
   'Getting started',
@@ -48,7 +48,7 @@ export interface HelpEntry {
   keywords: string[];
   // Short summary - what the command palette shows inline. Keep it to 1-3
   // sentences; anything longer belongs in the fields below, which only the
-  // full topic page (/help/[id]) renders.
+  // full topic page (/guides/[id]) renders.
   answer: string;
   // Numbered walkthrough, when the topic is a "how do I actually do this".
   steps?: string[];
@@ -1025,10 +1025,25 @@ export const HELP_ENTRIES: HelpEntry[] = [
 // long-form fields (steps/details/tips) are searched too but scored lowest,
 // so a topic that merely mentions a term in passing never outranks the one
 // actually about it.
+// Words that carry no signal on their own. Without this, a query like
+// "how to" scores nearly every entry (almost every answer contains "to")
+// and returns four effectively random guides. Queries made up entirely of
+// these return nothing here - the Guides nav entry catches them instead,
+// which is the more useful answer to "how to" anyway.
+const STOPWORDS = new Set([
+  'how', 'to', 'do', 'does', 'the', 'a', 'an', 'my', 'in', 'on', 'is', 'it',
+  'for', 'of', 'and', 'can', 'what', 'where', 'why', 'when', 'with', 'you',
+  'your', 'me', 'get', 'set', 'up', 'use', 'using',
+]);
+
 export function searchHelp(query: string, limit = 4): HelpEntry[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
-  const terms = q.split(/\s+/).filter((t) => t.length >= 2);
+  const allTerms = q.split(/\s+/).filter((t) => t.length >= 2);
+  if (allTerms.length === 0) return [];
+  // Keep stopwords only if that's all there is to go on - in which case we
+  // deliberately return nothing rather than noise.
+  const terms = allTerms.filter((t) => !STOPWORDS.has(t));
   if (terms.length === 0) return [];
 
   const scored = HELP_ENTRIES.map((entry) => {
