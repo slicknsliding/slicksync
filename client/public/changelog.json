@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.73.15",
+    "date": "2026-08-20",
+    "title": "fix: production outage prevention (schema drift), live watch timer reset, onboarding back button",
+    "features": [
+      "Onboarding wizard: a Back button (previously one-way, and a couple of people clicked past a step by accident with no way to return), plus a low-key \"Welcome Tour\" replay in Settings for anyone who wants to see it again after closing it."
+    ],
+    "bugFixes": [
+      "A real production incident: prisma db push is all-or-nothing per run - if a release's schema diff mixes safe (ADD COLUMN) and destructive (DROP COLUMN) changes, which is completely normal for a real batch of feature work, push refused the WHOLE batch, INCLUDING the safe half, and the app booted anyway on the stale schema, crashing on every request that touched the missing columns. This is what took slicksync.vip down after the last update. Replaced with a script that splits the diff at the clause level, auto-applies everything additive, and fails loudly instead of silently continuing when anything destructive remains - verified against a disposable copy of the real pre-incident schema before shipping, never touched live data.",
+      "Now Playing's \"Watching for X\" timer (Activity page) could reset to near-zero mid-stream: it borrowed a native WatchSession's start time, which native tracking can reset after a polling gap even while the live proxy connection never dropped. Now uses the proxy's own real connection-start time instead, same as the Dashboard widget already did correctly.",
+      "Theme colors were silently broken across 21 components (Badge, Card, Modal, Command Palette, Vault, the Automation panel, and more) - they referenced CSS variables that don't actually exist (e.g. --color-textMuted instead of the real --color-text-muted), which silently invalidates the whole style and rendered the wrong or transparent color instead of the theme's.",
+      "A debug utility endpoint was missing two required imports and threw on every call; the Superadmin login route had no error handling unlike every other login route in the app; Vault's Reveal/Edit/Delete icon buttons were missing accessible labels their sibling buttons already had."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.14",
     "date": "2026-08-19",
     "title": "fix: theme colors silently broken across 21 components, missing debug endpoint imports",
