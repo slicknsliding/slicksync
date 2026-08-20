@@ -70,7 +70,7 @@ if [ "$INSTANCE" = "public" ]; then
   # would silently force-apply ANY diff, including destructive ones, on every
   # container restart with zero review.
   #
-  # A plain `bunx prisma db push` is all-or-nothing per invocation: if a
+  # A plain "bunx prisma db push" is all-or-nothing per invocation: if a
   # single deploy's schema diff mixes safe (ADD COLUMN) and destructive (DROP
   # COLUMN) changes - completely normal for a real batch of feature work -
   # push refuses the WHOLE batch, INCLUDING the safe half, and used to just
@@ -78,10 +78,16 @@ if [ "$INSTANCE" = "public" ]; then
   # line for the incident that caused - 2026-08-19, slicksync.vip down for
   # ~15min because four tables' worth of already-shipped-code-needs-them
   # columns never got applied, bundled with two unrelated drops). This script
-  # splits the diff, auto-applies the safe half, and fails LOUDLY (non-zero
-  # exit, logged) if anything destructive remains - see scripts/safe-db-push.js
-  # for the full writeup.
-  node scripts/safe-db-push.js
+  # splits the diff and auto-applies the safe half. Loudly logs (does NOT
+  # silently swallow) anything destructive that's still pending - but does
+  # NOT exit non-zero for it, because start.sh runs under "set -e": a
+  # non-zero exit here aborts the ENTIRE boot script before the server ever
+  # starts, which is worse than the original bug (a fully-down container
+  # instead of one serving everything except whatever the pending drift
+  # touches). Confirmed live 2026-08-20: this exact mistake took
+  # slicksync.vip down a second time, immediately after "fixing" the first
+  # outage - see scripts/safe-db-push.js for the full writeup.
+  node scripts/safe-db-push.js || true
 else
   bunx prisma db push --schema "$PRISMA_SCHEMA_PATH" --accept-data-loss || true
 fi
