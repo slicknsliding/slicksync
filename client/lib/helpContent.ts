@@ -1036,41 +1036,122 @@ const STOPWORDS = new Set([
   'your', 'me', 'get', 'set', 'up', 'use', 'using',
 ]);
 
+// Punctuation-insensitive, so "auto-remove" matches "auto remove" and
+// "2fa?" matches "2fa". `+` survives because it's meaningful in a few
+// product names.
+function normalize(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9+\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function words(text: string): string[] {
+  return text.split(' ').filter(Boolean);
+}
+
+interface Haystack {
+  title: string;
+  titleWords: string[];
+  keywords: string[];
+  keywordWords: string[];
+  answer: string;
+  body: string;
+  category: string;
+  all: string;
+}
+
+// Built once per entry rather than per keystroke - this runs on every
+// character typed into the palette.
+const HAYSTACKS = new WeakMap<HelpEntry, Haystack>();
+function haystackFor(entry: HelpEntry): Haystack {
+  const cached = HAYSTACKS.get(entry);
+  if (cached) return cached;
+  const title = normalize(entry.title);
+  const keywords = entry.keywords.map(normalize);
+  const answer = normalize(entry.answer);
+  const body = normalize([
+    ...(entry.steps || []),
+    ...(entry.details || []),
+    ...(entry.tips || []),
+  ].join(' '));
+  const category = normalize(entry.category);
+  const built: Haystack = {
+    title,
+    titleWords: words(title),
+    keywords,
+    keywordWords: keywords.flatMap(words),
+    answer,
+    body,
+    category,
+    all: `${title} ${keywords.join(' ')} ${answer} ${body} ${category}`,
+  };
+  HAYSTACKS.set(entry, built);
+  return built;
+}
+
+function scoreEntry(entry: HelpEntry, phrase: string, terms: string[]): number {
+  const h = haystackFor(entry);
+  let score = 0;
+
+  // Whole-phrase hits are the strongest signal there is.
+  if (h.title === phrase) score += 60;
+  else if (h.title.includes(phrase)) score += 40;
+  if (h.keywords.some((k) => k === phrase)) score += 45;
+  else if (h.keywords.some((k) => k.includes(phrase))) score += 18;
+
+  for (const term of terms) {
+    // A whole word in the title beats a substring of one ("sync" as a word
+    // in "Syncing addons" shouldn't score the same as the topic actually
+    // being about sync).
+    if (h.titleWords.includes(term)) score += 14;
+    else if (h.title.includes(term)) score += 7;
+
+    if (h.keywordWords.includes(term)) score += 10;
+    else if (h.keywords.some((k) => k.includes(term))) score += 5;
+
+    if (h.category.includes(term)) score += 3;
+    if (h.answer.includes(term)) score += 2;
+    if (h.body.includes(term)) score += 1;
+  }
+
+  return score;
+}
+
 export function searchHelp(query: string, limit = 4): HelpEntry[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
-  const allTerms = q.split(/\s+/).filter((t) => t.length >= 2);
+  const phrase = normalize(query);
+  if (!phrase) return [];
+  const allTerms = words(phrase).filter((t) => t.length >= 2);
   if (allTerms.length === 0) return [];
   // Keep stopwords only if that's all there is to go on - in which case we
   // deliberately return nothing rather than noise.
   const terms = allTerms.filter((t) => !STOPWORDS.has(t));
   if (terms.length === 0) return [];
 
-  const scored = HELP_ENTRIES.map((entry) => {
-    let score = 0;
-    const titleLower = entry.title.toLowerCase();
-    const answerLower = entry.answer.toLowerCase();
-    const bodyLower = [
-      ...(entry.steps || []),
-      ...(entry.details || []),
-      ...(entry.tips || []),
-    ].join(' ').toLowerCase();
-    if (titleLower.includes(q)) score += 6;
-    if (entry.keywords.some((k) => k === q)) score += 5;
-    for (const term of terms) {
-      if (titleLower.includes(term)) score += 3;
-      if (entry.keywords.some((k) => k.includes(term))) score += 2;
-      if (answerLower.includes(term)) score += 1;
-      if (bodyLower.includes(term)) score += 0.5;
-    }
-    return { entry, score };
-  });
+  // Require EVERY meaningful term to appear somewhere in the entry. Without
+  // this, "how do i use 2fa" scored every guide containing "use" or "do"
+  // and buried the actual 2FA guide behind unrelated addon results
+  // (confirmed live 2026-08-20: 30 results, correct answer ranked 3rd).
+  const strict = HELP_ENTRIES
+    .filter((entry) => terms.every((t) => haystackFor(entry).all.includes(t)))
+    .map((entry) => ({ entry, score: scoreEntry(entry, phrase, terms) }))
+    .filter((s) => s.score > 0);
 
-  return scored
-    .filter((s) => s.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((s) => s.entry);
+  // Fall back to any-term matching only if requiring all of them found
+  // nothing, so a typo or an extra word still returns something useful
+  // rather than a dead end.
+  const pool = strict.length > 0
+    ? strict
+    : HELP_ENTRIES
+        .map((entry) => ({ entry, score: scoreEntry(entry, phrase, terms) }))
+        .filter((s) => s.score > 0);
+
+  if (pool.length === 0) return [];
+  pool.sort((a, b) => b.score - a.score);
+
+  // Relevance floor relative to the best hit - cuts the long tail of
+  // entries that merely mention a word in passing, which is what made the
+  // results list read as "30 results" of mostly noise.
+  const best = pool[0].score;
+  const floor = Math.max(best * 0.3, 4);
+  return pool.filter((s) => s.score >= floor).slice(0, limit).map((s) => s.entry);
 }
 
 export function getHelpEntry(id: string): HelpEntry | undefined {
