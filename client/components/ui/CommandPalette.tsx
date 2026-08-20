@@ -38,7 +38,9 @@ const NAV_ITEMS = [
   { label: 'Settings', href: '/settings', icon: Cog6ToothIcon, keywords: '' },
   { label: 'Themes', href: '/themes', icon: SwatchIcon, keywords: 'appearance colors' },
   { label: 'Changelog', href: '/changelog', icon: DocumentTextIcon, keywords: 'whats new updates' },
-  { label: 'Help', href: '/help', icon: LifebuoyIcon, keywords: 'help guides how to support faq docs' },
+  // Keywords deliberately include the words people type instead of the
+  // page's actual name - "how to", "help", "faq", "docs" all land here.
+  { label: 'Guides', href: '/guides', icon: LifebuoyIcon, keywords: 'help how to how-to support faq docs documentation manual tutorial guide guides' },
 ];
 
 function isMac() {
@@ -147,7 +149,7 @@ export function CommandPalette() {
   // search came up completely empty, which meant a query like "vault" showed
   // the Vault page and silently hid four genuinely useful guides about it.
   // Now it always runs alongside, and selecting one opens the full topic
-  // page (/help/[id]) instead of leaving you with a two-line blurb.
+  // page (/guides/[id]) instead of leaving you with a two-line blurb.
   const helpResults: HelpEntry[] = useMemo(() => {
     if (!query.trim()) return [];
     return searchHelp(query, 4);
@@ -165,12 +167,12 @@ export function CommandPalette() {
   // picking a help result never skips past the explanation to a page you
   // then have to figure out unaided.
   const handleSelectHelp = (entry: HelpEntry) => {
-    router.push(`/help/${entry.id}`);
+    router.push(`/guides/${entry.id}`);
     close();
   };
 
   const browseAllHelp = () => {
-    router.push('/help');
+    router.push('/guides');
     close();
   };
 
@@ -220,7 +222,12 @@ export function CommandPalette() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -12, scale: 0.98 }}
               transition={{ duration: 0.15 }}
-              className="fixed top-[15vh] left-1/2 -translate-x-1/2 z-[101] w-full max-w-lg mx-4"
+              className="fixed top-[15vh] left-1/2 -translate-x-1/2 z-[101] w-full px-4"
+              // Inline maxWidth, not a Tailwind max-w-* class: globals.css
+              // has an unlayered `* { max-width: 100vw }` rule that beats
+              // any layered utility, so max-w-lg was doing nothing and the
+              // palette stretched the full width of a desktop monitor.
+              style={{ maxWidth: 'min(38rem, 100%)' }}
             >
               <div
                 className="rounded-2xl overflow-hidden shadow-2xl"
@@ -250,7 +257,7 @@ export function CommandPalette() {
                         className="text-xs font-medium transition-opacity hover:opacity-80"
                         style={{ color: 'var(--color-secondary)' }}
                       >
-                        Browse all help topics →
+                        Browse all guides →
                       </button>
                     </div>
                   )}
@@ -285,7 +292,7 @@ export function CommandPalette() {
                   {helpResults.length > 0 && (
                     <div className="px-2 pt-2" style={filtered.length > 0 ? { borderTop: '1px solid var(--color-surface-border)', marginTop: 8 } : undefined}>
                       <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-                        Help &amp; how-to
+                        Guides &amp; how-to
                       </p>
                       {helpResults.map((h, i) => {
                         const idx = filtered.length + i;
@@ -320,7 +327,7 @@ export function CommandPalette() {
                       >
                         <BookOpenIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
                         <span className="text-xs font-medium" style={{ color: 'var(--color-secondary)' }}>
-                          Browse all help topics
+                          Browse all guides
                         </span>
                       </button>
                     </div>

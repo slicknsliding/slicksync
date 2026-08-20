@@ -15,12 +15,12 @@ import {
 } from '@heroicons/react/24/outline';
 import { HELP_ENTRIES, searchHelp, helpEntriesByCategory, HelpEntry } from '@/lib/helpContent';
 
-// The Help index - the "browse everything" counterpart to the command
+// The Guides index - the "browse everything" counterpart to the command
 // palette's search-as-you-type. The palette answers a question you already
 // know how to ask; this page is for when you don't know what to search for
 // yet, which is exactly when a flat search box is useless and a categorised
 // list isn't.
-export default function HelpPage() {
+export default function GuidesPage() {
   const { layoutMode } = useLayoutMode();
   const [query, setQuery] = useState('');
 
@@ -39,14 +39,14 @@ export default function HelpPage() {
     <>
       {layoutMode !== 'nebula' && (
         <Header
-          title={<Breadcrumbs items={[{ label: 'Help' }]} className="text-xl font-semibold" />}
+          title={<Breadcrumbs items={[{ label: 'Guides' }]} className="text-xl font-semibold" />}
         />
       )}
       <div className={layoutMode === 'nebula' ? 'px-4 md:px-6 pb-8 pt-6' : 'p-8'}>
         <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
           {layoutMode === 'nebula' && (
             <NebulaPageHeading
-              title="Help"
+              title="Guides"
               subtitle={`${HELP_ENTRIES.length} guides covering every page, setting, and the things that most often go wrong.`}
             />
           )}
@@ -107,11 +107,17 @@ export default function HelpPage() {
             </PageSection>
           )}
 
-          {/* Categorised browse */}
+          {/* Categorised browse.
+              CSS multi-column rather than a grid: category cards have wildly
+              different heights (10 guides vs. 2), and in a 2-col grid every
+              row is as tall as its tallest card, which left large dead gaps
+              under the short ones. Columns let the cards flow and pack
+              tightly instead. break-inside-avoid keeps a card from being
+              split across the column boundary. */}
           {results === null && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-              {grouped.map((group, i) => (
-                <PageSection key={group.category} delay={0.08 + i * 0.02}>
+            <div className="columns-1 lg:columns-2 gap-4">
+              {grouped.map((group) => (
+                <div key={group.category} className="break-inside-avoid mb-4">
                   <Card padding="lg">
                     <div className="flex items-center gap-3 mb-4">
                       <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted shrink-0">
@@ -134,7 +140,7 @@ export default function HelpPage() {
                       ))}
                     </div>
                   </Card>
-                </PageSection>
+                </div>
               ))}
             </div>
           )}
@@ -147,7 +153,7 @@ export default function HelpPage() {
 function HelpRow({ entry, showCategory = false }: { entry: HelpEntry; showCategory?: boolean }) {
   return (
     <Link
-      href={`/help/${entry.id}`}
+      href={`/guides/${entry.id}`}
       className="group flex items-start gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-surface-hover"
     >
       <span className="flex-1 min-w-0">

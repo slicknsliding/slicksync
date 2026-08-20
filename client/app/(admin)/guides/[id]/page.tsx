@@ -21,7 +21,7 @@ import { getHelpEntry, HelpEntry } from '@/lib/helpContent';
 // stays fast and answers-at-a-glance, and anything that needs real
 // step-by-step instructions, caveats, or "here's why it behaves like this"
 // gets room to actually say it.
-export default function HelpTopicPage() {
+export default function GuideTopicPage() {
   const params = useParams();
   const id = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : '';
   const { layoutMode } = useLayoutMode();
@@ -33,13 +33,24 @@ export default function HelpTopicPage() {
     .map((rid) => getHelpEntry(rid))
     .filter((e): e is HelpEntry => Boolean(e));
 
+  // The footer "Browse all guides" link only earns its place on a page long
+  // enough that the back link at the top has scrolled away. On a short
+  // summary-only topic the two sit within a few hundred pixels of each
+  // other and just read as two back buttons.
+  const hasLongContent = Boolean(
+    (entry?.steps && entry.steps.length > 0) ||
+    (entry?.details && entry.details.length > 0) ||
+    (entry?.tips && entry.tips.length > 0) ||
+    related.length > 0
+  );
+
   return (
     <>
       {layoutMode !== 'nebula' && (
         <Header
           title={
             <Breadcrumbs
-              items={[{ label: 'Help', href: '/help' }, { label: entry ? entry.title : 'Not found' }]}
+              items={[{ label: 'Guides', href: '/guides' }, { label: entry ? entry.title : 'Not found' }]}
               className="text-xl font-semibold"
             />
           }
@@ -53,12 +64,12 @@ export default function HelpTopicPage() {
 
           <PageSection delay={0.05} className="mb-4">
             <button
-              onClick={() => router.push('/help')}
+              onClick={() => router.push('/guides')}
               className="inline-flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-80"
               style={{ color: 'var(--color-secondary)' }}
             >
               <ArrowLeftIcon className="w-4 h-4" />
-              All help topics
+              All guides
             </button>
           </PageSection>
 
@@ -69,7 +80,7 @@ export default function HelpTopicPage() {
                 <p className="text-sm mb-5" style={{ color: 'var(--color-text-muted)' }}>
                   There&apos;s no help topic with the id &quot;{id}&quot;. It may have been renamed or removed.
                 </p>
-                <Button variant="primary" size="sm" onClick={() => router.push('/help')}>
+                <Button variant="primary" size="sm" onClick={() => router.push('/guides')}>
                   Browse all topics
                 </Button>
               </Card>
@@ -181,7 +192,7 @@ export default function HelpTopicPage() {
                       {related.map((r) => (
                         <Link
                           key={r.id}
-                          href={`/help/${r.id}`}
+                          href={`/guides/${r.id}`}
                           className="group flex items-start gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-surface-hover"
                         >
                           <span className="flex-1 min-w-0">
@@ -201,16 +212,18 @@ export default function HelpTopicPage() {
                 </PageSection>
               )}
 
-              <PageSection delay={0.3} className="mt-5">
-                <Link
-                  href="/help"
-                  className="inline-flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-80"
-                  style={{ color: 'var(--color-secondary)' }}
-                >
-                  Browse all help topics
-                  <ArrowRightIcon className="w-4 h-4" />
-                </Link>
-              </PageSection>
+              {hasLongContent && (
+                <PageSection delay={0.3} className="mt-5">
+                  <Link
+                    href="/guides"
+                    className="inline-flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-80"
+                    style={{ color: 'var(--color-secondary)' }}
+                  >
+                    Browse all guides
+                    <ArrowRightIcon className="w-4 h-4" />
+                  </Link>
+                </PageSection>
+              )}
             </>
           )}
         </div>
