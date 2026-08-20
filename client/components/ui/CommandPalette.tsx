@@ -7,6 +7,7 @@ import {
   MagnifyingGlassIcon, HomeIcon, ClockIcon, ChartBarIcon, UsersIcon, UserGroupIcon,
   PuzzlePieceIcon, ShieldCheckIcon, EnvelopeIcon, QueueListIcon, Cog6ToothIcon, SwatchIcon,
   DocumentTextIcon, RectangleStackIcon, SparklesIcon, ArrowUpRightIcon,
+  LifebuoyIcon, BookOpenIcon,
 } from '@heroicons/react/24/outline';
 import { api } from '@/lib/api';
 import { searchHelp, HelpEntry } from '@/lib/helpContent';
@@ -37,6 +38,7 @@ const NAV_ITEMS = [
   { label: 'Settings', href: '/settings', icon: Cog6ToothIcon, keywords: '' },
   { label: 'Themes', href: '/themes', icon: SwatchIcon, keywords: 'appearance colors' },
   { label: 'Changelog', href: '/changelog', icon: DocumentTextIcon, keywords: 'whats new updates' },
+  { label: 'Help', href: '/help', icon: LifebuoyIcon, keywords: 'help guides how to support faq docs' },
 ];
 
 function isMac() {
@@ -135,15 +137,21 @@ export function CommandPalette() {
         .map((n) => ({ id: `nav-${n.href}`, label: n.label, href: n.href, icon: n.icon, sublabel: undefined })),
       ...(entities || []).filter((r) => r.label.toLowerCase().includes(q)),
     ];
-    return pool.slice(0, 8);
+    // Capped lower than the old 8 so help matches always have room to show
+    // alongside destinations rather than being crowded out - "how do I do X"
+    // and "take me to X" are both legitimate reasons to open this.
+    return pool.slice(0, 5);
   }, [query, navResults, entities]);
 
-  // Local how-to knowledge base fallback - only computed once nav/entity
-  // search comes up empty, same trigger point the old AI fallback used.
+  // Local how-to knowledge base. This used to only run when nav/entity
+  // search came up completely empty, which meant a query like "vault" showed
+  // the Vault page and silently hid four genuinely useful guides about it.
+  // Now it always runs alongside, and selecting one opens the full topic
+  // page (/help/[id]) instead of leaving you with a two-line blurb.
   const helpResults: HelpEntry[] = useMemo(() => {
-    if (filtered.length > 0) return [];
-    return searchHelp(query);
-  }, [query, filtered]);
+    if (!query.trim()) return [];
+    return searchHelp(query, 4);
+  }, [query]);
 
   useEffect(() => { setActiveIndex(0); }, [query]);
 
@@ -152,16 +160,24 @@ export function CommandPalette() {
     close();
   };
 
+  // Always opens the full topic page. The entry's own href (the "go do the
+  // thing" destination) is offered on that page as a button instead, so
+  // picking a help result never skips past the explanation to a page you
+  // then have to figure out unaided.
   const handleSelectHelp = (entry: HelpEntry) => {
-    if (entry.href) {
-      router.push(entry.href);
-      close();
-    }
+    router.push(`/help/${entry.id}`);
+    close();
   };
 
-  // Arrow-key navigation walks whichever list is actually showing - nav/
-  // entity results when there are any, otherwise the help fallback.
-  const activeListLength = filtered.length > 0 ? filtered.length : helpResults.length;
+  const browseAllHelp = () => {
+    router.push('/help');
+    close();
+  };
+
+  // Arrow keys walk one continuous list across both sections (destinations
+  // first, then help), so Down from the last destination lands on the first
+  // guide rather than dead-ending.
+  const activeListLength = filtered.length + helpResults.length;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
@@ -172,8 +188,13 @@ export function CommandPalette() {
       setActiveIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (filtered[activeIndex]) handleSelect(filtered[activeIndex]);
-      else if (helpResults[activeIndex]) handleSelectHelp(helpResults[activeIndex]);
+      if (activeIndex < filtered.length) {
+        const target = filtered[activeIndex];
+        if (target) handleSelect(target);
+      } else {
+        const target = helpResults[activeIndex - filtered.length];
+        if (target) handleSelectHelp(target);
+      }
     }
   };
 
@@ -213,60 +234,97 @@ export function CommandPalette() {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Jump to a page, user, addon, catalog… or ask a question"
+                    placeholder="Jump to a page, user, addon… or ask how to do something"
                     className="flex-1 bg-transparent outline-none text-sm"
                     style={{ color: 'var(--color-text)' }}
                   />
                   <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'var(--color-subtle)', color: 'var(--color-text-muted)' }}>Esc</kbd>
                 </div>
 
-                <div className="max-h-80 overflow-y-auto py-2">
+                <div className="max-h-96 overflow-y-auto py-2">
                   {filtered.length === 0 && query.trim() && helpResults.length === 0 && (
                     <div className="px-4 py-6 text-center">
-                      <p className="text-sm text-muted">No matches for &quot;{query}&quot;</p>
-                    </div>
-                  )}
-
-                  {filtered.length === 0 && helpResults.length > 0 && (
-                    <div className="px-2 pb-1">
-                      <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-                        How to…
-                      </p>
-                      {helpResults.map((h, i) => (
-                        <button
-                          key={h.id}
-                          onClick={() => handleSelectHelp(h)}
-                          onMouseEnter={() => setActiveIndex(i)}
-                          className="w-full flex items-start gap-3 px-2 py-2.5 rounded-lg text-left transition-colors"
-                          style={{ background: i === activeIndex ? 'var(--color-surface-hover)' : 'transparent' }}
-                        >
-                          <SparklesIcon className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--color-primary)' }} />
-                          <span className="flex-1 min-w-0">
-                            <span className="block text-sm font-medium" style={{ color: 'var(--color-text)' }}>{h.title}</span>
-                            <span className="block text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{h.answer}</span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {filtered.map((r, i) => {
-                    const Icon = r.icon;
-                    return (
+                      <p className="text-sm text-muted mb-3">No matches for &quot;{query}&quot;</p>
                       <button
-                        key={r.id}
-                        onClick={() => handleSelect(r)}
-                        onMouseEnter={() => setActiveIndex(i)}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors"
-                        style={{ background: i === activeIndex ? 'var(--color-surface-hover)' : 'transparent' }}
+                        onClick={browseAllHelp}
+                        className="text-xs font-medium transition-opacity hover:opacity-80"
+                        style={{ color: 'var(--color-secondary)' }}
                       >
-                        <Icon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
-                        <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>{r.label}</span>
-                        {r.sublabel && <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{r.sublabel}</span>}
-                        <ArrowUpRightIcon className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--color-text-muted)', opacity: i === activeIndex ? 1 : 0 }} />
+                        Browse all help topics →
                       </button>
-                    );
-                  })}
+                    </div>
+                  )}
+
+                  {filtered.length > 0 && (
+                    <>
+                      {query.trim() && (
+                        <p className="px-4 pb-1.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+                          Go to
+                        </p>
+                      )}
+                      {filtered.map((r, i) => {
+                        const Icon = r.icon;
+                        return (
+                          <button
+                            key={r.id}
+                            onClick={() => handleSelect(r)}
+                            onMouseEnter={() => setActiveIndex(i)}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors"
+                            style={{ background: i === activeIndex ? 'var(--color-surface-hover)' : 'transparent' }}
+                          >
+                            <Icon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
+                            <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>{r.label}</span>
+                            {r.sublabel && <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{r.sublabel}</span>}
+                            <ArrowUpRightIcon className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--color-text-muted)', opacity: i === activeIndex ? 1 : 0 }} />
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+
+                  {helpResults.length > 0 && (
+                    <div className="px-2 pt-2" style={filtered.length > 0 ? { borderTop: '1px solid var(--color-surface-border)', marginTop: 8 } : undefined}>
+                      <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+                        Help &amp; how-to
+                      </p>
+                      {helpResults.map((h, i) => {
+                        const idx = filtered.length + i;
+                        return (
+                          <button
+                            key={h.id}
+                            onClick={() => handleSelectHelp(h)}
+                            onMouseEnter={() => setActiveIndex(idx)}
+                            className="w-full flex items-start gap-3 px-2 py-2.5 rounded-lg text-left transition-colors"
+                            style={{ background: idx === activeIndex ? 'var(--color-surface-hover)' : 'transparent' }}
+                          >
+                            <SparklesIcon className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--color-primary)' }} />
+                            <span className="flex-1 min-w-0">
+                              <span className="flex items-center gap-2">
+                                <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>{h.title}</span>
+                                <span
+                                  className="text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider font-semibold shrink-0"
+                                  style={{ background: 'var(--color-bg-muted)', color: 'var(--color-text-muted)' }}
+                                >
+                                  {h.category}
+                                </span>
+                              </span>
+                              <span className="block text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--color-text-muted)' }}>{h.answer}</span>
+                            </span>
+                            <ArrowUpRightIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: 'var(--color-text-muted)', opacity: idx === activeIndex ? 1 : 0 }} />
+                          </button>
+                        );
+                      })}
+                      <button
+                        onClick={browseAllHelp}
+                        className="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg text-left transition-colors hover:bg-surface-hover"
+                      >
+                        <BookOpenIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
+                        <span className="text-xs font-medium" style={{ color: 'var(--color-secondary)' }}>
+                          Browse all help topics
+                        </span>
+                      </button>
+                    </div>
+                  )}
 
                   {loadingEntities && !query && (
                     <div className="px-4 py-2 text-xs text-muted">Loading users, addons, catalogs…</div>
