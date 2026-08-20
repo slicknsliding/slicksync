@@ -8,7 +8,10 @@ import {
   CheckIcon, ArrowRightIcon, ArrowLeftIcon, XMarkIcon, ShieldCheckIcon,
   PlayCircleIcon, RectangleStackIcon, BookOpenIcon,
 } from '@heroicons/react/24/outline';
-import { ONBOARDING_COMPLETED_KEY as COMPLETED_KEY } from '@/lib/onboardingStorage';
+import {
+  ONBOARDING_COMPLETED_KEY as COMPLETED_KEY,
+  ONBOARDING_PAUSED_STEP_KEY as PAUSED_KEY,
+} from '@/lib/onboardingStorage';
 
 // Lets any other component (Settings' "Replay welcome tour" link, for one)
 // reopen the wizard from scratch without needing to lift its state up or
@@ -228,19 +231,40 @@ export function OnboardingWizard() {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState(0);
+  // Non-null when the tour was left mid-way via one of a step's own links,
+  // which is what drives the "resume" prompt.
+  const [pausedStep, setPausedStep] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!localStorage.getItem(COMPLETED_KEY)) setIsOpen(true);
+    if (localStorage.getItem(COMPLETED_KEY)) return;
+    const paused = localStorage.getItem(PAUSED_KEY);
+    if (paused !== null) {
+      // Deliberately do NOT auto-reopen here. They clicked through to a
+      // page to actually look at something; popping the modal back over it
+      // the moment they arrive is exactly the behaviour that makes tours
+      // annoying. Offer to resume instead and let them choose when.
+      const n = Number(paused);
+      setPausedStep(Number.isFinite(n) && n >= 0 && n < STEPS.length ? n : 0);
+      return;
+    }
+    setIsOpen(true);
   }, []);
 
   useEffect(() => {
-    const reopen = () => { setStep(0); setIsOpen(true); };
+    const reopen = () => {
+      localStorage.removeItem(PAUSED_KEY);
+      setPausedStep(null);
+      setStep(0);
+      setIsOpen(true);
+    };
     window.addEventListener(REOPEN_EVENT, reopen);
     return () => window.removeEventListener(REOPEN_EVENT, reopen);
   }, []);
 
   const finish = () => {
     localStorage.setItem(COMPLETED_KEY, '1');
+    localStorage.removeItem(PAUSED_KEY);
+    setPausedStep(null);
     setIsOpen(false);
   };
 
@@ -251,9 +275,28 @@ export function OnboardingWizard() {
 
   const goBack = () => setStep((s) => Math.max(0, s - 1));
 
+  // Leaving via a step's own link is a pause, not a finish - remember where
+  // we were so they can pick the tour back up on the page they land on,
+  // instead of it being marked done and needing a restart from Settings.
   const goTo = (href: string) => {
-    finish();
+    localStorage.setItem(PAUSED_KEY, String(step));
+    setPausedStep(step);
+    setIsOpen(false);
     router.push(href);
+  };
+
+  const resume = () => {
+    const target = pausedStep ?? 0;
+    localStorage.removeItem(PAUSED_KEY);
+    setPausedStep(null);
+    setStep(target);
+    setIsOpen(true);
+  };
+
+  const dismissResume = () => {
+    localStorage.setItem(COMPLETED_KEY, '1');
+    localStorage.removeItem(PAUSED_KEY);
+    setPausedStep(null);
   };
 
   // Arrow keys move between steps, so the whole tour is usable without
@@ -275,8 +318,61 @@ export function OnboardingWizard() {
   const isLast = step === STEPS.length - 1;
   const progress = ((step + 1) / STEPS.length) * 100;
 
+  const ResumeIcon = pausedStep !== null ? STEPS[pausedStep].icon : SparklesIcon;
+
   return (
-    <AnimatePresence>
+    <>
+      {/* Resume prompt - shown after the tour was left via one of its own
+          links. Small and corner-anchored on purpose: it has to be findable
+          without covering the page they deliberately navigated to. */}
+      <AnimatePresence>
+        {pausedStep !== null && !isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            className="fixed bottom-5 right-5 z-[90] max-w-[calc(100vw-2.5rem)]"
+          >
+            <div
+              className="flex items-center gap-3 rounded-xl shadow-2xl pl-3 pr-2 py-2.5"
+              style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}
+            >
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                style={{ background: 'var(--color-primary-muted)' }}
+              >
+                <ResumeIcon className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-default leading-tight truncate">
+                  Resume the tour
+                </p>
+                <p className="text-xs leading-tight" style={{ color: 'var(--color-text-muted)' }}>
+                  Step {pausedStep + 1} of {STEPS.length} · {STEPS[pausedStep].label}
+                </p>
+              </div>
+              <button
+                onClick={resume}
+                className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-90"
+                style={{ background: 'var(--color-primary)', color: 'var(--color-bg)' }}
+              >
+                Resume
+              </button>
+              <button
+                onClick={dismissResume}
+                title="Don't show this again"
+                aria-label="Dismiss the tour"
+                className="shrink-0 p-1 rounded-lg transition-colors hover:bg-surface-hover"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                <XMarkIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
       {isOpen && (
         <>
           <motion.div
@@ -420,6 +516,7 @@ export function OnboardingWizard() {
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+      </AnimatePresence>
+    </>
   );
 }
