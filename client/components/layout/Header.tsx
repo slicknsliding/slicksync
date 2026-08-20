@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { BellIcon, MagnifyingGlassIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import { Avatar } from '../ui/Avatar';
 import { NotificationsDropdown } from '../ui/NotificationsDropdown';
+import { ResumeTourChip } from '../onboarding/ResumeTourChip';
 import { useMobileMenu } from '@/app/(admin)/AdminClientLayout';
 
 interface HeaderProps {
@@ -134,6 +135,10 @@ export function Header({
               {actions}
             </div>
           ) : null}
+
+          {/* Resume-tour chip sits immediately left of the bell - renders
+              nothing unless a welcome tour was actually left half-finished. */}
+          <ResumeTourChip />
 
           {/* Notifications — always last so its dropdown fits within the screen */}
           <NotificationsDropdown
