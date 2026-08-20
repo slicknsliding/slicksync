@@ -66,16 +66,22 @@ else
 fi
 echo "➡️ Ensuring schema is applied (db push)"
 if [ "$INSTANCE" = "public" ]; then
-  # NEVER --accept-data-loss against the live multi-tenant Postgres DB.
-  # migrate deploy above always fails with P3005 (this DB predates proper
-  # migration baselining), so db push is the only thing actually keeping
-  # the public schema in sync - but --accept-data-loss meant it would
-  # silently force-apply ANY diff, including destructive ones, on every
-  # single container restart with zero review. Without the flag, additive
-  # changes (new tables/columns) still apply automatically; anything
-  # destructive is refused and logged instead of executed, and the
-  # container still boots on the prior schema rather than risking data.
-  bunx prisma db push --schema "$PRISMA_SCHEMA_PATH" || echo "⚠️ db push found a change it wouldn't apply without --accept-data-loss - review manually, container is booting on the previous schema"
+  # NEVER --accept-data-loss against the live multi-tenant Postgres DB - that
+  # would silently force-apply ANY diff, including destructive ones, on every
+  # container restart with zero review.
+  #
+  # A plain `bunx prisma db push` is all-or-nothing per invocation: if a
+  # single deploy's schema diff mixes safe (ADD COLUMN) and destructive (DROP
+  # COLUMN) changes - completely normal for a real batch of feature work -
+  # push refuses the WHOLE batch, INCLUDING the safe half, and used to just
+  # log a warning and boot anyway on the stale schema (see git history on this
+  # line for the incident that caused - 2026-08-19, slicksync.vip down for
+  # ~15min because four tables' worth of already-shipped-code-needs-them
+  # columns never got applied, bundled with two unrelated drops). This script
+  # splits the diff, auto-applies the safe half, and fails LOUDLY (non-zero
+  # exit, logged) if anything destructive remains - see scripts/safe-db-push.js
+  # for the full writeup.
+  node scripts/safe-db-push.js
 else
   bunx prisma db push --schema "$PRISMA_SCHEMA_PATH" --accept-data-loss || true
 fi
