@@ -96,6 +96,15 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // The Guides section used to live at /help. Keep the old paths working
+  // rather than 404ing anyone with a bookmark, an open tab from before the
+  // rename, or a link shared in Discord.
+  async redirects() {
+    return [
+      { source: '/help', destination: '/guides', permanent: true },
+      { source: '/help/:id', destination: '/guides/:id', permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;
