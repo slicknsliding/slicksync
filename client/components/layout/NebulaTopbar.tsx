@@ -21,6 +21,7 @@ import {
   RectangleStackIcon,
 } from '@heroicons/react/24/outline';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
+import { ResumeTourChip } from '@/components/onboarding/ResumeTourChip';
 import { PanelSwitcher } from './PanelSwitcher';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { api } from '@/lib/api';
@@ -205,7 +206,7 @@ export function NebulaTopbar() {
       {isMobile && (
         <div className="fixed top-4 right-4 z-40">
           <div
-            className="rounded-2xl p-1.5"
+            className="rounded-2xl p-1.5 flex items-center gap-1"
             style={{
               background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
               backdropFilter: 'blur(18px)',
@@ -214,6 +215,7 @@ export function NebulaTopbar() {
               boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
             }}
           >
+            <ResumeTourChip />
             <NotificationsDropdown />
           </div>
         </div>
@@ -293,6 +295,17 @@ export function NebulaTopbar() {
                 <Bars3Icon className="w-6 h-6" style={{ color: 'var(--color-text)' }} />
               )}
             </button>
+          )}
+          {/* Resume-tour chip, mirroring the hamburger on the left so the
+              logo stays genuinely centered. It lives in THIS bar rather
+              than next to the bell in NebulaPageHeading below, because
+              that heading scrolls away with the page - a half-finished
+              tour needs to stay reachable wherever you've scrolled to.
+              Renders nothing unless a tour is actually paused. */}
+          {!isTV && (
+            <div className="absolute right-0">
+              <ResumeTourChip />
+            </div>
           )}
           <Link href="/" className={isTV ? 'flex items-center gap-2 justify-center min-w-0' : 'flex items-center gap-2 md:gap-4 justify-center min-w-0'}>
             <div

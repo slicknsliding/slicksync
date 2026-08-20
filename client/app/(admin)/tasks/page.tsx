@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, UserAvatar, ConfirmModal, Modal, Input } from '@/components/ui';
@@ -156,6 +157,9 @@ export default function TasksPage() {
   // fully built but had no UI anywhere referencing it.
   const [groups, setGroups] = useState<Group[]>([]);
   const [isAutomationOpen, setIsAutomationOpen] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const hasHandledOpenParam = useRef(false);
   const [snapshots, setSnapshots] = useState<AddonSnapshot[]>([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [isCreateSnapshotOpen, setIsCreateSnapshotOpen] = useState(false);
@@ -172,6 +176,21 @@ export default function TasksPage() {
   useEffect(() => {
     api.getGroups().then(setGroups).catch(() => {});
   }, []);
+
+  // Deep links from the Guides pages (?open=automation) land you straight
+  // in the panel the guide is about, rather than on this page with a
+  // "now go find Automation → Manage Rules yourself" instruction. The
+  // param is stripped afterward so a refresh or a later back-navigation
+  // doesn't keep re-opening the modal.
+  useEffect(() => {
+    if (hasHandledOpenParam.current) return;
+    const target = searchParams.get('open');
+    if (!target) return;
+    hasHandledOpenParam.current = true;
+    if (target === 'automation') setIsAutomationOpen(true);
+    else if (target === 'addon-templates') setIsCreateSnapshotOpen(true);
+    router.replace('/tasks');
+  }, [searchParams, router]);
 
   const fetchSnapshots = () => {
     setLoadingSnapshots(true);

@@ -87,7 +87,9 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Test a webhook against a throwaway endpoint (webhook.site or similar) before pointing it at something that takes real action.',
     ],
     related: ['notifications-setup', 'watch-notification-overrides'],
-    href: '/tasks',
+    // Deep link - opens the Automation panel directly instead of dropping
+    // you on Tasks to go find it (see the ?open= handler on that page).
+    href: '/tasks?open=automation',
     linkLabel: 'Open Automation',
   },
   {
@@ -170,8 +172,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'A failing check is a real signal, not a false alarm - it means the credential genuinely is not working right now. If an indexer blocks your server\'s IP and that is expected, use the Health page\'s Ignore instead of deleting the entry.',
     ],
     related: ['vault-auto-remove', 'vault-cost-tracking', 'vault-organize', 'health-ignore'],
-    href: '/vault',
-    linkLabel: 'Open Vault',
+    href: '/vault?open=add',
+    linkLabel: 'Add an entry',
   },
   {
     id: 'vault-auto-remove',
@@ -365,8 +367,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
     category: 'Addons',
     keywords: ['addon template', 'save template', 'apply template', 'deploy addons'],
     answer: 'Tasks → Addon Templates → Save New Template, from an existing user or group\'s current addon set. Apply it to any other user/group later instead of rebuilding the same list by hand.',
-    href: '/tasks',
-    linkLabel: 'Open Tasks',
+    href: '/tasks?open=addon-templates',
+    linkLabel: 'Save a template',
   },
   {
     id: 'watchlist-reactions',

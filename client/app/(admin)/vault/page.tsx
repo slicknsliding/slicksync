@@ -555,6 +555,16 @@ function VaultPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // ?open=add - deep link from the Guides pages straight into Add Entry,
+  // rather than landing on Vault with a "now click Add Entry" instruction.
+  // Same strip-the-param behaviour as ?edit= above.
+  useEffect(() => {
+    if (searchParams.get('open') !== 'add') return;
+    setIsAddOpen(true);
+    router.replace('/vault');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const handleCategoryChange = (category: VaultCategory) => {
     setForm(f => ({ ...f, category, ...categoryDefaults(category) }));
   };
