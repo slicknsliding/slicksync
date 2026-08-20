@@ -13,6 +13,7 @@ import { toast } from '@/components/ui/Toast';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
 import { invalidatePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
+import { openOnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import {
   CloudArrowUpIcon,
   ArrowPathIcon,
@@ -1880,6 +1881,30 @@ export default function SettingsPage() {
             </Card>
           </PageSection>
         )}
+
+        {/* Welcome tour replay - low-key, one line, no card padding beyond
+            the norm here so it doesn't stand out among the settings around
+            it. Users kept accidentally clicking past a step with no way
+            back (fixed in the wizard itself) and had no way to pull it back
+            up afterward either - this is that way back in, not a big CTA. */}
+        <PageSection delay={0.24} className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted shrink-0">
+                  <SparklesIcon className="w-5 h-5 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold font-display text-default">Welcome Tour</h3>
+                  <p className="text-xs text-muted">Replay the first-run walkthrough any time</p>
+                </div>
+              </div>
+              <Button variant="secondary" size="sm" onClick={openOnboardingWizard}>
+                Replay
+              </Button>
+            </div>
+          </Card>
+        </PageSection>
 
         {/* Danger Zone */}
         <PageSection delay={0.25}>

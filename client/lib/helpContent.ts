@@ -109,10 +109,10 @@ export const HELP_ENTRIES: HelpEntry[] = [
   {
     id: 'onboarding-wizard',
     title: 'The first-run onboarding wizard',
-    keywords: ['onboarding wizard', 'first run', 'new install walkthrough'],
-    answer: 'A one-time, full-screen walkthrough shown only on your very first visit - connect an account, add addons, invite your household, and a rundown of what\'s different from the original Syncio fork. For what shipped in a specific version afterward, check the changelog directly.',
-    href: '/changelog',
-    linkLabel: 'Open changelog',
+    keywords: ['onboarding wizard', 'first run', 'new install walkthrough', 'replay tour', 'welcome tour', 'back button'],
+    answer: 'A full-screen walkthrough shown on your very first visit - connect an account, add addons, invite your household, and a rundown of what\'s different from the original Syncio fork. Has a Back button if you click past a step too fast, and can be replayed any time from Settings → Welcome Tour. For what shipped in a specific version afterward, check the changelog directly.',
+    href: '/settings',
+    linkLabel: 'Open Settings',
   },
   {
     id: 'advanced-sync',

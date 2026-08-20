@@ -5,9 +5,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import {
   UsersIcon, PuzzlePieceIcon, EnvelopeIcon, SparklesIcon, CommandLineIcon,
-  CheckIcon, ArrowRightIcon, XMarkIcon,
+  CheckIcon, ArrowRightIcon, ArrowLeftIcon, XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { ONBOARDING_COMPLETED_KEY as COMPLETED_KEY } from '@/lib/onboardingStorage';
+
+// Lets any other component (Settings' "Replay welcome tour" link, for one)
+// reopen the wizard from scratch without needing to lift its state up or
+// clear localStorage first - a plain DOM event keeps this decoupled from
+// wherever the wizard happens to be mounted.
+const REOPEN_EVENT = 'slicksync:open-onboarding';
+export function openOnboardingWizard() {
+  window.dispatchEvent(new Event(REOPEN_EVENT));
+}
 
 // A step's own href is optional - clicking "Take me there" closes the
 // wizard and navigates; steps with no action (the welcome/tips/finish
@@ -131,6 +140,12 @@ export function OnboardingWizard() {
     if (!localStorage.getItem(COMPLETED_KEY)) setIsOpen(true);
   }, []);
 
+  useEffect(() => {
+    const reopen = () => { setStep(0); setIsOpen(true); };
+    window.addEventListener(REOPEN_EVENT, reopen);
+    return () => window.removeEventListener(REOPEN_EVENT, reopen);
+  }, []);
+
   const finish = () => {
     localStorage.setItem(COMPLETED_KEY, '1');
     setIsOpen(false);
@@ -140,6 +155,8 @@ export function OnboardingWizard() {
     if (step < STEPS.length - 1) setStep((s) => s + 1);
     else finish();
   };
+
+  const goBack = () => setStep((s) => Math.max(0, s - 1));
 
   const current = STEPS[step];
   const Icon = current.icon;
@@ -185,6 +202,17 @@ export function OnboardingWizard() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {step > 0 && (
+                    <button
+                      onClick={goBack}
+                      title="Back"
+                      aria-label="Back"
+                      className="p-2.5 rounded-lg transition-opacity hover:opacity-90"
+                      style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)', border: '1px solid var(--color-surface-border)' }}
+                    >
+                      <ArrowLeftIcon className="w-4 h-4" />
+                    </button>
+                  )}
                   {current.href && (
                     <button
                       onClick={() => { finish(); router.push(current.href!); }}
