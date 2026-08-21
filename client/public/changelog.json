@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.74.0",
+    "date": "2026-08-21",
+    "title": "1.74.0 — Self-hosted Nuvio backends",
+    "features": [
+      "Point an account at your own self-hosted Nuvio backend instead of api.nuvio.tv (Settings -> External API Keys -> Nuvio backend URL). Paste the Backend URL and hit Detect - it reads that server's own /.well-known/nuvio discovery document and fills in the publishable key for you. It is per-account, like every other integration here, so one account can use a self-hosted server without affecting anyone else on the instance. Leave it blank and nothing changes.",
+      "Two new guides on self-hosted Nuvio: how to point SlickSync at your own backend, and an honest \"is it worth it?\" - what self-hosting actually gains you (your own database, independence from api.nuvio.tv having a bad day, control over signups and MFA) versus what it does not (any new feature), and which Nuvio apps can be repointed without rebuilding them. 74 guides total."
+    ],
+    "bugFixes": [
+      "The page behind the onboarding wizard could still be scrolled - the scroll lock was on <body>, but the scrolling element is <html>. The wizard is also wider and taller now so its longer steps are not cramped.",
+      "Redrew the resume-tour icon by the notification bell. It was five thin strokes meant to read as a winding path with a flag planted on it, which collapsed into an illegible squiggle at the size it actually renders. It is a signpost now.",
+      "Changelog cleaned up - 268 entries, most of them single-line bugfix releases, consolidated down to one entry per minor line so the page is actually readable."
+    ]
+  },
+  {
     "version": "1.73.19",
     "date": "2026-08-21",
     "title": "1.73 — 19 releases (2026-08-18 – 2026-08-21)",
