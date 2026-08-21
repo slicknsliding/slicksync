@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.73.19",
+    "date": "2026-08-21",
+    "title": "fix: Vault checks failed on transient provider slowness",
+    "features": [
+      "Guides whose feature is a self-contained panel now open it in a modal on the guide page itself rather than navigating away, so the step-by-step instructions stay on screen while you follow them. Setting up an Automation rule is the first one - \"Open Automation here\" opens the real Automation panel without leaving the guide."
+    ],
+    "bugFixes": [
+      "A Vault entry could be reported as failing purely because the provider was briefly slow. Measured against TorBox from a real server: five consecutive requests returned in 187ms, 632ms, 210ms, 21265ms and 625ms - one request in five blew past the checker's 10-second limit, and that single slow response was enough to mark a perfectly valid credential as failing and raise a Vault alert for it. Checks now retry up to three times on a timeout or network error before giving up. They deliberately do NOT retry on a response from the provider - a rejected key is a real answer and still surfaces immediately. Applied to TorBox, Real-Debrid, generic HTTP and Newznab checks, which all shared the same behaviour."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.73.18",
     "date": "2026-08-21",
     "title": "feat: Guides - a full in-app help section, plus a rebuilt welcome tour",
