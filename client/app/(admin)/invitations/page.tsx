@@ -439,7 +439,6 @@ export default function InvitationsPage() {
                               {invitationsDisplay.map((invite) => (
                                 <motion.tr
                                   key={invite.id}
-                                  layout
                                   initial={{ opacity: 0 }}
                                   animate={{ opacity: 1 }}
                                   exit={{ opacity: 0 }}
