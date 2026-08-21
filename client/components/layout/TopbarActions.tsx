@@ -21,13 +21,23 @@ interface TopbarActionsProps {
   activities?: any[];
   inviteHistory?: any[];
   taskHistory?: any[];
+  // Mobile passes false: its bell lives in a small floating pill in the
+  // screen corner, and adding a second button there widened the pill and
+  // pushed the bell out of the spot it's occupied all along. Desktop has
+  // the room; a phone corner doesn't. The resume prompt still renders.
+  showCommandPalette?: boolean;
 }
 
 // The topbar's right-hand cluster: command palette, then notifications.
 // Grouped into one component because the resume-tour prompt deliberately
 // sits ON TOP of both of them - it has to be dismissed before either can
 // be clicked, which only works if they share a positioning context.
-export function TopbarActions({ activities, inviteHistory, taskHistory }: TopbarActionsProps) {
+export function TopbarActions({
+  activities,
+  inviteHistory,
+  taskHistory,
+  showCommandPalette = true,
+}: TopbarActionsProps) {
   // Shown for the whole time the tour is unfinished - not only after it was
   // paused via one of its own links - and stays until the prompt's own X
   // dismisses it for good.
@@ -133,17 +143,19 @@ export function TopbarActions({ activities, inviteHistory, taskHistory }: Topbar
           padding, radius, muted colour and hover treatment - so the two
           read as one pair of peer controls rather than a button next to
           an icon. */}
-      <button
-        onClick={openCommandPalette}
-        title="Search, jump to a page, or ask how to do something (Ctrl+K)"
-        aria-label="Open the command palette"
-        className="p-2 rounded-lg transition-colors"
-        style={{ color: 'var(--color-text-muted)' }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-      >
-        <WizardBooksIcon className="w-5 h-5" />
-      </button>
+      {showCommandPalette && (
+        <button
+          onClick={openCommandPalette}
+          title="Search, jump to a page, or ask how to do something (Ctrl+K)"
+          aria-label="Open the command palette"
+          className="p-2 rounded-lg transition-colors"
+          style={{ color: 'var(--color-text-muted)' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        >
+          <WizardBooksIcon className="w-5 h-5" />
+        </button>
+      )}
 
       <NotificationsDropdown
         activities={activities}
