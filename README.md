@@ -1,23 +1,50 @@
-#                                 SlickSync
+<div align="center">
 
-*Multi-provider addon, user, and credential management for **Stremio** and **Nuvio**.*
+<img src="client/public/android-chrome-512x512.png" width="96" alt="SlickSync logo" />
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](./LICENSE)
-[![Bun](https://img.shields.io/badge/bun-1%2B-000000?logo=bun&logoColor=white)](https://bun.sh)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white)](https://nextjs.org)
-[![Docker Pulls](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/slicknsliding/slicksync/badges/docker-pulls.json&logo=docker&logoColor=white)](https://hub.docker.com/r/slicknsliding/slicksync)
-[![Fork of Syncio](https://img.shields.io/badge/fork%20of-Syncio-blueviolet)](https://github.com/iamneur0/syncio)
-[![Inspired by AIOManager](https://img.shields.io/badge/inspired%20by-AIOManager-orange)](https://github.com/Sonicx161/AIOManager)
+# SlickSync
 
-SlickSync manages a private streaming group's accounts from one dashboard: groups, addon sets, shared credentials, watch history, and live playback — kept in sync whether a member uses Stremio or Nuvio.
+**One dashboard for a private streaming group.**
+
+Addons, users, shared credentials, watch history and live playback —
+kept in sync whether a member is on **Stremio** or **Nuvio**.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow?style=flat-square)](./LICENSE)
+[![Docker Pulls](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/slicknsliding/slicksync/badges/docker-pulls.json&logo=docker&logoColor=white&style=flat-square)](https://hub.docker.com/r/slicknsliding/slicksync)
+[![Bun](https://img.shields.io/badge/bun-1%2B-000000?logo=bun&logoColor=white&style=flat-square)](https://bun.sh)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white&style=flat-square)](https://nextjs.org)
+
+[**Install**](#-installation) &nbsp;·&nbsp; [**Features**](#-features) &nbsp;·&nbsp; [**Guides**](#-new-here-start-with-the-guides) &nbsp;·&nbsp; [**Try it live**](https://slicksync.vip)
+
+</div>
+
+---
+
+SlickSync manages a private streaming group's accounts from one place: groups, addon sets, shared credentials, watch history and live playback — kept in sync whether a member uses Stremio or Nuvio.
 
 > **Private, single-instance fork.** Built and run for one household's streaming group, not a general-purpose multi-tenant product.
+>
+> Can't self-host? **[slicksync.vip](https://slicksync.vip)** runs the same code in public/multi-tenant mode, free to register — a courtesy option for anyone who wants SlickSync without running a server.
 
-Can't self-host? **[slicksync.vip](https://slicksync.vip)** runs the same code in public/multi-tenant mode, free to register — a courtesy option for anyone who wants SlickSync without running their own server.
+<sub>Built on [Syncio](https://github.com/iamneur0/syncio) · Vault inspired by [AIOManager](https://github.com/Sonicx161/AIOManager)</sub>
 
 ### 📚 New here? Start with the Guides
 
 Once SlickSync is running, **`/guides`** is the fastest way to actually learn it — 74 topic pages covering every page and setting, organized by category and searchable, each with step-by-step instructions and the gotchas that actually come up. The same content also answers free-text questions straight from the **command palette** (`Ctrl+K`/`Cmd+K`) — no AI key required.
+
+## Quick start
+
+Docker and Docker Compose, plus a reverse proxy in front for HTTPS — SlickSync doesn't terminate TLS itself.
+
+```bash
+git clone https://github.com/slicknsliding/slicksync.git
+cd slicksync
+cp env.example .env
+echo "JWT_SECRET=$(openssl rand -base64 32)" >> .env
+docker compose -f docker-compose.private.yml up -d
+```
+
+Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot — you only need to set `JWT_SECRET`. Full walkthrough, including the public/multi-tenant variant, in [Installation](#-installation).
 
 ## Contents
 
@@ -30,7 +57,7 @@ Once SlickSync is running, **`/guides`** is the fastest way to actually learn it
 | [🎨 Themes](#-themes) | [📊 Metrics](#-metrics) | [🩺 System Health](#-system-health) |
 | [💾 Backup & Disaster Recovery](#-backup--disaster-recovery) | [🛡️ Security](#-security) | [🚀 Installation](#-installation) |
 
-Every section below has a one-line summary up front, with the full detail list collapsed underneath — click "Show details" to expand.
+<sub>Each section has a one-line summary, with the detail collapsed underneath — click "Show details" to expand.</sub>
 
 ## ⚡ Features
 
