@@ -12,9 +12,12 @@ import {
   ONBOARDING_COMPLETED_KEY as COMPLETED_KEY,
   ONBOARDING_OPEN_EVENT as REOPEN_EVENT,
   ONBOARDING_RESUME_EVENT,
+  ONBOARDING_VISIBILITY_EVENT,
   getPausedOnboardingStep,
   setPausedOnboardingStep,
   clearPausedOnboardingStep,
+  completeOnboarding,
+  restartOnboarding,
 } from '@/lib/onboardingStorage';
 
 // Lets any other component (Settings' "Replay welcome tour" link, for one)
@@ -247,7 +250,10 @@ export function OnboardingWizard() {
 
   useEffect(() => {
     const reopen = () => {
-      clearPausedOnboardingStep();
+      // Full restart: clears the completed flag too, so the tour is
+      // genuinely unfinished again rather than reopening while still
+      // recorded as done.
+      restartOnboarding();
       setStep(0);
       setIsOpen(true);
     };
@@ -265,9 +271,18 @@ export function OnboardingWizard() {
     };
   }, []);
 
+  // Reaching the end of the tour genuinely finishes it - no prompt after.
   const finish = () => {
-    localStorage.setItem(COMPLETED_KEY, '1');
-    clearPausedOnboardingStep();
+    completeOnboarding();
+    setIsOpen(false);
+  };
+
+  // Closing with the X (or Escape) is "not right now", NOT a dismissal:
+  // the tour stays unfinished and the topbar prompt keeps offering it until
+  // that prompt's own X is used. Remembers the step so picking it back up
+  // doesn't restart from the beginning.
+  const closeForNow = () => {
+    setPausedOnboardingStep(step);
     setIsOpen(false);
   };
 
@@ -288,6 +303,14 @@ export function OnboardingWizard() {
     router.push(href);
   };
 
+  // Tell the topbar prompt whether the modal is currently up, so the two
+  // never show at once.
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent(ONBOARDING_VISIBILITY_EVENT, { detail: { open: isOpen } })
+    );
+  }, [isOpen]);
+
   // Arrow keys move between steps, so the whole tour is usable without
   // reaching for the mouse (and on TV, where there isn't one).
   useEffect(() => {
@@ -295,7 +318,7 @@ export function OnboardingWizard() {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); goBack(); }
-      else if (e.key === 'Escape') { e.preventDefault(); finish(); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeForNow(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -350,9 +373,9 @@ export function OnboardingWizard() {
                     below can be genuinely centred rather than centred-ish
                     around a button on one side. */}
                 <button
-                  onClick={finish}
-                  title="Skip the tour"
-                  aria-label="Skip the tour"
+                  onClick={closeForNow}
+                  title="Close for now - you can pick this back up from the topbar"
+                  aria-label="Close the tour for now"
                   className="absolute top-4 right-4 p-1.5 rounded-lg transition-colors hover:bg-surface-hover"
                   style={{ color: 'var(--color-text-muted)' }}
                 >

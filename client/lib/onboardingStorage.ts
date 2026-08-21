@@ -17,6 +17,45 @@ export const ONBOARDING_RESUME_EVENT = 'slicksync:resume-onboarding';
 // after the wizard pauses or finishes.
 export const ONBOARDING_PAUSED_CHANGED_EVENT = 'slicksync:onboarding-paused-changed';
 
+// Fired by the wizard whenever it opens or closes, so the topbar prompt can
+// hide itself while the modal is actually up instead of sitting behind it.
+export const ONBOARDING_VISIBILITY_EVENT = 'slicksync:onboarding-visibility';
+
+// "Unfinished" means the tour has never been completed OR explicitly
+// dismissed - the topbar prompt shows for the whole of that window, not
+// only after the tour was paused via one of its own links. Closing the
+// wizard with its X is a "not now", not a dismissal; the prompt's own X is
+// what ends it for good.
+export function isOnboardingUnfinished(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return !localStorage.getItem(ONBOARDING_COMPLETED_KEY);
+  } catch {
+    return false;
+  }
+}
+
+// Replaying from Settings has to clear the completed flag, not just reopen
+// the modal. Without this the tour reopens but is still recorded as "done",
+// so closing it leaves no trace and the topbar prompt can never appear
+// again for that account - which is exactly how an account that finished
+// the tour once ends up unable to see the prompt at all.
+export function restartOnboarding() {
+  try {
+    localStorage.removeItem(ONBOARDING_COMPLETED_KEY);
+    localStorage.removeItem(ONBOARDING_PAUSED_STEP_KEY);
+  } catch { /* see getPausedOnboardingStep */ }
+  window.dispatchEvent(new Event(ONBOARDING_PAUSED_CHANGED_EVENT));
+}
+
+export function completeOnboarding() {
+  try {
+    localStorage.setItem(ONBOARDING_COMPLETED_KEY, '1');
+    localStorage.removeItem(ONBOARDING_PAUSED_STEP_KEY);
+  } catch { /* see getPausedOnboardingStep */ }
+  window.dispatchEvent(new Event(ONBOARDING_PAUSED_CHANGED_EVENT));
+}
+
 export function getPausedOnboardingStep(): number | null {
   if (typeof window === 'undefined') return null;
   try {
