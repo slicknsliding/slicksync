@@ -411,6 +411,11 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
           message,
           timestamp: new Date(alert.createdAt),
           read: readIds.has(id),
+          // Deep-link to the addon the alert is actually about. Without this
+          // it fell through to the generic `case 'addon'` below and dropped
+          // you on the full Addons list, which doesn't say which addon went
+          // down or why - you had to find it yourself.
+          ...(alert.addonId ? { data: { url: `/addons/${alert.addonId}` } } : {}),
         });
       });
 
@@ -702,8 +707,17 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                                 </div>
                               )}
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-default truncate">{notification.title}</p>
-                                <p className="text-xs text-muted mt-0.5 truncate">{notification.message}</p>
+                                {/* line-clamp, not truncate. This panel is
+                                    w-80, and after the unread dot, the icon
+                                    and the dismiss button, a single-line
+                                    ellipsis cut most titles mid-word - an
+                                    addon alert read "AIOMetadata (slicknsli..."
+                                    with the actual event (went offline / back
+                                    online) never visible. Wrapping to two
+                                    lines fits the whole thing while still
+                                    bounding how tall one row can get. */}
+                                <p className="text-sm font-medium text-default line-clamp-2 break-words">{notification.title}</p>
+                                <p className="text-xs text-muted mt-0.5 line-clamp-2 break-words">{notification.message}</p>
                                 <p className="text-xs text-subtle mt-1">{formatNotificationTime(notification.timestamp)}</p>
                               </div>
                               {/* Pending requests already clear themselves
