@@ -8,11 +8,11 @@ import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { WizardBooksIcon } from '@/components/ui/icons/WizardBooksIcon';
 import { openCommandPalette } from '@/components/ui/CommandPalette';
 import {
-  getPausedOnboardingStep,
+  isOnboardingUnfinished,
+  completeOnboarding,
   ONBOARDING_PAUSED_CHANGED_EVENT,
   ONBOARDING_RESUME_EVENT,
-  ONBOARDING_COMPLETED_KEY,
-  clearPausedOnboardingStep,
+  ONBOARDING_VISIBILITY_EVENT,
 } from '@/lib/onboardingStorage';
 
 interface TopbarActionsProps {
@@ -28,7 +28,12 @@ interface TopbarActionsProps {
 // sits ON TOP of both of them - it has to be dismissed before either can
 // be clicked, which only works if they share a positioning context.
 export function TopbarActions({ activities, inviteHistory, taskHistory }: TopbarActionsProps) {
-  const [pausedStep, setPausedStep] = useState<number | null>(null);
+  // Shown for the whole time the tour is unfinished - not only after it was
+  // paused via one of its own links - and stays until the prompt's own X
+  // dismisses it for good.
+  const [unfinished, setUnfinished] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const showPrompt = unfinished && !wizardOpen;
   const clusterRef = useRef<HTMLDivElement>(null);
   const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -36,14 +41,20 @@ export function TopbarActions({ activities, inviteHistory, taskHistory }: Topbar
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
-    const sync = () => setPausedStep(getPausedOnboardingStep());
+    const sync = () => setUnfinished(isOnboardingUnfinished());
     sync();
+    const onVisibility = (e: Event) => {
+      setWizardOpen(Boolean((e as CustomEvent<{ open: boolean }>).detail?.open));
+      sync();
+    };
     // The topbar persists across client-side navigation and never
-    // remounts, so it needs an explicit signal to re-read.
+    // remounts, so it needs explicit signals to re-read.
     window.addEventListener(ONBOARDING_PAUSED_CHANGED_EVENT, sync);
+    window.addEventListener(ONBOARDING_VISIBILITY_EVENT, onVisibility);
     window.addEventListener('storage', sync);
     return () => {
       window.removeEventListener(ONBOARDING_PAUSED_CHANGED_EVENT, sync);
+      window.removeEventListener(ONBOARDING_VISIBILITY_EVENT, onVisibility);
       window.removeEventListener('storage', sync);
     };
   }, []);
@@ -66,7 +77,7 @@ export function TopbarActions({ activities, inviteHistory, taskHistory }: Topbar
   }, []);
 
   useEffect(() => {
-    if (pausedStep === null) return;
+    if (!showPrompt) return;
     measure();
     let frame = 0;
     const onChange = () => {
@@ -80,16 +91,12 @@ export function TopbarActions({ activities, inviteHistory, taskHistory }: Topbar
       window.removeEventListener('scroll', onChange, { capture: true } as EventListenerOptions);
       window.removeEventListener('resize', onChange);
     };
-  }, [pausedStep, measure]);
+  }, [showPrompt, measure]);
 
   const resume = () => window.dispatchEvent(new Event(ONBOARDING_RESUME_EVENT));
 
-  const dismiss = () => {
-    try {
-      localStorage.setItem(ONBOARDING_COMPLETED_KEY, '1');
-    } catch { /* private-mode Safari; the clear below still fires the event */ }
-    clearPausedOnboardingStep();
-  };
+  // This X is the real dismissal - the wizard's own X is only "not now".
+  const dismiss = () => completeOnboarding();
 
   const promptCard = (
     <div
@@ -148,7 +155,7 @@ export function TopbarActions({ activities, inviteHistory, taskHistory }: Topbar
           measure() comment above for why it can't just be absolute here. */}
       {mounted && anchor && createPortal(
         <AnimatePresence>
-          {pausedStep !== null && (
+          {showPrompt && (
             <motion.div
               initial={{ opacity: 0, scale: 0.94, y: -4 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}

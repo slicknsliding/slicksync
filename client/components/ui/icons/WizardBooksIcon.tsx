@@ -1,11 +1,15 @@
 // Wizard hat on a stack of books - the command palette's icon.
 //
-// Deliberately drawn to match Heroicons' 24/outline set (24x24 viewBox,
-// fill:none, 1.5 stroke in currentColor, round caps/joins) so it sits
-// beside the Dashboard house and the notification bell as a peer. An
-// earlier version was a full-colour illustration, which read as a sticker
-// dropped into a row of flat line icons - the colour is what made it look
-// wrong, not the subject.
+// Matches Heroicons' 24/outline set (24x24, fill:none, 1.5 stroke in
+// currentColor, round joins) so it sits beside the dashboard house and the
+// notification bell as a peer.
+//
+// Kept deliberately sparse: at the ~20px this actually renders at, fine
+// detail turns to mush and reads as visual noise rather than a shape. Two
+// earlier versions failed that way - first a full-colour illustration, then
+// an outline one carrying a ribbon, a hat band and three separate rounded
+// book bodies. This is the same subject reduced to six strokes: one hat,
+// one brim, three book edges, one spine mark.
 export function WizardBooksIcon({
   className,
   title,
@@ -31,23 +35,22 @@ export function WizardBooksIcon({
     >
       {title ? <title>{title}</title> : null}
 
-      {/* Hat: left edge sweeping up to a curled tip, then back down the
-          right edge to the brim. */}
-      <path d="M9.1 10.3c.5-3 1.9-5.6 3.6-6.9.7-.5 1.4-.2 1.4.7 0 1-.5 2-1.1 2.8" />
-      <path d="M13 6.9c.7-.2 1.3-.7 1.7-1.4" />
-      <path d="M13.1 7.4c.9 1 1.6 1.9 1.9 2.9" />
+      {/* Hat: one continuous outline - up the left side, over the drooping
+          tip, back down the right side to the brim. */}
+      <path d="M8.5 9.6c.7-3.2 2.4-5.9 4.4-7 .9-.5 1.6 0 1.5 1.1-.1 1.1-.7 2.2-1.5 3.1.9-.1 1.7-.6 2.2-1.4" />
+      <path d="M13 6.8c1 .7 1.9 1.7 2.5 2.8" />
 
-      {/* Brim */}
-      <path d="M7 10.6c0-.7 2.2-1.2 5-1.2s5 .5 5 1.2-2.2 1.3-5 1.3-5-.6-5-1.3Z" />
+      {/* Brim - a single wide sweep, not a closed ellipse. */}
+      <path d="M6 10.2c1.6.8 3.7 1.2 6 1.2s4.4-.4 6-1.2" />
 
-      {/* Three stacked books, narrowest on top. */}
-      <path d="M6.6 12.9h10.8a.9.9 0 0 1 .9.9v1.1a.9.9 0 0 1-.9.9H6.6a.9.9 0 0 1-.9-.9v-1.1a.9.9 0 0 1 .9-.9Z" />
-      <path d="M5.4 15.8h13.2a.9.9 0 0 1 .9.9v1.1a.9.9 0 0 1-.9.9H5.4a.9.9 0 0 1-.9-.9v-1.1a.9.9 0 0 1 .9-.9Z" />
-      <path d="M6.2 18.7h11.6a.9.9 0 0 1 .9.9v1.1a.9.9 0 0 1-.9.9H6.2a.9.9 0 0 1-.9-.9v-1.1a.9.9 0 0 1 .9-.9Z" />
+      {/* Books - three edges with clear air between them, which reads as a
+          stack far better than three outlined bodies do at this size. */}
+      <path d="M6.5 14h11" />
+      <path d="M5 17h14" />
+      <path d="M6.5 20h11" />
 
-      {/* Ribbon bookmark on the middle book - the one detail that keeps it
-          reading as "books" rather than three plain bars. */}
-      <path d="M15.4 15.8v2l-1-.7-1 .7v-2" />
+      {/* One spine mark, to stop the three lines reading as a hamburger. */}
+      <path d="M9 14v6" />
     </svg>
   );
 }
