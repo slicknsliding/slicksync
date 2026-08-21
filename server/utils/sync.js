@@ -488,7 +488,7 @@ function createManifestFingerprint(canonicalizeManifestUrl, { urlOnly = false } 
     if (urlOnly) {
       return normalizeUrl(addon?.transportUrl || addon?.manifestUrl || addon?.url || '')
     }
-    // Extract just the addon ID from the URL path (e.g., /stremio/b2341edd-01be-4317-97b0-ba7afb1e1326/...)
+    // Extract just the addon ID from the URL path (e.g., /stremio/00000000-0000-4000-8000-000000000000/...)
     // The URL may contain encrypted tokens that change on each request, so we can't use the full URL
     let url = addon?.transportUrl || addon?.manifestUrl || addon?.url || ''
     try {

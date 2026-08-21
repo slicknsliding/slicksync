@@ -15,6 +15,8 @@ import { TVBackButton } from "@/components/tv/TVBackButton";
 import { CommandPalette } from "@/components/ui/CommandPalette";
 import { useIsTV } from "@/lib/hooks/useIsTV";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { setOnboardingAccountScope } from "@/lib/onboardingStorage";
+import { api } from "@/lib/api";
 import type { DragStartEvent, DragEndEvent, CollisionDetection } from "@dnd-kit/core";
 
 interface MobileMenuContextType {
@@ -102,6 +104,24 @@ export default function AdminClientLayout({
   // Nebula version of them to switch to.
   const useNebulaChrome = layoutMode === 'nebula' && isNebulaEligiblePath(pathname);
 
+  // Onboarding state is stored per account, so the wizard has to wait until
+  // we know WHICH account before deciding anything - see
+  // setOnboardingAccountScope. Rendering it before then would let it read
+  // the pre-scope value and either skip the tour for a new account or show
+  // it to someone who already finished.
+  const [onboardingScopeReady, setOnboardingScopeReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    api.getAccountIdentity()
+      .then((acct) => { if (!cancelled) setOnboardingAccountScope(acct?.uuid || acct?.id || null); })
+      // Falling back to an unscoped read is the old behaviour - worse than
+      // scoping, but better than never showing the wizard at all if this
+      // one request fails.
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setOnboardingScopeReady(true); });
+    return () => { cancelled = true; };
+  }, []);
+
   // Close mobile menu on route change
   useEffect(() => {
     setIsMobileMenuOpen(false);
@@ -159,7 +179,7 @@ export default function AdminClientLayout({
         {/* No keyboard on a D-pad-only TV interface - a floating Ctrl+K
             hint/shortcut makes no sense there. */}
         {!isTV && <CommandPalette />}
-        {!isTV && <OnboardingWizard />}
+        {!isTV && onboardingScopeReady && <OnboardingWizard />}
         <VaultDragProvider>
           <LayoutDndWrapper>
             <div className="relative min-h-screen">

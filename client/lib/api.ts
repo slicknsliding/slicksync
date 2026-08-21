@@ -948,6 +948,15 @@ class ApiClient {
     return this.fetch<AccountStats>('/ext/account');
   }
 
+  // Identity of the signed-in account, over the ordinary session cookie.
+  // Deliberately not getAccountStats() for this: that hits /ext/*, which
+  // authenticates with an API key, and a freshly registered account hasn't
+  // configured one yet - it 401s for exactly the new accounts that need
+  // identifying most.
+  async getAccountIdentity() {
+    return this.fetch<{ id: string; uuid: string | null }>('/settings/account-info');
+  }
+
   async updateAccountAvatar(avatarUrl: string | null) {
     return this.fetch<{ avatarUrl: string | null }>('/settings/account-avatar', {
       method: 'PUT',
