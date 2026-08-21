@@ -321,18 +321,27 @@ export function OnboardingWizard() {
   // hiding overflow reclaims that space otherwise.
   useEffect(() => {
     if (!isOpen) return;
-    const { body } = document;
-    const prevOverflow = body.style.overflow;
-    const prevPaddingRight = body.style.paddingRight;
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    const { body, documentElement: html } = document;
+    const prev = {
+      bodyOverflow: body.style.overflow,
+      bodyPaddingRight: body.style.paddingRight,
+      htmlOverflow: html.style.overflow,
+    };
+    const scrollbarWidth = window.innerWidth - html.clientWidth;
+    // Has to be set on <html> as well as <body>: this page's scrolling
+    // element is documentElement, so locking body alone left the background
+    // still scrolling (confirmed live - overflow read as "hidden" while the
+    // page happily scrolled to 1483px underneath).
+    html.style.overflow = 'hidden';
     body.style.overflow = 'hidden';
     if (scrollbarWidth > 0) {
       const current = parseFloat(getComputedStyle(body).paddingRight) || 0;
       body.style.paddingRight = `${current + scrollbarWidth}px`;
     }
     return () => {
-      body.style.overflow = prevOverflow;
-      body.style.paddingRight = prevPaddingRight;
+      html.style.overflow = prev.htmlOverflow;
+      body.style.overflow = prev.bodyOverflow;
+      body.style.paddingRight = prev.bodyPaddingRight;
     };
   }, [isOpen]);
 
