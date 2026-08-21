@@ -205,7 +205,7 @@ export function NebulaTopbar() {
       {isMobile && (
         <div className="fixed top-4 right-4 z-40">
           <div
-            className="rounded-2xl p-1.5 flex items-center gap-1"
+            className="rounded-2xl p-1.5"
             style={{
               background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
               backdropFilter: 'blur(18px)',
@@ -214,7 +214,13 @@ export function NebulaTopbar() {
               boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
             }}
           >
-            <TopbarActions />
+            {/* Bell only - no command-palette button. Adding one widened
+                this floating pill and shifted the bell off the corner spot
+                it's always occupied; on a phone that corner is tight and
+                the bell's position is muscle memory. Ctrl+K has no mobile
+                equivalent anyway, and the palette is still reachable from
+                the Guides page. */}
+            <TopbarActions showCommandPalette={false} />
           </div>
         </div>
       )}
