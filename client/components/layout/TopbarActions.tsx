@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
@@ -28,6 +29,11 @@ interface TopbarActionsProps {
 // be clicked, which only works if they share a positioning context.
 export function TopbarActions({ activities, inviteHistory, taskHistory }: TopbarActionsProps) {
   const [pausedStep, setPausedStep] = useState<number | null>(null);
+  const clusterRef = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     const sync = () => setPausedStep(getPausedOnboardingStep());
@@ -42,6 +48,40 @@ export function TopbarActions({ activities, inviteHistory, taskHistory }: Topbar
     };
   }, []);
 
+  // The prompt is position:fixed and tracks this cluster, rather than being
+  // absolutely positioned inside it. That's because only SOME of the places
+  // this renders are sticky - Nebula's page heading scrolls away with the
+  // page, so an absolute overlay would scroll off with it. Tracking the
+  // cluster keeps the prompt sitting exactly over the two buttons while
+  // they're on screen, and the top clamp pins it to the viewport once they
+  // scroll past, so it stays reachable wherever you are on a long page.
+  const measure = useCallback(() => {
+    const el = clusterRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setAnchor({
+      top: Math.max(r.top, 12),
+      right: Math.max(window.innerWidth - r.right, 12),
+    });
+  }, []);
+
+  useEffect(() => {
+    if (pausedStep === null) return;
+    measure();
+    let frame = 0;
+    const onChange = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    window.addEventListener('scroll', onChange, { passive: true, capture: true });
+    window.addEventListener('resize', onChange);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', onChange, { capture: true } as EventListenerOptions);
+      window.removeEventListener('resize', onChange);
+    };
+  }, [pausedStep, measure]);
+
   const resume = () => window.dispatchEvent(new Event(ONBOARDING_RESUME_EVENT));
 
   const dismiss = () => {
@@ -51,15 +91,51 @@ export function TopbarActions({ activities, inviteHistory, taskHistory }: Topbar
     clearPausedOnboardingStep();
   };
 
+  const promptCard = (
+    <div
+      className="flex items-center gap-2 rounded-xl py-1.5 pl-2 pr-1.5"
+      style={{
+        background: 'var(--color-surface)',
+        border: '1px solid color-mix(in srgb, var(--color-primary) 45%, transparent)',
+        boxShadow: '0 10px 30px -8px rgba(0,0,0,0.6), 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent)',
+      }}
+    >
+      <WizardBooksIcon className="w-6 h-6 shrink-0" style={{ color: 'var(--color-primary)' }} />
+      <button
+        onClick={resume}
+        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-opacity hover:opacity-90"
+        style={{ background: 'var(--color-primary)', color: 'var(--color-bg)' }}
+      >
+        Resume tour
+      </button>
+      <button
+        onClick={dismiss}
+        title="Dismiss - don't show this again"
+        aria-label="Dismiss the tour"
+        className="shrink-0 p-1 rounded-lg transition-colors hover:bg-surface-hover"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
+        <XMarkIcon className="w-4 h-4" />
+      </button>
+    </div>
+  );
+
   return (
-    <div className="relative flex items-center gap-0.5">
+    <div ref={clusterRef} className="relative flex items-center gap-0.5">
+      {/* Styled to match NotificationsDropdown's bell exactly - same
+          padding, radius, muted colour and hover treatment - so the two
+          read as one pair of peer controls rather than a button next to
+          an icon. */}
       <button
         onClick={openCommandPalette}
         title="Search, jump to a page, or ask how to do something (Ctrl+K)"
         aria-label="Open the command palette"
-        className="p-2 rounded-lg transition-colors hover:bg-surface-hover"
+        className="p-2 rounded-lg transition-colors"
+        style={{ color: 'var(--color-text-muted)' }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
       >
-        <WizardBooksIcon className="w-6 h-6" />
+        <WizardBooksIcon className="w-5 h-5" />
       </button>
 
       <NotificationsDropdown
@@ -68,49 +144,24 @@ export function TopbarActions({ activities, inviteHistory, taskHistory }: Topbar
         taskHistory={taskHistory}
       />
 
-      {/* Resume-tour prompt, deliberately covering the two buttons above.
-          Anchored to this cluster's right edge so it sits directly over
-          them rather than floating somewhere unrelated - you have to deal
-          with it before reaching the bell or the palette, which is the
-          point: a half-finished setup tour shouldn't be easy to forget. */}
-      <AnimatePresence>
-        {pausedStep !== null && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.94, y: -4 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.94, y: -4 }}
-            transition={{ duration: 0.16 }}
-            className="absolute top-0 right-0 z-50"
-          >
-            <div
-              className="flex items-center gap-2 rounded-xl shadow-2xl py-1.5 pl-2 pr-1.5"
-              style={{
-                background: 'var(--color-surface)',
-                border: '1px solid color-mix(in srgb, var(--color-primary) 45%, transparent)',
-                boxShadow: '0 10px 30px -8px rgba(0,0,0,0.6), 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent)',
-              }}
+      {/* Prompt itself is portaled to <body> as position:fixed - see the
+          measure() comment above for why it can't just be absolute here. */}
+      {mounted && anchor && createPortal(
+        <AnimatePresence>
+          {pausedStep !== null && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: -4 }}
+              transition={{ duration: 0.16 }}
+              style={{ position: 'fixed', top: anchor.top, right: anchor.right, zIndex: 60 }}
             >
-              <WizardBooksIcon className="w-7 h-7 shrink-0" />
-              <button
-                onClick={resume}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-opacity hover:opacity-90"
-                style={{ background: 'var(--color-primary)', color: 'var(--color-bg)' }}
-              >
-                Resume tour
-              </button>
-              <button
-                onClick={dismiss}
-                title="Dismiss - don't show this again"
-                aria-label="Dismiss the tour"
-                className="shrink-0 p-1 rounded-lg transition-colors hover:bg-surface-hover"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                <XMarkIcon className="w-4 h-4" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              {promptCard}
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }
