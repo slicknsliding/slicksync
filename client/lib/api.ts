@@ -981,6 +981,14 @@ class ApiClient {
     return this.fetch<{ deleted: boolean }>('/settings/delete-account', { method: 'POST' });
   }
 
+  /** Asks a self-hosted Nuvio backend to describe itself via /.well-known/nuvio. */
+  async discoverNuvioBackend(url: string) {
+    return this.fetch<{ ok: boolean; url?: string; anonKey?: string; error?: string }>('/settings/account-sync/discover-nuvio', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    });
+  }
+
   async testWebhook(webhookUrl: string) {
     return this.fetch('/settings/account-sync/test-webhook', {
       method: 'POST',
@@ -2633,6 +2641,10 @@ export interface SyncSettings {
   rpdbApiKey?: string;
   omdbApiKey?: string;
   simklClientId?: string;
+  /** Self-hosted Nuvio backend URL, e.g. https://backend.example.com. Blank uses api.nuvio.tv. */
+  nuvioServerUrl?: string;
+  /** Anon key for that backend. Only takes effect alongside nuvioServerUrl. */
+  nuvioAnonKey?: string;
 }
 
 export interface ThemePref {

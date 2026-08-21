@@ -16,7 +16,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
   const { findLatestEpisode } = require('../utils/libraryHelpers')
   const { getShares, getGroupMembers } = require('../utils/sharesManager')
   const { getAccountId } = require('../utils/helpers')
-  const createProvider = makeCreateProvider({ prisma, encrypt })
+  const createProvider = makeCreateProvider({ prisma, encrypt, getAccountId })
   const router = express.Router();
 
   // Helper to get existing user from Stremio auth (does NOT create new users)

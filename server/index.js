@@ -115,7 +115,7 @@ const prisma = new PrismaClient();
 console.log('Prisma client initialized:', !!prisma);
 
 // Provider factory: routes addon operations to Stremio or Nuvio based on user.providerType
-const createProvider = makeCreateProvider({ prisma, encrypt });
+const createProvider = makeCreateProvider({ prisma, encrypt, getAccountId: getAccountIdHelper });
 
 // Trust proxy headers (for correct client IP behind reverse proxies)
 // Trust exactly one hop (the Traefik reverse proxy in front of this container).

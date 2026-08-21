@@ -6765,7 +6765,11 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
   // makeCreateProvider with prisma+encrypt enables Nuvio refresh-token persistence.
   const { makeCreateProvider } = require('../providers')
   const { encrypt: encryptUtil } = require('../utils/encryption')
-  const createProviderLocal = makeCreateProvider({ prisma: prismaClient, encrypt: encryptUtil })
+  // getAccountId is threaded through so a Nuvio user on an account with a
+  // self-hosted backend configured talks to that backend here too, not just
+  // on the main request path.
+  const { getAccountId: getAccountIdForProvider } = require('../utils/helpers')
+  const createProviderLocal = makeCreateProvider({ prisma: prismaClient, encrypt: encryptUtil, getAccountId: getAccountIdForProvider })
   const provider = createProviderLocal(credentials, { decrypt: decryptWithAccountKey, req })
   if (!provider) {
     return { success: false, error: 'Failed to initialize provider for user (credentials may be invalid)' }

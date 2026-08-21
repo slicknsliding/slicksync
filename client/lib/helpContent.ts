@@ -530,6 +530,31 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Users',
   },
   {
+    id: 'nuvio-self-hosted-backend',
+    title: 'Pointing Nuvio at your own self-hosted backend',
+    category: 'Getting started',
+    keywords: ['self host nuvio', 'nuvio server', 'custom nuvio backend', 'nuvio self-hosted', 'backend url', 'anon key', 'own server'],
+    answer: 'Settings → External API Keys → Nuvio backend URL. Enter the Backend URL from your self-hosted deployment and hit Detect - it reads that server\'s own /.well-known/nuvio to fill in the key. Leave blank to use the official api.nuvio.tv.',
+    steps: [
+      'Deploy Nuvio\'s self-host stack (github.com/NuvioMedia/self-host) and note its Backend URL, e.g. https://backend.example.com.',
+      'In SlickSync go to Settings → External API Keys → Nuvio backend URL.',
+      'Paste the Backend URL and click Detect. SlickSync reads /.well-known/nuvio from that server and fills in the anon key.',
+      'If Detect can\'t read it, run ./nuvio credentials on your deployment and paste the anon key into the field below the URL by hand.',
+    ],
+    details: [
+      'This is per-account, not instance-wide. It resolves the account\'s own setting first and only falls back to the NUVIO_SUPABASE_URL / NUVIO_SUPABASE_ANON_KEY environment variables - matching how every other integration here (TMDb, OMDb, MDBList, RPDB, SIMKL, AI Services) already works. Nuvio\'s backend used to be the one that could only be set via env vars, needing a container restart to change.',
+      'Everything routes through it once set: login, token refresh, addon sync, library and watch-progress pulls, and Nuvio Collections.',
+      'The anon key is a publishable client key by design - it ships inside the Nuvio apps themselves - not a service-role secret. Do not paste your SERVICE_ROLE_KEY here.',
+    ],
+    tips: [
+      'Both fields are required for the override to apply. A URL on its own is deliberately ignored rather than half-applied, since authenticating against a different backend with the wrong key fails in confusing ways.',
+      'Clearing both fields returns that account to the official api.nuvio.tv immediately - no restart needed.',
+    ],
+    related: ['add-nuvio-account', 'nuvio-collections-manager', 'private-vs-public-mode'],
+    href: '/settings',
+    linkLabel: 'Open Settings',
+  },
+  {
     id: 'simkl-link',
     title: 'Linking SIMKL',
     category: 'Watching & Discover',

@@ -11,8 +11,9 @@
 
 const { createStremioProvider } = require('./stremio')
 const { createNuvioProvider } = require('./nuvio')
+const { resolveServerConfigForAccount } = require('./supabase')
 
-function makeCreateProvider({ prisma, encrypt } = {}) {
+function makeCreateProvider({ prisma, encrypt, getAccountId } = {}) {
   return function createProvider(user, { decrypt, req }) {
     const type = user.providerType || 'stremio'
 
@@ -47,7 +48,22 @@ function makeCreateProvider({ prisma, encrypt } = {}) {
         return createNuvioProvider({
           refreshToken: decrypt(user.nuvioRefreshToken, req),
           userId: user.nuvioUserId,
-          onTokenRefresh
+          onTokenRefresh,
+          // Lets an account point Nuvio at its own self-hosted backend
+          // instead of api.nuvio.tv. Passed as a resolver rather than a
+          // value because this factory is synchronous everywhere it's
+          // called and the lookup needs a DB read - the provider resolves
+          // it on first use and caches it. Falls back to the env vars, then
+          // the public defaults, so an account that sets nothing is
+          // completely unaffected.
+          resolveServerConfig: prisma
+            ? () => {
+                const accountId = (typeof getAccountId === 'function' ? getAccountId(req) : null)
+                  || user.accountId
+                  || 'default'
+                return resolveServerConfigForAccount(prisma, accountId)
+              }
+            : undefined
         })
       }
 
