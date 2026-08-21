@@ -189,7 +189,15 @@ export function NebulaTopbar() {
         inner rounded card has one (with its own blur), so scrolled content
         stays visible through the padding gaps around it instead of being
         hidden behind a solid block. */}
-    <div className={isTV ? 'px-4 pt-2 pb-2 sticky top-0 z-30' : 'px-4 pt-4 md:px-6 md:pt-6 pb-4 sticky top-0 z-30'}>
+    {/* data-nebula-topbar: TopbarActions measures this element's bottom edge
+        to know where "just under the nav" is, so its cluster can pin itself
+        there once the page heading scrolls past. Read at scroll time rather
+        than hardcoded because this bar's height changes - it collapses its
+        nav links into a hamburger once scrolled. */}
+    <div
+      data-nebula-topbar
+      className={isTV ? 'px-4 pt-2 pb-2 sticky top-0 z-30' : 'px-4 pt-4 md:px-6 md:pt-6 pb-4 sticky top-0 z-30'}
+    >
       {/* Caps the bar so it reads as a floating island on wide desktop
           viewports instead of stretching edge-to-edge into empty space -
           but scales with the viewport (min() against 92vw) instead of a
