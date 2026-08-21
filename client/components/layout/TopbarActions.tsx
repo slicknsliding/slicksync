@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { WizardBooksIcon } from '@/components/ui/icons/WizardBooksIcon';
+import { ResumeTourIcon } from '@/components/ui/icons/ResumeTourIcon';
 import { openCommandPalette } from '@/components/ui/CommandPalette';
 import {
   isOnboardingUnfinished,
@@ -117,7 +118,7 @@ export function TopbarActions({
         boxShadow: '0 10px 30px -8px rgba(0,0,0,0.6), 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent)',
       }}
     >
-      <WizardBooksIcon className="w-6 h-6 shrink-0" style={{ color: 'var(--color-primary)' }} />
+      <ResumeTourIcon className="w-6 h-6 shrink-0" style={{ color: 'var(--color-primary)' }} />
       <button
         onClick={resume}
         className="px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-opacity hover:opacity-90"

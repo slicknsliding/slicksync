@@ -4,9 +4,16 @@
  * Used at connection time (invitations, user login), not during sync.
  */
 
-const { SUPABASE_URL, SUPABASE_ANON_KEY } = require('./supabase')
+const { resolveConfig } = require('./supabase')
 
-async function validateNuvioCredentials(email, password) {
+// Every exported function below takes an optional serverConfig so an
+// account can point Nuvio at its own backend. resolveConfig() falls back to
+// the env vars and then the public defaults, so omitting it behaves exactly
+// as before - which is why these stayed optional trailing parameters rather
+// than a required first argument.
+
+async function validateNuvioCredentials(email, password, serverConfig) {
+  const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } = resolveConfig(serverConfig)
   const url = `${SUPABASE_URL}/auth/v1/token?grant_type=password`
   const res = await fetch(url, {
     method: 'POST',
@@ -39,7 +46,8 @@ async function validateNuvioCredentials(email, password) {
   }
 }
 
-async function refreshNuvioToken(refreshToken) {
+async function refreshNuvioToken(refreshToken, serverConfig) {
+  const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } = resolveConfig(serverConfig)
   const url = `${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`
   const res = await fetch(url, {
     method: 'POST',
@@ -95,7 +103,8 @@ function parseJwtPayload(jwt) {
   }
 }
 
-async function startNuvioTvLogin() {
+async function startNuvioTvLogin(serverConfig) {
+  const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } = resolveConfig(serverConfig)
   // Step 0: Create anonymous Supabase session
   const signupRes = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
     method: 'POST',
@@ -143,7 +152,8 @@ async function startNuvioTvLogin() {
   }
 }
 
-async function pollNuvioTvLogin(code, deviceNonce, anonToken) {
+async function pollNuvioTvLogin(code, deviceNonce, anonToken, serverConfig) {
+  const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } = resolveConfig(serverConfig)
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/poll_tv_login_session`, {
     method: 'POST',
     headers: {
@@ -167,7 +177,8 @@ async function pollNuvioTvLogin(code, deviceNonce, anonToken) {
   }
 }
 
-async function exchangeNuvioTvLogin(code, deviceNonce, anonToken) {
+async function exchangeNuvioTvLogin(code, deviceNonce, anonToken, serverConfig) {
+  const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } = resolveConfig(serverConfig)
   const res = await fetch(`${SUPABASE_URL}/functions/v1/tv-logins-exchange`, {
     method: 'POST',
     headers: {

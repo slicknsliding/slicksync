@@ -145,8 +145,11 @@ const STEPS: Step[] = [
     icon: SparklesIcon,
     label: 'What\'s new',
     title: 'What\'s different from the original Syncio fork',
+    // Height capped in vh rather than a fixed rem: this is the longest step
+    // by far, and a fixed cap either wastes space on a tall window or
+    // overflows the modal on a short one.
     body: (
-      <div className="max-h-56 overflow-y-auto pr-1 -mr-1">
+      <div className="max-h-[min(22rem,45vh)] overflow-y-auto pr-1 -mr-1">
         {[
           {
             group: 'Providers & Vault',
@@ -311,6 +314,37 @@ export function OnboardingWizard() {
     );
   }, [isOpen]);
 
+  // Lock the page behind the modal. Without this the backdrop scrolls under
+  // the wizard as soon as the pointer leaves it, which reads as the tour
+  // having lost its place. Compensating the scrollbar's width with padding
+  // keeps the page from visibly jumping sideways the moment it locks -
+  // hiding overflow reclaims that space otherwise.
+  useEffect(() => {
+    if (!isOpen) return;
+    const { body, documentElement: html } = document;
+    const prev = {
+      bodyOverflow: body.style.overflow,
+      bodyPaddingRight: body.style.paddingRight,
+      htmlOverflow: html.style.overflow,
+    };
+    const scrollbarWidth = window.innerWidth - html.clientWidth;
+    // Has to be set on <html> as well as <body>: this page's scrolling
+    // element is documentElement, so locking body alone left the background
+    // still scrolling (confirmed live - overflow read as "hidden" while the
+    // page happily scrolled to 1483px underneath).
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      const current = parseFloat(getComputedStyle(body).paddingRight) || 0;
+      body.style.paddingRight = `${current + scrollbarWidth}px`;
+    }
+    return () => {
+      html.style.overflow = prev.htmlOverflow;
+      body.style.overflow = prev.bodyOverflow;
+      body.style.paddingRight = prev.bodyPaddingRight;
+    };
+  }, [isOpen]);
+
   // Arrow keys move between steps, so the whole tour is usable without
   // reaching for the mouse (and on TV, where there isn't one).
   useEffect(() => {
@@ -354,7 +388,7 @@ export function OnboardingWizard() {
             // specificity, so max-w-lg was silently doing nothing and this
             // modal stretched to the full viewport width on a desktop
             // monitor (confirmed live 2026-08-20).
-            style={{ maxWidth: 'min(34rem, 100%)' }}
+            style={{ maxWidth: 'min(42rem, 100%)' }}
           >
             <div
               className="rounded-2xl overflow-hidden shadow-2xl"

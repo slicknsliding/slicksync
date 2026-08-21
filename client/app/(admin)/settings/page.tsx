@@ -474,6 +474,7 @@ export default function SettingsPage() {
   const [accountInfo, setAccountInfo] = useState<AccountStats | null>(null);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [uuidCopied, setUuidCopied] = useState(false);
+  const [nuvioDiscovering, setNuvioDiscovering] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [savingDisplayName, setSavingDisplayName] = useState(false);
 
@@ -1611,6 +1612,74 @@ export default function SettingsPage() {
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"
                 />
+              </div>
+
+              {/* Self-hosted Nuvio backend. Account-scoped like everything
+                  else here - Nuvio's backend was previously the one
+                  integration that could ONLY be set instance-wide via env
+                  vars, needing a container restart to change. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">
+                  Nuvio backend URL <span className="text-subtle font-normal">(optional)</span>
+                </label>
+                <p className="text-xs text-muted mb-2">
+                  Point Nuvio at your own{' '}
+                  <a href="https://github.com/NuvioMedia/self-host" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">self-hosted backend</a>
+                  {' '}instead of the official one. Enter the Backend URL from your deployment (e.g. https://backend.example.com) and hit Detect — it reads that server&apos;s own <code>/.well-known/nuvio</code> to fill in the key for you. Leave blank to use api.nuvio.tv.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={syncSettings.nuvioServerUrl || ''}
+                    onChange={(e) => setSyncSettings(prev => ({ ...prev, nuvioServerUrl: e.target.value }))}
+                    onBlur={() => handleSaveSetting('nuvioServerUrl' as keyof SyncSettings, syncSettings.nuvioServerUrl)}
+                    placeholder="https://backend.example.com"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="input-base flex-1 min-w-0 px-3 py-2 text-sm"
+                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    isLoading={nuvioDiscovering}
+                    onClick={async () => {
+                      const url = (syncSettings.nuvioServerUrl || '').trim();
+                      if (!url) { toast.error('Enter the backend URL first'); return; }
+                      setNuvioDiscovering(true);
+                      try {
+                        const r = await api.discoverNuvioBackend(url);
+                        if (r.ok && r.anonKey) {
+                          setSyncSettings(prev => ({ ...prev, nuvioServerUrl: r.url || url, nuvioAnonKey: r.anonKey }));
+                          await handleSaveSetting('nuvioServerUrl' as keyof SyncSettings, r.url || url);
+                          await handleSaveSetting('nuvioAnonKey' as keyof SyncSettings, r.anonKey);
+                          toast.success('Backend detected and saved');
+                        } else {
+                          // Not fatal - the manual key field below always works.
+                          toast.error(r.error || 'Could not read that backend - enter the anon key manually');
+                        }
+                      } catch {
+                        toast.error('Could not reach that backend - enter the anon key manually');
+                      } finally {
+                        setNuvioDiscovering(false);
+                      }
+                    }}
+                  >
+                    Detect
+                  </Button>
+                </div>
+                <input
+                  type="text"
+                  value={syncSettings.nuvioAnonKey || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, nuvioAnonKey: e.target.value }))}
+                  onBlur={() => handleSaveSetting('nuvioAnonKey' as keyof SyncSettings, syncSettings.nuvioAnonKey)}
+                  placeholder="Anon key (auto-filled by Detect, or paste it from ./nuvio credentials)"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm mt-2"
+                />
+                <p className="text-xs text-subtle mt-1.5">
+                  Both fields are needed for the override to apply — a URL on its own is ignored rather than half-applied.
+                </p>
               </div>
             </div>
           </Card>

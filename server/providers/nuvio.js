@@ -29,7 +29,22 @@ const { refreshNuvioToken, isTokenExpired } = require('./nuvioAuth')
 const tokenCache = new Map()      // userId -> { accessToken, refreshToken }
 const refreshPromises = new Map() // userId -> Promise<string> (in-flight refresh)
 
-function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onTokenRefresh }) {
+function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onTokenRefresh, resolveServerConfig }) {
+  // Which Nuvio backend this account talks to. Resolved lazily rather than
+  // at construction because createProvider() is synchronous everywhere it's
+  // called, and reading the account's setting needs a DB round-trip. Cached
+  // per provider instance so a sync pass doesn't re-query per request.
+  let serverConfigPromise = null
+  function getServerConfig() {
+    if (!resolveServerConfig) return Promise.resolve(undefined)
+    if (!serverConfigPromise) {
+      serverConfigPromise = Promise.resolve()
+        .then(() => resolveServerConfig())
+        .catch(() => undefined)
+    }
+    return serverConfigPromise
+  }
+
   async function ensureAuth() {
     const cached = tokenCache.get(userId)
     if (cached?.accessToken && !isTokenExpired(cached.accessToken)) {
@@ -42,7 +57,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
     const promise = (async () => {
       try {
         const currentRefreshToken = tokenCache.get(userId)?.refreshToken || initialRefreshToken
-        const result = await refreshNuvioToken(currentRefreshToken)
+        const result = await refreshNuvioToken(currentRefreshToken, await getServerConfig())
         const newAccessToken = result.access_token
         const newRefreshToken = result.refresh_token || currentRefreshToken
 
@@ -79,7 +94,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
         profile_id: 'eq.1',
         order: 'sort_order.asc,created_at.asc',
         select: '*'
-      }, accessToken)
+      }, accessToken, await getServerConfig())
 
       // Transform to universal shape (minimal manifest — sync uses urlOnly mode)
       const addons = rows.map(row => ({
@@ -103,13 +118,13 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
         user_id: `eq.${userId}`,
         profile_id: 'eq.1',
         select: '*'
-      }, accessToken)
+      }, accessToken, await getServerConfig())
 
       // Delete all current addons, then insert desired set
       await supabaseDelete('addons', {
         user_id: `eq.${userId}`,
         profile_id: 'eq.1'
-      }, accessToken)
+      }, accessToken, await getServerConfig())
 
       if (addons.length > 0) {
         const rows = addons.map((addon, i) => ({
@@ -121,14 +136,14 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
           sort_order: i
         }))
         try {
-          await supabasePost('addons', rows, accessToken)
+          await supabasePost('addons', rows, accessToken, await getServerConfig())
         } catch (insertErr) {
           // Attempt to restore previous addons
           console.error('setAddons: insert failed after delete, attempting rollback:', insertErr?.message)
           if (snapshot && snapshot.length > 0) {
             try {
               const cleanRows = snapshot.map(({ id, created_at, updated_at, ...rest }) => rest)
-              await supabasePost('addons', cleanRows, accessToken)
+              await supabasePost('addons', cleanRows, accessToken, await getServerConfig())
             } catch (rollbackErr) {
               console.error('setAddons: rollback also failed, user has empty addon list:', rollbackErr?.message)
             }
@@ -147,7 +162,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
         select: 'sort_order',
         order: 'sort_order.desc',
         limit: '1'
-      }, accessToken)
+      }, accessToken, await getServerConfig())
       const nextOrder = (current[0]?.sort_order ?? -1) + 1
 
       await supabasePost('addons', [{
@@ -157,7 +172,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
         name: manifest?.name || '',
         enabled: true,
         sort_order: nextOrder
-      }], accessToken)
+      }], accessToken, await getServerConfig())
     },
 
     async clearAddons() {
@@ -165,7 +180,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
       await supabaseDelete('addons', {
         user_id: `eq.${userId}`,
         profile_id: 'eq.1'
-      }, accessToken)
+      }, accessToken, await getServerConfig())
     },
 
     // --- Content ---
@@ -182,7 +197,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
       let profileIds = [1]
       const profileNames = new Map() // profile_index -> display name
       try {
-        const profiles = await supabaseRpc('sync_pull_profiles', {}, accessToken)
+        const profiles = await supabaseRpc('sync_pull_profiles', {}, accessToken, await getServerConfig())
         if (Array.isArray(profiles) && profiles.length > 0) {
           const ids = []
           for (const p of profiles) {
@@ -201,9 +216,9 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
       // Combine library + watch progress to build libraryItem shape, per profile
       const perProfile = await Promise.all(profileIds.map(async (profileId) => {
         const [libraryResult, progressResult, watchedResult] = await Promise.allSettled([
-          supabaseRpc('sync_pull_library', { p_profile_id: profileId }, accessToken),
-          supabaseRpc('sync_pull_watch_progress', { p_profile_id: profileId }, accessToken),
-          supabaseRpc('sync_pull_watched_items', { p_profile_id: profileId }, accessToken)
+          supabaseRpc('sync_pull_library', { p_profile_id: profileId }, accessToken, await getServerConfig()),
+          supabaseRpc('sync_pull_watch_progress', { p_profile_id: profileId }, accessToken, await getServerConfig()),
+          supabaseRpc('sync_pull_watched_items', { p_profile_id: profileId }, accessToken, await getServerConfig())
         ])
         return {
           profileId,
@@ -323,7 +338,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
     // admin-facing profile picker needs the raw list.
     async getProfiles() {
       const accessToken = await ensureAuth()
-      const rows = await supabaseRpc('sync_pull_profiles', {}, accessToken)
+      const rows = await supabaseRpc('sync_pull_profiles', {}, accessToken, await getServerConfig())
       return Array.isArray(rows) ? rows : []
     },
 
@@ -332,7 +347,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
     // returns both on the same row.
     async getCollections(profileId) {
       const accessToken = await ensureAuth()
-      const rows = await supabaseRpc('sync_pull_collections', { p_profile_id: profileId }, accessToken)
+      const rows = await supabaseRpc('sync_pull_collections', { p_profile_id: profileId }, accessToken, await getServerConfig())
       const raw = rows?.[0]?.collections_json
       if (!raw) return []
       // Confirmed against the real API (via two independent third-party
@@ -369,7 +384,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
       await supabaseRpc('sync_push_collections', {
         p_profile_id: profileId,
         p_collections_json: collections
-      }, accessToken)
+      }, accessToken, await getServerConfig())
     },
 
     // Community Covers - nuvio.tv's own public gallery of user-submitted
