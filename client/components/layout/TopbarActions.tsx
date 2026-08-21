@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { WizardBooksIcon } from '@/components/ui/icons/WizardBooksIcon';
@@ -152,21 +152,23 @@ export function TopbarActions({ activities, inviteHistory, taskHistory }: Topbar
       />
 
       {/* Prompt itself is portaled to <body> as position:fixed - see the
-          measure() comment above for why it can't just be absolute here. */}
-      {mounted && anchor && createPortal(
-        <AnimatePresence>
-          {showPrompt && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: -4 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: -4 }}
-              transition={{ duration: 0.16 }}
-              style={{ position: 'fixed', top: anchor.top, right: anchor.right, zIndex: 60 }}
-            >
-              {promptCard}
-            </motion.div>
-          )}
-        </AnimatePresence>,
+          measure() comment above for why it can't just be absolute here.
+          The showPrompt check gates the PORTAL, not a child inside an
+          AnimatePresence: with AnimatePresence the exit animation ran to
+          opacity:0 but the node was never unmounted, leaving an invisible
+          element still intercepting clicks on the bell underneath it
+          (confirmed live 2026-08-21 - isConnected:true at opacity:0). An
+          entry-only animation that reliably unmounts beats a 160ms fade
+          that strands a click-blocker on the page. */}
+      {mounted && anchor && showPrompt && createPortal(
+        <motion.div
+          initial={{ opacity: 0, scale: 0.94, y: -4 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.16 }}
+          style={{ position: 'fixed', top: anchor.top, right: anchor.right, zIndex: 60 }}
+        >
+          {promptCard}
+        </motion.div>,
         document.body
       )}
     </div>
