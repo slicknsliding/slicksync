@@ -27,19 +27,29 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
     if (token) {
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        // Checked on every request (not just refresh-renewal) for public
-        // instances specifically - superadmin's "Disable" is meant to be an
-        // immediate kill switch, and at the 50-account cap this instance
-        // mode is bounded to, one extra indexed lookup per request is
-        // negligible. Private mode has no concept of "disabled" at all, so
-        // it's never touched here. Skipped entirely on allowlisted paths -
-        // those run their own auth (or none) and must never be blocked by a
-        // tenant account's state, see the comment above.
-        if (!allowlisted && INSTANCE_TYPE === 'public' && prisma) {
+        // Checked on every request, not just on refresh-renewal:
+        // superadmin's "Disable" is meant to be an immediate kill switch,
+        // and one extra indexed lookup per request is negligible.
+        //
+        // Runs on private instances too, not just public. Private has no
+        // concept of "disabled", but it does have self-service account
+        // deletion in Settings, and a deleted account is exactly the case
+        // this has to catch - otherwise that session keeps working against
+        // an account that no longer exists. Skipped entirely on allowlisted
+        // paths - those run their own auth (or none) and must never be
+        // blocked by a tenant account's state, see the comment above.
+        if (!allowlisted && prisma) {
           try {
             const acct = await prisma.appAccount.findUnique({ where: { id: decoded.accId }, select: { disabled: true } });
-            if (acct?.disabled) {
-              return res.status(401).json({ message: 'This account has been disabled' });
+            // A DELETED account has no row at all, so findUnique returns
+            // null - and `acct?.disabled` on null is undefined, i.e. falsy,
+            // which let a deleted account's still-valid JWT straight
+            // through. Superadmin could delete an account and that session
+            // kept working, navigating pages as if nothing happened, until
+            // the token expired on its own. Missing has to be treated
+            // exactly like disabled: there is no account to authenticate.
+            if (!acct || acct.disabled) {
+              return res.status(401).json({ message: acct ? 'This account has been disabled' : 'This account no longer exists' });
             }
           } catch {}
         }
@@ -55,11 +65,14 @@ module.exports.createAuthGate = function createAuthGate({ INSTANCE_TYPE, PRIVATE
               // disabled account's already-open session to at most one
               // access-token lifetime (30d) rather than the full 365d
               // refresh token, without a DB read on every single request.
-              if (!allowlisted && INSTANCE_TYPE === 'public' && prisma) {
+              if (!allowlisted && prisma) {
                 try {
                   const acct = await prisma.appAccount.findUnique({ where: { id: rj.accId }, select: { disabled: true } });
-                  if (acct?.disabled) {
-                    return res.status(401).json({ message: 'This account has been disabled' });
+                  // Same null-vs-disabled trap as the access-token path
+                  // above - without this, a deleted account could still mint
+                  // itself a fresh access token off its refresh cookie.
+                  if (!acct || acct.disabled) {
+                    return res.status(401).json({ message: acct ? 'This account has been disabled' : 'This account no longer exists' });
                   }
                 } catch {}
               }
