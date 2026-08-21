@@ -59,6 +59,12 @@ export interface HelpEntry {
   tips?: string[];
   // ids of other entries worth reading next.
   related?: string[];
+  // Renders the actual feature in a modal ON the guide page, instead of
+  // navigating away to find it. Reading the steps and doing the thing at
+  // the same time beats being dropped on a page with the instructions now
+  // behind you. Only set this where the feature is a genuinely
+  // self-contained component - see the switch in guides/[id]/page.tsx.
+  embed?: 'automation';
   href?: string;
   linkLabel?: string;
 }
@@ -87,10 +93,9 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Test a webhook against a throwaway endpoint (webhook.site or similar) before pointing it at something that takes real action.',
     ],
     related: ['notifications-setup', 'watch-notification-overrides'],
-    // Deep link - opens the Automation panel directly instead of dropping
-    // you on Tasks to go find it (see the ?open= handler on that page).
-    href: '/tasks?open=automation',
-    linkLabel: 'Open Automation',
+    // Opens the real Automation panel in a modal on this guide page, so the
+    // steps above stay on screen while you follow them.
+    embed: 'automation',
   },
   {
     id: 'catalog-create',

@@ -1,7 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { Modal } from '@/components/ui';
+import { AutomationPanel } from '@/components/automation/AutomationPanel';
+import { BoltIcon } from '@heroicons/react/24/outline';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Card, Button } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
@@ -26,6 +30,7 @@ export default function GuideTopicPage() {
   const id = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : '';
   const { layoutMode } = useLayoutMode();
   const router = useRouter();
+  const [embedOpen, setEmbedOpen] = useState(false);
 
   const entry = getHelpEntry(id);
 
@@ -101,7 +106,27 @@ export default function GuideTopicPage() {
                   <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text)' }}>
                     {entry.answer}
                   </p>
-                  {entry.href && (
+                  {/* Prefer opening the feature right here over navigating
+                      away - the steps stay on screen while you follow them,
+                      instead of the instructions ending up on the page you
+                      just left. Only guides whose feature is a genuinely
+                      self-contained component can do this; the rest still
+                      deep-link. */}
+                  {entry.embed ? (
+                    <div className="mt-5">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        leftIcon={<BoltIcon className="w-4 h-4" />}
+                        onClick={() => setEmbedOpen(true)}
+                      >
+                        Open Automation here
+                      </Button>
+                      <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
+                        Opens on this page, so the steps below stay visible.
+                      </p>
+                    </div>
+                  ) : entry.href ? (
                     <div className="mt-5">
                       <Button
                         variant="primary"
@@ -112,7 +137,7 @@ export default function GuideTopicPage() {
                         {entry.linkLabel || 'Go there'}
                       </Button>
                     </div>
-                  )}
+                  ) : null}
                 </Card>
               </PageSection>
 
@@ -228,6 +253,20 @@ export default function GuideTopicPage() {
           )}
         </div>
       </div>
+
+      {/* The real Automation panel, rendered on the guide page itself. It's
+          the same self-contained component the Tasks page mounts, so rules
+          created here are the real thing, not a preview. */}
+      {entry?.embed === 'automation' && (
+        <Modal
+          isOpen={embedOpen}
+          onClose={() => setEmbedOpen(false)}
+          title="Automation"
+          size="xl"
+        >
+          <AutomationPanel />
+        </Modal>
+      )}
     </>
   );
 }
