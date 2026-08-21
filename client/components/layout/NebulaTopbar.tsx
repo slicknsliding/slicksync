@@ -20,8 +20,7 @@ import {
   XMarkIcon,
   RectangleStackIcon,
 } from '@heroicons/react/24/outline';
-import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
-import { ResumeTourChip } from '@/components/onboarding/ResumeTourChip';
+import { TopbarActions } from '@/components/layout/TopbarActions';
 import { PanelSwitcher } from './PanelSwitcher';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { api } from '@/lib/api';
@@ -215,8 +214,7 @@ export function NebulaTopbar() {
               boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
             }}
           >
-            <ResumeTourChip />
-            <NotificationsDropdown />
+            <TopbarActions />
           </div>
         </div>
       )}
@@ -295,17 +293,6 @@ export function NebulaTopbar() {
                 <Bars3Icon className="w-6 h-6" style={{ color: 'var(--color-text)' }} />
               )}
             </button>
-          )}
-          {/* Resume-tour chip, mirroring the hamburger on the left so the
-              logo stays genuinely centered. It lives in THIS bar rather
-              than next to the bell in NebulaPageHeading below, because
-              that heading scrolls away with the page - a half-finished
-              tour needs to stay reachable wherever you've scrolled to.
-              Renders nothing unless a tour is actually paused. */}
-          {!isTV && (
-            <div className="absolute right-0">
-              <ResumeTourChip />
-            </div>
           )}
           <Link href="/" className={isTV ? 'flex items-center gap-2 justify-center min-w-0' : 'flex items-center gap-2 md:gap-4 justify-center min-w-0'}>
             <div
@@ -516,7 +503,7 @@ export function NebulaPageHeading({
             though the div itself was correctly flush right - every button/
             bell inside consistently sat short of the page's actual right
             margin as a result. */}
-        {!isMobile && <NotificationsDropdown />}
+        {!isMobile && <TopbarActions />}
         {/* Zero-height, full-width flex item forces a line-break: the bell
             (above) always lands on its own line, `actions` (below) always
             starts a fresh line under it - deliberate and consistent across

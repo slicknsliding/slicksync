@@ -43,6 +43,13 @@ const NAV_ITEMS = [
   { label: 'Guides', href: '/guides', icon: LifebuoyIcon, keywords: 'help how to how-to support faq docs documentation manual tutorial guide guides' },
 ];
 
+// Lets the topbar button (and anything else) open the palette without
+// having to synthesise a fake Ctrl+K keystroke.
+export const COMMAND_PALETTE_OPEN_EVENT = 'slicksync:open-command-palette';
+export function openCommandPalette() {
+  window.dispatchEvent(new Event(COMMAND_PALETTE_OPEN_EVENT));
+}
+
 function isMac() {
   if (typeof navigator === 'undefined') return false;
   // navigator.platform is deprecated but still the most broadly-supported
@@ -120,6 +127,20 @@ export function CommandPalette() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [mac, isOpen, close, loadEntities]);
+
+  useEffect(() => {
+    const openFromButton = () => {
+      setIsOpen((prev) => {
+        if (prev) return prev;
+        setQuery('');
+        setActiveIndex(0);
+        loadEntities();
+        return true;
+      });
+    };
+    window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, openFromButton);
+    return () => window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, openFromButton);
+  }, [loadEntities]);
 
   useEffect(() => {
     if (isOpen) {
