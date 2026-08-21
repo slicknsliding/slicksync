@@ -15,32 +15,31 @@ SlickSync manages a private streaming group's accounts from one dashboard: group
 
 Can't self-host? **[slicksync.vip](https://slicksync.vip)** runs the same code in public/multi-tenant mode, free to register — a courtesy option for anyone who wants SlickSync without running their own server.
 
+### 📚 New here? Start with the Guides
+
+Once SlickSync is running, **`/guides`** is the fastest way to actually learn it — 74 topic pages covering every page and setting, organized by category and searchable, each with step-by-step instructions and the gotchas that actually come up. The same content also answers free-text questions straight from the **command palette** (`Ctrl+K`/`Cmd+K`) — no AI key required.
+
 ## Contents
 
-- [Multi-Provider Sync](#-multi-provider-sync)
-- [Activity & Now Playing](#-activity--now-playing)
-- [Discover & Media Details](#-discover--media-details)
-- [Catalogs](#-catalogs)
-- [Nuvio Collections](#️-nuvio-collections)
-- [SlickTrax](#-slicktrax)
-- [Vault](#-vault)
-- [Notifications](#-notifications)
-- [PWA & Push](#-pwa--push)
-- [Addons](#-addons)
-- [Automation](#-automation)
-- [Command Palette](#️-command-palette)
-- [Themes](#-themes)
-- [Metrics](#-metrics)
-- [System Health](#-system-health)
-- [Backup & Disaster Recovery](#-backup--disaster-recovery)
-- [Security](#-security)
-- [Installation](#-installation)
-- [Credits](#credits)
-- [License](#license)
+| | | |
+|---|---|---|
+| [🔗 Multi-Provider Sync](#-multi-provider-sync) | [🎬 Activity & Now Playing](#-activity--now-playing) | [🎞️ Discover & Media Details](#-discover--media-details) |
+| [📚 Catalogs](#-catalogs) | [🗂️ Nuvio Collections](#️-nuvio-collections) | [✨ SlickTrax](#-slicktrax) |
+| [🔐 Vault](#-vault) | [🔔 Notifications](#-notifications) | [📱 PWA & Push](#-pwa--push) |
+| [🧩 Addons](#-addons) | [⚙️ Automation](#-automation) | [⌨️ Command Palette](#️-command-palette) |
+| [🎨 Themes](#-themes) | [📊 Metrics](#-metrics) | [🩺 System Health](#-system-health) |
+| [💾 Backup & Disaster Recovery](#-backup--disaster-recovery) | [🛡️ Security](#-security) | [🚀 Installation](#-installation) |
+
+Every section below has a one-line summary up front, with the full detail list collapsed underneath — click "Show details" to expand.
 
 ## ⚡ Features
 
 ### 🔗 Multi-Provider Sync
+Nuvio and Stremio as equals, not Stremio-plus-an-afterthought.
+
+<details>
+<summary>Show details</summary>
+
 - Nuvio is a first-class provider alongside Stremio — not bolted on.
 - OAuth device-code/QR or direct email+password to connect Nuvio.
 - Every Nuvio profile syncs (not just the primary), library + progress + addons merged with a per-profile label.
@@ -51,8 +50,14 @@ Can't self-host? **[slicksync.vip](https://slicksync.vip)** runs the same code i
 - **Account merge** — absorb a second provider's identity into one existing user instead of managing them as two separate people, with a preview before merging and a full **Undo** afterward that restores both identities and their original watch history exactly.
 - **Silent account-mismatch detection** — if a title is seen streaming but no connected account ever records it in History, that usually means playback happened on an account not yet added to SlickSync; a notification explains this and points at the fix.
 - **SIMKL linking** — any user can optionally connect their own SIMKL account (PIN-based, no password ever touches SlickSync). Bidirectional: pulls SIMKL's own watch history in, and pushes SlickSync's already-unified record (every provider, every source) back out — the same value the removed Trakt integration had, without Trakt's one-connected-app free-tier limit that got it pulled.
+</details>
 
 ### 🎬 Activity & Now Playing
+What's playing right now, and what's actually been watched.
+
+<details>
+<summary>Show details</summary>
+
 - Live **Now Playing** panel, fed by a 30s poll of AIOStreams' proxy — real-time presence, gone the instant playback stops.
 - **History & Watch Time** come from each provider's own library state (1-minute poll) — the permanent record, including sources the proxy can't see (usenet).
 - **Real completion tracking** — finished vs. started-and-dropped, distinct from a raw "watched" flag, plus **rewatch counts** for movies watched again after a first finish.
@@ -61,8 +66,14 @@ Can't self-host? **[slicksync.vip](https://slicksync.vip)** runs the same code i
 - Explicit per-account timezone for correct day-bucketing (Watch Time Today, streaks) — auto-detected from your browser the first time you open Settings, stored explicitly from then on so background jobs (which have no browser to ask) always know what "today" means.
 - Dashboard/user-page widgets: Top Watched, Recent Activity, Top Viewers — built from real session duration.
 - Cross-account library-sync dedup so a shared-login watch never double-counts.
+</details>
 
 ### 🎞️ Discover & Media Details
+Browse, get cast/ratings/trailers, and open straight into your app.
+
+<details>
+<summary>Show details</summary>
+
 - Click any poster for cast, rating, genres, director, runtime, and awards (Cinemeta) — plus an inline YouTube trailer.
 - Rotten Tomatoes/Metacritic ratings via an optional (free) OMDb key — like RPDB/MDBList/TMDb, your own key in Settings is used first, falling back to the instance's shared key only if you haven't set one.
 - **Box office figures** (OMDb) and **"Part of the X Collection"** franchise grouping (TMDb) on the detail popup — the collection row is a collapsed-by-default disclosure with its own drag-to-scroll, same treatment as More Like This, so a long-running franchise doesn't dominate the popup by default.
@@ -75,9 +86,16 @@ Can't self-host? **[slicksync.vip](https://slicksync.vip)** runs the same code i
 - Continue Watching row on the Dashboard — drag to scroll, right-click/long-press to remove.
 - Right-click (desktop) or long-press (mobile) any poster for a quick-action menu — Add to Watchlist, Add to Catalogs, Mark Watched — without opening the detail popup first.
 - Rating badges on every poster card (IMDb/RT/Metacritic) are off by default — opt in from Settings if you want scores visible before opening a title.
+</details>
 
 ### 📚 Catalogs
+Shareable lists with real import/export, not just a personal watchlist.
+
+<details>
+<summary>Show details</summary>
+
 Named collections of titles, separate from the Watchlist — build a "Halloween Marathon" or "Kids' Night" list and share the idea, not just watch it alone.
+
 - Create, rename, delete; add titles from any poster's right-click menu or its detail popup, remove one via the same long-press/right-click menu on any item already in a catalog.
 - **Watchlist/watched badges** and the same right-click quick-actions as Discover, right on every catalog's poster grid.
 - **Custom cover art** — upload an image or pick a color, shown on the Catalogs index in place of the default poster collage.
@@ -89,9 +107,16 @@ Named collections of titles, separate from the Watchlist — build a "Halloween 
 - **Build from a description** — type what you want ("90s horror movies", "cozy holiday films") and TMDb's keyword/genre/date-range matching generates a starter catalog for you to review and keep from, instead of adding titles one at a time.
 - **Content Rating** — set a catalog to only ever show certain certifications (e.g. no R/NC-17); enforced continuously rather than applied once, so a re-imported or later-recertified title can't slip back in.
 - Sort by title, year, or rating; each entry opens the same rich detail popup as everywhere else.
+</details>
 
 ### 🗂️ Nuvio Collections
+Build a Nuvio account's home screen from SlickSync instead of hand-editing it.
+
+<details>
+<summary>Show details</summary>
+
 Organize a Nuvio account's own home-screen collections — the folders and catalog sources Nuvio itself shows a user — directly from SlickSync instead of hand-editing them in the Nuvio app.
+
 - Build folders of catalog sources, drag to reorder folders and sources within them; grid or list view.
 - Start from a template (Streaming Services, Genres) instead of building from scratch.
 - **Cover art** for a collection and for each folder inside it individually — pick a URL/GIF or browse nuvio.tv's own public **Community Covers** gallery (with search and infinite scroll) directly from the picker; writes to the real field the Nuvio app itself reads, not just a SlickSync-side preview.
@@ -101,9 +126,14 @@ Organize a Nuvio account's own home-screen collections — the folders and catal
 - A folder's editor is split into Sources and Preview tabs — no scrolling one long panel to switch between adding sources and seeing the result.
 - **Layout preview** — see exactly how a collection will lay out before saving.
 - **Copy a whole collection between profiles** on the same account.
+</details>
 
 ### ✨ SlickTrax
-Built-in Trakt-alternative — no external service, no tokens.
+A built-in Trakt alternative — no external service, no tokens.
+
+<details>
+<summary>Show details</summary>
+
 - **Watchlist** — bookmark from any poster.
 - **Watched indicators** — real watch-history based, with a manual override.
 - **For You recommendations** — up to 3 genre rows from real weighted watch time (recency-decayed), independently toggleable.
@@ -113,9 +143,14 @@ Built-in Trakt-alternative — no external service, no tokens.
 - **Not Interested** feedback downweights similar titles, not just the one dismissed.
 - **Trakt-compatible scrobble-in API** (`/api/scrobble`) — point a real Trakt-scrobbling client (Infuse, Kodi's Trakt plugin, etc.) at it with a per-user API key and it writes straight into SlickTrax history, no Trakt account involved.
 - **Watch-history import/export** — import a Trakt/Letterboxd/IMDb CSV export into a user's history, or export SlickTrax history as a Letterboxd-compatible CSV.
+</details>
 
 ### 🔐 Vault
-Credential tracking with expiry alerts and real active-checks.
+Credential tracking with real expiry alerts and live provider checks.
+
+<details>
+<summary>Show details</summary>
+
 - AES-GCM encrypted at rest.
 - Expiry/renewal alerts with configurable lead time, plus cost + billing-cycle spend tracking.
 - Real active-checks: Real-Debrid/TorBox/Newznab against their own APIs, Stremio via real login, generic HTTP/TCP for the rest.
@@ -126,9 +161,16 @@ Credential tracking with expiry alerts and real active-checks.
 - **Live Real-Debrid/TorBox usage** on the entry card — active downloads and premium days remaining, pulled from the provider's own API.
 - **Auto-remove** (opt-in, per entry) clears finished/idle Real-Debrid or TorBox torrents once they've sat past a day count you choose.
 - **Renewal calendar & spend forecast** — a 90-day forward projection of every cost-tracked entry's own billing cycle, collapsed by default.
+</details>
 
 ### 🔔 Notifications
+Push and the in-app bell are primary; Discord is optional.
+
+<details>
+<summary>Show details</summary>
+
 **Push + the in-app bell are primary; Discord is entirely optional** — every notification type below works with zero Discord setup, and a webhook just adds Discord delivery on top for whichever types you want it for.
+
 - Per-type toggles: activity, sync, invites, Vault, addon health, backups, **proxy connectivity**, and monthly recap.
 - Instant "started watching" ping from the live proxy signal.
 - **Unconfirmed-device alert** — a push+bell (and Discord, if set) notice when a stream shows up from an IP not yet seen on that account.
@@ -137,49 +179,107 @@ Credential tracking with expiry alerts and real active-checks.
 - **Monthly poster-mosaic recap**, posted automatically on the 1st — a real collage image to Discord if a webhook's set, otherwise a plain push+bell text summary ("14 titles watched this month").
 - Addon down/back-up alerts from a background health check, and an alert if the AIOStreams proxy itself goes unreachable.
 - **Digest mode** — batch everything above into one daily/weekly push+bell summary instead of a ping per event.
+</details>
 
 ### 📱 PWA & Push
+Installs like a native app, with per-device push.
+
+<details>
+<summary>Show details</summary>
+
 - Installs like a native app — Home Screen on iOS/Android, desktop install on Chrome/Edge.
 - Per-device push for every notification type once installed, zero setup — VAPID keys self-generate on first boot.
 - Manage subscribed devices (rename, revoke) from Settings; a revoked device stops getting pushed to immediately, no re-install needed.
+</details>
 
 ### 🧩 Addons
+Drag-and-drop management with templates and protection.
+
+<details>
+<summary>Show details</summary>
+
 Drag-and-drop reordering, drag-to-protect or drag-to-label with color-coded custom tags, order-insensitive sync comparison, provider-agnostic live addon counts, and a template library (**Addon Snapshots**) to save/deploy a named addon set to any user.
+</details>
 
 ### ⚙️ Automation
+Rule-based actions on real events — no external workflow tool.
+
+<details>
+<summary>Show details</summary>
+
 Rule-based actions that fire on real events, no external workflow tool needed — trigger on a new user being created or a daily schedule, and call an outgoing **webhook** as the action. Runs on the same engine that already drives notifications and health checks.
+</details>
 
 ### ⌨️ Command Palette
+Ctrl+K to jump anywhere, or ask a question and get a real answer.
+
+<details>
+<summary>Show details</summary>
+
 **Ctrl+K** / **Cmd+K** from anywhere — jump straight to any page, user, addon, or catalog by typing a few letters, or ask a free-text question and get an answer from a built-in help guide covering every feature on this page. No AI key required; an **AI Services** key (Settings) only powers the optional extras noted above (For You explanations, addon-incident summaries) and is never needed for the palette itself.
+</details>
 
 ### 🎨 Themes
+Ten themes, or build your own, shareable as a code.
+
+<details>
+<summary>Show details</summary>
+
 Ten full themes, switchable live, synced across devices. Build your own on top of any base — accent colors, success/error overrides, corner-roundness, text scale, and a choice of 11 display fonts — with a live preview mockup. Two layout modes: the original sidebar, or **Nebula** (top nav + glass panels, default). **Share a theme** as a compact copy-paste code — no server round-trip, since themes are already client-side.
+</details>
 
 ### 📊 Metrics
+Leaderboards, streaks, taste profiles, and a Year in Review.
+
+<details>
+<summary>Show details</summary>
+
 User leaderboard, watch streaks, watch-time trend, Top Viewers/Recent Activity/Recent Addons on the Dashboard, provider parity view, and a per-group activity dashboard.
+
 - Same-email Stremio/Nuvio pairs are deduped in every leaderboard and total — one household member never counts as two.
 - **Taste Profiles** — a per-user viewing fingerprint (favorite genres, habits) built from real watch history, not a guess.
 - **Year in Review** — a Wrapped-style yearly recap: total watch time, top shows, most-rewatched titles, a by-month chart, and a per-user breakdown.
 - **Public stats page** — an opt-in, unauthenticated share link (`/u/[slug]`) for a single user's own total watch time, top titles, and streak, off by default per user.
+</details>
 
 ### 🩺 System Health
+One page: is everything actually working right now.
+
+<details>
+<summary>Show details</summary>
+
 One page answering "is everything actually working right now" — Sync drift, addon reachability, Vault credential checks, and AIOStreams proxy connectivity, all read from state existing background monitors already maintain.
+
 - **Ignore** a known, accepted failure (an addon you've intentionally left offline, an indexer that blocks your server's IP) to drop it out of Attention and its notifications — reversible any time from the same card.
 - **Addon uptime %** over the last 7/30 days, reconstructed from the same health-check history the offline/online alerts already log.
 - Optional **AI-generated incident summary** on an addon-down alert, using the same AI Services key as SlickTrax's "why this matches" — off unless you've set one.
 - **Version card** — what's actually running, and whether a newer stable release has been published, without needing to check GitHub or `docker exec` in to find out.
+</details>
 
 ### 💾 Backup & Disaster Recovery
+Scheduled backups plus a full portable recovery kit.
+
+<details>
+<summary>Show details</summary>
+
 Scheduled + on-demand config backups (validated for real restorability, not just valid JSON) and a separate **Disaster Recovery Kit** — the same export plus every Vault secret, re-encrypted under a passphrase you choose, fully portable to a brand-new instance.
+</details>
 
 ### 🛡️ Security
+2FA, OIDC/SSO, rate limiting, per-account keys.
+
+<details>
+<summary>Show details</summary>
+
 Rate limiting actually enabled (including a separate per-account limit on public-mode API traffic), strict limits on credential/OAuth endpoints, correct `trust proxy` hop count, no hardcoded default key, and a self-generating anti-lockout encryption key with decrypt-only fallback on rotation. Every external API key (RPDB, MDBList, TMDb, OMDb) resolves an account's own Settings key first — a shared instance-wide key in `.env` is only ever a fallback for accounts that haven't set their own.
+
 - **Two-factor authentication** — opt-in per account, authenticator-app QR setup, 10 one-time backup codes shown once at enable time. Disabling 2FA or regenerating backup codes both require a fresh code, not just an active session — a hijacked session alone can't turn your own second factor off.
 - **OIDC/SSO login** — a "Continue with..." option for any OIDC-compliant provider (Authentik, Authelia, Keycloak, Google, etc.), configured once via env vars. Fully additive: password login keeps working, and 2FA (if enabled) still applies after an SSO sign-in.
 - **Interactive API docs** (Swagger UI) at `/api/docs` for the external developer API (`/api/ext`) — try real requests with your own API key straight from the browser, generated from the same route handlers documented in [`API.md`](./API.md) so the two can't silently drift apart.
 - Nuvio's self-service identity checks (view/delete) verify a real signed session token belonging to the caller, not just a client-supplied user id.
 - **Self-service data export** — Settings → Privacy has a Download button exporting your own movie/episode watch history plus the household watchlist as JSON, no admin needed.
 - **Self-service account deletion**, at two distinct scopes: an admin can wipe their entire account and everything tied to it (public multi-tenant mode), and separately, any managed user can delete just their own data (watch history, watchlist state, group membership) from their own User panel — without touching shared addons, groups, or anyone else's data — in both private and public instance mode.
+</details>
 
 ---
 
