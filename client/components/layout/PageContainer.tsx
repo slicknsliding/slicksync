@@ -127,16 +127,33 @@ export function StaggerContainer({ children, className }: StaggerContainerProps)
   );
 }
 
-// Stagger item - uses layout animation for smooth reordering
+// Stagger item - the wrapper around individual rows/cards in most lists.
 interface StaggerItemProps {
   children: ReactNode;
   className?: string;
+  /** Opt in to Framer's layout animation, which smoothly slides siblings
+      when an item is reordered or removed.
+     
+      Off by default, and that default is load-bearing. `layout` makes
+      Framer measure EVERY element carrying it on any layout change
+      anywhere in the tree, then animate each one. This component wraps
+      every row on a dozen pages, so on a list of any real size a single
+      unrelated change - closing a modal, a filter toggling, a route
+      transition - turned into hundreds of getBoundingClientRect calls plus
+      hundreds of concurrent animations. On desktop that reads as a stutter;
+      on an iPhone it's a multi-second freeze, and it got steadily worse as
+      more list pages were added.
+     
+      Turn it on only for a list that genuinely reorders in place AND is
+      short. Note that it actively fights dnd-kit, which applies its own
+      transforms to the same element during a drag. */
+  animateLayout?: boolean;
 }
 
-export function StaggerItem({ children, className }: StaggerItemProps) {
+export function StaggerItem({ children, className, animateLayout = false }: StaggerItemProps) {
   return (
     <motion.div
-      layout
+      layout={animateLayout}
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
