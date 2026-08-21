@@ -17,27 +17,27 @@ import {
 } from '@/lib/onboardingStorage';
 
 interface TopbarActionsProps {
-  // Only the sidebar Header passes these through; the Nebula copies render
+  // Only the sidebar Header passes these through; the Nebula copy renders
   // the bell with no preloaded data, same as before.
   activities?: any[];
   inviteHistory?: any[];
   taskHistory?: any[];
-  // Mobile passes false: its bell lives in a small floating pill in the
-  // screen corner, and adding a second button there widened the pill and
-  // pushed the bell out of the spot it's occupied all along. Desktop has
-  // the room; a phone corner doesn't. The resume prompt still renders.
-  showCommandPalette?: boolean;
 }
 
 // The topbar's right-hand cluster: command palette, then notifications.
 // Grouped into one component because the resume-tour prompt deliberately
 // sits ON TOP of both of them - it has to be dismissed before either can
 // be clicked, which only works if they share a positioning context.
+//
+// Renders the same on every screen size. Mobile briefly hid the command
+// palette here, back when its bell lived in a separate fixed corner pill
+// too tight to fit both; that pill is gone and the two platforms now share
+// one cluster in one place, so there's no per-platform variant to keep in
+// sync.
 export function TopbarActions({
   activities,
   inviteHistory,
   taskHistory,
-  showCommandPalette = true,
 }: TopbarActionsProps) {
   // Shown for the whole time the tour is unfinished - not only after it was
   // paused via one of its own links - and stays until the prompt's own X
@@ -144,19 +144,17 @@ export function TopbarActions({
           padding, radius, muted colour and hover treatment - so the two
           read as one pair of peer controls rather than a button next to
           an icon. */}
-      {showCommandPalette && (
-        <button
-          onClick={openCommandPalette}
-          title="Search, jump to a page, or ask how to do something (Ctrl+K)"
-          aria-label="Open the command palette"
-          className="p-2 rounded-lg transition-colors"
-          style={{ color: 'var(--color-text-muted)' }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        >
-          <WizardBooksIcon className="w-5 h-5" />
-        </button>
-      )}
+      <button
+        onClick={openCommandPalette}
+        title="Search, jump to a page, or ask how to do something (Ctrl+K)"
+        aria-label="Open the command palette"
+        className="p-2 rounded-lg transition-colors"
+        style={{ color: 'var(--color-text-muted)' }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-hover)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+      >
+        <WizardBooksIcon className="w-5 h-5" />
+      </button>
 
       <NotificationsDropdown
         activities={activities}
