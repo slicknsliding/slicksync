@@ -1,6 +1,6 @@
 [
   {
-    "version": "1.73.17",
+    "version": "1.73.18",
     "date": "2026-08-21",
     "title": "feat: Guides - a full in-app help section, plus a rebuilt welcome tour",
     "features": [
@@ -16,7 +16,8 @@
       "Settings → Welcome Tour → Replay reopened the tour but never cleared the completed flag, so any account that had finished the tour once was permanently recorded as done - which meant the resume prompt could never appear for it again. Replay now genuinely restarts it.",
       "Dismissing the resume prompt faded it to invisible but left the element in the page, where it kept intercepting clicks meant for the notification bell underneath.",
       "The Guides index left large empty gaps between category panels - a two-column grid sizes every row to its tallest card, and the categories range from 2 to 10 guides. Short topic pages also showed two \"back\" links within a few hundred pixels of each other.",
-      "Renaming the section from Help to Guides would have 404'd existing bookmarks and links; /help now redirects."
+      "Renaming the section from Help to Guides would have 404'd existing bookmarks and links; /help now redirects.",
+      "Adding the command-palette button to the topbar widened the mobile floating pill and shifted the notification bell off the corner spot it has always occupied. The palette button is now desktop-only, where there is room for it; mobile keeps the bell exactly where it was."
     ],
     "miscChores": []
   },
