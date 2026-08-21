@@ -1,6 +1,6 @@
 [
   {
-    "version": "1.74.2",
+    "version": "1.74.3",
     "date": "2026-08-21",
     "title": "1.74 — Self-hosted Nuvio backends",
     "features": [
@@ -8,6 +8,7 @@
       "Two new guides on self-hosted Nuvio: how to point SlickSync at your own backend, and what self-hosting does and does not change. 74 guides total."
     ],
     "bugFixes": [
+      "The notification bell and command palette now follow you down a page. They sit in the page heading as before, then pin themselves just under the navigation bar once you scroll past. Previously they scrolled away with the page - on a phone that meant scrolling all the way back to the top just to open the command palette, since there is no Ctrl+K shortcut there.",
       "On mobile, the command palette button is now present and the notification bell sits with it in the page heading, exactly as on desktop. The bell previously lived in a separate floating pill in the screen corner with no palette button beside it.",
       "The page behind the onboarding wizard could still be scrolled while it was open. The wizard is also wider and taller, so its longer steps are not cramped.",
       "New icon for the resume-tour prompt next to the notification bell - the previous one was not legible at that size.",
