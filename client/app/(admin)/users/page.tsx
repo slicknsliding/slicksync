@@ -838,7 +838,6 @@ function SortableUserRow({ id, onClick, className, children }: { id: string; onC
   return (
     <motion.tr
       ref={itemProps.ref as unknown as React.Ref<HTMLTableRowElement>}
-      layout
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
