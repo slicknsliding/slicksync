@@ -20,7 +20,7 @@ import {
   XMarkIcon,
   RectangleStackIcon,
 } from '@heroicons/react/24/outline';
-import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
+import { TopbarActions } from '@/components/layout/TopbarActions';
 import { PanelSwitcher } from './PanelSwitcher';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { api } from '@/lib/api';
@@ -205,7 +205,7 @@ export function NebulaTopbar() {
       {isMobile && (
         <div className="fixed top-4 right-4 z-40">
           <div
-            className="rounded-2xl p-1.5"
+            className="rounded-2xl p-1.5 flex items-center gap-1"
             style={{
               background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
               backdropFilter: 'blur(18px)',
@@ -214,7 +214,7 @@ export function NebulaTopbar() {
               boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
             }}
           >
-            <NotificationsDropdown />
+            <TopbarActions />
           </div>
         </div>
       )}
@@ -503,7 +503,7 @@ export function NebulaPageHeading({
             though the div itself was correctly flush right - every button/
             bell inside consistently sat short of the page's actual right
             margin as a result. */}
-        {!isMobile && <NotificationsDropdown />}
+        {!isMobile && <TopbarActions />}
         {/* Zero-height, full-width flex item forces a line-break: the bell
             (above) always lands on its own line, `actions` (below) always
             starts a fresh line under it - deliberate and consistent across

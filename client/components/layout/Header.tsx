@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion';
 import { BellIcon, MagnifyingGlassIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import { Avatar } from '../ui/Avatar';
-import { NotificationsDropdown } from '../ui/NotificationsDropdown';
+import { TopbarActions } from './TopbarActions';
 import { useMobileMenu } from '@/app/(admin)/AdminClientLayout';
 
 interface HeaderProps {
@@ -135,8 +135,10 @@ export function Header({
             </div>
           ) : null}
 
-          {/* Notifications — always last so its dropdown fits within the screen */}
-          <NotificationsDropdown
+          {/* Command palette + notifications — always last so the bell's
+              dropdown fits within the screen. The resume-tour prompt renders
+              on top of both from inside TopbarActions. */}
+          <TopbarActions
             activities={activities}
             inviteHistory={inviteHistory}
             taskHistory={taskHistory}
