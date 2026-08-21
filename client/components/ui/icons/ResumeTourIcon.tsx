@@ -1,14 +1,29 @@
-// A route marked with a flag - the resume-tour prompt's icon.
+// A signpost - the resume-tour prompt's icon.
 //
-// Needed to be visually distinct from WizardBooksIcon, which now means "open
-// the command palette": the two sit within a few pixels of each other in the
-// topbar, so reusing one glyph for both made the prompt read as a second
-// search button. A path with a flag planted on it says "a walkthrough you're
-// partway through" without needing the label to carry all the meaning.
+// The pill this sits in already says "Resume tour" in words, so the icon does
+// not need to carry the meaning by itself. Its job is to be a visual anchor
+// that doesn't promise the wrong action. That rules out most candidates:
 //
-// Same Heroicons 24/outline conventions as its neighbours (24x24, fill:none,
-// 1.5 stroke in currentColor, round caps/joins) and kept to five strokes, so
-// it stays legible at the ~20px it actually renders at.
+//   - A winding path with a flag on it (the first attempt). Five thin strokes,
+//     two of them disconnected wavy segments plus a loose dot, which collapsed
+//     into an illegible squiggle at the size this actually renders. Detail is
+//     what kills an icon at 24px.
+//   - A flag. Reads as "report this" or "needs attention" - and it would sit
+//     directly beside the notification bell, giving two adjacent alert-looking
+//     glyphs. Planting it on a ground line softens that but doesn't fix it.
+//   - A compass. SlickSync already has a Discover page, so it reads "explore".
+//   - A play triangle. In a media app it invites a click expecting playback.
+//   - A circular arrow. This is a sync app; that's the sync/refresh glyph.
+//   - A checklist. Semantically apt, but needs five or more strokes, which is
+//     the exact failure mode of the first attempt.
+//
+// A signpost carries none of that baggage: "guided route" is the closest
+// honest meaning, no other glyph in the app uses that shape - including
+// WizardBooksIcon a few pixels away, which means "open the command palette" -
+// and three chunky strokes stay readable at the size this renders.
+//
+// Same Heroicons 24/outline conventions as its neighbours: 24x24, fill:none,
+// 1.5 stroke in currentColor, round caps and joins.
 export function ResumeTourIcon({
   className,
   title,
@@ -34,19 +49,15 @@ export function ResumeTourIcon({
     >
       {title ? <title>{title}</title> : null}
 
-      {/* The route: a winding path climbing from bottom-left to the flag. */}
-      <path d="M4.5 20c2.4 0 3.2-2.4 5.2-2.4s2.6 1.6 4.6 1.6" />
-      <path d="M6.6 15.6c1.8-.5 2.6-1.9 2.6-3.4" />
+      {/* The post. */}
+      <path d="M12 4.5V20" />
 
-      {/* Flagpole, planted at the top of the route. */}
-      <path d="M14.8 4v9.6" />
+      {/* Upper board, pointing forward. */}
+      <path d="M12 6h5.6l2.2 2.4-2.2 2.4H12" />
 
-      {/* Pennant. */}
-      <path d="M14.8 4.6h4.4l-1.4 2.2 1.4 2.2h-4.4" />
-
-      {/* Start marker, so the path reads as a journey with a beginning
-          rather than a stray squiggle. */}
-      <circle cx="9.2" cy="10.4" r="1.4" />
+      {/* Lower board, pointing back - two boards read as a signpost, where a
+          single one reads as a flag. */}
+      <path d="M12 12.4H6.4l-2.2 2.4 2.2 2.4H12" />
     </svg>
   );
 }
