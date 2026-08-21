@@ -1,13 +1,14 @@
 [
   {
-    "version": "1.74.3",
+    "version": "1.74.4",
     "date": "2026-08-21",
-    "title": "1.74 — Self-hosted Nuvio backends",
+    "title": "1.74 — Self-hosted Nuvio backends, and a much faster app on mobile",
     "features": [
       "Point an account at your own self-hosted Nuvio backend instead of api.nuvio.tv (Settings -> External API Keys -> Nuvio backend URL). Paste the Backend URL and hit Detect - SlickSync reads that server's own /.well-known/nuvio discovery document and fills in the publishable key for you. It is per-account, so one account can use a self-hosted server without affecting anyone else on the instance. Both the URL and the key are required, and Detect rejects a server that does not identify itself as Nuvio. Leave it blank to stay on the official backend.",
       "Two new guides on self-hosted Nuvio: how to point SlickSync at your own backend, and what self-hosting does and does not change. 74 guides total."
     ],
     "bugFixes": [
+      "Closing a dialog or moving between pages could freeze for several seconds on a phone, and it got worse the more users, groups or addons you had. Lists no longer re-measure every row when something unrelated changes, so closing and navigating are immediate again. Reordering by drag is also smoother.",
       "The notification bell and command palette now follow you down a page. They sit in the page heading as before, then pin themselves just under the navigation bar once you scroll past. Previously they scrolled away with the page - on a phone that meant scrolling all the way back to the top just to open the command palette, since there is no Ctrl+K shortcut there.",
       "On mobile, the command palette button is now present and the notification bell sits with it in the page heading, exactly as on desktop. The bell previously lived in a separate floating pill in the screen corner with no palette button beside it.",
       "The page behind the onboarding wizard could still be scrolled while it was open. The wizard is also wider and taller, so its longer steps are not cramped.",
