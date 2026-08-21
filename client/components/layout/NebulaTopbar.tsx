@@ -24,7 +24,6 @@ import { TopbarActions } from '@/components/layout/TopbarActions';
 import { PanelSwitcher } from './PanelSwitcher';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { api } from '@/lib/api';
-import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useMobileMenu } from '@/app/(admin)/AdminClientLayout';
 
 // Replaces the sidebar for pages rendering Nebula layout mode (see
@@ -114,15 +113,6 @@ export function NebulaTopbar() {
     if (!isScrolled) closeMobileNav();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isScrolled]);
-  // Gates which of the two possible NotificationsDropdown locations (fixed
-  // top-right here vs inline in NebulaPageHeading's actions row) actually
-  // mounts the component - see the comment on that div below for why a
-  // second location exists at all. Deliberately a real conditional render,
-  // not a CSS hidden/block toggle: a CSS-hidden instance still fully mounts
-  // and runs its own polling effects (api.getInvitations, api.getMetrics),
-  // so two CSS-toggled copies meant every page silently doubled those
-  // requests. Only one instance actually exists in the DOM at a time now.
-  const isMobile = useIsMobile();
   // Mirrors Sidebar.tsx's own account-info fetch - Nebula's topbar had no
   // equivalent of the sidebar's bottom "Administrator" panel switcher at
   // all, so there was no way to see who's logged in, switch to the User
@@ -190,49 +180,15 @@ export function NebulaTopbar() {
           />
         </div>
       </div>
-      {/* Notifications, fixed top-right, mobile only - the desktop copy
-          lives in NebulaPageHeading's actions row as before, which never
-          had this problem. Used to live inside each page's own title row on
-          every screen size, but that row wraps onto its own line on a
-          narrow phone whenever it doesn't fit next to the title, and a
-          wrapped line with only one flex item lands at the line's start
-          (left edge) rather than the right - stranding the bell near the
-          left edge while its dropdown panel (anchored `right-0` off itself)
-          shot off past the left edge of the screen, effectively invisible.
-          Fixed to a real screen corner on mobile instead of page-content
-          flow, so its position can't depend on what else a given page's
-          action row happens to wrap around. */}
-      {isMobile && (
-        <div className="fixed top-4 right-4 z-40">
-          <div
-            className="rounded-2xl p-1.5"
-            style={{
-              background: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
-              backdropFilter: 'blur(18px)',
-              WebkitBackdropFilter: 'blur(18px)',
-              border: '1px solid var(--color-surface-border)',
-              boxShadow: '0 8px 24px -8px rgba(0,0,0,0.5)',
-            }}
-          >
-            {/* Bell only - no command-palette button. Adding one widened
-                this floating pill and shifted the bell off the corner spot
-                it's always occupied; on a phone that corner is tight and
-                the bell's position is muscle memory. Ctrl+K has no mobile
-                equivalent anyway, and the palette is still reachable from
-                the Guides page. */}
-            <TopbarActions showCommandPalette={false} />
-          </div>
-        </div>
-      )}
     {/* Sticky, not the page's own scrolling content - previously scrolled
         away with everything else, so reaching another page (or even
         Movies/Series, Watchlist, etc. on Discover) meant scrolling all the
-        way back to the top first. z-30 keeps it under the mobile
-        notification bell (z-40, fixed top-right) and the account switcher
-        (z-40, fixed bottom-left) so neither gets covered. No background on
-        this wrapper - only the inner rounded card has one (with its own
-        blur), so scrolled content stays visible through the padding gaps
-        around it instead of being hidden behind a solid block. */}
+        way back to the top first. z-30 keeps it under the account switcher
+        (z-40, fixed bottom-left) and under the bell's own dropdown (z-50)
+        so neither gets covered. No background on this wrapper - only the
+        inner rounded card has one (with its own blur), so scrolled content
+        stays visible through the padding gaps around it instead of being
+        hidden behind a solid block. */}
     <div className={isTV ? 'px-4 pt-2 pb-2 sticky top-0 z-30' : 'px-4 pt-4 md:px-6 md:pt-6 pb-4 sticky top-0 z-30'}>
       {/* Caps the bar so it reads as a floating island on wide desktop
           viewports instead of stretching edge-to-edge into empty space -
@@ -440,13 +396,11 @@ export function NebulaTopbar() {
 // page's differing actions, and whose own crowding fixes kept getting
 // undone by the fact that content was living in the wrong place to begin
 // with. flex-wrap so actions drop to their own line below the title on a
-// narrow screen rather than fighting it for space. Notifications stays here
-// on desktop (gated by the same useIsMobile() check as NebulaTopbar's fixed
-// copy, so exactly one of the two ever actually mounts - not a CSS
-// hidden/block toggle, which would mount both and double their polling),
-// but not on mobile, in favor of a fixed top-right copy in NebulaTopbar
-// above - see that component for why; desktop never had that problem so it
-// keeps its original spot.
+// narrow screen rather than fighting it for space. Notifications and the
+// command palette live here on every screen size - there is deliberately no
+// second copy anywhere else, so there's exactly one bell mounted and no way
+// for the two platforms to drift apart in what the cluster contains or
+// where it sits.
 export function NebulaPageHeading({
   title,
   subtitle,
@@ -472,7 +426,6 @@ export function NebulaPageHeading({
       from Rename/Delete/the bell, not bunched in with them. */
   leading?: ReactNode;
 }) {
-  const isMobile = useIsMobile();
   return (
     // On desktop switch from flex to a 3-column grid so the title sits in the
     // MIDDLE column (centered on the page) while actions stay right-aligned in
@@ -490,34 +443,44 @@ export function NebulaPageHeading({
         {subtitle && <p className="text-sm text-muted">{subtitle}</p>}
       </div>
       <div className="flex items-center justify-end gap-2 flex-wrap w-full md:w-auto order-2 md:order-3 md:col-start-3 md:justify-self-end">
-        {/* Desktop only - mobile gets a fixed top-right copy in NebulaTopbar
-            instead (see above for why). w-full on mobile is load-bearing:
-            flex-wrap only kicks in once this div's own width is bounded -
-            without it, a flex child is free to grow past the viewport to
-            fit all actions on one line instead of wrapping, which is
-            exactly what happened on Group/User/Addon detail pages with 4+
-            action buttons (Active toggle, Sync, Edit, Delete) - they ran
-            off the right edge requiring a horizontal scroll to reach
-            Delete. md:w-auto reverts to natural sizing in the desktop grid
-            cell, where justify-self-end still needs it hugging content
-            width.
-            justify-end (Tailwind justify-content: flex-end) is the actual
-            fix for elements not reaching the true right edge - justify-self
-            -end above only positions THIS div within its own grid cell; it
-            says nothing about how ITS OWN children pack inside it, which
-            defaulted to flex-start (hugging this div's left edge) even
-            though the div itself was correctly flush right - every button/
-            bell inside consistently sat short of the page's actual right
-            margin as a result. */}
-        {!isMobile && <TopbarActions />}
+        {/* Renders identically on mobile and desktop. Mobile previously got
+            a separate fixed top-right pill in NebulaTopbar with the command
+            palette stripped out, which meant the two platforms disagreed on
+            both what the cluster contained and where it lived. That pill
+            existed to dodge a real bug - the bell's dropdown (anchored
+            `right-0` off itself, w-80) shot off the left edge of a phone
+            screen whenever this row wrapped, because a wrapped line with a
+            single flex item packed to the line's START. `justify-end` below
+            fixes that at the root by right-aligning EVERY wrapped line, so
+            the workaround is no longer needed and the bell can live in the
+            same place on both.
+
+            w-full on mobile is load-bearing: flex-wrap only kicks in once
+            this div's own width is bounded - without it, a flex child is
+            free to grow past the viewport to fit all actions on one line
+            instead of wrapping, which is exactly what happened on Group/
+            User/Addon detail pages with 4+ action buttons (Active toggle,
+            Sync, Edit, Delete) - they ran off the right edge requiring a
+            horizontal scroll to reach Delete. md:w-auto reverts to natural
+            sizing in the desktop grid cell, where justify-self-end still
+            needs it hugging content width.
+
+            justify-end (Tailwind justify-content: flex-end) is also the
+            actual fix for elements not reaching the true right edge -
+            justify-self-end above only positions THIS div within its own
+            grid cell; it says nothing about how ITS OWN children pack
+            inside it, which defaulted to flex-start (hugging this div's
+            left edge) even though the div itself was correctly flush right
+            - every button/bell inside consistently sat short of the page's
+            actual right margin as a result. */}
+        <TopbarActions />
         {/* Zero-height, full-width flex item forces a line-break: the bell
             (above) always lands on its own line, `actions` (below) always
             starts a fresh line under it - deliberate and consistent across
             every page using this heading, not just an incidental wrap on
             pages with enough buttons to run out of room. Harmless on pages
-            with no actions (nothing follows it to wrap) and on mobile
-            (bell isn't rendered here at all, see the fixed copy above). */}
-        {!isMobile && <div className="basis-full h-0" aria-hidden />}
+            with no actions, since nothing follows it to wrap. */}
+        <div className="basis-full h-0" aria-hidden />
         {actions}
       </div>
       {stats && (
