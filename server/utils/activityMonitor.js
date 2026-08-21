@@ -144,7 +144,7 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       const { getCachedLibrary } = require('./libraryCache')
       const { makeCreateProvider } = require('../providers')
       const { encrypt } = require('./encryption')
-      const createProvider = makeCreateProvider({ prisma, encrypt })
+      const createProvider = makeCreateProvider({ prisma, encrypt, getAccountId: () => accountId })
 
       // A live-fetch failure below falls back to a stale cached library so
       // sessions/metrics processing still has *something* to run against -
