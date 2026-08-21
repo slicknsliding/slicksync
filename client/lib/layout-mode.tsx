@@ -87,6 +87,7 @@ export function useLayoutMode() {
 const NEBULA_ELIGIBLE_PATHS = [
   '/', '/activity', '/users', '/groups', '/addons',
   '/discover', '/catalogs', '/metrics', '/vault', '/invitations', '/tasks', '/settings', '/themes', '/changelog',
+  '/guides',
 ];
 
 // Dynamic detail routes (/users/[id], /groups/[id]) - prefix match since
@@ -98,7 +99,12 @@ const NEBULA_ELIGIBLE_PATHS = [
 // their existing interior content unchanged for now (same "chrome swap
 // first, content styling later" approach Activity's Tasks/Invites/Proxy
 // tabs used) - not the reset it looked like, just previously scoped out.
-const NEBULA_ELIGIBLE_PREFIXES = ['/users/', '/groups/', '/addons/', '/catalogs/'];
+// '/guides/' covers the per-topic pages. Both the Guides index and the topic
+// pages already render NebulaPageHeading - they were falling back to the
+// sidebar purely because this list wasn't updated when Guides was added, so
+// opening a guide from the command palette snapped you into the other layout
+// mid-session, which reads as the layout setting resetting itself.
+const NEBULA_ELIGIBLE_PREFIXES = ['/users/', '/groups/', '/addons/', '/catalogs/', '/guides/'];
 
 export function isNebulaEligiblePath(pathname: string): boolean {
   return NEBULA_ELIGIBLE_PATHS.includes(pathname)
