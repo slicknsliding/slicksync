@@ -51,13 +51,25 @@ async function resolveServerConfigForAccount(prisma, accountId) {
 
 // Nuvio's self-host stack publishes a discovery document so a client can be
 // pointed at one Backend URL and configure itself, rather than the operator
-// hand-copying an anon key out of `./nuvio credentials`.
-// (github.com/NuvioMedia/self-host).
+// hand-copying a key out of `./nuvio credentials`.
 //
-// Written defensively on purpose: the exact field names couldn't be verified
-// against a live self-hosted instance, so this accepts the plausible spellings
-// rather than betting on one and silently failing. If none match, the caller
-// falls back to asking for the key manually - which always works.
+// The contract is documented in the self-host repo (docs/client-configuration.md
+// in github.com/NuvioMedia/self-host):
+//
+//   {
+//     "version": 1,
+//     "service": "nuvio",
+//     "self_hosted": true,
+//     "backend_url": "https://backend.example.com",
+//     "publishable_key": "<PUBLIC_CLIENT_KEY>",
+//     "capabilities": { "email_password_auth": true, "tv_login": true }
+//   }
+//
+// backend_url/publishable_key are read first as the documented names; the
+// other spellings are kept as a cheap hedge against the shape shifting, and
+// a failed parse falls back to manual entry rather than failing silently.
+// The publishable key is public client configuration by design - the document
+// deliberately excludes service-role keys, DB passwords and dashboard creds.
 async function discoverNuvioBackend(baseUrl) {
   const root = String(baseUrl || '').trim().replace(/\/+$/, '')
   if (!root) return { ok: false, error: 'No backend URL given' }
@@ -90,13 +102,27 @@ async function discoverNuvioBackend(baseUrl) {
     return ''
   }
 
-  const anonKey = pick('anon_key', 'anonKey', 'publishable_key', 'publishableKey', 'ANON_KEY', 'supabase_anon_key')
-  const apiUrl = pick('api_url', 'apiUrl', 'supabase_url', 'supabaseUrl', 'url', 'backend_url', 'backendUrl') || root
+  // Documented names first, then the hedges.
+  const anonKey = pick('publishable_key', 'publishableKey', 'anon_key', 'anonKey', 'ANON_KEY', 'supabase_anon_key')
+  const apiUrl = pick('backend_url', 'backendUrl', 'api_url', 'apiUrl', 'supabase_url', 'supabaseUrl', 'url') || root
+
+  // Guards against pointing at some unrelated host that happens to answer
+  // that path with JSON - better a clear "that isn't a Nuvio backend" than
+  // saving a key that will fail on every sync afterwards.
+  const service = pick('service')
+  if (service && service.toLowerCase() !== 'nuvio') {
+    return { ok: false, error: `That URL answered, but identifies itself as "${service}", not a Nuvio backend` }
+  }
 
   if (!anonKey) {
-    return { ok: false, error: 'That backend answered, but its discovery document had no anon key - enter it manually', url: apiUrl }
+    return { ok: false, error: 'That backend answered, but its discovery document had no publishable key - enter it manually', url: apiUrl }
   }
-  return { ok: true, url: apiUrl.replace(/\/+$/, ''), anonKey }
+  return {
+    ok: true,
+    url: apiUrl.replace(/\/+$/, ''),
+    anonKey,
+    selfHosted: flat.self_hosted === true || flat.selfHosted === true,
+  }
 }
 
 function headers(accessToken, serverConfig) {
