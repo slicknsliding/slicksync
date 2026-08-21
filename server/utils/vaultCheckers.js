@@ -9,6 +9,51 @@ function timeoutSignal(ms) {
   return { signal: controller.signal, cancel: () => clearTimeout(id) }
 }
 
+// fetch() with a per-attempt timeout, retried only on timeout/network
+// failure - never on an HTTP response, however bad its status.
+//
+// Why this exists: several of these providers sit behind Cloudflare and
+// intermittently stall. Measured live against TorBox from the production
+// host: five consecutive requests returned in 187ms, 632ms, 210ms, 21265ms
+// and 625ms. One unlucky request in five blew straight past the 10s abort,
+// and a single slow response was enough to mark a perfectly valid
+// credential as failing and fire a Vault alert for it.
+//
+// A retry is the right fix rather than simply a longer timeout: the normal
+// case is sub-second, so waiting 30s for every check to accommodate a rare
+// stall would slow every healthy check down. Retrying only the timeout path
+// keeps the common case fast and makes the rare stall a non-event.
+//
+// Deliberately does NOT retry on a returned status. A 401 is a real answer
+// about the credential and must surface immediately; retrying it would just
+// hammer the provider and delay a genuine failure.
+async function fetchWithRetry(url, options = {}, { timeoutMs = 10000, attempts = 3, backoffMs = 750 } = {}) {
+  let lastErr
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const { signal, cancel } = timeoutSignal(timeoutMs)
+    try {
+      const res = await fetch(url, { ...options, signal })
+      cancel()
+      return res
+    } catch (err) {
+      cancel()
+      lastErr = err
+      if (attempt < attempts) {
+        // Linear backoff - these stalls look like transient upstream
+        // congestion, so a short pause before retrying is enough.
+        await new Promise((r) => setTimeout(r, backoffMs * attempt))
+      }
+    }
+  }
+  throw lastErr
+}
+
+// Shared shape for the catch block of every checker below, so a timeout
+// reads the same way everywhere.
+function describeRequestError(err) {
+  return err?.name === 'AbortError' ? 'Timed out' : (err?.message || 'Request failed')
+}
+
 // Generic HTTP check: hits a URL, optionally injecting the secret as a bearer token,
 // api-key header, or query param. Expects a status code and (optionally) a body substring.
 async function checkGenericHttp(secret, config = {}) {
@@ -33,31 +78,25 @@ async function checkGenericHttp(secret, config = {}) {
     finalUrl = `${url}${sep}${encodeURIComponent(queryParam)}=${encodeURIComponent(secret)}`
   }
 
-  const { signal, cancel } = timeoutSignal(10000)
   try {
-    const res = await fetch(finalUrl, { method, headers, signal })
-    cancel()
+    const res = await fetchWithRetry(finalUrl, { method, headers })
     const text = await res.text().catch(() => '')
     const statusOk = Array.isArray(expectStatus) ? expectStatus.includes(res.status) : res.status === expectStatus
     if (!statusOk) return { ok: false, message: `Unexpected status ${res.status}` }
     if (bodyContains && !text.includes(bodyContains)) return { ok: false, message: 'Response did not match expected content' }
     return { ok: true, message: `OK (${res.status})` }
   } catch (err) {
-    cancel()
-    return { ok: false, message: err?.name === 'AbortError' ? 'Timed out' : (err?.message || 'Request failed') }
+    return { ok: false, message: describeRequestError(err) }
   }
 }
 
 // Real-Debrid: /user also reports premium expiration, which we surface back
 // so the vault entry's expiresAt can auto-update from the source of truth.
 async function checkRealDebrid(secret) {
-  const { signal, cancel } = timeoutSignal(10000)
   try {
-    const res = await fetch('https://api.real-debrid.com/rest/1.0/user', {
-      headers: { Authorization: `Bearer ${secret}` },
-      signal
+    const res = await fetchWithRetry('https://api.real-debrid.com/rest/1.0/user', {
+      headers: { Authorization: `Bearer ${secret}` }
     })
-    cancel()
     if (!res.ok) return { ok: false, message: `Real-Debrid returned ${res.status}` }
     const data = await res.json()
     const expiresAt = data?.expiration ? new Date(data.expiration) : undefined
@@ -67,20 +106,16 @@ async function checkRealDebrid(secret) {
     }
     return { ok: true, message: `Premium active${expiresAt ? `, expires ${expiresAt.toISOString().split('T')[0]}` : ''}`, expiresAt }
   } catch (err) {
-    cancel()
-    return { ok: false, message: err?.name === 'AbortError' ? 'Timed out' : (err?.message || 'Request failed') }
+    return { ok: false, message: describeRequestError(err) }
   }
 }
 
 // TorBox: /user/me reports plan and premium_expires_at
 async function checkTorBox(secret) {
-  const { signal, cancel } = timeoutSignal(10000)
   try {
-    const res = await fetch('https://api.torbox.app/v1/api/user/me', {
-      headers: { Authorization: `Bearer ${secret}` },
-      signal
+    const res = await fetchWithRetry('https://api.torbox.app/v1/api/user/me', {
+      headers: { Authorization: `Bearer ${secret}` }
     })
-    cancel()
     if (!res.ok) return { ok: false, message: `TorBox returned ${res.status}` }
     const data = await res.json()
     const d = data?.data || data
@@ -91,8 +126,7 @@ async function checkTorBox(secret) {
     }
     return { ok: true, message: `Plan active${expiresAt ? `, expires ${expiresAt.toISOString().split('T')[0]}` : ''}`, expiresAt }
   } catch (err) {
-    cancel()
-    return { ok: false, message: err?.name === 'AbortError' ? 'Timed out' : (err?.message || 'Request failed') }
+    return { ok: false, message: describeRequestError(err) }
   }
 }
 
@@ -126,15 +160,13 @@ async function checkNewznabCaps(secret, config = {}) {
   const { url } = config
   if (!url) return { ok: false, message: 'No indexer base URL configured' }
   const base = url.replace(/\/+$/, '')
-  const { signal, cancel } = timeoutSignal(10000)
   try {
     const testUrl = `${base}/api?t=caps&apikey=${encodeURIComponent(secret)}`
     // Node's fetch sends no User-Agent at all by default, which reads as a
     // bare script to a lot of indexers' own bot-protection (Cloudflare, etc.)
     // and can produce a 403 that has nothing to do with the API key itself.
     // A normal browser UA costs nothing and rules that out as a cause.
-    const res = await fetch(testUrl, { signal, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' } })
-    cancel()
+    const res = await fetchWithRetry(testUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' } })
     if (res.status === 403) {
       return { ok: false, message: 'Indexer returned 403 - likely blocking this server\'s IP (common for private indexers/Usenet providers toward cloud/VPS hosting ranges), not necessarily the API key' }
     }
@@ -153,8 +185,7 @@ async function checkNewznabCaps(secret, config = {}) {
     }
     return { ok: true, message: 'Indexer reachable, key accepted' }
   } catch (err) {
-    cancel()
-    return { ok: false, message: err?.name === 'AbortError' ? 'Timed out' : (err?.message || 'Request failed') }
+    return { ok: false, message: describeRequestError(err) }
   }
 }
 
