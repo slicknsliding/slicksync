@@ -715,8 +715,16 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
                                     with the actual event (went offline / back
                                     online) never visible. Wrapping to two
                                     lines fits the whole thing while still
-                                    bounding how tall one row can get. */}
-                                <p className="text-sm font-medium text-default line-clamp-2 break-words">{notification.title}</p>
+                                    bounding how tall one row can get.
+                                    Three, not two: at 2 an unusually long
+                                    addon name pushed the event itself
+                                    ('went offline') onto a third line and
+                                    clipped it - measured cutting the last
+                                    two characters off a 44-character name,
+                                    which loses the one word that matters.
+                                    Short titles are unaffected; the clamp
+                                    only caps, it doesn't reserve height. */}
+                                <p className="text-sm font-medium text-default line-clamp-3 break-words">{notification.title}</p>
                                 <p className="text-xs text-muted mt-0.5 line-clamp-2 break-words">{notification.message}</p>
                                 <p className="text-xs text-subtle mt-1">{formatNotificationTime(notification.timestamp)}</p>
                               </div>
