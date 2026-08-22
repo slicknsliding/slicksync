@@ -12,6 +12,13 @@ function makeProxyRow(overrides = {}) {
     url: 'https://example.com/stream',
     startTime: new Date('2026-07-15T20:00:00Z'),
     lastSeenAt: new Date('2026-07-15T20:05:00Z'),
+    // The freeze basis for elapsedSeconds - the last poll cycle that
+    // reconfirmed this connection with AIOStreams, which is updatedAt rather
+    // than lastSeenAt (see the long comment in proxyNowPlaying.js). Omitting
+    // it made every fixture blow up on `undefined.getTime()`, because the
+    // code has required it since it started freezing elapsed time on poll
+    // confirmation instead of request cadence.
+    updatedAt: new Date('2026-07-15T20:05:00Z'),
     ...overrides,
   }
 }

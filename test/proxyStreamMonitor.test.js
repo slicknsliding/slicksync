@@ -55,14 +55,19 @@ test('resolveUserForActiveConnection: unique email local-part match when usernam
   assert.equal(u.id, 'u-solo')
 })
 
-test('resolveUserForActiveConnection: ambiguous email + no fallback list falls back to first candidate', () => {
-  // Two users share me@example.com; with no AIOSTREAMS_FALLBACK_USER_IDS set,
-  // returns the first candidate rather than throwing.
+test('resolveUserForActiveConnection: ambiguous email + no fallback list attributes to nobody', () => {
+  // Two users share me@example.com and nothing distinguishes them, so with no
+  // AIOSTREAMS_FALLBACK_USER_IDS to break the tie this returns null rather
+  // than picking one.
+  //
+  // It used to return the first candidate. That was changed deliberately -
+  // guessing meant one household member's watch history could be credited to
+  // another, and an unattributed stream is a far smaller problem than a
+  // wrongly attributed one. This assertion still encoded the old behaviour.
   const prev = process.env.AIOSTREAMS_FALLBACK_USER_IDS
   delete process.env.AIOSTREAMS_FALLBACK_USER_IDS
   try {
-    const u = resolveUserForActiveConnection(USERS, 'me')
-    assert.ok(u && (u.id === 'u-stremio' || u.id === 'u-nuvio'))
+    assert.equal(resolveUserForActiveConnection(USERS, 'me'), null)
   } finally {
     if (prev !== undefined) process.env.AIOSTREAMS_FALLBACK_USER_IDS = prev
   }
