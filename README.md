@@ -16,6 +16,10 @@ kept in sync whether a member is on **Stremio** or **Nuvio**.
 
 [**Install**](#installation) &nbsp;·&nbsp; [**Features**](#features) &nbsp;·&nbsp; [**Guides**](#new-here-start-with-the-guides) &nbsp;·&nbsp; [**Try it live**](https://slicksync.vip)
 
+<br />
+
+<img src="doc/dashboard.png" alt="SlickSync dashboard" width="90%" />
+
 </div>
 
 ---
@@ -70,6 +74,25 @@ Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot
 | **[Installation](#installation)** | Docker Compose, one env file, behind your own reverse proxy |
 
 <sub>Each section below expands with the full detail.</sub>
+
+<table>
+<tr>
+<td width="50%"><img src="doc/discover.webp" alt="Discover - browse and open straight into Stremio or Nuvio" /></td>
+<td width="50%"><img src="doc/catalogs.webp" alt="Catalogs - custom collections of movies and shows with cover art" /></td>
+</tr>
+<tr>
+<td align="center"><sub><b>Discover</b> — browse, then open straight into Stremio or Nuvio</sub></td>
+<td align="center"><sub><b>Catalogs</b> — shareable collections, with real import/export</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="doc/metrics-health.png" alt="System Health - one page showing whether everything is working" /></td>
+<td width="50%" valign="middle"><sub>Plus <b>Metrics</b> with leaderboards, streaks and a Year in Review, <b>Vault</b> for credential expiry tracking, <b>Automation</b> for rule-based actions on real events, and a <b>command palette</b> that answers free-text questions from a built-in guide — no AI key required.</sub></td>
+</tr>
+<tr>
+<td align="center"><sub><b>System Health</b> — whether everything is actually working, on one page</sub></td>
+<td></td>
+</tr>
+</table>
 
 ## Features
 
