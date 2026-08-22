@@ -86,11 +86,11 @@ Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot
 </tr>
 <tr>
 <td width="50%"><img src="doc/metrics-health.png" alt="System Health - one page showing whether everything is working" /></td>
-<td width="50%" valign="middle"><sub>Plus <b>Metrics</b> with leaderboards, streaks and a Year in Review, <b>Vault</b> for credential expiry tracking, <b>Automation</b> for rule-based actions on real events, and a <b>command palette</b> that answers free-text questions from a built-in guide — no AI key required.</sub></td>
+<td width="50%"><img src="doc/guides.webp" alt="Guides - 74 searchable topic pages covering every page and setting" /></td>
 </tr>
 <tr>
 <td align="center"><sub><b>System Health</b> — whether everything is actually working, on one page</sub></td>
-<td></td>
+<td align="center"><sub><b>Guides</b> — 74 searchable topics, also answerable from the command palette</sub></td>
 </tr>
 </table>
 
