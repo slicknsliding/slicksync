@@ -22,7 +22,7 @@ test('createManifestFingerprint (Stremio): identity is the addon UUID, not manif
   // simulating "before" and "after" a health-checker refresh - must
   // fingerprint identically, or sync status falsely flips to Unsynced.
   const fp = createManifestFingerprint(null, { urlOnly: false })
-  const uuid = 'b2341edd-01be-4317-97b0-ba7afb1e1326'
+  const uuid = '00000000-0000-4000-8000-000000000000'
   const addonBeforeRefresh = {
     transportUrl: `https://host/stremio/${uuid}/manifest.json`,
     manifest: { name: 'Old Name', description: 'v1', resources: ['stream'] },
@@ -37,7 +37,7 @@ test('createManifestFingerprint (Stremio): identity is the addon UUID, not manif
 
 test('createManifestFingerprint (Stremio): different addon UUIDs still differ', () => {
   const fp = createManifestFingerprint(null, { urlOnly: false })
-  const a = { transportUrl: 'https://host/stremio/b2341edd-01be-4317-97b0-ba7afb1e1326/manifest.json' }
+  const a = { transportUrl: 'https://host/stremio/00000000-0000-4000-8000-000000000000/manifest.json' }
   const b = { transportUrl: 'https://host/stremio/11111111-2222-3333-4444-555555555555/manifest.json' }
   assert.notEqual(fp(a), fp(b))
 })

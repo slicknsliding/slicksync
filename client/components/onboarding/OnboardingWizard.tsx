@@ -9,7 +9,7 @@ import {
   PlayCircleIcon, RectangleStackIcon, BookOpenIcon,
 } from '@heroicons/react/24/outline';
 import {
-  ONBOARDING_COMPLETED_KEY as COMPLETED_KEY,
+  isOnboardingUnfinished,
   ONBOARDING_OPEN_EVENT as REOPEN_EVENT,
   ONBOARDING_RESUME_EVENT,
   ONBOARDING_VISIBILITY_EVENT,
@@ -242,7 +242,11 @@ export function OnboardingWizard() {
   const [step, setStep] = useState(0);
 
   useEffect(() => {
-    if (localStorage.getItem(COMPLETED_KEY)) return;
+    // isOnboardingUnfinished(), not a raw localStorage read: completion is
+    // stored per account, and reading the bare key here bypassed that
+    // entirely - the tour reopened on every load for an account that had
+    // already finished it, because the unscoped key no longer exists.
+    if (!isOnboardingUnfinished()) return;
     // Deliberately do NOT auto-reopen when a tour is paused. They clicked
     // through to a page to actually look at something; popping the modal
     // back over it the moment they arrive is exactly what makes tours

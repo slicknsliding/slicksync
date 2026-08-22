@@ -1,5 +1,87 @@
 export const ONBOARDING_COMPLETED_KEY = 'slicksync-onboarding-completed';
 
+// Which account the flags below belong to. Everything here lives in
+// localStorage, which is per-BROWSER, not per-account - so on a public
+// instance one account finishing the tour silently marked it finished for
+// every account that ever signs in on that browser afterwards. A newly
+// registered account got no wizard at all, and no resume prompt either,
+// with nothing to indicate why.
+//
+// Keys are therefore suffixed with the account's uuid. Set the scope via
+// setOnboardingAccountScope() before anything reads these; until it's
+// known, reads fall back to the unsuffixed legacy key.
+let accountScope: string | null = null;
+
+// The scope is mirrored into localStorage, not just held in this module
+// variable. Module state is not reliably shared across chunk boundaries -
+// the wizard and the layout that sets the scope can end up with separate
+// copies of this module, in which case the wizard reads accountScope as
+// null and falls back to the unscoped key. That's not theoretical: it
+// reopened the tour for an account whose scoped flag was already set.
+// Reading it back from storage makes every copy agree.
+const SCOPE_KEY = 'slicksync-onboarding-scope';
+
+function currentScope(): string | null {
+  if (accountScope) return accountScope;
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = localStorage.getItem(SCOPE_KEY);
+    if (stored) accountScope = stored;
+    return stored;
+  } catch {
+    return null;
+  }
+}
+
+function scopedKey(base: string): string {
+  const s = currentScope();
+  return s ? base + '::' + s : base;
+}
+
+/**
+ * Binds onboarding state to a specific account. Call once, as early as the
+ * account uuid is known.
+ *
+ * The first call after upgrading also migrates the old unsuffixed flag onto
+ * that account, so whoever is already signed in doesn't get the tour thrown
+ * at them again just because the storage layout changed. It's a one-way
+ * move: the legacy key is deleted, so every OTHER account starts clean and
+ * actually sees the wizard. We can't know which account originally
+ * completed it, and attributing it to the account present at upgrade time
+ * is the only option that doesn't either re-prompt everyone or permanently
+ * suppress the tour for everyone.
+ */
+export function setOnboardingAccountScope(uuid: string | null | undefined) {
+  const next = uuid ? String(uuid) : null;
+  if (next === accountScope) return;
+  accountScope = next;
+  if (!next || typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(SCOPE_KEY, next);
+  } catch { /* see getPausedOnboardingStep */ }
+  try {
+    const legacy = localStorage.getItem(ONBOARDING_COMPLETED_KEY);
+    if (legacy !== null) {
+      const target = scopedKey(ONBOARDING_COMPLETED_KEY);
+      if (localStorage.getItem(target) === null) localStorage.setItem(target, legacy);
+      localStorage.removeItem(ONBOARDING_COMPLETED_KEY);
+      const legacyStep = localStorage.getItem(ONBOARDING_PAUSED_STEP_KEY);
+      if (legacyStep !== null) {
+        const stepTarget = scopedKey(ONBOARDING_PAUSED_STEP_KEY);
+        if (localStorage.getItem(stepTarget) === null) localStorage.setItem(stepTarget, legacyStep);
+        localStorage.removeItem(ONBOARDING_PAUSED_STEP_KEY);
+      }
+    }
+  } catch { /* see getPausedOnboardingStep */ }
+  // Anything already mounted read the pre-scope value; tell it to re-read.
+  window.dispatchEvent(new Event(ONBOARDING_PAUSED_CHANGED_EVENT));
+}
+
+/** True once an account uuid is known, so callers can avoid acting early. */
+export function isOnboardingScopeReady(): boolean {
+  return accountScope !== null;
+}
+
 // Set when the tour is left mid-way on purpose - the user clicked one of a
 // step's own links ("Go to Users", "Read the full guide") rather than
 // skipping or finishing. Holds the step index to come back to, so the
@@ -29,7 +111,7 @@ export const ONBOARDING_VISIBILITY_EVENT = 'slicksync:onboarding-visibility';
 export function isOnboardingUnfinished(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    return !localStorage.getItem(ONBOARDING_COMPLETED_KEY);
+    return !localStorage.getItem(scopedKey(ONBOARDING_COMPLETED_KEY));
   } catch {
     return false;
   }
@@ -42,16 +124,16 @@ export function isOnboardingUnfinished(): boolean {
 // the tour once ends up unable to see the prompt at all.
 export function restartOnboarding() {
   try {
-    localStorage.removeItem(ONBOARDING_COMPLETED_KEY);
-    localStorage.removeItem(ONBOARDING_PAUSED_STEP_KEY);
+    localStorage.removeItem(scopedKey(ONBOARDING_COMPLETED_KEY));
+    localStorage.removeItem(scopedKey(ONBOARDING_PAUSED_STEP_KEY));
   } catch { /* see getPausedOnboardingStep */ }
   window.dispatchEvent(new Event(ONBOARDING_PAUSED_CHANGED_EVENT));
 }
 
 export function completeOnboarding() {
   try {
-    localStorage.setItem(ONBOARDING_COMPLETED_KEY, '1');
-    localStorage.removeItem(ONBOARDING_PAUSED_STEP_KEY);
+    localStorage.setItem(scopedKey(ONBOARDING_COMPLETED_KEY), '1');
+    localStorage.removeItem(scopedKey(ONBOARDING_PAUSED_STEP_KEY));
   } catch { /* see getPausedOnboardingStep */ }
   window.dispatchEvent(new Event(ONBOARDING_PAUSED_CHANGED_EVENT));
 }
@@ -59,8 +141,8 @@ export function completeOnboarding() {
 export function getPausedOnboardingStep(): number | null {
   if (typeof window === 'undefined') return null;
   try {
-    if (localStorage.getItem(ONBOARDING_COMPLETED_KEY)) return null;
-    const raw = localStorage.getItem(ONBOARDING_PAUSED_STEP_KEY);
+    if (localStorage.getItem(scopedKey(ONBOARDING_COMPLETED_KEY))) return null;
+    const raw = localStorage.getItem(scopedKey(ONBOARDING_PAUSED_STEP_KEY));
     if (raw === null) return null;
     const n = Number(raw);
     return Number.isFinite(n) && n >= 0 ? n : null;
@@ -73,14 +155,14 @@ export function getPausedOnboardingStep(): number | null {
 
 export function setPausedOnboardingStep(step: number) {
   try {
-    localStorage.setItem(ONBOARDING_PAUSED_STEP_KEY, String(step));
+    localStorage.setItem(scopedKey(ONBOARDING_PAUSED_STEP_KEY), String(step));
   } catch { /* see getPausedOnboardingStep */ }
   window.dispatchEvent(new Event(ONBOARDING_PAUSED_CHANGED_EVENT));
 }
 
 export function clearPausedOnboardingStep() {
   try {
-    localStorage.removeItem(ONBOARDING_PAUSED_STEP_KEY);
+    localStorage.removeItem(scopedKey(ONBOARDING_PAUSED_STEP_KEY));
   } catch { /* see getPausedOnboardingStep */ }
   window.dispatchEvent(new Event(ONBOARDING_PAUSED_CHANGED_EVENT));
 }

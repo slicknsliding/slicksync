@@ -14,7 +14,7 @@ kept in sync whether a member is on **Stremio** or **Nuvio**.
 [![Bun](https://img.shields.io/badge/bun-1%2B-000000?logo=bun&logoColor=white&style=flat-square)](https://bun.sh)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white&style=flat-square)](https://nextjs.org)
 
-[**Install**](#-installation) &nbsp;·&nbsp; [**Features**](#-features) &nbsp;·&nbsp; [**Guides**](#-new-here-start-with-the-guides) &nbsp;·&nbsp; [**Try it live**](https://slicksync.vip)
+[**Install**](#installation) &nbsp;·&nbsp; [**Features**](#features) &nbsp;·&nbsp; [**Guides**](#new-here-start-with-the-guides) &nbsp;·&nbsp; [**Try it live**](https://slicksync.vip)
 
 </div>
 
@@ -28,7 +28,7 @@ SlickSync manages a private streaming group's accounts from one place: groups, a
 
 <sub>Built on [Syncio](https://github.com/iamneur0/syncio) · Vault inspired by [AIOManager](https://github.com/Sonicx161/AIOManager)</sub>
 
-### 📚 New here? Start with the Guides
+### New here? Start with the Guides
 
 Once SlickSync is running, **`/guides`** is the fastest way to actually learn it — 74 topic pages covering every page and setting, organized by category and searchable, each with step-by-step instructions and the gotchas that actually come up. The same content also answers free-text questions straight from the **command palette** (`Ctrl+K`/`Cmd+K`) — no AI key required.
 
@@ -44,24 +44,36 @@ echo "JWT_SECRET=$(openssl rand -base64 32)" >> .env
 docker compose -f docker-compose.private.yml up -d
 ```
 
-Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot — you only need to set `JWT_SECRET`. Full walkthrough, including the public/multi-tenant variant, in [Installation](#-installation).
+Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot — you only need to set `JWT_SECRET`. Full walkthrough, including the public/multi-tenant variant, in [Installation](#installation).
 
-## Contents
+## What it does
 
-| | | |
-|---|---|---|
-| [🔗 Multi-Provider Sync](#-multi-provider-sync) | [🎬 Activity & Now Playing](#-activity--now-playing) | [🎞️ Discover & Media Details](#-discover--media-details) |
-| [📚 Catalogs](#-catalogs) | [🗂️ Nuvio Collections](#️-nuvio-collections) | [✨ SlickTrax](#-slicktrax) |
-| [🔐 Vault](#-vault) | [🔔 Notifications](#-notifications) | [📱 PWA & Push](#-pwa--push) |
-| [🧩 Addons](#-addons) | [⚙️ Automation](#-automation) | [⌨️ Command Palette](#️-command-palette) |
-| [🎨 Themes](#-themes) | [📊 Metrics](#-metrics) | [🩺 System Health](#-system-health) |
-| [💾 Backup & Disaster Recovery](#-backup--disaster-recovery) | [🛡️ Security](#-security) | [🚀 Installation](#-installation) |
+| | |
+|---|---|
+| **[Multi-Provider Sync](#multi-provider-sync)** | Nuvio and Stremio as equals, not Stremio-plus-an-afterthought |
+| **[Activity & Now Playing](#activity--now-playing)** | What's playing right now, and what's actually been watched |
+| **[Discover & Media Details](#discover--media-details)** | Browse, get cast/ratings/trailers, and open straight into your app |
+| **[Catalogs](#catalogs)** | Shareable lists with real import/export, not just a personal watchlist |
+| **[Nuvio Collections](#nuvio-collections)** | Build a Nuvio account's home screen from SlickSync instead of hand-editing it |
+| **[SlickTrax](#slicktrax)** | A built-in Trakt alternative — no external service, no tokens |
+| **[Vault](#vault)** | Credential tracking with real expiry alerts and live provider checks |
+| **[Notifications](#notifications)** | Push and the in-app bell are primary; Discord is optional |
+| **[PWA & Push](#pwa--push)** | Installs like a native app, with per-device push |
+| **[Addons](#addons)** | Drag-and-drop management with templates and protection |
+| **[Automation](#automation)** | Rule-based actions on real events — no external workflow tool |
+| **[Command Palette](#command-palette)** | Ctrl+K to jump anywhere, or ask a question and get a real answer |
+| **[Themes](#themes)** | Ten themes, or build your own, shareable as a code |
+| **[Metrics](#metrics)** | Leaderboards, streaks, taste profiles, and a Year in Review |
+| **[System Health](#system-health)** | One page: is everything actually working right now |
+| **[Backup & Disaster Recovery](#backup--disaster-recovery)** | Scheduled backups plus a full portable recovery kit |
+| **[Security](#security)** | 2FA, OIDC/SSO, rate limiting, per-account keys |
+| **[Installation](#installation)** | Docker Compose, one env file, behind your own reverse proxy |
 
-<sub>Each section has a one-line summary, with the detail collapsed underneath — click "Show details" to expand.</sub>
+<sub>Each section below expands with the full detail.</sub>
 
-## ⚡ Features
+## Features
 
-### 🔗 Multi-Provider Sync
+### Multi-Provider Sync
 Nuvio and Stremio as equals, not Stremio-plus-an-afterthought.
 
 <details>
@@ -79,7 +91,7 @@ Nuvio and Stremio as equals, not Stremio-plus-an-afterthought.
 - **SIMKL linking** — any user can optionally connect their own SIMKL account (PIN-based, no password ever touches SlickSync). Bidirectional: pulls SIMKL's own watch history in, and pushes SlickSync's already-unified record (every provider, every source) back out — the same value the removed Trakt integration had, without Trakt's one-connected-app free-tier limit that got it pulled.
 </details>
 
-### 🎬 Activity & Now Playing
+### Activity & Now Playing
 What's playing right now, and what's actually been watched.
 
 <details>
@@ -95,7 +107,7 @@ What's playing right now, and what's actually been watched.
 - Cross-account library-sync dedup so a shared-login watch never double-counts.
 </details>
 
-### 🎞️ Discover & Media Details
+### Discover & Media Details
 Browse, get cast/ratings/trailers, and open straight into your app.
 
 <details>
@@ -115,7 +127,7 @@ Browse, get cast/ratings/trailers, and open straight into your app.
 - Rating badges on every poster card (IMDb/RT/Metacritic) are off by default — opt in from Settings if you want scores visible before opening a title.
 </details>
 
-### 📚 Catalogs
+### Catalogs
 Shareable lists with real import/export, not just a personal watchlist.
 
 <details>
@@ -136,7 +148,7 @@ Named collections of titles, separate from the Watchlist — build a "Halloween 
 - Sort by title, year, or rating; each entry opens the same rich detail popup as everywhere else.
 </details>
 
-### 🗂️ Nuvio Collections
+### Nuvio Collections
 Build a Nuvio account's home screen from SlickSync instead of hand-editing it.
 
 <details>
@@ -155,7 +167,7 @@ Organize a Nuvio account's own home-screen collections — the folders and catal
 - **Copy a whole collection between profiles** on the same account.
 </details>
 
-### ✨ SlickTrax
+### SlickTrax
 A built-in Trakt alternative — no external service, no tokens.
 
 <details>
@@ -172,7 +184,7 @@ A built-in Trakt alternative — no external service, no tokens.
 - **Watch-history import/export** — import a Trakt/Letterboxd/IMDb CSV export into a user's history, or export SlickTrax history as a Letterboxd-compatible CSV.
 </details>
 
-### 🔐 Vault
+### Vault
 Credential tracking with real expiry alerts and live provider checks.
 
 <details>
@@ -190,7 +202,7 @@ Credential tracking with real expiry alerts and live provider checks.
 - **Renewal calendar & spend forecast** — a 90-day forward projection of every cost-tracked entry's own billing cycle, collapsed by default.
 </details>
 
-### 🔔 Notifications
+### Notifications
 Push and the in-app bell are primary; Discord is optional.
 
 <details>
@@ -208,7 +220,7 @@ Push and the in-app bell are primary; Discord is optional.
 - **Digest mode** — batch everything above into one daily/weekly push+bell summary instead of a ping per event.
 </details>
 
-### 📱 PWA & Push
+### PWA & Push
 Installs like a native app, with per-device push.
 
 <details>
@@ -219,7 +231,7 @@ Installs like a native app, with per-device push.
 - Manage subscribed devices (rename, revoke) from Settings; a revoked device stops getting pushed to immediately, no re-install needed.
 </details>
 
-### 🧩 Addons
+### Addons
 Drag-and-drop management with templates and protection.
 
 <details>
@@ -228,7 +240,7 @@ Drag-and-drop management with templates and protection.
 Drag-and-drop reordering, drag-to-protect or drag-to-label with color-coded custom tags, order-insensitive sync comparison, provider-agnostic live addon counts, and a template library (**Addon Snapshots**) to save/deploy a named addon set to any user.
 </details>
 
-### ⚙️ Automation
+### Automation
 Rule-based actions on real events — no external workflow tool.
 
 <details>
@@ -237,7 +249,7 @@ Rule-based actions on real events — no external workflow tool.
 Rule-based actions that fire on real events, no external workflow tool needed — trigger on a new user being created or a daily schedule, and call an outgoing **webhook** as the action. Runs on the same engine that already drives notifications and health checks.
 </details>
 
-### ⌨️ Command Palette
+### Command Palette
 Ctrl+K to jump anywhere, or ask a question and get a real answer.
 
 <details>
@@ -246,7 +258,7 @@ Ctrl+K to jump anywhere, or ask a question and get a real answer.
 **Ctrl+K** / **Cmd+K** from anywhere — jump straight to any page, user, addon, or catalog by typing a few letters, or ask a free-text question and get an answer from a built-in help guide covering every feature on this page. No AI key required; an **AI Services** key (Settings) only powers the optional extras noted above (For You explanations, addon-incident summaries) and is never needed for the palette itself.
 </details>
 
-### 🎨 Themes
+### Themes
 Ten themes, or build your own, shareable as a code.
 
 <details>
@@ -255,7 +267,7 @@ Ten themes, or build your own, shareable as a code.
 Ten full themes, switchable live, synced across devices. Build your own on top of any base — accent colors, success/error overrides, corner-roundness, text scale, and a choice of 11 display fonts — with a live preview mockup. Two layout modes: the original sidebar, or **Nebula** (top nav + glass panels, default). **Share a theme** as a compact copy-paste code — no server round-trip, since themes are already client-side.
 </details>
 
-### 📊 Metrics
+### Metrics
 Leaderboards, streaks, taste profiles, and a Year in Review.
 
 <details>
@@ -269,7 +281,7 @@ User leaderboard, watch streaks, watch-time trend, Top Viewers/Recent Activity/R
 - **Public stats page** — an opt-in, unauthenticated share link (`/u/[slug]`) for a single user's own total watch time, top titles, and streak, off by default per user.
 </details>
 
-### 🩺 System Health
+### System Health
 One page: is everything actually working right now.
 
 <details>
@@ -283,7 +295,7 @@ One page answering "is everything actually working right now" — Sync drift, ad
 - **Version card** — what's actually running, and whether a newer stable release has been published, without needing to check GitHub or `docker exec` in to find out.
 </details>
 
-### 💾 Backup & Disaster Recovery
+### Backup & Disaster Recovery
 Scheduled backups plus a full portable recovery kit.
 
 <details>
@@ -292,7 +304,7 @@ Scheduled backups plus a full portable recovery kit.
 Scheduled + on-demand config backups (validated for real restorability, not just valid JSON) and a separate **Disaster Recovery Kit** — the same export plus every Vault secret, re-encrypted under a passphrase you choose, fully portable to a brand-new instance.
 </details>
 
-### 🛡️ Security
+### Security
 2FA, OIDC/SSO, rate limiting, per-account keys.
 
 <details>
@@ -310,7 +322,7 @@ Rate limiting actually enabled (including a separate per-account limit on public
 
 ---
 
-## 🚀 Installation
+## Installation
 
 **Prerequisites**: Docker + Docker Compose, and a reverse proxy in front for HTTPS (Traefik/Caddy/nginx — SlickSync doesn't terminate TLS itself).
 
