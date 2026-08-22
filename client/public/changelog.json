@@ -1,6 +1,6 @@
 [
   {
-    "version": "1.74.6",
+    "version": "1.74.7",
     "date": "2026-08-21",
     "title": "1.74 — Self-hosted Nuvio backends, and a much faster app on mobile",
     "features": [
@@ -8,6 +8,7 @@
       "Two new guides on self-hosted Nuvio: how to point SlickSync at your own backend, and what self-hosting does and does not change. 74 guides total."
     ],
     "bugFixes": [
+      "Notification titles wrap to three lines instead of two. A long addon name could still push the event itself onto a third line and clip it, so an alert read \"went offli\" rather than \"went offline\" - losing the one word that matters. Shorter titles look the same as before.",
       "The welcome tour now remembers whether it has been completed per account instead of per browser. Finishing it on one account previously marked it finished for every account signed in on that browser afterwards, so a newly created account got no tour at all and no prompt explaining why. Accounts that already finished it keep that state.",
       "Deleting an account now ends its session straight away. A deleted account could keep browsing as though nothing had happened until its login eventually expired on its own - and its own Settings page would then report \"account not found\" if it tried to delete itself.",
       "Guides now open in whichever layout you have chosen. Opening a guide - from the command palette, a tour link, or /guides directly - switched you into the sidebar layout even with Top Navi selected, which looked like the layout setting resetting itself.",
