@@ -12,8 +12,30 @@ export const ONBOARDING_COMPLETED_KEY = 'slicksync-onboarding-completed';
 // known, reads fall back to the unsuffixed legacy key.
 let accountScope: string | null = null;
 
+// The scope is mirrored into localStorage, not just held in this module
+// variable. Module state is not reliably shared across chunk boundaries -
+// the wizard and the layout that sets the scope can end up with separate
+// copies of this module, in which case the wizard reads accountScope as
+// null and falls back to the unscoped key. That's not theoretical: it
+// reopened the tour for an account whose scoped flag was already set.
+// Reading it back from storage makes every copy agree.
+const SCOPE_KEY = 'slicksync-onboarding-scope';
+
+function currentScope(): string | null {
+  if (accountScope) return accountScope;
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = localStorage.getItem(SCOPE_KEY);
+    if (stored) accountScope = stored;
+    return stored;
+  } catch {
+    return null;
+  }
+}
+
 function scopedKey(base: string): string {
-  return accountScope ? base + '::' + accountScope : base;
+  const s = currentScope();
+  return s ? base + '::' + s : base;
 }
 
 /**
@@ -34,6 +56,9 @@ export function setOnboardingAccountScope(uuid: string | null | undefined) {
   if (next === accountScope) return;
   accountScope = next;
   if (!next || typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(SCOPE_KEY, next);
+  } catch { /* see getPausedOnboardingStep */ }
   try {
     const legacy = localStorage.getItem(ONBOARDING_COMPLETED_KEY);
     if (legacy !== null) {
