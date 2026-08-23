@@ -17,6 +17,10 @@ import type {
   AutomationRegistry, AutomationRule, AutomationRun, AutomationCondition, AutomationActionConfig,
 } from '@/lib/api';
 
+// Index matches what the server stores in triggerConfig.days and what JS
+// getDay() returns (0 = Sunday) - see automation/scheduler.js's WEEKDAYS.
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 // A rule builder for the automation engine (server/utils/automation/) - every
 // trigger/action/operator here is read live from GET /api/automation/registry
 // rather than hardcoded, so a new one shows up without touching this file.
@@ -321,20 +325,67 @@ function RuleEditorModal({
             configuration, so it gets its own small form here rather than
             living in ConditionBuilder below. */}
         {trigger && trigger.triggerConfigFields && trigger.triggerConfigFields.length > 0 && (
-          <div className="flex gap-3">
-            {trigger.triggerConfigFields.map((field) => (
-              <div key={field.name} className="flex-1">
-                <label className="block text-xs font-medium mb-1.5 text-muted">{field.label}</label>
-                <input
-                  type="number"
-                  value={typeof triggerConfig[field.name] === 'number' ? (triggerConfig[field.name] as number) : ''}
-                  onChange={(e) => setTriggerConfig({ ...triggerConfig, [field.name]: e.target.value === '' ? undefined : Number(e.target.value) })}
-                  placeholder={field.label}
-                  className="w-full px-4 py-2.5 rounded-xl focus:outline-none"
-                  style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
-                />
-              </div>
-            ))}
+          <div className="space-y-3">
+            <div className="flex gap-3">
+              {trigger.triggerConfigFields.filter((f) => f.type !== 'weekdays').map((field) => (
+                <div key={field.name} className="flex-1">
+                  <label className="block text-xs font-medium mb-1.5 text-muted">{field.label}</label>
+                  <input
+                    type="number"
+                    value={typeof triggerConfig[field.name] === 'number' ? (triggerConfig[field.name] as number) : ''}
+                    onChange={(e) => setTriggerConfig({ ...triggerConfig, [field.name]: e.target.value === '' ? undefined : Number(e.target.value) })}
+                    placeholder={field.label}
+                    className="w-full px-4 py-2.5 rounded-xl focus:outline-none"
+                    style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                  />
+                </div>
+              ))}
+            </div>
+            {/* Day picker. Nothing selected = every day, which is both the
+                sensible default and what rules saved before this existed
+                have stored, so an untouched rule keeps its old behaviour. */}
+            {trigger.triggerConfigFields.filter((f) => f.type === 'weekdays').map((field) => {
+              const selected: number[] = Array.isArray(triggerConfig[field.name])
+                ? (triggerConfig[field.name] as number[])
+                : [];
+              const toggle = (day: number) => {
+                const next = selected.includes(day)
+                  ? selected.filter((d) => d !== day)
+                  : [...selected, day].sort((a, b) => a - b);
+                setTriggerConfig({ ...triggerConfig, [field.name]: next });
+              };
+              return (
+                <div key={field.name}>
+                  <label className="block text-xs font-medium mb-1.5 text-muted">{field.label}</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {WEEKDAY_LABELS.map((label, day) => {
+                      const on = selected.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => toggle(day)}
+                          aria-pressed={on}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                          style={{
+                            background: on ? 'var(--color-primary)' : 'var(--color-surface-hover)',
+                            color: on ? 'var(--color-bg)' : 'var(--color-text-muted)',
+                            border: '1px solid ' + (on ? 'var(--color-primary)' : 'var(--color-surface-border)'),
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-subtle mt-1.5">
+                    {selected.length === 0
+                      ? 'Runs every day.'
+                      : 'Runs on ' + selected.map((d) => WEEKDAY_LABELS[d]).join(', ') + ' only.'}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -550,6 +601,28 @@ function ActionConfigField({
         >
           <option value="">{loadingOptions ? 'Loading...' : `Select ${field.label.toLowerCase()}...`}</option>
           {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+        {field.hint && <p className="text-xs text-subtle mt-1">{field.hint}</p>}
+      </div>
+    );
+  }
+
+  // Fixed set of choices defined by the action itself (e.g. the sync action's
+  // "who to sync"), as opposed to the addon/group/user pickers above which
+  // load their options from the account's own data.
+  if (field.type === 'select' && Array.isArray(field.options)) {
+    return (
+      <div>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none"
+          style={inputStyle}
+        >
+          <option value="">Select...</option>
+          {field.options.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
         </select>
         {field.hint && <p className="text-xs text-subtle mt-1">{field.hint}</p>}
       </div>

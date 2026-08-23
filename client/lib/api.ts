@@ -2840,8 +2840,12 @@ export interface CustomList {
 export interface AutomationField {
   name: string;
   label: string;
-  type: 'string' | 'number' | 'boolean';
+  // 'weekdays' only ever appears in triggerConfigFields, never in a trigger's
+  // payload `fields` - it is the day picker on a scheduled trigger, stored as
+  // an array of 0-6 (0 = Sunday).
+  type: 'string' | 'number' | 'boolean' | 'weekdays';
   required?: boolean;
+  hint?: string;
 }
 export interface AutomationTriggerDef {
   type: string;
@@ -2861,9 +2865,12 @@ export interface AutomationOperatorDef {
 export interface AutomationConfigField {
   name: string;
   label: string;
-  type: 'string' | 'text' | 'addon' | 'group' | 'user';
+  // 'select' carries its own fixed `options`; addon/group/user load their
+  // choices from the account's data instead.
+  type: 'string' | 'text' | 'addon' | 'group' | 'user' | 'select';
   required?: boolean;
   hint?: string;
+  options?: Array<{ value: string; label: string }>;
 }
 export interface AutomationActionDef {
   type: string;

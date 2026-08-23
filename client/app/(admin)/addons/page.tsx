@@ -83,7 +83,6 @@ interface AddonDisplay {
   customTag: string | null;
   groupCount: number;
   userCount?: number;
-  lastReload: string;
   isActive?: boolean;
   isOnline?: boolean;
   lastHealthCheck?: string;
@@ -283,7 +282,6 @@ export default function AddonsPage() {
         customTag: anyAddon.customTag || null,
         groupCount,
         userCount: anyAddon.users || 0, // Get from API response
-        lastReload: 'Unknown', // TODO: Track reload time
         isActive: anyAddon.isActive !== false, // Default to true if not specified
         isOnline: addon.isOnline,
         lastHealthCheck: addon.lastHealthCheck,
