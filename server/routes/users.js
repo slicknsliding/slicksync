@@ -3096,9 +3096,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       return res.json({
         message: 'User synced successfully',
-        addonsCount: result.totalAddons ?? result.addonsCount ?? 0,
-        ...(result.reloadedCount !== undefined ? { reloadedCount: result.reloadedCount } : {}),
-        ...(result.totalAddons !== undefined ? { totalAddons: result.totalAddons } : {})
+        // syncUserAddons resolves to syncCredentialsAddons' shape, which
+        // reports the addon count as `total`. This used to read `totalAddons`
+        // and `addonsCount` - neither of which that result has ever carried -
+        // so the count silently fell through to 0 on every successful sync.
+        addonsCount: result.total ?? 0,
+        totalAddons: result.total ?? 0,
+        ...(result.alreadySynced ? { alreadySynced: true } : {}),
+        ...(result.reloadedCount !== undefined ? { reloadedCount: result.reloadedCount } : {})
       })
     } catch (error) {
       console.error('Error in sync endpoint:', error)
@@ -3164,9 +3169,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
             syncedCount++
             debug.log(`✅ Successfully synced user: ${user.username || user.email}`)
 
-            // Collect reload progress if available
-            if (syncResult.reloadedCount !== undefined && syncResult.totalAddons !== undefined) {
-              totalAddons += syncResult.totalAddons
+            // Same field-name mismatch as the single-user route above: this
+            // guard required two properties the sync result has never had, so
+            // totalAddons stayed 0 and the "N total addons processed" line -
+            // which is gated on `totalAddons > 0` - never once appeared in the
+            // Sync All summary.
+            if (typeof syncResult.total === 'number') {
+              totalAddons += syncResult.total
             }
           } else {
             errors.push(`${user.username || user.email}: ${syncResult.error}`)
