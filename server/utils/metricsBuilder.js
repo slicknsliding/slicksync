@@ -1140,63 +1140,81 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     // shows separately anyway (EpisodeWatchHistory is keyed by videoId); only
     // rewatching the very same episode collapses, which is far rarer than the
     // movie case this fixes.
-    let extraMovieDayEntries = []
+    // Expand a title into one entry per DAY it was actually watched.
+    //
+    // The History tables cannot express this: MovieWatchHistory is unique per
+    // (account, user, item) and EpisodeWatchHistory per (account, user,
+    // videoId), so a rewatch overwrites watchedAt rather than adding a row -
+    // which is why a rewatched title appeared to MOVE from one day to another
+    // instead of showing on both.
+    //
+    // WatchActivity is the per-day record and is append-only, so the days the
+    // History tables cannot hold are still on disk.
+    //
+    // Movies reconstruct all the way back. Series only from the point
+    // WatchActivity started recording videoId: before that a series row named
+    // only the SHOW, so an older day cannot say which episode it was, and
+    // guessing would put a confidently wrong episode on a card. Those older
+    // rows simply do not match any entry below and are skipped.
+    let extraDayEntries = []
     try {
-      const movieActivityRaw = await prisma.watchActivity.findMany({
-        where: { accountId: accountIdValue, itemType: 'movie', date: { gte: startDate } },
-        select: { userId: true, itemId: true, date: true, watchTimeSeconds: true },
+      const activityRaw = await prisma.watchActivity.findMany({
+        where: { accountId: accountIdValue, date: { gte: startDate } },
+        select: { userId: true, itemId: true, videoId: true, date: true, watchTimeSeconds: true },
       })
 
-      // Same shared-email dedupe the History path above already applies, and
-      // for the same reason: one person connected through two providers has a
-      // user row per provider, and library sync replicates the same viewing to
-      // both. Reading WatchActivity directly bypassed this and showed a single
-      // viewing twice - confirmed on a real instance, where one film on one
-      // evening produced 16m under a Nuvio identity and 79m under the Stremio
-      // identity of the SAME person (both rows sharing one email address).
+      // Same shared-email dedupe the History path above applies, and for the
+      // same reason: one person connected through two providers has a user row
+      // per provider, and library sync replicates the same viewing to both.
+      // Reading WatchActivity directly bypassed this and showed one viewing
+      // twice - confirmed on a real instance, where a single evening produced
+      // 16m under a Nuvio identity and 79m under the Stremio identity of the
+      // same person, both sharing one email address.
       //
-      // Called with defaults, exactly as the aggregate path at the top of this
-      // file does: the two-argument form is already tuned for WatchActivity's
-      // own itemId/date/watchTimeSeconds shape.
-      const movieActivity = dedupWatchActivityBySharedEmail(movieActivityRaw, sharedEmailUserIds)
+      // itemKey is passed explicitly rather than using the default (itemId):
+      // for a series itemId is the SHOW, so two episodes watched on the same
+      // day would otherwise be collapsed into each other.
+      const activity = dedupWatchActivityBySharedEmail(activityRaw, sharedEmailUserIds, {
+        itemKey: (r) => `${r.itemId}::${r.videoId || ''}`,
+      })
 
-      // Sum per (user, item, day).
+      // Sum per (user, item, episode, day).
       //
       // WatchActivity.date is NOT an instant - metricsProcessor writes it as
-      // `new Date(getAccountDateString(now, tz))`, i.e. an account-local
-      // calendar date parked at UTC midnight. Reading it back through
+      // `new Date(getAccountDateString(now, tz))`, an account-local calendar
+      // date parked at UTC midnight. Reading it back through
       // getAccountDateString would convert an already-converted value and
-      // shift every day one earlier for any timezone behind UTC (verified:
-      // a row stored for 2026-08-22 came back as 2026-08-21 under
-      // America/Los_Angeles). Slicing the ISO date recovers exactly the
-      // string that was written.
+      // shift every day one earlier for any timezone behind UTC (verified: a
+      // row stored for 2026-08-22 came back as 2026-08-21 under
+      // America/Los_Angeles). Slicing the ISO date recovers what was written.
       //
       // This is the deliberate exception to the "bucket days via dateUtils,
       // never toISOString" rule - that rule is about bucketing real instants
-      // like watchedAt, which is precisely what ownDay below still does.
+      // like watchedAt, which is exactly what ownDay below still does.
+      const keyOf = (userId, itemId, videoId, day) =>
+        `${userId}\u0000${itemId}\u0000${videoId || ''}\u0000${day}`
       const secondsByKey = new Map()
-      for (const row of movieActivity) {
-        const dayKey = new Date(row.date).toISOString().slice(0, 10)
-        const key = row.userId + '\u0000' + row.itemId + '\u0000' + dayKey
-        secondsByKey.set(key, (secondsByKey.get(key) || 0) + (row.watchTimeSeconds || 0))
+      for (const row of activity) {
+        const k = keyOf(row.userId, row.itemId, row.videoId, new Date(row.date).toISOString().slice(0, 10))
+        secondsByKey.set(k, (secondsByKey.get(k) || 0) + (row.watchTimeSeconds || 0))
       }
 
-      for (const entry of movieEntries) {
+      for (const entry of [...movieEntries, ...episodeEntries]) {
         const ownDay = getAccountDateString(new Date(entry.watchedAtTimestamp), accountTimeZone)
-        const prefix = entry.user.id + '\u0000' + entry.item.id + '\u0000'
+        const prefix = `${entry.user.id}\u0000${entry.item.id}\u0000${entry.videoId || ''}\u0000`
 
         // Upgrade the History row's OWN day to the per-day total when that is
-        // larger. MovieWatchHistory.durationSeconds is backfilled from a
-        // matching proxy WatchSession, which may only have observed part of
-        // the viewing - a confirmed real case showed 39m on the card for a
-        // film whose seven WatchActivity deltas that day summed to 101m, with
-        // the snapshot's own overallTimeWatched agreeing at 102m. The watch
-        // time had been recorded correctly all along; the figure being
-        // DISPLAYED was the partial one.
+        // larger. Its durationSeconds is backfilled from a matching proxy
+        // WatchSession, which may only have observed part of the viewing - a
+        // confirmed real case showed 39m on the card for a film whose seven
+        // deltas that day summed to 101m, with the snapshot's own
+        // overallTimeWatched agreeing at 102m. The watch time had been
+        // recorded correctly all along; the figure DISPLAYED was the partial
+        // one.
         //
         // max(), never sum(): both numbers describe the SAME viewing, so
-        // adding them would double-count. Same rule the cross-pipeline
-        // session merge further down already follows.
+        // adding them would double-count. Same rule the cross-pipeline session
+        // merge further down already follows.
         const ownDaySeconds = secondsByKey.get(prefix + ownDay) || 0
         if (ownDaySeconds > (entry.durationSeconds || 0)) {
           entry.durationSeconds = ownDaySeconds
@@ -1210,18 +1228,18 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
           if (day === ownDay) continue
           if (!(seconds > 0)) continue
 
-          extraMovieDayEntries.push({
+          extraDayEntries.push({
             ...entry,
-            // Local midnight of that day. WatchActivity only stores the day,
+            // Local midnight of that day. WatchActivity stores the day only,
             // never a time, so dateOnly tells the UI to render a date and NOT
             // invent a "12:00 AM" that would read as a real viewing time.
             watchedAt: new Date(day + 'T00:00:00').toISOString(),
             watchedAtTimestamp: new Date(day + 'T00:00:00').getTime(),
             dateOnly: true,
             durationSeconds: seconds,
-            // Only the surviving History row knows how the film ended and how
-            // many rewatches there have been; asserting either for a
-            // historical day would be inventing detail we do not have.
+            // Only the surviving History row knows how it ended and how many
+            // rewatches there have been; asserting either for a historical day
+            // would be inventing detail we do not have.
             completed: null,
             rewatchCount: 0,
             debridService: undefined,
@@ -1231,11 +1249,11 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     } catch (error) {
       // A failure here must not cost the whole activity feed - fall back to
       // the previous one-card-per-title behaviour rather than returning none.
-      console.warn(`[MetricsBuilder] Could not expand movie watch days:`, error.message)
-      extraMovieDayEntries = []
+      console.warn(`[MetricsBuilder] Could not expand watch days:`, error.message)
+      extraDayEntries = []
     }
 
-    recentActivity = [...episodeEntries, ...movieEntries, ...extraMovieDayEntries]
+    recentActivity = [...episodeEntries, ...movieEntries, ...extraDayEntries]
       .sort((a, b) => b.watchedAtTimestamp - a.watchedAtTimestamp)
   } catch (error) {
     console.warn(`[MetricsBuilder] Error fetching recent activity:`, error.message)

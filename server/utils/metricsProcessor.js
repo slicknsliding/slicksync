@@ -860,7 +860,12 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
             itemId,
             date: new Date(todayDate),
             watchTimeSeconds: activityDeltaSeconds,
-            itemType: item.type
+            itemType: item.type,
+            // Which episode this delta belongs to. The delta was already
+            // computed against a baseline scoped to this same videoId (see
+            // maxSeenBig above), so recording it keeps the row as specific as
+            // the number already was. null for movies.
+            videoId: current.videoId || null
           }
         }))
       }
