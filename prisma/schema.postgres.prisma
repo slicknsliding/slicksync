@@ -401,6 +401,13 @@ model WatchActivity {
   date             DateTime @db.Date // Date of watch activity
   watchTimeSeconds Int // Delta: watch time in seconds (only positive changes)
   itemType         String // "movie" or "series"
+  // For a series, which episode this delta belongs to (e.g. "tt123456:1:5").
+  // null for movies, and null for every row written before this column
+  // existed - which is why series history prior to it cannot be broken out
+  // per episode retroactively. WatchSnapshot carries a videoId too, but it is
+  // unique per (item, DAY), so it only ever knows the LAST episode seen that
+  // day and cannot describe a day when several were watched.
+  videoId          String?
   createdAt        DateTime @default(now())
 
   @@index([accountId, userId, date, itemType])

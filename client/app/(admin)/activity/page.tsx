@@ -136,7 +136,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
       // and would only show as a blank duplicate of the native card.
       if ((session.durationSeconds || 0) <= 0) return;
 
-      seenUserItemKeys.add(`${session.user.id}:${session.item.id}:${dayKeyOf(new Date(session.startTime))}`);
+      seenUserItemKeys.add(`${session.user.id}:${session.item.id}:${session.videoId || ''}:${dayKeyOf(new Date(session.startTime))}`);
       activities.push({
         id: session.id,
         userId: session.user.id,
@@ -171,11 +171,14 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
   // undefined (see the render logic below).
   if (metrics.recentActivity && metrics.recentActivity.length > 0) {
     metrics.recentActivity.forEach((entry) => {
-      const key = `${entry.user.id}:${entry.item.id}:${dayKeyOf(new Date(entry.watchedAt))}`;
+      // videoId is part of the key, not just item.id: for a series item.id is
+      // the SHOW, so two episodes watched the same day would otherwise collide
+      // and the second would be silently dropped.
+      const key = `${entry.user.id}:${entry.item.id}:${entry.videoId || ''}:${dayKeyOf(new Date(entry.watchedAt))}`;
       if (seenUserItemKeys.has(key)) return;
       // Recorded, not just tested: the feed can now legitimately carry several
-      // entries for the same film on DIFFERENT days, so without adding each key
-      // the same day could still slip through twice.
+      // entries for the same title on DIFFERENT days, so without adding each
+      // key the same day could still slip through twice.
       seenUserItemKeys.add(key);
 
       activities.push({
