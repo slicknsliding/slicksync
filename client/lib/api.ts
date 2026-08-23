@@ -2020,6 +2020,27 @@ class ApiClient {
     );
   }
   // Import a TMDb or MDBList list (auto-detected from the URL) into a new list.
+  // --- Catalog federation -------------------------------------------------
+  // Publishing is per-catalog and revocable. The returned `path` is deliberately
+  // origin-less: the server can't reliably know its own externally reachable
+  // hostname behind a reverse proxy, so the caller joins it onto the origin it
+  // is being viewed from.
+  async getCatalogShareLink(id: string) {
+    return this.fetch<{ published: boolean; federationToken?: string; path?: string }>(`/lists/${id}/federation`);
+  }
+  // Called again on an already-published catalog, this ROTATES the token and
+  // immediately invalidates the previous URL.
+  async publishCatalog(id: string) {
+    return this.fetch<{ federationToken: string; rotated: boolean; path: string }>(`/lists/${id}/federation`, {
+      method: 'POST',
+    });
+  }
+  // Stops future pulls. Anyone already subscribed keeps whatever they last
+  // pulled - this cannot reach into another instance and delete their copy.
+  async unpublishCatalog(id: string) {
+    return this.fetch<{ ok: true }>(`/lists/${id}/federation`, { method: 'DELETE' });
+  }
+
   async importList(url: string, name?: string) {
     return this.fetch<CustomList & { truncated: boolean; totalAvailable: number }>('/lists/import', {
       method: 'POST',
@@ -2814,6 +2835,11 @@ export interface CustomList {
   // stored - a shared catalog you don't own comes back with isOwner: false
   // and the client must hide every mutating affordance for it.
   shared: boolean;
+  // Published to OTHER SlickSync instances to subscribe to. A different
+  // audience from `shared` above (which is other accounts on THIS instance),
+  // hence a separate opt-in. Boolean only - the share URL's token is never
+  // in this payload; read it with getCatalogShareLink.
+  federationPublished: boolean;
   // Content-rating ALLOWLIST - OMDb "Rated" values to KEEP, e.g. a "Kids"
   // catalog set to ["G","PG"]. Empty = no policy (nothing touched). Only
   // changes via applyContentRating, which also performs the removal - see

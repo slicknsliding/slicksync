@@ -25,7 +25,7 @@ import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import {
   RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon, SparklesIcon, PhotoIcon,
   CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, ArrowPathIcon, ShareIcon, ShieldExclamationIcon,
-  EllipsisVerticalIcon,
+  EllipsisVerticalIcon, GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
@@ -456,6 +456,93 @@ export default function ListDetailPage() {
     }
   };
 
+  // --- Federation: publish this catalog to OTHER instances -------------------
+  //
+  // Deliberately separate from the `shared` toggle above. That one makes a
+  // catalog visible to other accounts on THIS instance; this hands a URL to a
+  // different household entirely. Conflating them would mean anyone who had
+  // shared internally was suddenly readable from the internet.
+  const [showShareLink, setShowShareLink] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
+
+  // The server returns an origin-less path: behind a reverse proxy it cannot
+  // reliably know the hostname it is reached by. Joining it onto the origin
+  // being viewed gives the right answer in the common case, and the field is
+  // selectable so it can be corrected if the instance answers on another name.
+  const toShareUrl = (path: string) =>
+    typeof window === 'undefined' ? path : `${window.location.origin}${path}`;
+
+  const openShareLink = async () => {
+    if (!list) return;
+    setShowShareLink(true);
+    setShareBusy(true);
+    try {
+      // Read first, mint only if not already published: re-opening this dialog
+      // must never rotate a link the owner has already handed out.
+      const existing = await api.getCatalogShareLink(list.id);
+      if (existing.published && existing.path) {
+        setShareLink(toShareUrl(existing.path));
+      } else {
+        const created = await api.publishCatalog(list.id);
+        setShareLink(toShareUrl(created.path));
+        // Refetch rather than patching the local object: `load()` is the one
+        // path that defines what this page believes, so the menu label can
+        // never disagree with the server about whether this is published.
+        load();
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to create the share link');
+      setShowShareLink(false);
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
+  const rotateShareLink = async () => {
+    if (!list || shareBusy) return;
+    setShareBusy(true);
+    try {
+      const created = await api.publishCatalog(list.id);
+      setShareLink(toShareUrl(created.path));
+      toast.success('New link issued - the previous one stopped working');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to issue a new link');
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
+  const revokeShareLink = async () => {
+    if (!list || shareBusy) return;
+    setShareBusy(true);
+    try {
+      await api.unpublishCatalog(list.id);
+      load();
+      setShareLink(null);
+      setConfirmRevoke(false);
+      setShowShareLink(false);
+      toast.success('Unpublished - no new pulls. Anyone already subscribed keeps what they have.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to unpublish');
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
+  const copyShareLink = async () => {
+    if (!shareLink) return;
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      toast.success('Link copied');
+    } catch {
+      // Clipboard is blocked on insecure origins and in some embedded
+      // browsers - the field is selectable, so say so rather than failing mute.
+      toast.error('Could not copy automatically - select the link and copy it');
+    }
+  };
+
 
   // Content-rating ALLOWLIST (server/utils/contentRating.js) - checking a
   // rating means KEEP it; applying removes every item whose rating isn't
@@ -749,6 +836,20 @@ export default function ListDetailPage() {
                       title={list.shared ? 'Visible (read-only) to other accounts on this instance - click to stop sharing' : 'Make this catalog visible (read-only) to other accounts on this instance'}
                     >
                       {list.shared ? 'Shared (click to unshare)' : 'Share'}
+                    </MoreMenuItem>
+                    {/* Publishing to other INSTANCES, as opposed to the item
+                        above which shares within this one. Two different
+                        audiences, so two separate controls. */}
+                    <MoreMenuItem
+                      icon={<GlobeAltIcon className="w-4 h-4" />}
+                      tint="primary"
+                      active={list.federationPublished}
+                      onClick={() => { setShowMoreMenu(false); openShareLink(); }}
+                      title={list.federationPublished
+                        ? 'Published - other SlickSync instances can subscribe. Click to view or revoke the link.'
+                        : 'Publish this catalog so another household can subscribe to it from their own SlickSync'}
+                    >
+                      {list.federationPublished ? 'Published (manage link)' : 'Publish to other instances'}
                     </MoreMenuItem>
                     {/* Content Rating moved to its own always-visible button
                         next to Suggest titles - stays here only as the
@@ -1046,6 +1147,67 @@ export default function ListDetailPage() {
           create-list response includes the actual public URL directly
           (confirmed live this session), so there's no guessing at a
           username/slug format here. */}
+      {/* Share link for cross-instance subscription. Deliberately explicit
+          about what does and does not travel: the reason this is safe to hand
+          to another household is that it carries titles only. */}
+      <Modal isOpen={showShareLink} onClose={() => { setShowShareLink(false); setConfirmRevoke(false); }} title="Publish to other instances" size="md">
+        <div className="space-y-4">
+          {shareBusy && !shareLink ? (
+            <p className="text-sm text-muted">Creating the share link...</p>
+          ) : shareLink ? (
+            <>
+              <p className="text-sm text-default">
+                Anyone with this link can subscribe to <span className="font-semibold">{list?.name}</span> from their own SlickSync.
+                They get the list of titles - it plays through <em>their</em> addons and debrid, not yours.
+              </p>
+
+              <div>
+                <label className="block text-xs font-medium mb-1.5 text-muted">Share link</label>
+                <input
+                  readOnly
+                  value={shareLink}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="w-full px-3 py-2 rounded-lg text-xs font-mono focus:outline-none"
+                  style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                />
+                <p className="text-xs text-subtle mt-1.5">
+                  Built from the address you are viewing this on. If your instance is reached on a different hostname, edit that part when you send it.
+                </p>
+              </div>
+
+              <div className="text-xs text-muted space-y-1">
+                <p><span className="text-default font-medium">What is shared:</span> title, year and poster of each item.</p>
+                <p><span className="text-default font-medium">What is not:</span> your credentials, addons, users, or watch history.</p>
+                <p>The subscriber can refresh it on a schedule, so changes you make here reach them automatically.</p>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button size="sm" onClick={copyShareLink} disabled={shareBusy}>Copy link</Button>
+                <Button size="sm" variant="ghost" onClick={rotateShareLink} disabled={shareBusy}>Issue a new link</Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirmRevoke(true)} disabled={shareBusy}>Unpublish</Button>
+              </div>
+
+              {confirmRevoke && (
+                <div className="rounded-lg p-3 text-xs space-y-2" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)' }}>
+                  <p className="text-default">
+                    Unpublish this catalog? The link stops working immediately. Anyone already subscribed keeps the titles they last pulled -
+                    this cannot reach into their instance and remove them.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="danger" onClick={revokeShareLink} disabled={shareBusy}>Unpublish</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmRevoke(false)} disabled={shareBusy}>Cancel</Button>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-subtle">
+                &quot;Issue a new link&quot; replaces this one - the old URL stops working straight away, so only use it if the link leaked.
+              </p>
+            </>
+          ) : null}
+        </div>
+      </Modal>
+
       <Modal isOpen={!!exportResult} onClose={() => setExportResult(null)} title="Exported to MDBList" size="sm">
         {exportResult && (
           <div className="space-y-3">
