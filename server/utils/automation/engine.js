@@ -83,13 +83,27 @@ async function runActions(prisma, accountId, rule, payload) {
  * @param {object} payload - flat object matching that trigger's declared fields
  * @returns {Promise<{fired: number}>} how many rules actually ran (0 on any failure)
  */
-async function emitAutomationEvent(prisma, accountId, triggerType, payload = {}) {
+async function emitAutomationEvent(prisma, accountId, triggerType, payload = {}, options = {}) {
   try {
     if (!prisma || !accountId || !TRIGGERS[triggerType]) return { fired: 0 }
 
-    const rules = await prisma.automationRule.findMany({
-      where: { accountId, triggerType, enabled: true },
-    })
+    const where = { accountId, triggerType, enabled: true }
+    // Broadcasting to every rule of a type is right for event-driven triggers:
+    // an addon going offline genuinely concerns all rules watching for that.
+    //
+    // It is wrong for a schedule. A time.daily rule carries its OWN hour,
+    // minute and days, so a plain broadcast made every scheduled rule on the
+    // account run whenever ANY of them came due - a 9am rule fired at 3am
+    // because an unrelated 3am rule was due, and a Sunday-only rule fired on a
+    // Saturday because a daily rule was due. Confirmed on betatest before this
+    // fix: three rules, two of them due, produced runCount=2 on all three
+    // including the one whose day did not match.
+    //
+    // So scheduler.js passes the specific rule it decided is due, and only
+    // that rule runs. Callers that omit ruleId keep the broadcast behaviour.
+    if (options.ruleId) where.id = options.ruleId
+
+    const rules = await prisma.automationRule.findMany({ where })
     if (rules.length === 0) return { fired: 0 }
 
     let fired = 0

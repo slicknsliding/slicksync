@@ -2342,6 +2342,13 @@ export interface User {
   colorIndex?: number;
   avatarUrl?: string | null;
   inviteCode?: string;
+  // When this user's addons were last successfully synced, and the state of
+  // that sync. Null until the first sync completes - these columns existed
+  // for a long time before anything wrote them, which (together with the
+  // response allowlist dropping them) is why the Users list showed a
+  // hardcoded 'Unknown'.
+  lastSyncedAt?: string | null;
+  syncStatus?: string | null;
 }
 
 export interface MergeCandidate {
@@ -2388,8 +2395,16 @@ export interface Group {
   userIds: string[] | string; // Can be array or JSON string
   users?: number; // Count of active users
   addons?: number; // Count of active addons
-  createdAt: string;
-  updatedAt: string;
+  // Both nullable, and both were typed as required `string` while the API
+  // returned neither - so `group.createdAt` type-checked but was always
+  // undefined at runtime, which is what made the detail page show a permanent
+  // "Created: Unknown". createdAt is now recovered server-side from the cuid
+  // primary key; it is null only for a group whose id isn't a cuid.
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  // Most recent sync across the group's members - a group has no sync of its
+  // own. null when no member has ever synced.
+  lastSyncedAt?: string | null;
   colorIndex?: number;
   avatarUrl?: string | null;
   isActive?: boolean;
@@ -2825,8 +2840,12 @@ export interface CustomList {
 export interface AutomationField {
   name: string;
   label: string;
-  type: 'string' | 'number' | 'boolean';
+  // 'weekdays' only ever appears in triggerConfigFields, never in a trigger's
+  // payload `fields` - it is the day picker on a scheduled trigger, stored as
+  // an array of 0-6 (0 = Sunday).
+  type: 'string' | 'number' | 'boolean' | 'weekdays';
   required?: boolean;
+  hint?: string;
 }
 export interface AutomationTriggerDef {
   type: string;
@@ -2846,9 +2865,12 @@ export interface AutomationOperatorDef {
 export interface AutomationConfigField {
   name: string;
   label: string;
-  type: 'string' | 'text' | 'addon' | 'group' | 'user';
+  // 'select' carries its own fixed `options`; addon/group/user load their
+  // choices from the account's data instead.
+  type: 'string' | 'text' | 'addon' | 'group' | 'user' | 'select';
   required?: boolean;
   hint?: string;
+  options?: Array<{ value: string; label: string }>;
 }
 export interface AutomationActionDef {
   type: string;

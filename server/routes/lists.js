@@ -144,14 +144,20 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
       const url = String(req.body?.url || '').trim();
       if (!url) return res.status(400).json({ error: 'url is required' });
 
-      const { detectProvider, importFromTmdb, importFromMdblist, resolveTmdbKey, resolveMdblistKey } = require('../utils/listImport');
+      const { detectProvider, importFromTmdb, importFromMdblist, importFromSlickSync, resolveTmdbKey, resolveMdblistKey } = require('../utils/listImport');
       const provider = detectProvider(url);
       if (!provider) {
-        return res.status(400).json({ error: 'Unrecognized list URL - paste a TMDb (themoviedb.org/list/...) or MDBList (mdblist.com/lists/...) list URL' });
+        return res.status(400).json({ error: 'Unrecognized list URL - paste a TMDb (themoviedb.org/list/...) or MDBList (mdblist.com/lists/...) list URL, or a SlickSync catalog share link' });
       }
 
       let result;
-      if (provider === 'tmdb') {
+      if (provider === 'slicksync') {
+        // Subscribing to another household's catalog. Nothing else here
+        // changes: it is stored with importSourceUrl set like any imported
+        // catalog, so "Refresh from source", the diff, autoRefresh and the
+        // daily worker all apply to it unmodified.
+        result = await importFromSlickSync(url);
+      } else if (provider === 'tmdb') {
         const key = await resolveTmdbKey(prisma, getAccountId, req);
         result = await importFromTmdb(key, url);
       } else {
@@ -242,6 +248,58 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
   });
 
   // DELETE /api/lists/:id — remove the whole list.
+  // --- Federation: publish / rotate / revoke ---------------------------------
+  //
+  // Publishing is per-catalog and opt-in, and separate from `shared` (which
+  // means "other accounts on THIS instance"). The token lives in the share
+  // URL, so it is shown in full on mint and readable afterwards by the owner -
+  // it protects a curated title list, not a credential, and an owner who
+  // cannot re-read their own share URL would just delete and re-publish.
+  //
+  // POST mints or rotates: calling it again on an already-published catalog
+  // issues a new token and immediately invalidates the previous URL.
+  router.post('/:id/federation', async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const list = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
+      if (!list) return res.status(404).json({ error: 'List not found' });
+
+      // 32 bytes of CSPRNG, url-safe. Long enough that the endpoint's
+      // deliberate 404-on-everything gives an attacker nothing to work with.
+      const token = require('crypto').randomBytes(32).toString('base64url');
+      await prisma.customList.update({ where: { id: list.id }, data: { federationToken: token } });
+
+      res.json({
+        federationToken: token,
+        rotated: Boolean(list.federationToken),
+        // Path only. The publisher's externally reachable origin is not
+        // reliably knowable from in here (reverse proxies, custom domains),
+        // so the client joins this onto its own origin and the owner can
+        // correct it if the instance is reached by another hostname.
+        path: `/api/federation/catalog/${list.id}?key=${token}`,
+      });
+    } catch (error) {
+      console.error('Failed to publish catalog:', error?.message);
+      res.status(500).json({ error: 'Failed to publish catalog' });
+    }
+  });
+
+  // Revoke. Any instance already subscribed keeps whatever items it last
+  // pulled - this stops future pulls, it does not reach into a subscriber and
+  // delete their copy.
+  router.delete('/:id/federation', async (req, res) => {
+    try {
+      const accountId = getAccountId(req);
+      const list = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
+      if (!list) return res.status(404).json({ error: 'List not found' });
+      await prisma.customList.update({ where: { id: list.id }, data: { federationToken: null } });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error('Failed to unpublish catalog:', error?.message);
+      res.status(500).json({ error: 'Failed to unpublish catalog' });
+    }
+  });
+
   router.delete('/:id', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';

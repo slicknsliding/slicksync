@@ -108,11 +108,14 @@ const TRIGGERS = {
   // (hour/minute, account-timezone aware) instead of relying purely on
   // conditions. See automation/scheduler.js for the tick that fires this.
   'time.daily': {
-    label: 'At a scheduled time each day',
-    description: 'Fires once a day at the time you set below, in your account\'s timezone (Settings -> Privacy & Display).',
+    label: 'At a scheduled time',
+    description: 'Fires at the time you set below, in your account\'s timezone (Settings -> Privacy & Display). Pick days to run only on those days - leave them all off for every day.',
     fields: [
       { name: 'hour', label: 'Hour (0-23)', type: 'number' },
       { name: 'minute', label: 'Minute (0-59)', type: 'number' },
+      // Which day it actually fired on, so a rule scheduled for several
+      // days can still branch per-day with a condition (0 = Sunday).
+      { name: 'weekday', label: 'Day of week (0=Sun)', type: 'number' },
     ],
     // Distinct from `fields` (the event payload/condition fields) - this
     // describes the trigger's OWN configuration, only meaningful for a
@@ -122,6 +125,11 @@ const TRIGGERS = {
     triggerConfigFields: [
       { name: 'hour', label: 'Hour (0-23)', type: 'number', required: true },
       { name: 'minute', label: 'Minute (0-59)', type: 'number', required: true },
+      // Optional on purpose: an empty/absent list means every day, which is
+      // exactly what every rule saved before this field existed has stored.
+      // Keeping the trigger key as 'time.daily' rather than adding a separate
+      // weekly trigger is what lets those rules keep working untouched.
+      { name: 'days', label: 'Days', type: 'weekdays', hint: 'Leave all off to run every day.' },
     ],
   },
 }
@@ -259,6 +267,86 @@ const ACTIONS = {
       if (ids.includes(userId)) return `${user.username} was already in "${group.name}"`
       await prisma.group.update({ where: { id: group.id }, data: { userIds: JSON.stringify([...ids, userId]) } })
       return `Added ${user.username} to "${group.name}"`
+    },
+  },
+
+  // The action this feature was most conspicuously missing. Syncing is
+  // SlickSync's core operation, yet an automation could notify you about
+  // things, flip addons and shuffle group membership - and not actually push
+  // addons to anyone. Together with day-of-week scheduling on time.daily,
+  // this is what makes "every Sunday at 3am, sync everyone" expressible.
+  'user.sync': {
+    label: 'Sync users',
+    description: "Runs the same sync as the Sync button - pushes each user's assigned addons to their provider.",
+    configFields: [
+      {
+        name: 'scope', label: 'Who to sync', type: 'select', required: true,
+        options: [
+          { value: 'trigger', label: 'The user from the trigger' },
+          { value: 'user', label: 'A specific user' },
+          { value: 'group', label: 'Everyone in a group' },
+          { value: 'all', label: 'Every active user' },
+        ],
+        hint: 'A scheduled trigger carries no user, so pick a specific user, a group, or everyone.',
+      },
+      { name: 'userId', label: 'User', type: 'user', hint: 'Used when "A specific user" is selected.' },
+      { name: 'groupId', label: 'Group', type: 'group', hint: 'Used when "Everyone in a group" is selected.' },
+    ],
+    async run({ prisma, accountId, config, payload }) {
+      const { syncUserAddons } = require('../../routes/users')
+      const { decrypt } = require('../encryption')
+
+      const scope = config.scope || 'trigger'
+      let userIds = []
+      let what = ''
+
+      if (scope === 'all') {
+        const users = await prisma.user.findMany({ where: { accountId, isActive: true }, select: { id: true } })
+        userIds = users.map((u) => u.id)
+        what = 'every active user'
+      } else if (scope === 'group') {
+        const group = await prisma.group.findFirst({ where: { id: config.groupId, accountId } })
+        if (!group) throw new Error('Group not found on this account')
+        // Re-check against the users table: userIds is a JSON blob that can
+        // still name someone deleted or deactivated since it was written.
+        const users = await prisma.user.findMany({
+          where: { id: { in: parseIdList(group.userIds) }, accountId, isActive: true },
+          select: { id: true },
+        })
+        userIds = users.map((u) => u.id)
+        what = '"' + group.name + '"'
+      } else {
+        const userId = scope === 'user' ? config.userId : payload.userId
+        if (!userId) throw new Error('No user specified and the trigger carried none')
+        const user = await prisma.user.findFirst({ where: { id: userId, accountId }, select: { id: true } })
+        if (!user) throw new Error('User not found on this account')
+        userIds = [user.id]
+        what = 'the user'
+      }
+
+      if (userIds.length === 0) return 'Nothing to sync - ' + what + ' has no active users'
+
+      // There is no HTTP request behind a scheduled run, so hand syncUserAddons
+      // the same minimal req-like shape invitations.js already uses for its
+      // sync-on-join. appAccountId is what it scopes every query by.
+      const reqLike = { appAccountId: accountId, headers: {} }
+      let synced = 0
+      const failures = []
+      for (const id of userIds) {
+        try {
+          const result = await syncUserAddons(prisma, id, [], false, reqLike, decrypt, () => accountId, true)
+          if (result && result.success) synced++
+          else failures.push((result && result.error) || 'unknown error')
+        } catch (e) {
+          failures.push((e && e.message) || 'unknown error')
+        }
+      }
+
+      // Partial failure is reported, not thrown: the run log should say what
+      // actually happened rather than hiding the successes behind an
+      // exception. A total failure does throw, so the rule is marked failed.
+      if (synced === 0) throw new Error('Sync failed for all ' + userIds.length + ' user(s): ' + (failures[0] || 'unknown error'))
+      return 'Synced ' + synced + '/' + userIds.length + ' user(s) in ' + what + (failures.length ? ', ' + failures.length + ' failed' : '')
     },
   },
 

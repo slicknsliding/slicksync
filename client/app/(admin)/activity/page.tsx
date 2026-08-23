@@ -53,6 +53,10 @@ const DEBRID_SERVICE_LABELS: Record<string, string> = {
 };
 
 interface ActivityItem {
+  // True for a card rebuilt from a per-day watch record, which carries a date
+  // but no time of day. Such a card renders the date alone rather than a
+  // 12:00 AM that would read as a real viewing time.
+  dateOnly?: boolean;
   id: string;
   userId: string;
   userName: string;
@@ -107,6 +111,18 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
   if (!metrics) return [];
 
   const activities: ActivityItem[] = [];
+  // Keyed by user + item + DAY, not just user + item. This set exists to stop
+  // one viewing appearing twice when both a WatchSession and the
+  // WatchActivity-derived feed describe it - which is per-occasion, so it has
+  // to be scoped to the day. Without the day, a film watched on three separate
+  // days collapsed into one card, and rewatching it appeared to MOVE the card
+  // to the newest day instead of adding one.
+  //
+  // Local date parts rather than toISOString(): these timestamps render in the
+  // viewer's local timezone, so a UTC day key would file a late-evening watch
+  // under the following day and fail to match the card it should dedupe with.
+  const dayKeyOf = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const seenUserItemKeys = new Set<string>();
 
   if (metrics.watchSessions && metrics.watchSessions.length > 0) {
@@ -120,7 +136,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
       // and would only show as a blank duplicate of the native card.
       if ((session.durationSeconds || 0) <= 0) return;
 
-      seenUserItemKeys.add(`${session.user.id}:${session.item.id}`);
+      seenUserItemKeys.add(`${session.user.id}:${session.item.id}:${dayKeyOf(new Date(session.startTime))}`);
       activities.push({
         id: session.id,
         userId: session.user.id,
@@ -155,8 +171,12 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
   // undefined (see the render logic below).
   if (metrics.recentActivity && metrics.recentActivity.length > 0) {
     metrics.recentActivity.forEach((entry) => {
-      const key = `${entry.user.id}:${entry.item.id}`;
+      const key = `${entry.user.id}:${entry.item.id}:${dayKeyOf(new Date(entry.watchedAt))}`;
       if (seenUserItemKeys.has(key)) return;
+      // Recorded, not just tested: the feed can now legitimately carry several
+      // entries for the same film on DIFFERENT days, so without adding each key
+      // the same day could still slip through twice.
+      seenUserItemKeys.add(key);
 
       activities.push({
         id: `activity-${entry.user.id}-${entry.item.id}-${entry.videoId || 'movie'}-${entry.watchedAtTimestamp}`,
@@ -176,6 +196,7 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         durationSeconds: entry.durationSeconds && entry.durationSeconds > 0 ? entry.durationSeconds : undefined,
         timestamp: new Date(entry.watchedAt),
         endTime: new Date(entry.watchedAt),
+        dateOnly: (entry as { dateOnly?: boolean }).dateOnly ?? false,
         isActive: false,
         isSynthetic: false,
         poster: entry.item.poster,
@@ -552,7 +573,11 @@ const ActivityCard = memo(function ActivityCard({
 
       {/* Timestamp */}
       <div className="text-right">
-        <p className="text-xs text-subtle">{formatTimestamp(activity.timestamp)}</p>
+        <p className="text-xs text-subtle">
+          {activity.dateOnly
+            ? activity.timestamp.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+            : formatTimestamp(activity.timestamp)}
+        </p>
       </div>
     </motion.div>
   );

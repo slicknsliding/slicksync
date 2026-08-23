@@ -1252,7 +1252,7 @@ function VaultPageContent() {
             </>
           )}
 
-          <Input label={form.category === 'aiostreams' ? 'UUID (optional)' : 'Dashboard URL (optional)'} placeholder={form.category === 'aiostreams' ? 'e.g. e2849659-fdcb-4ed8-9eb0-6cfd76324e15' : 'https://provider.com/dashboard'} value={form.dashboardUrl} onChange={e => setForm(f => ({ ...f, dashboardUrl: e.target.value }))} />
+          <Input label={form.category === 'aiostreams' ? 'UUID (optional)' : 'Dashboard URL (optional)'} placeholder={form.category === 'aiostreams' ? 'e.g. 00000000-0000-4000-8000-000000000000' : 'https://provider.com/dashboard'} value={form.dashboardUrl} onChange={e => setForm(f => ({ ...f, dashboardUrl: e.target.value }))} />
 
           <div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -59,11 +59,68 @@ const resolveOmdbKey = (prisma, getAccountId, req) => resolveKeyFromSettings(pri
 
 function detectProvider(url) {
   try {
-    const host = new URL(url).hostname.replace(/^www\./, '')
+    const parsed = new URL(url)
+    const host = parsed.hostname.replace(/^www\./, '')
     if (host === 'mdblist.com') return 'mdblist'
     if (host === 'themoviedb.org') return 'tmdb'
+    // Another SlickSync instance publishing a catalog. Matched on the path
+    // rather than the hostname - unlike TMDb/MDBList there is no fixed host,
+    // it is whatever domain that household runs on.
+    if (parsed.pathname.startsWith('/api/federation/catalog/')) return 'slicksync'
   } catch {}
   return null
+}
+
+// Pull a catalog published by another SlickSync instance.
+//
+// Needs no API key: the token is already in the URL the owner shared. What
+// comes back is a title list and nothing else - see routes/federation.js for
+// what the publishing side deliberately does not send.
+async function importFromSlickSync(url) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 15000)
+  let res
+  try {
+    res = await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } })
+  } catch (e) {
+    throw new Error(e?.name === 'AbortError'
+      ? 'That instance took too long to respond'
+      : 'Could not reach that instance - check the URL and that it is publicly reachable')
+  } finally {
+    clearTimeout(timeoutId)
+  }
+
+  // The publisher answers 404 for unknown, unpublished AND wrong-token alike,
+  // so this message has to cover all three without guessing between them.
+  if (res.status === 404) throw new Error('That share link is no longer valid - it may have been revoked, or the URL is wrong')
+  if (!res.ok) throw new Error(`That instance returned ${res.status}`)
+
+  let body
+  try { body = await res.json() } catch { throw new Error('That URL did not return a SlickSync catalog') }
+  if (!body || !Array.isArray(body.items)) throw new Error('That URL did not return a SlickSync catalog')
+  if (Number(body.federation) > 1) {
+    throw new Error('That catalog was published by a newer version of SlickSync than this instance understands')
+  }
+
+  // Re-shaped rather than trusted wholesale: this payload came from a server
+  // someone else controls, and it flows into itemsJson which the UI renders.
+  const items = body.items
+    .filter((i) => i && typeof i.id === 'string')
+    .slice(0, MAX_IMPORT_ITEMS)
+    .map((i) => ({
+      id: String(i.id),
+      type: i.type === 'series' ? 'series' : 'movie',
+      name: typeof i.name === 'string' ? i.name : String(i.id),
+      ...(i.year ? { year: Number(i.year) || undefined } : {}),
+      ...(typeof i.poster === 'string' && /^https?:\/\//.test(i.poster) ? { poster: i.poster } : {}),
+    }))
+
+  return {
+    items,
+    name: typeof body.name === 'string' && body.name.trim() ? body.name.trim() : 'Shared catalog',
+    truncated: body.items.length > items.length,
+    totalAvailable: Number(body.itemCount) || body.items.length,
+  }
 }
 
 // Small bounded-concurrency map - avoids firing N simultaneous requests at
@@ -395,7 +452,10 @@ async function refreshListFromSourceForAccount(prisma, accountId, list) {
 
   const noReq = () => accountId
   let result
-  if (provider === 'tmdb') {
+  if (provider === 'slicksync') {
+    // No key to resolve - the share token is already in importSourceUrl.
+    result = await importFromSlickSync(list.importSourceUrl)
+  } else if (provider === 'tmdb') {
     const key = await resolveTmdbKey(prisma, noReq, null)
     result = await importFromTmdb(key, list.importSourceUrl)
   } else {
@@ -413,4 +473,4 @@ async function refreshListFromSourceForAccount(prisma, accountId, list) {
   return { items: result.items, added, removed, unchanged }
 }
 
-module.exports = { detectProvider, importFromTmdb, importFromMdblist, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, resolveKeyFromSettings, refreshListFromSourceForAccount, suggestTitlesForCatalog, mapLimit, MAX_IMPORT_ITEMS }
+module.exports = { detectProvider, importFromTmdb, importFromMdblist, importFromSlickSync, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, resolveKeyFromSettings, refreshListFromSourceForAccount, suggestTitlesForCatalog, mapLimit, MAX_IMPORT_ITEMS }

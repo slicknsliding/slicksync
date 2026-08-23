@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, User, Group, Addon } from '@/lib/api';
+import { formatLastSync } from '@/lib/relativeTime';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -1015,7 +1016,11 @@ export default function GroupDetailPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <ClockIcon className="w-5 h-5 text-secondary" />
-                      <span className="text-muted">Last sync: Unknown</span>
+                      {/* Was hardcoded to "Last sync: Unknown" - a string
+                          literal with no data behind it, shown for every group
+                          forever. Now the newest sync among the group's
+                          members, or Never if none of them has synced. */}
+                      <span className="text-muted">Last sync: {formatLastSync(group?.lastSyncedAt)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CalendarIcon className="w-5 h-5 text-secondary" />

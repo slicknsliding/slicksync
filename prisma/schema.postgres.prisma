@@ -529,6 +529,16 @@ model CustomList {
   // ownership check - this field only changes what GET / returns, not any
   // write-path authorization.
   shared           Boolean  @default(false)
+  // Federation: when non-null, this catalog is published for OTHER SlickSync
+  // instances to subscribe to, and this is the bearer token in its share URL.
+  // null = not published (the default, and how you revoke). Rotating means
+  // writing a new value, which invalidates the old URL immediately.
+  //
+  // Deliberately NOT reusing `shared` above: that means "visible to other
+  // accounts on THIS instance", and quietly widening it to mean "published to
+  // the internet" would expose every catalog anyone had shared internally.
+  // Two different audiences, two separate opt-ins.
+  federationToken  String?
   // Featured/hero treatment on the Catalogs index page - at most meaningful
   // for one catalog at a time (the client only ever shows the first pinned
   // one as the hero), but not DB-enforced as singular; a second pin just

@@ -629,7 +629,12 @@ export default function DashboardPage() {
         avatarUrl: user.avatarUrl,
         useGravatar: user.useGravatar,
         watchTime: Math.round(user.watchTimeHours * 60),
-        streak: 0, // TODO: Fetch from user streaks
+        // metricsBuilder computes this per user and sends it on
+        // watchActivity.byUser - the same payload this list is built from -
+        // and the Metrics page reads it. The dashboard hardcoded 0, and since
+        // the badge renders behind `streak > 0` it never appeared at all, so
+        // it looked like nobody had a streak while Metrics showed real ones.
+        streak: user.streak || 0,
       }));
   }, [metricsData]);
 

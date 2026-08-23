@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { getAccountDateString, resolveAccountTimezone, DEFAULT_TIMEZONE } = require('../server/utils/dateUtils')
+const { getAccountDateString, resolveAccountTimezone, DEFAULT_TIMEZONE, createdAtFromCuid } = require('../server/utils/dateUtils')
 
 test('getAccountDateString formats in the given timezone, not UTC', () => {
   // Regression test for the "Watch Time Today" bug: 3am UTC on July 16 is
@@ -70,4 +70,42 @@ test('resolveAccountTimezone caches per account so a poll cycle does not hit the
   assert.equal(first, 'Pacific/Auckland')
   assert.equal(second, 'Pacific/Auckland')
   assert.equal(calls, 1, 'second call should hit the in-memory cache, not the DB')
+})
+
+test('createdAtFromCuid recovers the creation time embedded in a cuid v1', () => {
+  // cuid v1 is `c` + Date.now() in base36 + counter + fingerprint + random,
+  // so the id itself is the timestamp. This is what lets the Group detail
+  // page show a real "Created" date for a model that has no createdAt column.
+  const ms = Date.UTC(2026, 7, 4, 7, 46, 4, 589) // 2026-08-04T07:46:04.589Z
+  const id = 'c' + ms.toString(36) + '001slb2keh7fxhlh'.slice(0, 16)
+  assert.equal(id.length, 25)
+  assert.equal(createdAtFromCuid(id).toISOString(), '2026-08-04T07:46:04.589Z')
+})
+
+test('createdAtFromCuid returns null for ids that are not cuid v1', () => {
+  // The caller renders "Unknown" on null. Guessing a date for a uuid or a
+  // seeded id would put a confidently wrong timestamp in the UI, which is
+  // worse than admitting we do not know.
+  for (const id of [
+    '550e8400-e29b-41d4-a716-446655440000', // uuid
+    'group-1',                              // seeded/imported
+    '',
+    null,
+    undefined,
+    12345,
+    'cmsectay5001slb2keh7fxhl',             // 24 chars, one short
+    'cMSECTAY5001slb2keh7fxhlh',            // base36 is lowercase only
+  ]) {
+    assert.equal(createdAtFromCuid(id), null, `expected null for ${String(id)}`)
+  }
+})
+
+test('createdAtFromCuid rejects timestamps outside a plausible range', () => {
+  // A block that parses as base36 but lands centuries away means the id was
+  // never a cuid v1 - the digits just happened to be legal.
+  const ancient = 'c' + (0).toString(36).padStart(8, '0') + '001slb2keh7fxhlh'.slice(0, 16)
+  assert.equal(createdAtFromCuid(ancient), null, '1970 should be rejected')
+
+  const farFuture = 'c' + Date.UTC(2300, 0, 1).toString(36) + '001slb2keh7fxhlh'.slice(0, 16)
+  assert.equal(createdAtFromCuid(farFuture), null, 'year 2300 should be rejected')
 })

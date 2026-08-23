@@ -1119,7 +1119,92 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         }
       })
 
-    recentActivity = [...episodeEntries, ...movieEntries]
+    // Expand a movie into one entry per DAY it was actually watched.
+    //
+    // MovieWatchHistory is @@unique([accountId, userId, itemId]) - one row per
+    // movie, whose watchedAt is overwritten on a rewatch. That is why a
+    // rewatched film appeared to MOVE from, say, Monday to Yesterday instead
+    // of showing on both: the earlier day was never a separate row to lose,
+    // it was the same row being updated.
+    //
+    // WatchActivity is the per-day record and is append-only (no unique
+    // constraint, carries date + watchTimeSeconds), so the days the History
+    // table cannot express are still on disk - including for viewings that
+    // happened long before this code existed, which is why past days reappear
+    // rather than only accruing from now on.
+    //
+    // Movies only, deliberately. WatchActivity stores a series' SHOW id with
+    // no videoId, so it cannot say which episode was watched on an earlier
+    // day - reconstructing series days would mean guessing an episode and
+    // labelling a card with it. Rewatching a *different* episode already
+    // shows separately anyway (EpisodeWatchHistory is keyed by videoId); only
+    // rewatching the very same episode collapses, which is far rarer than the
+    // movie case this fixes.
+    let extraMovieDayEntries = []
+    try {
+      const movieActivity = await prisma.watchActivity.findMany({
+        where: { accountId: accountIdValue, itemType: 'movie', date: { gte: startDate } },
+        select: { userId: true, itemId: true, date: true, watchTimeSeconds: true },
+      })
+
+      // Sum per (user, item, day).
+      //
+      // WatchActivity.date is NOT an instant - metricsProcessor writes it as
+      // `new Date(getAccountDateString(now, tz))`, i.e. an account-local
+      // calendar date parked at UTC midnight. Reading it back through
+      // getAccountDateString would convert an already-converted value and
+      // shift every day one earlier for any timezone behind UTC (verified:
+      // a row stored for 2026-08-22 came back as 2026-08-21 under
+      // America/Los_Angeles). Slicing the ISO date recovers exactly the
+      // string that was written.
+      //
+      // This is the deliberate exception to the "bucket days via dateUtils,
+      // never toISOString" rule - that rule is about bucketing real instants
+      // like watchedAt, which is precisely what ownDay below still does.
+      const secondsByKey = new Map()
+      for (const row of movieActivity) {
+        const dayKey = new Date(row.date).toISOString().slice(0, 10)
+        const key = row.userId + ' ' + row.itemId + ' ' + dayKey
+        secondsByKey.set(key, (secondsByKey.get(key) || 0) + (row.watchTimeSeconds || 0))
+      }
+
+      for (const entry of movieEntries) {
+        const ownDay = getAccountDateString(new Date(entry.watchedAtTimestamp), accountTimeZone)
+        const prefix = entry.user.id + ' ' + entry.item.id + ' '
+        for (const [key, seconds] of secondsByKey) {
+          if (!key.startsWith(prefix)) continue
+          const day = key.slice(prefix.length)
+          // The History row already represents its own day, with a real
+          // clock time and its own duration - leave it exactly as it is.
+          if (day === ownDay) continue
+          if (!(seconds > 0)) continue
+
+          extraMovieDayEntries.push({
+            ...entry,
+            // Local midnight of that day. WatchActivity only stores the day,
+            // never a time, so dateOnly tells the UI to render a date and NOT
+            // invent a "12:00 AM" that would read as a real viewing time.
+            watchedAt: new Date(day + 'T00:00:00').toISOString(),
+            watchedAtTimestamp: new Date(day + 'T00:00:00').getTime(),
+            dateOnly: true,
+            durationSeconds: seconds,
+            // Only the surviving History row knows how the film ended and how
+            // many rewatches there have been; asserting either for a
+            // historical day would be inventing detail we do not have.
+            completed: null,
+            rewatchCount: 0,
+            debridService: undefined,
+          })
+        }
+      }
+    } catch (error) {
+      // A failure here must not cost the whole activity feed - fall back to
+      // the previous one-card-per-title behaviour rather than returning none.
+      console.warn(`[MetricsBuilder] Could not expand movie watch days:`, error.message)
+      extraMovieDayEntries = []
+    }
+
+    recentActivity = [...episodeEntries, ...movieEntries, ...extraMovieDayEntries]
       .sort((a, b) => b.watchedAtTimestamp - a.watchedAtTimestamp)
   } catch (error) {
     console.warn(`[MetricsBuilder] Error fetching recent activity:`, error.message)

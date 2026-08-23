@@ -10,6 +10,9 @@ const { emitAutomationEvent } = require('./engine')
 
 let tickTimer = null
 const TICK_MS = 60 * 1000 // 1min - matches the minute-level precision "at HH:MM" needs
+// Index = the value stored in triggerConfig.days, matching JS getDay()
+// (0 = Sunday). Order must line up with Intl's 'short' weekday names.
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function parseJson(raw, fallback) {
   try {
@@ -35,11 +38,25 @@ async function runAutomationScheduler(prisma) {
         const timezone = await resolveAccountTimezone(prisma, rule.accountId)
         const now = new Date()
         const parts = new Intl.DateTimeFormat('en-US', {
-          timeZone: timezone, hour: 'numeric', minute: 'numeric', hourCycle: 'h23',
+          timeZone: timezone, hour: 'numeric', minute: 'numeric', weekday: 'short', hourCycle: 'h23',
         }).formatToParts(now)
         const currentHour = Number(parts.find((p) => p.type === 'hour')?.value)
         const currentMinute = Number(parts.find((p) => p.type === 'minute')?.value)
         if (currentHour !== hour || currentMinute !== minute) continue
+
+        // Day-of-week filter. An absent or empty list means every day, which
+        // is what every rule saved before this option existed has stored, so
+        // those keep firing daily with no migration.
+        //
+        // Read off formatToParts rather than now.getDay(): getDay() gives the
+        // SERVER's weekday, and near midnight that is a different day from the
+        // account's own timezone. A rule set for Sunday 00:30 on a UTC-7
+        // account would otherwise be judged against Saturday.
+        const days = Array.isArray(config.days)
+          ? config.days.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+          : []
+        const currentWeekday = WEEKDAYS.indexOf(parts.find((p) => p.type === 'weekday')?.value)
+        if (days.length > 0 && (currentWeekday === -1 || !days.includes(currentWeekday))) continue
 
         // Once-per-day dedupe by local calendar date, not a fixed cooldown -
         // this tick runs every minute, so without this a rule would fire
@@ -48,7 +65,10 @@ async function runAutomationScheduler(prisma) {
         const lastRunStr = rule.lastRunAt ? getAccountDateString(rule.lastRunAt, timezone) : null
         if (lastRunStr === todayStr) continue
 
-        await emitAutomationEvent(prisma, rule.accountId, 'time.daily', { hour, minute })
+        // Targeted at THIS rule: the tick has already decided this specific
+          // rule is due, and a broadcast would run every other scheduled rule
+          // on the account too, whatever time or days they were set to.
+          await emitAutomationEvent(prisma, rule.accountId, 'time.daily', { hour, minute, weekday: currentWeekday }, { ruleId: rule.id })
       } catch (err) {
         console.warn(`[AutomationScheduler] Rule ${rule?.id} failed:`, err?.message || err)
       }

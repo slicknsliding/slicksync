@@ -209,6 +209,43 @@ function previousMonthString(yearMonth) {
   return `${prevYear}-${String(prevMonth).padStart(2, '0')}`
 }
 
+/**
+ * Recover a record's creation time from a Prisma `cuid()` primary key.
+ *
+ * cuid v1 is `c` + the creation Date.now() in base36 (8 chars) + counter +
+ * fingerprint + random, so the id itself carries the timestamp and no
+ * createdAt column is needed to know when a row was made.
+ *
+ * This exists because `Group` has no createdAt column, which made the group
+ * detail page render a permanent "Created: Unknown". Adding the column would
+ * have been worse than useless for the rows that already exist: a new column
+ * defaults to the moment of the migration, so every group in every existing
+ * database would have claimed it was created on deploy day. The id is the
+ * real, already-stored answer.
+ *
+ * Returns null rather than guessing for anything that isn't a v1 cuid (a
+ * uuid, an imported/seeded id, or a future switch to cuid2 - which drops the
+ * embedded timestamp entirely). Callers should treat null as "unknown" and
+ * keep their existing fallback.
+ *
+ * @param {string} id
+ * @returns {Date|null}
+ */
+function createdAtFromCuid(id) {
+  if (typeof id !== 'string' || id.length !== 25 || id[0] !== 'c') return null
+  const block = id.slice(1, 9)
+  if (!/^[0-9a-z]{8}$/.test(block)) return null
+  const ms = parseInt(block, 36)
+  if (!Number.isFinite(ms)) return null
+  const date = new Date(ms)
+  if (Number.isNaN(date.getTime())) return null
+  // Sanity-bound it. A base36 block that happens to parse but lands in 1973
+  // or in the year 2300 means the id wasn't a cuid v1 after all.
+  const year = date.getUTCFullYear()
+  if (year < 2015 || year > 2100) return null
+  return date
+}
+
 module.exports = {
   getAccountDateString,
   resolveAccountTimezone,
@@ -217,4 +254,5 @@ module.exports = {
   getAccountDayNumber,
   monthBoundsInTimezone,
   previousMonthString,
+  createdAtFromCuid,
 }
