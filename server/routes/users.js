@@ -240,7 +240,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           colorIndex: user.colorIndex,
           avatarUrl: user.avatarUrl,
           inviteCode: user.inviteCode,
-          watchTime: totalWatchTimeMinutes
+          watchTime: totalWatchTimeMinutes,
+          // The Users list has always had a "Last sync" column; until now it
+          // rendered a hardcoded 'Unknown' for every row because this
+          // allowlist dropped the field. lastSyncedAt is a real, populated
+          // column - it was only ever missing from the response shape.
+          lastSyncedAt: user.lastSyncedAt || null,
+          syncStatus: user.syncStatus || null
         };
       }));
 

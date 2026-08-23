@@ -5,6 +5,7 @@ const { StremioAPIClient } = require('stremio-api-client')
 const { handleDatabaseError, sendError } = require('../utils/handlers');
 const { findGroupById } = require('../utils/helpers');
 const { responseUtils, dbUtils } = require('../utils/routeUtils');
+const { createdAtFromCuid } = require('../utils/dateUtils');
 
 // Export a function that returns the router, allowing dependency injection
 module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUserToGroup, getDecryptedManifestUrl, manifestUrlHmac, decrypt, createProvider }) => {
@@ -467,7 +468,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
           username: true,
           email: true,
           colorIndex: true,
-          excludedAddons: true
+          excludedAddons: true,
+          lastSyncedAt: true
         }
       })
 
@@ -480,12 +482,30 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         stremioAddonsCount: 0,
         excludedAddons: user.excludedAddons || []
       }))
+      // A group has no sync operation of its own to timestamp - syncing is per
+      // user - so "when was this group last synced" is honestly answered by the
+      // most recent sync among its members. null when nobody has synced yet,
+      // which the UI renders as Never rather than inventing a date. This whole
+      // field used to be the hardcoded string "Last sync: Unknown", which every
+      // group displayed forever regardless of state.
+      const memberSyncTimes = dbUsers
+        .map((u) => u.lastSyncedAt)
+        .filter(Boolean)
+        .map((d) => new Date(d).getTime())
+        .filter((t) => Number.isFinite(t))
+      const lastSyncedAt = memberSyncTimes.length ? new Date(Math.max(...memberSyncTimes)) : null
+
       res.json({
         id: group.id,
         name: group.name,
         description: group.description,
         users: users,
         addons: filteredAddonsSorted,
+        // Recovered from the cuid primary key: the Group model has no createdAt
+        // column, and adding one would have stamped every existing group with
+        // the migration date. See createdAtFromCuid.
+        createdAt: createdAtFromCuid(group.id),
+        lastSyncedAt,
         restrictions: 'none',
         isActive: group.isActive,
         colorIndex: group.colorIndex ?? 0,

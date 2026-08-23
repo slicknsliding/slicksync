@@ -47,7 +47,6 @@ interface GroupDisplay {
   users: Array<{ name: string; id: string }>;
   addonCount: number;
   userCount: number; // Total user count from API
-  lastSync: string;
   isActive?: boolean;
 }
 
@@ -149,7 +148,6 @@ export default function GroupsPage() {
         users: groupUsers,
         addonCount: group.addons || 0, // Use count from API
         userCount: group.users || groupUsers.length, // Use API count, fallback to parsed list length
-        lastSync: '', // TODO: Track sync time
       };
     });
   }, [groups, users]);
@@ -871,9 +869,6 @@ function GroupCard({
                 }}
                 size="sm"
               />
-              {group.lastSync && (
-                <span className="text-xs text-subtle ml-1">Synced {group.lastSync}</span>
-              )}
             </div>
             {/* Stats inline */}
             <div className="flex items-center gap-3 text-sm text-muted">

@@ -24,6 +24,7 @@ import { useSortableDragState } from '@/components/ui/DragSortable';
 import { SortableContext, rectSortingStrategy, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { useVaultDrag } from '@/components/providers/VaultDragContext';
+import { formatLastSync } from '@/lib/relativeTime';
 import {
   PlusIcon,
   ArrowPathIcon,
@@ -56,7 +57,6 @@ interface UserDisplay {
   watchTime: number;
   groups: string[];
   lastSync: string;
-  streak: number;
   addonCount: number;
   colorIndex?: number;
 }
@@ -171,8 +171,11 @@ export default function UsersPage() {
       }
       // TODO: Determine pending status based on actual user state
 
-      // Format last sync (would need to fetch from user detail or track separately)
-      const lastSync = 'Unknown';
+      // Real value off the user's lastSyncedAt column. This used to be the
+      // literal string 'Unknown', so the Last sync column showed 'Unknown' for
+      // every user on every instance - the data was there, the API response
+      // just wasn't carrying it.
+      const lastSync = formatLastSync(user.lastSyncedAt);
 
       // Get username (prefer username over name)
       const userName = user.username || user.name || 'Unnamed User';
@@ -189,7 +192,6 @@ export default function UsersPage() {
         watchTime: (user as any).watchTime || 0, // Use watchTime from API
         groups: userGroups,
         lastSync,
-        streak: 0, // TODO: Fetch from user streaks API
         addonCount: user.stremioAddonsCount || user.addons || 0,
         colorIndex: user.colorIndex,
       };

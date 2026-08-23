@@ -2342,6 +2342,12 @@ export interface User {
   colorIndex?: number;
   avatarUrl?: string | null;
   inviteCode?: string;
+  // When this user's addons were last successfully synced, and the state of
+  // that sync. Both are long-standing columns that GET /users simply never
+  // included in its response, which is why the Users list rendered a
+  // hardcoded 'Unknown' in its Last sync column.
+  lastSyncedAt?: string | null;
+  syncStatus?: string | null;
 }
 
 export interface MergeCandidate {
@@ -2388,8 +2394,16 @@ export interface Group {
   userIds: string[] | string; // Can be array or JSON string
   users?: number; // Count of active users
   addons?: number; // Count of active addons
-  createdAt: string;
-  updatedAt: string;
+  // Both nullable, and both were typed as required `string` while the API
+  // returned neither - so `group.createdAt` type-checked but was always
+  // undefined at runtime, which is what made the detail page show a permanent
+  // "Created: Unknown". createdAt is now recovered server-side from the cuid
+  // primary key; it is null only for a group whose id isn't a cuid.
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  // Most recent sync across the group's members - a group has no sync of its
+  // own. null when no member has ever synced.
+  lastSyncedAt?: string | null;
   colorIndex?: number;
   avatarUrl?: string | null;
   isActive?: boolean;
