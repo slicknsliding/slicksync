@@ -1164,18 +1164,36 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       const secondsByKey = new Map()
       for (const row of movieActivity) {
         const dayKey = new Date(row.date).toISOString().slice(0, 10)
-        const key = row.userId + ' ' + row.itemId + ' ' + dayKey
+        const key = row.userId + '\u0000' + row.itemId + '\u0000' + dayKey
         secondsByKey.set(key, (secondsByKey.get(key) || 0) + (row.watchTimeSeconds || 0))
       }
 
       for (const entry of movieEntries) {
         const ownDay = getAccountDateString(new Date(entry.watchedAtTimestamp), accountTimeZone)
-        const prefix = entry.user.id + ' ' + entry.item.id + ' '
+        const prefix = entry.user.id + '\u0000' + entry.item.id + '\u0000'
+
+        // Upgrade the History row's OWN day to the per-day total when that is
+        // larger. MovieWatchHistory.durationSeconds is backfilled from a
+        // matching proxy WatchSession, which may only have observed part of
+        // the viewing - a confirmed real case showed 39m on the card for a
+        // film whose seven WatchActivity deltas that day summed to 101m, with
+        // the snapshot's own overallTimeWatched agreeing at 102m. The watch
+        // time had been recorded correctly all along; the figure being
+        // DISPLAYED was the partial one.
+        //
+        // max(), never sum(): both numbers describe the SAME viewing, so
+        // adding them would double-count. Same rule the cross-pipeline
+        // session merge further down already follows.
+        const ownDaySeconds = secondsByKey.get(prefix + ownDay) || 0
+        if (ownDaySeconds > (entry.durationSeconds || 0)) {
+          entry.durationSeconds = ownDaySeconds
+        }
+
         for (const [key, seconds] of secondsByKey) {
           if (!key.startsWith(prefix)) continue
           const day = key.slice(prefix.length)
-          // The History row already represents its own day, with a real
-          // clock time and its own duration - leave it exactly as it is.
+          // Its own day is handled above - it keeps the real clock time from
+          // the History row rather than becoming a second, date-only card.
           if (day === ownDay) continue
           if (!(seconds > 0)) continue
 
