@@ -46,6 +46,14 @@ function pathIsAllowlisted(path) {
     '/api/public-auth/suggest-uuid',
     '/api/qr', // QR-code rendering for TV Mode's Stremio/Nuvio OAuth linking - needed on the pre-login page too, and never carries anything sensitive (just re-renders a URL already shown/clickable elsewhere)
     '/api/ext', // External API uses API key auth (handled by externalApi router)
+    // Cross-instance catalog subscription: the caller is another SlickSync
+    // server, so there is no session to present. The catalog's own
+    // federationToken authorizes the read and the router verifies it on every
+    // request. Scoped to '/catalog/' rather than a bare '/api/federation'
+    // prefix - this list matches by startsWith, and a bare prefix would
+    // allowlist any future publish/revoke routes added to the same router,
+    // which is exactly the mistake documented on '/api/public-auth' above.
+    '/api/federation/catalog/',
     '/invite', // Public invitation endpoints (request submission, status check, OAuth completion)
     '/api/public-library', // Public library endpoints (OAuth-based access)
     // /api/superadmin runs its OWN completely separate auth (a distinct
