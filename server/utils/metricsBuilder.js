@@ -1142,10 +1142,23 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     // movie case this fixes.
     let extraMovieDayEntries = []
     try {
-      const movieActivity = await prisma.watchActivity.findMany({
+      const movieActivityRaw = await prisma.watchActivity.findMany({
         where: { accountId: accountIdValue, itemType: 'movie', date: { gte: startDate } },
         select: { userId: true, itemId: true, date: true, watchTimeSeconds: true },
       })
+
+      // Same shared-email dedupe the History path above already applies, and
+      // for the same reason: one person connected through two providers has a
+      // user row per provider, and library sync replicates the same viewing to
+      // both. Reading WatchActivity directly bypassed this and showed a single
+      // viewing twice - confirmed on a real instance, where one film on one
+      // evening produced 16m under a Nuvio identity and 79m under the Stremio
+      // identity of the SAME person (both rows sharing one email address).
+      //
+      // Called with defaults, exactly as the aggregate path at the top of this
+      // file does: the two-argument form is already tuned for WatchActivity's
+      // own itemId/date/watchTimeSeconds shape.
+      const movieActivity = dedupWatchActivityBySharedEmail(movieActivityRaw, sharedEmailUserIds)
 
       // Sum per (user, item, day).
       //
