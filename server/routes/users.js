@@ -242,9 +242,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           inviteCode: user.inviteCode,
           watchTime: totalWatchTimeMinutes,
           // The Users list has always had a "Last sync" column; until now it
-          // rendered a hardcoded 'Unknown' for every row because this
-          // allowlist dropped the field. lastSyncedAt is a real, populated
-          // column - it was only ever missing from the response shape.
+          // rendered a hardcoded 'Unknown' for every row. Two separate causes:
+          // this allowlist dropped the field, AND nothing ever wrote it.
+          // syncUserAddons now records the outcome of every sync, so these
+          // two are the real values rather than always-null columns.
           lastSyncedAt: user.lastSyncedAt || null,
           syncStatus: user.syncStatus || null
         };
@@ -6916,6 +6917,36 @@ async function syncUserAddons(prismaClient, userId, excludedManifestUrls = [], u
       }
     } catch (e) {
       console.error('Secondary provider sync check skipped:', e?.message)
+    }
+
+    // Record the outcome. User.lastSyncedAt, syncStatus and syncErrorMessage
+    // have been on the model since this fork began but NOTHING has ever
+    // written them - every reference in server/ was a read. That is why the
+    // Users list and the group header could only ever say Unknown/Never: the
+    // display was fine, the column was simply always null.
+    //
+    // This is the single choke point for syncing - the per-user route,
+    // sync-all, group sync, invitation auto-sync and the public library route
+    // all funnel through here - so writing it once here covers every path.
+    //
+    // Keyed off the PRIMARY result only, matching what callers treat as
+    // success: a secondary-provider failure is logged above but does not make
+    // the sync a failure. On failure lastSyncedAt is left alone (undefined =
+    // no change) so a later error can't erase the last time it genuinely
+    // worked.
+    try {
+      await prismaClient.user.update({
+        where: { id: user.id },
+        data: {
+          lastSyncedAt: result.success ? new Date() : undefined,
+          syncStatus: result.success ? 'success' : 'error',
+          syncErrorMessage: result.success ? null : (result.error || 'Unknown error'),
+        },
+      })
+    } catch (e) {
+      // Bookkeeping must never turn a sync that actually worked into a
+      // reported failure.
+      console.error('Could not record sync outcome:', e?.message)
     }
 
     return result

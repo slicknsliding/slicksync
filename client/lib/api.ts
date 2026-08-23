@@ -2343,9 +2343,10 @@ export interface User {
   avatarUrl?: string | null;
   inviteCode?: string;
   // When this user's addons were last successfully synced, and the state of
-  // that sync. Both are long-standing columns that GET /users simply never
-  // included in its response, which is why the Users list rendered a
-  // hardcoded 'Unknown' in its Last sync column.
+  // that sync. Null until the first sync completes - these columns existed
+  // for a long time before anything wrote them, which (together with the
+  // response allowlist dropping them) is why the Users list showed a
+  // hardcoded 'Unknown'.
   lastSyncedAt?: string | null;
   syncStatus?: string | null;
 }
