@@ -504,10 +504,11 @@ export default function ListsPage() {
         </div>
       </Modal>
 
-      {/* Import catalog from TMDb, MDBList, or a linked user's SIMKL Plan to
-          Watch. TMDb/MDBList are URL-based (provider auto-detected); SIMKL
-          has no named-list API yet (see server/utils/simklLists.js) so it
-          picks a linked user instead of a URL. */}
+      {/* Import catalog from TMDb, MDBList, another SlickSync instance's share
+          link, or a linked user's SIMKL Plan to Watch. The first three are all
+          URL-based with the provider auto-detected (detectProvider in
+          server/utils/listImport.js); SIMKL has no named-list API yet (see
+          server/utils/simklLists.js) so it picks a linked user instead. */}
       <Modal isOpen={showImport} onClose={() => setShowImport(false)} title="Import a catalog" size="sm">
         <div className="space-y-4">
           <div>
@@ -518,12 +519,13 @@ export default function ListsPage() {
               value={importUrl}
               onChange={(e) => setImportUrl(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleImport(); }}
-              placeholder="https://mdblist.com/lists/user/slug or themoviedb.org/list/123"
+              placeholder="An MDBList/TMDb list URL, or a SlickSync share link"
               className="w-full px-3 py-2 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
             />
             <p className="text-xs text-subtle mt-1.5">
-              Supports MDBList and TMDb lists (movies only for TMDb). Requires an API key in Settings → External API Keys.
-              This copies the list&apos;s current titles once — later changes to the source list won&apos;t appear here automatically.
+              Supports MDBList and TMDb lists (movies only for TMDb), which need an API key in Settings → External API Keys,
+              and share links from another household&apos;s SlickSync, which need no key — the link itself grants access.
+              Either way this copies the titles now; turn on Auto-refresh on the catalog afterwards to keep it following its source.
             </p>
           </div>
 
