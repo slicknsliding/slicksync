@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import {
@@ -112,7 +112,15 @@ function toPosterCardItem(item: CustomListItem): PosterCardItem {
 // see canReorder) rather than branching between a sortable and plain render
 // path, since dnd-kit's own `disabled` option already makes a no-op drag
 // handle behave like a normal card with zero extra logic here.
-function CatalogGridCard({
+// Wrapped in memo, with every callback prop below now a stable top-level
+// reference (see the .map call site) instead of a fresh per-item closure -
+// otherwise this card re-rendered on ANY state change on the page at all,
+// including simply closing the detail modal, exactly the class of bug
+// documented on PosterCardProps.onMenuOpenChange. onOpenDetails/
+// onToggleWatchlist/onToggleWatched/onRemove now take the item itself
+// (matching what PosterCard already asks its own callers for) so the
+// parent's handlers can be defined once, not once per rendered item.
+const CatalogGridCard = memo(function CatalogGridCard({
   item, ratings, watched, inWatchlist, showWatchlistMenu, showWatchlistBadge,
   showWatchedMenu, showWatchedBadge, onOpenDetails, onToggleWatchlist, onToggleWatched,
   isMenuOpen, onMenuOpenChange, onRemove, selectMode, isSelected, onToggleSelect, disabled,
@@ -125,15 +133,15 @@ function CatalogGridCard({
   showWatchlistBadge: boolean;
   showWatchedMenu: boolean;
   showWatchedBadge: boolean;
-  onOpenDetails: () => void;
-  onToggleWatchlist: (next: boolean) => void;
-  onToggleWatched: (next: boolean) => void;
+  onOpenDetails: (item: CustomListItem) => void;
+  onToggleWatchlist: (item: PosterCardItem, next: boolean) => void;
+  onToggleWatched: (item: PosterCardItem, next: boolean) => void;
   isMenuOpen: boolean;
-  onMenuOpenChange: (open: boolean) => void;
-  onRemove?: () => void;
+  onMenuOpenChange: (open: boolean, itemId: string) => void;
+  onRemove?: (item: CustomListItem) => void;
   selectMode: boolean;
   isSelected: boolean;
-  onToggleSelect: () => void;
+  onToggleSelect: (id: string) => void;
   disabled: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled });
@@ -160,27 +168,27 @@ function CatalogGridCard({
         showWatchlistBadge={showWatchlistBadge && !selectMode}
         showWatchedMenu={showWatchedMenu && !selectMode}
         showWatchedBadge={showWatchedBadge && !selectMode}
-        onOpenDetails={() => (selectMode ? onToggleSelect() : onOpenDetails())}
-        onToggleWatchlist={(_, next) => onToggleWatchlist(next)}
-        onToggleWatched={(_, next) => onToggleWatched(next)}
+        onOpenDetails={() => (selectMode ? onToggleSelect(item.id) : onOpenDetails(item))}
+        onToggleWatchlist={onToggleWatchlist}
+        onToggleWatched={onToggleWatched}
         // Removal now lives in PosterCard's own long-press/right-click menu
         // (see its own comment on onRemoveFromCatalog) instead of a separate
         // always-visible X button - that button sat in the same top-right
         // corner as the watched badge and read as a confusing double-icon.
         // Hidden during select mode, same as the other menu items, since a
         // tap there toggles selection instead.
-        onRemoveFromCatalog={selectMode ? undefined : onRemove}
+        onRemoveFromCatalog={selectMode ? undefined : (onRemove ? () => onRemove(item) : undefined)}
         isMenuOpen={isMenuOpen}
         onMenuOpenChange={onMenuOpenChange}
       />
       {selectMode && (
         <div className="absolute top-1.5 left-1.5 z-20">
-          <SelectionCheckbox checked={isSelected} onChange={onToggleSelect} visible />
+          <SelectionCheckbox checked={isSelected} onChange={() => onToggleSelect(item.id)} visible />
         </div>
       )}
     </div>
   );
-}
+});
 
 // Mirrors Discover's own sort options - "List order" here instead of
 // "Default order" since that's what it actually is (items in the order they
@@ -207,6 +215,12 @@ export default function ListDetailPage() {
   const listId = params.id as string;
 
   const [list, setList] = useState<CustomList | null>(null);
+  // Lets handleRemoveItem below stay a stable, zero-dependency useCallback
+  // while still always acting on the current list - reading `list` itself as
+  // a dependency would recreate the callback (and defeat CatalogGridCard's
+  // memo for every card) on every removal, not just on unrelated re-renders.
+  const listRef = useRef(list);
+  useEffect(() => { listRef.current = list; }, [list]);
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [detail, setDetail] = useState<CustomListItem | null>(null);
@@ -225,6 +239,15 @@ export default function ListDetailPage() {
   // Which poster's right-click menu is open — same lifted single-open-menu
   // pattern Discover uses for its own grid.
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+  // One stable identity per handler, shared by every rendered card, instead
+  // of a fresh closure created per item on every render - see CatalogGridCard's
+  // own comment for why that silently defeated its memo.
+  const handleMenuOpenChange = useCallback((open: boolean, itemId: string) => {
+    setOpenMenuKey(open ? itemId : null);
+  }, []);
+  const handleOpenDetails = useCallback((item: CustomListItem) => {
+    setDetail(item);
+  }, []);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
   // "More" overflow menu for the secondary edit actions (everything past
   // Suggest titles / Refresh) - those two are common enough to earn a
@@ -636,13 +659,18 @@ export default function ListDetailPage() {
     }
   };
 
-  const handleRemoveItem = async (item: CustomListItem) => {
-    if (!list) return;
-    const updated = { ...list, items: list.items.filter((i) => i.id !== item.id) };
+  // useCallback with no dependencies (reads listRef instead of closing over
+  // `list` directly) so this stays the same reference across every render -
+  // CatalogGridCard is memoized and this is one of its props, so recreating
+  // it on every render would defeat that memo for every card on the page.
+  const handleRemoveItem = useCallback(async (item: CustomListItem) => {
+    const current = listRef.current;
+    if (!current) return;
+    const updated = { ...current, items: current.items.filter((i) => i.id !== item.id) };
     setList(updated);
-    try { await api.removeFromList(list.id, item.id); }
+    try { await api.removeFromList(current.id, item.id); }
     catch { toast.error('Failed to remove'); load(); }
-  };
+  }, [load]);
 
   const toggleSelectItem = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -1071,15 +1099,15 @@ export default function ListDetailPage() {
                         showWatchlistBadge={enableWatchlist}
                         showWatchedMenu={enableWatchedIndicators}
                         showWatchedBadge={enableWatchedIndicators}
-                        onOpenDetails={() => setDetail(item)}
-                        onToggleWatchlist={(next) => toggleWatchlist(toPosterCardItem(item), next)}
-                        onToggleWatched={(next) => toggleWatched(toPosterCardItem(item), next)}
+                        onOpenDetails={handleOpenDetails}
+                        onToggleWatchlist={toggleWatchlist}
+                        onToggleWatched={toggleWatched}
                         isMenuOpen={openMenuKey === item.id}
-                        onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
-                        onRemove={list.isOwner ? () => handleRemoveItem(item) : undefined}
+                        onMenuOpenChange={handleMenuOpenChange}
+                        onRemove={list.isOwner ? handleRemoveItem : undefined}
                         selectMode={selectMode}
                         isSelected={selectedIds.has(item.id)}
-                        onToggleSelect={() => toggleSelectItem(item.id)}
+                        onToggleSelect={toggleSelectItem}
                         disabled={!canReorder}
                       />
                     ))}

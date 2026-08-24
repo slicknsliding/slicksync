@@ -594,6 +594,18 @@ export function MediaDetailModal({
   // reported cause of the modal feeling like it lags on close specifically
   // after watching a trailer.
   const handleClose = useCallback(() => {
+    // Tell the YouTube player to stop BEFORE clearing the state that unmounts
+    // its iframe - not destroy() (that would let the YouTube API physically
+    // remove the same DOM node React's own reconciler still owns, which can
+    // throw on React's next commit). stopVideo() halts the actual decode/
+    // playback work cheaply through the API that already has control of it,
+    // so the iframe React removes a moment later is already idle rather than
+    // still mid-decode. The comment above already identified iframe teardown
+    // as a real, reported cause of a slow-feeling close after a trailer had
+    // been playing; this is the part that comment's fix never actually did -
+    // clearing trailerSrc unmounts the iframe promptly, but nothing ever told
+    // the still-live embed to stop before that happened.
+    try { trailerPlayerRef.current?.stopVideo?.(); } catch {}
     setIsTrailerPlaying(false);
     setTrailerSrc(null);
     onClose();

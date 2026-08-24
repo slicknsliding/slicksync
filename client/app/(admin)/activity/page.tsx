@@ -1492,6 +1492,19 @@ function ActivityPageContent() {
     season?: number;
     episode?: number;
   } | null>(null);
+  // Stable identities for both card-grid filter callbacks, instead of the
+  // fresh `(name) => { ... }` / `(act) => { ... }` closures the three render
+  // sites below used to pass per card per render. ActivityCard and
+  // ActivityCardGrid are both memoized (see their own definitions above);
+  // this is the page the freeze on close was reported on, and this pattern
+  // is exactly what defeats a memo across every card in the feed.
+  const handleFilterByContent = useCallback((name: string) => {
+    setEpisodeFilter(null);
+    setSearchQuery(name);
+  }, []);
+  const handleFilterByEpisode = useCallback((act: ActivityItem) => {
+    setEpisodeFilter({ name: act.contentName, season: act.season, episode: act.episode });
+  }, []);
   const [viewMode, setViewMode] = useState<'watch' | 'tasks' | 'invites' | 'proxy'>('watch');
   const { viewMode: watchActivityViewMode, setViewMode: setWatchActivityViewMode } = useDefaultViewMode();
   const [visibleCount, setVisibleCount] = useState(50); // lazy-load activity in chunks
@@ -1565,13 +1578,24 @@ function ActivityPageContent() {
     return () => clearInterval(interval);
   }, []);
 
-  // Update "now" every second so Now Playing durations tick up in the UI
+  // Tick "now" once a second so Now Playing durations count up - but ONLY
+  // while something is actually playing.
+  //
+  // This used to run unconditionally for the lifetime of the page. Every tick
+  // changes nowTick, which re-renders this component and re-runs the memo
+  // below, and this page renders the entire activity feed - hundreds of cards
+  // on a real instance. On a phone that is a full re-render every second,
+  // forever, for a counter that is almost always showing nothing: Now Playing
+  // is empty most of the time. It kept the main thread busy enough that
+  // ordinary taps - closing a modal especially - felt delayed.
+  const hasLivePlayback = (metricsData?.nowPlaying?.length ?? 0) > 0;
   useEffect(() => {
+    if (!hasLivePlayback) return;
     const id = setInterval(() => {
       setNowTick(Date.now());
     }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [hasLivePlayback]);
 
   // Transform API data to activity items
   // Activity feed shows ALL history - Now Playing is handled separately by the backend
@@ -1579,6 +1603,19 @@ function ActivityPageContent() {
     () => transformMetricsToActivity(metricsData),
     [metricsData]
   );
+
+  // Sum of today's already-recorded entries. Deliberately separate from the
+  // live memo below so a once-a-second tick cannot trigger a full pass over
+  // the activity feed - this changes only when the feed itself does.
+  const historySecondsToday = useMemo(() => {
+    let seconds = 0;
+    activityData.forEach((activity) => {
+      if (activity.timestamp >= todayStart) {
+        seconds += activity.durationSeconds || 0;
+      }
+    });
+    return seconds;
+  }, [activityData, todayStart]);
 
   // Calculate live watch time today (base watch time + elapsed active sessions)
   const liveWatchTimeTodayHours = useMemo(() => {
@@ -1632,26 +1669,24 @@ function ActivityPageContent() {
     // not sum() - same rule CLAUDE.md documents for proxy/native
     // reconciliation, since both numbers already approximate the same real
     // total and summing them would double count.
-    let historySeconds = 0;
-    activityData.forEach((activity) => {
-      if (activity.timestamp >= todayStart) {
-        historySeconds += activity.durationSeconds || 0;
-      }
-    });
-
-    return Math.max(totalSeconds, historySeconds) / 3600;
-  }, [metricsData, nowTick, todayStart, activityData]);
+    return Math.max(totalSeconds, historySecondsToday) / 3600;
+    // historySecondsToday is computed in its own memo above: it depends only
+    // on the activity list and today's boundary, never on nowTick, so it must
+    // not be recomputed on every tick. Scanning the whole feed once a second
+    // to arrive at a number that cannot have changed was the expensive half
+    // of this memo.
+  }, [metricsData, nowTick, todayStart, historySecondsToday]);
 
   // Infinite scroll: load more when sentinel is visible
   const loadMore = useCallback(() => {
-    if (isLoadingMore) return;
+    if (isLoadingMore || visibleCount >= MAX_VISIBLE_ACTIVITIES) return;
     setIsLoadingMore(true);
     // Use setTimeout to give a smooth transition feel
     setTimeout(() => {
-      setVisibleCount((prev) => prev + 50);
+      setVisibleCount((prev) => Math.min(prev + 50, MAX_VISIBLE_ACTIVITIES));
       setIsLoadingMore(false);
     }, 100);
-  }, [isLoadingMore, setVisibleCount, setIsLoadingMore]);
+  }, [isLoadingMore, visibleCount, setVisibleCount, setIsLoadingMore]);
 
   useEffect(() => {
     const sentinel = loadMoreRef.current;
@@ -2028,10 +2063,7 @@ function ActivityPageContent() {
                         <ActivityCardGrid
                           key={activity.id}
                           activity={activity}
-                          onFilterByContent={(name) => {
-                            setEpisodeFilter(null);
-                            setSearchQuery(name);
-                          }}
+                          onFilterByContent={handleFilterByContent}
                           onOpenDetails={setDetailModalItem}
                           focusable={isTV}
                         />
@@ -2044,17 +2076,8 @@ function ActivityPageContent() {
                         <StaggerItem key={activity.id}>
                           <ActivityCard
                             activity={activity}
-                            onFilterByContent={(name) => {
-                              setEpisodeFilter(null);
-                              setSearchQuery(name);
-                            }}
-                            onFilterByEpisode={(act) => {
-                              setEpisodeFilter({
-                                name: act.contentName,
-                                season: act.season,
-                                episode: act.episode,
-                              });
-                            }}
+                            onFilterByContent={handleFilterByContent}
+                            onFilterByEpisode={handleFilterByEpisode}
                             onOpenDetails={setDetailModalItem}
                             focusable={isTV}
                           />
@@ -2095,8 +2118,11 @@ function ActivityPageContent() {
               ) : null}
             </div>
 
-            {/* Infinite scroll sentinel & Load More fallback */}
-            {visibleCount < filteredActivities.length && (
+            {/* Infinite scroll sentinel & Load More fallback. Gated on the cap
+                too, not just on remaining items - otherwise this sentinel (and
+                the IntersectionObserver watching it) stays in view forever
+                once capped, firing loadMore() repeatedly for no reason. */}
+            {visibleCount < filteredActivities.length && visibleCount < MAX_VISIBLE_ACTIVITIES && (
               <div ref={loadMoreRef} className="mt-8">
                 <div className="text-center">
                   {isLoadingMore ? (
@@ -2304,6 +2330,21 @@ function ActivityPageContent() {
     </Wrapper>
   );
 }
+
+// Hard cap on how many activity cards stay mounted in the DOM at once. Same
+// class of bug as Discover's own MAX_MOUNTED_ITEMS, found via the same
+// on-device diagnostic: infinite scroll here has never had a limit either -
+// visibleCount just grows by 50 forever, and every entry revealed becomes a
+// real, permanently-mounted card with its own poster image. The per-day
+// watch-history feature makes this WORSE than before it shipped: a single
+// rewatched title now produces one card per day watched instead of one card
+// total, so the same scroll depth now mounts more DOM than it used to.
+//
+// Unlike Discover, this isn't backed by server-side pagination - the whole
+// history is already in memory from one metrics fetch - so there's no
+// pagination cursor to keep correct here; this only bounds how much of it
+// gets rendered as real DOM at once.
+const MAX_VISIBLE_ACTIVITIES = 200;
 
 export default function ActivityPage() {
   return (

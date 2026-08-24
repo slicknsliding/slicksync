@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { Header } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
@@ -64,6 +64,30 @@ const PAGE_SIZE = 100; // Cinemeta serves 100 items per catalog page
 // Cinemeta's own end-signal instead: as long as the previous page returned
 // ANYTHING, ask for more; only stop when a page comes back empty.
 
+// Hard cap on how many items stay mounted in the DOM at once. This grid has
+// no virtualization (windowing) at all - every accumulated item is a real,
+// live PosterCard: its own <img>, its own useLongPress/useContextMenu
+// listeners, its own effects. Infinite scroll had no cap whatsoever, so this
+// array only ever grew for as long as a session stayed on the page.
+//
+// Confirmed on a real device via the temporary perf HUD: after enough
+// scrolling, actions with NOTHING to do with the grid - the sort dropdown,
+// tapping the logo to navigate home - triggered multi-second freezes (3049ms,
+// 5463ms). Sorting has to reorder up to the ENTIRE accumulated set in the
+// DOM; navigating away has to unmount all of it in one commit. Both scale
+// directly with how many items had piled up, which is why the freeze got
+// worse the longer a session went on rather than being a fixed cost.
+//
+// This trims from the FRONT once the cap is exceeded - safe to do because
+// pagination's own cursor (`skip`) is tracked independently of items.length,
+// so dropping already-scrolled-past items cannot skip or repeat a page.
+// Scrolling back up past the cap will show a gap rather than the original
+// items; that is a real, deliberate tradeoff for not freezing for multiple
+// seconds on a normal tap after a long scroll. True windowing (only mounting
+// what's near-viewport) would remove the tradeoff entirely but is a bigger
+// change than this session's scope.
+const MAX_MOUNTED_ITEMS = 200;
+
 export default function DiscoverPage() {
   const { layoutMode } = useLayoutMode();
   const isTV = useIsTV();
@@ -77,6 +101,12 @@ export default function DiscoverPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [items, setItems] = useState<DiscoverItem[]>([]);
+  // Every id ever loaded this session, kept SEPARATELY from `items` and never
+  // trimmed - `items` itself gets capped at MAX_MOUNTED_ITEMS below, and
+  // de-duping the next page against only the still-mounted subset would let
+  // an item Cinemeta repeats across pages (a real, documented occurrence)
+  // reappear once its first copy has scrolled out of the trimmed window.
+  const seenIdsRef = useRef<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   // Narrowed to PosterCardItem, not the full DiscoverItem - this is the only
   // shape MediaDetailModal's fallback* props below actually read, and it's
@@ -99,6 +129,14 @@ export default function DiscoverPage() {
   // (both the main grid and the For You rows) so opening a second card's
   // menu closes whichever one was open before, same as Continue Watching.
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+  // One stable identity for every card's onMenuOpenChange, instead of each
+  // card getting its own `(open) => setOpenMenuKey(...)` closure on every
+  // render. A fresh function per card defeats PosterCard's React.memo
+  // entirely - every card in every grid on this page was re-rendering on any
+  // state change at all, including simply closing the detail modal.
+  const handleMenuOpenChange = useCallback((open: boolean, itemId: string) => {
+    setOpenMenuKey(open ? itemId : null);
+  }, []);
 
   // Pagination state — Cinemeta returns 100 items per page; ask for more via
   // ?skip=N. hasMore flips false when a page returned <PAGE_SIZE (end of
@@ -141,6 +179,15 @@ export default function DiscoverPage() {
   // isn't configured or the request fails - see getSimklDiscoverRow's own
   // comment on why this fails silently.
   const [simklTrending, setSimklTrending] = useState<SimklDiscoverItem[]>([]);
+  // Same shape SimklDiscoverItem already has, plus PosterCardItem's
+  // releaseInfo field, computed once per simklTrending change rather than as
+  // a fresh `{ ...item, releaseInfo: item.year }` literal on every render of
+  // every card - an inline literal here is exactly the kind of new-object-
+  // per-render prop that defeats PosterCard's React.memo.
+  const simklTrendingCardItems = useMemo(
+    () => new Map(simklTrending.map((item) => [item.id, { ...item, releaseInfo: item.year }])),
+    [simklTrending]
+  );
   useEffect(() => {
     api.getSimklDiscoverRow('trending', type === 'series' ? 'shows' : 'movies').then(setSimklTrending);
   }, [type]);
@@ -301,6 +348,7 @@ export default function DiscoverPage() {
     if (isPeopleSearch) {
       // People mode: no title fetch at all.
       setItems([]);
+      seenIdsRef.current = new Set();
       setIsLoading(false);
       setHasMore(false);
       return;
@@ -318,6 +366,11 @@ export default function DiscoverPage() {
     request.then((results) => {
       if (cancelled) return;
       setItems(results);
+      // Fresh search/filter - past this point's seen-ids are irrelevant to a
+      // completely different result set, and starting over here (rather than
+      // accumulating across filter changes) keeps this Set from growing
+      // unbounded across a long session of changing catalogs/genres.
+      seenIdsRef.current = new Set(results.map((r) => r.id));
       setIsLoading(false);
       // Search endpoint doesn't paginate; browse pages are exactly PAGE_SIZE.
       const gotFullPage = !debouncedQuery && results.length > 0;
@@ -356,12 +409,21 @@ export default function DiscoverPage() {
     setIsLoadingMore(true);
     try {
       const next = await api.discoverBrowse(type, { catalog, genre: genre || undefined, skip });
-      // De-dupe against what's already loaded — Cinemeta occasionally repeats
-      // an item across pages when its catalog reshuffles between requests.
+      // De-dupe against every id ever seen this session (seenIdsRef), NOT
+      // just what's currently mounted - `items` gets capped at
+      // MAX_MOUNTED_ITEMS below, and de-duping against only the trimmed
+      // subset would let an already-shown item reappear once its first copy
+      // has scrolled out of the window. Cinemeta occasionally repeats an
+      // item across pages when its catalog reshuffles between requests,
+      // which is what this guards against in the first place.
+      const additions = next.filter((n) => !seenIdsRef.current.has(n.id));
+      for (const a of additions) seenIdsRef.current.add(a.id);
       setItems((prev) => {
-        const seen = new Set(prev.map((p) => p.id));
-        const additions = next.filter((n) => !seen.has(n.id));
-        return [...prev, ...additions];
+        const merged = [...prev, ...additions];
+        // Trim from the front once over the cap - see MAX_MOUNTED_ITEMS's own
+        // comment for why this exists and why dropping the OLDEST (already
+        // scrolled past) items is the safe direction to trim in.
+        return merged.length > MAX_MOUNTED_ITEMS ? merged.slice(merged.length - MAX_MOUNTED_ITEMS) : merged;
       });
       setSkip((s) => s + next.length);
       setHasMore(next.length > 0);
@@ -612,7 +674,7 @@ export default function DiscoverPage() {
               {simklTrending.map((item) => (
                 <div key={item.id} className="w-32 sm:w-36 shrink-0">
                   <PosterCard
-                    item={{ ...item, releaseInfo: item.year }}
+                    item={simklTrendingCardItems.get(item.id) ?? item}
                     ratings={ratingsById[item.id]}
                     watched={watchedStatus[item.id]}
                     inWatchlist={inWatchlistIds.has(item.id)}
@@ -624,7 +686,7 @@ export default function DiscoverPage() {
                     onToggleWatchlist={handleToggleWatchlist}
                     onToggleWatched={handleToggleWatched}
                     isMenuOpen={openMenuKey === item.id}
-                    onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                    onMenuOpenChange={handleMenuOpenChange}
                     focusable={isTV}
                   />
                 </div>
@@ -871,7 +933,7 @@ export default function DiscoverPage() {
                       onToggleWatchlist={handleToggleWatchlist}
                       onToggleWatched={handleToggleWatched}
                       isMenuOpen={openMenuKey === item.id}
-                      onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                      onMenuOpenChange={handleMenuOpenChange}
                       focusable={isTV}
                     />
                   ))}
@@ -938,7 +1000,7 @@ export default function DiscoverPage() {
                           onToggleWatchlist={handleToggleWatchlist}
                           onToggleWatched={handleToggleWatched}
                           isMenuOpen={openMenuKey === item.id}
-                          onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                          onMenuOpenChange={handleMenuOpenChange}
                           focusable={isTV}
                         />
                       ))}
@@ -1045,7 +1107,7 @@ export default function DiscoverPage() {
                     onToggleWatchlist={handleToggleWatchlist}
                     onToggleWatched={handleToggleWatched}
                     isMenuOpen={openMenuKey === item.id}
-                    onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                    onMenuOpenChange={handleMenuOpenChange}
                     focusable={isTV}
                   />
                 ))}

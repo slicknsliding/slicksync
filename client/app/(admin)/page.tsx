@@ -191,7 +191,13 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   onRemove: (item: ContinueWatchingItem) => void;
   onOpenDetails: (item: ContinueWatchingItem) => void;
   isMenuOpen: boolean;
-  onMenuOpenChange: (open: boolean) => void;
+  // Receives this card's own composite key so the parent can use ONE stable
+  // useCallback for every card instead of a fresh
+  // `(open) => setOpenMenuKey(open ? key : null)` closure per card per
+  // render - a new function identity every render silently defeats this
+  // component's own React.memo below, which is exactly what was happening at
+  // both call sites (Continue Watching appears twice on this page).
+  onMenuOpenChange: (open: boolean, key: string) => void;
 }) {
   // position/preventDefault still come from the hook, but which card's menu
   // is actually rendered open is driven by isMenuOpen (lifted to the parent)
@@ -204,7 +210,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
   // Registers the REAL close (onClose below) for cross-section/cross-page
   // closing - onMenuOpenChange is the lifted state that actually drives
   // isOpen here, so this hook's own internal close wouldn't hide anything.
-  setExternalClose(() => onMenuOpenChange(false));
+  setExternalClose(() => onMenuOpenChange(false, `${item.userId}-${item.showId}`));
 
   // Long-press → context menu for touch devices. onContextMenu alone (below)
   // only reliably fires from an actual right-click; mobile browsers don't
@@ -227,7 +233,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
     startPos.current = { x: t.clientX, y: t.clientY };
     pressTimer.current = setTimeout(() => {
       handleContextMenu(e as unknown as Event, t.clientX, t.clientY);
-      onMenuOpenChange(true);
+      onMenuOpenChange(true, `${item.userId}-${item.showId}`);
       pressTimer.current = null;
     }, 500);
   };
@@ -244,7 +250,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
     <div
       onContextMenu={(e) => {
         handleContextMenu(e);
-        onMenuOpenChange(true);
+        onMenuOpenChange(true, `${item.userId}-${item.showId}`);
       }}
       onTouchStart={handleTouchStart}
       onTouchEnd={clearPress}
@@ -371,10 +377,10 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
         </button>
       )}
 
-      <ContextMenu isOpen={isMenuOpen} position={position} onClose={() => onMenuOpenChange(false)}>
+      <ContextMenu isOpen={isMenuOpen} position={position} onClose={() => onMenuOpenChange(false, `${item.userId}-${item.showId}`)}>
         <button
           onClick={() => {
-            onMenuOpenChange(false);
+            onMenuOpenChange(false, `${item.userId}-${item.showId}`);
             onRemove(item);
             toast.success(`Removed "${item.showName}" from Continue Watching`);
           }}
@@ -405,6 +411,15 @@ export default function DashboardPage() {
   // as each card - shared across all cards so opening one always closes any
   // other, instead of each card tracking its own independent isOpen.
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+  // One stable identity for every Continue Watching card's onMenuOpenChange
+  // (this row appears twice on this page), rather than each card getting a
+  // fresh `(open) => setOpenMenuKey(...)` closure on every render - a new
+  // function per card per render defeats ContinueWatchingCard's React.memo,
+  // so the whole row re-rendered on any state change at all, including
+  // simply closing the detail modal.
+  const handleMenuOpenChange = useCallback((open: boolean, key: string) => {
+    setOpenMenuKey(open ? key : null);
+  }, []);
 
   // Fetched independently of the main dashboard load - Cinemeta lookups
   // powering this are a nice-to-have, and shouldn't be able to fail the
@@ -502,11 +517,18 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // Update ticker every second
+  // Tick once a second so live watch time counts up - but ONLY while
+  // something is actually playing. Unconditionally, this re-rendered the whole
+  // dashboard (every card, row and poster) once a second for the life of the
+  // page, to advance a counter that has nothing to advance whenever Now
+  // Playing is empty - which is most of the time. That constant work is felt
+  // on a phone as taps and modal closes responding a beat late.
+  const hasLivePlayback = (metricsData?.nowPlaying?.length ?? 0) > 0;
   useEffect(() => {
+    if (!hasLivePlayback) return;
     const id = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [hasLivePlayback]);
 
   // Calculate live watch time
   const liveWatchTimeMinutes = useMemo(() => {
@@ -872,9 +894,7 @@ export default function DashboardPage() {
                         onRemove={handleDismissContinueWatching}
                         onOpenDetails={setDetailModalItem}
                         isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
-                        onMenuOpenChange={(open) =>
-                          setOpenMenuKey(open ? `${item.userId}-${item.showId}` : null)
-                        }
+                        onMenuOpenChange={handleMenuOpenChange}
                       />
                     );
                     return isTV ? (
@@ -1197,9 +1217,7 @@ export default function DashboardPage() {
                     onRemove={handleDismissContinueWatching}
                     onOpenDetails={setDetailModalItem}
                     isMenuOpen={openMenuKey === `${item.userId}-${item.showId}`}
-                    onMenuOpenChange={(open) =>
-                      setOpenMenuKey(open ? `${item.userId}-${item.showId}` : null)
-                    }
+                    onMenuOpenChange={handleMenuOpenChange}
                   />
                 ))}
               </div>
