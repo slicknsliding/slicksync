@@ -64,30 +64,6 @@ const PAGE_SIZE = 100; // Cinemeta serves 100 items per catalog page
 // Cinemeta's own end-signal instead: as long as the previous page returned
 // ANYTHING, ask for more; only stop when a page comes back empty.
 
-// Hard cap on how many items stay mounted in the DOM at once. This grid has
-// no virtualization (windowing) at all - every accumulated item is a real,
-// live PosterCard: its own <img>, its own useLongPress/useContextMenu
-// listeners, its own effects. Infinite scroll had no cap whatsoever, so this
-// array only ever grew for as long as a session stayed on the page.
-//
-// Confirmed on a real device via the temporary perf HUD: after enough
-// scrolling, actions with NOTHING to do with the grid - the sort dropdown,
-// tapping the logo to navigate home - triggered multi-second freezes (3049ms,
-// 5463ms). Sorting has to reorder up to the ENTIRE accumulated set in the
-// DOM; navigating away has to unmount all of it in one commit. Both scale
-// directly with how many items had piled up, which is why the freeze got
-// worse the longer a session went on rather than being a fixed cost.
-//
-// This trims from the FRONT once the cap is exceeded - safe to do because
-// pagination's own cursor (`skip`) is tracked independently of items.length,
-// so dropping already-scrolled-past items cannot skip or repeat a page.
-// Scrolling back up past the cap will show a gap rather than the original
-// items; that is a real, deliberate tradeoff for not freezing for multiple
-// seconds on a normal tap after a long scroll. True windowing (only mounting
-// what's near-viewport) would remove the tradeoff entirely but is a bigger
-// change than this session's scope.
-const MAX_MOUNTED_ITEMS = 200;
-
 export default function DiscoverPage() {
   const { layoutMode } = useLayoutMode();
   const isTV = useIsTV();
@@ -101,11 +77,9 @@ export default function DiscoverPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [items, setItems] = useState<DiscoverItem[]>([]);
-  // Every id ever loaded this session, kept SEPARATELY from `items` and never
-  // trimmed - `items` itself gets capped at MAX_MOUNTED_ITEMS below, and
-  // de-duping the next page against only the still-mounted subset would let
-  // an item Cinemeta repeats across pages (a real, documented occurrence)
-  // reappear once its first copy has scrolled out of the trimmed window.
+  // Every id ever loaded this session - de-dupes the next page against the
+  // full history, since Cinemeta can repeat an item across pages (a real,
+  // documented occurrence) and duplicate ids would collide as React keys.
   const seenIdsRef = useRef<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   // Narrowed to PosterCardItem, not the full DiscoverItem - this is the only
@@ -409,22 +383,12 @@ export default function DiscoverPage() {
     setIsLoadingMore(true);
     try {
       const next = await api.discoverBrowse(type, { catalog, genre: genre || undefined, skip });
-      // De-dupe against every id ever seen this session (seenIdsRef), NOT
-      // just what's currently mounted - `items` gets capped at
-      // MAX_MOUNTED_ITEMS below, and de-duping against only the trimmed
-      // subset would let an already-shown item reappear once its first copy
-      // has scrolled out of the window. Cinemeta occasionally repeats an
-      // item across pages when its catalog reshuffles between requests,
-      // which is what this guards against in the first place.
+      // Cinemeta occasionally repeats an item across pages when its catalog
+      // reshuffles between requests - de-dupe against everything already
+      // loaded so a repeat can't collide as a duplicate React key.
       const additions = next.filter((n) => !seenIdsRef.current.has(n.id));
       for (const a of additions) seenIdsRef.current.add(a.id);
-      setItems((prev) => {
-        const merged = [...prev, ...additions];
-        // Trim from the front once over the cap - see MAX_MOUNTED_ITEMS's own
-        // comment for why this exists and why dropping the OLDEST (already
-        // scrolled past) items is the safe direction to trim in.
-        return merged.length > MAX_MOUNTED_ITEMS ? merged.slice(merged.length - MAX_MOUNTED_ITEMS) : merged;
-      });
+      setItems((prev) => [...prev, ...additions]);
       setSkip((s) => s + next.length);
       setHasMore(next.length > 0);
     } finally {

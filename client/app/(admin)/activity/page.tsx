@@ -1679,14 +1679,14 @@ function ActivityPageContent() {
 
   // Infinite scroll: load more when sentinel is visible
   const loadMore = useCallback(() => {
-    if (isLoadingMore || visibleCount >= MAX_VISIBLE_ACTIVITIES) return;
+    if (isLoadingMore) return;
     setIsLoadingMore(true);
     // Use setTimeout to give a smooth transition feel
     setTimeout(() => {
-      setVisibleCount((prev) => Math.min(prev + 50, MAX_VISIBLE_ACTIVITIES));
+      setVisibleCount((prev) => prev + 50);
       setIsLoadingMore(false);
     }, 100);
-  }, [isLoadingMore, visibleCount, setVisibleCount, setIsLoadingMore]);
+  }, [isLoadingMore, setVisibleCount, setIsLoadingMore]);
 
   useEffect(() => {
     const sentinel = loadMoreRef.current;
@@ -2118,11 +2118,8 @@ function ActivityPageContent() {
               ) : null}
             </div>
 
-            {/* Infinite scroll sentinel & Load More fallback. Gated on the cap
-                too, not just on remaining items - otherwise this sentinel (and
-                the IntersectionObserver watching it) stays in view forever
-                once capped, firing loadMore() repeatedly for no reason. */}
-            {visibleCount < filteredActivities.length && visibleCount < MAX_VISIBLE_ACTIVITIES && (
+            {/* Infinite scroll sentinel & Load More fallback */}
+            {visibleCount < filteredActivities.length && (
               <div ref={loadMoreRef} className="mt-8">
                 <div className="text-center">
                   {isLoadingMore ? (
@@ -2330,21 +2327,6 @@ function ActivityPageContent() {
     </Wrapper>
   );
 }
-
-// Hard cap on how many activity cards stay mounted in the DOM at once. Same
-// class of bug as Discover's own MAX_MOUNTED_ITEMS, found via the same
-// on-device diagnostic: infinite scroll here has never had a limit either -
-// visibleCount just grows by 50 forever, and every entry revealed becomes a
-// real, permanently-mounted card with its own poster image. The per-day
-// watch-history feature makes this WORSE than before it shipped: a single
-// rewatched title now produces one card per day watched instead of one card
-// total, so the same scroll depth now mounts more DOM than it used to.
-//
-// Unlike Discover, this isn't backed by server-side pagination - the whole
-// history is already in memory from one metrics fetch - so there's no
-// pagination cursor to keep correct here; this only bounds how much of it
-// gets rendered as real DOM at once.
-const MAX_VISIBLE_ACTIVITIES = 200;
 
 export default function ActivityPage() {
   return (
