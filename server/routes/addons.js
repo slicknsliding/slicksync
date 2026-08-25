@@ -705,6 +705,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
           groups: filteredGroupAddons.length,
           accountId: addon.accountId,
           stremioAddonId: addon.stremioAddonId,
+          healthConfig: (() => { try { return addon.healthConfig ? JSON.parse(addon.healthConfig) : null } catch { return null } })(),
           resources: (() => { try { return addon.resources ? JSON.parse(addon.resources) : [] } catch { return [] } })(),
           catalogs: (() => { try { return addon.catalogs ? JSON.parse(addon.catalogs) : [] } catch { return [] } })(),
           isProtected: protectedNameSet.has((addon.name || '').trim().toLowerCase()),
@@ -862,6 +863,52 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       return responseUtils.success(res, { id: updated.id, healthIgnored: updated.healthIgnored })
     } catch (error) {
       console.error('Error updating addon health-ignore state:', error)
+      return responseUtils.internalError(res, error.message)
+    }
+  })
+
+  // Per-addon health-check overrides (Addon.healthConfig; consumed by
+  // utils/addonHealthCheck.js): custom probe URL, consecutive-failure
+  // threshold before an offline transition, per-addon check interval.
+  // Sending an empty/null body value for a field clears it; all three
+  // cleared stores NULL (back to pure defaults).
+  router.patch('/:id/health-config', async (req, res) => {
+    try {
+      const { id } = req.params
+      const addon = await dbUtils.findEntity(prisma, 'addon', id, getAccountId(req))
+      if (!addon) {
+        return responseUtils.notFound(res, 'Addon')
+      }
+
+      const { probeUrl, failureThreshold, intervalMinutes } = req.body || {}
+      const cfg = {}
+      if (probeUrl !== undefined && probeUrl !== null && String(probeUrl).trim() !== '') {
+        const trimmed = String(probeUrl).trim()
+        if (!/^https?:\/\/.+/i.test(trimmed)) {
+          return responseUtils.badRequest(res, 'Probe URL must be an http(s) URL')
+        }
+        cfg.probeUrl = trimmed
+      }
+      if (failureThreshold !== undefined && failureThreshold !== null && failureThreshold !== '') {
+        const n = Math.floor(Number(failureThreshold))
+        if (!Number.isFinite(n) || n < 1 || n > 10) {
+          return responseUtils.badRequest(res, 'Failure threshold must be between 1 and 10')
+        }
+        if (n > 1) cfg.failureThreshold = n
+      }
+      if (intervalMinutes !== undefined && intervalMinutes !== null && intervalMinutes !== '') {
+        const n = Math.floor(Number(intervalMinutes))
+        if (!Number.isFinite(n) || n < 5 || n > 1440) {
+          return responseUtils.badRequest(res, 'Check interval must be between 5 and 1440 minutes')
+        }
+        cfg.intervalMinutes = n
+      }
+
+      const healthConfig = Object.keys(cfg).length > 0 ? JSON.stringify(cfg) : null
+      const updated = await dbUtils.updateEntity(prisma, 'addon', id, { healthConfig }, getAccountId(req))
+      return responseUtils.success(res, { id: updated.id, healthConfig: healthConfig ? cfg : null })
+    } catch (error) {
+      console.error('Error updating addon health config:', error)
       return responseUtils.internalError(res, error.message)
     }
   })
@@ -1518,6 +1565,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
         isOnline: addon.isOnline,
         lastHealthCheck: addon.lastHealthCheck,
         healthCheckError: addon.healthCheckError,
+        healthConfig: (() => { try { return addon.healthConfig ? JSON.parse(addon.healthConfig) : null } catch { return null } })(),
         // Backup info
         backupAddonId: addon.backupAddonId,
         backupAddon: backupData,

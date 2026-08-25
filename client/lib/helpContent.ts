@@ -1200,6 +1200,47 @@ export const HELP_ENTRIES: HelpEntry[] = [
     href: '/changelog',
     linkLabel: 'Open Changelog',
   },
+  {
+    id: 'addon-configure-in-place',
+    title: 'Editing an addon\'s configuration in place',
+    category: 'Addons',
+    keywords: ['configure addon', 'addon settings', 'edit addon config', 'change debrid key', 'addon options', 'reconfigure', 'torrentio settings'],
+    answer: 'Open the addon\'s page → Configure (next to the Manifest URL). Most addons store their entire configuration inside the install URL; SlickSync decodes it into editable fields, and saving rebuilds the URL and updates every user and group carrying the addon - no remove-and-re-import.',
+    steps: [
+      'Go to Addons and open the addon.',
+      'Click Configure, next to the Manifest URL field.',
+      'Edit the fields (keys and tokens are masked - use the eye icon to reveal).',
+      'Save & redeploy. The manifest is re-fetched and everyone carrying the addon gets the new configuration on their next sync.',
+    ],
+    details: [
+      'There is no configuration API in the addon protocol - settings travel as one path segment in the install URL, in a few common formats (key=value pairs, JSON, or base64 JSON). SlickSync can decode and rebuild all of those.',
+      'Addons using an encrypted or custom format (AIOStreams, for example) can\'t be decoded into fields. For those, Configure links to the addon\'s own hosted configuration page - usually pre-filled with the current settings - and the new URL it produces can be pasted straight into the Manifest URL field.',
+    ],
+    tips: [
+      'Saving here is exactly equivalent to pasting a new install URL - the same validation and manifest re-fetch runs either way.',
+    ],
+    related: ['protected-addons', 'addon-health-settings'],
+  },
+  {
+    id: 'addon-health-settings',
+    title: 'Custom health checks and offline automation for an addon',
+    category: 'Addons',
+    keywords: ['health check', 'addon offline', 'failover', 'probe url', 'failure threshold', 'check interval', 'automate addon', 'backup addon'],
+    answer: 'Open the addon → the Backup Addon card → Health check settings. Set a custom probe URL, how many consecutive failures count as offline, and how often this addon is checked. The Automate button creates an automation rule pre-scoped to this addon going offline.',
+    steps: [
+      'Open the addon and scroll to the Backup Addon card.',
+      'Click Edit next to Health check settings.',
+      'Optionally set a custom probe URL - an endpoint that only answers when the addon genuinely works, not just serves a cached manifest.',
+      'Set failures-before-offline (1-10) so a single network blip can\'t trigger failover and alerts.',
+      'Optionally set a per-addon check interval; leave blank for the global cadence.',
+      'Or click Automate to open a pre-filled automation rule for this addon going offline - pick the action and save.',
+    ],
+    details: [
+      'The failure threshold gates the offline TRANSITION (failover, notifications, automation triggers) - the raw result of every probe still lands in the Health History card, so blips stay visible without paging anyone.',
+      'The automation side uses the engine\'s existing "addon goes offline" trigger; the Automate button just arrives with the trigger picked and a condition scoping it to this specific addon.',
+    ],
+    related: ['protected-addons', 'automation-create'],
+  },
 ];
 
 // Very small keyword-overlap scorer, not a real search engine - good enough

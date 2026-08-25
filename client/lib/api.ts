@@ -2194,6 +2194,15 @@ class ApiClient {
     });
   }
 
+  /** Per-addon health-check overrides - empty/omitted fields clear back to
+   * the global defaults (manifest probe, 1 failure, global interval). */
+  async setAddonHealthConfig(id: string, cfg: { probeUrl?: string; failureThreshold?: number | string; intervalMinutes?: number | string }) {
+    return this.fetch<{ success: boolean; data: { id: string; healthConfig: AddonHealthConfig | null } }>(`/addons/${id}/health-config`, {
+      method: 'PATCH',
+      body: JSON.stringify(cfg),
+    });
+  }
+
   async setUserHealthIgnored(id: string, healthIgnored: boolean) {
     return this.fetch<{ success: boolean; data: { id: string; healthIgnored: boolean } }>(`/users/${id}/health-ignore`, {
       method: 'PATCH',
@@ -2586,10 +2595,17 @@ export interface VaultEntryInput {
   autoRemoveAfterDays?: number;
 }
 
+export interface AddonHealthConfig {
+  probeUrl?: string;
+  failureThreshold?: number;
+  intervalMinutes?: number;
+}
+
 export interface Addon {
   id: string;
   name: string;
   manifestUrl: string;
+  healthConfig?: AddonHealthConfig | null;
   stremioAddonId?: string;
   version?: string;
   description?: string;

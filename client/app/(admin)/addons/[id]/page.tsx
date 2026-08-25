@@ -9,6 +9,9 @@ import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { Button, Card, Badge, ResourceBadge, Modal, ConfirmModal, Input, ToggleSwitch, VersionBadge, InlineEdit, SyncBadge } from '@/components/ui';
+import { AddonConfigModal } from '@/components/addons/AddonConfigModal';
+import { AddonHealthSettings } from '@/components/addons/AddonHealthSettings';
+import { decodeAddonConfig } from '@/lib/addonConfig';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast, showToast } from '@/components/ui/Toast';
 import {
@@ -20,6 +23,7 @@ import {
   ClockIcon,
   CalendarIcon,
   DocumentDuplicateIcon,
+  AdjustmentsHorizontalIcon,
   XMarkIcon,
   Bars3Icon,
   PlusIcon,
@@ -432,6 +436,9 @@ export default function AddonDetailPage() {
   const [manifestData, setManifestData] = useState<any>(null);
   const [originalManifestData, setOriginalManifestData] = useState<any>(null);
   const [loadingManifest, setLoadingManifest] = useState(false);
+  // In-place config editor (AddonConfigModal) - decodes the settings inside
+  // the manifest URL into editable fields.
+  const [showConfigEditor, setShowConfigEditor] = useState(false);
   const [isSavingResources, setIsSavingResources] = useState(false);
   const [isSavingCatalogs, setIsSavingCatalogs] = useState(false);
   const [activeCatalogId, setActiveCatalogId] = useState<string | null>(null);
@@ -1000,6 +1007,43 @@ export default function AddonDetailPage() {
   };
 
   // Handle save from edit modal
+  // Shared by the raw URL input AND the Configure modal - both end in
+  // "the manifest URL changed, refresh everything derived from it".
+  const handleManifestUrlSave = async (updateData: { manifestUrl: string }) => {
+                  await api.updateAddon(params.id as string, updateData as any);
+                  const addonData = await api.getAddon(params.id as string);
+                  const anyAddon = addonData as any;
+                  const logo =
+                    anyAddon.customLogo ||
+                    (anyAddon.manifest && anyAddon.manifest.logo) ||
+                    anyAddon.logo ||
+                    anyAddon.iconUrl ||
+                    (anyAddon.manifest?.id && `https://stremio-addon.netlify.app/${anyAddon.manifest.id}/icon.png`) ||
+                    undefined;
+                  setAddon(prev => prev ? { ...prev, ...addonData, logo } : null);
+                  setLogoError(false);
+                  if (anyAddon.manifest) {
+                    setManifestData(anyAddon.manifest);
+                  }
+                  if (anyAddon.originalManifest) {
+                    setOriginalManifestData(anyAddon.originalManifest);
+                  }
+                  
+                  // Initialize resources, auto-add "search" if search catalogs enabled
+                  let savedResources = anyAddon.resources || [];
+                  const savedCatalogs = anyAddon.catalogs || [];
+                  const hasSearchCatalog = savedCatalogs.some((c: any) => c?.search);
+                  if (hasSearchCatalog && !savedResources.includes('search')) {
+                    savedResources = [...savedResources, 'search'];
+                    // Update addon with the search resource
+                    await api.updateAddon(params.id as string, { resources: savedResources });
+                  }
+                  setSelectedResources(new Set(savedResources));
+                  
+                  const catalogKeys = savedCatalogs.map((c: any) => getCatalogKey(c)).filter(Boolean);
+                  setSelectedCatalogs(new Set(catalogKeys));
+  };
+
   const handleSaveEdit = async () => {
     if (!addon) return;
     try {
@@ -1403,40 +1447,7 @@ export default function AddonDetailPage() {
             <div className="flex items-center gap-2">
               <ManifestUrlInput
                 value={(addon as any).url || (addon as any).manifestUrl || ''}
-                onSave={async (updateData) => {
-                  await api.updateAddon(params.id as string, updateData as any);
-                  const addonData = await api.getAddon(params.id as string);
-                  const anyAddon = addonData as any;
-                  const logo =
-                    anyAddon.customLogo ||
-                    (anyAddon.manifest && anyAddon.manifest.logo) ||
-                    anyAddon.logo ||
-                    anyAddon.iconUrl ||
-                    (anyAddon.manifest?.id && `https://stremio-addon.netlify.app/${anyAddon.manifest.id}/icon.png`) ||
-                    undefined;
-                  setAddon(prev => prev ? { ...prev, ...addonData, logo } : null);
-                  setLogoError(false);
-                  if (anyAddon.manifest) {
-                    setManifestData(anyAddon.manifest);
-                  }
-                  if (anyAddon.originalManifest) {
-                    setOriginalManifestData(anyAddon.originalManifest);
-                  }
-                  
-                  // Initialize resources, auto-add "search" if search catalogs enabled
-                  let savedResources = anyAddon.resources || [];
-                  const savedCatalogs = anyAddon.catalogs || [];
-                  const hasSearchCatalog = savedCatalogs.some((c: any) => c?.search);
-                  if (hasSearchCatalog && !savedResources.includes('search')) {
-                    savedResources = [...savedResources, 'search'];
-                    // Update addon with the search resource
-                    await api.updateAddon(params.id as string, { resources: savedResources });
-                  }
-                  setSelectedResources(new Set(savedResources));
-                  
-                  const catalogKeys = savedCatalogs.map((c: any) => getCatalogKey(c)).filter(Boolean);
-                  setSelectedCatalogs(new Set(catalogKeys));
-                }}
+                onSave={handleManifestUrlSave}
               />
               <Button
                 variant="ghost"
@@ -1457,7 +1468,46 @@ export default function AddonDetailPage() {
               >
                 <DocumentDuplicateIcon className="w-4 h-4" />
               </Button>
+              {/* Only rendered when the URL's config actually decodes into
+                  editable fields. Opaque/encrypted configs (AIOStreams,
+                  UUID-style hosted configs) get NO button here - the page's
+                  existing top Configure action already opens the addon's
+                  own external configure page, and duplicating that link
+                  here was confirmed redundant. */}
+              {(() => {
+                const u = (addon as unknown as { url?: string }).url || addon.manifestUrl || '';
+                return decodeAddonConfig(u) ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowConfigEditor(true)}
+                    title="Edit the settings stored inside this addon's install URL"
+                  >
+                    <AdjustmentsHorizontalIcon className="w-4 h-4 mr-1.5" />
+                    Edit config
+                  </Button>
+                ) : null;
+              })()}
             </div>
+            {/* key: remount on every open so the field state always starts
+                from the CURRENT manifest URL, including right after a save.
+                Runtime addon objects carry both `url` and `manifestUrl`
+                (the server returns both for compatibility) - same
+                either-field read the rest of this page does, minus the
+                bare `any` casts. */}
+            {showConfigEditor && (() => {
+              const currentManifestUrl = (addon as unknown as { url?: string }).url || addon.manifestUrl || '';
+              return (
+                <AddonConfigModal
+                  key={currentManifestUrl}
+                  isOpen={showConfigEditor}
+                  onClose={() => setShowConfigEditor(false)}
+                  addonName={addon.name}
+                  manifestUrl={currentManifestUrl}
+                  onSave={handleManifestUrlSave}
+                />
+              );
+            })()}
           </Card>
         </PageSection>
 
@@ -2563,12 +2613,24 @@ function AddonBackupSection({ addonId, addon, onUpdate }: { addonId: string; add
 
         {/* Info text */}
         <p className="text-[11px] text-center pt-2" style={{ color: 'var(--color-text-subtle)' }}>
-          {backupChain.length === 0 
+          {backupChain.length === 0
             ? 'Add a backup addon that will be used when the primary is offline'
-            : activeAddonInfo 
+            : activeAddonInfo
               ? `${activeAddonInfo.message} • Chain depth: ${activeAddonInfo.totalChainLength} addons`
               : `Chain depth: ${backupChain.length + 1} addons. If one fails, the next will be used.`}
         </p>
+
+        {/* How "offline" is decided for THIS addon, plus a one-click path
+            into the automation engine's existing addon.offline trigger -
+            failover config and failover trigger, side by side. */}
+        {addon && (
+          <AddonHealthSettings
+            addonId={addonId}
+            addonName={addon.name || 'Addon'}
+            healthConfig={(addon as unknown as { healthConfig?: import('@/lib/api').AddonHealthConfig | null }).healthConfig}
+            onSaved={() => { /* server state updated; next health cycle uses it */ }}
+          />
+        )}
       </Card>
 
       {/* Addon Picker Modal */}

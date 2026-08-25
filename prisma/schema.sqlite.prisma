@@ -155,6 +155,9 @@ model Addon {
   lastHealthCheck  DateTime?
   healthCheckError String?
   healthIgnored    Boolean  @default(false) // hides this addon from the Health page's Attention list/notifications entirely - for a known, accepted offline addon the admin doesn't want repeated pinging about
+  // Per-addon health-check overrides, JSON: { probeUrl?, failureThreshold?, intervalMinutes? }.
+  // Null = the global defaults (manifest probe, 1 failure, env interval).
+  healthConfig     String?
 
   // Backup fields
   backupAddonId    String?  // Reference to backup addon (another Addon record)

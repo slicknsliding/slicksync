@@ -10,6 +10,10 @@ const MINUTE_MS = 60 * 1000;
 
 let healthCheckTimer = null;
 let isRunning = false;
+// addonId -> consecutive failed check runs, for per-addon failureThreshold
+// (see the loop). In-memory on purpose: a restart resetting the count can
+// only delay an offline transition, never invent one.
+const consecutiveFailures = new Map();
 
 /**
  * Whether this account wants addon-health alerts, and where the Discord
@@ -222,25 +226,66 @@ async function performHealthChecks(prisma, accountId = null) {
 
     for (const addon of addons) {
       try {
+        // Per-addon overrides (Addon.healthConfig JSON, set from the addon
+        // detail page's Health Check settings). Null/corrupt = defaults.
+        let cfg = null;
+        try { cfg = addon.healthConfig ? JSON.parse(addon.healthConfig) : null; } catch { cfg = null; }
+
+        // Interval override: an addon with its own cadence is skipped until
+        // that much time has passed since ITS last check - the scheduler
+        // keeps running at the global interval, this just thins out how
+        // often this one addon is actually probed.
+        const intervalMin = cfg && Number(cfg.intervalMinutes) > 0 ? Number(cfg.intervalMinutes) : null;
+        if (intervalMin && addon.lastHealthCheck &&
+            (Date.now() - new Date(addon.lastHealthCheck).getTime()) < intervalMin * 60000) {
+          if (addon.isOnline) onlineCount++; else offlineCount++;
+          continue;
+        }
+
         const manifestUrl = getDecryptedManifestUrl(addon);
-        let result = await checkUrlHealth(manifestUrl, addon.name);
+        // Custom probe URL: checks something the admin considers a better
+        // liveness signal than the manifest (a catalog endpoint, a status
+        // page) - a manifest served from cache while the backend is dead is
+        // exactly the failure mode this exists for.
+        const probeUrl = cfg && typeof cfg.probeUrl === 'string' && /^https?:\/\//i.test(cfg.probeUrl)
+          ? cfg.probeUrl
+          : manifestUrl;
+        let result = await checkUrlHealth(probeUrl, addon.name);
 
         // Retry once if failed
         if (!result.isOnline) {
           await new Promise(resolve => setTimeout(resolve, 2000));
-          result = await checkUrlHealth(manifestUrl, addon.name);
+          result = await checkUrlHealth(probeUrl, addon.name);
         }
 
+        // Failure threshold: only flip to OFFLINE (and fire failover/
+        // notifications) after N consecutive failed check runs, so a single
+        // blip doesn't page anyone. Tracked in memory - a restart resets
+        // the count, which only ever delays a transition by extra checks,
+        // never fabricates one. History rows below still record every raw
+        // probe result, so the Health History card shows the blips.
+        const threshold = cfg && Number(cfg.failureThreshold) >= 1
+          ? Math.min(10, Math.floor(Number(cfg.failureThreshold)))
+          : 1;
+        if (result.isOnline) {
+          consecutiveFailures.delete(addon.id);
+        } else {
+          consecutiveFailures.set(addon.id, (consecutiveFailures.get(addon.id) || 0) + 1);
+        }
+        const effectiveOnline = result.isOnline
+          ? true
+          : ((consecutiveFailures.get(addon.id) || 0) >= threshold ? false : addon.isOnline !== false);
+
         // Check if status changed
-        const statusChanged = addon.isOnline !== result.isOnline;
+        const statusChanged = addon.isOnline !== effectiveOnline;
 
         // Update addon status
         await prisma.addon.update({
           where: { id: addon.id },
           data: {
-            isOnline: result.isOnline,
+            isOnline: effectiveOnline,
             lastHealthCheck: new Date(),
-            healthCheckError: result.error,
+            healthCheckError: effectiveOnline ? null : result.error,
           },
         });
 
@@ -257,7 +302,7 @@ async function performHealthChecks(prisma, accountId = null) {
 
         // Log status changes and reload addon when it comes back online
         if (statusChanged) {
-          if (result.isOnline) {
+          if (effectiveOnline) {
             console.log(`[AddonHealthCheck] ${addon.name} is now ONLINE`);
             
             // Reload addon to refresh manifest data
@@ -292,11 +337,11 @@ async function performHealthChecks(prisma, accountId = null) {
             console.log(`[AddonHealthCheck] ${addon.name} is now OFFLINE: ${result.error}`);
           }
 
-          await notifyAddonStatusChange(prisma, addon, result.isOnline, result.error);
+          await notifyAddonStatusChange(prisma, addon, effectiveOnline, result.error);
         }
 
         // Count for summary
-        if (result.isOnline) {
+        if (effectiveOnline) {
           onlineCount++;
         } else {
           offlineCount++;
