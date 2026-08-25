@@ -71,14 +71,6 @@ Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot
 
 <sub>Each section below expands with the full detail.</sub>
 
-<a href="https://raw.githubusercontent.com/slicknsliding/slicksync/main/doc/discover.webp"><img src="doc/discover.webp" alt="Discover - browse and open straight into Stremio or Nuvio" /></a>
-
-<sub><b>Discover</b> — browse or search, then open a title straight into Stremio or Nuvio. Click any image for full size.</sub>
-
-<a href="https://raw.githubusercontent.com/slicknsliding/slicksync/main/doc/guides.webp"><img src="doc/guides.webp" alt="Guides - 74 searchable topic pages covering every page and setting" /></a>
-
-<sub><b>Guides</b> — 74 searchable topics covering every page and setting, also answerable from the command palette.</sub>
-
 ## Features
 
 ### Multi-Provider Sync
