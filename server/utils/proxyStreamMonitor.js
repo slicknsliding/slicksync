@@ -60,7 +60,7 @@ function heartbeat(event, data = {}) {
   try {
     const fs = require('fs')
     const line = `[${new Date().toISOString()}] ${event} ${JSON.stringify(data)}\n`
-    fs.appendFileSync('/app/data/proxy-stream-monitor-debug.log', line)
+    require('./debugLogFile').appendCapped('/app/data/proxy-stream-monitor-debug.log', line)
   } catch {}
 }
 

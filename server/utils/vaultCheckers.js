@@ -240,7 +240,7 @@ async function checkStremioAuth(secret, config = {}) {
       // need it for the "did login succeed" question the diagnostic answers.
       const redacted = JSON.parse(JSON.stringify(entry, (k, v) => k === 'authKey' && v ? '[redacted]' : v))
       const line = `[${new Date().toISOString()}] ${JSON.stringify(redacted)}\n`
-      fs.appendFileSync(LOG_PATH, line)
+      require('./debugLogFile').appendCapped(LOG_PATH, line)
     } catch (e) {
       console.warn('[VaultCheck] Failed to write debug log:', e?.message)
     }
