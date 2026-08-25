@@ -1,5 +1,30 @@
 [
   {
+    "version": "1.75.0",
+    "date": "2026-08-25",
+    "title": "1.75 — Share codes, off-site backups, and a faster app everywhere",
+    "features": [
+      "Share codes for catalogs, Nuvio collection layouts, and addon templates. Turn any of them into one copy-paste code that another SlickSync can import - no accounts, no files, no external service. Catalog codes paste straight into Catalogs -> Import, in the same field that takes a URL. Sharing always takes two steps: the dialog says exactly what the code will contain before it produces one. Template codes carry a warning, because addon install URLs often contain debrid or API keys - share those only with people you would hand your credentials to.",
+      "Off-site backups (Tasks -> Maintenance). Scheduled backups have always been written next to the database they protect, which does not help if the machine itself is gone. Every backup can now also go to S3 - AWS, Backblaze B2, Wasabi, Cloudflare R2, MinIO - or to WebDAV, for Nextcloud, rsync.net and similar. There is a Test target button so a wrong bucket shows up on a button press rather than weeks later, and an option to clean up old local copies. A failed upload never fails the backup: the local copy is already written, and a notification tells you rather than it failing quietly. These backups carry configuration only, never Vault credentials.",
+      "Database upkeep, running on its own in the background. A read-only integrity check verifies the database file is not quietly corrupting - it is on by default, since it only ever reads. Compaction and old-log trimming are there when you want them, off until you turn them on. Compaction now refuses to run if the disk lacks the space to do it safely. Nothing here touches watch history, users, catalogs, or the Vault.",
+      "Applying updates from Tasks -> Maintenance. Where the setup allows it, SlickSync backs up, downloads the new version, then restarts into it - in that order, so a failed download leaves the running version untouched. Otherwise the page shows the exact command to run on the host. Updating in place needs the Docker socket, which grants control of the host's Docker, so it is never switched on for you.",
+      "Optional Recovery Kit reminders (Settings -> Notifications). The Recovery Kit is the only export that carries your Vault credentials, and it is easy to make one on day one and never again. If yours is over 60 days old - or was never made - and the Vault holds credentials, a reminder nudges you. Nothing is ever uploaded on your behalf: the kit is still only produced when you export it yourself.",
+      "Edit an addon's configuration in place. Most addons keep their settings inside their install URL, which normally means reconfiguring on the addon's own site, copying a new URL, removing the addon and re-importing it. Open the addon and press Edit config instead: the settings appear as editable fields, keys are masked, and saving updates every user and group carrying that addon. Addons whose configuration is encrypted still use their own configure page.",
+      "Per-addon health checks (on the addon's Backup Addon card). Set a custom URL to probe when a manifest is not a reliable signal, choose how many failures in a row count as offline so a single blip cannot trigger a failover or an alert, and set how often that addon is checked. An Automate button creates a rule for that addon going offline in one step.",
+      "Two new guides covering share codes and maintenance, plus one on editing addon configuration and custom health checks."
+    ],
+    "bugFixes": [
+      "The Proxy toggle on an addon now works. Turning it on failed with a database error every time, on every instance, since the feature shipped.",
+      "SlickSync no longer hammers Nuvio's backend when it asks for a pause. When Nuvio started rate limiting, SlickSync waited a fixed thirty seconds, resumed at full speed, was rate limited again within seconds, and repeated indefinitely. It now backs off progressively, and honours the wait Nuvio asks for.",
+      "Browsing Discover stays fast no matter how far you scroll. Sorting, opening a title, and leaving the page used to get slower the longer a session went on. Activity's day groups are lighter to scroll through for the same reason.",
+      "Posters load faster and use far less data, especially on phones and TV. They are now served at the size actually shown, from your own server, instead of downloading a full-size image for a thumbnail.",
+      "Pages you have already visited appear immediately with what they showed last time, then refresh in place, instead of showing a loading spinner every time. Installed as an app, SlickSync also opens straight away rather than loading from scratch.",
+      "Closing the Automation panel returns you to the page you opened it from, instead of leaving you on Tasks.",
+      "Importing a catalog from SIMKL no longer preselects a user. It starts on \"Select a SIMKL-linked user\", so it is clear whose account is being read.",
+      "Notification and invite-request polling now pauses while the tab is in the background, and fetches in one pass rather than one request at a time."
+    ]
+  },
+  {
     "version": "1.74.7",
     "date": "2026-08-21",
     "title": "1.74 — Self-hosted Nuvio backends, and a much faster app on mobile",

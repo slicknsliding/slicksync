@@ -59,7 +59,13 @@ export interface PosterCardProps {
   /** Only-one-menu-open-at-a-time state, lifted to the parent so opening
    *  a second card's menu closes the previous card's. */
   isMenuOpen?: boolean;
-  onMenuOpenChange?: (open: boolean) => void;
+  // Receives this card's own item id as a second argument so the parent can
+  // use ONE stable useCallback for every card. Passing an inline
+  // `(open) => setOpenMenuKey(open ? item.id : null)` gives each card a fresh
+  // function identity on every parent render, which silently defeats the
+  // React.memo below - every card in the grid then re-renders on any state
+  // change at all, including simply closing a modal.
+  onMenuOpenChange?: (open: boolean, itemId: string) => void;
   /** TV mode: wraps the card in a D-pad-focusable container with a visible
    *  focus ring, Enter/OK opens details the same way a click does. */
   focusable?: boolean;
@@ -96,7 +102,7 @@ export const PosterCard = memo(function PosterCard({
   // menu is visible at a time across the whole grid.
   const { position, handleContextMenu, close: closeInternal, setExternalClose } = useContextMenu();
   const controlledOpen = isMenuOpen === true;
-  const close = () => { closeInternal(); onMenuOpenChange?.(false); setCatalogView(false); };
+  const close = () => { closeInternal(); onMenuOpenChange?.(false, item.id); setCatalogView(false); };
   // Registers the REAL close (above) for cross-page/cross-section closing -
   // this card's own isMenuOpen is lifted, so closeInternal alone (this hook's
   // unused-for-rendering internal state) wouldn't actually hide anything.
@@ -109,7 +115,7 @@ export const PosterCard = memo(function PosterCard({
   const longPress = useLongPress({
     onLongPress: (e, x, y) => {
       handleContextMenu(e, x, y);
-      onMenuOpenChange?.(true);
+      onMenuOpenChange?.(true, item.id);
     },
   });
 
@@ -125,7 +131,7 @@ export const PosterCard = memo(function PosterCard({
       }}
       onContextMenu={(e) => {
         handleContextMenu(e);
-        onMenuOpenChange?.(true);
+        onMenuOpenChange?.(true, item.id);
       }}
       {...longPress}
     >

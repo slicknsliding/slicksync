@@ -38,6 +38,23 @@ export function AutomationPanel() {
   const [editingRule, setEditingRule] = useState<AutomationRule | 'new' | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AutomationRule | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  // New-rule defaults handed over by another page (e.g. an addon detail
+  // page's "Automate" button pre-picking the addon.offline trigger scoped
+  // to that addon). Read-and-clear from sessionStorage so a refresh of the
+  // Tasks page later doesn't replay the handoff.
+  const [prefill, setPrefill] = useState<{ name?: string; triggerType?: string; conditions?: AutomationCondition[] } | null>(null);
+  useEffect(() => {
+    const id = setTimeout(() => {
+      try {
+        const raw = sessionStorage.getItem('slicksync-automation-prefill');
+        if (!raw) return;
+        sessionStorage.removeItem('slicksync-automation-prefill');
+        setPrefill(JSON.parse(raw));
+        setEditingRule('new');
+      } catch { /* corrupt handoff - just open the panel normally */ }
+    }, 0);
+    return () => clearTimeout(id);
+  }, []);
 
   const loadAll = useCallback(async () => {
     try {
@@ -215,7 +232,8 @@ export function AutomationPanel() {
         <RuleEditorModal
           registry={registry}
           rule={editingRule === 'new' ? null : editingRule}
-          onClose={() => setEditingRule(null)}
+          prefill={editingRule === 'new' ? prefill : null}
+          onClose={() => { setEditingRule(null); setPrefill(null); }}
           onSaved={(saved) => {
             setRules((prev) => {
               const exists = prev.some((r) => r.id === saved.id);
@@ -242,17 +260,19 @@ export function AutomationPanel() {
 // ---- Rule editor -----------------------------------------------------------
 
 function RuleEditorModal({
-  registry, rule, onClose, onSaved,
+  registry, rule, prefill, onClose, onSaved,
 }: {
   registry: AutomationRegistry;
   rule: AutomationRule | null;
+  /** New-rule defaults handed over by another page - see AutomationPanel. */
+  prefill?: { name?: string; triggerType?: string; conditions?: AutomationCondition[] } | null;
   onClose: () => void;
   onSaved: (rule: AutomationRule) => void;
 }) {
-  const [name, setName] = useState(rule?.name || '');
-  const [triggerType, setTriggerType] = useState(rule?.triggerType || registry.triggers[0]?.type || '');
+  const [name, setName] = useState(rule?.name || prefill?.name || '');
+  const [triggerType, setTriggerType] = useState(rule?.triggerType || prefill?.triggerType || registry.triggers[0]?.type || '');
   const [triggerConfig, setTriggerConfig] = useState<Record<string, unknown>>(rule?.triggerConfig || {});
-  const [conditions, setConditions] = useState<AutomationCondition[]>(rule?.conditions || []);
+  const [conditions, setConditions] = useState<AutomationCondition[]>(rule?.conditions || prefill?.conditions || []);
   const [actions, setActions] = useState<AutomationActionConfig[]>(rule?.actions || (registry.actions[0] ? [{ type: registry.actions[0].type, config: {} }] : []));
   const [saving, setSaving] = useState(false);
 

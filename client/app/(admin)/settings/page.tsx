@@ -237,6 +237,7 @@ export default function SettingsPage() {
     notifyOnBackup: false,
     notifyOnProxyHealth: false,
     notifyOnUpdateAvailable: false,
+    notifyOnRecoveryKitStale: false,
     notifyOnMosaic: false,
     notifyDigestEnabled: false,
     notifyDigestFrequency: 'daily' as 'daily' | 'weekly',
@@ -505,6 +506,7 @@ export default function SettingsPage() {
           notifyOnBackup: settings.notifyOnBackup || false,
           notifyOnProxyHealth: settings.notifyOnProxyHealth || false,
           notifyOnUpdateAvailable: settings.notifyOnUpdateAvailable || false,
+          notifyOnRecoveryKitStale: settings.notifyOnRecoveryKitStale || false,
           notifyOnMosaic: settings.notifyOnMosaic || false,
           notifyDigestEnabled: settings.notifyDigestEnabled || false,
           notifyDigestFrequency: settings.notifyDigestFrequency === 'weekly' ? 'weekly' : 'daily',
@@ -759,6 +761,7 @@ export default function SettingsPage() {
       notifyOnBackup: false,
       notifyOnProxyHealth: false,
       notifyOnUpdateAvailable: false,
+      notifyOnRecoveryKitStale: false,
       notifyOnMosaic: false,
       notifyDigestEnabled: false,
       notifyDigestFrequency: 'daily',
@@ -778,6 +781,7 @@ export default function SettingsPage() {
         notifyOnBackup: false,
         notifyOnProxyHealth: false,
         notifyOnUpdateAvailable: false,
+        notifyOnRecoveryKitStale: false,
         notifyOnMosaic: false,
         notifyDigestEnabled: false,
         notifyDigestFrequency: 'daily',
@@ -1158,6 +1162,17 @@ export default function SettingsPage() {
                     enabled={syncSettings.notifyOnUpdateAvailable || false}
                     onChange={(v) => handleSaveSetting('notifyOnUpdateAvailable', v)}
                     label="Toggle update available notifications"
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  label="Recovery Kit reminders"
+                  description="Remind me when the Disaster Recovery Kit is over 60 days old (or was never exported) while the Vault holds credentials. Nothing is uploaded - the kit is only ever produced when you export it yourself."
+                >
+                  <ToggleSwitch
+                    enabled={syncSettings.notifyOnRecoveryKitStale || false}
+                    onChange={(v) => handleSaveSetting('notifyOnRecoveryKitStale', v)}
+                    label="Toggle Recovery Kit reminders"
                   />
                 </SettingRow>
 

@@ -11,6 +11,8 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, DescribedCatalogPreview, CustomListItem } from '@/lib/api';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
+import { looksLikeShareCode, decodeShareCode } from '@/lib/shareCodes';
 import {
   RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon, MapPinIcon, SparklesIcon,
   ShieldExclamationIcon,
@@ -54,6 +56,12 @@ export default function ListsPage() {
   const [selectedSimklUserId, setSelectedSimklUserId] = useState('');
   const [importingSimkl, setImportingSimkl] = useState(false);
 
+  // Instant navigation: last-known catalogs shown immediately while load()
+  // refreshes them - see useLastKnown's own comment.
+  useLastKnown<CustomList[]>('/lists', (cached) => {
+    if (Array.isArray(cached)) { setLists(cached); setLoaded(true); }
+  });
+
   const load = useCallback(() => {
     api.getLists()
       .then((r) => setLists(Array.isArray(r) ? r : []))
@@ -66,8 +74,12 @@ export default function ListsPage() {
     if (!showImport || simklUsersLoaded) return;
     api.getSimklLinkedUsers()
       .then((users) => {
+        // No auto-select, even with exactly one linked user - starting on
+        // the "Select a SIMKL-linked user…" placeholder makes it explicit
+        // that pressing Import here acts on a specific person's SIMKL
+        // account; pre-filling it read as if the choice had already been
+        // made somewhere else.
         setSimklUsers(users);
-        if (users.length === 1) setSelectedSimklUserId(users[0].id);
       })
       .catch(() => setSimklUsers([]))
       .finally(() => setSimklUsersLoaded(true));
@@ -101,6 +113,32 @@ export default function ListsPage() {
     const url = importUrl.trim();
     if (!url) return;
     setImporting(true);
+
+    // A pasted share code takes the same field as a URL - it's the same
+    // intent ("bring this catalog in"), and making people find a second
+    // input for it would be pure ceremony. Creates the catalog, then bulk-
+    // adds its titles in one write.
+    if (looksLikeShareCode(url)) {
+      try {
+        const decoded = decodeShareCode(url);
+        if (!decoded || decoded.kind !== 'catalog') {
+          throw new Error('That code isn\'t a catalog share code');
+        }
+        const created = await api.createList(importName.trim() || decoded.payload.name, decoded.payload.description);
+        const result = await api.addToListBulk(created.id, decoded.payload.items);
+        setImportUrl('');
+        setImportName('');
+        setShowImport(false);
+        toast.success(`Imported "${created.name}" (${result.added} title${result.added !== 1 ? 's' : ''})`);
+        router.push(`/catalogs/${created.id}`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Failed to import that code');
+      } finally {
+        setImporting(false);
+      }
+      return;
+    }
+
     try {
       const list = await api.importList(url, importName.trim() || undefined);
       setImportUrl('');
@@ -524,7 +562,7 @@ export default function ListsPage() {
             />
             <p className="text-xs text-subtle mt-1.5">
               Supports MDBList and TMDb lists (movies only for TMDb), which need an API key in Settings → External API Keys,
-              and share links from another household&apos;s SlickSync, which need no key — the link itself grants access.
+              share links from another household&apos;s SlickSync, and pasted <span className="font-mono">SSC1:</span> share codes — neither of those needs a key.
               Either way this copies the titles now; turn on Auto-refresh on the catalog afterwards to keep it following its source.
             </p>
           </div>

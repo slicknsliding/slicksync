@@ -399,6 +399,46 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
     }
   });
 
+  // POST /api/lists/:id/items/bulk — add many titles in one write. Exists
+  // for share-code imports (client/lib/shareCodes.ts): a 200-title catalog
+  // as 200 sequential single-item POSTs is 200 round trips and 200 JSON
+  // rewrites of the same blob. Same normalizeItem validation per item and
+  // same de-dupe as the single route; the content-rating allowlist gate is
+  // NOT applied here on purpose - it needs one OMDb request per title, and
+  // a bulk import into a rating-gated catalog is instead handled the same
+  // way URL imports already are (the gate applies to later hand-adds).
+  router.post('/:id/items/bulk', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
+      if (!existing) return res.status(404).json({ error: 'List not found' });
+      const raw = Array.isArray(req.body?.items) ? req.body.items : null;
+      if (!raw || raw.length === 0) return res.status(400).json({ error: 'items array is required' });
+      if (raw.length > 2000) return res.status(400).json({ error: 'Too many items (max 2000)' });
+
+      const incoming = raw.map((r) => normalizeItem(r || {})).filter(Boolean);
+      if (incoming.length === 0) return res.status(400).json({ error: 'No valid items - each needs id, name, and a valid type' });
+
+      const items = parseItems(existing.itemsJson);
+      const have = new Set(items.map((i) => i.id));
+      let added = 0;
+      for (const item of incoming) {
+        if (have.has(item.id)) continue;
+        have.add(item.id);
+        items.push(item);
+        added += 1;
+      }
+      const list = await prisma.customList.update({
+        where: { id: existing.id },
+        data: { itemsJson: JSON.stringify(items) },
+      });
+      res.json({ ...shape(list), added });
+    } catch (e) {
+      console.error('Error bulk-adding items to custom list:', e);
+      res.status(500).json({ error: 'Failed to add items' });
+    }
+  });
+
   // DELETE /api/lists/:id/items/:itemId — remove a title from the list.
   router.delete('/:id/items/:itemId', async (req, res) => {
     try {

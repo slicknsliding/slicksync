@@ -6,6 +6,9 @@ import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, Badge, UserAvatar, ConfirmModal, Modal, Input } from '@/components/ui';
 import { AutomationPanel } from '@/components/automation/AutomationPanel';
+import { ShareCodeDialog, PasteCodeDialog } from '@/components/ui/ShareCodeDialog';
+import { MaintenancePanel } from '@/components/tasks/MaintenancePanel';
+import { encodeAddonTemplateShareCode, decodeShareCode } from '@/lib/shareCodes';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -33,6 +36,7 @@ import {
   HeartIcon,
   DocumentDuplicateIcon,
   PaperAirplaneIcon,
+  LinkIcon,
   ArrowUturnLeftIcon,
   CheckCircleIcon,
   LockClosedIcon,
@@ -172,6 +176,11 @@ export default function TasksPage() {
   const [deployTargetUserId, setDeployTargetUserId] = useState('');
   const [isDeploying, setIsDeploying] = useState(false);
   const [deletingSnapshotId, setDeletingSnapshotId] = useState<string | null>(null);
+  // Share codes for templates (ShareCodeDialog / PasteCodeDialog).
+  const [sharingSnapshot, setSharingSnapshot] = useState<AddonSnapshot | null>(null);
+  const [showPasteTemplate, setShowPasteTemplate] = useState(false);
+  // Off-site backups, database upkeep, and applying updates.
+  const [isMaintenanceOpen, setIsMaintenanceOpen] = useState(false);
 
   useEffect(() => {
     api.getGroups().then(setGroups).catch(() => {});
@@ -1090,6 +1099,25 @@ export default function TasksPage() {
           </TaskCard>
         </PageSection>
 
+        {/* Maintenance - off-site backup targets, database upkeep, and
+            applying updates. All set-once-and-forget, which is why they
+            live behind one card rather than as three more things on the
+            page. */}
+        <PageSection delay={0.115}>
+          <TaskCard
+            icon={<WrenchScrewdriverIcon className="w-5 h-5 text-primary" />}
+            iconBg="bg-primary-muted"
+            title="Maintenance"
+            description="Off-site backups, database upkeep, and updates"
+          >
+            <ActionButton
+              onClick={() => setIsMaintenanceOpen(true)}
+              icon={<WrenchScrewdriverIcon className="w-4 h-4" />}
+              label="Open Maintenance"
+            />
+          </TaskCard>
+        </PageSection>
+
         {/* Addon Templates - the backend (/api/snapshots) already existed
             fully built (save a user's/group's current addon set, deploy it
             to any user later) but had no UI anywhere calling it. */}
@@ -1104,6 +1132,11 @@ export default function TasksPage() {
               onClick={() => setIsCreateSnapshotOpen(true)}
               icon={<DocumentDuplicateIcon className="w-4 h-4" />}
               label="Save New Template"
+            />
+            <ActionButton
+              onClick={() => setShowPasteTemplate(true)}
+              icon={<LinkIcon className="w-4 h-4" />}
+              label="Import from Code"
             />
           </TaskCard>
           {!loadingSnapshots && snapshots.length === 0 && (
@@ -1126,6 +1159,15 @@ export default function TasksPage() {
                         {snap.description && <p className="text-xs text-subtle truncate mt-0.5">{snap.description}</p>}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSharingSnapshot(snap)}
+                          leftIcon={<LinkIcon className="w-4 h-4" />}
+                          title="Turn this template into a copy-paste share code"
+                        >
+                          Share
+                        </Button>
                         <Button
                           variant="secondary"
                           size="sm"
@@ -1773,10 +1815,77 @@ export default function TasksPage() {
         confirmText="Confirm"
       />
 
+      {/* Template share codes. The warning is not boilerplate: an addon's
+          manifest URL frequently embeds a debrid/API key, so a template
+          code can carry real credentials to whoever receives it. */}
+      <ShareCodeDialog
+        isOpen={!!sharingSnapshot}
+        onClose={() => setSharingSnapshot(null)}
+        title="Share template as code"
+        summary={sharingSnapshot ? `the template “${sharingSnapshot.name}” and its ${sharingSnapshot.addonCount} addon${sharingSnapshot.addonCount === 1 ? '' : 's'}, including each addon's install URL` : ''}
+        warning="Addon install URLs often contain API keys (Real-Debrid, TorBox and similar). Anyone you send this code to gets those keys, and can use your subscription. Only share it with people you'd hand your credentials to."
+        generate={async () => {
+          if (!sharingSnapshot) throw new Error('No template selected');
+          const detail = await api.getSnapshot(sharingSnapshot.id);
+          return encodeAddonTemplateShareCode({
+            name: detail.name,
+            description: detail.description || undefined,
+            addons: detail.addons.map((a) => ({
+              name: a.name,
+              manifestUrl: a.manifestUrl,
+              stremioAddonId: a.stremioAddonId,
+              version: a.version,
+            })),
+          });
+        }}
+      />
+      <PasteCodeDialog
+        isOpen={showPasteTemplate}
+        onClose={() => setShowPasteTemplate(false)}
+        title="Import template from a code"
+        placeholder="Paste an SSA1: template code…"
+        onImport={async (text) => {
+          const decoded = decodeShareCode(text);
+          if (!decoded || decoded.kind !== 'addonTemplate') {
+            throw new Error("That code isn't an addon template share code");
+          }
+          const created = await api.importSnapshot({
+            name: decoded.payload.name,
+            description: decoded.payload.description,
+            addons: decoded.payload.addons,
+          });
+          toast.success(`Imported "${created.name}" (${created.addonCount} addon${created.addonCount !== 1 ? 's' : ''})`);
+          fetchSnapshots();
+        }}
+      />
+
+      {/* Maintenance: off-site backups, database upkeep, updates */}
+      <Modal
+        isOpen={isMaintenanceOpen}
+        onClose={() => setIsMaintenanceOpen(false)}
+        title="Maintenance"
+        size="xl"
+      >
+        <MaintenancePanel />
+      </Modal>
+
       {/* Automation rules */}
       <Modal
         isOpen={isAutomationOpen}
-        onClose={() => setIsAutomationOpen(false)}
+        onClose={() => {
+          setIsAutomationOpen(false);
+          // Arrived here from another page's "Automate" button (e.g. an
+          // addon detail page)? Closing the panel goes BACK there instead
+          // of stranding the user on Tasks - a page they never chose.
+          // Read-and-clear so a normal later visit to Tasks stays put.
+          try {
+            const returnTo = sessionStorage.getItem('slicksync-automation-return');
+            if (returnTo) {
+              sessionStorage.removeItem('slicksync-automation-return');
+              if (returnTo.startsWith('/')) router.push(returnTo);
+            }
+          } catch { /* private mode - stay on Tasks */ }
+        }}
         title="Automation"
         size="xl"
       >

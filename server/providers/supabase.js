@@ -153,15 +153,58 @@ function headers(accessToken, serverConfig) {
 //      queue against a backend that's clearly down. Fails instantly during
 //      the cooldown (no network attempt, no timeout wait), and gives
 //      Nuvio's own backend room to recover instead of adding to its load.
+//
+// A third behaviour on top of those two, added after a confirmed live
+// incident where the first two alone weren't enough: Nuvio's backend
+// started answering 429 (rate limited) rather than failing outright, and a
+// FIXED cooldown turned into an endless sawtooth - open 30s, resume at full
+// rate, get 429'd within seconds, open again - for hours, hammering an
+// already-complaining backend the whole time. So:
+//   3. Rate-limit-aware backoff - 429 is an explicit "you are going too
+//      fast", not a generic error, so it trips the breaker after far fewer
+//      hits, honours a Retry-After header when one is sent, and each
+//      consecutive trip doubles the cooldown (30s, 60s, 2m, ... capped)
+//      until calls actually start succeeding again.
 const SUPABASE_TIMEOUT_MS = 15000
 const MAX_CONCURRENT = 8
 const FAILURE_THRESHOLD = 5
+// 429 says the backend is already unhappy - two in a row is plenty.
+const RATE_LIMIT_THRESHOLD = 2
 const CIRCUIT_COOLDOWN_MS = 30000
+const MAX_CIRCUIT_COOLDOWN_MS = 10 * 60 * 1000
+// How long calls must have been healthy before the escalating cooldown is
+// forgotten. Without this, a single success between two rate-limited
+// windows would reset the backoff to 30s and restore the sawtooth.
+const STABLE_PERIOD_MS = 5 * 60 * 1000
 
 let activeCount = 0
 const waitQueue = []
 let consecutiveFailures = 0
+let consecutiveRateLimits = 0
 let circuitOpenUntil = 0
+let circuitTrips = 0
+let lastTripAt = 0
+
+// Retry-After is seconds or an HTTP-date (RFC 9110). Both are honoured;
+// anything unparseable just falls through to our own backoff.
+function retryAfterMsFrom(res) {
+  const raw = res.headers?.get?.('retry-after')
+  if (!raw) return 0
+  const seconds = Number(raw)
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, MAX_CIRCUIT_COOLDOWN_MS)
+  const at = Date.parse(raw)
+  if (!Number.isNaN(at)) return Math.max(0, Math.min(at - Date.now(), MAX_CIRCUIT_COOLDOWN_MS))
+  return 0
+}
+
+// Every call site builds its failure the same way - status drives the
+// breaker's rate-limit path, retryAfterMs sets a floor for the cooldown.
+function providerError(res) {
+  const err = new Error('Provider request failed')
+  err.status = res.status
+  err.retryAfterMs = retryAfterMsFrom(res)
+  return err
+}
 
 function acquireSlot() {
   if (activeCount < MAX_CONCURRENT) {
@@ -191,13 +234,29 @@ async function withResilience(label, fn) {
   try {
     const result = await fn()
     consecutiveFailures = 0
+    consecutiveRateLimits = 0
+    // Only forget the escalating backoff once calls have been healthy for a
+    // while - see STABLE_PERIOD_MS.
+    if (circuitTrips > 0 && Date.now() - lastTripAt > STABLE_PERIOD_MS) circuitTrips = 0
     return result
   } catch (e) {
     consecutiveFailures++
-    if (consecutiveFailures >= FAILURE_THRESHOLD) {
-      circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS
+    const rateLimited = e?.status === 429
+    if (rateLimited) consecutiveRateLimits++
+
+    if (consecutiveFailures >= FAILURE_THRESHOLD || consecutiveRateLimits >= RATE_LIMIT_THRESHOLD) {
+      // Each consecutive trip doubles the wait, so a backend that keeps
+      // saying "too fast" gets progressively more room instead of being
+      // re-hammered every 30 seconds.
+      const escalated = Math.min(CIRCUIT_COOLDOWN_MS * (2 ** circuitTrips), MAX_CIRCUIT_COOLDOWN_MS)
+      const cooldown = Math.max(escalated, e?.retryAfterMs || 0)
+      circuitOpenUntil = Date.now() + cooldown
+      lastTripAt = Date.now()
+      circuitTrips++
       consecutiveFailures = 0
-      console.error(`Supabase circuit opened for ${CIRCUIT_COOLDOWN_MS / 1000}s after ${FAILURE_THRESHOLD} consecutive failures`)
+      consecutiveRateLimits = 0
+      const why = rateLimited ? 'rate limiting (429)' : `${FAILURE_THRESHOLD} consecutive failures`
+      console.error(`Supabase circuit opened for ${Math.round(cooldown / 1000)}s after ${why}`)
     }
     throw e
   } finally {
@@ -214,9 +273,7 @@ async function supabaseGet(table, params, accessToken, serverConfig) {
     const res = await fetch(url, { headers: headers(accessToken, serverConfig), signal: AbortSignal.timeout(SUPABASE_TIMEOUT_MS) })
     if (!res.ok) {
       console.error(`Supabase GET ${table} failed (${res.status})`)
-      const err = new Error('Provider request failed')
-      err.status = res.status
-      throw err
+      throw providerError(res)
     }
     return await res.json()
   })
@@ -234,9 +291,7 @@ async function supabasePost(table, rows, accessToken, serverConfig) {
     if (!res.ok) {
       const bodyText = await res.text().catch(() => '')
       console.error(`Supabase POST ${table} failed (${res.status}): ${bodyText}`)
-      const err = new Error('Provider request failed')
-      err.status = res.status
-      throw err
+      throw providerError(res)
     }
     return await res.json()
   })
@@ -255,9 +310,7 @@ async function supabaseDelete(table, params, accessToken, serverConfig) {
     })
     if (!res.ok) {
       console.error(`Supabase DELETE ${table} failed (${res.status})`)
-      const err = new Error('Provider request failed')
-      err.status = res.status
-      throw err
+      throw providerError(res)
     }
   })
 }
@@ -273,9 +326,7 @@ async function supabaseRpc(fn, body, accessToken, serverConfig) {
     })
     if (!res.ok) {
       console.error(`Supabase RPC ${fn} failed (${res.status})`)
-      const err = new Error('Provider request failed')
-      err.status = res.status
-      throw err
+      throw providerError(res)
     }
     // A write-only RPC (e.g. sync_push_collections) can legitimately return
     // a 2xx with an empty body - blindly calling .json() on that throws

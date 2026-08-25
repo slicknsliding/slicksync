@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { Header } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { PageToolbar, MediaDetailModal, PageToolbarProps, Badge, PosterCard, PosterCardItem } from '@/components/ui';
+import { PageToolbar, MediaDetailModal, PageToolbarProps, Badge, PosterCard, PosterCardItem, VirtualPosterGrid } from '@/components/ui';
 import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useWatchlistState } from '@/lib/hooks/useWatchlistState';
@@ -77,6 +77,10 @@ export default function DiscoverPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [items, setItems] = useState<DiscoverItem[]>([]);
+  // Every id ever loaded this session - de-dupes the next page against the
+  // full history, since Cinemeta can repeat an item across pages (a real,
+  // documented occurrence) and duplicate ids would collide as React keys.
+  const seenIdsRef = useRef<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   // Narrowed to PosterCardItem, not the full DiscoverItem - this is the only
   // shape MediaDetailModal's fallback* props below actually read, and it's
@@ -99,6 +103,14 @@ export default function DiscoverPage() {
   // (both the main grid and the For You rows) so opening a second card's
   // menu closes whichever one was open before, same as Continue Watching.
   const [openMenuKey, setOpenMenuKey] = useState<string | null>(null);
+  // One stable identity for every card's onMenuOpenChange, instead of each
+  // card getting its own `(open) => setOpenMenuKey(...)` closure on every
+  // render. A fresh function per card defeats PosterCard's React.memo
+  // entirely - every card in every grid on this page was re-rendering on any
+  // state change at all, including simply closing the detail modal.
+  const handleMenuOpenChange = useCallback((open: boolean, itemId: string) => {
+    setOpenMenuKey(open ? itemId : null);
+  }, []);
 
   // Pagination state — Cinemeta returns 100 items per page; ask for more via
   // ?skip=N. hasMore flips false when a page returned <PAGE_SIZE (end of
@@ -141,6 +153,15 @@ export default function DiscoverPage() {
   // isn't configured or the request fails - see getSimklDiscoverRow's own
   // comment on why this fails silently.
   const [simklTrending, setSimklTrending] = useState<SimklDiscoverItem[]>([]);
+  // Same shape SimklDiscoverItem already has, plus PosterCardItem's
+  // releaseInfo field, computed once per simklTrending change rather than as
+  // a fresh `{ ...item, releaseInfo: item.year }` literal on every render of
+  // every card - an inline literal here is exactly the kind of new-object-
+  // per-render prop that defeats PosterCard's React.memo.
+  const simklTrendingCardItems = useMemo(
+    () => new Map(simklTrending.map((item) => [item.id, { ...item, releaseInfo: item.year }])),
+    [simklTrending]
+  );
   useEffect(() => {
     api.getSimklDiscoverRow('trending', type === 'series' ? 'shows' : 'movies').then(setSimklTrending);
   }, [type]);
@@ -301,6 +322,7 @@ export default function DiscoverPage() {
     if (isPeopleSearch) {
       // People mode: no title fetch at all.
       setItems([]);
+      seenIdsRef.current = new Set();
       setIsLoading(false);
       setHasMore(false);
       return;
@@ -318,6 +340,11 @@ export default function DiscoverPage() {
     request.then((results) => {
       if (cancelled) return;
       setItems(results);
+      // Fresh search/filter - past this point's seen-ids are irrelevant to a
+      // completely different result set, and starting over here (rather than
+      // accumulating across filter changes) keeps this Set from growing
+      // unbounded across a long session of changing catalogs/genres.
+      seenIdsRef.current = new Set(results.map((r) => r.id));
       setIsLoading(false);
       // Search endpoint doesn't paginate; browse pages are exactly PAGE_SIZE.
       const gotFullPage = !debouncedQuery && results.length > 0;
@@ -356,13 +383,12 @@ export default function DiscoverPage() {
     setIsLoadingMore(true);
     try {
       const next = await api.discoverBrowse(type, { catalog, genre: genre || undefined, skip });
-      // De-dupe against what's already loaded — Cinemeta occasionally repeats
-      // an item across pages when its catalog reshuffles between requests.
-      setItems((prev) => {
-        const seen = new Set(prev.map((p) => p.id));
-        const additions = next.filter((n) => !seen.has(n.id));
-        return [...prev, ...additions];
-      });
+      // Cinemeta occasionally repeats an item across pages when its catalog
+      // reshuffles between requests - de-dupe against everything already
+      // loaded so a repeat can't collide as a duplicate React key.
+      const additions = next.filter((n) => !seenIdsRef.current.has(n.id));
+      for (const a of additions) seenIdsRef.current.add(a.id);
+      setItems((prev) => [...prev, ...additions]);
       setSkip((s) => s + next.length);
       setHasMore(next.length > 0);
     } finally {
@@ -612,7 +638,7 @@ export default function DiscoverPage() {
               {simklTrending.map((item) => (
                 <div key={item.id} className="w-32 sm:w-36 shrink-0">
                   <PosterCard
-                    item={{ ...item, releaseInfo: item.year }}
+                    item={simklTrendingCardItems.get(item.id) ?? item}
                     ratings={ratingsById[item.id]}
                     watched={watchedStatus[item.id]}
                     inWatchlist={inWatchlistIds.has(item.id)}
@@ -624,7 +650,7 @@ export default function DiscoverPage() {
                     onToggleWatchlist={handleToggleWatchlist}
                     onToggleWatched={handleToggleWatched}
                     isMenuOpen={openMenuKey === item.id}
-                    onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                    onMenuOpenChange={handleMenuOpenChange}
                     focusable={isTV}
                   />
                 </div>
@@ -871,7 +897,7 @@ export default function DiscoverPage() {
                       onToggleWatchlist={handleToggleWatchlist}
                       onToggleWatched={handleToggleWatched}
                       isMenuOpen={openMenuKey === item.id}
-                      onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                      onMenuOpenChange={handleMenuOpenChange}
                       focusable={isTV}
                     />
                   ))}
@@ -938,7 +964,7 @@ export default function DiscoverPage() {
                           onToggleWatchlist={handleToggleWatchlist}
                           onToggleWatched={handleToggleWatched}
                           isMenuOpen={openMenuKey === item.id}
-                          onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                          onMenuOpenChange={handleMenuOpenChange}
                           focusable={isTV}
                         />
                       ))}
@@ -1029,10 +1055,18 @@ export default function DiscoverPage() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
-                {sortedItems.map((item) => (
+              {/* The one unbounded grid on this page (infinite scroll keeps
+                  appending) - windowed so only near-viewport rows are real
+                  DOM. The small fixed rows elsewhere (For You, person
+                  credits) stay plain grids on purpose. TV disables the
+                  windowing - see VirtualPosterGrid's own comment. */}
+              <VirtualPosterGrid
+                items={sortedItems}
+                getKey={(item) => item.id}
+                gridClassName="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3"
+                disabled={isTV}
+                renderItem={(item) => (
                   <PosterCard
-                    key={item.id}
                     item={item}
                     ratings={ratingsById[item.id]}
                     watched={watchedStatus[item.id]}
@@ -1045,11 +1079,11 @@ export default function DiscoverPage() {
                     onToggleWatchlist={handleToggleWatchlist}
                     onToggleWatched={handleToggleWatched}
                     isMenuOpen={openMenuKey === item.id}
-                    onMenuOpenChange={(open) => setOpenMenuKey(open ? item.id : null)}
+                    onMenuOpenChange={handleMenuOpenChange}
                     focusable={isTV}
                   />
-                ))}
-              </div>
+                )}
+              />
 
               {/* Infinite-scroll sentinel + spinner. Discover browse-mode only
                   — Watchlist is fully-loaded client-side and search doesn't

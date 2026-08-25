@@ -4,6 +4,7 @@ import { ToastProvider } from "@/components/ui/Toast";
 import { ThemeProvider } from "@/lib/theme";
 import { LayoutModeProvider } from "@/lib/layout-mode";
 import { UserCacheProvider } from "@/components/providers/UserCacheProvider";
+import { ServiceWorkerRegistrar } from "@/components/pwa/ServiceWorkerRegistrar";
 
 export const metadata: Metadata = {
   title: "SlickSync - Users, Groups & Addons",
@@ -139,6 +140,7 @@ export default function RootLayout({
           <LayoutModeProvider>
             <UserCacheProvider>
               <ToastProvider>
+                <ServiceWorkerRegistrar />
                 {children}
               </ToastProvider>
             </UserCacheProvider>

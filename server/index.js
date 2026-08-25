@@ -319,6 +319,9 @@ app.use('/api/federation', require('./routes/federation')({ prisma }));
 app.use('/api/health', healthRouter({ prisma, getAccountId, INSTANCE_TYPE }));
 app.use('/api/superadmin', require('./routes/superadmin')({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }));
 app.use('/api/poster', postersRouter({ prisma, getAccountId }));
+// Resize/cache proxy for plain external poster/backdrop URLs - see the
+// route's own header for how it relates to /api/poster above.
+app.use('/api/img', require('./routes/imageCache')());
 app.use('/api/qr', require('./routes/qr')());
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({
@@ -558,6 +561,17 @@ async function bootstrap() {
       scheduleUpdateCheckNotifier(prisma)
     } catch (err) {
       console.error('⚠️ Failed to initialize update-check notifier:', err)
+    }
+
+    // Nudges an account whose Disaster Recovery Kit is stale/missing while
+    // its Vault holds credentials nothing else can restore - opt-in, off by
+    // default. See recoveryKitReminder.js for why this is a reminder rather
+    // than an automated off-site kit export.
+    try {
+      const { scheduleRecoveryKitReminder } = require('./utils/recoveryKitReminder')
+      scheduleRecoveryKitReminder(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize recovery-kit reminder:', err)
     }
 
     // Schedule notification digest sends (hourly check, actual send gated by

@@ -51,6 +51,85 @@ class ApiClient {
   private recentGets = new Map<string, { value: any; at: number }>();
   private static readonly DEDUPE_WINDOW_MS = 2000;
 
+  // Instant navigation: the last successful response of every GET, kept for
+  // the whole session and snapshotted to localStorage when the tab hides.
+  // Pages initialize their state from peekGet() and skip their loading
+  // spinner when it hits - the data shown is whatever this client last saw
+  // (possibly minutes old), and the page's own normal fetch-on-mount then
+  // refreshes it in place. A deliberate third layer next to the two above:
+  // recentGets (2s) exists to coalesce request BURSTS and must stay short
+  // so nothing reads meaningfully stale data as if it were fresh; this
+  // layer is allowed to be arbitrarily stale precisely because it is only
+  // ever read through peekGet by callers that immediately revalidate.
+  // Failures never touch it, and mutations deliberately don't clear it -
+  // the page that mutated refetches and overwrites it with the result.
+  private lastKnown = new Map<string, unknown>();
+  private lastKnownRestored = false;
+  private static readonly LAST_KNOWN_STORAGE_KEY = 'slicksync-last-known';
+  private static readonly LAST_KNOWN_MAX_BYTES = 3 * 1024 * 1024;
+
+  private getKey(endpoint: string, token?: string | null): string {
+    return `${endpoint}::${token || this.getToken() || ''}`;
+  }
+
+  private restoreLastKnown() {
+    if (this.lastKnownRestored || typeof window === 'undefined') return;
+    this.lastKnownRestored = true;
+    try {
+      const raw = localStorage.getItem(ApiClient.LAST_KNOWN_STORAGE_KEY);
+      if (!raw) return;
+      const entries: Array<[string, unknown]> = JSON.parse(raw);
+      for (const [k, v] of entries) {
+        if (!this.lastKnown.has(k)) this.lastKnown.set(k, v);
+      }
+    } catch {
+      // Corrupt/oversized snapshot - drop it, pages just show spinners once.
+      try { localStorage.removeItem(ApiClient.LAST_KNOWN_STORAGE_KEY); } catch {}
+    }
+  }
+
+  private persistLastKnown() {
+    if (typeof window === 'undefined') return;
+    try {
+      let entries = Array.from(this.lastKnown.entries());
+      let raw = JSON.stringify(entries);
+      // Size cap: drop the LARGEST entries first until it fits - one huge
+      // metrics snapshot shouldn't evict twenty small lists.
+      while (raw.length > ApiClient.LAST_KNOWN_MAX_BYTES && entries.length > 0) {
+        let biggest = 0;
+        for (let i = 1; i < entries.length; i++) {
+          if (JSON.stringify(entries[i][1]).length > JSON.stringify(entries[biggest][1]).length) biggest = i;
+        }
+        entries = entries.filter((_, i) => i !== biggest);
+        raw = JSON.stringify(entries);
+      }
+      localStorage.setItem(ApiClient.LAST_KNOWN_STORAGE_KEY, raw);
+    } catch {
+      // Quota/private mode - instant nav still works in-memory this session.
+    }
+  }
+
+  /** Last successful response this client has seen for a GET endpoint, or
+   * undefined if it has never succeeded. Callers MUST treat this as a
+   * provisional first paint and still fetch fresh data - see lastKnown's
+   * comment above. */
+  peekGet<T>(endpoint: string): T | undefined {
+    this.restoreLastKnown();
+    return this.lastKnown.get(this.getKey(endpoint)) as T | undefined;
+  }
+
+  constructor() {
+    // Snapshot the last-known store whenever the tab goes to the
+    // background - covers both plain navigation away and the PWA being
+    // swiped closed, without paying a localStorage write per request.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', () => this.persistLastKnown());
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') this.persistLastKnown();
+      });
+    }
+  }
+
   setToken(token: string) {
     this.token = token;
     if (typeof window !== 'undefined') {
@@ -70,6 +149,11 @@ class ApiClient {
     this.token = null;
     if (typeof window !== 'undefined') {
       localStorage.removeItem('slicksync_token');
+      // Logout hygiene: last-known responses are account data - don't leave
+      // them readable (or restorable) for whoever logs in next on this
+      // machine.
+      this.lastKnown.clear();
+      try { localStorage.removeItem(ApiClient.LAST_KNOWN_STORAGE_KEY); } catch {}
     }
   }
 
@@ -128,6 +212,7 @@ class ApiClient {
     const promise = this.fetchImpl<T>(endpoint, options)
       .then((value) => {
         this.recentGets.set(key, { value, at: Date.now() });
+        this.lastKnown.set(key, value);
         return value;
       })
       .finally(() => {
@@ -1181,6 +1266,41 @@ class ApiClient {
     });
   }
 
+  // --- Backup targets, DB maintenance, updates (private mode) ---
+  async getBackupTargets() {
+    return this.fetch<BackupTargets>('/settings/backup-targets');
+  }
+  async saveBackupTargets(data: Partial<BackupTargets>) {
+    return this.fetch<BackupTargets>('/settings/backup-targets', { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async testBackupTarget() {
+    return this.fetch<{ ok: boolean; location?: string; error?: string }>('/settings/backup-targets/test', { method: 'POST' });
+  }
+  async getDbMaintenance() {
+    return this.fetch<DbMaintenanceSettings>('/settings/db-maintenance');
+  }
+  async saveDbMaintenance(data: Partial<DbMaintenanceSettings>) {
+    return this.fetch<DbMaintenanceSettings>('/settings/db-maintenance', { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async runDbMaintenance(action: 'integrity' | 'vacuum' | 'prune') {
+    return this.fetch<Record<string, unknown>>('/settings/db-maintenance/run', { method: 'POST', body: JSON.stringify({ action }) });
+  }
+  async getUpdateCapability() {
+    return this.fetch<UpdateCapability>('/settings/update-capability');
+  }
+  async applyUpdate() {
+    return this.fetch<{ started: boolean; note: string }>('/settings/update-apply', { method: 'POST' });
+  }
+
+  /** Create a template directly from an addon list (share-code import) -
+   * the server encrypts the manifest URLs at rest with ITS key. */
+  async importSnapshot(data: { name: string; description?: string; addons: Array<{ name: string; manifestUrl: string | null; stremioAddonId?: string | null; version?: string | null }> }) {
+    return this.fetch<{ id: string; name: string; addonCount: number }>('/snapshots/import', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async deploySnapshot(id: string, targetUserId: string) {
     return this.fetch<{ deployed: number; failed: number; targetUserId: string }>(`/snapshots/${id}/deploy`, {
       method: 'POST',
@@ -1997,6 +2117,15 @@ class ApiClient {
       body: JSON.stringify(item),
     });
   }
+
+  /** One write for many titles - share-code imports use this instead of
+   * hammering the single-item route once per title. */
+  async addToListBulk(id: string, items: Array<{ id: string; type: 'movie' | 'series'; name: string; poster?: string | null; year?: number | string | null }>) {
+    return this.fetch<CustomList & { added: number }>(`/lists/${encodeURIComponent(id)}/items/bulk`, {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
+  }
   async removeFromList(id: string, itemId: string) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items/${encodeURIComponent(itemId)}`, {
       method: 'DELETE',
@@ -2106,6 +2235,15 @@ class ApiClient {
     return this.fetch<{ success: boolean; data: { id: string; healthIgnored: boolean } }>(`/addons/${id}/health-ignore`, {
       method: 'PATCH',
       body: JSON.stringify({ healthIgnored }),
+    });
+  }
+
+  /** Per-addon health-check overrides - empty/omitted fields clear back to
+   * the global defaults (manifest probe, 1 failure, global interval). */
+  async setAddonHealthConfig(id: string, cfg: { probeUrl?: string; failureThreshold?: number | string; intervalMinutes?: number | string }) {
+    return this.fetch<{ success: boolean; data: { id: string; healthConfig: AddonHealthConfig | null } }>(`/addons/${id}/health-config`, {
+      method: 'PATCH',
+      body: JSON.stringify(cfg),
     });
   }
 
@@ -2501,10 +2639,44 @@ export interface VaultEntryInput {
   autoRemoveAfterDays?: number;
 }
 
+export interface BackupTargets {
+  type: 'none' | 's3' | 'webdav';
+  /** How many local backup files to keep. 0 = keep everything. */
+  keepLocal: number;
+  s3: { endpoint: string; region: string; bucket: string; prefix: string; accessKeyId: string; secretAccessKey: string };
+  webdav: { url: string; username: string; password: string };
+}
+
+export interface DbMaintenanceSettings {
+  available?: boolean;
+  vacuumEnabled: boolean;
+  lastVacuumAt: string | null;
+  integrityCheckEnabled: boolean;
+  lastIntegrityCheckAt: string | null;
+  lastIntegrityOk: boolean | null;
+  pruneLogsEnabled: boolean;
+  lastPruneAt: string | null;
+}
+
+export interface UpdateCapability {
+  socketAvailable: boolean;
+  canSelfUpdate: boolean;
+  image: string | null;
+  composeProject: string | null;
+  reason: string;
+}
+
+export interface AddonHealthConfig {
+  probeUrl?: string;
+  failureThreshold?: number;
+  intervalMinutes?: number;
+}
+
 export interface Addon {
   id: string;
   name: string;
   manifestUrl: string;
+  healthConfig?: AddonHealthConfig | null;
   stremioAddonId?: string;
   version?: string;
   description?: string;
@@ -2663,6 +2835,12 @@ export interface SyncSettings {
   notifyOnBackup?: boolean;
   notifyOnProxyHealth?: boolean;
   notifyOnUpdateAvailable?: boolean;
+  /** Opt-in nudge when the Disaster Recovery Kit is stale/missing while the
+   * Vault holds credentials. Nothing is ever uploaded - see
+   * server/utils/recoveryKitReminder.js. */
+  notifyOnRecoveryKitStale?: boolean;
+  /** Read-only: stamped when a kit is actually exported. */
+  lastRecoveryKitExportAt?: string | null;
   notifyOnMosaic?: boolean;
   notifyDigestEnabled?: boolean;
   notifyDigestFrequency?: 'daily' | 'weekly';

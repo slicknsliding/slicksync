@@ -854,6 +854,22 @@ body {
   color: var(--color-text);
 }
 
+/* ===== OFFSCREEN RENDER SKIPPING ===== */
+/* content-visibility: auto lets the browser skip ALL rendering work (style,
+   layout, paint) for elements outside the viewport, natively - the DOM
+   nodes still exist, they just cost nothing until scrolled near. Applied to
+   Activity's per-day sections: that page's day-grouped structure (glass
+   panels, headers, two view modes) makes true windowed virtualization a
+   restructuring job, while this gets the same scroll-time win with zero
+   structural change. contain-intrinsic-size supplies a placeholder height
+   for not-yet-rendered sections so the scrollbar doesn't jump; `auto`
+   remembers each section's real height once it's been rendered once.
+   Unlayered like the rules below, so no layered utility can override it. */
+.cv-day-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 420px;
+}
+
 /* ===== PREVENT HORIZONTAL OVERFLOW ===== */
 html {
   overflow-x: hidden;

@@ -17,7 +17,26 @@ export function posterUrl(item: { id?: string | null; poster?: string | null }, 
   if (isRpdbPoster(item, rpdbEnabled)) {
     return `${API_BASE}/poster/${item.id}`;
   }
-  return item.poster || undefined;
+  return cachedImageUrl(item.poster, 342);
+}
+
+/** Routes an external image URL through the server's resize/cache proxy
+ * (server/routes/imageCache.js): fetched from the source once, resized to
+ * the width actually displayed, then served from the operator's own disk
+ * forever - faster grids, far less data on phones/TV. Width must be one of
+ * the server's fixed menu; 342 covers poster cards up to ~170 CSS px at 2x
+ * DPR, 780 is for the detail modal's large backdrop art.
+ *
+ * Passes through unchanged: empty values, relative/already-local URLs
+ * (including /api/poster RPDB links, which handle themselves), and GIFs -
+ * the server would freeze an animated cover to its first frame, and
+ * Community Covers explicitly supports animated GIF art. */
+export function cachedImageUrl(url: string | null | undefined, width: 154 | 342 | 500 | 780 = 342): string | undefined {
+  if (!url) return undefined;
+  if (!/^https?:\/\//i.test(url)) return url;
+  if (API_BASE && url.startsWith(API_BASE)) return url;
+  if (/\.gif(\?|$)/i.test(url)) return url;
+  return `${API_BASE}/img?src=${encodeURIComponent(url)}&w=${width}`;
 }
 
 // True exactly when posterUrl() above would actually resolve to RPDB's art -

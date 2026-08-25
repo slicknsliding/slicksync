@@ -16,6 +16,7 @@ import { useTheme } from '@/lib/theme';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -103,6 +104,11 @@ export default function UsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<UserDisplay | null>(null);
 
   // Fetch users and groups
+  // Instant navigation: show the last-known users/groups immediately while
+  // the fetch below refreshes them - see useLastKnown's own comment.
+  useLastKnown<User[]>('/users', (cached) => { setUsers(cached); setIsLoading(false); });
+  useLastKnown<Group[]>('/groups', (cached) => setGroups(cached));
+
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);

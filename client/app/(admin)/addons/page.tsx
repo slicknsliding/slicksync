@@ -5,6 +5,7 @@ import { useState, useCallback, useEffect, useMemo, useRef, Fragment } from 'rea
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import Link from 'next/link';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -225,6 +226,17 @@ export default function AddonsPage() {
   const [isBulkMoveToVaultOpen, setIsBulkMoveToVaultOpen] = useState(false);
   const [bulkMoveToVaultCategory, setBulkMoveToVaultCategory] = useState('custom');
   const [isBulkMovingToVault, setIsBulkMovingToVault] = useState(false);
+
+  // Instant navigation: last-known addons/groups/tags shown immediately,
+  // refreshed by the fetch below - see useLastKnown's own comment.
+  useLastKnown<Addon[]>('/addons', (cached) => { setAddons(cached); setIsLoading(false); });
+  // The page's own groups state is untyped (any[]) - mirror that rather
+  // than importing a type the page itself doesn't use.
+  useLastKnown<unknown[]>('/groups', (cached) => setGroups(cached));
+  useLastKnown<{ tags: string[]; tagColors: Record<string, string> }>('/addons/tags', (cached) => {
+    setAddonTags(cached.tags || []);
+    setAddonTagColors(cached.tagColors || {});
+  });
 
   // Fetch addons and groups
   useEffect(() => {

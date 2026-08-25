@@ -17,6 +17,8 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { toast } from '@/components/ui/Toast';
+import { encodeNuvioCollectionsShareCode, decodeShareCode } from '@/lib/shareCodes';
+import { ShareCodeDialog, PasteCodeDialog } from '@/components/ui/ShareCodeDialog';
 import {
   api, User, StremioAddon, NuvioProfile, NuvioCollection, NuvioCollectionFolder, NuvioCatalogSource,
 } from '@/lib/api';
@@ -25,7 +27,7 @@ import {
   ArrowUpIcon, ArrowDownIcon, RectangleStackIcon, FolderIcon, SparklesIcon,
   DocumentDuplicateIcon, PhotoIcon, ExclamationTriangleIcon, MapPinIcon,
   EllipsisVerticalIcon, PencilSquareIcon, FilmIcon, TvIcon,
-  ArrowDownTrayIcon, ArrowUpTrayIcon, QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon,
+  ArrowDownTrayIcon, ArrowUpTrayIcon, QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, LinkIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -538,6 +540,9 @@ export default function NuvioCollectionsPage() {
   const [savedSnapshot, setSavedSnapshot] = useState('[]');
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [importExportInfoOpen, setImportExportInfoOpen] = useState(false);
+  // Share codes for the whole collection layout (ShareCodeDialog).
+  const [showShareCode, setShowShareCode] = useState(false);
+  const [showPasteCode, setShowPasteCode] = useState(false);
   // The two info banners (TMDb templates, bridging a Catalog in) read fine
   // the first time but are a permanent eyesore taking up space on every
   // later visit - same "?" icon + Modal pattern as importExportInfoOpen
@@ -1168,6 +1173,15 @@ export default function NuvioCollectionsPage() {
                     <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={exportCollectionsJson} disabled={collections.length === 0} title="Download this profile's collections as JSON">
                       Export
                     </Button>
+                    {/* Share codes sit beside the JSON file flow, not
+                        instead of it: a file is right for backups, a code
+                        is right for handing a layout to someone in chat. */}
+                    <Button variant="ghost" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setShowPasteCode(true)} title="Paste a collections share code - stages it into your draft for review before saving">
+                      Paste code
+                    </Button>
+                    <Button variant="ghost" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setShowShareCode(true)} disabled={collections.length === 0} title="Turn this profile's collections into a copy-paste share code">
+                      Share code
+                    </Button>
                     <button
                       type="button"
                       onClick={() => setImportExportInfoOpen(true)}
@@ -1438,6 +1452,35 @@ export default function NuvioCollectionsPage() {
           </a>
         </div>
       </Modal>
+
+      {/* Share codes for the whole layout. Import STAGES into the draft
+          (same as the JSON file import above) rather than writing straight
+          to Nuvio - review, then Save changes, exactly like every other
+          edit on this page. */}
+      <ShareCodeDialog
+        isOpen={showShareCode}
+        onClose={() => setShowShareCode(false)}
+        title="Share collections as code"
+        summary={`${collections.length} collection${collections.length === 1 ? '' : 's'} and their folders (titles, covers, and which catalogs each folder pulls from)`}
+        generate={() => encodeNuvioCollectionsShareCode({
+          collections: collections as unknown as Array<{ title: string; folders: unknown[] } & Record<string, unknown>>,
+        })}
+      />
+      <PasteCodeDialog
+        isOpen={showPasteCode}
+        onClose={() => setShowPasteCode(false)}
+        title="Import collections from a code"
+        placeholder="Paste an SSN1: collections code…"
+        onImport={(text) => {
+          const decoded = decodeShareCode(text);
+          if (!decoded || decoded.kind !== 'nuvioCollections') {
+            throw new Error('That code isn\'t a collections share code');
+          }
+          const staged = (decoded.payload.collections as unknown as NuvioCollection[]).map(deepCopyCollection);
+          setCollections((prev) => [...prev, ...staged]);
+          toast.success(`Added ${staged.length} collection${staged.length !== 1 ? 's' : ''} - review, then Save changes`);
+        }}
+      />
 
       <Modal isOpen={tipsInfoOpen} onClose={() => setTipsInfoOpen(false)} title="Tips" size="sm">
         <div className="space-y-3 text-sm text-muted">

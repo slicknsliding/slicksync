@@ -147,6 +147,10 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   const [storedNotifications, setStoredNotifications] = useState<any[]>([]);
   useEffect(() => {
     const fetchStored = async () => {
+      // Skip while the tab isn't the one on screen - a backgrounded Safari
+      // tab has no reason to keep firing this every 30s, and the interval
+      // itself catches back up on its own next tick once it's visible again.
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       try {
         setStoredNotifications(await api.getNotifications());
       } catch {
@@ -161,34 +165,29 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   // Fetch pending + accepted invite requests
   useEffect(() => {
     const fetchRequests = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       try {
         const invitations = await api.getInvitations();
-        const allRequests: any[] = [];
 
-        for (const inv of invitations) {
+        // One round-trip per invitation without its own `requests` array,
+        // fired concurrently rather than awaited one at a time in a loop -
+        // a household with several invitations was serializing N sequential
+        // fetches on every 30s poll tick, all on the shared api.ts request
+        // path every other in-flight call also uses.
+        const perInvitation = await Promise.all(invitations.map(async (inv) => {
           const invName = inv.name || inv.code || inv.inviteCode || 'Invitation';
           const groupName = (inv as any).groupName || 'a group';
           if (inv.requests && Array.isArray(inv.requests)) {
-            allRequests.push(...inv.requests.map((req: any) => ({
-              ...req,
-              invitationName: invName,
-              groupName,
-            })));
-          } else {
-            try {
-              const reqs = await api.getInvitationRequests(inv.id);
-              if (Array.isArray(reqs)) {
-                allRequests.push(...reqs.map((req: any) => ({
-                  ...req,
-                  invitationName: invName,
-                  groupName,
-                })));
-              }
-            } catch {
-              // Ignore errors
-            }
+            return inv.requests.map((req: any) => ({ ...req, invitationName: invName, groupName }));
           }
-        }
+          try {
+            const reqs = await api.getInvitationRequests(inv.id);
+            return Array.isArray(reqs) ? reqs.map((req: any) => ({ ...req, invitationName: invName, groupName })) : [];
+          } catch {
+            return [];
+          }
+        }));
+        const allRequests: any[] = perInvitation.flat();
 
         setPendingRequests(allRequests.filter((r: any) => r.status === 'pending'));
         setAcceptedRequests(allRequests.filter((r: any) => r.status === 'accepted'));
@@ -222,6 +221,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   const [episodeAlerts, setEpisodeAlerts] = useState<any[]>([]);
   useEffect(() => {
     const fetchAlerts = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       try {
         setEpisodeAlerts(await api.getEpisodeAlerts());
       } catch {
@@ -239,6 +239,7 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
   const [addonHealthAlerts, setAddonHealthAlerts] = useState<any[]>([]);
   useEffect(() => {
     const fetchAddonAlerts = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       try {
         setAddonHealthAlerts(await api.getAddonHealthAlerts());
       } catch {

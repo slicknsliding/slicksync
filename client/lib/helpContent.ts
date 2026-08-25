@@ -1200,6 +1200,91 @@ export const HELP_ENTRIES: HelpEntry[] = [
     href: '/changelog',
     linkLabel: 'Open Changelog',
   },
+  {
+    id: 'addon-configure-in-place',
+    title: 'Editing an addon\'s configuration in place',
+    category: 'Addons',
+    keywords: ['configure addon', 'addon settings', 'edit addon config', 'change debrid key', 'addon options', 'reconfigure', 'torrentio settings'],
+    answer: 'Open the addon\'s page → Configure (next to the Manifest URL). Most addons store their entire configuration inside the install URL; SlickSync decodes it into editable fields, and saving rebuilds the URL and updates every user and group carrying the addon - no remove-and-re-import.',
+    steps: [
+      'Go to Addons and open the addon.',
+      'Click Configure, next to the Manifest URL field.',
+      'Edit the fields (keys and tokens are masked - use the eye icon to reveal).',
+      'Save & redeploy. The manifest is re-fetched and everyone carrying the addon gets the new configuration on their next sync.',
+    ],
+    details: [
+      'There is no configuration API in the addon protocol - settings travel as one path segment in the install URL, in a few common formats (key=value pairs, JSON, or base64 JSON). SlickSync can decode and rebuild all of those.',
+      'Addons using an encrypted or custom format (AIOStreams, for example) can\'t be decoded into fields. For those, Configure links to the addon\'s own hosted configuration page - usually pre-filled with the current settings - and the new URL it produces can be pasted straight into the Manifest URL field.',
+    ],
+    tips: [
+      'Saving here is exactly equivalent to pasting a new install URL - the same validation and manifest re-fetch runs either way.',
+    ],
+    related: ['protected-addons', 'addon-health-settings'],
+  },
+  {
+    id: 'addon-health-settings',
+    title: 'Custom health checks and offline automation for an addon',
+    category: 'Addons',
+    keywords: ['health check', 'addon offline', 'failover', 'probe url', 'failure threshold', 'check interval', 'automate addon', 'backup addon'],
+    answer: 'Open the addon → the Backup Addon card → Health check settings. Set a custom probe URL, how many consecutive failures count as offline, and how often this addon is checked. The Automate button creates an automation rule pre-scoped to this addon going offline.',
+    steps: [
+      'Open the addon and scroll to the Backup Addon card.',
+      'Click Edit next to Health check settings.',
+      'Optionally set a custom probe URL - an endpoint that only answers when the addon genuinely works, not just serves a cached manifest.',
+      'Set failures-before-offline (1-10) so a single network blip can\'t trigger failover and alerts.',
+      'Optionally set a per-addon check interval; leave blank for the global cadence.',
+      'Or click Automate to open a pre-filled automation rule for this addon going offline - pick the action and save.',
+    ],
+    details: [
+      'The failure threshold gates the offline TRANSITION (failover, notifications, automation triggers) - the raw result of every probe still lands in the Health History card, so blips stay visible without paging anyone.',
+      'The automation side uses the engine\'s existing "addon goes offline" trigger; the Automate button just arrives with the trigger picked and a condition scoping it to this specific addon.',
+    ],
+    related: ['protected-addons', 'automation-create'],
+  },
+  {
+    id: 'share-codes',
+    title: 'Share codes: sending a catalog, collection layout, or template to someone',
+    category: 'Sharing & integrations',
+    keywords: ['share code', 'share catalog', 'export code', 'import code', 'send catalog', 'share template', 'share collections', 'copy paste code'],
+    answer: 'Catalogs, Nuvio collection layouts, and addon templates can each be turned into one copy-paste code that any other SlickSync can import. No accounts, no files, no external service - the code itself carries everything.',
+    steps: [
+      'Catalog: open it → More → Share as code. Import by pasting the code into Catalogs → Import, in the same field that takes a URL.',
+      'Nuvio collections: Collections page → Share code. Import with Paste code - it stages into your draft, so you review and press Save changes like any other edit.',
+      'Addon template: Tasks → Addon Templates → Share on the template. Import with Import from Code.',
+    ],
+    details: [
+      'Every share is two steps on purpose: the dialog first states exactly what the code will contain, and only produces it after you confirm. Nothing is shared by flipping a switch.',
+      'Codes are generated entirely in your browser - producing one sends nothing anywhere. What a code contains is fixed at the moment you generate it; later changes to the catalog or template do not travel to anyone holding an older code.',
+      'Each kind has its own prefix so a wrong paste fails cleanly instead of importing something unexpected: SSC1 for catalogs, SSN1 for collections, SSA1 for templates. Themes use the same idea (SST1).',
+    ],
+    tips: [
+      'Addon template codes include each addon\'s install URL, and those URLs often embed debrid/API keys - sharing the code shares those keys. The dialog warns before generating; treat a template code like a password.',
+      'Catalog and collection codes carry no credentials - only titles, folders, and which catalogs a folder points at.',
+    ],
+    related: ['catalog-create', 'theme-build-share'],
+  },
+  {
+    id: 'maintenance-and-updates',
+    title: 'Off-site backups, database upkeep, and applying updates',
+    category: 'Health & maintenance',
+    keywords: ['offsite backup', 'off-site backup', 's3 backup', 'webdav backup', 'backblaze', 'retention', 'vacuum', 'integrity check', 'database maintenance', 'update slicksync', 'one click update'],
+    answer: 'Tasks → Maintenance. Send a copy of every backup to S3 or WebDAV, let the database look after itself (integrity checks, compaction, trimming old logs), and apply an update without SSHing into the box.',
+    steps: [
+      'Off-site backups: pick S3 or WebDAV, fill in the destination, then Test target to confirm it works before trusting it.',
+      'Set "Keep locally" if you want old backup files cleaned up automatically - 0 keeps every one, which is the default.',
+      'Database upkeep: integrity checks are on by default (they only read). Compaction and log trimming are off until you turn them on.',
+      'Updates: if this container can update itself the button says so; otherwise the page shows the exact command to run on the host.',
+    ],
+    details: [
+      'Backups have always been written next to the database they protect, which does not help if the machine itself is gone. An off-site copy is what covers that. S3 here means any S3-compatible service - AWS, Backblaze B2, Wasabi, Cloudflare R2, MinIO - and WebDAV covers Nextcloud, rsync.net and similar.',
+      'A failed upload never fails the backup: the local copy is already written and validated first, and an upload problem raises a notification instead of failing silently.',
+      'Database upkeep never touches watch history, users, catalogs, or the Vault. Trimming only caps addon health-check history and automation run history - the two tables nothing reads by date. Compaction refuses to run if the disk lacks the free space to do it safely.',
+      'Updating in place requires the Docker socket mounted into the container, which effectively grants control of the host\'s Docker. That is a deliberate security trade, so it is never enabled for you - without it, everything else here still works and you get the command to run instead.',
+      'When it is available, updating always backs up first and downloads the new image before anything restarts, so a failed download leaves the running version untouched.',
+      'Off-site backups deliberately carry no Vault secrets - only the Disaster Recovery Kit does, and it is only ever produced when you export it by hand. Automating that would mean continuously copying every credential to a third-party bucket and keeping its passphrase on the server, which is worse than the problem it solves. Instead, Settings has an opt-in "Recovery Kit reminders" toggle that nudges you when your kit is over 60 days old (or was never made) and the Vault actually holds credentials.',
+    ],
+    related: ['backup-restore', 'system-health-overview'],
+  },
 ];
 
 // Very small keyword-overlap scorer, not a real search engine - good enough
