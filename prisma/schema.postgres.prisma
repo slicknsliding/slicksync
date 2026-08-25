@@ -119,6 +119,16 @@ model Addon {
   // Null = the global defaults (manifest probe, 1 failure, env interval).
   healthConfig     String?
 
+  // Proxy fields - the Addons page's per-addon "Proxy" toggle serves the
+  // addon through /proxy/<uuid>/manifest.json so the original (often
+  // key-bearing) manifest URL never reaches a client. These columns back
+  // server/routes/proxy.js and the enable/disable/regenerate handlers in
+  // routes/addons.js, all of which shipped WITHOUT the schema ever
+  // declaring them - every proxy toggle threw PrismaClientValidationError
+  // ("Unknown argument `proxyUuid`") on both instance types.
+  proxyEnabled     Boolean  @default(false)
+  proxyUuid        String?  @unique
+
   // Backup fields
   backupAddonId    String?  // Reference to backup addon (another Addon record)
 
