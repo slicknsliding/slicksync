@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { TVLink } from '@/components/tv/TVLink';
@@ -548,6 +549,16 @@ export default function DashboardPage() {
 
     return Math.round(totalSeconds / 60);
   }, [metricsData, nowTick]);
+
+  // Instant navigation: last-known metrics/addons shown immediately while
+  // refreshData below refreshes them - see useLastKnown's own comment.
+  // Only metrics gates the spinner: it's the payload the whole page is
+  // built from, while addons/stats just fill two cards.
+  useLastKnown<MetricsData>('/users/metrics?period=7d', (cached) => {
+    setMetricsData(cached);
+    setIsLoading(false);
+  });
+  useLastKnown<Addon[]>('/addons', (cached) => setRecentAddons(cached.slice(0, 3)));
 
   // Fetch dashboard data. `silent` skips the loading spinner - used by the
   // 30s auto-refresh below so Now Playing stays live without the whole

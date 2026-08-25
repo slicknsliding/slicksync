@@ -319,6 +319,9 @@ app.use('/api/federation', require('./routes/federation')({ prisma }));
 app.use('/api/health', healthRouter({ prisma, getAccountId, INSTANCE_TYPE }));
 app.use('/api/superadmin', require('./routes/superadmin')({ prisma, JWT_SECRET, isProdEnv, cookieName, parseCookies }));
 app.use('/api/poster', postersRouter({ prisma, getAccountId }));
+// Resize/cache proxy for plain external poster/backdrop URLs - see the
+// route's own header for how it relates to /api/poster above.
+app.use('/api/img', require('./routes/imageCache')());
 app.use('/api/qr', require('./routes/qr')());
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({

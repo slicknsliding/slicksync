@@ -51,6 +51,85 @@ class ApiClient {
   private recentGets = new Map<string, { value: any; at: number }>();
   private static readonly DEDUPE_WINDOW_MS = 2000;
 
+  // Instant navigation: the last successful response of every GET, kept for
+  // the whole session and snapshotted to localStorage when the tab hides.
+  // Pages initialize their state from peekGet() and skip their loading
+  // spinner when it hits - the data shown is whatever this client last saw
+  // (possibly minutes old), and the page's own normal fetch-on-mount then
+  // refreshes it in place. A deliberate third layer next to the two above:
+  // recentGets (2s) exists to coalesce request BURSTS and must stay short
+  // so nothing reads meaningfully stale data as if it were fresh; this
+  // layer is allowed to be arbitrarily stale precisely because it is only
+  // ever read through peekGet by callers that immediately revalidate.
+  // Failures never touch it, and mutations deliberately don't clear it -
+  // the page that mutated refetches and overwrites it with the result.
+  private lastKnown = new Map<string, unknown>();
+  private lastKnownRestored = false;
+  private static readonly LAST_KNOWN_STORAGE_KEY = 'slicksync-last-known';
+  private static readonly LAST_KNOWN_MAX_BYTES = 3 * 1024 * 1024;
+
+  private getKey(endpoint: string, token?: string | null): string {
+    return `${endpoint}::${token || this.getToken() || ''}`;
+  }
+
+  private restoreLastKnown() {
+    if (this.lastKnownRestored || typeof window === 'undefined') return;
+    this.lastKnownRestored = true;
+    try {
+      const raw = localStorage.getItem(ApiClient.LAST_KNOWN_STORAGE_KEY);
+      if (!raw) return;
+      const entries: Array<[string, unknown]> = JSON.parse(raw);
+      for (const [k, v] of entries) {
+        if (!this.lastKnown.has(k)) this.lastKnown.set(k, v);
+      }
+    } catch {
+      // Corrupt/oversized snapshot - drop it, pages just show spinners once.
+      try { localStorage.removeItem(ApiClient.LAST_KNOWN_STORAGE_KEY); } catch {}
+    }
+  }
+
+  private persistLastKnown() {
+    if (typeof window === 'undefined') return;
+    try {
+      let entries = Array.from(this.lastKnown.entries());
+      let raw = JSON.stringify(entries);
+      // Size cap: drop the LARGEST entries first until it fits - one huge
+      // metrics snapshot shouldn't evict twenty small lists.
+      while (raw.length > ApiClient.LAST_KNOWN_MAX_BYTES && entries.length > 0) {
+        let biggest = 0;
+        for (let i = 1; i < entries.length; i++) {
+          if (JSON.stringify(entries[i][1]).length > JSON.stringify(entries[biggest][1]).length) biggest = i;
+        }
+        entries = entries.filter((_, i) => i !== biggest);
+        raw = JSON.stringify(entries);
+      }
+      localStorage.setItem(ApiClient.LAST_KNOWN_STORAGE_KEY, raw);
+    } catch {
+      // Quota/private mode - instant nav still works in-memory this session.
+    }
+  }
+
+  /** Last successful response this client has seen for a GET endpoint, or
+   * undefined if it has never succeeded. Callers MUST treat this as a
+   * provisional first paint and still fetch fresh data - see lastKnown's
+   * comment above. */
+  peekGet<T>(endpoint: string): T | undefined {
+    this.restoreLastKnown();
+    return this.lastKnown.get(this.getKey(endpoint)) as T | undefined;
+  }
+
+  constructor() {
+    // Snapshot the last-known store whenever the tab goes to the
+    // background - covers both plain navigation away and the PWA being
+    // swiped closed, without paying a localStorage write per request.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', () => this.persistLastKnown());
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') this.persistLastKnown();
+      });
+    }
+  }
+
   setToken(token: string) {
     this.token = token;
     if (typeof window !== 'undefined') {
@@ -70,6 +149,11 @@ class ApiClient {
     this.token = null;
     if (typeof window !== 'undefined') {
       localStorage.removeItem('slicksync_token');
+      // Logout hygiene: last-known responses are account data - don't leave
+      // them readable (or restorable) for whoever logs in next on this
+      // machine.
+      this.lastKnown.clear();
+      try { localStorage.removeItem(ApiClient.LAST_KNOWN_STORAGE_KEY); } catch {}
     }
   }
 
@@ -128,6 +212,7 @@ class ApiClient {
     const promise = this.fetchImpl<T>(endpoint, options)
       .then((value) => {
         this.recentGets.set(key, { value, at: Date.now() });
+        this.lastKnown.set(key, value);
         return value;
       })
       .finally(() => {

@@ -11,6 +11,7 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, DescribedCatalogPreview, CustomListItem } from '@/lib/api';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import {
   RectangleStackIcon, PlusIcon, TrashIcon, PencilSquareIcon, ArrowDownTrayIcon, PhotoIcon, MapPinIcon, SparklesIcon,
   ShieldExclamationIcon,
@@ -54,6 +55,12 @@ export default function ListsPage() {
   const [selectedSimklUserId, setSelectedSimklUserId] = useState('');
   const [importingSimkl, setImportingSimkl] = useState(false);
 
+  // Instant navigation: last-known catalogs shown immediately while load()
+  // refreshes them - see useLastKnown's own comment.
+  useLastKnown<CustomList[]>('/lists', (cached) => {
+    if (Array.isArray(cached)) { setLists(cached); setLoaded(true); }
+  });
+
   const load = useCallback(() => {
     api.getLists()
       .then((r) => setLists(Array.isArray(r) ? r : []))
@@ -66,8 +73,12 @@ export default function ListsPage() {
     if (!showImport || simklUsersLoaded) return;
     api.getSimklLinkedUsers()
       .then((users) => {
+        // No auto-select, even with exactly one linked user - starting on
+        // the "Select a SIMKL-linked user…" placeholder makes it explicit
+        // that pressing Import here acts on a specific person's SIMKL
+        // account; pre-filling it read as if the choice had already been
+        // made somewhere else.
         setSimklUsers(users);
-        if (users.length === 1) setSelectedSimklUserId(users[0].id);
       })
       .catch(() => setSimklUsers([]))
       .finally(() => setSimklUsersLoaded(true));

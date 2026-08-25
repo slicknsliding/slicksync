@@ -5,7 +5,7 @@ import { Header } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { PageToolbar, MediaDetailModal, PageToolbarProps, Badge, PosterCard, PosterCardItem } from '@/components/ui';
+import { PageToolbar, MediaDetailModal, PageToolbarProps, Badge, PosterCard, PosterCardItem, VirtualPosterGrid } from '@/components/ui';
 import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useWatchlistState } from '@/lib/hooks/useWatchlistState';
@@ -1055,10 +1055,18 @@ export default function DiscoverPage() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
-                {sortedItems.map((item) => (
+              {/* The one unbounded grid on this page (infinite scroll keeps
+                  appending) - windowed so only near-viewport rows are real
+                  DOM. The small fixed rows elsewhere (For You, person
+                  credits) stay plain grids on purpose. TV disables the
+                  windowing - see VirtualPosterGrid's own comment. */}
+              <VirtualPosterGrid
+                items={sortedItems}
+                getKey={(item) => item.id}
+                gridClassName="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3"
+                disabled={isTV}
+                renderItem={(item) => (
                   <PosterCard
-                    key={item.id}
                     item={item}
                     ratings={ratingsById[item.id]}
                     watched={watchedStatus[item.id]}
@@ -1074,8 +1082,8 @@ export default function DiscoverPage() {
                     onMenuOpenChange={handleMenuOpenChange}
                     focusable={isTV}
                   />
-                ))}
-              </div>
+                )}
+              />
 
               {/* Infinite-scroll sentinel + spinner. Discover browse-mode only
                   — Watchlist is fully-loaded client-side and search doesn't

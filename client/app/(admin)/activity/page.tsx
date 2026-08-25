@@ -2033,8 +2033,17 @@ function ActivityPageContent() {
             {/* Activity Feed */}
             <div className="space-y-6">
               {/* Date-grouped activities */}
+              {/* cv-day-section: offscreen day groups cost zero render work
+                  (see globals.css) - the browser skips style/layout/paint
+                  for them entirely until scrolled near. This page's answer
+                  to deep-scroll cost, chosen over windowed virtualization
+                  because the day-panel structure (Nebula glass wrappers,
+                  headers, grid/list modes) would have to be flattened to
+                  virtualize, while this changes nothing structurally.
+                  Menus/modals are portaled to <body>, so the paint
+                  containment this implies can't clip them (verified). */}
               {groupedActivities.map((group, groupIndex) => (
-                <PageSection key={group.dateKey} delay={0.1 + groupIndex * 0.02}>
+                <PageSection key={group.dateKey} delay={0.1 + groupIndex * 0.02} className="cv-day-section">
                   {/* Nebula wraps each day's group in its own glass panel
                       instead of a flat heading-on-background section - the
                       grid/list of cards inside (ActivityCardGrid/ActivityCard)

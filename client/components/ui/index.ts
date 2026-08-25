@@ -26,4 +26,5 @@ export * from './PageToolbar';
 export * from './DragSortable';
 export * from './RatingBadges';
 export * from './PosterCard';
+export * from './VirtualPosterGrid';
 export * from './ComboBox';
