@@ -133,6 +133,18 @@ async function writeBackupFile(prisma, data, labelSuffix = '') {
   } catch (validationErr) {
     if (!QUIET) console.warn('Backup validation itself failed:', validationErr?.message || validationErr)
   }
+
+  // Off-site copy + local retention. Deliberately AFTER the local write and
+  // its validation, and deliberately non-throwing (see backupTargets.js's
+  // failure policy): a bucket misconfiguration must never turn a
+  // successfully-written local backup into a failed backup run.
+  try {
+    const { uploadBackup, pruneLocalBackups } = require('./backupTargets')
+    await uploadBackup(filename, prisma)
+    pruneLocalBackups(BACKUP_DIR)
+  } catch (targetErr) {
+    if (!QUIET) console.warn('Backup target step failed:', targetErr?.message || targetErr)
+  }
 }
 
 /**

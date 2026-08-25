@@ -18,6 +18,8 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, CustomListItem, CatalogSuggestion, RatingsBatchEntry } from '@/lib/api';
+import { encodeCatalogShareCode } from '@/lib/shareCodes';
+import { ShareCodeDialog } from '@/components/ui/ShareCodeDialog';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useWatchlistState } from '@/lib/hooks/useWatchlistState';
 import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
@@ -257,6 +259,8 @@ export default function ListDetailPage() {
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const moreMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
+  // Share-as-code (ShareCodeDialog) - explicit confirm, then the code.
+  const [showShareCode, setShowShareCode] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ name: string; slug: string | null; url: string | null; added: number | null; existing: number | null; notFound: number | null } | null>(null);
   // Export to SIMKL - picks a linked user's Plan to Watch as the target
@@ -914,6 +918,15 @@ export default function ListDetailPage() {
                     >
                       Export to SIMKL
                     </MoreMenuItem>
+                    <MoreMenuItem
+                      icon={<ArrowUpTrayIcon className="w-4 h-4" />}
+                      tint="secondary"
+                      disabled={list.items.length === 0}
+                      onClick={() => { setShowMoreMenu(false); setShowShareCode(true); }}
+                      title={list.items.length === 0 ? 'Add titles first' : 'A copy-paste code any SlickSync can import - no MDBList/SIMKL account needed'}
+                    >
+                      Share as code
+                    </MoreMenuItem>
                   </MoreMenuSection>
 
                   <div className="mx-2 my-1.5 border-t border-default" />
@@ -1561,6 +1574,19 @@ export default function ListDetailPage() {
         </div>
       </Modal>
 
+      {list && (
+        <ShareCodeDialog
+          isOpen={showShareCode}
+          onClose={() => setShowShareCode(false)}
+          title="Share catalog as code"
+          summary={`the catalog “${list.name}” and its ${list.items.length} title${list.items.length === 1 ? '' : 's'}`}
+          generate={() => encodeCatalogShareCode({
+            name: list.name,
+            description: list.description || undefined,
+            items: list.items.map((i) => ({ id: i.id, type: i.type, name: i.name, poster: i.poster ?? null, year: i.year ?? null })),
+          })}
+        />
+      )}
       {detail && (
         <MediaDetailModal
           isOpen={!!detail}

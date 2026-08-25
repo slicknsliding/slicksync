@@ -221,6 +221,21 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         const { passphrase } = req.body || {}
         const { buildKit } = require('../utils/disasterRecoveryKit')
         const kit = await buildKit(prisma, accountId, passphrase, req, { decrypt })
+        // Stamp when a kit was last produced, so the staleness reminder
+        // (utils/recoveryKitReminder.js) can tell "never exported" from
+        // "exported recently". Best-effort: failing to record this must
+        // never fail the export the operator actually asked for.
+        try {
+          const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+          let cfg = acc?.sync
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
+          const nextCfg = { ...(cfg && typeof cfg === 'object' ? cfg : {}), lastRecoveryKitExportAt: new Date().toISOString() }
+          try {
+            await prisma.appAccount.update({ where: { id: accountId }, data: { sync: nextCfg } })
+          } catch {
+            await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(nextCfg) } })
+          }
+        } catch { /* stamp is best-effort */ }
         res.setHeader('Content-Disposition', `attachment; filename="slicksync-recovery-kit-${new Date().toISOString().split('T')[0]}.json"`)
         return res.json(kit)
       } catch (e) {
@@ -361,6 +376,132 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // --- Off-site backup targets (utils/backupTargets.js) ---
+  // Private mode only, same as backups themselves: in public mode the
+  // operator backs up the Postgres instance, not per-account JSON.
+  const denyInPublic = (res) => res.status(403).json({ message: 'Not available in public mode' })
+  const redactTargets = (s) => ({
+    ...s,
+    s3: { ...s.s3, secretAccessKey: s.s3.secretAccessKey ? '********' : '' },
+    webdav: { ...s.webdav, password: s.webdav.password ? '********' : '' },
+  })
+
+  router.get('/backup-targets', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { getSettings } = require('../utils/backupTargets')
+      return res.json(redactTargets(getSettings()))
+    } catch {
+      return res.status(500).json({ message: 'Failed to read backup targets' })
+    }
+  })
+
+  router.put('/backup-targets', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { getSettings, saveSettings } = require('../utils/backupTargets')
+      const body = req.body || {}
+      const current = getSettings()
+      const patch = {}
+      if (body.type && ['none', 's3', 'webdav'].includes(body.type)) patch.type = body.type
+      if (body.keepLocal !== undefined) {
+        const n = Math.floor(Number(body.keepLocal))
+        if (!Number.isFinite(n) || n < 0 || n > 1000) return res.status(400).json({ message: 'keepLocal must be between 0 and 1000' })
+        patch.keepLocal = n
+      }
+      // A masked secret coming back from the UI means "unchanged" - never
+      // overwrite a real stored key with the asterisks we sent out.
+      if (body.s3) {
+        patch.s3 = { ...current.s3, ...body.s3 }
+        if (body.s3.secretAccessKey === '********') patch.s3.secretAccessKey = current.s3.secretAccessKey
+      }
+      if (body.webdav) {
+        patch.webdav = { ...current.webdav, ...body.webdav }
+        if (body.webdav.password === '********') patch.webdav.password = current.webdav.password
+      }
+      return res.json(redactTargets(saveSettings(patch)))
+    } catch {
+      return res.status(500).json({ message: 'Failed to save backup targets' })
+    }
+  })
+
+  router.post('/backup-targets/test', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { getSettings, testTarget } = require('../utils/backupTargets')
+      // Tests what is SAVED, so the result reflects what backups will
+      // actually use rather than an unsaved draft.
+      const result = await testTarget(getSettings())
+      return res.json(result)
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e?.message || 'Test failed' })
+    }
+  })
+
+  // --- Database maintenance (utils/dbMaintenance.js) ---
+  router.get('/db-maintenance', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { getSettings, getDbFilePath } = require('../utils/dbMaintenance')
+      return res.json({ ...getSettings(), available: !!getDbFilePath() })
+    } catch {
+      return res.status(500).json({ message: 'Failed to read maintenance settings' })
+    }
+  })
+
+  router.put('/db-maintenance', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { saveSettings } = require('../utils/dbMaintenance')
+      const body = req.body || {}
+      const patch = {}
+      for (const key of ['vacuumEnabled', 'integrityCheckEnabled', 'pruneLogsEnabled']) {
+        if (key in body) patch[key] = !!body[key]
+      }
+      return res.json(saveSettings(patch))
+    } catch {
+      return res.status(500).json({ message: 'Failed to save maintenance settings' })
+    }
+  })
+
+  // Run one maintenance action on demand. Integrity check is read-only;
+  // vacuum refuses itself when disk space is short; prune only touches the
+  // two capped log tables (see dbMaintenance.js).
+  router.post('/db-maintenance/run', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { runVacuum, runIntegrityCheck, pruneLogs } = require('../utils/dbMaintenance')
+      const action = String(req.body?.action || '')
+      if (action === 'integrity') return res.json(await runIntegrityCheck(prisma))
+      if (action === 'vacuum') return res.json(await runVacuum(prisma))
+      if (action === 'prune') return res.json(await pruneLogs(prisma))
+      return res.status(400).json({ message: 'action must be integrity, vacuum, or prune' })
+    } catch (e) {
+      return res.status(500).json({ message: e?.message || 'Maintenance action failed' })
+    }
+  })
+
+  // --- Applying an update (utils/selfUpdate.js) ---
+  router.get('/update-capability', async (req, res) => {
+    try {
+      const { getUpdateCapability } = require('../utils/selfUpdate')
+      return res.json(await getUpdateCapability())
+    } catch (e) {
+      return res.status(500).json({ message: e?.message || 'Failed to check update capability' })
+    }
+  })
+
+  router.post('/update-apply', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { performSelfUpdate } = require('../utils/selfUpdate')
+      const result = await performSelfUpdate(prisma, { backupOpts: { INSTANCE_TYPE } })
+      return res.json(result)
+    } catch (e) {
+      return res.status(e?.status || 500).json({ message: e?.message || 'Update failed' })
+    }
+  })
+
   router.post('/backup-now', async (req, res) => {
     try {
       if (INSTANCE_TYPE === 'public') {
@@ -413,6 +554,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnBackup: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnBackup === true : false,
           notifyOnProxyHealth: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnProxyHealth === true : false,
           notifyOnUpdateAvailable: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnUpdateAvailable === true : false,
+          notifyOnRecoveryKitStale: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnRecoveryKitStale === true : false,
+          lastRecoveryKitExportAt: (syncCfg && typeof syncCfg === 'object') ? (syncCfg.lastRecoveryKitExportAt || null) : null,
           notifyOnMosaic: (syncCfg && typeof syncCfg === 'object') ? syncCfg.notifyOnMosaic === true : false,
           // Default true, unlike every notify toggle above - an automation
           // notification only exists because the admin explicitly wrote a rule
@@ -482,6 +625,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnBackup: syncCfg.notifyOnBackup === true,
           notifyOnProxyHealth: syncCfg.notifyOnProxyHealth === true,
           notifyOnUpdateAvailable: syncCfg.notifyOnUpdateAvailable === true,
+          notifyOnRecoveryKitStale: syncCfg.notifyOnRecoveryKitStale === true,
+          lastRecoveryKitExportAt: syncCfg.lastRecoveryKitExportAt || null,
           notifyOnMosaic: syncCfg.notifyOnMosaic === true,
           notifyOnAutomation: typeof syncCfg.notifyOnAutomation === 'boolean' ? syncCfg.notifyOnAutomation : true,
           notifyDigestEnabled: syncCfg.notifyDigestEnabled === true,
@@ -508,7 +653,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableWatchProviders: true, enableAutoThemedCatalogs: false })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnRecoveryKitStale: false, lastRecoveryKitExportAt: null, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableWatchProviders: true, enableAutoThemedCatalogs: false })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -516,7 +661,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, nuvioServerUrl, nuvioAnonKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, nuvioServerUrl, nuvioAnonKey } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -577,6 +722,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           notifyOnBackup: notifyOnBackup !== undefined ? !!notifyOnBackup : ((baseCfg.notifyOnBackup !== undefined) ? baseCfg.notifyOnBackup : false),
           notifyOnProxyHealth: notifyOnProxyHealth !== undefined ? !!notifyOnProxyHealth : ((baseCfg.notifyOnProxyHealth !== undefined) ? baseCfg.notifyOnProxyHealth : false),
           notifyOnUpdateAvailable: notifyOnUpdateAvailable !== undefined ? !!notifyOnUpdateAvailable : ((baseCfg.notifyOnUpdateAvailable !== undefined) ? baseCfg.notifyOnUpdateAvailable : false),
+          notifyOnRecoveryKitStale: notifyOnRecoveryKitStale !== undefined ? !!notifyOnRecoveryKitStale : ((baseCfg.notifyOnRecoveryKitStale !== undefined) ? baseCfg.notifyOnRecoveryKitStale : false),
           notifyOnMosaic: notifyOnMosaic !== undefined ? !!notifyOnMosaic : ((baseCfg.notifyOnMosaic !== undefined) ? baseCfg.notifyOnMosaic : false),
           notifyOnAutomation: notifyOnAutomation !== undefined ? !!notifyOnAutomation : (typeof baseCfg.notifyOnAutomation === 'boolean' ? baseCfg.notifyOnAutomation : true),
           notifyDigestEnabled: notifyDigestEnabled !== undefined ? !!notifyDigestEnabled : ((baseCfg.notifyDigestEnabled !== undefined) ? baseCfg.notifyDigestEnabled : false),
@@ -648,6 +794,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (notifyOnBackup !== undefined) partial.notifyOnBackup = !!notifyOnBackup
       if (notifyOnProxyHealth !== undefined) partial.notifyOnProxyHealth = !!notifyOnProxyHealth
       if (notifyOnUpdateAvailable !== undefined) partial.notifyOnUpdateAvailable = !!notifyOnUpdateAvailable
+      if (notifyOnRecoveryKitStale !== undefined) partial.notifyOnRecoveryKitStale = !!notifyOnRecoveryKitStale
       if (notifyOnMosaic !== undefined) partial.notifyOnMosaic = !!notifyOnMosaic
       if (notifyOnAutomation !== undefined) partial.notifyOnAutomation = !!notifyOnAutomation
       if (notifyDigestEnabled !== undefined) partial.notifyDigestEnabled = !!notifyDigestEnabled

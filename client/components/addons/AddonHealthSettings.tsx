@@ -65,6 +65,10 @@ export function AddonHealthSettings({ addonId, addonName, healthConfig, onSaved 
         triggerType: 'addon.offline',
         conditions: [{ field: 'addonId', op: 'eq', value: addonId }],
       }));
+      // Closing the automation panel returns HERE rather than leaving the
+      // user parked on the Tasks page they never chose - read by the Tasks
+      // page's modal onClose.
+      sessionStorage.setItem('slicksync-automation-return', `/addons/${addonId}`);
     } catch { /* private mode - the panel just opens blank */ }
     router.push('/tasks?open=automation');
   };

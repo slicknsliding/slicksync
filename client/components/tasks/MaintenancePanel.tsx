@@ -1,0 +1,315 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Button, Card, ToggleSwitch } from '@/components/ui';
+import { toast } from '@/components/ui/Toast';
+import { api, BackupTargets, DbMaintenanceSettings, UpdateCapability } from '@/lib/api';
+import { CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+
+// Everything that keeps an instance healthy without anyone watching it:
+// where backups go besides this box, what the database does to look after
+// itself, and applying an update. Grouped in one panel on the Tasks page
+// because they're the same job - and because none of them are things
+// anyone wants a dashboard for; they're set once and then forgotten.
+//
+// Every destructive capability here is off by default and says plainly
+// what it does. Nothing in this panel is required for SlickSync to work.
+
+function relative(iso: string | null | undefined): string {
+  if (!iso) return 'never';
+  const diff = Date.now() - new Date(iso).getTime();
+  const days = Math.floor(diff / 86400000);
+  if (days > 0) return `${days}d ago`;
+  const hours = Math.floor(diff / 3600000);
+  if (hours > 0) return `${hours}h ago`;
+  return 'just now';
+}
+
+const inputClass = 'w-full px-3 py-2 rounded-lg text-sm border border-transparent focus:border-primary focus:outline-none';
+const inputStyle = { background: 'var(--color-surface-hover)', color: 'var(--color-text)' } as const;
+
+export function MaintenancePanel() {
+  const [targets, setTargets] = useState<BackupTargets | null>(null);
+  const [maint, setMaint] = useState<DbMaintenanceSettings | null>(null);
+  const [capability, setCapability] = useState<UpdateCapability | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      api.getBackupTargets().then(setTargets).catch(() => setTargets(null));
+      api.getDbMaintenance().then(setMaint).catch(() => setMaint(null));
+      api.getUpdateCapability().then(setCapability).catch(() => setCapability(null));
+    }, 0);
+    return () => clearTimeout(id);
+  }, []);
+
+  const saveTargets = async (patch: Partial<BackupTargets>) => {
+    setBusy('targets');
+    try {
+      setTargets(await api.saveBackupTargets(patch));
+      toast.success('Backup target saved');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runAction = async (action: 'integrity' | 'vacuum' | 'prune') => {
+    setBusy(action);
+    try {
+      const result = await api.runDbMaintenance(action);
+      if (action === 'integrity') {
+        const ok = (result as { ok?: boolean }).ok;
+        if (ok) toast.success('Database integrity verified - no problems found');
+        else toast.error('Integrity check found problems - restore from a backup');
+      } else if (action === 'prune') {
+        const r = result as { healthHistoryDeleted?: number; automationRunsDeleted?: number };
+        toast.success(`Pruned ${(r.healthHistoryDeleted || 0) + (r.automationRunsDeleted || 0)} old log rows`);
+      } else {
+        toast.success('Database compacted');
+      }
+      setMaint(await api.getDbMaintenance());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Action failed');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toggleMaint = async (key: 'vacuumEnabled' | 'integrityCheckEnabled' | 'pruneLogsEnabled', value: boolean) => {
+    try {
+      setMaint(await api.saveDbMaintenance({ [key]: value }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save');
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* --- Off-site backups --- */}
+      <Card padding="lg">
+        <h3 className="text-base font-semibold text-default mb-1">Off-site backups</h3>
+        <p className="text-xs text-muted mb-4">
+          Scheduled backups are written next to the database they protect. Sending a copy somewhere else is what
+          covers losing the whole machine.
+        </p>
+        {!targets ? (
+          <p className="text-sm text-muted">Not available on this instance.</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">Destination</label>
+                <select
+                  value={targets.type}
+                  onChange={(e) => saveTargets({ type: e.target.value as BackupTargets['type'] })}
+                  className={inputClass}
+                  style={inputStyle}
+                >
+                  <option value="none">Local only</option>
+                  <option value="s3">S3 (AWS, B2, R2, MinIO…)</option>
+                  <option value="webdav">WebDAV (Nextcloud, rsync.net…)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">
+                  Keep locally <span className="text-subtle">(0 = keep all)</span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={1000}
+                  defaultValue={targets.keepLocal}
+                  onBlur={(e) => {
+                    const n = Number(e.target.value);
+                    if (n !== targets.keepLocal) saveTargets({ keepLocal: n });
+                  }}
+                  className={inputClass}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            {targets.type === 's3' && (
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  ['bucket', 'Bucket'], ['region', 'Region'],
+                  ['endpoint', 'Endpoint (blank for AWS)'], ['prefix', 'Path prefix'],
+                  ['accessKeyId', 'Access key ID'], ['secretAccessKey', 'Secret access key'],
+                ] as Array<[keyof BackupTargets['s3'], string]>).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="block text-xs font-medium text-muted mb-1">{label}</label>
+                    <input
+                      type={key === 'secretAccessKey' ? 'password' : 'text'}
+                      defaultValue={targets.s3[key]}
+                      onBlur={(e) => { if (e.target.value !== targets.s3[key]) saveTargets({ s3: { ...targets.s3, [key]: e.target.value } }); }}
+                      spellCheck={false}
+                      className={inputClass}
+                      style={inputStyle}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {targets.type === 'webdav' && (
+              <div className="grid grid-cols-2 gap-3">
+                {([['url', 'Folder URL'], ['username', 'Username'], ['password', 'Password']] as Array<[keyof BackupTargets['webdav'], string]>).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="block text-xs font-medium text-muted mb-1">{label}</label>
+                    <input
+                      type={key === 'password' ? 'password' : 'text'}
+                      defaultValue={targets.webdav[key]}
+                      onBlur={(e) => { if (e.target.value !== targets.webdav[key]) saveTargets({ webdav: { ...targets.webdav, [key]: e.target.value } }); }}
+                      spellCheck={false}
+                      className={inputClass}
+                      style={inputStyle}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {targets.type !== 'none' && (
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <p className="text-[11px] text-subtle">
+                  A failed upload never fails the backup - the local copy is already written, and you get a
+                  notification rather than silence.
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={busy === 'test'}
+                  onClick={async () => {
+                    setBusy('test');
+                    try {
+                      const r = await api.testBackupTarget();
+                      if (r.ok) toast.success('Target reachable - test file uploaded');
+                      else toast.error(r.error || 'Target test failed');
+                    } finally { setBusy(null); }
+                  }}
+                >
+                  {busy === 'test' ? 'Testing…' : 'Test target'}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* --- Database upkeep --- */}
+      <Card padding="lg">
+        <h3 className="text-base font-semibold text-default mb-1">Database upkeep</h3>
+        <p className="text-xs text-muted mb-4">
+          Runs on its own in the background. Nothing here touches watch history, users, catalogs, or the Vault.
+        </p>
+        {!maint || maint.available === false ? (
+          <p className="text-sm text-muted">Not applicable on this instance.</p>
+        ) : (
+          <div className="space-y-3">
+            <MaintRow
+              title="Integrity checks"
+              detail={`Read-only - verifies the database file is not corrupted. Last run ${relative(maint.lastIntegrityCheckAt)}${maint.lastIntegrityOk === false ? ' and FAILED' : maint.lastIntegrityOk ? ' - healthy' : ''}.`}
+              enabled={maint.integrityCheckEnabled}
+              onToggle={(v) => toggleMaint('integrityCheckEnabled', v)}
+              onRun={() => runAction('integrity')}
+              running={busy === 'integrity'}
+              status={maint.lastIntegrityOk === false ? 'bad' : maint.lastIntegrityOk ? 'good' : null}
+            />
+            <MaintRow
+              title="Compact the database"
+              detail={`Reclaims space left behind by deletions. Skipped automatically if the disk is too full to do it safely. Last run ${relative(maint.lastVacuumAt)}.`}
+              enabled={maint.vacuumEnabled}
+              onToggle={(v) => toggleMaint('vacuumEnabled', v)}
+              onRun={() => runAction('vacuum')}
+              running={busy === 'vacuum'}
+            />
+            <MaintRow
+              title="Trim old logs"
+              detail={`Caps addon health-check history and automation run history, which otherwise grow forever. Only those two - never anything a feature reads by date. Last run ${relative(maint.lastPruneAt)}.`}
+              enabled={maint.pruneLogsEnabled}
+              onToggle={(v) => toggleMaint('pruneLogsEnabled', v)}
+              onRun={() => runAction('prune')}
+              running={busy === 'prune'}
+            />
+          </div>
+        )}
+      </Card>
+
+      {/* --- Updates --- */}
+      <Card padding="lg">
+        <h3 className="text-base font-semibold text-default mb-1">Applying updates</h3>
+        {!capability ? (
+          <p className="text-sm text-muted">Checking…</p>
+        ) : capability.canSelfUpdate ? (
+          <div className="space-y-3">
+            <p className="text-xs text-muted">
+              This instance can update itself: it backs up first, downloads the new image, then restarts into it.
+              The restart takes a few seconds and everyone is briefly disconnected.
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy === 'update'}
+              onClick={async () => {
+                setBusy('update');
+                try {
+                  const r = await api.applyUpdate();
+                  toast.success(r.note || 'Update started');
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : 'Update failed');
+                } finally { setBusy(null); }
+              }}
+            >
+              {busy === 'update' ? 'Updating…' : 'Back up and update now'}
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-muted">{capability.reason || 'Updating from here is not available.'}</p>
+            <p className="text-xs text-muted">Update from the host instead:</p>
+            <code className="block text-xs font-mono px-3 py-2 rounded-lg" style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text)' }}>
+              docker compose pull &amp;&amp; docker compose up -d
+            </code>
+            <p className="text-[11px] text-subtle">
+              Updating in place needs the Docker socket mounted into this container, which grants it full control
+              of the host&apos;s Docker - a deliberate trade, so it is never enabled for you.
+            </p>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function MaintRow({ title, detail, enabled, onToggle, onRun, running, status }: {
+  title: string;
+  detail: string;
+  enabled: boolean;
+  onToggle: (v: boolean) => void;
+  onRun: () => void;
+  running: boolean;
+  status?: 'good' | 'bad' | null;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-default flex items-center gap-1.5">
+          {title}
+          {status === 'good' && <CheckCircleIcon className="w-4 h-4" style={{ color: 'var(--color-success)' }} />}
+          {status === 'bad' && <ExclamationTriangleIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />}
+        </p>
+        <p className="text-xs text-muted mt-0.5">{detail}</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <Button variant="ghost" size="sm" onClick={onRun} disabled={running}>
+          {running ? 'Running…' : 'Run now'}
+        </Button>
+        {/* ToggleSwitch's onChange takes no argument - it just signals a
+            flip, so the new value is derived here. */}
+        <ToggleSwitch checked={enabled} onChange={() => onToggle(!enabled)} />
+      </div>
+    </div>
+  );
+}

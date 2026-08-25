@@ -563,6 +563,17 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize update-check notifier:', err)
     }
 
+    // Nudges an account whose Disaster Recovery Kit is stale/missing while
+    // its Vault holds credentials nothing else can restore - opt-in, off by
+    // default. See recoveryKitReminder.js for why this is a reminder rather
+    // than an automated off-site kit export.
+    try {
+      const { scheduleRecoveryKitReminder } = require('./utils/recoveryKitReminder')
+      scheduleRecoveryKitReminder(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize recovery-kit reminder:', err)
+    }
+
     // Schedule notification digest sends (hourly check, actual send gated by
     // each account's daily/weekly cadence) - opt-in, off by default.
     try {

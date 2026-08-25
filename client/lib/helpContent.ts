@@ -1241,6 +1241,50 @@ export const HELP_ENTRIES: HelpEntry[] = [
     ],
     related: ['protected-addons', 'automation-create'],
   },
+  {
+    id: 'share-codes',
+    title: 'Share codes: sending a catalog, collection layout, or template to someone',
+    category: 'Sharing & integrations',
+    keywords: ['share code', 'share catalog', 'export code', 'import code', 'send catalog', 'share template', 'share collections', 'copy paste code'],
+    answer: 'Catalogs, Nuvio collection layouts, and addon templates can each be turned into one copy-paste code that any other SlickSync can import. No accounts, no files, no external service - the code itself carries everything.',
+    steps: [
+      'Catalog: open it → More → Share as code. Import by pasting the code into Catalogs → Import, in the same field that takes a URL.',
+      'Nuvio collections: Collections page → Share code. Import with Paste code - it stages into your draft, so you review and press Save changes like any other edit.',
+      'Addon template: Tasks → Addon Templates → Share on the template. Import with Import from Code.',
+    ],
+    details: [
+      'Every share is two steps on purpose: the dialog first states exactly what the code will contain, and only produces it after you confirm. Nothing is shared by flipping a switch.',
+      'Codes are generated entirely in your browser - producing one sends nothing anywhere. What a code contains is fixed at the moment you generate it; later changes to the catalog or template do not travel to anyone holding an older code.',
+      'Each kind has its own prefix so a wrong paste fails cleanly instead of importing something unexpected: SSC1 for catalogs, SSN1 for collections, SSA1 for templates. Themes use the same idea (SST1).',
+    ],
+    tips: [
+      'Addon template codes include each addon\'s install URL, and those URLs often embed debrid/API keys - sharing the code shares those keys. The dialog warns before generating; treat a template code like a password.',
+      'Catalog and collection codes carry no credentials - only titles, folders, and which catalogs a folder points at.',
+    ],
+    related: ['catalog-create', 'theme-build-share'],
+  },
+  {
+    id: 'maintenance-and-updates',
+    title: 'Off-site backups, database upkeep, and applying updates',
+    category: 'Health & maintenance',
+    keywords: ['offsite backup', 'off-site backup', 's3 backup', 'webdav backup', 'backblaze', 'retention', 'vacuum', 'integrity check', 'database maintenance', 'update slicksync', 'one click update'],
+    answer: 'Tasks → Maintenance. Send a copy of every backup to S3 or WebDAV, let the database look after itself (integrity checks, compaction, trimming old logs), and apply an update without SSHing into the box.',
+    steps: [
+      'Off-site backups: pick S3 or WebDAV, fill in the destination, then Test target to confirm it works before trusting it.',
+      'Set "Keep locally" if you want old backup files cleaned up automatically - 0 keeps every one, which is the default.',
+      'Database upkeep: integrity checks are on by default (they only read). Compaction and log trimming are off until you turn them on.',
+      'Updates: if this container can update itself the button says so; otherwise the page shows the exact command to run on the host.',
+    ],
+    details: [
+      'Backups have always been written next to the database they protect, which does not help if the machine itself is gone. An off-site copy is what covers that. S3 here means any S3-compatible service - AWS, Backblaze B2, Wasabi, Cloudflare R2, MinIO - and WebDAV covers Nextcloud, rsync.net and similar.',
+      'A failed upload never fails the backup: the local copy is already written and validated first, and an upload problem raises a notification instead of failing silently.',
+      'Database upkeep never touches watch history, users, catalogs, or the Vault. Trimming only caps addon health-check history and automation run history - the two tables nothing reads by date. Compaction refuses to run if the disk lacks the free space to do it safely.',
+      'Updating in place requires the Docker socket mounted into the container, which effectively grants control of the host\'s Docker. That is a deliberate security trade, so it is never enabled for you - without it, everything else here still works and you get the command to run instead.',
+      'When it is available, updating always backs up first and downloads the new image before anything restarts, so a failed download leaves the running version untouched.',
+      'Off-site backups deliberately carry no Vault secrets - only the Disaster Recovery Kit does, and it is only ever produced when you export it by hand. Automating that would mean continuously copying every credential to a third-party bucket and keeping its passphrase on the server, which is worse than the problem it solves. Instead, Settings has an opt-in "Recovery Kit reminders" toggle that nudges you when your kit is over 60 days old (or was never made) and the Vault actually holds credentials.',
+    ],
+    related: ['backup-restore', 'system-health-overview'],
+  },
 ];
 
 // Very small keyword-overlap scorer, not a real search engine - good enough

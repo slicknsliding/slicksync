@@ -131,6 +131,55 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, createProvider }) =>
     }
   });
 
+  // POST /api/snapshots/import - create a snapshot directly from an addon
+  // list instead of reading a live user/group. Exists for share codes
+  // (client/lib/shareCodes.ts SSA1:): the code carries plaintext manifest
+  // URLs from the exporting instance; they're encrypted at rest HERE with
+  // this instance's own key, same as user-sourced snapshots.
+  router.post('/import', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const { name, description, addons } = req.body || {};
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ error: 'name is required' });
+      }
+      if (!Array.isArray(addons) || addons.length === 0) {
+        return res.status(400).json({ error: 'addons array is required' });
+      }
+      if (addons.length > 200) {
+        return res.status(400).json({ error: 'Too many addons (max 200)' });
+      }
+      const addonList = addons
+        .filter((a) => a && typeof a === 'object' && typeof a.name === 'string')
+        .map((a) => ({
+          name: a.name,
+          manifestUrl: typeof a.manifestUrl === 'string' && /^(https?|stremio):\/\//i.test(a.manifestUrl)
+            ? encrypt(a.manifestUrl.replace(/^stremio:\/\//i, 'https://'), req)
+            : null,
+          stremioAddonId: typeof a.stremioAddonId === 'string' ? a.stremioAddonId : null,
+          version: typeof a.version === 'string' ? a.version : null,
+        }));
+      if (addonList.length === 0) {
+        return res.status(400).json({ error: 'No valid addons in the list' });
+      }
+
+      const snapshot = await prisma.addonSnapshot.create({
+        data: {
+          accountId,
+          name: name.trim(),
+          description: typeof description === 'string' && description.trim() ? description.trim() : null,
+          sourceType: 'import',
+          sourceId: 'share-code',
+          addonsJson: JSON.stringify(addonList),
+        },
+      });
+      res.status(201).json({ id: snapshot.id, name: snapshot.name, addonCount: addonList.length });
+    } catch (error) {
+      console.error('Error importing snapshot:', error);
+      res.status(500).json({ error: 'Failed to import template' });
+    }
+  });
+
   // POST /api/snapshots/:id/deploy - push a snapshot's addon set onto a target user
   // body: { targetUserId }
   router.post('/:id/deploy', async (req, res) => {

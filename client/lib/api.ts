@@ -1266,6 +1266,41 @@ class ApiClient {
     });
   }
 
+  // --- Backup targets, DB maintenance, updates (private mode) ---
+  async getBackupTargets() {
+    return this.fetch<BackupTargets>('/settings/backup-targets');
+  }
+  async saveBackupTargets(data: Partial<BackupTargets>) {
+    return this.fetch<BackupTargets>('/settings/backup-targets', { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async testBackupTarget() {
+    return this.fetch<{ ok: boolean; location?: string; error?: string }>('/settings/backup-targets/test', { method: 'POST' });
+  }
+  async getDbMaintenance() {
+    return this.fetch<DbMaintenanceSettings>('/settings/db-maintenance');
+  }
+  async saveDbMaintenance(data: Partial<DbMaintenanceSettings>) {
+    return this.fetch<DbMaintenanceSettings>('/settings/db-maintenance', { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async runDbMaintenance(action: 'integrity' | 'vacuum' | 'prune') {
+    return this.fetch<Record<string, unknown>>('/settings/db-maintenance/run', { method: 'POST', body: JSON.stringify({ action }) });
+  }
+  async getUpdateCapability() {
+    return this.fetch<UpdateCapability>('/settings/update-capability');
+  }
+  async applyUpdate() {
+    return this.fetch<{ started: boolean; note: string }>('/settings/update-apply', { method: 'POST' });
+  }
+
+  /** Create a template directly from an addon list (share-code import) -
+   * the server encrypts the manifest URLs at rest with ITS key. */
+  async importSnapshot(data: { name: string; description?: string; addons: Array<{ name: string; manifestUrl: string | null; stremioAddonId?: string | null; version?: string | null }> }) {
+    return this.fetch<{ id: string; name: string; addonCount: number }>('/snapshots/import', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async deploySnapshot(id: string, targetUserId: string) {
     return this.fetch<{ deployed: number; failed: number; targetUserId: string }>(`/snapshots/${id}/deploy`, {
       method: 'POST',
@@ -2082,6 +2117,15 @@ class ApiClient {
       body: JSON.stringify(item),
     });
   }
+
+  /** One write for many titles - share-code imports use this instead of
+   * hammering the single-item route once per title. */
+  async addToListBulk(id: string, items: Array<{ id: string; type: 'movie' | 'series'; name: string; poster?: string | null; year?: number | string | null }>) {
+    return this.fetch<CustomList & { added: number }>(`/lists/${encodeURIComponent(id)}/items/bulk`, {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
+  }
   async removeFromList(id: string, itemId: string) {
     return this.fetch<CustomList>(`/lists/${encodeURIComponent(id)}/items/${encodeURIComponent(itemId)}`, {
       method: 'DELETE',
@@ -2595,6 +2639,33 @@ export interface VaultEntryInput {
   autoRemoveAfterDays?: number;
 }
 
+export interface BackupTargets {
+  type: 'none' | 's3' | 'webdav';
+  /** How many local backup files to keep. 0 = keep everything. */
+  keepLocal: number;
+  s3: { endpoint: string; region: string; bucket: string; prefix: string; accessKeyId: string; secretAccessKey: string };
+  webdav: { url: string; username: string; password: string };
+}
+
+export interface DbMaintenanceSettings {
+  available?: boolean;
+  vacuumEnabled: boolean;
+  lastVacuumAt: string | null;
+  integrityCheckEnabled: boolean;
+  lastIntegrityCheckAt: string | null;
+  lastIntegrityOk: boolean | null;
+  pruneLogsEnabled: boolean;
+  lastPruneAt: string | null;
+}
+
+export interface UpdateCapability {
+  socketAvailable: boolean;
+  canSelfUpdate: boolean;
+  image: string | null;
+  composeProject: string | null;
+  reason: string;
+}
+
 export interface AddonHealthConfig {
   probeUrl?: string;
   failureThreshold?: number;
@@ -2764,6 +2835,12 @@ export interface SyncSettings {
   notifyOnBackup?: boolean;
   notifyOnProxyHealth?: boolean;
   notifyOnUpdateAvailable?: boolean;
+  /** Opt-in nudge when the Disaster Recovery Kit is stale/missing while the
+   * Vault holds credentials. Nothing is ever uploaded - see
+   * server/utils/recoveryKitReminder.js. */
+  notifyOnRecoveryKitStale?: boolean;
+  /** Read-only: stamped when a kit is actually exported. */
+  lastRecoveryKitExportAt?: string | null;
   notifyOnMosaic?: boolean;
   notifyDigestEnabled?: boolean;
   notifyDigestFrequency?: 'daily' | 'weekly';
