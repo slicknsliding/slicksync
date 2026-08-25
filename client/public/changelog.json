@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.75.1",
+    "date": "2026-08-25",
+    "title": "1.75.1 — Debug logs no longer grow without limit",
+    "features": [],
+    "bugFixes": [
+      "Internal diagnostic logs are now capped. SlickSync writes a small heartbeat file so a background task that quietly stops can be spotted, but nothing ever bounded those files - across live instances they had reached 160MB, the largest single file 63MB. They now keep only recent entries and discard the rest once they pass a few megabytes. Nothing you interact with changes; this is disk space being given back."
+    ]
+  },
+  {
     "version": "1.75.0",
     "date": "2026-08-25",
     "title": "1.75 — Share codes, off-site backups, and a faster app everywhere",

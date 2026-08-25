@@ -24,7 +24,7 @@ const path = require('path')
 // timestamps - there was no direct record of the failure itself).
 function heartbeat(event, data = {}) {
   try {
-    fs.appendFileSync('/app/data/activity-monitor-debug.log', `[${new Date().toISOString()}] ${event} ${JSON.stringify(data)}\n`)
+    require('./debugLogFile').appendCapped('/app/data/activity-monitor-debug.log', `[${new Date().toISOString()}] ${event} ${JSON.stringify(data)}\n`)
   } catch {}
 }
 
