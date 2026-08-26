@@ -613,6 +613,19 @@ export default function AddonDetailPage() {
     }
   };
 
+  // The server builds proxyManifestUrl from the host IT sees, and the API is
+  // reached through the app's own internal proxy - so the server's idea of
+  // the host is "localhost:4000", which is useless to anyone pasting the URL
+  // into Stremio. The browser is the only party that knows the address this
+  // instance is actually reachable at, so build it here and only fall back
+  // to the server's value if there's no UUID to build from.
+  const proxyUrlFor = (uuid?: string | null, serverValue?: string | null) => {
+    if (uuid && typeof window !== 'undefined') {
+      return `${window.location.origin}/proxy/${uuid}/manifest.json`;
+    }
+    return serverValue || null;
+  };
+
   // Handle proxy toggle
   const handleToggleProxy = async () => {
     if (!addon) return;
@@ -630,7 +643,7 @@ export default function AddonDetailPage() {
           ...addon, 
           proxyEnabled: true, 
           proxyUuid: result.proxyUuid,
-          proxyManifestUrl: result.proxyManifestUrl 
+          proxyManifestUrl: proxyUrlFor(result.proxyUuid, result.proxyManifestUrl)
         } as any);
         toast.success('Proxy enabled');
       }
@@ -651,7 +664,7 @@ export default function AddonDetailPage() {
       setAddon({ 
         ...addon, 
         proxyUuid: result.proxyUuid,
-        proxyManifestUrl: result.proxyManifestUrl 
+        proxyManifestUrl: proxyUrlFor(result.proxyUuid, result.proxyManifestUrl)
       } as any);
       toast.success('Proxy URL regenerated');
     } catch (err: any) {
@@ -1974,16 +1987,16 @@ export default function AddonDetailPage() {
                     <span className="text-sm font-medium text-default">Proxy URL</span>
                   </div>
                   
-                  {anyAddon?.proxyManifestUrl ? (
+                  {proxyUrlFor(anyAddon?.proxyUuid, anyAddon?.proxyManifestUrl) ? (
                     <div className="flex items-center gap-2">
                       <code className="flex-1 p-2 bg-surface-hover rounded-lg text-xs text-subtle break-all font-mono">
-                        {anyAddon.proxyManifestUrl}
+                        {proxyUrlFor(anyAddon?.proxyUuid, anyAddon?.proxyManifestUrl)}
                       </code>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          navigator.clipboard.writeText(anyAddon.proxyManifestUrl);
+                          navigator.clipboard.writeText(proxyUrlFor(anyAddon?.proxyUuid, anyAddon?.proxyManifestUrl) || '');
                           toast.success('Copied to clipboard');
                         }}
                       >

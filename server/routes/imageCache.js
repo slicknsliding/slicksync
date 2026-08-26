@@ -162,32 +162,67 @@ module.exports = () => {
       } catch { return fallback(); }
     }
 
-    const work = (async () => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-      try {
-        const upstream = await fetch(src, { signal: controller.signal, redirect: 'follow' });
-        if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
-        const type = (upstream.headers.get('content-type') || '').toLowerCase();
-        if (type.includes('gif') || type.includes('svg')) throw new Error('passthrough type');
-        const buf = Buffer.from(await upstream.arrayBuffer());
-        if (buf.length === 0 || buf.length > MAX_SOURCE_BYTES) throw new Error('bad size');
-
-        const img = await Jimp.read(buf);
-        // Only ever downscale - upscaling a small original just burns bytes
-        // on blur.
-        if (img.width > w) img.resize({ w });
-        const out = await img.getBuffer('image/jpeg', { quality: 80 });
-
-        // Atomic write (tmp + rename) so a crash mid-write can't leave a
-        // truncated file that would then be served as a "hit" forever.
-        const tmp = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
-        await fs.promises.writeFile(tmp, out);
-        await fs.promises.rename(tmp, cachePath);
-        pruneIfNeeded();
-      } finally {
-        clearTimeout(timer);
+    // Fetches the origin image, retrying a transient failure before giving
+    // up. Without this, one blip - a momentary network hiccup, or the image
+    // host briefly rate-limiting a burst, which is exactly what a freshly
+    // rendered grid of posters produces - permanently costs that poster its
+    // resize and its cache entry: the request falls back to a redirect, so
+    // the browser loads the full-size original, and the next view repeats
+    // the whole thing because nothing was ever cached. Retries are cheap
+    // here and only ever happen on the failure path.
+    //
+    // Only worth retrying what can plausibly succeed on a second attempt:
+    // network/timeout errors, 429, and 5xx. A 404 means the poster genuinely
+    // isn't there, and retrying it just delays the fallback.
+    const RETRY_DELAYS_MS = [250, 750];
+    const fetchOriginWithRetry = async () => {
+      let lastErr;
+      for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+        try {
+          const upstream = await fetch(src, { signal: controller.signal, redirect: 'follow' });
+          if (!upstream.ok) {
+            const retryable = upstream.status === 429 || upstream.status >= 500;
+            const err = new Error(`upstream ${upstream.status}`);
+            if (!retryable) throw err;
+            lastErr = err;
+          } else {
+            return upstream;
+          }
+        } catch (e) {
+          // A deliberate non-retryable throw above must not be retried.
+          if (/^upstream (4\d\d)/.test(e?.message || '') && !/429/.test(e.message)) throw e;
+          lastErr = e;
+        } finally {
+          clearTimeout(timer);
+        }
+        if (attempt < RETRY_DELAYS_MS.length) {
+          await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+        }
       }
+      throw lastErr || new Error('upstream fetch failed');
+    };
+
+    const work = (async () => {
+      const upstream = await fetchOriginWithRetry();
+      const type = (upstream.headers.get('content-type') || '').toLowerCase();
+      if (type.includes('gif') || type.includes('svg')) throw new Error('passthrough type');
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      if (buf.length === 0 || buf.length > MAX_SOURCE_BYTES) throw new Error('bad size');
+
+      const img = await Jimp.read(buf);
+      // Only ever downscale - upscaling a small original just burns bytes
+      // on blur.
+      if (img.width > w) img.resize({ w });
+      const out = await img.getBuffer('image/jpeg', { quality: 80 });
+
+      // Atomic write (tmp + rename) so a crash mid-write can't leave a
+      // truncated file that would then be served as a "hit" forever.
+      const tmp = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
+      await fs.promises.writeFile(tmp, out);
+      await fs.promises.rename(tmp, cachePath);
+      pruneIfNeeded();
     })();
     inFlight.set(key, work);
 

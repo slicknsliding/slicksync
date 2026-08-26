@@ -924,16 +924,33 @@ class ApiClient {
   }
 
   // Proxy
-  async enableProxy(id: string): Promise<{ id: string; name: string; proxyEnabled: boolean; proxyUuid: string; proxyManifestUrl: string }> {
-    return this.fetch(`/addons/${id}/proxy/enable`, { method: 'POST' });
+  // These three routes answer through responseUtils.success, which wraps the
+  // payload as { success, message, data } - so the fields live under .data,
+  // NOT at the top level. The declared return types used to claim otherwise,
+  // which meant every caller read `result.proxyUuid` as undefined: the proxy
+  // was enabled correctly server-side, but the page then rendered "Not
+  // generated" until a manual reload. Unwrapped here so callers keep the
+  // flat shape they always expected.
+  private async proxyAction(id: string, action: 'enable' | 'disable' | 'regenerate') {
+    const res = await this.fetch<{ success?: boolean; data?: ProxyActionResult } & Partial<ProxyActionResult>>(
+      `/addons/${id}/proxy/${action}`,
+      { method: 'POST' }
+    );
+    // Tolerates both shapes, so this cannot break again if a route is ever
+    // changed to answer flat.
+    return (res?.data ?? res) as ProxyActionResult;
   }
 
-  async disableProxy(id: string): Promise<{ id: string; name: string; proxyEnabled: boolean; proxyUuid: string }> {
-    return this.fetch(`/addons/${id}/proxy/disable`, { method: 'POST' });
+  async enableProxy(id: string): Promise<ProxyActionResult> {
+    return this.proxyAction(id, 'enable');
   }
 
-  async regenerateProxyUuid(id: string): Promise<{ id: string; name: string; proxyEnabled: boolean; proxyUuid: string; proxyManifestUrl: string | null }> {
-    return this.fetch(`/addons/${id}/proxy/regenerate`, { method: 'POST' });
+  async disableProxy(id: string): Promise<ProxyActionResult> {
+    return this.proxyAction(id, 'disable');
+  }
+
+  async regenerateProxyUuid(id: string): Promise<ProxyActionResult> {
+    return this.proxyAction(id, 'regenerate');
   }
 
   async getProxyLogs(id: string, limit?: number, offset?: number): Promise<{ logs: any[], total: number, limit: number, offset: number }> {
@@ -2664,6 +2681,14 @@ export interface UpdateCapability {
   image: string | null;
   composeProject: string | null;
   reason: string;
+}
+
+export interface ProxyActionResult {
+  id: string;
+  name?: string;
+  proxyEnabled?: boolean;
+  proxyUuid?: string | null;
+  proxyManifestUrl?: string | null;
 }
 
 export interface AddonHealthConfig {

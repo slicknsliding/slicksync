@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.75.2",
+    "date": "2026-08-25",
+    "title": "1.75.2 — The addon Proxy feature actually works now",
+    "features": [],
+    "bugFixes": [
+      "The Proxy option on an addon works. Previously it could not: turning it on failed outright, and even once enabled the address it produced pointed somewhere unreachable and was never routed to the part of SlickSync that answers it, so nothing could ever load a proxied addon. Enabling one now gives you a working URL on your own instance that hides the addon's real address, and regenerating it updates on the spot instead of appearing blank until a page refresh.",
+      "Loading a proxied addon no longer takes the server down with it. Serving a single proxied manifest could crash SlickSync's backend outright, which made every other page stop responding until it restarted.",
+      "An unknown or regenerated-away proxy address now returns a clean not-found instead of a server error.",
+      "Posters survive a hiccup from the image host. A momentary failure - common when a whole grid of posters loads at once - used to mean that poster permanently fell back to its full-size original and was never cached; it is now retried briefly first. A poster that genuinely does not exist still fails fast rather than stalling."
+    ]
+  },
+  {
     "version": "1.75.1",
     "date": "2026-08-25",
     "title": "1.75.1 — Debug logs no longer grow without limit",
