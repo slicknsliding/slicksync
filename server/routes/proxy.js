@@ -113,16 +113,25 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
     let addon = null;
     let errorMessage = null;
     let requestUrl = null;
+    // Outer scope on purpose: the res.on('finish') handler below closes over
+    // this. It used to reference `originalManifestUrl`, which is declared
+    // with `let` INSIDE the try block, so the closure hit a ReferenceError
+    // at response-finish time - and because that runs in an event handler,
+    // the throw was uncaught and killed the whole backend process. Serving
+    // one proxied manifest took the server down. Matches how the sibling
+    // route below has always declared it.
+    let upstreamUrl = null;
 
     // Set up logging to run when response is finished
     res.on('finish', () => {
       const responseTimeMs = Date.now() - startTime;
       if (addon) {
+        try {
         logProxyRequest({
           addon,
           path: '/manifest.json',
           url: requestUrl,
-          upstreamUrl: originalManifestUrl,
+          upstreamUrl,
           method: req.method,
           ip: getClientIp(req),
           userAgent: req.get('user-agent'),
@@ -131,6 +140,11 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
           responseTimeMs,
           error: errorMessage
         });
+        } catch (logErr) {
+          // Logging is observability, not the request - never let it throw
+          // out of this handler, where it would be an uncaught exception.
+          console.error('[Proxy] request logging failed:', logErr?.message)
+        }
       }
     });
 
@@ -170,6 +184,7 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
       let originalManifestUrl;
       try {
         originalManifestUrl = decrypt(addon.manifestUrl, req);
+        upstreamUrl = originalManifestUrl;
       } catch (e) {
         console.error('Error decrypting manifest URL:', e);
         errorMessage = 'Failed to resolve addon URL';
@@ -209,6 +224,7 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
     res.on('finish', () => {
       const responseTimeMs = Date.now() - startTime;
       if (addon) {
+        try {
         logProxyRequest({
           addon,
           path: `/${path}`,
@@ -222,6 +238,11 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
           responseTimeMs,
           error: errorMessage
         });
+        } catch (logErr) {
+          // Logging is observability, not the request - never let it throw
+          // out of this handler, where it would be an uncaught exception.
+          console.error('[Proxy] request logging failed:', logErr?.message)
+        }
       }
     });
 

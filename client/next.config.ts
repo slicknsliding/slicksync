@@ -60,6 +60,17 @@ const nextConfig: NextConfig = {
         source: '/uploads/:path*',
         destination: 'http://localhost:4000/uploads/:path*',
       },
+      // Addon proxy (server/routes/proxy.js) - the whole point of the
+      // feature is handing out a URL on THIS host that hides the addon's
+      // real manifest URL, and Stremio/Nuvio fetch it unauthenticated from
+      // outside. Without this rewrite that URL reached Next.js instead of
+      // the backend and returned a 404 HTML page, so every proxied addon
+      // was dead on arrival - the backend route itself was fine and
+      // answered correctly on its own port the whole time.
+      {
+        source: '/proxy/:path*',
+        destination: 'http://localhost:4000/proxy/:path*',
+      },
       // Public invite routes (no auth required)
       {
         source: '/invite/:inviteCode/check',
