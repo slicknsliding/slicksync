@@ -50,6 +50,10 @@ Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot
 
 ## Contents
 
+<table>
+<tr>
+<td valign="top" width="50%">
+
 - [Multi-Provider Sync](#-multi-provider-sync)
 - [Activity & Now Playing](#-activity--now-playing)
 - [Discover & Media Details](#-discover--media-details)
@@ -61,6 +65,10 @@ Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot
 - [PWA, Speed & Offline](#-pwa-speed--offline)
 - [Addons](#-addons)
 - [Automation](#-automation)
+
+</td>
+<td valign="top" width="50%">
+
 - [Command Palette](#-command-palette)
 - [Themes](#-themes)
 - [Sharing & Portability](#-sharing--portability)
@@ -71,6 +79,10 @@ Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot
 - [Installation](#-installation)
 - [Credits](#credits)
 - [License](#license)
+
+</td>
+</tr>
+</table>
 
 ## ⚡ Features
 
