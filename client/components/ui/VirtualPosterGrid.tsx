@@ -59,15 +59,27 @@ export function VirtualPosterGrid<T>({
     if (disabled) return;
     const probe = probeRef.current;
     if (!probe) return;
+    // rAF-coalesced: a ResizeObserver whose callback can change layout must
+    // never run its state update synchronously inside the observation
+    // callback, or a resize that triggers a resize spins the browser (this
+    // grid's height feeds back into the page's own size). Batching to the
+    // next frame collapses a burst into one update and lets the browser
+    // finish laying out in between.
+    let raf = 0;
     const readColumns = () => {
-      const template = getComputedStyle(probe).gridTemplateColumns;
-      const count = template === 'none' ? 0 : template.split(' ').length;
-      if (count > 0) setColumns(count);
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const template = getComputedStyle(probe).gridTemplateColumns;
+        const count = template === 'none' ? 0 : template.split(' ').length;
+        // Identical values are dropped so React never re-renders for a
+        // no-op measurement.
+        if (count > 0) setColumns((prev) => (prev === count ? prev : count));
+      });
     };
     readColumns();
     const ro = new ResizeObserver(readColumns);
     ro.observe(probe);
-    return () => ro.disconnect();
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, [disabled]);
 
   const rowCount = Math.ceil(items.length / columns);
@@ -83,8 +95,21 @@ export function VirtualPosterGrid<T>({
     if (disabled) return;
     const el = listRef.current;
     if (!el) return;
-    const measure = () => setScrollMargin(el.offsetTop);
-    const raf = requestAnimationFrame(measure);
+    // Same rAF coalescing as readColumns above, for the same reason - this
+    // observer watches document.body, which this grid's own height is part
+    // of, so an unbatched callback here is a direct resize->setState->resize
+    // cycle. Sub-pixel deltas are ignored as well: fractional offsetTop
+    // changes are layout noise, not a real move, and reacting to them keeps
+    // the cycle alive.
+    let raf = 0;
+    const measure = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const next = el.offsetTop;
+        setScrollMargin((prev) => (Math.abs(prev - next) < 1 ? prev : next));
+      });
+    };
+    measure();
     const ro = new ResizeObserver(measure);
     ro.observe(document.body);
     return () => {

@@ -943,3 +943,20 @@ body {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
+
+/* Always reserve the scrollbar gutter. Without this, the vertical scrollbar
+   appearing/disappearing changes the content width by ~15px, and with a
+   virtualized grid that is a closed feedback loop: grid grows past the
+   viewport -> scrollbar appears -> content narrows -> the grid's column
+   count recalculates -> row count and total height change -> the page no
+   longer overflows -> scrollbar disappears -> width returns -> repeat,
+   forever. Confirmed live as a native <select> popup flipping between
+   opening downward and upward continuously (Firefox re-decides the popup
+   direction every time the page height changes), and it burns main-thread
+   layout work the whole time it oscillates.
+
+   Reserving the gutter unconditionally makes the content width constant, so
+   crossing the overflow threshold can no longer change layout at all. */
+html {
+  scrollbar-gutter: stable;
+}
