@@ -5,7 +5,7 @@ import { Header } from '@/components/layout/Header';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { PageToolbar, MediaDetailModal, PageToolbarProps, Badge, PosterCard, PosterCardItem, VirtualPosterGrid } from '@/components/ui';
+import { PageToolbar, MediaDetailModal, PageToolbarProps, Badge, PosterCard, PosterCardItem, VirtualPosterGrid, DropdownSelect } from '@/components/ui';
 import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useWatchlistState } from '@/lib/hooks/useWatchlistState';
@@ -720,30 +720,20 @@ export default function DiscoverPage() {
                   })}
                 </div>
               ) : (
-                <select
+                <DropdownSelect
                   value={genre}
-                  onChange={(e) => setGenre(e.target.value)}
-                  aria-label="Filter by genre"
-                  // Never white text on the trigger itself (even when a
-                  // genre is active) - Firefox's native <select> popup
-                  // inherits the trigger's own `color`, unlike Chrome/Safari
-                  // which style the popup independently. text-white here
-                  // made every option in the open dropdown render white-on-
-                  // white against Firefox's light native popup background,
-                  // confirmed live. "Active" is shown with a colored
-                  // border/background instead, which the popup doesn't
-                  // inherit.
-                  className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
+                  onChange={setGenre}
+                  ariaLabel="Filter by genre"
+                  options={[{ value: '', label: 'All genres' }, ...GENRES.map((g) => ({ value: g, label: g }))]}
+                  // Same trigger styling the native <select> used, plus the
+                  // flex/gap the chevron needs now that it's a real element
+                  // rather than the OS-drawn arrow.
+                  className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
                     genre
                       ? 'bg-primary-muted text-primary border-primary'
                       : 'bg-surface-hover text-muted nav-item-hover-pill border-default'
                   }`}
-                >
-                  <option value="" style={{ color: '#1a1a1a', background: '#fff' }}>All genres</option>
-                  {GENRES.map((g) => (
-                    <option key={g} value={g} style={{ color: '#1a1a1a', background: '#fff' }}>{g}</option>
-                  ))}
-                </select>
+                />
               )}
             </div>
           </PageSection>
