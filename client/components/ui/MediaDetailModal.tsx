@@ -199,7 +199,21 @@ export function MediaDetailModal({
   // with the remote first. Retries on a backoff for the same reason
   // TVPageProvider does - details load asynchronously, so a single
   // fixed-delay focusSelf() could fire before any button exists yet.
-  const { ref: modalRef, focusKey: modalFocusKey, focusSelf: focusModal, hasFocusedChild } = useFocusable<object, HTMLDivElement>({ trackChildren: true });
+  // TV-only. On phone/desktop init() never runs, so registering here feeds
+  // an engine with no layout adapter - every mount/unmount then dies inside
+  // its async measureLayout ('this.layoutAdapter' undefined), confirmed by
+  // betatest stall telemetry as co-timed with multi-second iOS freezes on
+  // modal open AND close. isTV is stable for the entire session (see
+  // useIsTV), so the conditional hook call below never changes order for a
+  // mounted component in practice.
+  const fallbackModalRef = useRef<HTMLDivElement>(null);
+  const noopFocusModal = useCallback(() => {}, []);
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const tvFocus = isTV ? useFocusable<object, HTMLDivElement>({ trackChildren: true }) : null;
+  const modalRef = tvFocus ? tvFocus.ref : fallbackModalRef;
+  const modalFocusKey = tvFocus?.focusKey ?? 'media-detail-modal';
+  const focusModal = tvFocus ? tvFocus.focusSelf : noopFocusModal;
+  const hasFocusedChild = tvFocus ? tvFocus.hasFocusedChild : false;
   const hasFocusedChildRef = useRef(false);
   useEffect(() => {
     hasFocusedChildRef.current = hasFocusedChild;
