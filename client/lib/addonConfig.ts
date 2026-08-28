@@ -43,6 +43,45 @@ export interface DecodedAddonConfig {
 
 const SENSITIVE_KEY_RE = /key|token|pass|secret|debrid|premiumize|torbox|offcloud|putio|apikey/i;
 
+// A base64/base64url string long enough to plausibly be an IV, ciphertext,
+// or digest rather than a short human value.
+const LOOKS_LIKE_CIPHER_BLOB_RE = /^[A-Za-z0-9+/_-]{12,}={0,2}$/;
+
+// Some addons (AIOStreams and its forks chief among them) store their real
+// settings server-side and put only an ENCRYPTED reference blob in the
+// manifest URL - still valid JSON, so the shape-sniffing below would
+// otherwise treat it as a normal editable config. Confirmed live: a real
+// AIOStreams install URL decodes to exactly {"i":"<iv>","e":"<ciphertext>",
+// "t":"<tag>"} - cryptic single/double-letter keys, every value an opaque
+// base64 blob, nothing resembling a real setting name. Editing "i" or "e"
+// directly would hand back a ciphertext the addon's own server can no
+// longer decrypt, silently breaking it rather than changing any setting.
+//
+// Heuristic, not a hardcoded AIOStreams check, so any addon using the same
+// pattern (short cryptic keys + blob-shaped values, no recognizable setting
+// name anywhere) is caught the same way: a small object where every key is
+// at most 3 characters AND every value looks like a cipher blob.
+function looksLikeEncryptedEnvelope(obj: Record<string, unknown>): boolean {
+  const entries = Object.entries(obj);
+  if (entries.length === 0 || entries.length > 6) return false;
+  return entries.every(([key, value]) => {
+    // Single characters only. Tried <=2 first and it false-positived on a
+    // plausible real shape - short provider-abbreviation keys (rd/tb/pm for
+    // realdebrid/torbox/premiumize) paired with long API-key values, which
+    // are exactly what a compact debrid-style addon config looks like. The
+    // one shape actually confirmed live is AIOStreams' own envelope, whose
+    // keys (i, e, t) are all single characters - restricting to that exact
+    // width keeps the real case caught without that false-positive risk.
+    if (key.length > 1) return false;
+    if (typeof value !== 'string') return false;
+    // A short flag value (AIOStreams' own "t":"a") doesn't need to look like
+    // a blob itself - only the key's cryptic shortness matters there - but a
+    // longer value must actually look like base64 to count as a cipher blob
+    // rather than e.g. a legitimately short setting someone abbreviated.
+    return value.length <= 4 || LOOKS_LIKE_CIPHER_BLOB_RE.test(value);
+  });
+}
+
 function splitManifestUrl(manifestUrl: string): { url: URL; segments: string[]; configIndex: number } | null {
   let url: URL;
   try { url = new URL(manifestUrl.replace(/^stremio:\/\//i, 'https://')); } catch { return null; }
@@ -120,7 +159,7 @@ export function decodeAddonConfig(manifestUrl: string): DecodedAddonConfig | nul
   if (decoded.startsWith('{')) {
     try {
       const obj = JSON.parse(decoded);
-      if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      if (obj && typeof obj === 'object' && !Array.isArray(obj) && !looksLikeEncryptedEnvelope(obj)) {
         return {
           shape: 'json',
           fields: jsonToFields(obj),
@@ -135,7 +174,7 @@ export function decodeAddonConfig(manifestUrl: string): DecodedAddonConfig | nul
   if (b64 && b64.startsWith('{')) {
     try {
       const obj = JSON.parse(b64);
-      if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+      if (obj && typeof obj === 'object' && !Array.isArray(obj) && !looksLikeEncryptedEnvelope(obj)) {
         // Preserve the alphabet the addon itself used - a server expecting
         // url-safe base64 may reject `+`/`/`.
         const urlSafe = /[-_]/.test(rawSegment) || !/[+/]/.test(rawSegment);
