@@ -46,6 +46,49 @@ export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectory
   const [addingUrl, setAddingUrl] = useState<string | null>(null);
   const [result, setResult] = useState<Awaited<ReturnType<typeof api.browseAddonDirectory>> | null>(null);
 
+  // Reachability of the addons currently on screen, probed FROM THE BROWSER.
+  // Deliberately not server-side: the server is on a VPS, and a large class
+  // of popular addons (anything Cloudflare-fronted) refuses datacenter IPs
+  // while answering a home connection perfectly - so a server-side probe
+  // would wrongly condemn working addons as dead. It also costs the server
+  // nothing, since each check runs on the viewer's own connection.
+  //
+  // Only genuinely unreachable addons are flagged: a failure here means the
+  // browser could not reach it either, which is the same position the user
+  // would be in.
+  const [reachability, setReachability] = useState<Record<string, 'ok' | 'dead'>>({});
+  const [checkingReach, setCheckingReach] = useState(false);
+  const [hideDead, setHideDead] = useState(false);
+
+  const checkReachability = useCallback(async (urls: string[]) => {
+    const unknown = urls.filter((u) => !(u in reachability));
+    if (unknown.length === 0) return;
+    setCheckingReach(true);
+    // Small concurrency cap - a page of 24 all at once is a burst nobody
+    // benefits from, and some hosts throttle it.
+    const CONCURRENCY = 5;
+    const found: Record<string, 'ok' | 'dead'> = {};
+    let i = 0;
+    await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
+      while (i < unknown.length) {
+        const url = unknown[i++];
+        try {
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 8000);
+          const res = await fetch(url, { signal: ctrl.signal });
+          clearTimeout(t);
+          // A 403 is NOT dead - it is the addon refusing this particular
+          // caller. Only a hard failure or a non-manifest response counts.
+          found[url] = res.ok || res.status === 403 || res.status === 401 ? 'ok' : 'dead';
+        } catch {
+          found[url] = 'dead';
+        }
+      }
+    }));
+    setReachability((prev) => ({ ...prev, ...found }));
+    setCheckingReach(false);
+  }, [reachability]);
+
   // Debounced so typing doesn't fire a request per keystroke - the server
   // caches, but the upstream directory shouldn't be hammered either.
   useEffect(() => {
@@ -90,7 +133,29 @@ export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectory
   const handleAdd = async (manifestUrl: string, name: string) => {
     setAddingUrl(manifestUrl);
     try {
-      await api.createAddon({ manifestUrl, name });
+      try {
+        await api.createAddon({ manifestUrl, name });
+      } catch (serverErr) {
+        // The server could not fetch the manifest - very often because the
+        // addon's host blocks datacenter/VPS IPs. Confirmed live: torrentio
+        // and thepiratebay-plus both return 403 to two different VPS hosts
+        // while returning 200 to a browser on a home connection.
+        //
+        // So retry from HERE. The browser is on the user's own connection,
+        // which those addons don't block, and Stremio addons must serve
+        // permissive CORS headers for Stremio's own web app to work - so
+        // this read is allowed. The manifest is then handed to the server,
+        // which already accepts a pre-fetched one and skips its own fetch.
+        // Costs the server no bandwidth at all: the download happens here.
+        let manifestData: unknown = null;
+        try {
+          const res = await fetch(manifestUrl);
+          if (res.ok) manifestData = await res.json();
+        } catch { /* browser can't reach it either - genuinely unreachable */ }
+
+        if (!manifestData) throw serverErr; // report the server's own reason
+        await api.createAddon({ manifestUrl, name, manifestData });
+      }
       toast.success(`Added ${name}`);
       onAdded();
     } catch (e) {
@@ -140,6 +205,23 @@ export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectory
           ))}
         </div>
 
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hideDead}
+              onChange={async (e) => {
+                setHideDead(e.target.checked);
+                if (e.target.checked && result) {
+                  await checkReachability(result.addons.map((a) => a.manifestUrl));
+                }
+              }}
+            />
+            Hide addons that don&apos;t respond
+          </label>
+          {checkingReach && <span className="text-xs text-subtle">Checking addons…</span>}
+        </div>
+
         {error && (
           <div className="p-3 rounded-lg text-sm" style={{ background: 'color-mix(in srgb, var(--color-error) 12%, transparent)', color: 'var(--color-text)' }}>
             {error}
@@ -152,7 +234,9 @@ export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectory
           {!loading && result?.addons.length === 0 && (
             <p className="text-sm text-muted py-6 text-center">No addons match that search.</p>
           )}
-          {result?.addons.map((a) => (
+          {result?.addons
+            .filter((a) => !hideDead || reachability[a.manifestUrl] !== 'dead')
+            .map((a) => (
             <div key={a.manifestUrl} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
               {a.logo ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -163,6 +247,9 @@ export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectory
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-default">{a.name}</span>
+                  {reachability[a.manifestUrl] === 'dead' && (
+                    <Badge variant="error" size="sm">Not responding</Badge>
+                  )}
                   {a.stars > 0 && (
                     <span className="inline-flex items-center gap-0.5 text-xs text-muted">
                       <StarIcon className="w-3.5 h-3.5" />{a.stars}
