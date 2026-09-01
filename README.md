@@ -156,7 +156,7 @@ A built-in Trakt alternative — no external service, no tokens.
 - Optional **AI "why this matches"** explanation using your own OpenAI-compatible key — never required.
 - **Not Interested** feedback downweights similar titles, not just the one dismissed.
 - **Trakt-compatible scrobble-in API** (`/api/scrobble`) — point a real Trakt-scrobbling client (Infuse, Kodi's Trakt plugin) at it with a per-user API key and it writes straight into SlickTrax history.
-- **Watch-history import/export** — import a Trakt/Letterboxd/IMDb CSV, or export as a Letterboxd-compatible CSV.
+- **Watch-history import/export** — import a Letterboxd/IMDb CSV or a Trakt export (Trakt's own free Settings → Data download, no API key or VIP needed), or export as a Letterboxd-compatible CSV.
 
 ### 🔐 Vault
 - AES-GCM encrypted at rest.

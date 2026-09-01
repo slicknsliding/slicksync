@@ -565,8 +565,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     limits: { fileSize: 20 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
       const looksLikeCsv = file.mimetype === 'text/csv' || file.mimetype === 'application/vnd.ms-excel' || /\.csv$/i.test(file.originalname || '')
-      if (looksLikeCsv) return cb(null, true)
-      cb(new Error('Only .csv files are allowed'), false)
+      // Trakt's own free export (Settings -> Data) is JSON, not CSV - see
+      // traktExportImport.js. Same endpoint handles both.
+      const looksLikeJsonFile = file.mimetype === 'application/json' || /\.json$/i.test(file.originalname || '')
+      if (looksLikeCsv || looksLikeJsonFile) return cb(null, true)
+      cb(new Error('Only .csv or .json files are allowed'), false)
     },
   })
 
@@ -585,8 +588,24 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const { resolveOmdbKeyForAccount } = require('../utils/listImport')
 
       const text = req.file.buffer.toString('utf8')
-      const { headers, records } = parseCsv(text)
-      if (records.length === 0) return res.status(400).json({ error: 'No rows found in that CSV' })
+
+      // A Trakt export JSON is flattened into the same column names the CSV
+      // path already understands, so everything below this point is shared.
+      const { parseTraktExport, looksLikeJson } = require('../utils/traktExportImport')
+      let headers, records, skippedNonMovie = 0
+      if (looksLikeJson(text)) {
+        const parsed = parseTraktExport(text)
+        if (!parsed) return res.status(400).json({ error: 'That JSON file is not a recognised Trakt export. Upload one of the JSON files from the ZIP Trakt gives you under Settings -> Data.' })
+        ;({ headers, records, skippedNonMovie } = parsed)
+        if (records.length === 0) {
+          return res.status(400).json({ error: skippedNonMovie > 0
+            ? 'That file only contains episodes or shows. Movie history and ratings can be imported; episode history cannot yet.'
+            : 'No entries found in that export file.' })
+        }
+      } else {
+        ;({ headers, records } = parseCsv(text))
+        if (records.length === 0) return res.status(400).json({ error: 'No rows found in that CSV' })
+      }
       const colMap = mapColumns(headers)
       const omdbApiKey = await resolveOmdbKeyForAccount(prisma, accountId).catch(() => null)
 
@@ -633,71 +652,18 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       res.json({
         imported,
-        skipped,
-        totalRows: records.length,
+        // Entries the export carried but this importer cannot write (episode
+        // and show history) are counted as skipped rather than omitted, so
+        // the totals shown add up to what was actually in the file.
+        skipped: skipped + skippedNonMovie,
+        skippedEpisodes: skippedNonMovie,
+        totalRows: records.length + skippedNonMovie,
         truncated: records.length > MAX_ROWS,
         unresolvedTitles: unresolved.slice(0, 20),
       })
     } catch (error) {
       console.error('Error importing history CSV:', error)
       res.status(500).json({ error: error?.message || 'Failed to import history' })
-    }
-  })
-
-  // ==================== TRAKT ONE-TIME IMPORT ====================
-  // See traktImport.js's own header for why this exists alongside the CSV
-  // importer above (Trakt has no reliable CSV export to point that path at)
-  // and exactly which Trakt endpoints this talks to.
-
-  // POST /users/:id/trakt-import/start - kicks off the OAuth device flow.
-  // Returns the code+link the user needs to approve at trakt.tv/activate;
-  // the device_code itself doubles as the polling session token below (no
-  // server-side state needed between the two calls - Trakt's own protocol
-  // is already designed that way).
-  router.post('/:id/trakt-import/start', async (req, res) => {
-    try {
-      const accountId = getAccountId(req)
-      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
-      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
-      if (!user) return res.status(404).json({ error: 'User not found' })
-
-      const { startDeviceAuth } = require('../utils/traktImport')
-      const auth = await startDeviceAuth(prisma, accountId)
-      res.json(auth)
-    } catch (error) {
-      if (error?.notConfigured) return res.status(400).json({ error: error.message, notConfigured: true })
-      console.error('Error starting Trakt import:', error)
-      res.status(500).json({ error: error?.message || 'Failed to start Trakt connection' })
-    }
-  })
-
-  // POST /users/:id/trakt-import/poll - body: {deviceCode}. Called on the
-  // client's own timer at the `interval` /start returned. Once Trakt
-  // reports the device approved, this same call performs the actual pull +
-  // write and returns the import result - no separate "now do the import"
-  // step, so the client's polling loop naturally ends the moment there's
-  // something to show.
-  router.post('/:id/trakt-import/poll', async (req, res) => {
-    try {
-      const accountId = getAccountId(req)
-      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
-      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
-      if (!user) return res.status(404).json({ error: 'User not found' })
-      const { deviceCode } = req.body || {}
-      if (!deviceCode) return res.status(400).json({ error: 'Missing deviceCode' })
-
-      const { pollDeviceToken, importTraktData } = require('../utils/traktImport')
-      const poll = await pollDeviceToken(prisma, accountId, deviceCode)
-      if (poll.status !== 'approved') return res.json(poll)
-
-      const result = await importTraktData(prisma, accountId, user.id, poll.accessToken)
-      // The access token was only ever needed for this one pull - "connect
-      // once, then disconnects" means literally not holding onto it past
-      // this response, not just not writing it to a settings field.
-      res.json({ status: 'done', ...result })
-    } catch (error) {
-      console.error('Error polling/importing Trakt data:', error)
-      res.status(500).json({ error: error?.message || 'Failed to import from Trakt' })
     }
   })
 
