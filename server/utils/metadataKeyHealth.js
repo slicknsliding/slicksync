@@ -172,16 +172,31 @@ const PROVIDER_LABEL = { tmdb: 'TMDb', omdb: 'OMDb', mdblist: 'MDBList', rpdb: '
  * re-notify daily). Shared by the manual "check now" route and the daily
  * scheduler below, so both go through identical persist/notify logic.
  */
+// Provider key -> the Settings field holding it, so the matching `...Backup`
+// field can be found. Explicit rather than derived: a rename should break
+// loudly here rather than silently stop reporting that a backup exists.
+const FIELD_BY_PROVIDER = {
+  tmdb: 'tmdbApiKey',
+  omdb: 'omdbApiKey',
+  mdblist: 'mdblistApiKey',
+  rpdb: 'rpdbApiKey',
+};
+
 async function checkAndPersistAccountKeys(prisma, accountId, { notify = true } = {}) {
   const { resolveKeyFromSettings } = require('./listImport');
   const noReq = null;
   const getId = () => accountId;
 
+  // allowBackup:false - this checks the PRIMARY keys specifically. If it
+  // followed failover it would test whichever key is currently in use, so a
+  // working backup would record the provider as healthy, which is precisely
+  // the signal that decides the primary is fine again. See listImport.js.
+  const opts = { allowBackup: false };
   const [tmdb, omdb, mdblist, rpdb] = await Promise.all([
-    resolveKeyFromSettings(prisma, getId, noReq, 'tmdbApiKey', 'TMDB_API_KEY'),
-    resolveKeyFromSettings(prisma, getId, noReq, 'omdbApiKey', 'OMDB_API_KEY'),
-    resolveKeyFromSettings(prisma, getId, noReq, 'mdblistApiKey', 'MDBLIST_API_KEY'),
-    resolveKeyFromSettings(prisma, getId, noReq, 'rpdbApiKey', 'RPDB_API_KEY'),
+    resolveKeyFromSettings(prisma, getId, noReq, 'tmdbApiKey', 'TMDB_API_KEY', opts),
+    resolveKeyFromSettings(prisma, getId, noReq, 'omdbApiKey', 'OMDB_API_KEY', opts),
+    resolveKeyFromSettings(prisma, getId, noReq, 'mdblistApiKey', 'MDBLIST_API_KEY', opts),
+    resolveKeyFromSettings(prisma, getId, noReq, 'rpdbApiKey', 'RPDB_API_KEY', opts),
   ]);
 
   const results = await runKeyHealthChecks({ tmdb, omdb, mdblist, rpdb });
@@ -223,12 +238,28 @@ async function checkAndPersistAccountKeys(prisma, accountId, { notify = true } =
             dedupeKey: `keyhealth-${provider}-${failed ? 'fail' : 'ok'}-${new Date().toDateString()}`,
           });
         }
+        const backupKey = (typeof cfg[`${FIELD_BY_PROVIDER[provider]}Backup`] === 'string')
+          ? cfg[`${FIELD_BY_PROVIDER[provider]}Backup`].trim()
+          : '';
+
         await emitAutomationEvent(prisma, accountId, failed ? 'metadata_key.failed' : 'metadata_key.recovered', {
           provider,
           providerLabel: label,
           message: result.message,
           rateLimited: !!result.rateLimited,
+          hasBackup: !!backupKey,
         });
+
+        // Same ok -> failing edge, so it fires once rather than daily while
+        // the primary stays broken. Lookups use the backup from here on.
+        if (failed && backupKey) {
+          await emitAutomationEvent(prisma, accountId, 'metadata_key.failover_activated', {
+            provider,
+            providerLabel: label,
+            message: result.message,
+            rateLimited: !!result.rateLimited,
+          });
+        }
       }
 
       // Quota warnings are independent of ok/failing: a key can be perfectly

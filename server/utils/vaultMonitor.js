@@ -136,12 +136,42 @@ async function runVaultChecks({ prisma, decrypt, getAccountId }) {
             if (wasOk && !nowOk) {
               try {
                 const { emitAutomationEvent } = require('./automation/engine')
+                // Resolve the backup once, so both events agree on whether
+                // a usable spare actually exists - "has a backup" must mean
+                // a real, active, working entry, not merely a non-null id
+                // pointing at something deleted or equally broken.
+                let backup = null
+                if (entry.backupEntryId) {
+                  backup = await prisma.vaultEntry.findFirst({
+                    where: { id: entry.backupEntryId, accountId: account.id, isActive: true },
+                  }).catch(() => null)
+                  if (backup && ['failed', 'error', 'expired'].includes(String(backup.lastCheckStatus || '').toLowerCase())) {
+                    backup = null
+                  }
+                }
+
                 await emitAutomationEvent(prisma, account.id, 'vault.check_failed', {
                   entryName: entry.name,
                   entryId: entry.id,
                   category: entry.category,
                   message: result.message || 'Check failed',
+                  hasBackup: !!backup,
+                  backupName: backup ? backup.name : '',
                 })
+
+                // Emitted on the same ok -> error edge, so it can't repeat
+                // while the entry stays failing. Consumers switch to the
+                // backup from here on (see vaultFailover.js).
+                if (backup) {
+                  await emitAutomationEvent(prisma, account.id, 'vault.failover_activated', {
+                    entryName: entry.name,
+                    entryId: entry.id,
+                    category: entry.category,
+                    backupName: backup.name,
+                    backupId: backup.id,
+                    message: result.message || 'Check failed',
+                  })
+                }
               } catch { /* emit never throws; guarding the require itself */ }
             }
           } catch (err) {

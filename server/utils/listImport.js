@@ -60,7 +60,7 @@ const HEALTH_PROVIDER_BY_FIELD = {
  * means no posters either way, so the backup is strictly better while it
  * lasts.
  */
-async function resolveKeyFromSettings(prisma, getAccountId, req, settingsField, envVar) {
+async function resolveKeyFromSettings(prisma, getAccountId, req, settingsField, envVar, { allowBackup = true } = {}) {
   try {
     const accountId = (typeof getAccountId === 'function' ? getAccountId(req) : null) || 'default'
     const acc = await prisma?.appAccount?.findUnique({ where: { id: accountId }, select: { sync: true } })
@@ -72,7 +72,14 @@ async function resolveKeyFromSettings(prisma, getAccountId, req, settingsField, 
     const primary = read(settingsField)
     const backup = read(`${settingsField}Backup`)
 
+    // allowBackup:false is for the health check itself, which MUST test the
+    // primary. Letting it follow failover makes the two halves chase each
+    // other: the check would test the backup, record the provider as healthy,
+    // which un-marks the primary as bad, which sends the next lookup back to
+    // the dead primary, which fails the next check - flip-flopping between
+    // keys every cycle and never settling.
     if (primary) {
+      if (!allowBackup) return primary
       const provider = HEALTH_PROVIDER_BY_FIELD[settingsField]
       const health = provider ? cfg.keyHealth?.[provider] : null
       const primaryIsBad = !!health && health.ok === false
@@ -80,7 +87,7 @@ async function resolveKeyFromSettings(prisma, getAccountId, req, settingsField, 
       // Primary is known-bad and a backup exists - use it.
       return backup
     }
-    if (backup) return backup
+    if (backup && allowBackup) return backup
   } catch {}
   return (process.env[envVar] || '').trim()
 }

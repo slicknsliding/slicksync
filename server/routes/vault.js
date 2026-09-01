@@ -118,6 +118,10 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (entry.testType !== 'real_debrid' && entry.testType !== 'torbox') {
         return res.json({ usage: null });
       }
+      // No failover here on purpose: this reports the usage OF THIS ENTRY,
+      // shown on this entry's own card. Quietly answering with the backup
+      // account's figures would label one account's numbers with another
+      // account's name - worse than showing nothing.
       let secret;
       try { secret = decrypt(entry.encryptedSecret, req); } catch { return res.json({ usage: null }); }
       const { fetchDebridUsage } = require('../utils/debridUsage');
