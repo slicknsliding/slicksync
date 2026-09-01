@@ -121,14 +121,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # Not using type=semver here like the private/public workflows do -
-          # their tags (vX.Y.Z) are already bare semver, but a beta-vX.Y.Z tag
-          # isn't, and semver extraction from a prefixed ref isn't worth the
-          # edge cases. The pushed tag name is already exactly what we want
-          # for the pinned output tag, so just reuse it directly.
+          # Floating tag only - no per-version tag. The instances track this
+          # moving tag, and a release is identified by its git tag and GitHub
+          # Release rather than by a second copy of the same image sitting in
+          # the registry forever.
           tags: |
             type=raw,value=beta
-            type=raw,value=${{ github.ref_name }}
           labels: |
             org.opencontainers.image.title=slicksync-beta
 
