@@ -120,6 +120,17 @@ const TRIGGERS = {
       { name: 'providerLabel', label: 'Provider name', type: 'string' },
     ],
   },
+  'metadata_key.quota_low': {
+    label: 'A metadata provider key is running low on its quota',
+    description: 'Fires when a provider that reports usage (currently MDBList) crosses a percentage of its allowance. Lets you react before it runs out and posters/ratings quietly stop appearing, rather than after.',
+    fields: [
+      { name: 'provider', label: 'Provider', type: 'string' },
+      { name: 'providerLabel', label: 'Provider name', type: 'string' },
+      { name: 'percentUsed', label: 'Percent used', type: 'number' },
+      { name: 'used', label: 'Requests used', type: 'number' },
+      { name: 'limit', label: 'Request limit', type: 'number' },
+    ],
+  },
   'backup.failed': {
     label: 'An off-site backup upload fails',
     description: 'Fires when a scheduled backup was written locally but could not be sent to the configured S3/WebDAV target. The local copy still exists - this is about the off-site copy not arriving.',

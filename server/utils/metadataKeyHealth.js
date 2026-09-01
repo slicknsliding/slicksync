@@ -230,6 +230,38 @@ async function checkAndPersistAccountKeys(prisma, accountId, { notify = true } =
           rateLimited: !!result.rateLimited,
         });
       }
+
+      // Quota warnings are independent of ok/failing: a key can be perfectly
+      // valid and still be about to run out, which is exactly the moment
+      // worth knowing about. Fires once per CROSSING, not on every daily
+      // check - a key sitting at 85% for a fortnight should not produce a
+      // fortnight of identical alerts, so the previous reading decides.
+      for (const [provider, result] of Object.entries(results)) {
+        const usage = result.usage;
+        if (!usage || !Number.isFinite(usage.percentUsed)) continue;
+        const previousPercent = previousHealth[provider]?.usage?.percentUsed;
+        const wasBelow = !Number.isFinite(previousPercent) || previousPercent < QUOTA_WARN_PERCENT;
+        if (usage.percentUsed < QUOTA_WARN_PERCENT || !wasBelow) continue;
+
+        const label = PROVIDER_LABEL[provider] || provider;
+        if (shouldNotify) {
+          const { createNotification } = require('./notificationStore');
+          await createNotification(prisma, accountId, {
+            type: 'task',
+            title: `${label} key is ${Math.round(usage.percentUsed)}% used`,
+            body: `${usage.used.toLocaleString()} of ${usage.limit.toLocaleString()} requests used. Posters and ratings from ${label} stop appearing once the allowance runs out.`,
+            url: '/settings',
+            dedupeKey: `keyquota-${provider}-${new Date().toISOString().slice(0, 7)}`,
+          });
+        }
+        await emitAutomationEvent(prisma, accountId, 'metadata_key.quota_low', {
+          provider,
+          providerLabel: label,
+          percentUsed: usage.percentUsed,
+          used: usage.used,
+          limit: usage.limit,
+        });
+      }
     } catch { /* notification/automation failure must never break the check itself */ }
   }
 
