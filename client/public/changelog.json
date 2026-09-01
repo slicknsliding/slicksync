@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.76.1",
+    "date": "2026-09-01",
+    "title": "1.76.1 — Page actions restored on mobile, and gentler polling of AIOStreams",
+    "features": [],
+    "bugFixes": [
+      "The main action on a page was missing entirely on phones. Add user, Add group, Create invitation, and Add or Browse addon were all hidden below tablet width — so once a list had anything in it, the page was effectively read-only on mobile, with the only way in being the button shown on an empty list. All of these work on a phone again.",
+      "SlickSync could trip an AIOStreams account's rate limiter by checking it too often. The Now Playing check runs every 30 seconds, but nothing stopped a new check starting while the previous one was still going. When AIOStreams was slow or already limiting requests, checks piled up on top of each other — each one signing in again — which sent more traffic exactly when it should have been sending less. Checks now wait for the previous one to finish, and when AIOStreams does say it has had enough, SlickSync backs off for a few minutes and increases that wait if it keeps happening, rather than retrying every 30 seconds indefinitely."
+    ]
+  },
+  {
     "version": "1.76.0",
     "date": "2026-09-01",
     "title": "1.76.0 — Browse for addons, undo a delete, and a fix for mixed-up watch history",

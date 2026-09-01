@@ -157,10 +157,16 @@ export function PageToolbar({
   // Determine if filter tabs should be visible
   const showFilterTabs = filterTabs && filterTabs.visible !== false;
 
+  // flex-wrap so the actions drop to their own line rather than overflowing
+  // on a narrow screen. Both sections used to be shrink-0 on a non-wrapping
+  // row, so at phone widths the action buttons were pushed past the right
+  // edge and clipped by the panel's overflow-x:hidden - rendered, but
+  // literally unreachable (verified at 375px: the Add button sat at x=389 on
+  // a 375px viewport and failed hit-testing).
   const toolbarContent = (
-    <div className="relative flex items-center justify-between gap-4 min-h-[44px]">
+    <div className="relative flex flex-wrap items-center justify-between gap-3 min-h-[44px]">
       {/* Left Section: Selection + Search */}
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex items-center gap-3 min-w-0 flex-1">
         {leftContent ? (
           leftContent
         ) : (
@@ -271,7 +277,7 @@ export function PageToolbar({
       </div>
 
       {/* Right Section: Actions */}
-      <div className="flex justify-end items-center gap-3 shrink-0">
+      <div className="flex justify-end items-center gap-3 shrink-0 ml-auto">
         {/* Shown at every width. This used to be `hidden md:block`, which
             meant the main action of a page - Add user, Add group, Create
             invitation, Add/Browse addon - simply did not exist on a phone.
