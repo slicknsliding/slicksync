@@ -35,8 +35,6 @@ import {
   TrashIcon,
   CheckIcon,
   XMarkIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 
@@ -229,99 +227,82 @@ function BackupKeyField({
   onChange: (v: string) => void;
   onSave: () => void;
 }) {
-  // Opens itself when a backup already exists, so a configured key is never
-  // hidden behind a link that reads like nothing is set.
-  const [open, setOpen] = useState(!!value);
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const hasValue = !!value.trim();
+
+  // Collapses when focus or a click goes elsewhere on the page. This is a
+  // secondary field most people never touch, so leaving it expanded until
+  // manually closed just left clutter behind on a page that already has a
+  // lot of it. The input's own onBlur saves first, so collapsing never
+  // discards a value that was being typed.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   if (!primaryFilled) return null;
 
-  // Collapsed. Borrows the small uppercase "BACKUP" pill from the addon
-  // backup card so the two features read as the same idea in two places,
-  // and states whether one is actually set rather than always saying "add".
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="mt-2 w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border transition-colors text-left"
-        style={{ background: 'var(--color-surface-hover)', borderColor: 'var(--color-surface-border)' }}
-      >
-        <span className="flex items-center gap-2 min-w-0">
-          <span
-            className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0"
-            style={hasValue
-              ? { background: 'var(--color-successMuted)', color: 'var(--color-success)' }
-              : { background: 'var(--color-subtle)', color: 'var(--color-text-muted)' }}
-          >
-            Backup
-          </span>
-          <span className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
-            {hasValue ? 'A backup key is set for this provider' : 'Add a backup key'}
-          </span>
-        </span>
-        <ChevronDownIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
-      </button>
-    );
-  }
-
   return (
-    <div
-      className="mt-2 p-3 rounded-lg border"
-      style={{ background: 'var(--color-surface-hover)', borderColor: 'var(--color-surface-border)' }}
-    >
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <span className="flex items-center gap-2 min-w-0">
-          <span
-            className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0"
-            style={hasValue
-              ? { background: 'var(--color-successMuted)', color: 'var(--color-success)' }
-              : { background: 'var(--color-subtle)', color: 'var(--color-text-muted)' }}
-          >
-            Backup
-          </span>
-          <span className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
-            Used automatically if the key above stops working
-          </span>
-        </span>
-        {/* Collapsing was impossible once opened - the only way back was a
-            page reload, which is what made this feel like a one-way door. */}
+    <div ref={wrapRef} className="mt-1.5">
+      {!open ? (
+        // Sized to its content rather than the full panel width - it is a
+        // secondary control and should not read as another key field.
         <button
           type="button"
-          onClick={() => setOpen(false)}
-          title="Collapse"
-          aria-label="Collapse backup key"
-          className="p-1 rounded transition-colors shrink-0"
-          style={{ color: 'var(--color-text-muted)' }}
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors"
+          style={{
+            background: hasValue ? 'var(--color-successMuted)' : 'transparent',
+            color: hasValue ? 'var(--color-success)' : 'var(--color-text-muted)',
+            border: `1px solid ${hasValue ? 'transparent' : 'var(--color-surface-border)'}`,
+          }}
         >
-          <ChevronUpIcon className="w-4 h-4" />
+          <ShieldCheckIcon className="w-3.5 h-3.5" />
+          {hasValue ? 'Backup key set' : 'Add backup key'}
         </button>
-      </div>
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onSave}
-          placeholder="Backup key (optional)"
-          autoComplete="off"
-          spellCheck={false}
-          data-field={field}
-          className="input-base flex-1 min-w-0 px-3 py-2 text-sm"
-        />
-        {hasValue && (
-          <button
-            type="button"
-            onClick={() => { onChange(''); setTimeout(onSave, 0); }}
-            title="Remove backup key"
-            aria-label="Remove backup key"
-            className="p-2 rounded-lg transition-colors shrink-0"
-            style={{ background: 'var(--color-surface)', color: 'var(--color-text-muted)' }}
-          >
-            <XMarkIcon className="w-4 h-4" />
-          </button>
-        )}
-      </div>
+      ) : (
+        <div className="inline-flex items-center gap-1.5 max-w-full">
+          <input
+            type="text"
+            value={value}
+            autoFocus
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={onSave}
+            placeholder="Backup key"
+            autoComplete="off"
+            spellCheck={false}
+            data-field={field}
+            className="input-base px-2.5 py-1.5 text-xs w-56 max-w-full"
+          />
+          {hasValue && (
+            <button
+              type="button"
+              onClick={() => { onChange(''); setTimeout(onSave, 0); }}
+              title="Remove backup key"
+              aria-label="Remove backup key"
+              className="p-1.5 rounded-md transition-colors shrink-0"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              <XMarkIcon className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <span className="text-[11px] shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
+            used if the key above fails
+          </span>
+        </div>
+      )}
     </div>
   );
 }
