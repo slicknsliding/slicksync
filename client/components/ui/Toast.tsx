@@ -1,5 +1,7 @@
 'use client';
 
+import { useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { Toaster, toast as hotToast } from 'react-hot-toast';
 import { CheckCircleIcon, ExclamationCircleIcon, InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
@@ -7,11 +9,29 @@ import { CheckCircleIcon, ExclamationCircleIcon, InformationCircleIcon, XMarkIco
 export { toast } from 'react-hot-toast';
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      {children}
+  // Portaled to <body>. react-hot-toast renders in place rather than
+  // portaling, and this provider lives inside layout.tsx's
+  // `<div className="relative z-10">` - which is its own stacking context.
+  // Modals portal to body at z-50, so anything trapped inside that z-10
+  // context loses to them no matter how high its own z-index is: an error
+  // toast raised from inside a modal appeared BEHIND the modal, dimmed and
+  // blurred by its backdrop, and could only be read by closing the modal
+  // first. Portaling puts the toasts in the same stacking context as the
+  // modals so the z-index below actually decides the order.
+  // false during SSR, true once hydrated - the sanctioned way to express
+  // that without writing state from inside an effect.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+
+  const toaster = (
       <Toaster
         position="bottom-right"
+        // Above modals (z-50) and their backdrops. An error you cannot read
+        // is not an error message.
+        containerStyle={{ zIndex: 9999 }}
         toastOptions={{
           duration: 4000,
           style: {
@@ -36,6 +56,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           },
         }}
       />
+  );
+
+  return (
+    <>
+      {children}
+      {/* Only after mount - document.body does not exist during SSR. */}
+      {mounted && createPortal(toaster, document.body)}
     </>
   );
 }

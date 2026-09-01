@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.76.2",
+    "date": "2026-09-01",
+    "title": "1.76.2 — Addons that block servers can now be added, and expiring users no longer disappear quietly",
+    "features": [],
+    "bugFixes": [
+      "Addons that refuse connections from servers can now be added. Some popular addons block requests coming from a hosted server while working perfectly from a normal browser — that is the addon's own choice, and it made them impossible to add. SlickSync now falls back to loading the addon details through your browser instead, on your own connection, so those addons install normally. Nothing is routed through anyone else, and it costs the server no traffic at all.",
+      "Error messages when an addon cannot be added now explain what actually happened. They used to always say the address might be wrong, which was usually untrue and sent people checking a perfectly good URL. They now distinguish an addon refusing the request, an addon that no longer exists, one that is simply not responding, and an address that is not an addon at all.",
+      "Errors raised inside a popup no longer appear behind it. They were rendering underneath, dimmed and blurred by the popup's own background, so the only way to read one was to close the popup first.",
+      "Removing a user when their access period ends is no longer silent. It now sends a notification saying which user was removed and what happened to their watch history. Previously nothing in the app mentioned it at all.",
+      "Watch records left behind by a removed user are now cleared away with them, instead of lingering invisibly and still counting toward totals."
+    ]
+  },
+  {
     "version": "1.76.1",
     "date": "2026-09-01",
     "title": "1.76.1 — Page actions restored on mobile, and gentler polling of AIOStreams",

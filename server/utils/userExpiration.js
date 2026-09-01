@@ -158,10 +158,50 @@ async function deleteExpiredUsers(prisma, decrypt, StremioAPIClient, createProvi
             })
           } catch { /* emit never throws; guarding the require itself */ }
 
-          // Delete the user
+          // Tell somebody. Until now this deletion was effectively silent:
+          // it logged to the console and emitted an automation event, which
+          // does nothing at all unless an operator happened to have written
+          // a matching rule. A real account was found with two users gone
+          // and 50 orphaned watch records, and no trace anywhere in the app
+          // of what had happened to them. A permanent delete should never be
+          // something you have to reconstruct from a database afterwards.
+          try {
+            const { createNotification } = require('./notificationStore')
+            await createNotification(prisma, accountId, {
+              type: 'user',
+              title: `Removed expired user: ${user.username}`,
+              body: `Their access period ended, so the user was deleted. Watch history recorded against them is kept but no longer belongs to anyone - Tasks -> Maintenance -> Watch history check can clear it up.`,
+              url: '/users',
+              dedupeKey: `user-expired-${user.id}`,
+            })
+          } catch { /* notification is best-effort - it must not block the delete */ }
+
+          // Delete the user, then clear the watch history that was pointing
+          // at them. Prisma does not cascade these, so previously every
+          // expired user left their records behind attached to an id that no
+          // longer resolves - counted in totals, displayed nowhere, and
+          // invisible until something went looking. Confirmed live: one
+          // account carried 50 such records from two long-gone users.
+          //
+          // Removed here rather than left for the maintenance check so this
+          // stops accumulating on its own; the check remains for history
+          // orphaned by anything else.
           await prisma.user.delete({
             where: { id: user.id }
           })
+
+          try {
+            const [movies, episodes] = await Promise.all([
+              prisma.movieWatchHistory.deleteMany({ where: { accountId, userId: user.id } }),
+              prisma.episodeWatchHistory.deleteMany({ where: { accountId, userId: user.id } }),
+            ])
+            const orphaned = (movies?.count || 0) + (episodes?.count || 0)
+            if (orphaned > 0) console.log(`🧹 Cleared ${orphaned} watch record(s) belonging to ${user.username}`)
+          } catch (e) {
+            // Never fatal - the user is already gone, and the maintenance
+            // check can still find whatever is left.
+            console.warn(`⚠️  Could not clear watch history for ${user.username}: ${e?.message}`)
+          }
 
           console.log(`✅ Deleted expired user: ${user.username} (${user.email})`)
         } catch (error) {

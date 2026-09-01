@@ -947,14 +947,35 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       // Use provided manifest data if available, otherwise fetch it
       let manifestData = providedManifestData
       if (!manifestData) {
+        // The old message here always blamed the URL ("the add-on URL may be
+        // incorrect"), which is usually wrong and sends people off checking a
+        // URL that is perfectly fine. The realistic failures are the addon
+        // being gone, or the addon's host refusing THIS SERVER specifically -
+        // Cloudflare-fronted addons commonly 403 a datacenter IP while
+        // working fine from a home connection. Confirmed live: torrentio and
+        // thepiratebay-plus both 403 from two different VPS hosts while
+        // cinemeta returns 200 from the same machines.
         try {
           const resp = await fetch(sanitizedUrl)
           if (!resp.ok) {
-            return res.status(400).json({ message: 'Failed to fetch addon manifest. The add-on URL may be incorrect.' })
+            const detail = resp.status === 403 || resp.status === 401
+              ? `The addon refused the request (HTTP ${resp.status}). Some addons block servers/VPS IPs even though they work from a normal browser - this is set by the addon, not by SlickSync.`
+              : resp.status === 404
+                ? 'The addon returned "not found" (HTTP 404). Check the URL, or the addon may no longer exist.'
+                : `The addon responded with HTTP ${resp.status}.`
+            return res.status(400).json({ message: `Could not add this addon. ${detail}` })
           }
           manifestData = await resp.json()
         } catch (e) {
-          return res.status(400).json({ message: 'Failed to fetch addon manifest. The add-on URL may be incorrect.' })
+          const msg = String(e?.message || '')
+          const detail = /ENOTFOUND|EAI_AGAIN|getaddrinfo/i.test(msg)
+            ? "That addon's address could not be found - it looks like the addon is offline or no longer exists."
+            : /ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ETIMEDOUT|timeout|aborted/i.test(msg)
+              ? 'Could not reach that addon (it did not respond). It may be down or temporarily unavailable.'
+              : /JSON|Unexpected token/i.test(msg)
+                ? 'That address did not return a valid addon manifest.'
+                : `Could not reach that addon: ${msg}`
+          return res.status(400).json({ message: `Could not add this addon. ${detail}` })
         }
       }
 
