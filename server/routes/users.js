@@ -595,12 +595,19 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       let headers, records, skippedNonMovie = 0
       if (looksLikeJson(text)) {
         const parsed = parseTraktExport(text)
-        if (!parsed) return res.status(400).json({ error: 'That JSON file is not a recognised Trakt export. Upload one of the JSON files from the ZIP Trakt gives you under Settings -> Data.' })
+        if (!parsed) return res.status(400).json({ error: 'That file is not valid JSON.' })
         ;({ headers, records, skippedNonMovie } = parsed)
         if (records.length === 0) {
-          return res.status(400).json({ error: skippedNonMovie > 0
-            ? 'That file only contains episodes or shows. Movie history and ratings can be imported; episode history cannot yet.'
-            : 'No entries found in that export file.' })
+          if (skippedNonMovie > 0) {
+            return res.status(400).json({ error: `That file contains ${skippedNonMovie} episode or show entr${skippedNonMovie === 1 ? 'y' : 'ies'} and no movies. Movie history and ratings can be imported; episode history cannot yet.` })
+          }
+          // Say what the file actually looked like. A format that doesn't
+          // match is a one-line fix here, but only if the shape is known -
+          // "no entries found" on its own is a dead end for whoever hit it.
+          return res.status(400).json({
+            error: `No importable entries found. Expected Trakt's export format (entries with a "movie" object containing ids.imdb). This file is ${parsed.shape || 'in an unrecognised shape'}.`,
+            shape: parsed.shape || null,
+          })
         }
       } else {
         ;({ headers, records } = parseCsv(text))

@@ -34,12 +34,37 @@ function extractTitleObject(entry) {
   // history has no equivalent write path in this codebase (the CSV importer
   // is movies-only for the same reason), so those are reported as skipped
   // rather than silently mangled into a movie row.
-  return entry.movie || null
+  if (entry.movie && typeof entry.movie === 'object') return entry.movie
+  // `media_data` + `media_type` is the shape the traktexport tool produces
+  // once it has parsed the raw API response. Cheap to accept, and someone
+  // handed a file by that tool has no idea it differs.
+  if (entry.media_type === 'movie' && entry.media_data && typeof entry.media_data === 'object') return entry.media_data
+  // A bare title object (some re-exports drop the envelope entirely).
+  if (entry.ids && typeof entry.ids === 'object' && typeof entry.title === 'string' && !entry.show && !entry.episode) return entry
+  return null
 }
 
 function imdbIdOf(titleObj) {
-  const raw = titleObj?.ids?.imdb
+  // ids.imdb is what Trakt's own export and API use; imdb_id turns up in
+  // tools that rename the field when parsing.
+  const raw = titleObj?.ids?.imdb ?? titleObj?.ids?.imdb_id ?? titleObj?.imdb_id
   return typeof raw === 'string' && /^tt\d+$/i.test(raw.trim()) ? raw.trim() : null
+}
+
+/**
+ * Describes what a file actually looked like, so a format mismatch produces
+ * something actionable instead of a bare "0 entries". Names only - no values,
+ * since this ends up in an error message.
+ */
+function describeShape(data) {
+  if (Array.isArray(data)) {
+    const first = data.find((x) => x && typeof x === 'object')
+    return `an array of ${data.length} item(s)` + (first ? `, first item has keys: ${Object.keys(first).slice(0, 12).join(', ')}` : '')
+  }
+  if (data && typeof data === 'object') {
+    return `an object with keys: ${Object.keys(data).slice(0, 12).join(', ')}`
+  }
+  return typeof data
 }
 
 /**
@@ -59,11 +84,13 @@ function parseTraktExport(text) {
   let entries = null
   if (Array.isArray(data)) entries = data
   else if (data && typeof data === 'object') {
-    for (const key of ['history', 'ratings', 'watched', 'items', 'data']) {
+    // A whole-account export (the traktexport tool writes one file with all
+    // of these) rather than one of Trakt's own per-type files.
+    for (const key of ['history', 'watched', 'ratings', 'items', 'data', 'movies']) {
       if (Array.isArray(data[key])) { entries = data[key]; break }
     }
   }
-  if (!Array.isArray(entries)) return null
+  if (!Array.isArray(entries)) return { headers: HEADERS, records: [], skippedNonMovie: 0, shape: describeShape(data) }
 
   const records = []
   let skippedNonMovie = 0
@@ -87,7 +114,7 @@ function parseTraktExport(text) {
     })
   }
 
-  return { headers: HEADERS, records, skippedNonMovie }
+  return { headers: HEADERS, records, skippedNonMovie, shape: describeShape(entries) }
 }
 
 /** Cheap check so the route can pick a parser without guessing on extension alone. */
@@ -96,4 +123,4 @@ function looksLikeJson(text) {
   return t.startsWith('[') || t.startsWith('{')
 }
 
-module.exports = { parseTraktExport, looksLikeJson, HEADERS }
+module.exports = { parseTraktExport, looksLikeJson, describeShape, HEADERS }
