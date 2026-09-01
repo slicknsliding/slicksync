@@ -1543,6 +1543,45 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // Trash - recently deleted catalogs and addons, restorable for 30 days.
+  // See utils/trash.js for why this is an archive table rather than
+  // deletedAt columns.
+  router.get('/trash', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { listTrash } = require('../utils/trash')
+      return res.json(await listTrash(prisma, accountId))
+    } catch (e) {
+      return res.status(500).json({ error: e?.message || 'Failed to read trash' })
+    }
+  })
+
+  router.post('/trash/:id/restore', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { restoreTrashItem } = require('../utils/trash')
+      return res.json(await restoreTrashItem(prisma, accountId, req.params.id))
+    } catch (e) {
+      return res.status(500).json({ error: e?.message || 'Restore failed' })
+    }
+  })
+
+  // Permanent - this is the one delete with no undo behind it, which is the
+  // point of it being a separate, explicit action.
+  router.delete('/trash/:id', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { purgeTrashItem } = require('../utils/trash')
+      await purgeTrashItem(prisma, accountId, req.params.id)
+      return res.json({ success: true })
+    } catch (e) {
+      return res.status(500).json({ error: e?.message || 'Failed to empty that item' })
+    }
+  })
+
   // GET /settings/history-scan - read-only check for watch-history records
   // that are provably wrong (see utils/historyDoctor.js). Never writes.
   router.get('/history-scan', async (req, res) => {

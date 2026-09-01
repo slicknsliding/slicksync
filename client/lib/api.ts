@@ -854,8 +854,10 @@ class ApiClient {
     });
   }
 
+  /** Returns trashId when the addon was archived first, so the caller can
+   * offer an immediate Undo - see server/utils/trash.js. */
   async deleteAddon(id: string) {
-    return this.fetch(`/addons/${id}`, { method: 'DELETE' });
+    return this.fetch<{ message?: string; trashId?: string | null }>(`/addons/${id}`, { method: 'DELETE' });
   }
 
   async moveAddonToVault(id: string, category: string): Promise<{ success: boolean; vaultEntryId: string; removedFromGroups: number }> {
@@ -1482,6 +1484,24 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ kinds: kinds || null }),
     });
+  }
+
+  /** Recently deleted catalogs and addons, restorable for 30 days.
+   * See server/utils/trash.js for why this is an archive rather than
+   * deletedAt columns. */
+  async getTrash() {
+    return this.fetch<Array<{
+      id: string; kind: string; label: string; deletedAt: string; expiresInDays: number;
+    }>>('/settings/trash');
+  }
+
+  async restoreFromTrash(trashId: string) {
+    return this.fetch<{ kind: string; label: string }>(`/settings/trash/${encodeURIComponent(trashId)}/restore`, { method: 'POST' });
+  }
+
+  /** Permanent - the one delete with nothing behind it. */
+  async purgeTrashItem(trashId: string) {
+    return this.fetch<{ success: boolean }>(`/settings/trash/${encodeURIComponent(trashId)}`, { method: 'DELETE' });
   }
 
   async checkProviderKeys(): Promise<{ keyHealth: SyncSettings['keyHealth'] }> {
@@ -2189,8 +2209,9 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+  /** Returns trashId when the catalog was archived first (Undo). */
   async deleteList(id: string) {
-    return this.fetch<{ success: boolean }>(`/lists/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    return this.fetch<{ success: boolean; trashId?: string | null }>(`/lists/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
   // Automation rules ("when X happens, do Y") - see server/utils/automation/registry.js.
   async getAutomationRegistry() {

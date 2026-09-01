@@ -1327,11 +1327,25 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       return sendError(res, 404, 'Addon not found');
     }
 
+    // Archive to Trash before the delete so this is undoable - see
+    // utils/trash.js. Archive-only here (not archiveAndDelete): the
+    // transaction below also tears down group assignments and related rows,
+    // and a plain delete would leave those behind. A failed archive must not
+    // block the delete the user asked for, so it degrades to a normal
+    // (non-undoable) delete rather than erroring.
+    let trashId = null;
+    try {
+      const { archive } = require('../utils/trash');
+      trashId = (await archive(prisma, accountId, 'addon', id)).id;
+    } catch (e) {
+      console.error('[Trash] Archive failed, deleting without undo:', e?.message);
+    }
+
     // Use centralized database transaction
     const dbTransactions = new DatabaseTransactions(prisma);
     await dbTransactions.deleteAddonWithRelations(id, accountId);
 
-    res.json({ message: 'Addon deleted successfully' });
+    res.json({ message: 'Addon deleted successfully', trashId });
   }));
 
   // Clone addon endpoint

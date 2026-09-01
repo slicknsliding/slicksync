@@ -1100,3 +1100,36 @@ model ProxyUserIpAffinity {
   @@unique([accountId, clientIp])
   @@map("proxy_user_ip_affinity")
 }
+
+// Deleted things, kept long enough to change your mind.
+//
+// Deliberately an ARCHIVE table rather than `deletedAt` columns on each
+// model. Soft-delete columns would mean every one of the ~358 existing read
+// queries across users/addons/catalogs/groups needs a "not deleted" filter,
+// and a single missed one silently resurrects deleted records. They also
+// collide with real unique constraints (username, [name, accountId]) - a
+// soft-deleted row still occupies its name, so re-creating something with
+// the same name fails.
+//
+// Archiving instead means the original row is genuinely deleted: existing
+// queries need no changes and cannot be wrong, and names free up
+// immediately. Restore replays the archived payload. Same approach the
+// account-merge undo already uses (see utils/userMerge.js), which archives
+// full rows before merging and replays them to reverse it.
+model TrashItem {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  // What was deleted: 'catalog' | 'addon'. Users are deliberately excluded -
+  // see utils/trash.js for why.
+  kind      String
+  // Human-readable name for the Trash list, so it stays useful without
+  // parsing the payload.
+  label     String
+  // The archived row plus anything needed to rebuild its relationships
+  // (e.g. an addon's group assignments), as JSON.
+  payload   String
+  deletedAt DateTime @default(now())
+
+  @@index([accountId, deletedAt])
+  @@index([accountId, kind])
+}

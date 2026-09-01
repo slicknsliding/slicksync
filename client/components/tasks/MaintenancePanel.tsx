@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button, Card, ToggleSwitch } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api, BackupTargets, DbMaintenanceSettings, UpdateCapability } from '@/lib/api';
+import { TrashPanel } from './TrashPanel';
 import { CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 // Everything that keeps an instance healthy without anyone watching it:
@@ -225,6 +226,9 @@ export function MaintenancePanel() {
           </div>
         )}
       </Card>
+
+      {/* --- Recently deleted --- */}
+      <TrashPanel />
 
       {/* --- History Doctor --- */}
       <Card padding="lg">

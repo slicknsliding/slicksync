@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Card, Button, Modal, PosterThumb, Badge, MediaDetailModal, ContextMenu, useContextMenu } from '@/components/ui';
+import { showDeletedWithUndo } from '@/components/ui/undoToast';
 import { BeginnerHint } from '@/components/ui/BeginnerHint';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PageSection } from '@/components/layout/PageContainer';
@@ -187,7 +188,11 @@ export default function ListsPage() {
     const list = deleting;
     setLists((prev) => prev.filter((l) => l.id !== list.id));
     setDeleting(null);
-    try { await api.deleteList(list.id); toast.success(`Deleted "${list.name}"`); }
+    try {
+      const res = await api.deleteList(list.id);
+      // Offers Undo when the catalog was archived to Trash first.
+      showDeletedWithUndo(list.name, res?.trashId, load);
+    }
     catch { toast.error('Failed to delete'); load(); }
   };
 

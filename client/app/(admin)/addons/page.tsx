@@ -11,6 +11,7 @@ import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, ResourceBadge, SearchInput, Modal, Input, ConfirmModal, VersionBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
+import { showDeletedWithUndo } from '@/components/ui/undoToast';
 import { BeginnerHint } from '@/components/ui/BeginnerHint';
 import { AddonDirectoryModal } from '@/components/addons/AddonDirectoryModal';
 import { Dialog, DialogPanel } from '@headlessui/react';
@@ -415,8 +416,10 @@ export default function AddonsPage() {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      await api.deleteAddon(deleteTarget.id);
-      toast.success(`${deleteTarget.name} deleted successfully`);
+      const delRes = await api.deleteAddon(deleteTarget.id);
+      showDeletedWithUndo(deleteTarget.name, delRes?.trashId, async () => {
+        try { setAddons(await api.getAddons()); } catch { /* list refresh is best-effort */ }
+      });
       // Refresh addons
       try {
         const addonsData = await api.getAddons();

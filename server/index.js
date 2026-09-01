@@ -624,6 +624,16 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize vault backup scheduler:', err)
     }
 
+    // Drop Trash items past their retention window. Runs at boot and daily -
+    // cheap, and keeps deleted-item archives from accumulating forever.
+    try {
+      const { purgeExpiredTrash } = require('./utils/trash')
+      setTimeout(() => purgeExpiredTrash(prisma), 90 * 1000)
+      setInterval(() => purgeExpiredTrash(prisma), 24 * 60 * 60 * 1000)
+    } catch (err) {
+      console.error('⚠️ Failed to schedule trash purge:', err)
+    }
+
     // Schedule metadata-provider key health checker (TMDb/OMDb/MDBList/RPDB) -
     // same "catch it before a user notices broken posters" idea as the addon
     // health checker below, aimed at the keys instead of the addons.
