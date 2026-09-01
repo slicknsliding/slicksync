@@ -1310,7 +1310,19 @@ export default function UserDetailPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="text-lg font-semibold text-default">Watch History Import/Export</h3>
-                    <p className="text-sm text-muted mt-0.5">Bring in an IMDb or Letterboxd CSV, or a Trakt export &mdash; on trakt.tv go to Settings &rarr; Data, download the ZIP, unzip it and pick the history or ratings JSON. Movies are imported; episode history is skipped. You can also export this user&apos;s history as a Letterboxd-compatible CSV.</p>
+                    {/* Each service is linked straight to its own export
+                        page. Telling someone to "go to Settings -> Data"
+                        still leaves them hunting through a site they may
+                        not use often; the link just takes them there. */}
+                    <p className="text-sm text-muted mt-0.5">
+                      Bring in an export from another service &mdash; get yours from{' '}
+                      <a href="https://www.imdb.com/exports/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">IMDb</a>,{' '}
+                      <a href="https://letterboxd.com/settings/data/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Letterboxd</a>, or{' '}
+                      <a href="https://trakt.tv/settings/data" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Trakt</a>.
+                    </p>
+                    <p className="text-sm text-muted mt-1">
+                      IMDb and Letterboxd give you a CSV you can import directly. Trakt gives you a ZIP &mdash; unzip it first and pick the history or ratings JSON. Movies and their ratings are imported; episode history is skipped. You can also export this user&apos;s history as a Letterboxd-compatible CSV.
+                    </p>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
