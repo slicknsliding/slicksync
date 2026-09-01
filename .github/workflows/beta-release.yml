@@ -10,15 +10,98 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+# Each architecture is built on a runner of that architecture, then the two
+# results are stitched into one multi-arch tag.
+#
+# This used to be a single job building linux/amd64,linux/arm64 together,
+# which meant the arm64 half ran under QEMU emulation. `prisma generate`
+# hangs under that emulation - not always, but often enough that roughly one
+# release in three sat wedged for 40-70 minutes against a 14-18 minute norm,
+# and the only way out was to cancel and re-run. The stall was always the
+# same line, always on the emulated half, while every amd64 step in the same
+# run finished in under a second.
+#
+# Native arm64 runners remove the emulation rather than working around it,
+# and the two halves now run in parallel instead of back to back.
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    # A wedged build should fail and say so, not quietly burn an hour.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Prepare platform name
+        run: echo "PLATFORM_PAIR=${{ matrix.platform }}" | tr '/' '-' >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pushed by digest only - the human-readable tags are applied once, by
+      # the merge job below, so a tag never points at a half-built manifest.
+      - name: Build and push by digest (beta)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: org.opencontainers.image.title=slicksync-beta
+          build-args: |
+            INSTANCE=private
+            APP_VERSION=${{ github.ref_name }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          # Scoped per workflow AND per architecture. All three release
+          # workflows fire on the same push and previously shared one default
+          # cache scope, so they overwrote each other's entries.
+          cache-from: type=gha,scope=beta-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=beta-${{ env.PLATFORM_PAIR }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-beta-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-beta-*
+          merge-multiple: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -49,16 +132,10 @@ jobs:
           labels: |
             org.opencontainers.image.title=slicksync-beta
 
-      - name: Build and push Docker image (beta)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            INSTANCE=private
-            APP_VERSION=${{ github.ref_name }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")             $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+      - name: Inspect pushed image
+        run: docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:beta
