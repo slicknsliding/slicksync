@@ -260,18 +260,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
   // Same opt-in-key pattern as discover.js's cast/crew deep-dive: per-account
   // (Settings, sync.tmdbApiKey) takes precedence, else TMDB_API_KEY env var.
-  // Duplicated here rather than shared, matching how RPDB key resolution is
-  // already duplicated between posters.js and settings.js in this codebase.
+  // Goes through the shared resolver (listImport.js), which also applies the
+  // backup-key failover - the previous hand-rolled copy here did not.
   async function resolveTmdbKeyForBackdrop(req) {
-    try {
-      const accountId = getAccountId(req) || 'default'
-      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
-      let cfg = acc?.sync
-      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
-      const fromSettings = cfg && typeof cfg === 'object' && typeof cfg.tmdbApiKey === 'string' ? cfg.tmdbApiKey.trim() : ''
-      if (fromSettings) return fromSettings
-    } catch {}
-    return (process.env.TMDB_API_KEY || '').trim()
+    const { resolveKeyFromSettings } = require('../utils/listImport')
+    return resolveKeyFromSettings(prisma, getAccountId, req, 'tmdbApiKey', 'TMDB_API_KEY')
   }
 
   // TMDb backdrop lookup by IMDb id, cached (backdrops don't change) - kept
@@ -669,7 +662,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!user) return res.status(404).json({ error: 'User not found' })
 
       const { startDeviceAuth } = require('../utils/traktImport')
-      const auth = await startDeviceAuth()
+      const auth = await startDeviceAuth(prisma, accountId)
       res.json(auth)
     } catch (error) {
       if (error?.notConfigured) return res.status(400).json({ error: error.message, notConfigured: true })
@@ -694,7 +687,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!deviceCode) return res.status(400).json({ error: 'Missing deviceCode' })
 
       const { pollDeviceToken, importTraktData } = require('../utils/traktImport')
-      const poll = await pollDeviceToken(deviceCode)
+      const poll = await pollDeviceToken(prisma, accountId, deviceCode)
       if (poll.status !== 'approved') return res.json(poll)
 
       const result = await importTraktData(prisma, accountId, user.id, poll.accessToken)

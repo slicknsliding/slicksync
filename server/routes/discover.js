@@ -802,16 +802,14 @@ module.exports = ({ prisma, getAccountId } = {}) => {
   // takes precedence, else the TMDB_API_KEY env var. With neither, these
   // endpoints return 503 and the frontend hides the feature entirely.
   const TMDB_IMG = 'https://image.tmdb.org/t/p/w342'
+  // Delegates to the shared resolver rather than re-reading sync.tmdbApiKey
+  // by hand. The hand-rolled version got the account-then-env order right but
+  // knew nothing about backup keys, so a dead primary took this endpoint down
+  // even with a working spare configured - failover applied on the list-import
+  // path and silently nowhere else.
   async function resolveTmdbKey(req) {
-    try {
-      const accountId = (typeof getAccountId === 'function' ? getAccountId(req) : null) || 'default'
-      const acc = await prisma?.appAccount?.findUnique({ where: { id: accountId }, select: { sync: true } })
-      let cfg = acc?.sync
-      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
-      const fromSettings = cfg && typeof cfg === 'object' && typeof cfg.tmdbApiKey === 'string' ? cfg.tmdbApiKey.trim() : ''
-      if (fromSettings) return fromSettings
-    } catch {}
-    return (process.env.TMDB_API_KEY || '').trim()
+    const { resolveKeyFromSettings } = require('../utils/listImport')
+    return resolveKeyFromSettings(prisma, getAccountId, req, 'tmdbApiKey', 'TMDB_API_KEY')
   }
 
   // GET /api/discover/person/:id - a TMDb person's film/TV credits, newest

@@ -37,8 +37,26 @@ const API_BASE = 'https://api.trakt.tv';
 const FETCH_TIMEOUT_MS = 15000;
 const MAX_HISTORY_ITEMS = 5000; // generous but bounded, same spirit as csvHistoryImport's MAX_ROWS
 
-function traktConfigured() {
-  return !!(process.env.TRAKT_CLIENT_ID && process.env.TRAKT_CLIENT_SECRET);
+// Credentials resolve from the account's own Settings first, falling back to
+// the instance env vars - the same order every other integration here uses
+// (see simklAuth.js, which resolves simklClientId the identical way). This
+// was env-only originally, which meant the feature was invisible to anyone
+// who could not edit the container's environment: the button existed and
+// only ever said "ask your admin". An operator can now register a Trakt app
+// and paste the id/secret into Settings like every other key.
+async function resolveTraktCredentials(prisma, accountId) {
+  const { resolveKeyFromSettings } = require('./listImport');
+  const getId = () => accountId;
+  const [clientId, clientSecret] = await Promise.all([
+    resolveKeyFromSettings(prisma, getId, null, 'traktClientId', 'TRAKT_CLIENT_ID'),
+    resolveKeyFromSettings(prisma, getId, null, 'traktClientSecret', 'TRAKT_CLIENT_SECRET'),
+  ]);
+  return { clientId, clientSecret };
+}
+
+async function traktConfigured(prisma, accountId) {
+  const { clientId, clientSecret } = await resolveTraktCredentials(prisma, accountId);
+  return !!(clientId && clientSecret);
 }
 
 async function timedFetch(url, init) {
@@ -52,16 +70,17 @@ async function timedFetch(url, init) {
 }
 
 /** Step 1: request a device code. Call once per import attempt. */
-async function startDeviceAuth() {
-  if (!traktConfigured()) {
-    const err = new Error('Trakt import is not configured on this instance (TRAKT_CLIENT_ID/TRAKT_CLIENT_SECRET unset)');
+async function startDeviceAuth(prisma, accountId) {
+  const { clientId } = await resolveTraktCredentials(prisma, accountId);
+  if (!clientId) {
+    const err = new Error('Trakt is not set up yet - add a Trakt client ID and secret in Settings');
     err.notConfigured = true;
     throw err;
   }
   const res = await timedFetch(`${AUTH_BASE}/oauth/device/code`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ client_id: process.env.TRAKT_CLIENT_ID }),
+    body: JSON.stringify({ client_id: clientId }),
   });
   if (!res.ok) throw new Error(`Trakt device code request failed (${res.status})`);
   const body = await res.json();
@@ -81,14 +100,15 @@ async function startDeviceAuth() {
  * expired, 418 = user explicitly denied it, 429 = polling too fast.
  * Returns {status: 'pending'|'approved'|'denied'|'expired'|'error', token?}.
  */
-async function pollDeviceToken(deviceCode) {
+async function pollDeviceToken(prisma, accountId, deviceCode) {
+  const { clientId, clientSecret } = await resolveTraktCredentials(prisma, accountId);
   const res = await timedFetch(`${AUTH_BASE}/oauth/device/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       code: deviceCode,
-      client_id: process.env.TRAKT_CLIENT_ID,
-      client_secret: process.env.TRAKT_CLIENT_SECRET,
+      client_id: clientId,
+      client_secret: clientSecret,
     }),
   });
   if (res.status === 200) {
@@ -103,26 +123,26 @@ async function pollDeviceToken(deviceCode) {
   return { status: 'error', message: `Trakt returned ${res.status}` };
 }
 
-function traktHeaders(accessToken) {
+function traktHeaders(accessToken, clientId) {
   return {
     'Content-Type': 'application/json',
     'trakt-api-version': '2',
-    'trakt-api-key': process.env.TRAKT_CLIENT_ID,
+    'trakt-api-key': clientId,
     Authorization: `Bearer ${accessToken}`,
   };
 }
 
 /** Movies only from /sync/history - see the file header for why. */
-async function fetchTraktMovieHistory(accessToken) {
+async function fetchTraktMovieHistory(accessToken, clientId) {
   const res = await timedFetch(`${API_BASE}/sync/history/movies?limit=${MAX_HISTORY_ITEMS}`, {
-    headers: traktHeaders(accessToken),
+    headers: traktHeaders(accessToken, clientId),
   });
   if (!res.ok) throw new Error(`Failed to fetch Trakt history (${res.status})`);
   return res.json();
 }
 
-async function fetchTraktMovieRatings(accessToken) {
-  const res = await timedFetch(`${API_BASE}/sync/ratings/movies`, { headers: traktHeaders(accessToken) });
+async function fetchTraktMovieRatings(accessToken, clientId) {
+  const res = await timedFetch(`${API_BASE}/sync/ratings/movies`, { headers: traktHeaders(accessToken, clientId) });
   if (!res.ok) throw new Error(`Failed to fetch Trakt ratings (${res.status})`);
   return res.json();
 }
@@ -135,10 +155,11 @@ async function fetchTraktMovieRatings(accessToken) {
  */
 async function importTraktData(prisma, accountId, userId, accessToken) {
   const { resolveSinglePoster } = require('./libraryHelpers');
+  const { clientId } = await resolveTraktCredentials(prisma, accountId);
 
   const [history, ratings] = await Promise.all([
-    fetchTraktMovieHistory(accessToken),
-    fetchTraktMovieRatings(accessToken).catch(() => []), // ratings are a bonus, never fail the whole import over them
+    fetchTraktMovieHistory(accessToken, clientId),
+    fetchTraktMovieRatings(accessToken, clientId).catch(() => []), // ratings are a bonus, never fail the whole import over them
   ]);
 
   const ratingByImdbId = new Map();
@@ -192,6 +213,7 @@ async function importTraktData(prisma, accountId, userId, accessToken) {
 
 module.exports = {
   traktConfigured,
+  resolveTraktCredentials,
   startDeviceAuth,
   pollDeviceToken,
   importTraktData,

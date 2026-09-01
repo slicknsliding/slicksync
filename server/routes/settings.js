@@ -602,6 +602,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           mdblistApiKeyBackup: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.mdblistApiKeyBackup === 'string') ? syncCfg.mdblistApiKeyBackup : '',
           rpdbApiKeyBackup: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.rpdbApiKeyBackup === 'string') ? syncCfg.rpdbApiKeyBackup : '',
           simklClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.simklClientId === 'string') ? syncCfg.simklClientId : '',
+          traktClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.traktClientId === 'string') ? syncCfg.traktClientId : '',
+          traktClientSecret: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.traktClientSecret === 'string') ? syncCfg.traktClientSecret : '',
           nuvioServerUrl: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioServerUrl === 'string') ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioAnonKey === 'string') ? syncCfg.nuvioAnonKey : '',
         }
@@ -659,6 +661,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // check ever runs.
           keyHealth: (syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
           simklClientId: typeof syncCfg.simklClientId === 'string' ? syncCfg.simklClientId : '',
+          traktClientId: typeof syncCfg.traktClientId === 'string' ? syncCfg.traktClientId : '',
+          traktClientSecret: typeof syncCfg.traktClientSecret === 'string' ? syncCfg.traktClientSecret : '',
           nuvioServerUrl: typeof syncCfg.nuvioServerUrl === 'string' ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: typeof syncCfg.nuvioAnonKey === 'string' ? syncCfg.nuvioAnonKey : '',
         }
@@ -672,7 +676,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, traktClientId, traktClientSecret, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -770,6 +774,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           rpdbApiKeyBackup: rpdbApiKeyBackup !== undefined ? (typeof rpdbApiKeyBackup === 'string' ? rpdbApiKeyBackup.trim() : '') : (baseCfg.rpdbApiKeyBackup || ''),
           omdbApiKeyBackup: omdbApiKeyBackup !== undefined ? (typeof omdbApiKeyBackup === 'string' ? omdbApiKeyBackup.trim() : '') : (baseCfg.omdbApiKeyBackup || ''),
           simklClientId: simklClientId !== undefined ? (typeof simklClientId === 'string' ? simklClientId.trim() : '') : (baseCfg.simklClientId || ''),
+          traktClientId: traktClientId !== undefined ? (typeof traktClientId === 'string' ? traktClientId.trim() : '') : (baseCfg.traktClientId || ''),
+          traktClientSecret: traktClientSecret !== undefined ? (typeof traktClientSecret === 'string' ? traktClientSecret.trim() : '') : (baseCfg.traktClientSecret || ''),
           nuvioServerUrl: nuvioServerUrl !== undefined ? (typeof nuvioServerUrl === 'string' ? nuvioServerUrl.trim().replace(/\/+$/, '') : '') : (baseCfg.nuvioServerUrl || ''),
           nuvioAnonKey: nuvioAnonKey !== undefined ? (typeof nuvioAnonKey === 'string' ? nuvioAnonKey.trim() : '') : (baseCfg.nuvioAnonKey || ''),
           // Drop this provider's stored health-check result the moment ITS
@@ -848,6 +854,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (rpdbApiKey !== undefined) partial.rpdbApiKey = typeof rpdbApiKey === 'string' ? rpdbApiKey.trim() : ''
       if (omdbApiKey !== undefined) partial.omdbApiKey = typeof omdbApiKey === 'string' ? normalizeOmdbApiKey(omdbApiKey.trim()) : ''
       if (simklClientId !== undefined) partial.simklClientId = typeof simklClientId === 'string' ? simklClientId.trim() : ''
+      if (traktClientId !== undefined) partial.traktClientId = typeof traktClientId === 'string' ? traktClientId.trim() : ''
+      if (traktClientSecret !== undefined) partial.traktClientSecret = typeof traktClientSecret === 'string' ? traktClientSecret.trim() : ''
       // Trailing slash stripped on save so it can't produce `//rest/v1/...`
       // downstream regardless of how it was typed.
       if (nuvioServerUrl !== undefined) partial.nuvioServerUrl = typeof nuvioServerUrl === 'string' ? nuvioServerUrl.trim().replace(/\/+$/, '') : ''

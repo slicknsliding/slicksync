@@ -1325,7 +1325,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Trakt own CSV export is VIP-gated and inconsistent between accounts, which is why this connects to their API directly instead of asking you for a file.',
     ],
     tips: [
-      'Trakt import needs a one-time app registration by whoever runs this instance (TRAKT_CLIENT_ID / TRAKT_CLIENT_SECRET). Until that is set, the button explains that rather than failing silently.',
+      'Trakt import needs a one-time app registration by whoever runs this instance. Register an app at trakt.tv/oauth/applications with the /device permission, then paste the Client ID and Secret into Settings -> External API Keys. Until that is set, the button says so rather than failing silently.',
       'Already have a CSV from IMDb or Letterboxd instead? Use Watch History Import/Export on the same page - that path is for files, this one is for Trakt specifically.',
     ],
     related: ['share-codes'],

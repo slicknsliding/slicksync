@@ -18,16 +18,11 @@ const express = require('express');
 module.exports = ({ prisma, getAccountId }) => {
   const router = express.Router();
 
+  // Shared resolver, so a configured backup RPDB key actually takes over here
+  // too - posters are the single most visible thing a dead RPDB key breaks.
   async function resolveRpdbKey(req) {
-    try {
-      const accountId = getAccountId(req) || 'default';
-      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } });
-      let cfg = acc?.sync;
-      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = null; } }
-      const fromSettings = cfg && typeof cfg === 'object' && typeof cfg.rpdbApiKey === 'string' ? cfg.rpdbApiKey.trim() : '';
-      if (fromSettings) return fromSettings;
-    } catch {}
-    return (process.env.RPDB_API_KEY || '').trim();
+    const { resolveKeyFromSettings } = require('../utils/listImport');
+    return resolveKeyFromSettings(prisma, getAccountId, req, 'rpdbApiKey', 'RPDB_API_KEY');
   }
 
   // GET /api/poster/:imdbId - redirects to the RPDB poster for this IMDb id,

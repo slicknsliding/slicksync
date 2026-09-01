@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.78.0",
+    "date": "2026-09-01",
+    "title": "1.78.0 — Trakt import can be set up from Settings, and backup keys now cover everything",
+    "features": [
+      "Trakt import can be set up without touching the server. It previously needed a client ID and secret in the instance's environment variables, so anyone who could not edit that saw a Connect Trakt button that only ever said to ask an admin — for a feature the app offered. Settings → External API Keys now takes a Trakt Client ID and Secret, with the two registration details that are easy to get wrong spelled out. Instances already using the environment variables keep working exactly as before."
+    ],
+    "bugFixes": [
+      "Backup keys now cover posters, cast filmographies and backdrops, not just list imports. Failover was only being applied where lists are imported, so a dead TMDb or RPDB key still broke artwork and person pages even with a working backup set. Every place a key is used now falls back the same way."
+    ]
+  },
+  {
     "version": "1.77.0",
     "date": "2026-09-01",
     "title": "1.77.0 — Backup keys that take over on their own, and a say in what backups carry",
