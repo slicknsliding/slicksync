@@ -54,6 +54,20 @@ const TRIGGERS = {
       { name: 'entryId', label: 'Entry ID', type: 'string' },
       { name: 'category', label: 'Category', type: 'string' },
       { name: 'message', label: 'Failure message', type: 'string' },
+      { name: 'hasBackup', label: 'Has a backup key', type: 'boolean' },
+      { name: 'backupName', label: 'Backup key name', type: 'string' },
+    ],
+  },
+  'vault.failover_activated': {
+    label: 'A backup credential takes over',
+    description: 'Fires when a credential fails its check and a working backup is configured, so the backup is what gets used from now on. Distinct from "stops working": this one means the spare picked up the slack, which is usually a quieter kind of news - but still worth knowing, because you are now running on your last key.',
+    fields: [
+      { name: 'entryName', label: 'Failed entry name', type: 'string' },
+      { name: 'entryId', label: 'Failed entry ID', type: 'string' },
+      { name: 'category', label: 'Category', type: 'string' },
+      { name: 'backupName', label: 'Backup entry name', type: 'string' },
+      { name: 'backupId', label: 'Backup entry ID', type: 'string' },
+      { name: 'message', label: 'Why the primary failed', type: 'string' },
     ],
   },
   'user.expired': {
@@ -110,6 +124,17 @@ const TRIGGERS = {
       { name: 'providerLabel', label: 'Provider name', type: 'string' },
       { name: 'message', label: 'Failure message', type: 'string' },
       { name: 'rateLimited', label: 'Rate limited', type: 'boolean' },
+      { name: 'hasBackup', label: 'Has a backup key', type: 'boolean' },
+    ],
+  },
+  'metadata_key.failover_activated': {
+    label: 'A backup metadata key takes over',
+    description: 'Fires when a TMDb/OMDb/MDBList/RPDB key fails its check and a backup key is configured for it, so lookups switch to the backup. Posters and ratings keep working - this is the alert that says you are now down to your spare.',
+    fields: [
+      { name: 'provider', label: 'Provider', type: 'string' },
+      { name: 'providerLabel', label: 'Provider name', type: 'string' },
+      { name: 'message', label: 'Why the primary failed', type: 'string' },
+      { name: 'rateLimited', label: 'Rate limited', type: 'boolean' },
     ],
   },
   'metadata_key.recovered': {
@@ -118,6 +143,17 @@ const TRIGGERS = {
     fields: [
       { name: 'provider', label: 'Provider', type: 'string' },
       { name: 'providerLabel', label: 'Provider name', type: 'string' },
+    ],
+  },
+  'metadata_key.quota_low': {
+    label: 'A metadata provider key is running low on its quota',
+    description: 'Fires when a provider that reports usage (currently MDBList) crosses a percentage of its allowance. Lets you react before it runs out and posters/ratings quietly stop appearing, rather than after.',
+    fields: [
+      { name: 'provider', label: 'Provider', type: 'string' },
+      { name: 'providerLabel', label: 'Provider name', type: 'string' },
+      { name: 'percentUsed', label: 'Percent used', type: 'number' },
+      { name: 'used', label: 'Requests used', type: 'number' },
+      { name: 'limit', label: 'Request limit', type: 'number' },
     ],
   },
   'backup.failed': {

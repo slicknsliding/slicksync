@@ -1,928 +1,935 @@
-generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-model User {
-  id                 String    @id @default(cuid())
-  position           Int       @default(0) // Drag-to-reorder display order on the Users list page - same pattern as Addon.position
-  username           String
-  email              String
-  isActive           Boolean   @default(true)
-  stremioAuthKey     String? // Encrypted Stremio auth key
-  providerType       String    @default("stremio") // "stremio" | "nuvio"
-  nuvioRefreshToken  String? // Encrypted Supabase refresh token
-  nuvioUserId        String? // Nuvio/Supabase user UUID
-  // SIMKL is an optional supplementary link, not a peer of providerType - see
-  // the matching comment in schema.sqlite.prisma for the full reasoning.
-  simklAccessToken   String? // Encrypted, 5yr expiry, no refresh flow needed
-  simklConnectedAt   DateTime? // When this user linked their SIMKL account
-  simklSyncState     String? // JSON: last-seen /sync/activities timestamps per category
-  simklLastPullAt    DateTime? // Last successful pull sweep
-  simklLastPushAt    DateTime? // Watermark (createdAt cursor) for the push sweep
-  excludedAddons     String? // JSON array of addon IDs that user has excluded
-  protectedAddons    String? // JSON array of addon IDs that user has protected
-  colorIndex         Int? // UI color theme index
-  avatarUrl          String? // Custom profile picture: full URL or /uploads/avatars/<file> for uploaded images
-  useGravatar        Boolean   @default(false) // Use Gravatar for avatar instead of generated avatar
-  accountId          String? // For multi-tenant support
-  expiresAt          DateTime? // When user membership expires (null = never expires)
-  inviteCode         String? // Invite code used to create this user (null if created manually)
-  discordWebhookUrl  String? // Discord webhook URL for notifications
-  discordUserId      String? // Discord user ID for personalized notifications
-  notifyOnWatch      Boolean   @default(true) // Whether THIS user's watch activity (started/watched) triggers a notification at all. When discordWebhookUrl is set, their watch pings route there instead of the account's shared webhook.
-  apiKey             String? // User-specific API key for accessing own metrics
-  activityVisibility String    @default("private") // "public" or "private" - when public, group members can see this user's library/history
-  // See schema.sqlite.prisma's comment - a genuinely public, unauthenticated
-  // share link, distinct from activityVisibility above.
-  publicStatsEnabled Boolean   @default(false)
-  publicStatsSlug    String?   @unique
-  lastSyncedAt       DateTime? // When user addons were last successfully synced
-  syncStatus         String? // "idle", "syncing", "success", "error"
-  syncErrorMessage   String? // Last sync error message if any
-  // Set when a live provider fetch fails (e.g. an expired Stremio session)
-  // so it's visible somewhere instead of the sync silently going quiet -
-  // confirmed real case: a user's watch history stopped updating for over
-  // a week with nothing surfacing why. Null means the most recent attempt
-  // succeeded; cleared automatically on the next successful live fetch.
-  providerConnectionError   String?
-  providerConnectionErrorAt DateTime?
-  createdAt          DateTime  @default(now())
-  // Hides this user's Sync Guardian drift alert from the Health page's
-  // Attention list/notifications entirely - same treatment as Addon/
-  // VaultEntry's own healthIgnored, for a known drift the admin doesn't
-  // want repeated pinging about.
-  healthIgnored      Boolean   @default(false)
-
-  // Relationships
-
-  @@unique([accountId, email, providerType])
-  @@unique([accountId, username])
-  @@index([expiresAt])
-  @@map("users")
-}
-
-model Group {
-  id                 String  @id @default(cuid())
-  position           Int     @default(0) // Drag-to-reorder display order on the Groups list page - same pattern as Addon.position
-  name               String
-  description        String?
-  isActive           Boolean @default(true)
-  colorIndex         Int?
-  avatarUrl          String?
-  accountId          String?
-  userIds            String?
-  activityVisibility String  @default("private") // DEPRECATED: Use User.activityVisibility instead. Kept for backward compatibility.
-
-  // Relationships
-  addons GroupAddon[]
-
-  @@map("groups")
-}
-
-// GroupMember and GroupInvite removed – using JSON arrays on Group
-
-model Addon {
-  position         Int     @default(0)
-  id               String  @id @default(cuid())
-  name             String
-  description      String?
-  manifestUrl      String
-  manifest         String? // Encrypted JSON string (AES-GCM)
-  originalManifest String? // Encrypted original manifest JSON
-  stremioAddonId   String?
-  version          String?
-  isActive         Boolean @default(true)
-  accountId        String?
-  iconUrl          String?
-  customLogo       String? // Custom logo URL to replace manifest icon
-  // Deterministic hash of normalized manifestUrl for search/uniqueness (public mode)
-  manifestUrlHash  String? @db.VarChar(64)
-  // Normalized HMAC/SHA-256 of processed manifest (content equality check)
-  manifestHash     String? @db.VarChar(64)
-  // Non-sensitive cached manifest resources for fast UI (JSON string array)
-  resources        String?
-  // Non-sensitive cached manifest catalogs for fast UI (JSON array of catalog objects with id and type)
-  catalogs         String?
-  
-  // Health check fields
-  isOnline         Boolean  @default(true)
-  lastHealthCheck  DateTime?
-  healthCheckError String?
-  healthIgnored    Boolean  @default(false) // hides this addon from the Health page's Attention list/notifications entirely - for a known, accepted offline addon the admin doesn't want repeated pinging about
-  // Per-addon health-check overrides, JSON: { probeUrl?, failureThreshold?, intervalMinutes? }.
-  // Null = the global defaults (manifest probe, 1 failure, env interval).
-  healthConfig     String?
-
-  // Proxy fields - the Addons page's per-addon "Proxy" toggle serves the
-  // addon through /proxy/<uuid>/manifest.json so the original (often
-  // key-bearing) manifest URL never reaches a client. These columns back
-  // server/routes/proxy.js and the enable/disable/regenerate handlers in
-  // routes/addons.js, all of which shipped WITHOUT the schema ever
-  // declaring them - every proxy toggle threw PrismaClientValidationError
-  // ("Unknown argument `proxyUuid`") on both instance types.
-  proxyEnabled     Boolean  @default(false)
-  proxyUuid        String?  @unique
-
-  // Backup fields
-  backupAddonId    String?  // Reference to backup addon (another Addon record)
-
-  // User-defined single tag for drag-to-recategorize — see schema.sqlite.prisma.
-  customTag        String?
-
-  // Relationships
-  groupAddons GroupAddon[]
-  healthHistory AddonHealthHistory[]
-  backupAddon      Addon?   @relation("AddonBackup", fields: [backupAddonId], references: [id])
-  primaryAddons    Addon[]  @relation("AddonBackup")
-
-  @@unique([name, accountId])
-  @@index([manifestUrlHash])
-  @@index([manifestHash])
-  @@map("addons")
-}
-
-model GroupAddon {
-  id        String  @id @default(cuid())
-  isEnabled Boolean @default(true)
-  position  Int?
-  groupId   String
-  group     Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  addonId   String
-  addon     Addon   @relation(fields: [addonId], references: [id], onDelete: Cascade)
-
-  @@unique([groupId, addonId])
-  @@map("group_addons")
-}
-
-// Track addon health check history
-model AddonHealthHistory {
-  id             String   @id @default(cuid())
-  addonId        String
-  addon          Addon    @relation(fields: [addonId], references: [id], onDelete: Cascade)
-  isOnline       Boolean
-  error          String?
-  checkedAt      DateTime @default(now())
-  responseTimeMs Int?
-
-  @@index([addonId, checkedAt])
-  @@map("addon_health_history")
-}
-
-model AppAccount {
-  id           String  @id @default(cuid())
-  uuid         String? @unique
-  email        String? @unique
-  // Which provider's login most recently populated `email` - Stremio and
-  // Nuvio admin-login both write to the same shared `email` column (there's
-  // only one "linked identity" slot), so without this there's no way to
-  // tell a Nuvio-linked account apart from a Stremio-linked one for display.
-  linkedProvider String? // 'stremio' | 'nuvio' | null
-  passwordHash String?
-  sync         Json?
-  // Mutes the Health page's Proxy connectivity card - it's one global
-  // account-wide check (no per-item entity like Addon/VaultEntry to hang a
-  // healthIgnored flag off), so the mute lives here instead.
-  proxyHealthIgnored Boolean @default(false)
-  apiKeyHash   String? // Encrypted API key
-  aiometadataManifestUrl String? // User-editable AIOMetadata addon manifest URL, used to look up posters for AIOStreams-proxy-detected Now Playing entries that have no WatchSession match
-  avatarUrl    String? // Admin's own profile picture: full URL or /uploads/avatars/<file> for uploaded images
-  // Below three fields back the superadmin panel (server/routes/superadmin.js) -
-  // operator-only cross-account visibility/moderation for public mode.
-  createdAt   DateTime  @default(now())
-  lastLoginAt DateTime?
-  disabled    Boolean   @default(false) // login blocked when true; data untouched
-  // Self-service - the account holder names themselves (Settings), NOT
-  // something an operator assigns. Superadmin's account list displays it
-  // read-only alongside the UUID, purely so accounts are easier to tell
-  // apart than by raw UUID prefix; it's never editable from that panel.
-  displayName String?
-
-  // TOTP 2FA - opt-in, checked after the password check in /login (see
-  // server/utils/twoFactor.js for why the pending-challenge step in between
-  // never reuses the real session JWT shape). twoFactorSecret is encrypted
-  // at rest like other secrets on this model (apiKeyHash). twoFactorBackupCodes
-  // is a JSON-stringified array of bcrypt hashes (kept String, not Json, for
-  // the same reason simklSyncState etc. are String here - one shape shared
-  // with the sqlite schema), never the plaintext codes - those are shown to
-  // the user exactly once, at generation time, same treatment as the login
-  // password itself.
-  twoFactorEnabled     Boolean @default(false)
-  twoFactorSecret      String?
-  twoFactorBackupCodes String?
-
-  // OIDC/SSO - the external provider's stable subject id, set the first
-  // time this account signs in (or is created) via /api/auth/oidc/callback.
-  // See server/utils/oidc.js.
-  oidcSubject String? @unique
-
-  // Relationships
-  invitations Invitation[]
-
-  @@map("app_accounts")
-}
-
-// Operator action trail for the superadmin panel - who got disabled/
-// enabled/deleted and when. Not a real relation to AppAccount.id: a
-// "delete" entry must survive the account it describes actually being
-// deleted, so the account's id/uuid are captured as a point-in-time
-// snapshot here, not a live foreign key.
-model SuperadminAuditLog {
-  id                String   @id @default(cuid())
-  action            String // 'disable' | 'enable' | 'delete'
-  targetAccountId   String
-  targetAccountUuid String?
-  bulk              Boolean  @default(false) // true if this was part of a bulk-* operation, not a single-account one
-  createdAt         DateTime @default(now())
-
-  @@index([createdAt])
-  @@map("superadmin_audit_log")
-}
-
-// Automation rules - see schema.sqlite.prisma for the full comment.
-model AutomationRule {
-  id            String   @id @default(cuid())
-  accountId     String   @default("default")
-  name          String
-  enabled       Boolean  @default(true)
-  triggerType   String
-  triggerConfig String   @default("{}")
-  conditions    String   @default("[]")
-  actions       String   @default("[]")
-  lastRunAt     DateTime?
-  runCount      Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  runs AutomationRun[]
-
-  @@index([accountId, triggerType, enabled])
-  @@map("automation_rules")
-}
-
-// See schema.sqlite.prisma for the full comment.
-model AutomationRun {
-  id          String   @id @default(cuid())
-  accountId   String   @default("default")
-  ruleId      String
-  triggerType String
-  payload     String   @default("{}")
-  results     String   @default("[]")
-  ok          Boolean  @default(true)
-  createdAt   DateTime @default(now())
-
-  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-
-  @@index([accountId, createdAt])
-  @@index([ruleId, createdAt])
-  @@map("automation_runs")
-}
-
-model Invitation {
-  id                     String    @id @default(cuid())
-  accountId              String
-  name                   String?
-  inviteCode             String    @unique // Short code for URL (e.g., "abc123")
-  groupName              String? // Group name to assign users to when they join
-  maxUses                Int       @default(0) // 0 = unlimited uses, >0 = limited
-  currentUses            Int       @default(0) // Current number of uses
-  expiresAt              DateTime? // Optional expiry date for the invitation
-  membershipDurationDays Int? // Membership duration in days, applied from user join time
-  isActive               Boolean   @default(true)
-  syncOnJoin             Boolean   @default(false) // Automatically sync user addons when they join
-  createdAt              DateTime  @default(now())
-
-  // Relationships
-  account  AppAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  requests InviteRequest[]
-
-  @@index([accountId])
-  @@index([inviteCode])
-  @@map("invitations")
-}
-
-model InviteRequest {
-  id             String    @id @default(cuid())
-  invitationId   String
-  accountId      String
-  email          String
-  username       String
-  status         String    @default("pending") // pending, accepted, rejected
-  groupName      String? // Group name to assign user to when accepted
-  oauthCode      String? // Stremio OAuth code when accepted
-  oauthLink      String? // Stremio OAuth link when accepted
-  oauthExpiresAt DateTime? // When OAuth link expires
-  stremioAuthKey String? // Encrypted Stremio auth key from upfront OAuth
-  createdAt      DateTime  @default(now())
-  respondedAt    DateTime?
-  respondedBy    String? // accountId who responded
-
-  // Relationships
-  invitation Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
-
-  @@index([invitationId])
-  @@index([accountId])
-  @@index([email])
-  @@index([status])
-  @@map("invite_requests")
-}
-
-// Vault: encrypted credential/account tracking with expiry + active-check monitoring
-model VaultEntry {
-  id               String    @id @default(cuid())
-  accountId        String    @default("default")
-  name             String
-  category         String
-  provider         String?
-  secretLabel      String    @default("API Key")
-  encryptedSecret  String    @db.Text
-  testType         String    @default("manual")
-  testConfig       String?   @db.Text
-  // See schema.sqlite.prisma's comment - opt-in daily auto-remove sweep for
-  // finished/idle real_debrid/torbox torrents.
-  autoRemoveEnabled   Boolean   @default(false)
-  autoRemoveAfterDays Int       @default(7)
-  lastAutoRemoveAt    DateTime?
-  dashboardUrl     String?
-  cost             Float? // see schema.sqlite.prisma comment
-  costCycle        String    @default("monthly")
-  expiresAt        DateTime?
-  notifyDaysBefore Int       @default(3)
-  lastCheckedAt    DateTime?
-  lastCheckStatus  String?
-  lastCheckMessage String?
-  lastNotifiedAt   DateTime?
-  snoozedUntil     DateTime?
-  healthIgnored    Boolean   @default(false) // hides this entry from the Health page's Attention list/notifications entirely (unlike snoozedUntil, not time-bound)
-  isActive         Boolean   @default(true)
-  position         Int       @default(0)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  @@index([accountId])
-  @@index([accountId, category])
-  @@map("vault_entries")
-}
-
-// Snapshots: saved addon-set "templates" that can be deployed to any user or group
-model AddonSnapshot {
-  id          String   @id @default(cuid())
-  accountId   String   @default("default")
-  name        String
-  description String?
-  addonsJson  String   @db.Text
-  sourceType  String?
-  sourceId    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([accountId])
-  @@map("addon_snapshots")
-}
-
-// Metrics: Watch snapshots - daily snapshots of library items for delta computation
-model WatchSnapshot {
-  id                 String    @id @default(cuid())
-  accountId          String    @default("default")
-  userId             String
-  itemId             String // Library item ID - the base show ID for series, not per-episode (episode identity lives in videoId below)
-  date               DateTime  @db.Date // Date of snapshot (YYYY-MM-DD)
-  overallTimeWatched BigInt? // Total watch time in milliseconds
-  timeOffset         BigInt? // Current time offset in milliseconds
-  videoId            String? // For series: which episode this snapshot's overallTimeWatched/timeOffset actually describes (e.g. "tt123456:1:5") - see getMaxOverallTimeWatched's comment for why this matters
-  lastWatched        DateTime? // Last watched timestamp
-  mtime              DateTime? // Library item modification time
-  createdAt          DateTime  @default(now())
-
-  @@unique([accountId, userId, itemId, date])
-  @@index([accountId, userId, date])
-  @@index([accountId, userId, itemId])
-  @@map("watch_snapshots")
-}
-
-// Metrics: Watch activity - deltas (watch time changes) for accurate daily/weekly stats
-model WatchActivity {
-  id               String   @id @default(cuid())
-  accountId        String   @default("default")
-  userId           String
-  itemId           String // Library item ID
-  date             DateTime @db.Date // Date of watch activity
-  watchTimeSeconds Int // Delta: watch time in seconds (only positive changes)
-  itemType         String // "movie" or "series"
-  // For a series, which episode this delta belongs to (e.g. "tt123456:1:5").
-  // null for movies, and null for every row written before this column
-  // existed - which is why series history prior to it cannot be broken out
-  // per episode retroactively. WatchSnapshot carries a videoId too, but it is
-  // unique per (item, DAY), so it only ever knows the LAST episode seen that
-  // day and cannot describe a day when several were watched.
-  videoId          String?
-  createdAt        DateTime @default(now())
-
-  @@index([accountId, userId, date, itemType])
-  @@index([accountId, userId, itemId])
-  @@index([accountId, date])
-  @@map("watch_activity")
-}
-
-// Metrics: Episode watch history - tracks individual episode watches for series
-// This provides episode-level history since Stremio only keeps the last watched episode per show
-model EpisodeWatchHistory {
-  id          String   @id @default(cuid())
-  accountId   String   @default("default")
-  userId      String
-  showId      String // Base show ID (e.g., "tt8080122")
-  showName    String // Show name for display
-  videoId     String // Full video_id (e.g., "tt8080122:4:6" or "kitsu:46676:1")
-  season      Int? // Season number (null if unknown)
-  episode     Int? // Episode number (null if unknown)
-  episodeName String? // Episode title from Cinemeta, when known - fetched once via the same lookup used for Discord "started watching" embeds (server/utils/notify.js's fetchMetadata), not on every poll
-  // Real completion for this episode - same semantics as MovieWatchHistory.completed.
-  completed   Boolean?
-  poster      String? // Show poster URL
-  profileLabel String?
-  durationSeconds Int?     // Real duration, backfilled from a matching AIOStreams-proxy WatchSession entry when the two are merged as the same viewing event // Which provider profile this was watched under (e.g. Nuvio profile name), if known
-  debridService String? // e.g. "torbox" - only set when this watch was confidently correlated to a ProxyStreamSession AND a known debrid pattern was found in its resolved URL (server/utils/debridDetection.js). Null means either not proxied, or proxied but not confidently identified - never a guess either way.
-  watchedAt   DateTime // When this episode was watched
-  createdAt   DateTime @default(now())
-
-  @@index([accountId, userId, watchedAt])
-  @@index([accountId, userId, showId])
-  @@unique([accountId, userId, videoId]) // One entry per episode per user
-  @@map("episode_watch_history")
-}
-
-// Metrics: Movie watch history - the movie equivalent of EpisodeWatchHistory.
-// WatchActivity records that a movie was watched (for aggregate counts/streaks)
-// but has no title/poster; this table stores that display metadata reliably,
-// via the same already-working pipeline that populates EpisodeWatchHistory,
-// instead of relying on WatchSession (built for a different, live-detection
-// purpose and much less reliably populated for either provider).
-model MovieWatchHistory {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  userId    String
-  itemId    String // Movie ID (e.g., "tt1234567")
-  itemName  String // Movie name for display
-  poster    String? // Movie poster URL
-  profileLabel String?
-  durationSeconds Int?     // Real duration, backfilled from a matching AIOStreams-proxy WatchSession entry when the two are merged as the same viewing event // Which provider profile this was watched under (e.g. Nuvio profile name), if known
-  debridService String? // See EpisodeWatchHistory.debridService's comment - same field, same rules.
-  // Real completion (position/runtime >= ~90% at write time). null = unknown,
-  // true = finished, false = started but dropped. See sqlite schema comment.
-  completed Boolean?
-  // Rewatch tracking (movies only). rewatchCount is how many times this movie
-  // was watched to the end AGAIN after its first completion. rewatchArmed is
-  // an internal edge-trigger flag: set when a finished movie's playback
-  // position dips back near the start (a rewatch began), cleared when it
-  // reaches the end again (which is when rewatchCount increments). This state
-  // machine is deliberately isolated from all watch-time/delta math - it only
-  // ever touches these two fields - so it can never inflate Watch Time. Series
-  // are excluded: a per-episode position reset there is just normal
-  // episode-to-episode progression, not a rewatch.
-  rewatchCount Int     @default(0)
-  rewatchArmed Boolean @default(false)
-  watchedAt DateTime // When this movie was watched
-  createdAt DateTime @default(now())
-
-  @@index([accountId, userId, watchedAt])
-  @@unique([accountId, userId, itemId]) // One entry per movie per user
-  @@map("movie_watch_history")
-}
-
-// Sync Guardian: per-user "was this account synced last time we checked"
-// baseline, so a transition from synced -> unsynced that SlickSync itself
-// didn't cause (auto-sync off, no admin action) can be told apart from a
-// user that has simply never been synced (a normal, pre-existing state, not
-// a drift event). See server/utils/syncGuardian.js for the full mechanism -
-// built directly off catching a real revert live on 2026-07-30.
-model UserSyncGuardState {
-  id            String    @id @default(cuid())
-  accountId     String    @default("default")
-  userId        String
-  wasSynced     Boolean   @default(false)
-  lastCheckedAt DateTime?
-
-  @@unique([accountId, userId])
-  @@map("user_sync_guard_state")
-}
-
-// User-curated lists of titles (roadmap #7). Account-scoped, shared across the
-// account's admins (not per-user) - matches how Discover/Groups behave here.
-// itemsJson is a stringified array of { id, type, name, poster?, year? }; kept
-// as text (not Json) to mirror the SQLite schema so the router handles both
-// identically.
-model CustomList {
-  id               String   @id @default(cuid())
-  accountId        String   @default("default")
-  name             String
-  description      String?
-  itemsJson        String   @default("[]")
-  coverImageUrl    String?
-  coverColorIndex  Int?
-  // The TMDb/MDBList URL this catalog was imported from, if any - null for
-  // a catalog built by hand. Lets "Refresh from source" re-pull the same
-  // list later without asking the user to paste the URL again.
-  importSourceUrl  String?
-  // Opt-in daily re-pull of importSourceUrl (see scheduleCatalogAutoRefresh) -
-  // meaningless without importSourceUrl set, so the scheduler always checks
-  // both. Off by default even for imported catalogs: replacing items
-  // unattended is a bigger behavior change than the existing manual
-  // "Refresh" button, which always shows a diff before applying.
-  autoRefresh      Boolean  @default(false)
-  // 'daily' (default) or 'weekly' - how often the scheduler actually applies
-  // a refresh once autoRefresh is on. The scheduler itself still ticks daily
-  // (see catalogAutoRefresh.js); 'weekly' lists are just skipped on ticks
-  // where lastAutoRefreshAt is under 7 days old, rather than running on a
-  // separate weekly timer.
-  autoRefreshFrequency String @default("daily")
-  lastAutoRefreshAt DateTime?
-  // Owner-set opt-in: when true, this catalog is visible (read-only) to
-  // every OTHER account on this same instance, not just its own owner -
-  // per-catalog, never instance-wide or admin-forced. Every mutating route
-  // in routes/lists.js already scopes its query by (id, accountId), so a
-  // non-owner viewer is blocked from writes purely by that existing
-  // ownership check - this field only changes what GET / returns, not any
-  // write-path authorization.
-  shared           Boolean  @default(false)
-  // Federation: when non-null, this catalog is published for OTHER SlickSync
-  // instances to subscribe to, and this is the bearer token in its share URL.
-  // null = not published (the default, and how you revoke). Rotating means
-  // writing a new value, which invalidates the old URL immediately.
-  //
-  // Deliberately NOT reusing `shared` above: that means "visible to other
-  // accounts on THIS instance", and quietly widening it to mean "published to
-  // the internet" would expose every catalog anyone had shared internally.
-  // Two different audiences, two separate opt-ins.
-  federationToken  String?
-  // Featured/hero treatment on the Catalogs index page - at most meaningful
-  // for one catalog at a time (the client only ever shows the first pinned
-  // one as the hero), but not DB-enforced as singular; a second pin just
-  // means the client picks the most-recently-updated one to feature.
-  pinned           Boolean  @default(false)
-  // Opt-in content-rating allowlist - see schema.sqlite.prisma for the full comment.
-  keptRatings      String?
-  lastRemovalSnapshot String?
-  lastRemovalAt    DateTime?
-  // Auto-generated themed catalog - see schema.sqlite.prisma for the full comment.
-  autoGenerated    Boolean  @default(false)
-  autoGeneratedKey String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  @@unique([accountId, autoGeneratedKey])
-  @@index([accountId])
-  @@map("custom_lists")
-}
-
-// See schema.sqlite.prisma for the full comment.
-model DismissedThemedCatalog {
-  id          String   @id @default(cuid())
-  accountId   String   @default("default")
-  key         String
-  dismissedAt DateTime @default(now())
-
-  @@unique([accountId, key])
-  @@map("dismissed_themed_catalogs")
-}
-
-// Metrics: Watch sessions - tracks individual viewing sessions with start/end times
-// Since Stremio only provides cumulative watch time, we track sessions during syncs
-model WatchSession {
-  id              String    @id @default(cuid())
-  accountId       String    @default("default")
-  userId          String
-  itemId          String // Show/movie ID (e.g., "tt8080122")
-  videoId         String? // Episode ID for series (e.g., "tt8080122:4:6")
-  itemName        String // Show/movie name for display
-  itemType        String // "movie" or "series"
-  season          Int? // Season number for series
-  episode         Int? // Episode number for series
-  poster          String? // Poster URL
-  startTime       DateTime // When the viewing session started
-  endTime         DateTime? // When it ended (null = still watching)
-  startPosition   Int? // Playback position (ms) when this session began - lets
-                        // durationSeconds reflect real watched-content progress
-                        // (position delta) instead of wall-clock time, since the
-                        // provider's position can go stale for a while between
-                        // checkpoints. Null for older sessions predating this field.
-  durationSeconds Int       @default(0) // Watch duration in seconds
-  requestCount    Int?     // Total request count from the underlying AIOStreams proxy connection(s), summed across stop/resume segments the same way durationSeconds is
-  lastPosition    Int? // Latest known playback position (ms) - a direct
-                        // snapshot value, always accurate the instant new
-                        // data arrives, unlike a computed session-elapsed
-                        // duration which can go stale between checkpoints
-  totalDuration   Int? // Content's total runtime (ms), captured alongside
-                        // lastPosition
-  isActive        Boolean   @default(true) // True if session is still active
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  @@unique([accountId, userId, itemId])
-  @@index([accountId, userId, startTime])
-  @@index([accountId, userId, isActive])
-  @@index([accountId, isActive])
-  @@map("watch_sessions")
-}
-
-// Dashboard: shows a user has removed from their own Continue Watching row.
-// Account-scoped (not per-browser) so a dismissal made from one browser/
-// device stays dismissed when checking the Dashboard from another.
-model DismissedContinueWatching {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  userId    String // The show's owner (matches ContinueWatchingItem.userId), not who dismissed it - this is a single shared admin dashboard
-  showId    String
-  createdAt DateTime @default(now())
-
-  @@unique([accountId, userId, showId])
-  @@map("dismissed_continue_watching")
-}
-
-// SlickSync's own personal watchlist — see schema.sqlite.prisma for the full comment.
-model WatchlistItem {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  itemId    String
-  itemType  String
-  name      String
-  poster    String?
-  addedAt   DateTime @default(now())
-
-  @@unique([accountId, itemId])
-  @@index([accountId, addedAt])
-  @@map("watchlist_item")
-}
-
-// SlickTrax "Not interested" feedback — see schema.sqlite.prisma for the full comment.
-model NotInterestedItem {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  itemId    String
-  itemType  String
-  createdAt DateTime @default(now())
-
-  @@unique([accountId, itemId])
-  @@map("not_interested_items")
-}
-
-// SlickTrax reactions (👍/❤️/👎) — see schema.sqlite.prisma for the full comment.
-model TitleReaction {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  itemId    String
-  itemType  String
-  reaction  String
-  itemName  String?
-  poster    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([accountId, itemId])
-  @@map("title_reactions")
-}
-
-// SlickTrax personal ratings (1-10, optionally per-season) — see schema.sqlite.prisma for the full comment.
-model TitleRating {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  itemId    String
-  itemType  String
-  season    Int      @default(0)
-  rating    Int
-  itemName  String?
-  poster    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([accountId, itemId, season])
-  @@index([accountId, itemId])
-  @@map("title_ratings")
-}
-
-// Manual "watched" override — see schema.sqlite.prisma for the full comment.
-model ManualWatchOverride {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  itemId    String
-  watched   Boolean
-  markedAt  DateTime @default(now())
-
-  @@unique([accountId, itemId])
-  @@map("manual_watch_override")
-}
-
-// Per-episode dismissals for the "Coming up" panel — see schema.sqlite.prisma.
-model DismissedUpcomingEpisode {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  showId    String
-  season    Int
-  episode   Int
-  createdAt DateTime @default(now())
-
-  @@unique([accountId, showId, season, episode])
-  @@map("dismissed_upcoming_episode")
-}
-
-// New-episode alerts - see schema.sqlite.prisma for the full comments; kept
-// field-identical here (the v1.9.95 postmortem is what happens when these
-// two schemas drift).
-model ShowEpisodeAlertState {
-  id          String   @id @default(cuid())
-  accountId   String   @default("default")
-  showId      String
-  lastSeason  Int
-  lastEpisode Int
-  // Next UPCOMING (future-dated) episode from Cinemeta, refreshed every poll —
-  // powers the Dashboard "Coming up" calendar. Null when the show has no
-  // announced future episode (caught up / ended). Display fields are stored
-  // here too so the calendar endpoint needs no extra Cinemeta lookup.
-  showName    String?
-  poster      String?
-  nextSeason  Int?
-  nextEpisode Int?
-  nextTitle   String?
-  nextAirDate DateTime?
-  updatedAt   DateTime @updatedAt
-  createdAt   DateTime @default(now())
-
-  @@unique([accountId, showId])
-  @@index([accountId, nextAirDate])
-  @@map("show_episode_alert_state")
-}
-
-model EpisodeAlert {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  showId    String
-  showName  String
-  season    Int
-  episode   Int
-  title     String?
-  poster    String?
-  createdAt DateTime @default(now())
-
-  @@unique([accountId, showId, season, episode])
-  @@index([accountId, createdAt])
-  @@map("episode_alerts")
-}
-
-model AddonHealthAlert {
-  id              String   @id @default(cuid())
-  accountId       String   @default("default")
-  addonId         String
-  addonName       String
-  event           String
-  backupAddonId   String?
-  backupAddonName String?
-  groupCount      Int      @default(0)
-  errorMessage    String?
-  createdAt       DateTime @default(now())
-
-  @@index([accountId, createdAt])
-  @@map("addon_health_alerts")
-}
-
-model PushSubscription {
-  id         String    @id @default(cuid())
-  accountId  String    @default("default")
-  endpoint   String    @unique
-  p256dh     String
-  auth       String
-  userAgent  String?
-  label      String?
-  lastSeenAt DateTime?
-  createdAt  DateTime  @default(now())
-
-  @@index([accountId])
-  @@map("push_subscriptions")
-}
-
-// Metrics: Proxy stream sessions - "Now Playing" data sourced from AIOStreams'
-// built-in proxy (which sees every stream request passing through it in real
-// time, regardless of provider - Stremio, Nuvio, anything using the proxy).
-// Deliberately NOT merged into WatchSession: WatchSession was built for a
-// different, live-detection purpose and is currently unreliably populated for
-// both providers (see MovieWatchHistory comment above). This table is fully
-// independent so the AIOStreams integration doesn't inherit that bug, and so
-// it keeps working regardless of whether/how the WatchSession issue is fixed.
-//
-// Identity key matches AIOStreams' own BuiltinProxyStats: it keys connections
-// by (ip, url), not by a single requestId - concurrent requests (e.g. range
-// requests for the same file) merge into one entry with a growing/shrinking
-// requestIds[] array and a count. So (accountId, aiostreamsUser, clientIp,
-// url) is the real stable identity here, not requestId.
-model ProxyStreamSession {
-  id              String    @id @default(cuid())
-  accountId       String    @default("default")
-  aiostreamsUser  String    // Username as reported by AIOStreams proxy stats (may not map 1:1 to a SlickSync User)
-  clientIp        String    // AIOStreams' `ip` field - client IP that opened this connection
-  url             String    // Full upstream URL being proxied (may contain the raw source link) - part of AIOStreams' own identity key alongside ip
-  filename        String?   // Raw filename AIOStreams reported, e.g. "Powder.1995.1080p.AMZN.WEB-DL.DD5.1.H.264-SiGMA"
-  displayName     String?   // Best-effort cleaned-up title parsed from filename, e.g. "Powder (1995)"
-  posterUrl       String?   // Poster URL from an AIOMetadata search lookup, cached so we don't re-query on every poll while a stream is still active
-  metadataMatchedAt DateTime? // When the AIOMetadata lookup was attempted (whether or not it found a match) - null means not yet attempted
-  metadataItemId   String?   // Real IMDb-style ID from the AIOMetadata match, e.g. "tt1032819" - used to key the completed-history WatchSession row when this stream ends
-  metadataItemType String?   // "movie" or "series" from the AIOMetadata match
-  linkedWatchSessionId String? // ID of the WatchSession row this stream's completed history was written to, if any - lets a poster found later (e.g. by the retry pass) backfill into the history entry too, not just this row
-  requestCount    Int       @default(1) // AIOStreams' `count` - number of individual requests merged into this entry
-  startTime       DateTime  // AIOStreams' `timestamp` - when this connection was first opened
-  lastSeenAt      DateTime  // AIOStreams' `lastSeen` - most recent activity on this connection, updates as long as it's active
-  endTime         DateTime? // When AIOStreams stopped reporting this active (null = still active)
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  @@unique([accountId, aiostreamsUser, clientIp, url])
-  @@index([accountId, isActive])
-  @@index([accountId, aiostreamsUser, isActive])
-  @@map("proxy_stream_sessions")
-}
-
-// Remembers which managed user a client IP resolved to the last time there
-// was a REAL signal (a unique direct/email match, or a native title match) -
-// used as the tiebreaker for FUTURE ambiguous proxy attributions from the
-// same IP, instead of a fixed AIOSTREAMS_FALLBACK_USER_IDS order. See
-// proxyNowPlaying.js's disambiguateMatch.
-model ProxyUserIpAffinity {
-  id          String   @id @default(cuid())
-  accountId   String   @default("default")
-  clientIp    String
-  userId      String
-  confirmedAt DateTime @default(now())
-
-  @@unique([accountId, clientIp])
-  @@map("proxy_user_ip_affinity")
-}
-
-// Persistent bell notifications - the durable event store written from the
-// same dispatch path as push/Discord. read/readAt are server-side so read
-// state is consistent across devices.
-model Notification {
-  id        String    @id @default(cuid())
-  accountId String    @default("default")
-  type      String
-  title     String
-  body      String
-  poster    String?
-  url       String?
-  data      String?
-  dedupeKey String?
-  read      Boolean   @default(false)
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  @@unique([accountId, dedupeKey])
-  @@index([accountId, createdAt])
-  @@map("notifications")
-}
-
-model NotificationDigestEntry {
-  id        String   @id @default(cuid())
-  accountId String
-  category  String
-  summary   String
-  createdAt DateTime @default(now())
-
-  @@index([accountId, createdAt])
-  @@map("notification_digest_entry")
-}
-
-// A whole-show opt-out from upcoming-episode tracking - stops all Coming Up
-// entries and new-episode alerts for a show until unmuted.
-model MutedShow {
-  id        String   @id @default(cuid())
-  accountId String   @default("default")
-  showId    String
-  showName  String?
-  poster    String?
-  createdAt DateTime @default(now())
-
-  @@unique([accountId, showId])
-  @@map("muted_show")
-}
-
-// Side table for multi-provider account merge (see server/utils/userMerge.js).
-// userId is the SURVIVING User row from a merge; every existing
-// single-provider user is completely unaffected (zero rows here normally).
-model UserProviderCredential {
-  id                String   @id @default(cuid())
-  userId            String
-  providerType      String
-  stremioAuthKey    String?
-  nuvioRefreshToken String?
-  nuvioUserId       String?
-  donorId           String?
-  mergeArchivePath  String?
-  createdAt         DateTime @default(now())
-
-  @@unique([userId, providerType])
-  @@map("user_provider_credentials")
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  position           Int       @default(0) // Drag-to-reorder display order on the Users list page - same pattern as Addon.position
+  username           String
+  email              String
+  isActive           Boolean   @default(true)
+  stremioAuthKey     String? // Encrypted Stremio auth key
+  providerType       String    @default("stremio") // "stremio" | "nuvio"
+  nuvioRefreshToken  String? // Encrypted Supabase refresh token
+  nuvioUserId        String? // Nuvio/Supabase user UUID
+  // SIMKL is an optional supplementary link, not a peer of providerType - see
+  // the matching comment in schema.sqlite.prisma for the full reasoning.
+  simklAccessToken   String? // Encrypted, 5yr expiry, no refresh flow needed
+  simklConnectedAt   DateTime? // When this user linked their SIMKL account
+  simklSyncState     String? // JSON: last-seen /sync/activities timestamps per category
+  simklLastPullAt    DateTime? // Last successful pull sweep
+  simklLastPushAt    DateTime? // Watermark (createdAt cursor) for the push sweep
+  excludedAddons     String? // JSON array of addon IDs that user has excluded
+  protectedAddons    String? // JSON array of addon IDs that user has protected
+  colorIndex         Int? // UI color theme index
+  avatarUrl          String? // Custom profile picture: full URL or /uploads/avatars/<file> for uploaded images
+  useGravatar        Boolean   @default(false) // Use Gravatar for avatar instead of generated avatar
+  accountId          String? // For multi-tenant support
+  expiresAt          DateTime? // When user membership expires (null = never expires)
+  inviteCode         String? // Invite code used to create this user (null if created manually)
+  discordWebhookUrl  String? // Discord webhook URL for notifications
+  discordUserId      String? // Discord user ID for personalized notifications
+  notifyOnWatch      Boolean   @default(true) // Whether THIS user's watch activity (started/watched) triggers a notification at all. When discordWebhookUrl is set, their watch pings route there instead of the account's shared webhook.
+  apiKey             String? // User-specific API key for accessing own metrics
+  activityVisibility String    @default("private") // "public" or "private" - when public, group members can see this user's library/history
+  // See schema.sqlite.prisma's comment - a genuinely public, unauthenticated
+  // share link, distinct from activityVisibility above.
+  publicStatsEnabled Boolean   @default(false)
+  publicStatsSlug    String?   @unique
+  lastSyncedAt       DateTime? // When user addons were last successfully synced
+  syncStatus         String? // "idle", "syncing", "success", "error"
+  syncErrorMessage   String? // Last sync error message if any
+  // Set when a live provider fetch fails (e.g. an expired Stremio session)
+  // so it's visible somewhere instead of the sync silently going quiet -
+  // confirmed real case: a user's watch history stopped updating for over
+  // a week with nothing surfacing why. Null means the most recent attempt
+  // succeeded; cleared automatically on the next successful live fetch.
+  providerConnectionError   String?
+  providerConnectionErrorAt DateTime?
+  createdAt          DateTime  @default(now())
+  // Hides this user's Sync Guardian drift alert from the Health page's
+  // Attention list/notifications entirely - same treatment as Addon/
+  // VaultEntry's own healthIgnored, for a known drift the admin doesn't
+  // want repeated pinging about.
+  healthIgnored      Boolean   @default(false)
+
+  // Relationships
+
+  @@unique([accountId, email, providerType])
+  @@unique([accountId, username])
+  @@index([expiresAt])
+  @@map("users")
+}
+
+model Group {
+  id                 String  @id @default(cuid())
+  position           Int     @default(0) // Drag-to-reorder display order on the Groups list page - same pattern as Addon.position
+  name               String
+  description        String?
+  isActive           Boolean @default(true)
+  colorIndex         Int?
+  avatarUrl          String?
+  accountId          String?
+  userIds            String?
+  activityVisibility String  @default("private") // DEPRECATED: Use User.activityVisibility instead. Kept for backward compatibility.
+
+  // Relationships
+  addons GroupAddon[]
+
+  @@map("groups")
+}
+
+// GroupMember and GroupInvite removed – using JSON arrays on Group
+
+model Addon {
+  position         Int     @default(0)
+  id               String  @id @default(cuid())
+  name             String
+  description      String?
+  manifestUrl      String
+  manifest         String? // Encrypted JSON string (AES-GCM)
+  originalManifest String? // Encrypted original manifest JSON
+  stremioAddonId   String?
+  version          String?
+  isActive         Boolean @default(true)
+  accountId        String?
+  iconUrl          String?
+  customLogo       String? // Custom logo URL to replace manifest icon
+  // Deterministic hash of normalized manifestUrl for search/uniqueness (public mode)
+  manifestUrlHash  String? @db.VarChar(64)
+  // Normalized HMAC/SHA-256 of processed manifest (content equality check)
+  manifestHash     String? @db.VarChar(64)
+  // Non-sensitive cached manifest resources for fast UI (JSON string array)
+  resources        String?
+  // Non-sensitive cached manifest catalogs for fast UI (JSON array of catalog objects with id and type)
+  catalogs         String?
+  
+  // Health check fields
+  isOnline         Boolean  @default(true)
+  lastHealthCheck  DateTime?
+  healthCheckError String?
+  healthIgnored    Boolean  @default(false) // hides this addon from the Health page's Attention list/notifications entirely - for a known, accepted offline addon the admin doesn't want repeated pinging about
+  // Per-addon health-check overrides, JSON: { probeUrl?, failureThreshold?, intervalMinutes? }.
+  // Null = the global defaults (manifest probe, 1 failure, env interval).
+  healthConfig     String?
+
+  // Proxy fields - the Addons page's per-addon "Proxy" toggle serves the
+  // addon through /proxy/<uuid>/manifest.json so the original (often
+  // key-bearing) manifest URL never reaches a client. These columns back
+  // server/routes/proxy.js and the enable/disable/regenerate handlers in
+  // routes/addons.js, all of which shipped WITHOUT the schema ever
+  // declaring them - every proxy toggle threw PrismaClientValidationError
+  // ("Unknown argument `proxyUuid`") on both instance types.
+  proxyEnabled     Boolean  @default(false)
+  proxyUuid        String?  @unique
+
+  // Backup fields
+  backupAddonId    String?  // Reference to backup addon (another Addon record)
+
+  // User-defined single tag for drag-to-recategorize — see schema.sqlite.prisma.
+  customTag        String?
+
+  // Relationships
+  groupAddons GroupAddon[]
+  healthHistory AddonHealthHistory[]
+  backupAddon      Addon?   @relation("AddonBackup", fields: [backupAddonId], references: [id])
+  primaryAddons    Addon[]  @relation("AddonBackup")
+
+  @@unique([name, accountId])
+  @@index([manifestUrlHash])
+  @@index([manifestHash])
+  @@map("addons")
+}
+
+model GroupAddon {
+  id        String  @id @default(cuid())
+  isEnabled Boolean @default(true)
+  position  Int?
+  groupId   String
+  group     Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  addonId   String
+  addon     Addon   @relation(fields: [addonId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, addonId])
+  @@map("group_addons")
+}
+
+// Track addon health check history
+model AddonHealthHistory {
+  id             String   @id @default(cuid())
+  addonId        String
+  addon          Addon    @relation(fields: [addonId], references: [id], onDelete: Cascade)
+  isOnline       Boolean
+  error          String?
+  checkedAt      DateTime @default(now())
+  responseTimeMs Int?
+
+  @@index([addonId, checkedAt])
+  @@map("addon_health_history")
+}
+
+model AppAccount {
+  id           String  @id @default(cuid())
+  uuid         String? @unique
+  email        String? @unique
+  // Which provider's login most recently populated `email` - Stremio and
+  // Nuvio admin-login both write to the same shared `email` column (there's
+  // only one "linked identity" slot), so without this there's no way to
+  // tell a Nuvio-linked account apart from a Stremio-linked one for display.
+  linkedProvider String? // 'stremio' | 'nuvio' | null
+  passwordHash String?
+  sync         Json?
+  // Mutes the Health page's Proxy connectivity card - it's one global
+  // account-wide check (no per-item entity like Addon/VaultEntry to hang a
+  // healthIgnored flag off), so the mute lives here instead.
+  proxyHealthIgnored Boolean @default(false)
+  apiKeyHash   String? // Encrypted API key
+  aiometadataManifestUrl String? // User-editable AIOMetadata addon manifest URL, used to look up posters for AIOStreams-proxy-detected Now Playing entries that have no WatchSession match
+  avatarUrl    String? // Admin's own profile picture: full URL or /uploads/avatars/<file> for uploaded images
+  // Below three fields back the superadmin panel (server/routes/superadmin.js) -
+  // operator-only cross-account visibility/moderation for public mode.
+  createdAt   DateTime  @default(now())
+  lastLoginAt DateTime?
+  disabled    Boolean   @default(false) // login blocked when true; data untouched
+  // Self-service - the account holder names themselves (Settings), NOT
+  // something an operator assigns. Superadmin's account list displays it
+  // read-only alongside the UUID, purely so accounts are easier to tell
+  // apart than by raw UUID prefix; it's never editable from that panel.
+  displayName String?
+
+  // TOTP 2FA - opt-in, checked after the password check in /login (see
+  // server/utils/twoFactor.js for why the pending-challenge step in between
+  // never reuses the real session JWT shape). twoFactorSecret is encrypted
+  // at rest like other secrets on this model (apiKeyHash). twoFactorBackupCodes
+  // is a JSON-stringified array of bcrypt hashes (kept String, not Json, for
+  // the same reason simklSyncState etc. are String here - one shape shared
+  // with the sqlite schema), never the plaintext codes - those are shown to
+  // the user exactly once, at generation time, same treatment as the login
+  // password itself.
+  twoFactorEnabled     Boolean @default(false)
+  twoFactorSecret      String?
+  twoFactorBackupCodes String?
+
+  // OIDC/SSO - the external provider's stable subject id, set the first
+  // time this account signs in (or is created) via /api/auth/oidc/callback.
+  // See server/utils/oidc.js.
+  oidcSubject String? @unique
+
+  // Relationships
+  invitations Invitation[]
+
+  @@map("app_accounts")
+}
+
+// Operator action trail for the superadmin panel - who got disabled/
+// enabled/deleted and when. Not a real relation to AppAccount.id: a
+// "delete" entry must survive the account it describes actually being
+// deleted, so the account's id/uuid are captured as a point-in-time
+// snapshot here, not a live foreign key.
+model SuperadminAuditLog {
+  id                String   @id @default(cuid())
+  action            String // 'disable' | 'enable' | 'delete'
+  targetAccountId   String
+  targetAccountUuid String?
+  bulk              Boolean  @default(false) // true if this was part of a bulk-* operation, not a single-account one
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("superadmin_audit_log")
+}
+
+// Automation rules - see schema.sqlite.prisma for the full comment.
+model AutomationRule {
+  id            String   @id @default(cuid())
+  accountId     String   @default("default")
+  name          String
+  enabled       Boolean  @default(true)
+  triggerType   String
+  triggerConfig String   @default("{}")
+  conditions    String   @default("[]")
+  actions       String   @default("[]")
+  lastRunAt     DateTime?
+  runCount      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  runs AutomationRun[]
+
+  @@index([accountId, triggerType, enabled])
+  @@map("automation_rules")
+}
+
+// See schema.sqlite.prisma for the full comment.
+model AutomationRun {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  ruleId      String
+  triggerType String
+  payload     String   @default("{}")
+  results     String   @default("[]")
+  ok          Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@index([ruleId, createdAt])
+  @@map("automation_runs")
+}
+
+model Invitation {
+  id                     String    @id @default(cuid())
+  accountId              String
+  name                   String?
+  inviteCode             String    @unique // Short code for URL (e.g., "abc123")
+  groupName              String? // Group name to assign users to when they join
+  maxUses                Int       @default(0) // 0 = unlimited uses, >0 = limited
+  currentUses            Int       @default(0) // Current number of uses
+  expiresAt              DateTime? // Optional expiry date for the invitation
+  membershipDurationDays Int? // Membership duration in days, applied from user join time
+  isActive               Boolean   @default(true)
+  syncOnJoin             Boolean   @default(false) // Automatically sync user addons when they join
+  createdAt              DateTime  @default(now())
+
+  // Relationships
+  account  AppAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  requests InviteRequest[]
+
+  @@index([accountId])
+  @@index([inviteCode])
+  @@map("invitations")
+}
+
+model InviteRequest {
+  id             String    @id @default(cuid())
+  invitationId   String
+  accountId      String
+  email          String
+  username       String
+  status         String    @default("pending") // pending, accepted, rejected
+  groupName      String? // Group name to assign user to when accepted
+  oauthCode      String? // Stremio OAuth code when accepted
+  oauthLink      String? // Stremio OAuth link when accepted
+  oauthExpiresAt DateTime? // When OAuth link expires
+  stremioAuthKey String? // Encrypted Stremio auth key from upfront OAuth
+  createdAt      DateTime  @default(now())
+  respondedAt    DateTime?
+  respondedBy    String? // accountId who responded
+
+  // Relationships
+  invitation Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+
+  @@index([invitationId])
+  @@index([accountId])
+  @@index([email])
+  @@index([status])
+  @@map("invite_requests")
+}
+
+// Vault: encrypted credential/account tracking with expiry + active-check monitoring
+model VaultEntry {
+  // Failover partner, mirroring Addon.backupAddon: when this credential's
+  // own health check is failing, consumers use the backup instead. Same
+  // self-relation shape and the same reasoning - a dead debrid/usenet key
+  // should not take the feature down with it when a spare exists.
+  backupEntryId    String?
+  backupEntry      VaultEntry?  @relation("VaultBackup", fields: [backupEntryId], references: [id])
+  primaryEntries   VaultEntry[] @relation("VaultBackup")
+  id               String    @id @default(cuid())
+  accountId        String    @default("default")
+  name             String
+  category         String
+  provider         String?
+  secretLabel      String    @default("API Key")
+  encryptedSecret  String    @db.Text
+  testType         String    @default("manual")
+  testConfig       String?   @db.Text
+  // See schema.sqlite.prisma's comment - opt-in daily auto-remove sweep for
+  // finished/idle real_debrid/torbox torrents.
+  autoRemoveEnabled   Boolean   @default(false)
+  autoRemoveAfterDays Int       @default(7)
+  lastAutoRemoveAt    DateTime?
+  dashboardUrl     String?
+  cost             Float? // see schema.sqlite.prisma comment
+  costCycle        String    @default("monthly")
+  expiresAt        DateTime?
+  notifyDaysBefore Int       @default(3)
+  lastCheckedAt    DateTime?
+  lastCheckStatus  String?
+  lastCheckMessage String?
+  lastNotifiedAt   DateTime?
+  snoozedUntil     DateTime?
+  healthIgnored    Boolean   @default(false) // hides this entry from the Health page's Attention list/notifications entirely (unlike snoozedUntil, not time-bound)
+  isActive         Boolean   @default(true)
+  position         Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([accountId])
+  @@index([accountId, category])
+  @@map("vault_entries")
+}
+
+// Snapshots: saved addon-set "templates" that can be deployed to any user or group
+model AddonSnapshot {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  name        String
+  description String?
+  addonsJson  String   @db.Text
+  sourceType  String?
+  sourceId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([accountId])
+  @@map("addon_snapshots")
+}
+
+// Metrics: Watch snapshots - daily snapshots of library items for delta computation
+model WatchSnapshot {
+  id                 String    @id @default(cuid())
+  accountId          String    @default("default")
+  userId             String
+  itemId             String // Library item ID - the base show ID for series, not per-episode (episode identity lives in videoId below)
+  date               DateTime  @db.Date // Date of snapshot (YYYY-MM-DD)
+  overallTimeWatched BigInt? // Total watch time in milliseconds
+  timeOffset         BigInt? // Current time offset in milliseconds
+  videoId            String? // For series: which episode this snapshot's overallTimeWatched/timeOffset actually describes (e.g. "tt123456:1:5") - see getMaxOverallTimeWatched's comment for why this matters
+  lastWatched        DateTime? // Last watched timestamp
+  mtime              DateTime? // Library item modification time
+  createdAt          DateTime  @default(now())
+
+  @@unique([accountId, userId, itemId, date])
+  @@index([accountId, userId, date])
+  @@index([accountId, userId, itemId])
+  @@map("watch_snapshots")
+}
+
+// Metrics: Watch activity - deltas (watch time changes) for accurate daily/weekly stats
+model WatchActivity {
+  id               String   @id @default(cuid())
+  accountId        String   @default("default")
+  userId           String
+  itemId           String // Library item ID
+  date             DateTime @db.Date // Date of watch activity
+  watchTimeSeconds Int // Delta: watch time in seconds (only positive changes)
+  itemType         String // "movie" or "series"
+  // For a series, which episode this delta belongs to (e.g. "tt123456:1:5").
+  // null for movies, and null for every row written before this column
+  // existed - which is why series history prior to it cannot be broken out
+  // per episode retroactively. WatchSnapshot carries a videoId too, but it is
+  // unique per (item, DAY), so it only ever knows the LAST episode seen that
+  // day and cannot describe a day when several were watched.
+  videoId          String?
+  createdAt        DateTime @default(now())
+
+  @@index([accountId, userId, date, itemType])
+  @@index([accountId, userId, itemId])
+  @@index([accountId, date])
+  @@map("watch_activity")
+}
+
+// Metrics: Episode watch history - tracks individual episode watches for series
+// This provides episode-level history since Stremio only keeps the last watched episode per show
+model EpisodeWatchHistory {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  userId      String
+  showId      String // Base show ID (e.g., "tt8080122")
+  showName    String // Show name for display
+  videoId     String // Full video_id (e.g., "tt8080122:4:6" or "kitsu:46676:1")
+  season      Int? // Season number (null if unknown)
+  episode     Int? // Episode number (null if unknown)
+  episodeName String? // Episode title from Cinemeta, when known - fetched once via the same lookup used for Discord "started watching" embeds (server/utils/notify.js's fetchMetadata), not on every poll
+  // Real completion for this episode - same semantics as MovieWatchHistory.completed.
+  completed   Boolean?
+  poster      String? // Show poster URL
+  profileLabel String?
+  durationSeconds Int?     // Real duration, backfilled from a matching AIOStreams-proxy WatchSession entry when the two are merged as the same viewing event // Which provider profile this was watched under (e.g. Nuvio profile name), if known
+  debridService String? // e.g. "torbox" - only set when this watch was confidently correlated to a ProxyStreamSession AND a known debrid pattern was found in its resolved URL (server/utils/debridDetection.js). Null means either not proxied, or proxied but not confidently identified - never a guess either way.
+  watchedAt   DateTime // When this episode was watched
+  createdAt   DateTime @default(now())
+
+  @@index([accountId, userId, watchedAt])
+  @@index([accountId, userId, showId])
+  @@unique([accountId, userId, videoId]) // One entry per episode per user
+  @@map("episode_watch_history")
+}
+
+// Metrics: Movie watch history - the movie equivalent of EpisodeWatchHistory.
+// WatchActivity records that a movie was watched (for aggregate counts/streaks)
+// but has no title/poster; this table stores that display metadata reliably,
+// via the same already-working pipeline that populates EpisodeWatchHistory,
+// instead of relying on WatchSession (built for a different, live-detection
+// purpose and much less reliably populated for either provider).
+model MovieWatchHistory {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  userId    String
+  itemId    String // Movie ID (e.g., "tt1234567")
+  itemName  String // Movie name for display
+  poster    String? // Movie poster URL
+  profileLabel String?
+  durationSeconds Int?     // Real duration, backfilled from a matching AIOStreams-proxy WatchSession entry when the two are merged as the same viewing event // Which provider profile this was watched under (e.g. Nuvio profile name), if known
+  debridService String? // See EpisodeWatchHistory.debridService's comment - same field, same rules.
+  // Real completion (position/runtime >= ~90% at write time). null = unknown,
+  // true = finished, false = started but dropped. See sqlite schema comment.
+  completed Boolean?
+  // Rewatch tracking (movies only). rewatchCount is how many times this movie
+  // was watched to the end AGAIN after its first completion. rewatchArmed is
+  // an internal edge-trigger flag: set when a finished movie's playback
+  // position dips back near the start (a rewatch began), cleared when it
+  // reaches the end again (which is when rewatchCount increments). This state
+  // machine is deliberately isolated from all watch-time/delta math - it only
+  // ever touches these two fields - so it can never inflate Watch Time. Series
+  // are excluded: a per-episode position reset there is just normal
+  // episode-to-episode progression, not a rewatch.
+  rewatchCount Int     @default(0)
+  rewatchArmed Boolean @default(false)
+  watchedAt DateTime // When this movie was watched
+  createdAt DateTime @default(now())
+
+  @@index([accountId, userId, watchedAt])
+  @@unique([accountId, userId, itemId]) // One entry per movie per user
+  @@map("movie_watch_history")
+}
+
+// Sync Guardian: per-user "was this account synced last time we checked"
+// baseline, so a transition from synced -> unsynced that SlickSync itself
+// didn't cause (auto-sync off, no admin action) can be told apart from a
+// user that has simply never been synced (a normal, pre-existing state, not
+// a drift event). See server/utils/syncGuardian.js for the full mechanism -
+// built directly off catching a real revert live on 2026-07-30.
+model UserSyncGuardState {
+  id            String    @id @default(cuid())
+  accountId     String    @default("default")
+  userId        String
+  wasSynced     Boolean   @default(false)
+  lastCheckedAt DateTime?
+
+  @@unique([accountId, userId])
+  @@map("user_sync_guard_state")
+}
+
+// User-curated lists of titles (roadmap #7). Account-scoped, shared across the
+// account's admins (not per-user) - matches how Discover/Groups behave here.
+// itemsJson is a stringified array of { id, type, name, poster?, year? }; kept
+// as text (not Json) to mirror the SQLite schema so the router handles both
+// identically.
+model CustomList {
+  id               String   @id @default(cuid())
+  accountId        String   @default("default")
+  name             String
+  description      String?
+  itemsJson        String   @default("[]")
+  coverImageUrl    String?
+  coverColorIndex  Int?
+  // The TMDb/MDBList URL this catalog was imported from, if any - null for
+  // a catalog built by hand. Lets "Refresh from source" re-pull the same
+  // list later without asking the user to paste the URL again.
+  importSourceUrl  String?
+  // Opt-in daily re-pull of importSourceUrl (see scheduleCatalogAutoRefresh) -
+  // meaningless without importSourceUrl set, so the scheduler always checks
+  // both. Off by default even for imported catalogs: replacing items
+  // unattended is a bigger behavior change than the existing manual
+  // "Refresh" button, which always shows a diff before applying.
+  autoRefresh      Boolean  @default(false)
+  // 'daily' (default) or 'weekly' - how often the scheduler actually applies
+  // a refresh once autoRefresh is on. The scheduler itself still ticks daily
+  // (see catalogAutoRefresh.js); 'weekly' lists are just skipped on ticks
+  // where lastAutoRefreshAt is under 7 days old, rather than running on a
+  // separate weekly timer.
+  autoRefreshFrequency String @default("daily")
+  lastAutoRefreshAt DateTime?
+  // Owner-set opt-in: when true, this catalog is visible (read-only) to
+  // every OTHER account on this same instance, not just its own owner -
+  // per-catalog, never instance-wide or admin-forced. Every mutating route
+  // in routes/lists.js already scopes its query by (id, accountId), so a
+  // non-owner viewer is blocked from writes purely by that existing
+  // ownership check - this field only changes what GET / returns, not any
+  // write-path authorization.
+  shared           Boolean  @default(false)
+  // Federation: when non-null, this catalog is published for OTHER SlickSync
+  // instances to subscribe to, and this is the bearer token in its share URL.
+  // null = not published (the default, and how you revoke). Rotating means
+  // writing a new value, which invalidates the old URL immediately.
+  //
+  // Deliberately NOT reusing `shared` above: that means "visible to other
+  // accounts on THIS instance", and quietly widening it to mean "published to
+  // the internet" would expose every catalog anyone had shared internally.
+  // Two different audiences, two separate opt-ins.
+  federationToken  String?
+  // Featured/hero treatment on the Catalogs index page - at most meaningful
+  // for one catalog at a time (the client only ever shows the first pinned
+  // one as the hero), but not DB-enforced as singular; a second pin just
+  // means the client picks the most-recently-updated one to feature.
+  pinned           Boolean  @default(false)
+  // Opt-in content-rating allowlist - see schema.sqlite.prisma for the full comment.
+  keptRatings      String?
+  lastRemovalSnapshot String?
+  lastRemovalAt    DateTime?
+  // Auto-generated themed catalog - see schema.sqlite.prisma for the full comment.
+  autoGenerated    Boolean  @default(false)
+  autoGeneratedKey String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([accountId, autoGeneratedKey])
+  @@index([accountId])
+  @@map("custom_lists")
+}
+
+// See schema.sqlite.prisma for the full comment.
+model DismissedThemedCatalog {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  key         String
+  dismissedAt DateTime @default(now())
+
+  @@unique([accountId, key])
+  @@map("dismissed_themed_catalogs")
+}
+
+// Metrics: Watch sessions - tracks individual viewing sessions with start/end times
+// Since Stremio only provides cumulative watch time, we track sessions during syncs
+model WatchSession {
+  id              String    @id @default(cuid())
+  accountId       String    @default("default")
+  userId          String
+  itemId          String // Show/movie ID (e.g., "tt8080122")
+  videoId         String? // Episode ID for series (e.g., "tt8080122:4:6")
+  itemName        String // Show/movie name for display
+  itemType        String // "movie" or "series"
+  season          Int? // Season number for series
+  episode         Int? // Episode number for series
+  poster          String? // Poster URL
+  startTime       DateTime // When the viewing session started
+  endTime         DateTime? // When it ended (null = still watching)
+  startPosition   Int? // Playback position (ms) when this session began - lets
+                        // durationSeconds reflect real watched-content progress
+                        // (position delta) instead of wall-clock time, since the
+                        // provider's position can go stale for a while between
+                        // checkpoints. Null for older sessions predating this field.
+  durationSeconds Int       @default(0) // Watch duration in seconds
+  requestCount    Int?     // Total request count from the underlying AIOStreams proxy connection(s), summed across stop/resume segments the same way durationSeconds is
+  lastPosition    Int? // Latest known playback position (ms) - a direct
+                        // snapshot value, always accurate the instant new
+                        // data arrives, unlike a computed session-elapsed
+                        // duration which can go stale between checkpoints
+  totalDuration   Int? // Content's total runtime (ms), captured alongside
+                        // lastPosition
+  isActive        Boolean   @default(true) // True if session is still active
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([accountId, userId, itemId])
+  @@index([accountId, userId, startTime])
+  @@index([accountId, userId, isActive])
+  @@index([accountId, isActive])
+  @@map("watch_sessions")
+}
+
+// Dashboard: shows a user has removed from their own Continue Watching row.
+// Account-scoped (not per-browser) so a dismissal made from one browser/
+// device stays dismissed when checking the Dashboard from another.
+model DismissedContinueWatching {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  userId    String // The show's owner (matches ContinueWatchingItem.userId), not who dismissed it - this is a single shared admin dashboard
+  showId    String
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, userId, showId])
+  @@map("dismissed_continue_watching")
+}
+
+// SlickSync's own personal watchlist — see schema.sqlite.prisma for the full comment.
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String
+  name      String
+  poster    String?
+  addedAt   DateTime @default(now())
+
+  @@unique([accountId, itemId])
+  @@index([accountId, addedAt])
+  @@map("watchlist_item")
+}
+
+// SlickTrax "Not interested" feedback — see schema.sqlite.prisma for the full comment.
+model NotInterestedItem {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, itemId])
+  @@map("not_interested_items")
+}
+
+// SlickTrax reactions (👍/❤️/👎) — see schema.sqlite.prisma for the full comment.
+model TitleReaction {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String
+  reaction  String
+  itemName  String?
+  poster    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, itemId])
+  @@map("title_reactions")
+}
+
+// SlickTrax personal ratings (1-10, optionally per-season) — see schema.sqlite.prisma for the full comment.
+model TitleRating {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  itemType  String
+  season    Int      @default(0)
+  rating    Int
+  itemName  String?
+  poster    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountId, itemId, season])
+  @@index([accountId, itemId])
+  @@map("title_ratings")
+}
+
+// Manual "watched" override — see schema.sqlite.prisma for the full comment.
+model ManualWatchOverride {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  itemId    String
+  watched   Boolean
+  markedAt  DateTime @default(now())
+
+  @@unique([accountId, itemId])
+  @@map("manual_watch_override")
+}
+
+// Per-episode dismissals for the "Coming up" panel — see schema.sqlite.prisma.
+model DismissedUpcomingEpisode {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  showId    String
+  season    Int
+  episode   Int
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, showId, season, episode])
+  @@map("dismissed_upcoming_episode")
+}
+
+// New-episode alerts - see schema.sqlite.prisma for the full comments; kept
+// field-identical here (the v1.9.95 postmortem is what happens when these
+// two schemas drift).
+model ShowEpisodeAlertState {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  showId      String
+  lastSeason  Int
+  lastEpisode Int
+  // Next UPCOMING (future-dated) episode from Cinemeta, refreshed every poll —
+  // powers the Dashboard "Coming up" calendar. Null when the show has no
+  // announced future episode (caught up / ended). Display fields are stored
+  // here too so the calendar endpoint needs no extra Cinemeta lookup.
+  showName    String?
+  poster      String?
+  nextSeason  Int?
+  nextEpisode Int?
+  nextTitle   String?
+  nextAirDate DateTime?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@unique([accountId, showId])
+  @@index([accountId, nextAirDate])
+  @@map("show_episode_alert_state")
+}
+
+model EpisodeAlert {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  showId    String
+  showName  String
+  season    Int
+  episode   Int
+  title     String?
+  poster    String?
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, showId, season, episode])
+  @@index([accountId, createdAt])
+  @@map("episode_alerts")
+}
+
+model AddonHealthAlert {
+  id              String   @id @default(cuid())
+  accountId       String   @default("default")
+  addonId         String
+  addonName       String
+  event           String
+  backupAddonId   String?
+  backupAddonName String?
+  groupCount      Int      @default(0)
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@map("addon_health_alerts")
+}
+
+model PushSubscription {
+  id         String    @id @default(cuid())
+  accountId  String    @default("default")
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  label      String?
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([accountId])
+  @@map("push_subscriptions")
+}
+
+// Metrics: Proxy stream sessions - "Now Playing" data sourced from AIOStreams'
+// built-in proxy (which sees every stream request passing through it in real
+// time, regardless of provider - Stremio, Nuvio, anything using the proxy).
+// Deliberately NOT merged into WatchSession: WatchSession was built for a
+// different, live-detection purpose and is currently unreliably populated for
+// both providers (see MovieWatchHistory comment above). This table is fully
+// independent so the AIOStreams integration doesn't inherit that bug, and so
+// it keeps working regardless of whether/how the WatchSession issue is fixed.
+//
+// Identity key matches AIOStreams' own BuiltinProxyStats: it keys connections
+// by (ip, url), not by a single requestId - concurrent requests (e.g. range
+// requests for the same file) merge into one entry with a growing/shrinking
+// requestIds[] array and a count. So (accountId, aiostreamsUser, clientIp,
+// url) is the real stable identity here, not requestId.
+model ProxyStreamSession {
+  id              String    @id @default(cuid())
+  accountId       String    @default("default")
+  aiostreamsUser  String    // Username as reported by AIOStreams proxy stats (may not map 1:1 to a SlickSync User)
+  clientIp        String    // AIOStreams' `ip` field - client IP that opened this connection
+  url             String    // Full upstream URL being proxied (may contain the raw source link) - part of AIOStreams' own identity key alongside ip
+  filename        String?   // Raw filename AIOStreams reported, e.g. "Powder.1995.1080p.AMZN.WEB-DL.DD5.1.H.264-SiGMA"
+  displayName     String?   // Best-effort cleaned-up title parsed from filename, e.g. "Powder (1995)"
+  posterUrl       String?   // Poster URL from an AIOMetadata search lookup, cached so we don't re-query on every poll while a stream is still active
+  metadataMatchedAt DateTime? // When the AIOMetadata lookup was attempted (whether or not it found a match) - null means not yet attempted
+  metadataItemId   String?   // Real IMDb-style ID from the AIOMetadata match, e.g. "tt1032819" - used to key the completed-history WatchSession row when this stream ends
+  metadataItemType String?   // "movie" or "series" from the AIOMetadata match
+  linkedWatchSessionId String? // ID of the WatchSession row this stream's completed history was written to, if any - lets a poster found later (e.g. by the retry pass) backfill into the history entry too, not just this row
+  requestCount    Int       @default(1) // AIOStreams' `count` - number of individual requests merged into this entry
+  startTime       DateTime  // AIOStreams' `timestamp` - when this connection was first opened
+  lastSeenAt      DateTime  // AIOStreams' `lastSeen` - most recent activity on this connection, updates as long as it's active
+  endTime         DateTime? // When AIOStreams stopped reporting this active (null = still active)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([accountId, aiostreamsUser, clientIp, url])
+  @@index([accountId, isActive])
+  @@index([accountId, aiostreamsUser, isActive])
+  @@map("proxy_stream_sessions")
+}
+
+// Remembers which managed user a client IP resolved to the last time there
+// was a REAL signal (a unique direct/email match, or a native title match) -
+// used as the tiebreaker for FUTURE ambiguous proxy attributions from the
+// same IP, instead of a fixed AIOSTREAMS_FALLBACK_USER_IDS order. See
+// proxyNowPlaying.js's disambiguateMatch.
+model ProxyUserIpAffinity {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  clientIp    String
+  userId      String
+  confirmedAt DateTime @default(now())
+
+  @@unique([accountId, clientIp])
+  @@map("proxy_user_ip_affinity")
+}
+
+// Persistent bell notifications - the durable event store written from the
+// same dispatch path as push/Discord. read/readAt are server-side so read
+// state is consistent across devices.
+model Notification {
+  id        String    @id @default(cuid())
+  accountId String    @default("default")
+  type      String
+  title     String
+  body      String
+  poster    String?
+  url       String?
+  data      String?
+  dedupeKey String?
+  read      Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([accountId, dedupeKey])
+  @@index([accountId, createdAt])
+  @@map("notifications")
+}
+
+model NotificationDigestEntry {
+  id        String   @id @default(cuid())
+  accountId String
+  category  String
+  summary   String
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
+  @@map("notification_digest_entry")
+}
+
+// A whole-show opt-out from upcoming-episode tracking - stops all Coming Up
+// entries and new-episode alerts for a show until unmuted.
+model MutedShow {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  showId    String
+  showName  String?
+  poster    String?
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, showId])
+  @@map("muted_show")
+}
+
+// Side table for multi-provider account merge (see server/utils/userMerge.js).
+// userId is the SURVIVING User row from a merge; every existing
+// single-provider user is completely unaffected (zero rows here normally).
+model UserProviderCredential {
+  id                String   @id @default(cuid())
+  userId            String
+  providerType      String
+  stremioAuthKey    String?
+  nuvioRefreshToken String?
+  nuvioUserId       String?
+  donorId           String?
+  mergeArchivePath  String?
+  createdAt         DateTime @default(now())
+
+  @@unique([userId, providerType])
+  @@map("user_provider_credentials")
 }
 
 // Deleted things, kept long enough to change your mind.

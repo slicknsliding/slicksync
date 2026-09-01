@@ -212,6 +212,56 @@ const AI_MODEL_OPTIONS_BY_PROVIDER: Record<string, { value: string; label: strin
 // everything rather than nothing.
 const AI_MODEL_OPTIONS_ALL = Object.values(AI_MODEL_OPTIONS_BY_PROVIDER).flat();
 
+// Optional failover key paired with one of the four metadata providers.
+// Only offered once a primary key exists (a backup with nothing to back up
+// is just a confusing second box), and collapsed behind a link until asked
+// for, so the common one-key setup looks exactly as it always did.
+// The backup is used only when the health check has actually found the
+// primary failing or rate-limited - see server/utils/listImport.js.
+function BackupKeyField({
+  field, value, primaryFilled, onChange, onSave,
+}: {
+  field: string;
+  value: string;
+  primaryFilled: boolean;
+  onChange: (v: string) => void;
+  onSave: () => void;
+}) {
+  const [open, setOpen] = useState(!!value);
+  if (!primaryFilled) return null;
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-1.5 text-xs text-muted hover:text-default underline underline-offset-2 transition-colors"
+      >
+        Add a backup key
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2">
+      <label className="block text-xs text-muted mb-1">
+        Backup key <span className="text-subtle">- used automatically if the key above stops working</span>
+      </label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onSave}
+        placeholder="Backup key (optional)"
+        autoComplete="off"
+        spellCheck={false}
+        data-field={field}
+        className="input-base w-full px-3 py-2 text-sm"
+      />
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   // Theme picking + the theme builder now live on their own page (Themes) —
   // only the sensitive-data toggle from useTheme() is still needed here.
@@ -547,6 +597,10 @@ export default function SettingsPage() {
           mdblistApiKey: settings.mdblistApiKey || '',
           rpdbApiKey: settings.rpdbApiKey || '',
           omdbApiKey: settings.omdbApiKey || '',
+          tmdbApiKeyBackup: settings.tmdbApiKeyBackup || '',
+          mdblistApiKeyBackup: settings.mdblistApiKeyBackup || '',
+          rpdbApiKeyBackup: settings.rpdbApiKeyBackup || '',
+          omdbApiKeyBackup: settings.omdbApiKeyBackup || '',
           simklClientId: settings.simklClientId || '',
           enableWatchlist: settings.enableWatchlist !== false,
           enableWatchedIndicators: settings.enableWatchedIndicators !== false,
@@ -1634,6 +1688,13 @@ export default function SettingsPage() {
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"
                 />
+                <BackupKeyField
+                  field="tmdbApiKeyBackup"
+                  value={syncSettings.tmdbApiKeyBackup || ''}
+                  primaryFilled={!!syncSettings.tmdbApiKey}
+                  onChange={(v) => setSyncSettings(prev => ({ ...prev, tmdbApiKeyBackup: v }))}
+                  onSave={() => handleSaveSetting('tmdbApiKeyBackup' as keyof SyncSettings, syncSettings.tmdbApiKeyBackup)}
+                />
               </div>
 
               {/* MDBList key for List import (Lists page - "Import"). Free
@@ -1662,6 +1723,13 @@ export default function SettingsPage() {
                   autoComplete="off"
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"
+                />
+                <BackupKeyField
+                  field="mdblistApiKeyBackup"
+                  value={syncSettings.mdblistApiKeyBackup || ''}
+                  primaryFilled={!!syncSettings.mdblistApiKey}
+                  onChange={(v) => setSyncSettings(prev => ({ ...prev, mdblistApiKeyBackup: v }))}
+                  onSave={() => handleSaveSetting('mdblistApiKeyBackup' as keyof SyncSettings, syncSettings.mdblistApiKeyBackup)}
                 />
               </div>
 
@@ -1693,6 +1761,13 @@ export default function SettingsPage() {
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"
                 />
+                <BackupKeyField
+                  field="rpdbApiKeyBackup"
+                  value={syncSettings.rpdbApiKeyBackup || ''}
+                  primaryFilled={!!syncSettings.rpdbApiKey}
+                  onChange={(v) => setSyncSettings(prev => ({ ...prev, rpdbApiKeyBackup: v }))}
+                  onSave={() => handleSaveSetting('rpdbApiKeyBackup' as keyof SyncSettings, syncSettings.rpdbApiKeyBackup)}
+                />
               </div>
 
               {/* OMDb key - Rotten Tomatoes/Metacritic ratings on posters and
@@ -1722,6 +1797,13 @@ export default function SettingsPage() {
                   autoComplete="off"
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"
+                />
+                <BackupKeyField
+                  field="omdbApiKeyBackup"
+                  value={syncSettings.omdbApiKeyBackup || ''}
+                  primaryFilled={!!syncSettings.omdbApiKey}
+                  onChange={(v) => setSyncSettings(prev => ({ ...prev, omdbApiKeyBackup: v }))}
+                  onSave={() => handleSaveSetting('omdbApiKeyBackup' as keyof SyncSettings, syncSettings.omdbApiKeyBackup)}
                 />
               </div>
 

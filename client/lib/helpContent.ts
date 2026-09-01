@@ -181,7 +181,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     tips: [
       'A failing check is a real signal, not a false alarm - it means the credential genuinely is not working right now. If an indexer blocks your server\'s IP and that is expected, use the Health page\'s Ignore instead of deleting the entry.',
     ],
-    related: ['vault-auto-remove', 'vault-cost-tracking', 'vault-organize', 'health-ignore'],
+    related: ['vault-auto-remove', 'vault-backup-key', 'vault-cost-tracking', 'vault-organize', 'health-ignore'],
     href: '/vault?open=add',
     linkLabel: 'Add an entry',
   },
@@ -193,6 +193,28 @@ export const HELP_ENTRIES: HelpEntry[] = [
     answer: 'On a Real-Debrid/TorBox Vault entry, toggle "Auto-remove" and set a day count. Once a torrent has finished downloading and sat idle past that many days, it\'s deleted from your provider account automatically. Off by default - opt in per entry.',
     href: '/vault',
     linkLabel: 'Open Vault',
+  },
+  {
+    id: 'vault-backup-key',
+    title: 'Backup keys & automatic failover',
+    category: 'Vault & credentials',
+    keywords: ['backup key', 'failover', 'spare key', 'second key', 'expired key', 'key rotation', 'redundancy', 'shared keys', 'per user keys'],
+    answer: 'Any Vault entry can nominate another entry as its backup using the "Backup key" dropdown on its card, and the TMDb/OMDb/MDBList/RPDB keys in Settings each take an optional backup key of their own. When a health check finds the primary failing, expired or rate-limited, lookups switch to the backup instead of breaking.',
+    steps: [
+      'Vault: open the entry, pick another entry from the "Backup key" dropdown. Only active entries in the same category are offered, and an entry cannot back up itself.',
+      'Metadata keys: Settings -> External API Keys -> "Add a backup key" under whichever key you want covered.',
+      'Set the dropdown back to "None", or clear the backup field, to turn failover off again.',
+    ],
+    details: [
+      'The switch only happens once a check has actually found the key bad - never because it merely has not been checked yet. Silently moving to a second key while the first one is fine would make quotas and billing impossible to reason about.',
+      'Backups are not chained. If the backup is failing too, nothing further is tried, so a backup pointed back at its own primary cannot loop.',
+      'What actually swaps: metadata lookups (posters, ratings, list imports) and AI catalog search. Debrid auto-remove deliberately does NOT swap - it deletes torrents from the provider account the key belongs to, and Vault entries have no owner, so a "backup" may well be a different person’s account. Reading a quota with the wrong key is harmless; deleting with it is not. If a spare account should also be swept, give it its own entry and turn auto-remove on there.',
+      'Keys are shared across everyone on the SlickSync account, not set per user. The metadata keys power SlickSync’s own posters and ratings, and Vault is the operator’s credential register. The keys that genuinely differ per person are the ones inside each user’s addon URLs - those are separate addons, and an addon has its own "backup addon" setting for the same purpose.',
+      'Automation can react to all of this: "A backup credential takes over" and "A backup metadata key takes over" fire the moment a spare picks up the slack, and the failure triggers carry a "Has a backup key" field so you can alert loudly only when there is nothing to fall back on. Tasks -> Automation -> Recipes has ready-made versions of both.',
+    ],
+    href: '/vault',
+    linkLabel: 'Open Vault',
+    related: ['vault-add-credential', 'provider-key-health', 'automation-recipes', 'health-ignore'],
   },
   {
     id: 'vault-renewal-forecast',

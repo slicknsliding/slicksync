@@ -2016,7 +2016,7 @@ class ApiClient {
     });
   }
 
-  async updateVaultEntry(id: string, data: Partial<VaultEntryInput> & { isActive?: boolean }) {
+  async updateVaultEntry(id: string, data: Partial<VaultEntryInput> & { isActive?: boolean; backupEntryId?: string | null }) {
     return this.fetch<{ success: boolean }>(`/vault/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -2757,6 +2757,8 @@ export interface VaultEntry {
   // from the provider's own account once it's sat idle this many days.
   autoRemoveEnabled?: boolean;
   autoRemoveAfterDays?: number;
+  /** Failover partner - used when this entry's own health check is failing. */
+  backupEntryId?: string | null;
 }
 
 export interface PushDevice {
@@ -3023,6 +3025,12 @@ export interface SyncSettings {
   mdblistApiKey?: string;
   rpdbApiKey?: string;
   omdbApiKey?: string;
+  /** Failover keys - used automatically when the matching primary above is
+   * found failing or rate-limited by the health check. */
+  tmdbApiKeyBackup?: string;
+  mdblistApiKeyBackup?: string;
+  rpdbApiKeyBackup?: string;
+  omdbApiKeyBackup?: string;
   /** Result of the last validity check per provider - see checkProviderKeys()
    * and server/utils/metadataKeyHealth.js. Absent for a provider that's
    * never been checked. */

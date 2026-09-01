@@ -1,4 +1,5 @@
 const express = require('express');
+const { SETTINGS_SECRET_FIELDS } = require('../utils/settingsSecrets')
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
@@ -1275,7 +1276,13 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
   // which tenant to export. Calling this function directly with a real
   // accountId sidesteps that entirely - no HTTP hop, no auth token needed,
   // same account-scoping logic either way.
-  async function buildConfigExportPayload(req) {
+  // includeSecrets: opt-in, per export. Off by default - a plain config
+  // backup is unencrypted JSON, and people share those while troubleshooting
+  // without thinking about what is inside. But defaulting to safe is not the
+  // same as deciding for the operator: someone keeping backups on their own
+  // encrypted storage has a legitimate reason to want a restore that does not
+  // require also finding a Disaster Recovery Kit passphrase.
+  async function buildConfigExportPayload(req, { includeSecrets = false } = {}) {
       const whereScope = INSTANCE_TYPE === 'public' ? { accountId: req.appAccountId } : {}
       if (INSTANCE_TYPE === 'public' && !req.appAccountId) { const e = new Error('Unauthorized'); e.status = 401; throw e }
       // Ensure request-scoped DEK is available for decryption in public mode
@@ -1513,15 +1520,13 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         accountSync = { useCustomFields: true }
       }
 
-      // Real live secrets, not preferences - these don't belong in a plain
-      // export someone might casually share while troubleshooting. They're
-      // still fully backed up, just through the Disaster Recovery Kit
-      // (disasterRecoveryKit.js), passphrase-encrypted like Vault secrets.
-      if (accountSync && typeof accountSync === 'object') {
-        delete accountSync.webhookUrl
-        delete accountSync.rpdbApiKey
-        delete accountSync.tmdbApiKey
-        delete accountSync.mdblistApiKey
+      // Real live secrets, not preferences. Stripped unless the caller
+      // explicitly asked for them, because a plain export is unencrypted and
+      // easy to share by accident. They are always in the Disaster Recovery
+      // Kit regardless (disasterRecoveryKit.js), passphrase-encrypted like
+      // Vault secrets - so leaving them out here never means losing them.
+      if (accountSync && typeof accountSync === 'object' && !includeSecrets) {
+        for (const f of SETTINGS_SECRET_FIELDS) delete accountSync[f]
       }
 
       const payload = { users: decryptedUsers, groups: cleanedGroups, addons: exportedAddons, sync: accountSync }
@@ -1532,7 +1537,10 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
   // wrapper around buildConfigExportPayload above.
   router.get('/config-export', async (req, res) => {
     try {
-      const payload = await buildConfigExportPayload(req)
+      // ?includeSecrets=1 (or {includeSecrets:true}) opts this one export
+      // into carrying live keys - see buildConfigExportPayload.
+      const wantSecrets = req.query?.includeSecrets === '1' || req.query?.includeSecrets === 'true' || req.body?.includeSecrets === true
+      const payload = await buildConfigExportPayload(req, { includeSecrets: wantSecrets })
       res.setHeader('Content-Disposition', 'attachment; filename="slicksync-export.json"')
       return res.json(payload)
     } catch (e) {

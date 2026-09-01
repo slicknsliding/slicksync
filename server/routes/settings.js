@@ -595,6 +595,12 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           mdblistApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.mdblistApiKey === 'string') ? syncCfg.mdblistApiKey : '',
           rpdbApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.rpdbApiKey === 'string') ? syncCfg.rpdbApiKey : '',
           omdbApiKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.omdbApiKey === 'string') ? syncCfg.omdbApiKey : '',
+          // Backup keys, used automatically when the daily health check has
+          // found the primary failing - see resolveKeyFromSettings.
+          tmdbApiKeyBackup: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.tmdbApiKeyBackup === 'string') ? syncCfg.tmdbApiKeyBackup : '',
+          omdbApiKeyBackup: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.omdbApiKeyBackup === 'string') ? syncCfg.omdbApiKeyBackup : '',
+          mdblistApiKeyBackup: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.mdblistApiKeyBackup === 'string') ? syncCfg.mdblistApiKeyBackup : '',
+          rpdbApiKeyBackup: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.rpdbApiKeyBackup === 'string') ? syncCfg.rpdbApiKeyBackup : '',
           simklClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.simklClientId === 'string') ? syncCfg.simklClientId : '',
           nuvioServerUrl: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioServerUrl === 'string') ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioAnonKey === 'string') ? syncCfg.nuvioAnonKey : '',
@@ -666,7 +672,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, nuvioServerUrl, nuvioAnonKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -758,6 +764,11 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // above it, so one account's key/quota isn't silently shared by
           // every other account on this instance.
           omdbApiKey: omdbApiKey !== undefined ? (typeof omdbApiKey === 'string' ? normalizeOmdbApiKey(omdbApiKey.trim()) : '') : (baseCfg.omdbApiKey || ''),
+          // Backup keys - same trim/blank-clears convention as the primaries.
+          tmdbApiKeyBackup: tmdbApiKeyBackup !== undefined ? (typeof tmdbApiKeyBackup === 'string' ? tmdbApiKeyBackup.trim() : '') : (baseCfg.tmdbApiKeyBackup || ''),
+          mdblistApiKeyBackup: mdblistApiKeyBackup !== undefined ? (typeof mdblistApiKeyBackup === 'string' ? mdblistApiKeyBackup.trim() : '') : (baseCfg.mdblistApiKeyBackup || ''),
+          rpdbApiKeyBackup: rpdbApiKeyBackup !== undefined ? (typeof rpdbApiKeyBackup === 'string' ? rpdbApiKeyBackup.trim() : '') : (baseCfg.rpdbApiKeyBackup || ''),
+          omdbApiKeyBackup: omdbApiKeyBackup !== undefined ? (typeof omdbApiKeyBackup === 'string' ? omdbApiKeyBackup.trim() : '') : (baseCfg.omdbApiKeyBackup || ''),
           simklClientId: simklClientId !== undefined ? (typeof simklClientId === 'string' ? simklClientId.trim() : '') : (baseCfg.simklClientId || ''),
           nuvioServerUrl: nuvioServerUrl !== undefined ? (typeof nuvioServerUrl === 'string' ? nuvioServerUrl.trim().replace(/\/+$/, '') : '') : (baseCfg.nuvioServerUrl || ''),
           nuvioAnonKey: nuvioAnonKey !== undefined ? (typeof nuvioAnonKey === 'string' ? nuvioAnonKey.trim() : '') : (baseCfg.nuvioAnonKey || ''),

@@ -47,6 +47,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
           lastCheckedAt: e.lastCheckedAt, lastCheckStatus: e.lastCheckStatus, lastCheckMessage: e.lastCheckMessage,
           isActive: e.isActive, testType: e.testType, secretLabel: e.secretLabel, updatedAt: e.updatedAt,
           position: e.position, autoRemoveEnabled: e.autoRemoveEnabled, autoRemoveAfterDays: e.autoRemoveAfterDays,
+          backupEntryId: e.backupEntryId,
         })),
       });
     } catch (error) {
@@ -117,6 +118,10 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (entry.testType !== 'real_debrid' && entry.testType !== 'torbox') {
         return res.json({ usage: null });
       }
+      // No failover here on purpose: this reports the usage OF THIS ENTRY,
+      // shown on this entry's own card. Quietly answering with the backup
+      // account's figures would label one account's numbers with another
+      // account's name - worse than showing nothing.
       let secret;
       try { secret = decrypt(entry.encryptedSecret, req); } catch { return res.json({ usage: null }); }
       const { fetchDebridUsage } = require('../utils/debridUsage');
@@ -222,7 +227,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       const {
         name, category, provider, secretLabel, secret,
         testType, testConfig, dashboardUrl, cost, costCycle, expiresAt, notifyDaysBefore, isActive, healthIgnored,
-        autoRemoveEnabled, autoRemoveAfterDays,
+        autoRemoveEnabled, autoRemoveAfterDays, backupEntryId,
       } = req.body || {};
 
       if (category && !CATEGORIES.includes(category)) {
@@ -246,6 +251,22 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       if (healthIgnored !== undefined) data.healthIgnored = !!healthIgnored;
       if (autoRemoveEnabled !== undefined) data.autoRemoveEnabled = !!autoRemoveEnabled;
       if (autoRemoveAfterDays !== undefined) data.autoRemoveAfterDays = typeof autoRemoveAfterDays === 'number' && autoRemoveAfterDays > 0 ? autoRemoveAfterDays : 7;
+
+      // Failover partner. Guarded rather than trusted: it has to be a real
+      // entry on this same account, and an entry cannot back up itself
+      // (which would make resolveVaultEntry a no-op that merely looks
+      // configured). Empty string clears it.
+      if (backupEntryId !== undefined) {
+        if (!backupEntryId) {
+          data.backupEntryId = null;
+        } else if (backupEntryId === existing.id) {
+          return res.status(400).json({ error: 'An entry cannot be its own backup' });
+        } else {
+          const backup = await prisma.vaultEntry.findFirst({ where: { id: backupEntryId, accountId } });
+          if (!backup) return res.status(400).json({ error: 'Backup entry not found' });
+          data.backupEntryId = backup.id;
+        }
+      }
 
       await prisma.vaultEntry.update({ where: { id: existing.id }, data });
       res.json({ success: true });

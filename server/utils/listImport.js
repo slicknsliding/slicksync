@@ -34,14 +34,60 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/w342'
 // Surfaced to the caller via `truncated` so it's never a silent cut.
 const MAX_IMPORT_ITEMS = 200
 
-async function resolveKeyFromSettings(prisma, getAccountId, req, settingsField, envVar) {
+// Maps a settings field to the provider name used in keyHealth, so a key
+// that the daily check has already found to be failing can be skipped in
+// favour of its backup. Kept explicit rather than derived from the field
+// name - a rename should break loudly here, not silently stop failing over.
+const HEALTH_PROVIDER_BY_FIELD = {
+  tmdbApiKey: 'tmdb',
+  omdbApiKey: 'omdb',
+  mdblistApiKey: 'mdblist',
+  rpdbApiKey: 'rpdb',
+}
+
+/**
+ * Resolution order: the account's own key, then its backup key, then the
+ * instance-wide env var.
+ *
+ * The account's key is SKIPPED when the last health check found it failing
+ * and a backup exists - the point of a backup key is that a dead or
+ * exhausted primary stops taking the app down with it. This reads the stored
+ * result rather than testing anything, so it costs nothing per call; the
+ * daily check (metadataKeyHealth.js) is what keeps that judgement current,
+ * and a recovered key is used again on the next check.
+ *
+ * A rate-limited key counts as failing here too: an exhausted allowance
+ * means no posters either way, so the backup is strictly better while it
+ * lasts.
+ */
+async function resolveKeyFromSettings(prisma, getAccountId, req, settingsField, envVar, { allowBackup = true } = {}) {
   try {
     const accountId = (typeof getAccountId === 'function' ? getAccountId(req) : null) || 'default'
     const acc = await prisma?.appAccount?.findUnique({ where: { id: accountId }, select: { sync: true } })
     let cfg = acc?.sync
     if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
-    const fromSettings = cfg && typeof cfg === 'object' && typeof cfg[settingsField] === 'string' ? cfg[settingsField].trim() : ''
-    if (fromSettings) return fromSettings
+    if (!cfg || typeof cfg !== 'object') cfg = {}
+
+    const read = (field) => (typeof cfg[field] === 'string' ? cfg[field].trim() : '')
+    const primary = read(settingsField)
+    const backup = read(`${settingsField}Backup`)
+
+    // allowBackup:false is for the health check itself, which MUST test the
+    // primary. Letting it follow failover makes the two halves chase each
+    // other: the check would test the backup, record the provider as healthy,
+    // which un-marks the primary as bad, which sends the next lookup back to
+    // the dead primary, which fails the next check - flip-flopping between
+    // keys every cycle and never settling.
+    if (primary) {
+      if (!allowBackup) return primary
+      const provider = HEALTH_PROVIDER_BY_FIELD[settingsField]
+      const health = provider ? cfg.keyHealth?.[provider] : null
+      const primaryIsBad = !!health && health.ok === false
+      if (!primaryIsBad || !backup) return primary
+      // Primary is known-bad and a backup exists - use it.
+      return backup
+    }
+    if (backup && allowBackup) return backup
   } catch {}
   return (process.env[envVar] || '').trim()
 }

@@ -398,6 +398,13 @@ model InviteRequest {
 
 // Vault: encrypted credential/account tracking with expiry + active-check monitoring
 model VaultEntry {
+  // Failover partner, mirroring Addon.backupAddon: when this credential's
+  // own health check is failing, consumers use the backup instead. Same
+  // self-relation shape and the same reasoning - a dead debrid/usenet key
+  // should not take the feature down with it when a spare exists.
+  backupEntryId    String?
+  backupEntry      VaultEntry?  @relation("VaultBackup", fields: [backupEntryId], references: [id])
+  primaryEntries   VaultEntry[] @relation("VaultBackup")
   id               String    @id @default(cuid())
   accountId        String    @default("default")
   name             String                          // display name, e.g. "Newshosting account"

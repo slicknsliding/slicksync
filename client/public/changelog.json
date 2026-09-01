@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.77.0",
+    "date": "2026-09-01",
+    "title": "1.77.0 — Backup keys that take over on their own, and a say in what backups carry",
+    "features": [
+      "Any API key can now have a spare standing behind it. Vault entries get a \"Backup key\" dropdown, and the TMDb, OMDb, MDBList and RPDB keys in Settings each take a backup of their own. When a key is found broken, expired or rate-limited, lookups move to the backup instead of quietly failing — posters, ratings and list imports keep working while the dead key waits to be replaced.",
+      "The switch only happens once a check has actually found a key bad, never because it simply has not been checked yet, so a working key is never swapped out from under you. Backups are not chained either, so a backup pointed back at its own primary cannot loop.",
+      "Debrid auto-remove deliberately stays on its own key. It deletes torrents from the provider account the key belongs to, and a backup may well be someone else's account — so a spare that should also be swept gets its own entry and its own setting, rather than being cleaned out on another entry's schedule.",
+      "Automation can react to all of it. New triggers fire when a backup takes over, and the existing key-failure triggers now say whether a spare exists — so an alert can be loud when nothing can take over and quiet when something already has. Ready-made versions of both are in Tasks → Automation → Recipes, including webhook variants for sending quota warnings somewhere other than the in-app bell.",
+      "Whether a config backup carries your API keys is now your decision. Backups still leave them out by default, since a config export is plain readable JSON that gets passed around while troubleshooting — but anyone keeping backups on storage they trust can now include them and restore in one step, instead of needing the Disaster Recovery Kit passphrase as well.",
+      "A key running low on its allowance can now trigger a rule, not just show a number on a settings page. React before the allowance runs out and artwork quietly stops appearing, rather than afterwards."
+    ],
+    "bugFixes": []
+  },
+  {
     "version": "1.76.2",
     "date": "2026-09-01",
     "title": "1.76.2 — Addons that block servers can now be added, and expiring users no longer disappear quietly",

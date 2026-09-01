@@ -22,6 +22,17 @@ async function runDebridAutoRemove(prisma, decrypt) {
     let removedTotal = 0
     for (const entry of entries) {
       try {
+        // Deliberately does NOT follow the entry's backup key, unlike every
+        // read-only consumer of failover. Auto-remove DELETES torrents from
+        // the provider account the key belongs to. Vault entries are
+        // account-scoped with no owner field, so a "backup" may well be a
+        // different person's debrid account - failing over here would start
+        // deleting their torrents, on this entry's schedule, without either
+        // of them asking for it. Reading a quota with the wrong key is a
+        // harmless mistake; deleting with the wrong key is not.
+        //
+        // If the spare account should also be swept, it has its own entry
+        // and its own auto-remove toggle - which is the honest way to say so.
         const apiKey = decrypt(entry.encryptedSecret, { appAccountId: entry.accountId })
         if (!apiKey) continue
 
