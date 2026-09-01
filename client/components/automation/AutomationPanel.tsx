@@ -30,8 +30,69 @@ const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // nav-level route - this is operator tooling (same category as backups,
 // snapshots, disaster recovery kit already on that page), not a page most
 // admins need parked in the sidebar every day.
+// One rule as one readable sentence: "When a vault credential stops working,
+// only when Category is debrid, then send a notification." This is the core
+// of making the panel approachable - the data model (trigger/conditions/
+// actions) is fine, but describing a rule in its own jargon ("2 conditions
+// -> 1 action") made every rule look like configuration instead of a plain
+// statement of intent. Used by the rule list AND as the live preview while
+// editing, so what you read later is exactly what you watched yourself say.
+function describeRule(
+  registry: AutomationRegistry,
+  triggerType: string,
+  conditions: AutomationCondition[],
+  actions: AutomationActionConfig[],
+) {
+  const trigger = registry.triggers.find((t) => t.type === triggerType);
+  const fields = trigger?.fields || [];
+  const condText = conditions
+    .map((c) => {
+      const f = fields.find((x) => x.name === c.field);
+      const op = registry.operators.find((o) => o.op === c.op);
+      if (!f || !op) return null;
+      // The registry marks value-less operators (is true / is false) as
+      // unary - same flag ConditionBuilder itself uses to hide the input.
+      const unary = !!(op as { unary?: boolean }).unary;
+      return `${f.label.toLowerCase()} ${op.label}${unary ? '' : ` "${c.value ?? ''}"`}`;
+    })
+    .filter(Boolean)
+    .join(' and ');
+  const actText = actions
+    .map((a) => registry.actions.find((x) => x.type === a.type)?.label.toLowerCase())
+    .filter(Boolean)
+    .join(', then ');
+  const when = (trigger?.label || triggerType).toLowerCase();
+  return {
+    when,
+    cond: condText || null,
+    then: actText || 'do nothing yet',
+  };
+}
+
+function RuleSentence({ registry, triggerType, conditions, actions }: {
+  registry: AutomationRegistry;
+  triggerType: string;
+  conditions: AutomationCondition[];
+  actions: AutomationActionConfig[];
+}) {
+  const d = describeRule(registry, triggerType, conditions, actions);
+  return (
+    <p className="text-sm text-muted">
+      When <span className="text-default font-medium">{d.when}</span>
+      {d.cond && <> — only when <span className="text-default">{d.cond}</span> — </>}
+      {!d.cond && ', '}
+      <span className="text-default font-medium">{d.then}</span>.
+    </p>
+  );
+}
+
 export function AutomationPanel() {
-  const [showRecipes, setShowRecipes] = useState(false);
+  // The "new rule" front door: a chooser offering the recipes first, with
+  // "start from scratch" as the explicit escape hatch - not the reverse.
+  // The blank editor with a name field, an 18-option trigger dropdown and
+  // two builder sections is the power path, and leading with it is exactly
+  // why this panel went unused ("seems very complicated" - direct quote).
+  const [showChooser, setShowChooser] = useState(false);
   const [registry, setRegistry] = useState<AutomationRegistry | null>(null);
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [runs, setRuns] = useState<AutomationRun[]>([]);
@@ -125,8 +186,6 @@ export function AutomationPanel() {
     }
   };
 
-  const triggerLabel = (type: string) => registry?.triggers.find((t) => t.type === type)?.label || type;
-
   return (
     <div>
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
@@ -135,10 +194,7 @@ export function AutomationPanel() {
           <Button variant="secondary" size="sm" onClick={() => setShowHistory((v) => !v)}>
             {showHistory ? 'Hide history' : 'Run history'}
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => setShowRecipes((v) => !v)}>
-            {showRecipes ? 'Hide recipes' : 'Recipes'}
-          </Button>
-          <Button variant="primary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setEditingRule('new')}>
+          <Button variant="primary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setShowChooser(true)}>
             New rule
           </Button>
         </div>
@@ -175,11 +231,10 @@ export function AutomationPanel() {
         </Card>
       )}
 
-      {showRecipes && (
-        <Card padding="lg" className="mb-3">
-          <p className="text-sm font-medium text-default mb-1">Start from a recipe</p>
-          <p className="text-xs text-muted mb-3">
-            Picking one opens the normal rule editor with everything filled in - review it, adjust anything, then save. Nothing is created until you do.
+      <Modal isOpen={showChooser} onClose={() => setShowChooser(false)} title="New Rule" size="lg">
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Pick something ready-made - it opens the editor with everything filled in, and nothing is created until you save. Or start from scratch if you know what you want.
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {AUTOMATION_RECIPES.filter((r) => registry?.triggers.some((t) => t.type === r.triggerType)).map((r) => (
@@ -189,7 +244,7 @@ export function AutomationPanel() {
                 onClick={() => {
                   setPrefill({ name: r.name, triggerType: r.triggerType, conditions: r.conditions, actions: r.actions });
                   setEditingRule('new');
-                  setShowRecipes(false);
+                  setShowChooser(false);
                 }}
                 className="text-left p-3 rounded-xl transition-colors nav-item-hover-pill"
                 style={{ background: 'var(--color-surface-hover)' }}
@@ -202,19 +257,43 @@ export function AutomationPanel() {
               </button>
             ))}
           </div>
-        </Card>
-      )}
+          <div className="flex justify-end pt-1">
+            <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => { setShowChooser(false); setEditingRule('new'); }}>
+              Start from scratch
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {loading ? (
         <Card padding="lg"><p className="text-sm text-muted">Loading...</p></Card>
       ) : rules.length === 0 ? (
         <Card padding="lg">
-          <div className="text-center py-8">
+          <div className="text-center pt-6 pb-2">
             <BoltIcon className="w-10 h-10 text-subtle mx-auto mb-3" />
             <p className="text-default font-medium mb-1">No automation rules yet</p>
-            <p className="text-sm text-muted mb-4">e.g. &quot;when a vault credential expires, move those users to the free group.&quot;</p>
-            <Button variant="primary" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setEditingRule('new')}>
-              Create your first rule
+            <p className="text-sm text-muted mb-5">Each rule is one sentence: when something happens, do something about it. These are the ones people set up first - pick one and it opens ready to save.</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 mb-4">
+            {AUTOMATION_RECIPES.filter((r) => registry?.triggers.some((t) => t.type === r.triggerType)).slice(0, 4).map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => {
+                  setPrefill({ name: r.name, triggerType: r.triggerType, conditions: r.conditions, actions: r.actions });
+                  setEditingRule('new');
+                }}
+                className="text-left p-3 rounded-xl transition-colors nav-item-hover-pill"
+                style={{ background: 'var(--color-surface-hover)' }}
+              >
+                <span className="block text-sm font-medium text-default">{r.title}</span>
+                <span className="block text-xs text-muted mt-0.5">{r.description}</span>
+              </button>
+            ))}
+          </div>
+          <div className="text-center pb-2">
+            <Button variant="secondary" size="sm" onClick={() => setShowChooser(true)}>
+              See all recipes
             </Button>
           </div>
         </Card>
@@ -229,11 +308,9 @@ export function AutomationPanel() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-medium text-default truncate">{rule.name}</p>
-                    <p className="text-sm text-muted">
-                      When <span className="text-default">{triggerLabel(rule.triggerType)}</span>
-                      {rule.conditions.length > 0 && ` (${rule.conditions.length} condition${rule.conditions.length !== 1 ? 's' : ''})`}
-                      {' -> '}{rule.actions.length} action{rule.actions.length !== 1 ? 's' : ''}
-                    </p>
+                    {registry && (
+                      <RuleSentence registry={registry} triggerType={rule.triggerType} conditions={rule.conditions} actions={rule.actions} />
+                    )}
                     <p className="text-xs text-subtle mt-1">
                       {rule.lastRunAt
                         ? <>Last fired {new Date(rule.lastRunAt).toLocaleString()} · {rule.runCount} total</>
@@ -360,6 +437,13 @@ function RuleEditorModal({
             className="w-full px-4 py-3 rounded-xl focus:outline-none"
             style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
           />
+        </div>
+
+        {/* The rule read back as one sentence, live - so what the three
+            sections below mean is never a mystery: this line is the rule. */}
+        <div className="p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)' }}>
+          <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-subtle)' }}>This rule, in plain words</p>
+          <RuleSentence registry={registry} triggerType={triggerType} conditions={conditions} actions={actions} />
         </div>
 
         <div>
@@ -493,7 +577,7 @@ function ConditionBuilder({
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <label className="text-sm font-medium text-muted">If (optional - leave empty to always run)</label>
+        <label className="text-sm font-medium text-muted">Only when (optional - leave empty and it runs every time)</label>
         <Button variant="ghost" size="sm" leftIcon={<PlusIcon className="w-3.5 h-3.5" />} onClick={addCondition}>
           Add condition
         </Button>
@@ -570,7 +654,7 @@ function ActionBuilder({
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <label className="text-sm font-medium text-muted">Then</label>
+        <label className="text-sm font-medium text-muted">Then do this</label>
         <Button variant="ghost" size="sm" leftIcon={<PlusIcon className="w-3.5 h-3.5" />} onClick={addAction}>
           Add action
         </Button>
