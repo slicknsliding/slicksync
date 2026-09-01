@@ -1665,27 +1665,7 @@ class ApiClient {
       const error = await response.json().catch(() => ({ error: 'Import failed' }));
       throw new Error(error.error || `HTTP ${response.status}`);
     }
-    return response.json() as Promise<{ imported: number; skipped: number; totalRows: number; truncated: boolean; unresolvedTitles: string[] }>;
-  }
-
-  /** Starts the Trakt OAuth device flow - see server/utils/traktImport.js.
-   * Returns the code/link the user needs to approve, plus how often to
-   * call pollTraktImport below. */
-  async startTraktImport(userId: string): Promise<{ deviceCode: string; userCode: string; verificationUrl: string; expiresIn: number; interval: number }> {
-    return this.fetch(`/users/${encodeURIComponent(userId)}/trakt-import/start`, { method: 'POST' });
-  }
-
-  /** Call on the interval startTraktImport returned. Keeps returning
-   * {status:'pending'} until the user approves it at Trakt's own site, then
-   * this same call performs the import and returns the result. */
-  async pollTraktImport(userId: string, deviceCode: string): Promise<
-    | { status: 'pending' | 'denied' | 'expired' | 'error'; message?: string }
-    | { status: 'done'; imported: number; skipped: number; totalFromTrakt: number }
-  > {
-    return this.fetch(`/users/${encodeURIComponent(userId)}/trakt-import/poll`, {
-      method: 'POST',
-      body: JSON.stringify({ deviceCode }),
-    });
+    return response.json() as Promise<{ imported: number; skipped: number; skippedEpisodes?: number; totalRows: number; truncated: boolean; unresolvedTitles: string[] }>;
   }
 
   // Letterboxd-import-compatible CSV export for one household member - a
@@ -3043,10 +3023,6 @@ export interface SyncSettings {
   }>;
   notifyOnKeyHealth?: boolean;
   simklClientId?: string;
-  /** Trakt app credentials for the one-time history import. Registered once
-   * by whoever runs the instance at trakt.tv/oauth/applications. */
-  traktClientId?: string;
-  traktClientSecret?: string;
   /** Self-hosted Nuvio backend URL, e.g. https://backend.example.com. Blank uses api.nuvio.tv. */
   nuvioServerUrl?: string;
   /** Anon key for that backend. Only takes effect alongside nuvioServerUrl. */

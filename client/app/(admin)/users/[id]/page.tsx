@@ -270,77 +270,6 @@ export default function UserDetailPage() {
     }
   };
 
-  // Trakt one-time import - "leave Trakt in one click." Separate from the
-  // CSV import above because Trakt has no reliable CSV export to point that
-  // path at (see server/utils/csvHistoryImport.js and traktImport.js's own
-  // comments) - this pulls straight from Trakt's own API via a short-lived
-  // OAuth connection instead, then drops the connection.
-  const traktPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [traktAuth, setTraktAuth] = useState<{ deviceCode: string; userCode: string; verificationUrl: string; expiresIn: number } | null>(null);
-  const [traktStatus, setTraktStatus] = useState<'idle' | 'connecting' | 'waiting' | 'importing'>('idle');
-  const [traktResult, setTraktResult] = useState<{ imported: number; skipped: number; totalFromTrakt: number } | null>(null);
-
-  const stopTraktPolling = () => {
-    if (traktPollRef.current) { clearInterval(traktPollRef.current); traktPollRef.current = null; }
-  };
-  // Unmounting mid-connect must not leave a poll timer running against a
-  // component that's gone.
-  useEffect(() => () => stopTraktPolling(), []);
-
-  const handleStartTrakt = async () => {
-    if (!params.id) return;
-    setTraktStatus('connecting');
-    setTraktResult(null);
-    try {
-      const auth = await api.startTraktImport(params.id as string);
-      setTraktAuth(auth);
-      setTraktStatus('waiting');
-      const deadline = Date.now() + auth.expiresIn * 1000;
-      traktPollRef.current = setInterval(async () => {
-        if (Date.now() > deadline) {
-          stopTraktPolling();
-          setTraktStatus('idle');
-          setTraktAuth(null);
-          toast.error('Trakt code expired - try connecting again');
-          return;
-        }
-        try {
-          const poll = await api.pollTraktImport(params.id as string, auth.deviceCode);
-          if (poll.status === 'pending') return; // keep waiting, this is the normal state
-          stopTraktPolling();
-          if (poll.status === 'done') {
-            setTraktStatus('idle');
-            setTraktAuth(null);
-            setTraktResult({ imported: poll.imported, skipped: poll.skipped, totalFromTrakt: poll.totalFromTrakt });
-            toast.success(`Imported ${poll.imported} title${poll.imported === 1 ? '' : 's'} from Trakt`);
-          } else if (poll.status === 'denied') {
-            setTraktStatus('idle');
-            setTraktAuth(null);
-            toast.error('Trakt connection was denied');
-          } else {
-            setTraktStatus('idle');
-            setTraktAuth(null);
-            toast.error(poll.message || 'Trakt connection expired - try again');
-          }
-        } catch (err: any) {
-          stopTraktPolling();
-          setTraktStatus('idle');
-          setTraktAuth(null);
-          toast.error(err.message || 'Failed to check Trakt connection');
-        }
-      }, 5000); // Trakt's documented device-flow interval is typically 5s; polling any faster risks a 429
-    } catch (err: any) {
-      setTraktStatus('idle');
-      toast.error(err?.data?.notConfigured ? 'Trakt isn\'t set up yet - add a Trakt client ID and secret in Settings' : (err.message || 'Failed to start Trakt connection'));
-    }
-  };
-
-  const handleCancelTrakt = () => {
-    stopTraktPolling();
-    setTraktStatus('idle');
-    setTraktAuth(null);
-  };
-
   const handleExportHistory = async () => {
     if (!params.id) return;
     setIsExportingHistory(true);
@@ -1269,12 +1198,12 @@ export default function UserDetailPage() {
               </PageSection>
             )}
 
-            {/* Watch-tracking integrations - SIMKL (ongoing two-way sync)
-                and Trakt (one-time pull, then disconnects - see
-                traktImport.js for why it can't be an ongoing link the way
-                SIMKL is: Trakt's ecosystem role here is "get your data out,"
-                not "sync forever"). Same row layout for both so they read as
-                siblings in one category, not two unrelated features. */}
+            {/* Watch-tracking integrations. Trakt used to sit here as a
+                second row doing a one-time OAuth pull; Trakt now gates
+                creating an API application behind VIP, so that route needed
+                a paid Trakt account to work at all. Bringing a Trakt history
+                across is handled by the import below instead, which reads
+                Trakt's own free export and needs no app and no VIP. */}
             <PageSection className="mb-6">
               <Card padding="lg">
                 <h3 className="text-lg font-semibold text-default mb-1">Watch-Tracking Integrations</h3>
@@ -1325,48 +1254,6 @@ export default function UserDetailPage() {
                   )}
                 </div>
 
-                <div className="border-t" style={{ borderColor: 'var(--color-surface-border)' }} />
-
-                <div className="py-3">
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${traktResult ? 'bg-success-muted' : 'bg-primary-muted'}`}>
-                        <ArrowDownTrayIcon className={`w-5 h-5 ${traktResult ? 'text-success' : 'text-primary'}`} />
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-default">Trakt</h4>
-                        <p className="text-sm text-muted">
-                          {traktResult
-                            ? `Imported ${traktResult.imported} of ${traktResult.totalFromTrakt} title${traktResult.totalFromTrakt === 1 ? '' : 's'} just now${traktResult.skipped > 0 ? ` (${traktResult.skipped} skipped)` : ''}.`
-                            : 'One-time pull of this user\'s Trakt history and ratings, then the connection is dropped - not an ongoing sync like SIMKL above.'}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      leftIcon={<LinkIcon className="w-4 h-4" />}
-                      onClick={handleStartTrakt}
-                      isLoading={traktStatus === 'connecting'}
-                      disabled={traktStatus === 'waiting'}
-                    >
-                      Connect Trakt
-                    </Button>
-                  </div>
-                  {traktAuth && traktStatus === 'waiting' && (
-                    <div className="mt-3 p-4 rounded-lg text-sm" style={{ background: 'var(--color-surface-hover)' }}>
-                      <p className="text-default">
-                        Go to <a href={traktAuth.verificationUrl} target="_blank" rel="noopener noreferrer" className="font-medium underline" style={{ color: 'var(--color-primary)' }}>{traktAuth.verificationUrl.replace(/^https?:\/\//, '')}</a> and enter this code:
-                      </p>
-                      <p className="text-2xl font-mono font-bold tracking-widest mt-2" style={{ color: 'var(--color-text)' }}>{traktAuth.userCode}</p>
-                      <div className="flex items-center gap-2 mt-3">
-                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin text-muted" />
-                        <span className="text-xs text-muted">Waiting for approval… nothing else to do here, this updates on its own.</span>
-                      </div>
-                      <Button variant="ghost" size="sm" className="mt-2" onClick={handleCancelTrakt}>Cancel</Button>
-                    </div>
-                  )}
-                </div>
               </Card>
             </PageSection>
 
@@ -1413,22 +1300,24 @@ export default function UserDetailPage() {
 
             {/* Watch History Import/Export - the biggest adoption blocker
                 for a Trakt alternative is leaving your history behind, so
-                this lets an admin bring an existing IMDb/Letterboxd export
-                straight into this user's SlickTrax history, and export a
-                Letterboxd-compatible CSV to leave with too. */}
+                this lets an admin bring an existing IMDb/Letterboxd CSV or
+                a Trakt JSON export straight into this user's SlickTrax
+                history, and export a Letterboxd-compatible CSV to leave with
+                too. Trakt's own export (Settings -> Data on trakt.tv) is free
+                and needs no API app, which the removed OAuth route did. */}
             <PageSection className="mb-6">
               <Card padding="lg">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="text-lg font-semibold text-default">Watch History Import/Export</h3>
-                    <p className="text-sm text-muted mt-0.5">Bring in an IMDb or Letterboxd export, or export this user's history as a Letterboxd-compatible CSV</p>
+                    <p className="text-sm text-muted mt-0.5">Bring in an IMDb or Letterboxd CSV, or a Trakt export &mdash; on trakt.tv go to Settings &rarr; Data, download the ZIP, unzip it and pick the history or ratings JSON. Movies are imported; episode history is skipped. You can also export this user&apos;s history as a Letterboxd-compatible CSV.</p>
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     ref={historyFileInputRef}
                     type="file"
-                    accept=".csv,text/csv"
+                    accept=".csv,text/csv,.json,application/json"
                     className="hidden"
                     onChange={handleImportHistoryFile}
                   />
@@ -1439,7 +1328,7 @@ export default function UserDetailPage() {
                     onClick={() => historyFileInputRef.current?.click()}
                     isLoading={isImportingHistory}
                   >
-                    Import CSV
+                    Import history
                   </Button>
                   <Button
                     variant="secondary"

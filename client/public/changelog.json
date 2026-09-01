@@ -1,10 +1,23 @@
 [
   {
+    "version": "1.79.0",
+    "date": "2026-09-01",
+    "title": "1.79.0 — Trakt history comes across from Trakt's own export",
+    "features": [
+      "Bringing a Trakt history over no longer needs an API key, an app registration, or a paid Trakt account. On trakt.tv go to Settings → Data and download your export, unzip it, then import the history or ratings JSON under a user's Watch History Import/Export. Movies and their ratings come across, and nothing already recorded here is overwritten, so importing twice simply fills gaps.",
+      "Episode entries in an export are counted and reported as skipped rather than quietly dropped, so the totals shown add up to what was actually in the file. Episode history still has no import path — that limit has always applied to file imports here, it is just visible now instead of silent.",
+      "The same importer still reads Letterboxd and IMDb CSV exports, and matches on column names rather than one fixed layout, so most third-party export tools work too."
+    ],
+    "bugFixes": [
+      "The previous Trakt connection has been removed. It relied on registering a Trakt API application, which Trakt now restricts to paid VIP accounts — so it could not work for anyone without one, and free Trakt accounts are limited to a single connected app besides. The export route has neither restriction. Earlier release notes describing the old flow have been updated."
+    ]
+  },
+  {
     "version": "1.78.0",
     "date": "2026-09-01",
     "title": "1.78.0 — Trakt import can be set up from Settings, and backup keys now cover everything",
     "features": [
-      "Trakt import can be set up without touching the server. It previously needed a client ID and secret in the instance's environment variables, so anyone who could not edit that saw a Connect Trakt button that only ever said to ask an admin — for a feature the app offered. Settings → External API Keys now takes a Trakt Client ID and Secret, with the two registration details that are easy to get wrong spelled out. Instances already using the environment variables keep working exactly as before."
+      "Trakt import works from Trakt's own free export instead of an API connection. Trakt restricts registering an API application to paid VIP accounts, so the previous setup could not work without one. Downloading your data from Trakt (Settings → Data) needs no key, no app and no VIP."
     ],
     "bugFixes": [
       "Backup keys now cover posters, cast filmographies and backdrops, not just list imports. Failover was only being applied where lists are imported, so a dead TMDb or RPDB key still broke artwork and person pages even with a working backup set. Every place a key is used now falls back the same way."
@@ -56,7 +69,7 @@
       "Deleting a catalog or addon can now be undone. The confirmation offers Undo on the spot, and anything deleted stays recoverable for 30 days under Tasks → Maintenance → Recently deleted. An addon comes back with its group assignments intact. Deleting a user is still permanent — that carries watch history and credentials, and a restore that quietly lost some of it would be worse than being told plainly.",
       "Sync now shows what it is about to do. Pressing Sync on a user lists exactly which addons would be added, removed, or reordered, and waits for you to confirm — rather than rewriting their account and leaving you to work out what changed.",
       "A check for API keys that have stopped working. TMDb, OMDb, MDBList and RPDB keys fail silently — posters and ratings just quietly stop appearing, with no error anywhere. Settings now shows whether each key still works, checks daily on its own, and tells you the first time one breaks. MDBList also shows how much of its quota you have used.",
-      "One-time import from Trakt. Connect once, and SlickTrax pulls that user's history and ratings across, then drops the connection — nothing is stored afterwards. Set up per instance by whoever runs it.",
+      "Bring a Trakt history across. Download your data from Trakt itself (Settings → Data on trakt.tv — free, no API key needed), then import the JSON under a user's Watch History Import/Export. Movies and their ratings come across; nothing already recorded here is overwritten. Updated after release: this originally connected to Trakt's API directly, which Trakt now restricts to paid VIP accounts.",
       "Share an addon template without sharing your keys. Template codes now replace API keys with placeholders by default, and whoever imports it is asked for their own before anything is created. Addons whose settings are encrypted by their own server are left out of the code entirely and named, rather than shipped looking safe when they are not.",
       "Shows you started and never finished now have somewhere to live. Activity → Dropped lists anything untouched for 45 days or more, with how far you got — previously these simply vanished from the app. Pick one back up, or bury it.",
       "Automation without building a rule from scratch. Tasks → Automation → Recipes offers ready-made starting points like \"tell me when an addon goes down\", which open the normal editor already filled in. Four new things can trigger a rule too, including an API key breaking and an off-site backup failing.",
