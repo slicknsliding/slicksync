@@ -35,6 +35,8 @@ import {
   TrashIcon,
   CheckIcon,
   XMarkIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 
@@ -227,37 +229,99 @@ function BackupKeyField({
   onChange: (v: string) => void;
   onSave: () => void;
 }) {
+  // Opens itself when a backup already exists, so a configured key is never
+  // hidden behind a link that reads like nothing is set.
   const [open, setOpen] = useState(!!value);
+  const hasValue = !!value.trim();
+
   if (!primaryFilled) return null;
 
+  // Collapsed. Borrows the small uppercase "BACKUP" pill from the addon
+  // backup card so the two features read as the same idea in two places,
+  // and states whether one is actually set rather than always saying "add".
   if (!open) {
     return (
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-1.5 text-xs text-muted hover:text-default underline underline-offset-2 transition-colors"
+        className="mt-2 w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border transition-colors text-left"
+        style={{ background: 'var(--color-surface-hover)', borderColor: 'var(--color-surface-border)' }}
       >
-        Add a backup key
+        <span className="flex items-center gap-2 min-w-0">
+          <span
+            className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0"
+            style={hasValue
+              ? { background: 'var(--color-successMuted)', color: 'var(--color-success)' }
+              : { background: 'var(--color-subtle)', color: 'var(--color-text-muted)' }}
+          >
+            Backup
+          </span>
+          <span className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
+            {hasValue ? 'A backup key is set for this provider' : 'Add a backup key'}
+          </span>
+        </span>
+        <ChevronDownIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
       </button>
     );
   }
 
   return (
-    <div className="mt-2">
-      <label className="block text-xs text-muted mb-1">
-        Backup key <span className="text-subtle">- used automatically if the key above stops working</span>
-      </label>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onSave}
-        placeholder="Backup key (optional)"
-        autoComplete="off"
-        spellCheck={false}
-        data-field={field}
-        className="input-base w-full px-3 py-2 text-sm"
-      />
+    <div
+      className="mt-2 p-3 rounded-lg border"
+      style={{ background: 'var(--color-surface-hover)', borderColor: 'var(--color-surface-border)' }}
+    >
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="flex items-center gap-2 min-w-0">
+          <span
+            className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0"
+            style={hasValue
+              ? { background: 'var(--color-successMuted)', color: 'var(--color-success)' }
+              : { background: 'var(--color-subtle)', color: 'var(--color-text-muted)' }}
+          >
+            Backup
+          </span>
+          <span className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>
+            Used automatically if the key above stops working
+          </span>
+        </span>
+        {/* Collapsing was impossible once opened - the only way back was a
+            page reload, which is what made this feel like a one-way door. */}
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          title="Collapse"
+          aria-label="Collapse backup key"
+          className="p-1 rounded transition-colors shrink-0"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          <ChevronUpIcon className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onSave}
+          placeholder="Backup key (optional)"
+          autoComplete="off"
+          spellCheck={false}
+          data-field={field}
+          className="input-base flex-1 min-w-0 px-3 py-2 text-sm"
+        />
+        {hasValue && (
+          <button
+            type="button"
+            onClick={() => { onChange(''); setTimeout(onSave, 0); }}
+            title="Remove backup key"
+            aria-label="Remove backup key"
+            className="p-2 rounded-lg transition-colors shrink-0"
+            style={{ background: 'var(--color-surface)', color: 'var(--color-text-muted)' }}
+          >
+            <XMarkIcon className="w-4 h-4" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -601,6 +665,13 @@ export default function SettingsPage() {
           mdblistApiKeyBackup: settings.mdblistApiKeyBackup || '',
           rpdbApiKeyBackup: settings.rpdbApiKeyBackup || '',
           omdbApiKeyBackup: settings.omdbApiKeyBackup || '',
+          // Carried over from the server rather than left undefined. The
+          // daily scheduler (utils/metadataKeyHealth.js) has been storing
+          // results all along, but this page only ever populated keyHealth
+          // from the manual "Check keys now" button - so every fresh page
+          // load showed "Not checked yet" and the usage figures vanished,
+          // which made the daily check look like it was never running.
+          keyHealth: settings.keyHealth || undefined,
           simklClientId: settings.simklClientId || '',
           enableWatchlist: settings.enableWatchlist !== false,
           enableWatchedIndicators: settings.enableWatchedIndicators !== false,
