@@ -137,7 +137,17 @@ function dedupeByUrl(addons) {
 async function appendTraxAddon(user, addons, prisma) {
   try {
     if (!user?.traxAddonEnabled || !user?.traxToken || !prisma) return addons
-    const base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+    // PUBLIC_APP_URL wins when set; otherwise the base the admin's own
+    // authenticated browser session observed when enabling the addon (stored
+    // by the toggle route). Only with neither does injection skip - and the
+    // toggle UI hands over the URL for manual install in that case.
+    let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+    if (!base) {
+      const acct = await prisma.appAccount.findUnique({ where: { id: user.accountId }, select: { sync: true } })
+      let cfg = acct?.sync
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+      base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
+    }
     if (!base) return addons
     const { buildTraxManifest, getListsForAccount } = require('../routes/traxAddon')
     const lists = await getListsForAccount(prisma, user.accountId)

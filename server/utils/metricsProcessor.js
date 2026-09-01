@@ -348,6 +348,25 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
       }
     })
 
+    // watch.finished on the real completion EDGE only: not already true,
+    // true now. Reuses the exact same computed value the record stores, so
+    // "finished" means what the history means, and because completion never
+    // reverts this can fire at most once per (user, episode).
+    if (existing?.completed !== true && completed === true) {
+      try {
+        const { emitAutomationEvent } = require('./automation/engine')
+        await emitAutomationEvent(prisma, accountIdValue, 'watch.finished', {
+          username: users?.find?.((u) => u.id === userId)?.username || '',
+          userId,
+          itemName: showName,
+          itemId: showId,
+          contentType: 'series',
+          season,
+          episode,
+        })
+      } catch { /* emit never throws; guards the require itself */ }
+    }
+
     // Brand-new row (never seen this episode before) with no WatchSession
     // at all for the show - the proxy never had a chance to notify. See
     // notifyNativeWatchDetected's comment for why session (not
@@ -488,6 +507,22 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
         ...(completed !== null && completed !== undefined ? { completed } : {})
       }
     })
+
+    // Same completion EDGE as recordEpisodeWatch - see its comment.
+    if (existing?.completed !== true && completed === true) {
+      try {
+        const { emitAutomationEvent } = require('./automation/engine')
+        await emitAutomationEvent(prisma, accountIdValue, 'watch.finished', {
+          username: users?.find?.((u) => u.id === userId)?.username || '',
+          userId,
+          itemName,
+          itemId,
+          contentType: 'movie',
+          season: null,
+          episode: null,
+        })
+      } catch { /* emit never throws; guards the require itself */ }
+    }
 
     // Brand-new row with no WatchSession at all for this item - the proxy
     // never had a chance to notify. See notifyNativeWatchDetected's comment.

@@ -237,10 +237,104 @@ async function pullWatchHistory(prisma, user) {
 
 // ---- scheduler --------------------------------------------------------------
 
+
+/**
+ * Push ratings set in SlickTrax up to Simkl (POST /sync/ratings).
+ *
+ * Ratings live in TitleRating, which is account-scoped with no userId -
+ * they are a household opinion, not a per-person one. So this pushes the
+ * household's ratings through whichever user's Simkl link is being swept,
+ * with its own watermark (simklLastRatingPushAt): the history cursor tracks
+ * a per-user row stream and cannot describe a shared table's progress.
+ *
+ * Season ratings are skipped. TitleRating models "season 3 was rough" as a
+ * first-class opinion (season >= 1); Simkl's ratings API has no equivalent
+ * for a season on its own, so sending them would silently re-target the
+ * whole show. Overall ratings (season 0) are the ones both sides agree on.
+ */
+async function pushRatings(prisma, user) {
+  if (!user.simklAccessToken) return null
+  const { decrypt } = require('./encryption')
+  const accessToken = decrypt(user.simklAccessToken, { appAccountId: user.accountId })
+  const clientId = await resolveSimklClientIdForAccount(prisma, user.accountId)
+  const since = user.simklLastRatingPushAt ? new Date(user.simklLastRatingPushAt) : new Date(0)
+
+  const ratings = await prisma.titleRating.findMany({
+    where: { accountId: user.accountId, season: 0, updatedAt: { gt: since } },
+    orderBy: { updatedAt: 'asc' },
+    take: MAX_ROWS_PER_SWEEP,
+  })
+  if (ratings.length === 0) return { pushed: 0 }
+
+  // Same frontier discipline as pushNewWatches: never advance past the last
+  // row actually fetched, or a capped page silently drops its own tail.
+  const frontier = new Date(Math.max(...ratings.map((r) => new Date(r.updatedAt).getTime())))
+
+  const movies = []
+  const shows = []
+  for (const r of ratings) {
+    if (!isImdb(r.itemId)) continue
+    const entry = { title: r.itemName || undefined, ids: { imdb: r.itemId }, rating: r.rating, rated_at: new Date(r.updatedAt).toISOString() }
+    ;(r.itemType === 'series' ? shows : movies).push(entry)
+  }
+  if (movies.length === 0 && shows.length === 0) {
+    await prisma.user.update({ where: { id: user.id }, data: { simklLastRatingPushAt: frontier } })
+    return { pushed: 0 }
+  }
+
+  const body = {}
+  if (movies.length) body.movies = movies
+  if (shows.length) body.shows = shows
+  const res = await simklFetch('/sync/ratings', clientId, accessToken, { method: 'POST', body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(`Simkl /sync/ratings failed (${res.status})`)
+
+  await prisma.user.update({ where: { id: user.id }, data: { simklLastRatingPushAt: frontier } })
+  return { pushed: movies.length + shows.length }
+}
+
+/**
+ * Pull ratings from Simkl into TitleRating. Writes the overall (season 0)
+ * rating only, matching what push sends.
+ *
+ * Existing local ratings are never overwritten: a rating is a stated
+ * opinion, and a sync silently replacing one with a different number from
+ * elsewhere is the kind of change nobody asks for. Only titles with no
+ * local rating yet get filled in - the same never-overwrite-a-native-record
+ * rule the history importers follow.
+ */
+async function pullRatings(prisma, user) {
+  if (!user.simklAccessToken) return null
+  const { decrypt } = require('./encryption')
+  const accessToken = decrypt(user.simklAccessToken, { appAccountId: user.accountId })
+  const clientId = await resolveSimklClientIdForAccount(prisma, user.accountId)
+
+  let filled = 0
+  for (const type of ['movies', 'shows']) {
+    const res = await simklFetch(`/sync/ratings/${type}`, clientId, accessToken)
+    if (!res.ok) continue
+    const data = await res.json().catch(() => null)
+    const rows = Array.isArray(data) ? data : (Array.isArray(data?.[type]) ? data[type] : [])
+    for (const row of rows.slice(0, MAX_ROWS_PER_SWEEP)) {
+      const media = row?.movie || row?.show || row
+      const imdb = media?.ids?.imdb
+      const rating = Number(row?.rating ?? row?.user_rating)
+      if (!isImdb(imdb) || !Number.isFinite(rating) || rating < 1 || rating > 10) continue
+      const itemType = type === 'movies' ? 'movie' : 'series'
+      const existing = await prisma.titleRating.findFirst({ where: { accountId: user.accountId, itemId: imdb, season: 0 } })
+      if (existing) continue // never overwrite a stated local opinion
+      await prisma.titleRating.create({
+        data: { accountId: user.accountId, itemId: imdb, itemType, season: 0, rating: Math.round(rating), itemName: media?.title || null },
+      }).catch(() => {})
+      filled++
+    }
+  }
+  return { filled }
+}
+
 async function sweepAllUsers(prisma) {
   const users = await prisma.user.findMany({
     where: { simklAccessToken: { not: null } },
-    select: { id: true, accountId: true, username: true, simklAccessToken: true, simklSyncState: true, simklLastPushAt: true },
+    select: { id: true, accountId: true, username: true, simklAccessToken: true, simklSyncState: true, simklLastPushAt: true, simklLastRatingPushAt: true },
   })
   for (const user of users) {
     try {
@@ -259,6 +353,25 @@ async function sweepAllUsers(prisma) {
     } catch (e) {
       console.warn(`[SimklSync] Push failed for user ${user.username}:`, e?.message)
     }
+    // Ratings ride the same 30-minute sweep. Kept in their own try blocks so
+    // a ratings failure never stops history syncing, which is the feature
+    // people actually notice.
+    try {
+      const pulledRatings = await pullRatings(prisma, user)
+      if (pulledRatings && pulledRatings.filled > 0) {
+        console.log(`[SimklSync] Filled ${pulledRatings.filled} rating(s) from Simkl for user ${user.username}`)
+      }
+    } catch (e) {
+      console.warn(`[SimklSync] Rating pull failed for user ${user.username}:`, e?.message)
+    }
+    try {
+      const pushedRatings = await pushRatings(prisma, user)
+      if (pushedRatings && pushedRatings.pushed > 0) {
+        console.log(`[SimklSync] Pushed ${pushedRatings.pushed} rating(s) for user ${user.username}`)
+      }
+    } catch (e) {
+      console.warn(`[SimklSync] Rating push failed for user ${user.username}:`, e?.message)
+    }
   }
 }
 
@@ -273,6 +386,8 @@ function scheduleSimklSync(prisma) {
 }
 
 module.exports = {
+  pushRatings,
+  pullRatings,
   pushNewWatches,
   pullWatchHistory,
   sweepAllUsers,

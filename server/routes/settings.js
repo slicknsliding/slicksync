@@ -1244,7 +1244,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
       const existing = await findAiVaultEntry(accountId)
       if (existing) {
-        const data = { testConfig }
+        const data = { testConfig, testType: 'openai_compatible' }
         if (trimmedKey) data.encryptedSecret = encrypt(trimmedKey, req)
         const updated = await prisma.vaultEntry.update({ where: { id: existing.id }, data })
         const verdict = await verifyAndRecordAiServices(accountId, updated)
@@ -1266,7 +1266,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           category: 'ai',
           secretLabel: 'API Key',
           encryptedSecret: encrypt(trimmedKey, req),
-          testType: 'manual',
+          testType: 'openai_compatible',
           testConfig,
           position: (maxPositionEntry?.position ?? -1) + 1,
         },
@@ -1635,7 +1635,12 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     try {
       const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID;
       const { checkAndPersistAccountKeys } = require('../utils/metadataKeyHealth');
-      const keyHealth = await checkAndPersistAccountKeys(prisma, accountId, { notify: true });
+      // Optional body {provider} narrows to one key - the save-time check
+      // for a single edited field. Notifications stay off for those: a key
+      // someone is mid-way through correcting should not fire "key broken"
+      // alerts on each attempt; the full check and the daily sweep notify.
+      const only = ['tmdb', 'omdb', 'mdblist', 'rpdb'].includes(req.body?.provider) ? req.body.provider : null;
+      const keyHealth = await checkAndPersistAccountKeys(prisma, accountId, { notify: !only, only });
       return res.json({ keyHealth });
     } catch (e) {
       return res.status(500).json({ message: 'Failed to check keys', error: e?.message });

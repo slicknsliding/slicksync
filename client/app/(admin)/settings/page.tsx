@@ -323,6 +323,19 @@ export default function SettingsPage() {
   // (reading it during render would disagree with the server render).
   const [beginnerMode, setBeginnerModeState] = useState(false);
   useEffect(() => { setBeginnerModeState(isBeginnerMode()); }, []);
+
+  // Save-time verification for one key: fires after the field's own save,
+  // checks only that provider (see /settings/check-keys), and refreshes the
+  // badge. Silent on failure - the badge simply keeps its last state; the
+  // full "Check keys now" button and the daily sweep stay the loud paths.
+  const checkSingleKey = async (provider: 'tmdb' | 'omdb' | 'mdblist' | 'rpdb', value?: string) => {
+    if (!value || !value.trim()) return; // cleared field - nothing to verify
+    try {
+      const { keyHealth } = await api.checkProviderKeys(provider);
+      setSyncSettings((prev) => ({ ...prev, keyHealth }));
+    } catch { /* badge keeps last known state */ }
+  };
+
   const handleCheckProviderKeys = async () => {
     setCheckingKeys(true);
     try {
@@ -1734,7 +1747,7 @@ export default function SettingsPage() {
                   type="text"
                   value={syncSettings.tmdbApiKey || ''}
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, tmdbApiKey: e.target.value }))}
-                  onBlur={() => handleSaveSetting('tmdbApiKey' as keyof SyncSettings, syncSettings.tmdbApiKey)}
+                  onBlur={async () => { await handleSaveSetting('tmdbApiKey' as keyof SyncSettings, syncSettings.tmdbApiKey); checkSingleKey('tmdb', syncSettings.tmdbApiKey); }}
                   placeholder="TMDb API key"
                   autoComplete="off"
                   spellCheck={false}
@@ -1770,7 +1783,7 @@ export default function SettingsPage() {
                   type="text"
                   value={syncSettings.mdblistApiKey || ''}
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, mdblistApiKey: e.target.value }))}
-                  onBlur={() => handleSaveSetting('mdblistApiKey' as keyof SyncSettings, syncSettings.mdblistApiKey)}
+                  onBlur={async () => { await handleSaveSetting('mdblistApiKey' as keyof SyncSettings, syncSettings.mdblistApiKey); checkSingleKey('mdblist', syncSettings.mdblistApiKey); }}
                   placeholder="MDBList API key"
                   autoComplete="off"
                   spellCheck={false}
@@ -1807,7 +1820,7 @@ export default function SettingsPage() {
                   type="text"
                   value={syncSettings.rpdbApiKey || ''}
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, rpdbApiKey: e.target.value }))}
-                  onBlur={async () => { await handleSaveSetting('rpdbApiKey' as keyof SyncSettings, syncSettings.rpdbApiKey); invalidatePersonalFeatures(); }}
+                  onBlur={async () => { await handleSaveSetting('rpdbApiKey' as keyof SyncSettings, syncSettings.rpdbApiKey); invalidatePersonalFeatures(); checkSingleKey('rpdb', syncSettings.rpdbApiKey); }}
                   placeholder="RPDB API key"
                   autoComplete="off"
                   spellCheck={false}
@@ -1844,7 +1857,7 @@ export default function SettingsPage() {
                   type="text"
                   value={syncSettings.omdbApiKey || ''}
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, omdbApiKey: e.target.value }))}
-                  onBlur={() => handleSaveSetting('omdbApiKey' as keyof SyncSettings, syncSettings.omdbApiKey)}
+                  onBlur={async () => { await handleSaveSetting('omdbApiKey' as keyof SyncSettings, syncSettings.omdbApiKey); checkSingleKey('omdb', syncSettings.omdbApiKey); }}
                   placeholder="OMDb API key"
                   autoComplete="off"
                   spellCheck={false}

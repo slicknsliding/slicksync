@@ -182,7 +182,7 @@ const FIELD_BY_PROVIDER = {
   rpdb: 'rpdbApiKey',
 };
 
-async function checkAndPersistAccountKeys(prisma, accountId, { notify = true } = {}) {
+async function checkAndPersistAccountKeys(prisma, accountId, { notify = true, only = null } = {}) {
   const { resolveKeyFromSettings } = require('./listImport');
   const noReq = null;
   const getId = () => accountId;
@@ -199,7 +199,13 @@ async function checkAndPersistAccountKeys(prisma, accountId, { notify = true } =
     resolveKeyFromSettings(prisma, getId, noReq, 'rpdbApiKey', 'RPDB_API_KEY', opts),
   ]);
 
-  const results = await runKeyHealthChecks({ tmdb, omdb, mdblist, rpdb });
+  // `only` narrows the run to one provider - used by the on-blur check when
+  // a single key is edited in Settings, where re-testing the other three on
+  // every blur would be pure waste. The merge below already preserves
+  // previous results for providers not in this run.
+  const all = { tmdb, omdb, mdblist, rpdb };
+  const toCheck = only && all[only] !== undefined ? { [only]: all[only] } : all;
+  const results = await runKeyHealthChecks(toCheck);
 
   const account = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } });
   let cfg = account?.sync;

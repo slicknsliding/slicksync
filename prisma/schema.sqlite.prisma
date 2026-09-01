@@ -32,6 +32,7 @@ model User {
   simklSyncState     String? // JSON: last-seen /sync/activities timestamps per category, so pull only re-fetches what actually changed
   simklLastPullAt    DateTime? // Last successful pull sweep
   simklLastPushAt    DateTime? // Watermark (createdAt cursor) for the push sweep - mirrors the removed Trakt integration's sync.trakt.lastSyncAt
+  simklLastRatingPushAt DateTime? // Separate watermark for the ratings push - ratings live in TitleRating (account-scoped, no userId) and change on their own schedule, so they cannot share the history cursor
   excludedAddons     String? // JSON array of addon IDs that user has excluded
   protectedAddons    String? // JSON array of addon IDs that user has protected
   colorIndex         Int? // UI color theme index

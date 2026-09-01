@@ -45,7 +45,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
           id: e.id, name: e.name, category: e.category, provider: e.provider,
           dashboardUrl: e.dashboardUrl, cost: e.cost, costCycle: e.costCycle, expiresAt: e.expiresAt, notifyDaysBefore: e.notifyDaysBefore,
           lastCheckedAt: e.lastCheckedAt, lastCheckStatus: e.lastCheckStatus, lastCheckMessage: e.lastCheckMessage,
-          isActive: e.isActive, testType: e.testType, secretLabel: e.secretLabel, updatedAt: e.updatedAt,
+          isActive: e.isActive, testType: (e.category === 'ai' && e.testType === 'manual') ? 'openai_compatible' : e.testType, secretLabel: e.secretLabel, updatedAt: e.updatedAt,
           position: e.position, autoRemoveEnabled: e.autoRemoveEnabled, autoRemoveAfterDays: e.autoRemoveAfterDays,
           backupEntryId: e.backupEntryId,
         })),
@@ -302,7 +302,11 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       const config = entry.testConfig ? JSON.parse(entry.testConfig) : {};
       config.identifier = entry.provider || config.identifier; // for stremio_auth/nuvio_auth checkers
 
-      const result = await runCheck(entry.testType, secret, config);
+      // AI entries created before the openai_compatible checker existed carry
+      // testType 'manual' - coerced here (and in the list mapping) so they
+      // become checkable without anyone having to re-save the key.
+      const effectiveTestType = (entry.category === 'ai' && entry.testType === 'manual') ? 'openai_compatible' : entry.testType;
+      const result = await runCheck(effectiveTestType, secret, config);
 
       const updateData = {
         lastCheckedAt: new Date(),

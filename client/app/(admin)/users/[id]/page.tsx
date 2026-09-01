@@ -1458,7 +1458,7 @@ export default function UserDetailPage() {
                       <a href="https://trakt.tv/settings/data" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Trakt</a>.
                     </p>
                     <p className="text-sm text-muted mt-1">
-                      IMDb and Letterboxd give you a CSV you can import directly. Trakt gives you a ZIP &mdash; unzip it and select every file inside at once; only the history and ratings JSON actually carry anything importable, everything else (collections, comments, lists, network, and the rest) is skipped automatically rather than needing to be picked out by hand. Movies and their ratings are imported; episode history is skipped. You can also export this user&apos;s history as a Letterboxd-compatible CSV.
+                      IMDb and Letterboxd give you a CSV you can import directly. Trakt gives you a ZIP &mdash; unzip it and select every file inside at once; only the history and ratings JSON actually carry anything importable, everything else is skipped automatically. Netflix (Account &rarr; Viewing activity &rarr; Download all), TV Time, Plex/Tautulli and Movary CSV exports work through the same button too. Movies and their ratings are imported; episode history is skipped. You can also export this user&apos;s history as a Letterboxd-compatible CSV.
                     </p>
                   </div>
                 </div>

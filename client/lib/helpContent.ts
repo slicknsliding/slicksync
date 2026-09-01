@@ -277,8 +277,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'csv-import-export',
     title: 'Importing or exporting watch history',
     category: 'Sharing & integrations',
-    keywords: ['csv import', 'csv export', 'letterboxd', 'imdb export', 'trakt export', 'watch history import'],
-    answer: 'Open a user\'s detail page → History → Import or Export. Import accepts a Letterboxd or IMDb CSV, or the JSON files from Trakt own free export. Get yours from imdb.com/exports, letterboxd.com/settings/data, or trakt.tv/settings/data. Export produces a Letterboxd-compatible CSV, so your data is never stuck here.',
+    keywords: ['csv import', 'csv export', 'letterboxd', 'imdb export', 'trakt export', 'watch history import', 'netflix history', 'netflix viewing activity', 'tv time', 'plex history', 'tautulli', 'movary'],
+    answer: 'Open a user\'s detail page → History → Import or Export. Import accepts a Letterboxd or IMDb CSV, the JSON files from Trakt own free export, and CSVs from Netflix (viewing activity), TV Time, Plex/Tautulli, or Movary. Get yours from imdb.com/exports, letterboxd.com/settings/data, or trakt.tv/settings/data. Export produces a Letterboxd-compatible CSV, so your data is never stuck here.',
     href: '/users',
     linkLabel: 'Open Users',
   },
@@ -1294,7 +1294,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     keywords: ['api key not working', 'key expired', 'key revoked', 'rate limited', 'posters missing', 'ratings missing', 'check keys', 'tmdb key', 'omdb key', 'mdblist key', 'rpdb key', 'key health'],
     answer: 'Settings -> External API Keys -> Check keys now. Each configured key is tested against the provider for real, and a badge next to it shows Working, Not working, or Rate limited. The same check also runs quietly once a day.',
     steps: [
-      'Settings -> scroll to External API Keys.',
+      'Settings -> scroll to External API Keys. Each key is also verified automatically the moment you save it - the badge updates on its own.',
       'Press "Check keys now". Only keys you have actually filled in are checked - blank fields are skipped and reported as "No API keys configured to check".',
       'Read the badge beside each key. Hover it to see the exact message and when it was last checked.',
     ],
@@ -1335,7 +1335,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     keywords: ['simkl', 'trakt', 'import trakt', 'leave trakt', 'trakt history', 'watch tracker', 'sync history', 'link simkl', 'trakt export', 'migrate from trakt', 'trakt vip'],
     answer: 'SIMKL is an ongoing two-way sync, set up under a user -> Watch-Tracking Integrations. Trakt is a one-time migration and works from a file: download your data from Trakt itself, then import it under Watch History Import/Export on the same page.',
     steps: [
-      'SIMKL: press Link SIMKL and follow the PIN flow. From then on history syncs both ways, checked every 30 minutes.',
+      'SIMKL: press Link SIMKL and follow the PIN flow. From then on history AND ratings sync both ways, checked every 30 minutes. Ratings already set here are never overwritten by a pull - SIMKL only fills in titles with no local rating yet.',
       'Trakt: go to trakt.tv/settings/data and download your export. It arrives as a ZIP.',
       'Unzip it. Inside are JSON files split by type - the history and ratings ones are what matter here.',
       'Back in SlickSync, open the user -> Watch History Import/Export -> Import history, and pick a JSON file. Import the history file and the ratings file separately if you want both.',
@@ -1456,7 +1456,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'automation-recipes',
     title: 'Setting up automation without building a rule from scratch',
     category: 'Notifications & Automation',
-    keywords: ['automation recipes', 'automation examples', 'automation templates', 'quick automation', 'rule examples', 'recipes'],
+    keywords: ['automation recipes', 'automation examples', 'automation templates', 'quick automation', 'rule examples', 'recipes', 'watch trigger', 'finished watching trigger', 'scrobble webhook', 'run backup automatically'],
     answer: 'Tasks -> Automation -> Recipes. Ready-made starting points like "tell me when an addon goes down" - picking one opens the normal rule editor already filled in.',
     steps: [
       'Tasks -> Automation, then Recipes.',

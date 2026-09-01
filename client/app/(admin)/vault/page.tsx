@@ -70,6 +70,7 @@ const TEST_TYPE_LABELS: Record<VaultTestType, string> = {
   tcp_reachability: 'TCP reachability',
   stremio_auth: 'Stremio login',
   nuvio_auth: 'Nuvio login',
+  openai_compatible: 'AI provider (OpenAI-compatible)',
 };
 
 // Common currency codes for the Vault cost selector. Intl.NumberFormat

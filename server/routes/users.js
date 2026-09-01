@@ -583,7 +583,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!user) return res.status(404).json({ error: 'User not found' })
       if (!req.file) return res.status(400).json({ error: 'No file uploaded (expected multipart field "file")' })
 
-      const { parseCsv, mapColumns, resolveRowToImdbItem, parseWatchedDate, normalizeRating } = require('../utils/csvHistoryImport')
+      const { parseCsv, mapColumns, resolveRowToImdbItem, parseWatchedDate, normalizeRating, looksLikeSeriesEpisodeTitle } = require('../utils/csvHistoryImport')
       const { resolveSinglePoster } = require('../utils/libraryHelpers')
       const { resolveOmdbKeyForAccount } = require('../utils/listImport')
 
@@ -634,6 +634,16 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const unresolved = []
 
       for (const row of rows) {
+        // Netflix-style episode rows (Show: Season N: Episode) carry no id
+        // and cannot resolve as movies - counted with the other episode
+        // skips instead of burning a doomed OMDb lookup each and landing in
+        // "couldn't resolve" noise. Only when there's no real id to trust.
+        const rawRowId = colMap.imdbId ? row[colMap.imdbId] : null
+        const hasRealId = rawRowId && /^tt\d+$/.test(String(rawRowId).trim())
+        if (!hasRealId && looksLikeSeriesEpisodeTitle(colMap.title ? row[colMap.title] : null)) {
+          skippedNonMovie++
+          continue
+        }
         const resolved = await resolveRowToImdbItem(row, colMap, omdbApiKey)
         if (!resolved) {
           skipped++
@@ -708,11 +718,29 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // not happen and the UI should say so instead of showing a URL that
       // only works from this browser's vantage point.
       const base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+      // The admin reaching this route just proved a working public URL for
+      // this instance - the one in their address bar. Persisted so sync can
+      // auto-install without PUBLIC_APP_URL being set; the env var, when
+      // present, stays the explicit override. Recorded only here, from an
+      // authenticated admin request (behind trust proxy = 1, so req.protocol
+      // is honest behind Traefik) - never from unauthenticated traffic,
+      // where a spoofed Host header could poison the stored base.
       const reqBase = `${req.protocol}://${req.get('host')}`
+      if (enabled && !base) {
+        try {
+          const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+          let cfg = acct?.sync
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
+          if (!cfg || typeof cfg !== 'object') cfg = {}
+          if (cfg.observedBaseUrl !== reqBase) {
+            await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify({ ...cfg, observedBaseUrl: reqBase }) } })
+          }
+        } catch { /* best-effort - manual install still works */ }
+      }
       res.json({
         enabled,
         manifestUrl: `${base || reqBase}/trax/${traxToken}/manifest.json`,
-        autoInstall: !!base,
+        autoInstall: true,
       })
     } catch (error) {
       console.error('Error toggling SlickTrax addon:', error)

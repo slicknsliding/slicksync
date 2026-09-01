@@ -140,4 +140,21 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     actions: [{ type: 'webhook', config: { url: '' } }],
     needs: 'Add your webhook URL before saving.',
   },
+  {
+    id: 'watch-finished-webhook',
+    title: 'Send every finished title to a webhook',
+    description: 'Fires once when something is genuinely finished (the real playback-position test, not just stopped) and posts it wherever you point it. Scrobble-out to anything that accepts HTTP - a dashboard, a Discord thread, your own script.',
+    name: 'Finished title webhook',
+    triggerType: 'watch.finished',
+    actions: [{ type: 'webhook', config: { url: '' } }],
+    needs: 'Add your webhook URL before saving.',
+  },
+  {
+    id: 'nightly-extra-backup',
+    title: 'Run an extra backup at an hour you choose',
+    description: 'The nightly backup already runs on its own schedule; this adds another at whatever hour you set - useful before a nightly maintenance window, or just for belt-and-braces.',
+    name: 'Extra scheduled backup',
+    triggerType: 'time.daily',
+    actions: [{ type: 'backup.run', config: {} }],
+  },
 ];

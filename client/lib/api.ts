@@ -1504,10 +1504,12 @@ class ApiClient {
     return this.fetch<{ success: boolean }>(`/settings/trash/${encodeURIComponent(trashId)}`, { method: 'DELETE' });
   }
 
-  async checkProviderKeys(): Promise<{ keyHealth: SyncSettings['keyHealth'] }> {
+  /** No argument checks all four keys; a provider name checks just that one
+   * (the save-time verification for a single edited field). */
+  async checkProviderKeys(provider?: 'tmdb' | 'omdb' | 'mdblist' | 'rpdb'): Promise<{ keyHealth: SyncSettings['keyHealth'] }> {
     const res = await this.fetch<{ data?: { keyHealth: SyncSettings['keyHealth'] } } & Partial<{ keyHealth: SyncSettings['keyHealth'] }>>(
       '/settings/check-keys',
-      { method: 'POST' }
+      { method: 'POST', body: JSON.stringify(provider ? { provider } : {}) }
     );
     return (res?.data ?? res) as { keyHealth: SyncSettings['keyHealth'] };
   }
@@ -2724,7 +2726,7 @@ export type VaultCategory =
   | 'debrid' | 'usenet_provider' | 'usenet_indexer' | 'stremio' | 'nuvio'
   | 'metadata' | 'ai' | 'vpn' | 'aiostreams' | 'custom';
 
-export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth';
+export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible';
 
 export interface VaultEntry {
   id: string;
