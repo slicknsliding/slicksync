@@ -1650,6 +1650,16 @@ class ApiClient {
     return response.json() as Promise<ImportConfigResult>;
   }
 
+  /** Enable/disable the SlickTrax Addon for a user - the per-user Stremio
+   * addon serving Continue Watching / Watchlist / Catalogs inside the apps.
+   * rotate: true issues a fresh URL token, killing the old URL everywhere. */
+  async setTraxAddon(userId: string, enabled: boolean, rotate = false) {
+    return this.fetch<{ enabled: boolean; manifestUrl: string; autoInstall: boolean }>(
+      `/users/${encodeURIComponent(userId)}/trax-addon`,
+      { method: 'POST', body: JSON.stringify({ enabled, rotate }) },
+    );
+  }
+
   // Watch-history CSV import (IMDb/Letterboxd/loose-Trakt-export compatible -
   // see server/utils/csvHistoryImport.js) for one household member.
   async importUserHistory(userId: string, file: File) {
@@ -2613,6 +2623,9 @@ export interface User {
   name?: string; // Legacy field, prefer username
   email?: string;
   providerType?: 'stremio' | 'nuvio';
+  /** SlickTrax Addon - per-user Stremio addon toggle + its URL token. */
+  traxAddonEnabled?: boolean;
+  traxToken?: string | null;
   createdAt?: string;
   updatedAt?: string;
   expiresAt?: string | null;

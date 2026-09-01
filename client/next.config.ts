@@ -71,6 +71,13 @@ const nextConfig: NextConfig = {
         source: '/proxy/:path*',
         destination: 'http://localhost:4000/proxy/:path*',
       },
+      // SlickTrax Addon (server/routes/traxAddon.js) - same reasoning as
+      // /proxy above: Stremio apps fetch this path on the public port, and
+      // the backend owns it.
+      {
+        source: '/trax/:path*',
+        destination: 'http://localhost:4000/trax/:path*',
+      },
       // Public invite routes (no auth required)
       {
         source: '/invite/:inviteCode/check',

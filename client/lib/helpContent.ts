@@ -1310,6 +1310,25 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['maintenance-and-updates', 'system-health-overview'],
   },
   {
+    id: 'slicktrax-addon',
+    title: 'The SlickTrax Addon - your rows inside Stremio and Nuvio',
+    category: 'Sharing & integrations',
+    keywords: ['slicktrax addon', 'stremio addon', 'continue watching in stremio', 'watchlist in stremio', 'catalogs in stremio', 'trax addon', 'addon rows'],
+    answer: 'SlickSync can serve a real Stremio addon of its own, per user: Continue Watching, the household Watchlist, and every Catalog appear as live rows inside Stremio and Nuvio on that user\'s devices. Enable it on the user\'s page under Watch-Tracking Integrations - sync installs it and keeps it installed.',
+    steps: [
+      'Open the user -> Watch-Tracking Integrations -> SlickTrax Addon -> Enable.',
+      'Run a sync (or let the schedule do it). The addon appears in their app like any other.',
+      'That\'s all - the rows update themselves, because they are computed live from SlickSync\'s own data on every request.',
+    ],
+    details: [
+      'Continue Watching in the addon is cross-provider: Stremio and Nuvio watches merge into one row, which no external tracker can offer because none of them see both pipelines.',
+      'The addon is catalog-only by design. It adds rows; it never touches streams or playback - those stay with the user\'s own addons.',
+      'The URL contains a private token, so it works without a login - treat it like a password. Disabling the addon makes the next sync remove it, and re-enabling keeps the same URL so already-installed copies resume working.',
+      'Auto-install needs PUBLIC_APP_URL set on the server so sync knows the address other devices can reach. Without it, the toggle still gives you the manifest URL to install by hand.',
+    ],
+    related: ['share-codes', 'watch-tracking-integrations'],
+  },
+  {
     id: 'watch-tracking-integrations',
     title: 'Linking a user to SIMKL, or bringing a history over from Trakt',
     category: 'Sharing & integrations',

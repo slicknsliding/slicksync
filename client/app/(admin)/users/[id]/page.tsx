@@ -251,6 +251,14 @@ export default function UserDetailPage() {
   const historyFileInputRef = useRef<HTMLInputElement>(null);
   const [isImportingHistory, setIsImportingHistory] = useState(false);
   const [isExportingHistory, setIsExportingHistory] = useState(false);
+
+  // SlickTrax Addon toggle - see server/routes/traxAddon.js. The manifest
+  // URL comes back from the toggle call (the server knows the right base);
+  // reconstructed on load from the user's stored token as a best-effort
+  // display until the first toggle response replaces it.
+  const [isTogglingTrax, setIsTogglingTrax] = useState(false);
+  const [traxManifestUrl, setTraxManifestUrl] = useState<string | null>(null);
+
   const [historyImportResult, setHistoryImportResult] = useState<{
     filesProcessed: number;
     filesUsed: number;
@@ -452,6 +460,35 @@ export default function UserDetailPage() {
 
   // Data state
   const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    if (user?.traxAddonEnabled && user?.traxToken && !traxManifestUrl) {
+      setTraxManifestUrl(`${window.location.origin}/trax/${user.traxToken}/manifest.json`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.traxAddonEnabled, user?.traxToken]);
+
+  const handleToggleTraxAddon = async () => {
+    if (!params.id || !user) return;
+    const next = !user.traxAddonEnabled;
+    setIsTogglingTrax(true);
+    try {
+      const r = await api.setTraxAddon(params.id as string, next);
+      setUser((prev: any) => prev ? { ...prev, traxAddonEnabled: r.enabled } : prev);
+      setTraxManifestUrl(r.manifestUrl || null);
+      if (r.enabled) {
+        toast.success(r.autoInstall
+          ? 'SlickTrax Addon enabled - it installs on the next sync'
+          : 'Enabled. Set PUBLIC_APP_URL on the server for auto-install, or install the URL below manually.');
+      } else {
+        toast.success('SlickTrax Addon disabled - the next sync removes it');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to toggle SlickTrax Addon');
+    } finally {
+      setIsTogglingTrax(false);
+    }
+  };
   const [groups, setGroups] = useState<any[]>([]);
   const [watchTimeData, setWatchTimeData] = useState<WatchTimeDataPoint[]>([]);
   const [totalWatchTimeSeconds, setTotalWatchTimeSeconds] = useState(0);
@@ -1307,6 +1344,51 @@ export default function UserDetailPage() {
                       Link SIMKL
                     </Button>
                   )}
+                </div>
+
+                <div className="border-t" style={{ borderColor: 'var(--color-surface-border)' }} />
+
+                {/* SlickTrax Addon - SlickSync AS a Stremio addon: one
+                    per-user manifest URL serving Continue Watching /
+                    Watchlist / Catalogs as live rows inside Stremio and
+                    Nuvio. Enabled here, installed by the next sync. */}
+                <div className="py-3">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${user.traxAddonEnabled ? 'bg-success-muted' : 'bg-primary-muted'}`}>
+                        <PuzzlePieceIcon className={`w-5 h-5 ${user.traxAddonEnabled ? 'text-success' : 'text-primary'}`} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-default">SlickTrax Addon</h4>
+                          {user.traxAddonEnabled && <Badge variant="success" size="sm">Enabled</Badge>}
+                        </div>
+                        <p className="text-sm text-muted">
+                          {user.traxAddonEnabled
+                            ? 'Continue Watching, Watchlist and Catalogs appear as rows inside Stremio/Nuvio. Kept installed by sync.'
+                            : 'Put SlickTrax inside the apps: Continue Watching, Watchlist and every Catalog as real rows on this user\'s devices.'}
+                        </p>
+                        {user.traxAddonEnabled && traxManifestUrl && (
+                          <button
+                            type="button"
+                            className="mt-1 text-xs text-muted hover:text-default underline underline-offset-2 break-all text-left"
+                            title="Copy manifest URL"
+                            onClick={() => { navigator.clipboard?.writeText(traxManifestUrl); toast.success('Manifest URL copied'); }}
+                          >
+                            {traxManifestUrl}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant={user.traxAddonEnabled ? 'ghost' : 'primary'}
+                      size="sm"
+                      isLoading={isTogglingTrax}
+                      onClick={handleToggleTraxAddon}
+                    >
+                      {user.traxAddonEnabled ? 'Disable' : 'Enable'}
+                    </Button>
+                  </div>
                 </div>
 
               </Card>

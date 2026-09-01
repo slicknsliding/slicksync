@@ -37,6 +37,13 @@ model User {
   discordUserId      String? // Discord user ID for personalized notifications
   notifyOnWatch      Boolean   @default(true) // Whether THIS user's watch activity (started/watched) triggers a notification at all. When discordWebhookUrl is set, their watch pings route there instead of the account's shared webhook.
   apiKey             String? // User-specific API key for accessing own metrics
+  // SlickTrax Addon: serves this user's Continue Watching / Watchlist /
+  // Catalogs as real Stremio-protocol catalogs at /trax/<token>/manifest.json,
+  // so SlickTrax rows appear INSIDE Stremio/Nuvio on every device. The token
+  // is a bearer credential in the URL (same model as Addon.proxyUuid) -
+  // generated on first enable, never derived from anything guessable.
+  traxAddonEnabled   Boolean  @default(false)
+  traxToken          String?  @unique
   activityVisibility String    @default("private") // "public" or "private" - when public, group members can see this user's library/history
   // See schema.sqlite.prisma's comment - a genuinely public, unauthenticated
   // share link, distinct from activityVisibility above.

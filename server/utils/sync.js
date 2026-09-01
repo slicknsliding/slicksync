@@ -120,6 +120,36 @@ function dedupeByUrl(addons) {
 /**
  * Get desired addons for a user (group addons + protected addons from Stremio)
  */
+
+// SlickTrax Addon injection: when the user's toggle is on, their per-user
+// /trax manifest joins the desired collection like any other addon - so
+// enabling it is one click and sync does the rest, and disabling it makes
+// the next sync remove it. Appended AFTER the group/protected composition
+// on purpose: it belongs to the user, not to any group, and it should never
+// displace a protected addon's locked position.
+//
+// Skipped (not guessed) when PUBLIC_APP_URL is unset - sync runs with no
+// request context to borrow a hostname from, and a wrong base URL synced
+// into real Stremio accounts is far worse than the toggle plainly saying it
+// needs the env var. The manifest object is inlined via the same builder
+// that serves /trax/:token/manifest.json, so the synced copy and the live
+// endpoint can never drift.
+async function appendTraxAddon(user, addons, prisma) {
+  try {
+    if (!user?.traxAddonEnabled || !user?.traxToken || !prisma) return addons
+    const base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+    if (!base) return addons
+    const { buildTraxManifest, getListsForAccount } = require('../routes/traxAddon')
+    const lists = await getListsForAccount(prisma, user.accountId)
+    const manifest = buildTraxManifest(user, lists)
+    const transportUrl = `${base}/trax/${user.traxToken}/manifest.json`
+    if (addons.some((a) => (a?.transportUrl || a?.manifestUrl || a?.url || '') === transportUrl)) return addons
+    return [...addons, { transportUrl, transportName: 'SlickTrax', manifest }]
+  } catch {
+    return addons
+  }
+}
+
 async function getDesiredAddons(user, req, { prisma, getAccountId, decrypt, parseAddonIds, parseProtectedAddons, canonicalizeManifestUrl, StremioAPIClient, createProvider, unsafeMode = false, useCustomFields = true, _prefetchedUserAddons = null }) {
   try {
     // Get group addons
@@ -294,13 +324,13 @@ async function getDesiredAddons(user, req, { prisma, getAccountId, decrypt, pars
     // If current is empty (finalLength = 0), ensure we still add all group addons
     if (finalLength === 0 && nonProtectedGroupAddons.length > 0) {
       // When current is empty, just return all non-protected group addons
-      return { success: true, addons: dedupeByUrl(nonProtectedGroupAddons), error: null }
+      return { success: true, addons: await appendTraxAddon(user, dedupeByUrl(nonProtectedGroupAddons), prisma), error: null }
     }
 
     // Remove nulls and return
     const finalDesiredAddons = finalDesiredCollection.filter(Boolean)
 
-    return { success: true, addons: dedupeByUrl(finalDesiredAddons), error: null }
+    return { success: true, addons: await appendTraxAddon(user, dedupeByUrl(finalDesiredAddons), prisma), error: null }
   } catch (error) {
     return { success: false, addons: [], error: error.message || 'Failed to get desired addons' }
   }
@@ -524,6 +554,7 @@ function createManifestFingerprint(canonicalizeManifestUrl, { urlOnly = false } 
 }
 
 module.exports = {
+  appendTraxAddon,
   getUserAddons,
   getDesiredAddons,
   createGetUserSyncStatus,

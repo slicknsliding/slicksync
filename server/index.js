@@ -394,6 +394,10 @@ app.use('/api/public-library', publicLibraryRouter({ prisma, DEFAULT_ACCOUNT_ID,
 // Addon proxy router (no auth required - UUID serves as bearer token)
 app.use('/proxy', proxyRouter({ prisma, decrypt, getAccountId, getServerKey }));
 
+// SlickTrax Addon - SlickSync serving the Stremio addon protocol itself
+// (per-user token in the URL is the credential; allowlisted like /proxy)
+app.use('/trax', require('./routes/traxAddon')({ prisma }));
+
 // Stream proxy router (no auth required - handles encrypted stream URLs)
 app.use('/stream', streamProxyRouter({ getServerKey }).router);
 

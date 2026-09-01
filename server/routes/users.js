@@ -680,6 +680,46 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+
+  // POST /users/:id/trax-addon - enable/disable the SlickTrax Addon for this
+  // user (body: {enabled}). The URL token is a bearer credential (see
+  // routes/traxAddon.js): crypto-random, generated on first enable, and kept
+  // stable across later toggles so the URL already synced into the account
+  // keeps working. Pass {rotate: true} to force a fresh token - which
+  // deliberately kills the old URL everywhere it was ever installed.
+  router.post('/:id/trax-addon', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+
+      const enabled = !!req.body?.enabled
+      const rotate = !!req.body?.rotate
+      let traxToken = user.traxToken
+      if ((enabled && !traxToken) || rotate) {
+        traxToken = require('crypto').randomBytes(24).toString('hex')
+      }
+      await prisma.user.update({ where: { id: user.id }, data: { traxAddonEnabled: enabled, traxToken } })
+
+      // The base URL sync will use. Reported honestly rather than guessed
+      // from the request: sync itself has no request to borrow a hostname
+      // from, so if PUBLIC_APP_URL is unset the auto-install genuinely will
+      // not happen and the UI should say so instead of showing a URL that
+      // only works from this browser's vantage point.
+      const base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+      const reqBase = `${req.protocol}://${req.get('host')}`
+      res.json({
+        enabled,
+        manifestUrl: `${base || reqBase}/trax/${traxToken}/manifest.json`,
+        autoInstall: !!base,
+      })
+    } catch (error) {
+      console.error('Error toggling SlickTrax addon:', error)
+      res.status(500).json({ error: 'Failed to update SlickTrax addon' })
+    }
+  })
+
   // GET /users/:id/export-history.csv - Letterboxd-import-compatible CSV
   // (Title,Year,imdbID,WatchedDate,Rating10 - the exact column names
   // Letterboxd's own importer accepts, confirmed against
@@ -2077,6 +2117,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         providerConnectionErrorAt: user.providerConnectionErrorAt || null,
         simklConnected: !!user.simklAccessToken,
         simklConnectedAt: user.simklConnectedAt || null,
+        // SlickTrax Addon state. The token is a bearer credential, but this
+        // response is admin-session-only and the admin can already read it
+        // from the manifest URL the toggle returns - it is needed here so a
+        // page reload can still display/copy that URL.
+        traxAddonEnabled: !!user.traxAddonEnabled,
+        traxToken: user.traxToken || null,
       }
 
       res.json(transformedUser)
