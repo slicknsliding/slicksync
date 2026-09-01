@@ -10,6 +10,7 @@ import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { Button, Card, StatCard, Avatar, Badge, StatusBadge, Modal, ConfirmModal, ColorPicker, DateTimePicker, InlineEdit, ToggleSwitch, Select, SyncBadge, Input, VersionBadge, ResourceBadge, UserAvatar } from '@/components/ui';
+import { SyncPreviewDialog } from '@/components/ui/SyncPreviewDialog';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
@@ -237,6 +238,7 @@ export default function UserDetailPage() {
   const [mergeCandidate, setMergeCandidate] = useState<MergeCandidate | null>(null);
   const [mergePreview, setMergePreview] = useState<MergePreview | null>(null);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
+  const [isSyncPreviewOpen, setIsSyncPreviewOpen] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
   const [mergeInfo, setMergeInfo] = useState<MergeInfo | null>(null);
   const [isUndoModalOpen, setIsUndoModalOpen] = useState(false);
@@ -266,6 +268,77 @@ export default function UserDetailPage() {
     } finally {
       setIsImportingHistory(false);
     }
+  };
+
+  // Trakt one-time import - "leave Trakt in one click." Separate from the
+  // CSV import above because Trakt has no reliable CSV export to point that
+  // path at (see server/utils/csvHistoryImport.js and traktImport.js's own
+  // comments) - this pulls straight from Trakt's own API via a short-lived
+  // OAuth connection instead, then drops the connection.
+  const traktPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [traktAuth, setTraktAuth] = useState<{ deviceCode: string; userCode: string; verificationUrl: string; expiresIn: number } | null>(null);
+  const [traktStatus, setTraktStatus] = useState<'idle' | 'connecting' | 'waiting' | 'importing'>('idle');
+  const [traktResult, setTraktResult] = useState<{ imported: number; skipped: number; totalFromTrakt: number } | null>(null);
+
+  const stopTraktPolling = () => {
+    if (traktPollRef.current) { clearInterval(traktPollRef.current); traktPollRef.current = null; }
+  };
+  // Unmounting mid-connect must not leave a poll timer running against a
+  // component that's gone.
+  useEffect(() => () => stopTraktPolling(), []);
+
+  const handleStartTrakt = async () => {
+    if (!params.id) return;
+    setTraktStatus('connecting');
+    setTraktResult(null);
+    try {
+      const auth = await api.startTraktImport(params.id as string);
+      setTraktAuth(auth);
+      setTraktStatus('waiting');
+      const deadline = Date.now() + auth.expiresIn * 1000;
+      traktPollRef.current = setInterval(async () => {
+        if (Date.now() > deadline) {
+          stopTraktPolling();
+          setTraktStatus('idle');
+          setTraktAuth(null);
+          toast.error('Trakt code expired - try connecting again');
+          return;
+        }
+        try {
+          const poll = await api.pollTraktImport(params.id as string, auth.deviceCode);
+          if (poll.status === 'pending') return; // keep waiting, this is the normal state
+          stopTraktPolling();
+          if (poll.status === 'done') {
+            setTraktStatus('idle');
+            setTraktAuth(null);
+            setTraktResult({ imported: poll.imported, skipped: poll.skipped, totalFromTrakt: poll.totalFromTrakt });
+            toast.success(`Imported ${poll.imported} title${poll.imported === 1 ? '' : 's'} from Trakt`);
+          } else if (poll.status === 'denied') {
+            setTraktStatus('idle');
+            setTraktAuth(null);
+            toast.error('Trakt connection was denied');
+          } else {
+            setTraktStatus('idle');
+            setTraktAuth(null);
+            toast.error(poll.message || 'Trakt connection expired - try again');
+          }
+        } catch (err: any) {
+          stopTraktPolling();
+          setTraktStatus('idle');
+          setTraktAuth(null);
+          toast.error(err.message || 'Failed to check Trakt connection');
+        }
+      }, 5000); // Trakt's documented device-flow interval is typically 5s; polling any faster risks a 429
+    } catch (err: any) {
+      setTraktStatus('idle');
+      toast.error(err?.data?.notConfigured ? 'Trakt import isn\'t set up on this instance yet - ask your admin to add TRAKT_CLIENT_ID/TRAKT_CLIENT_SECRET' : (err.message || 'Failed to start Trakt connection'));
+    }
+  };
+
+  const handleCancelTrakt = () => {
+    stopTraktPolling();
+    setTraktStatus('idle');
+    setTraktAuth(null);
   };
 
   const handleExportHistory = async () => {
@@ -937,7 +1010,7 @@ export default function UserDetailPage() {
       <Button
         variant="glass"
         leftIcon={<ArrowPathIcon className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />}
-        onClick={handleSync}
+        onClick={() => setIsSyncPreviewOpen(true)}
         isLoading={isSyncing}
       >
         Sync
@@ -1173,22 +1246,48 @@ export default function UserDetailPage() {
               </Card>
             </PageSection>
 
-            {/* SIMKL link - an optional supplementary watch-history pull/push,
-                not a peer of providerType (see the schema comment on
-                User.simklAccessToken for why). Used to live as a tiny text
-                link buried in the header row next to "Debug" - promoted to
-                its own card since it's a real two-way sync feature, not a
-                footnote. */}
+            {/* Manual merge - shown when this account hasn't already
+                absorbed a second provider's account. */}
+            {!mergeInfo && (
+              <PageSection className="mb-6">
+                <Card padding="lg">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-surface-hover">
+                        <LinkIcon className="w-5 h-5 text-muted" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-semibold text-default">Same person on another provider?</h3>
+                        <p className="text-sm text-muted">Merge this account with a specific Stremio or Nuvio user.</p>
+                      </div>
+                    </div>
+                    <Button variant="secondary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openMergePicker}>
+                      Merge with another user
+                    </Button>
+                  </div>
+                </Card>
+              </PageSection>
+            )}
+
+            {/* Watch-tracking integrations - SIMKL (ongoing two-way sync)
+                and Trakt (one-time pull, then disconnects - see
+                traktImport.js for why it can't be an ongoing link the way
+                SIMKL is: Trakt's ecosystem role here is "get your data out,"
+                not "sync forever"). Same row layout for both so they read as
+                siblings in one category, not two unrelated features. */}
             <PageSection className="mb-6">
               <Card padding="lg">
-                <div className="flex items-center justify-between gap-4 flex-wrap">
+                <h3 className="text-lg font-semibold text-default mb-1">Watch-Tracking Integrations</h3>
+                <p className="text-sm text-muted mb-4">Link this user's history to an external tracker</p>
+
+                <div className="flex items-center justify-between gap-4 flex-wrap py-3">
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${user.simklConnected ? 'bg-success-muted' : 'bg-primary-muted'}`}>
                       <ArrowPathIcon className={`w-5 h-5 ${user.simklConnected ? 'text-success' : 'text-primary'}`} />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-semibold text-default">SIMKL</h3>
+                        <h4 className="font-semibold text-default">SIMKL</h4>
                         {user.simklConnected && <Badge variant="success" size="sm">Linked</Badge>}
                       </div>
                       <p className="text-sm text-muted">
@@ -1225,31 +1324,51 @@ export default function UserDetailPage() {
                     </Button>
                   )}
                 </div>
-              </Card>
-            </PageSection>
 
-            {/* Manual merge - shown when this account hasn't already
-                absorbed a second provider's account. */}
-            {!mergeInfo && (
-              <PageSection className="mb-6">
-                <Card padding="lg">
+                <div className="border-t" style={{ borderColor: 'var(--color-surface-border)' }} />
+
+                <div className="py-3">
                   <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-surface-hover">
-                        <LinkIcon className="w-5 h-5 text-muted" />
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${traktResult ? 'bg-success-muted' : 'bg-primary-muted'}`}>
+                        <ArrowDownTrayIcon className={`w-5 h-5 ${traktResult ? 'text-success' : 'text-primary'}`} />
                       </div>
                       <div>
-                        <h3 className="text-base font-semibold text-default">Same person on another provider?</h3>
-                        <p className="text-sm text-muted">Merge this account with a specific Stremio or Nuvio user.</p>
+                        <h4 className="font-semibold text-default">Trakt</h4>
+                        <p className="text-sm text-muted">
+                          {traktResult
+                            ? `Imported ${traktResult.imported} of ${traktResult.totalFromTrakt} title${traktResult.totalFromTrakt === 1 ? '' : 's'} just now${traktResult.skipped > 0 ? ` (${traktResult.skipped} skipped)` : ''}.`
+                            : 'One-time pull of this user\'s Trakt history and ratings, then the connection is dropped - not an ongoing sync like SIMKL above.'}
+                        </p>
                       </div>
                     </div>
-                    <Button variant="secondary" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openMergePicker}>
-                      Merge with another user
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      leftIcon={<LinkIcon className="w-4 h-4" />}
+                      onClick={handleStartTrakt}
+                      isLoading={traktStatus === 'connecting'}
+                      disabled={traktStatus === 'waiting'}
+                    >
+                      Connect Trakt
                     </Button>
                   </div>
-                </Card>
-              </PageSection>
-            )}
+                  {traktAuth && traktStatus === 'waiting' && (
+                    <div className="mt-3 p-4 rounded-lg text-sm" style={{ background: 'var(--color-surface-hover)' }}>
+                      <p className="text-default">
+                        Go to <a href={traktAuth.verificationUrl} target="_blank" rel="noopener noreferrer" className="font-medium underline" style={{ color: 'var(--color-primary)' }}>{traktAuth.verificationUrl.replace(/^https?:\/\//, '')}</a> and enter this code:
+                      </p>
+                      <p className="text-2xl font-mono font-bold tracking-widest mt-2" style={{ color: 'var(--color-text)' }}>{traktAuth.userCode}</p>
+                      <div className="flex items-center gap-2 mt-3">
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin text-muted" />
+                        <span className="text-xs text-muted">Waiting for approval… nothing else to do here, this updates on its own.</span>
+                      </div>
+                      <Button variant="ghost" size="sm" className="mt-2" onClick={handleCancelTrakt}>Cancel</Button>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </PageSection>
 
             {/* Merged-account state - this user has already absorbed a
                 second provider's account. See server/utils/userMerge.js;
@@ -2061,6 +2180,18 @@ export default function UserDetailPage() {
         }}
       />
 
+      {/* Preview what a sync would change before it touches the real
+          account - see SyncPreviewDialog. */}
+      {user && (
+        <SyncPreviewDialog
+          isOpen={isSyncPreviewOpen}
+          onClose={() => setIsSyncPreviewOpen(false)}
+          userId={user.id}
+          userName={user.username}
+          onConfirm={handleSync}
+        />
+      )}
+
       {/* SIMKL Link Modal */}
       <SimklLinkModal
         isOpen={isSimklModalOpen}
@@ -2104,10 +2235,9 @@ function SimklLinkModal({
   userId: string;
   onLinked: () => void;
 }) {
-  const [status, setStatus] = useState<'idle' | 'starting' | 'waiting' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'starting' | 'waiting'>('idle');
   const [userCode, setUserCode] = useState<string | null>(null);
   const [verificationUrl, setVerificationUrl] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const expiresAtRef = useRef<number>(0);
 
@@ -2120,7 +2250,6 @@ function SimklLinkModal({
 
   const start = async () => {
     setStatus('starting');
-    setErrorMessage(null);
     try {
       const data = await api.startSimklPin(userId);
       setUserCode(data.userCode);
@@ -2131,9 +2260,12 @@ function SimklLinkModal({
       const intervalMs = Math.max(2, data.pollIntervalSeconds || 5) * 1000;
       pollRef.current = setInterval(async () => {
         if (Date.now() > expiresAtRef.current) {
+          // Same toast-and-close treatment as the start failure above, and
+          // as the Trakt row's own expiry path - not a modal left sitting
+          // open with an error inside it.
           stopPolling();
-          setStatus('error');
-          setErrorMessage('Code expired - try again');
+          toast.error('SIMKL code expired - try linking again');
+          onClose();
           return;
         }
         try {
@@ -2148,8 +2280,14 @@ function SimklLinkModal({
         }
       }, intervalMs);
     } catch (err: any) {
-      setStatus('error');
-      setErrorMessage(err.message || 'Failed to start SIMKL authorization');
+      // Surfaced as a toast and the modal closed, rather than a modal whose
+      // entire content is an error message. Matches how the Trakt row on the
+      // same card reports the identical class of problem ("this integration
+      // isn't configured on this instance") - previously SIMKL opened a
+      // modal containing red text while Trakt toasted, which read as two
+      // unrelated error systems for the same situation.
+      toast.error(err.message || 'Failed to start SIMKL authorization');
+      onClose();
     }
   };
 
@@ -2160,7 +2298,6 @@ function SimklLinkModal({
       setStatus('idle');
       setUserCode(null);
       setVerificationUrl(null);
-      setErrorMessage(null);
     }
     return stopPolling;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2170,12 +2307,6 @@ function SimklLinkModal({
     <Modal isOpen={isOpen} onClose={onClose} title="Link SIMKL">
       <div className="space-y-4 text-center py-2">
         {status === 'starting' && <p className="text-sm text-muted">Requesting a code from SIMKL...</p>}
-        {status === 'error' && (
-          <>
-            <p className="text-sm text-error">{errorMessage}</p>
-            <Button variant="secondary" onClick={start}>Try Again</Button>
-          </>
-        )}
         {status === 'waiting' && userCode && (
           <>
             <p className="text-sm text-muted">

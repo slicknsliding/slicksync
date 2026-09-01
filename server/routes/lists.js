@@ -331,7 +331,18 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
       const accountId = getAccountId(req) || 'default';
       const existing = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } });
       if (!existing) return res.status(404).json({ error: 'List not found' });
-      await prisma.customList.delete({ where: { id: existing.id } });
+      // Archived to Trash before deletion so an accidental delete is one
+      // click to undo - see utils/trash.js. The archive is written first; if
+      // it fails, nothing is deleted and we fall back to a plain delete
+      // rather than refusing the request.
+      let trashId = null;
+      try {
+        const { archiveAndDelete } = require('../utils/trash');
+        trashId = (await archiveAndDelete(prisma, accountId, 'catalog', existing.id)).id;
+      } catch (e) {
+        console.error('[Trash] Archive failed, deleting without undo:', e?.message);
+        await prisma.customList.delete({ where: { id: existing.id } });
+      }
       // A deleted auto-generated catalog must never come back on the next
       // scan just because the same taste cluster is still detected - see
       // autoThemedCatalogs.js's own comment for why this mirrors the
@@ -347,7 +358,7 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
           console.warn('Failed to record themed-catalog dismissal:', e?.message);
         }
       }
-      res.json({ success: true });
+      res.json({ success: true, trashId });
     } catch (e) {
       console.error('Error deleting custom list:', e);
       res.status(500).json({ error: 'Failed to delete list' });

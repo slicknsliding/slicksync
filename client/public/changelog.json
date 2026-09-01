@@ -1,5 +1,33 @@
 [
   {
+    "version": "1.76.0",
+    "date": "2026-09-01",
+    "title": "1.76.0 — Browse for addons, undo a delete, and a fix for mixed-up watch history",
+    "features": [
+      "Browse for addons instead of hunting down a manifest URL. Addons → Browse searches the public Stremio addon directory from inside SlickSync, sorted so the ones most people use come first, and adds your pick straight into your addon list. Addons that need setting up on their own site say so and link there, rather than adding a half-configured one that quietly does nothing.",
+      "Deleting a catalog or addon can now be undone. The confirmation offers Undo on the spot, and anything deleted stays recoverable for 30 days under Tasks → Maintenance → Recently deleted. An addon comes back with its group assignments intact. Deleting a user is still permanent — that carries watch history and credentials, and a restore that quietly lost some of it would be worse than being told plainly.",
+      "Sync now shows what it is about to do. Pressing Sync on a user lists exactly which addons would be added, removed, or reordered, and waits for you to confirm — rather than rewriting their account and leaving you to work out what changed.",
+      "A check for API keys that have stopped working. TMDb, OMDb, MDBList and RPDB keys fail silently — posters and ratings just quietly stop appearing, with no error anywhere. Settings now shows whether each key still works, checks daily on its own, and tells you the first time one breaks. MDBList also shows how much of its quota you have used.",
+      "One-time import from Trakt. Connect once, and SlickTrax pulls that user's history and ratings across, then drops the connection — nothing is stored afterwards. Set up per instance by whoever runs it.",
+      "Share an addon template without sharing your keys. Template codes now replace API keys with placeholders by default, and whoever imports it is asked for their own before anything is created. Addons whose settings are encrypted by their own server are left out of the code entirely and named, rather than shipped looking safe when they are not.",
+      "Shows you started and never finished now have somewhere to live. Activity → Dropped lists anything untouched for 45 days or more, with how far you got — previously these simply vanished from the app. Pick one back up, or bury it.",
+      "Automation without building a rule from scratch. Tasks → Automation → Recipes offers ready-made starting points like \"tell me when an addon goes down\", which open the normal editor already filled in. Four new things can trigger a rule too, including an API key breaking and an off-site backup failing.",
+      "A watch history check. Tasks → Maintenance can now scan for watch records that are provably wrong — duplicates copied between providers, or records belonging to a deleted user — and clear them out. Scanning never changes anything on its own.",
+      "A \"finish setting up\" card on the Dashboard listing what has not been configured yet, each item linking to the right page. It disappears as you complete things, and can be hidden for good.",
+      "Beginner Mode (Settings → Privacy & Display) adds a one-line explanation to the top of pages, each linking into the full guide.",
+      "Short share codes can now be shown as a QR code, for carrying one to another device without typing it out."
+    ],
+    "bugFixes": [
+      "Fixed watch history being attributed to the wrong account. If the same person had both a Stremio and a Nuvio account under one email — a supported setup — episodes watched on one could be recorded against the other. Both accounts were sharing a single cached copy of their library, so whichever synced last could overwrite the other's. Existing incorrect records can be found and removed by the new watch history check.",
+      "SlickSync now notices when its own backend has stopped responding. Previously only the web interface was checked, so the app could report itself healthy while every action silently failed.",
+      "The genre dropdown on Discover no longer jumps around or opens in the wrong place, and long lists scroll properly instead of running off the screen.",
+      "Connecting a Stremio account no longer opens a blank tab on the first attempt.",
+      "The Edit config button no longer appears on addons whose settings are encrypted by the addon's own server — editing those could not have worked and risked breaking the addon.",
+      "SIMKL and Trakt now report problems the same way. Previously one opened a window containing an error while the other showed a brief message.",
+      "Checking API keys when none are set up now says so, instead of reporting that everything is working."
+    ]
+  },
+  {
     "version": "1.75.2",
     "date": "2026-08-25",
     "title": "1.75.2 — The addon Proxy feature actually works now",

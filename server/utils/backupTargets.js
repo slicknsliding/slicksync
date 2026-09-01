@@ -160,6 +160,16 @@ async function uploadBackup(filePath, prisma) {
           url: '/tasks',
           dedupeKey: 'backup-remote-failed',
         })
+        // Same event surfaced to automation rules, so an operator can wire
+        // their own action (webhook to an ops channel, etc.) rather than
+        // relying only on the bell. Best-effort alongside the notification -
+        // neither may break the caller, which has already written the local
+        // backup successfully.
+        const { emitAutomationEvent } = require('./automation/engine')
+        await emitAutomationEvent(prisma, 'default', 'backup.failed', {
+          target: settings.type,
+          message,
+        })
       } catch { /* notification is best-effort */ }
     }
     return { ok: false, error: message }

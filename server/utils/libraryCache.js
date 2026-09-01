@@ -31,23 +31,40 @@ function getAccountCacheDir(accountId) {
 }
 
 /**
- * Get cache file path for a user within an account folder
- * Prefers email-based naming: library-{email}.json
- * Falls back to user-{userId}.json if email not available
+ * Get cache file path for a user within an account folder.
+ *
+ * Keyed by user id, NOT email. Email-keyed naming was a real data-corruption
+ * bug: the same person's Stremio and Nuvio accounts legitimately share one
+ * email (that pairing is a first-class supported case - see the account-merge
+ * and provider-disambiguation logic), so both users resolved to the SAME
+ * library-{email}.json file. Whichever synced last overwrote it, and when the
+ * other user's live provider fetch failed, its fallback read that file and got
+ * the OTHER PROVIDER'S library - which metricsProcessor then wrote out as that
+ * user's own watch history.
+ *
+ * Confirmed live on a real instance: 7 episodes carrying Nuvio profile labels
+ * ("Main Profile", "Test") were written onto a Stremio-typed user, each an
+ * exact duplicate of a Nuvio row - identical watchedAt to the millisecond,
+ * createdAt days later. The user id is the only key guaranteed unique per
+ * provider account, so it is what this uses now.
  */
 function getCacheFilePath(accountId, user) {
   const accountDir = getAccountCacheDir(accountId)
-  
-  // If user object has email, use it
-  if (user && user.email) {
-    // Sanitize email for filename (replace special chars just in case, though usually fine)
-    const safeEmail = user.email.replace(/[^a-zA-Z0-9@._-]/g, '_')
-    return path.join(accountDir, `library-${safeEmail}.json`)
-  }
-  
-  // Fallback to userId
   const userId = user && user.id ? user.id : user
   return path.join(accountDir, `user-${userId}.json`)
+}
+
+/**
+ * Legacy email-keyed path, read-only. Still consulted on a cache MISS so an
+ * existing install doesn't lose its warm cache on upgrade - but never written
+ * to again, and never used when the account shares its email with another
+ * user (that's precisely the collision above, where the file's contents may
+ * belong to the other provider entirely).
+ */
+function getLegacyEmailCachePath(accountId, user) {
+  if (!user || !user.email) return null
+  const safeEmail = user.email.replace(/[^a-zA-Z0-9@._-]/g, '_')
+  return path.join(getAccountCacheDir(accountId), `library-${safeEmail}.json`)
 }
 
 /**
@@ -57,17 +74,20 @@ function getCacheFilePath(accountId, user) {
  * @param {object|string} user - User object {id, email} or userId string
  * @returns {Array|null} - Cached library array or null
  */
-function getCachedLibrary(accountId, user) {
+function getCachedLibrary(accountId, user, { allowLegacyEmailFile = false } = {}) {
   try {
     let cachePath = getCacheFilePath(accountId, user)
-    
-    // If email-based file doesn't exist, try legacy ID-based file
-    if (!fs.existsSync(cachePath) && typeof user === 'object' && user.id && user.email) {
-      const legacyPath = path.join(getAccountCacheDir(accountId), `user-${user.id}.json`)
-      if (fs.existsSync(legacyPath)) {
+
+    // Fall back to the pre-fix email-keyed file only when the caller has
+    // confirmed no other user on this account shares this email. Defaults to
+    // false so any caller that hasn't thought about it gets the safe
+    // behavior: a cache miss (one live re-fetch) rather than a possible
+    // cross-provider library. See getCacheFilePath's comment for what that
+    // collision actually did to real data.
+    if (!fs.existsSync(cachePath) && allowLegacyEmailFile) {
+      const legacyPath = getLegacyEmailCachePath(accountId, user)
+      if (legacyPath && fs.existsSync(legacyPath)) {
         cachePath = legacyPath
-        // Optionally migrate immediately?
-        // Let's just read from it for now. Write will happen on next update.
       }
     }
 
@@ -115,17 +135,13 @@ function setCachedLibrary(accountId, user, library) {
     const data = Array.isArray(library) ? library : []
     fs.writeFileSync(cachePath, JSON.stringify(data, null, 2), 'utf8')
     
-    // If we successfully wrote a new email-based file, check for and delete the old ID-based file to avoid duplicates
-    if (typeof user === 'object' && user.id && user.email) {
-      const legacyPath = path.join(getAccountCacheDir(accountId), `user-${user.id}.json`)
-      if (fs.existsSync(legacyPath) && legacyPath !== cachePath) {
-        try {
-          fs.unlinkSync(legacyPath)
-        } catch (e) {
-          // Ignore delete error
-        }
-      }
-    }
+    // The old email-keyed file is deliberately NOT deleted here. When two
+    // users share an email they also shared that one file, so removing it as
+    // soon as the first of them writes its own id-keyed cache would strip the
+    // other user's only warm cache before it has migrated. It stops being
+    // read once each user has an id-keyed file (see getCachedLibrary), so
+    // leaving it costs one stale file rather than risking a cold start for
+    // the sibling account.
   } catch (error) {
     console.warn(`Failed to write cache for user ${user.id || user} in account ${accountId}:`, error.message)
   }

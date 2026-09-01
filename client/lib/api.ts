@@ -781,6 +781,35 @@ class ApiClient {
     return this.fetch<Addon>(`/addons/${id}`);
   }
 
+  /** Browse the public Stremio addon directory (proxied + cached by
+   * server/routes/addonDirectory.js). Read-only: installing one of these
+   * goes through createAddon below, which re-fetches the manifest from the
+   * addon's own URL rather than trusting the directory listing. */
+  async browseAddonDirectory(opts: { page?: number; search?: string; category?: string } = {}) {
+    const params = new URLSearchParams();
+    if (opts.page) params.set('page', String(opts.page));
+    if (opts.search) params.set('search', opts.search);
+    if (opts.category) params.set('category', opts.category);
+    const qs = params.toString();
+    return this.fetch<{
+      addons: Array<{
+        id: string | null;
+        name: string;
+        description: string;
+        version: string | null;
+        logo: string | null;
+        manifestUrl: string;
+        configureUrl: string | null;
+        stars: number;
+        types: string[];
+        resources: string[];
+        categories: string[];
+      }>;
+      pagination: { page: number; totalPages: number; total: number; hasNextPage: boolean; hasPreviousPage: boolean };
+      cached?: boolean;
+    }>(`/addon-directory${qs ? `?${qs}` : ''}`);
+  }
+
   async createAddon(data: CreateAddonData) {
     // Backend expects 'url' but we use 'manifestUrl' in the interface
     const payload: any = { ...data };
@@ -825,8 +854,10 @@ class ApiClient {
     });
   }
 
+  /** Returns trashId when the addon was archived first, so the caller can
+   * offer an immediate Undo - see server/utils/trash.js. */
   async deleteAddon(id: string) {
-    return this.fetch(`/addons/${id}`, { method: 'DELETE' });
+    return this.fetch<{ message?: string; trashId?: string | null }>(`/addons/${id}`, { method: 'DELETE' });
   }
 
   async moveAddonToVault(id: string, category: string): Promise<{ success: boolean; vaultEntryId: string; removedFromGroups: number }> {
@@ -1418,6 +1449,69 @@ class ApiClient {
     return this.fetch('/settings/addon-health-check/now', { method: 'POST' });
   }
 
+  /** Validity check for whichever of the four metadata-provider keys
+   * (TMDb/OMDb/MDBList/RPDB) are actually configured for this account -
+   * see server/utils/metadataKeyHealth.js. Returns the merged keyHealth
+   * map, same shape SyncSettings.keyHealth carries. */
+  /** What this instance has and hasn't been configured with yet, in one
+   * call - see server/routes/settings.js's setup-status route. */
+  async getSetupStatus() {
+    return this.fetch<{
+      users: { done: boolean; count: number };
+      addons: { done: boolean; count: number };
+      notifications: { done: boolean; pushDevices: number };
+      vault: { done: boolean; count: number };
+      offsiteBackup: { done: boolean };
+      recoveryKit: { done: boolean; lastExportAt: string | null };
+      automation: { done: boolean; count: number };
+      timezone: { done: boolean };
+    }>('/settings/setup-status');
+  }
+
+  /** Read-only scan for provably-wrong watch history rows. Never writes -
+   * see server/utils/historyDoctor.js. */
+  async scanHistory() {
+    return this.fetch<{
+      findings: Array<{ id: string; kind: string; summary: string; detail: string }>;
+      counts: { cross_provider_duplicate: number; orphaned: number; total: number };
+      scannedAt: string;
+    }>('/settings/history-scan');
+  }
+
+  /** Deletes what a fresh server-side scan identifies. */
+  async repairHistory(kinds?: string[]) {
+    return this.fetch<{ removed: number; examined: number }>('/settings/history-repair', {
+      method: 'POST',
+      body: JSON.stringify({ kinds: kinds || null }),
+    });
+  }
+
+  /** Recently deleted catalogs and addons, restorable for 30 days.
+   * See server/utils/trash.js for why this is an archive rather than
+   * deletedAt columns. */
+  async getTrash() {
+    return this.fetch<Array<{
+      id: string; kind: string; label: string; deletedAt: string; expiresInDays: number;
+    }>>('/settings/trash');
+  }
+
+  async restoreFromTrash(trashId: string) {
+    return this.fetch<{ kind: string; label: string }>(`/settings/trash/${encodeURIComponent(trashId)}/restore`, { method: 'POST' });
+  }
+
+  /** Permanent - the one delete with nothing behind it. */
+  async purgeTrashItem(trashId: string) {
+    return this.fetch<{ success: boolean }>(`/settings/trash/${encodeURIComponent(trashId)}`, { method: 'DELETE' });
+  }
+
+  async checkProviderKeys(): Promise<{ keyHealth: SyncSettings['keyHealth'] }> {
+    const res = await this.fetch<{ data?: { keyHealth: SyncSettings['keyHealth'] } } & Partial<{ keyHealth: SyncSettings['keyHealth'] }>>(
+      '/settings/check-keys',
+      { method: 'POST' }
+    );
+    return (res?.data ?? res) as { keyHealth: SyncSettings['keyHealth'] };
+  }
+
   // Bulk Operations
   async syncAllUsers() {
     const users = await this.getUsers();
@@ -1573,6 +1667,27 @@ class ApiClient {
     }
     return response.json() as Promise<{ imported: number; skipped: number; totalRows: number; truncated: boolean; unresolvedTitles: string[] }>;
   }
+
+  /** Starts the Trakt OAuth device flow - see server/utils/traktImport.js.
+   * Returns the code/link the user needs to approve, plus how often to
+   * call pollTraktImport below. */
+  async startTraktImport(userId: string): Promise<{ deviceCode: string; userCode: string; verificationUrl: string; expiresIn: number; interval: number }> {
+    return this.fetch(`/users/${encodeURIComponent(userId)}/trakt-import/start`, { method: 'POST' });
+  }
+
+  /** Call on the interval startTraktImport returned. Keeps returning
+   * {status:'pending'} until the user approves it at Trakt's own site, then
+   * this same call performs the import and returns the result. */
+  async pollTraktImport(userId: string, deviceCode: string): Promise<
+    | { status: 'pending' | 'denied' | 'expired' | 'error'; message?: string }
+    | { status: 'done'; imported: number; skipped: number; totalFromTrakt: number }
+  > {
+    return this.fetch(`/users/${encodeURIComponent(userId)}/trakt-import/poll`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceCode }),
+    });
+  }
+
   // Letterboxd-import-compatible CSV export for one household member - a
   // raw text fetch (not JSON), so the caller builds a download Blob from
   // it, same pattern as every other "export my data" flow in this app
@@ -1990,6 +2105,25 @@ class ApiClient {
     return this.fetch<ContinueWatchingItem[]>('/users/continue-watching');
   }
 
+  /** Shows started then dropped - the population Continue Watching's own
+   * 120-day window has stopped showing entirely. Burying one reuses
+   * dismissContinueWatching below (same table, same meaning). */
+  async getAbandonedShows() {
+    return this.fetch<Array<{
+      userId: string;
+      username: string;
+      providerType: string | null;
+      showId: string;
+      showName: string;
+      poster: string | null;
+      lastSeason: number;
+      lastEpisode: number;
+      episodesWatched: number;
+      lastWatchedAt: string;
+      daysSince: number;
+    }>>('/users/abandoned-shows');
+  }
+
   async dismissContinueWatching(userId: string, showId: string) {
     return this.fetch<{ success: boolean }>('/users/continue-watching/dismiss', {
       method: 'POST',
@@ -2075,8 +2209,9 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+  /** Returns trashId when the catalog was archived first (Undo). */
   async deleteList(id: string) {
-    return this.fetch<{ success: boolean }>(`/lists/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    return this.fetch<{ success: boolean; trashId?: string | null }>(`/lists/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
   // Automation rules ("when X happens, do Y") - see server/utils/automation/registry.js.
   async getAutomationRegistry() {
@@ -2888,6 +3023,17 @@ export interface SyncSettings {
   mdblistApiKey?: string;
   rpdbApiKey?: string;
   omdbApiKey?: string;
+  /** Result of the last validity check per provider - see checkProviderKeys()
+   * and server/utils/metadataKeyHealth.js. Absent for a provider that's
+   * never been checked. */
+  keyHealth?: Record<string, {
+    ok: boolean; message: string; rateLimited: boolean; checkedAt: string;
+    /** MDBList only - the one provider that actually exposes live quota
+     * usage (confirmed against their own OpenAPI spec). TMDb has no rate
+     * limit to show, OMDb and RPDB expose no usage endpoint at all. */
+    usage?: { used: number; limit: number; percentUsed: number; plan: string | null };
+  }>;
+  notifyOnKeyHealth?: boolean;
   simklClientId?: string;
   /** Self-hosted Nuvio backend URL, e.g. https://backend.example.com. Blank uses api.nuvio.tv. */
   nuvioServerUrl?: string;

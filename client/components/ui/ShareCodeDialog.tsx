@@ -24,11 +24,25 @@ interface ShareCodeDialogProps {
    * \"Halloween\" and its 42 titles". */
   summary: string;
   warning?: string;
+  /** Extra controls rendered between the summary and the warning - e.g. the
+   * addon template dialog's "Strip API keys" checkbox. Optional; most share
+   * kinds (catalogs, Nuvio collections) have nothing to put here. */
+  extraContent?: React.ReactNode;
   /** Called on the explicit confirm; returns the code (may fetch). */
   generate: () => Promise<string> | string;
 }
 
-export function ShareCodeDialog({ isOpen, onClose, title, summary, warning, generate }: ShareCodeDialogProps) {
+// Above this, a QR encoding the whole code stops being reliably scannable
+// off a screen - the format's own hard ceiling is ~2900 bytes, but density
+// makes it unreadable by a phone camera well before that. Measured against
+// real payloads: an addon template runs ~750 chars (fine), a 5-title catalog
+// ~1600, and a 42-title catalog ~12600 (nowhere close). So the QR is offered
+// only when it will actually work, rather than rendering a dense square that
+// silently fails to scan.
+const QR_MAX_CODE_LENGTH = 1200;
+
+export function ShareCodeDialog({ isOpen, onClose, title, summary, warning, extraContent, generate }: ShareCodeDialogProps) {
+  const [showQr, setShowQr] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
@@ -55,6 +69,7 @@ export function ShareCodeDialog({ isOpen, onClose, title, summary, warning, gene
 
   const handleClose = () => {
     setCode(null);
+    setShowQr(false);
     onClose();
   };
 
@@ -67,6 +82,7 @@ export function ShareCodeDialog({ isOpen, onClose, title, summary, warning, gene
               This will produce a copy-paste code containing <span className="text-default font-medium">{summary}</span>.
               Anyone you give the code to can import it into their own SlickSync.
             </p>
+            {extraContent}
             {warning && (
               <div className="flex items-start gap-2.5 p-3 rounded-xl" style={{ background: 'color-mix(in srgb, var(--color-warning) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--color-warning) 35%, transparent)' }}>
                 <ExclamationTriangleIcon className="w-5 h-5 shrink-0 mt-0.5" style={{ color: 'var(--color-warning)' }} />
@@ -90,8 +106,29 @@ export function ShareCodeDialog({ isOpen, onClose, title, summary, warning, gene
               className="w-full px-3 py-2 rounded-lg text-xs font-mono border border-transparent focus:border-primary focus:outline-none resize-none"
               style={{ background: 'var(--color-surface-hover)', color: 'var(--color-text)' }}
             />
+            {showQr && (
+              <div className="flex flex-col items-center gap-2 py-1">
+                {/* Same /api/qr endpoint TV mode's OAuth linking already
+                    uses. Point a phone camera at it to carry the code to
+                    another device without typing or a clipboard hop. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/qr?data=${encodeURIComponent(code)}`}
+                  alt="QR code containing this share code"
+                  width={200}
+                  height={200}
+                  className="rounded-lg bg-white p-2"
+                />
+                <p className="text-xs text-muted">Scan to carry this code to another device</p>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={handleClose}>Done</Button>
+              {code.length <= QR_MAX_CODE_LENGTH && (
+                <Button variant="ghost" size="sm" onClick={() => setShowQr((v) => !v)}>
+                  {showQr ? 'Hide QR' : 'Show QR'}
+                </Button>
+              )}
               <Button variant="primary" size="sm" leftIcon={<ClipboardDocumentIcon className="w-4 h-4" />} onClick={handleCopy}>
                 Copy code
               </Button>

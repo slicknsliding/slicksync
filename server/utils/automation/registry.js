@@ -102,6 +102,40 @@ const TRIGGERS = {
       { name: 'providerType', label: 'Provider', type: 'string' },
     ],
   },
+  'metadata_key.failed': {
+    label: 'A metadata provider key stops working',
+    description: 'Fires when a TMDb/OMDb/MDBList/RPDB key goes from working to failing (revoked, rate-limited, or otherwise rejected).',
+    fields: [
+      { name: 'provider', label: 'Provider', type: 'string' },
+      { name: 'providerLabel', label: 'Provider name', type: 'string' },
+      { name: 'message', label: 'Failure message', type: 'string' },
+      { name: 'rateLimited', label: 'Rate limited', type: 'boolean' },
+    ],
+  },
+  'metadata_key.recovered': {
+    label: 'A metadata provider key starts working again',
+    description: 'Fires when a previously-failing TMDb/OMDb/MDBList/RPDB key passes its check again.',
+    fields: [
+      { name: 'provider', label: 'Provider', type: 'string' },
+      { name: 'providerLabel', label: 'Provider name', type: 'string' },
+    ],
+  },
+  'backup.failed': {
+    label: 'An off-site backup upload fails',
+    description: 'Fires when a scheduled backup was written locally but could not be sent to the configured S3/WebDAV target. The local copy still exists - this is about the off-site copy not arriving.',
+    fields: [
+      { name: 'target', label: 'Target type', type: 'string' },
+      { name: 'message', label: 'Failure message', type: 'string' },
+    ],
+  },
+  'update.available': {
+    label: 'A new SlickSync release is available',
+    description: 'Fires once per new released version, when the running instance is behind the latest published release.',
+    fields: [
+      { name: 'latestVersion', label: 'Latest version', type: 'string' },
+      { name: 'runningVersion', label: 'Running version', type: 'string' },
+    ],
+  },
   // Fires on a recurring daily schedule rather than in response to
   // something happening elsewhere in the app - the odd one out among these
   // triggers, which is why it's the only one with its own triggerConfig

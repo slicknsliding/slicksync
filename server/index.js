@@ -229,6 +229,34 @@ app.use('/uploads/avatars', express.static(path.join(process.cwd(), 'data', 'ava
 // Encryption helpers
 const { getServerKey, aesGcmEncrypt, aesGcmDecrypt, getAccountDek } = require('./utils/encryption')
 
+// Liveness/readiness probe. Deliberately registered BEFORE the auth gate
+// and kept separate from /api/health (routes/health.js), which is the
+// dashboard's System Health data source - that one is account-scoped and
+// queries addons, vault entries, notifications and users, which is far too
+// heavy to run every 30 seconds and returns 500 rather than a meaningful
+// status when the DB is unreachable.
+//
+// This exists because a real outage went undetected: the container's
+// HEALTHCHECK probed only the frontend (port 3000), so when the backend
+// process died the container kept reporting "healthy" while every API call
+// failed. A probe has to touch the thing that can actually break - here,
+// the backend process answering at all, plus one trivial DB round-trip.
+//
+// 200 = serving and the database answers. 503 = process is up but the
+// database is not reachable, which is the state an orchestrator (or Docker's
+// own restart policy) needs to distinguish from a hard crash. The boot log
+// has always advertised this path; until now nothing served it and it 404'd.
+app.get('/health', async (req, res) => {
+  try {
+    // Cheapest possible round-trip that proves the connection is live, and
+    // works identically on SQLite and PostgreSQL.
+    await prisma.$queryRaw`SELECT 1`
+    res.status(200).json({ status: 'ok', database: 'up' })
+  } catch (e) {
+    res.status(503).json({ status: 'degraded', database: 'down', error: e?.message?.slice(0, 200) })
+  }
+})
+
 // Global auth and CSRF gates via middleware factories
 const { createAuthGate, createCsrfGuard } = require('./middleware/auth')
 app.use(createAuthGate({ INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, JWT_SECRET, pathIsAllowlisted, parseCookies, cookieName, extractBearerToken, issueAccessToken, randomCsrfToken, isProdEnv, prisma }))
@@ -323,6 +351,9 @@ app.use('/api/poster', postersRouter({ prisma, getAccountId }));
 // route's own header for how it relates to /api/poster above.
 app.use('/api/img', require('./routes/imageCache')());
 app.use('/api/qr', require('./routes/qr')());
+// Read-only browse of the public Stremio addon directory - see the route's
+// own header for why this is proxied rather than fetched client-side.
+app.use('/api/addon-directory', require('./routes/addonDirectory')());
 // External API (API key protected, account-scoped)
 app.use('/api/ext', externalApiRouter({
   prisma,
@@ -591,6 +622,26 @@ async function bootstrap() {
       scheduleVaultBackups({ prisma, decrypt, intervalHours })
     } catch (err) {
       console.error('⚠️ Failed to initialize vault backup scheduler:', err)
+    }
+
+    // Drop Trash items past their retention window. Runs at boot and daily -
+    // cheap, and keeps deleted-item archives from accumulating forever.
+    try {
+      const { purgeExpiredTrash } = require('./utils/trash')
+      setTimeout(() => purgeExpiredTrash(prisma), 90 * 1000)
+      setInterval(() => purgeExpiredTrash(prisma), 24 * 60 * 60 * 1000)
+    } catch (err) {
+      console.error('⚠️ Failed to schedule trash purge:', err)
+    }
+
+    // Schedule metadata-provider key health checker (TMDb/OMDb/MDBList/RPDB) -
+    // same "catch it before a user notices broken posters" idea as the addon
+    // health checker below, aimed at the keys instead of the addons.
+    try {
+      const { startMetadataKeyHealthScheduler } = require('./utils/metadataKeyHealth')
+      startMetadataKeyHealthScheduler(prisma, schedulerReq.appAccountId)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize metadata key health checker:', err)
     }
 
     // Schedule addon health checker (checks if addon manifests are reachable)

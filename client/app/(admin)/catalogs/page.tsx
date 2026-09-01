@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Card, Button, Modal, PosterThumb, Badge, MediaDetailModal, ContextMenu, useContextMenu } from '@/components/ui';
+import { showDeletedWithUndo } from '@/components/ui/undoToast';
+import { BeginnerHint } from '@/components/ui/BeginnerHint';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
@@ -186,7 +188,11 @@ export default function ListsPage() {
     const list = deleting;
     setLists((prev) => prev.filter((l) => l.id !== list.id));
     setDeleting(null);
-    try { await api.deleteList(list.id); toast.success(`Deleted "${list.name}"`); }
+    try {
+      const res = await api.deleteList(list.id);
+      // Offers Undo when the catalog was archived to Trash first.
+      showDeletedWithUndo(list.name, res?.trashId, load);
+    }
     catch { toast.error('Failed to delete'); load(); }
   };
 
@@ -274,6 +280,7 @@ export default function ListsPage() {
       <div className={layoutMode === 'nebula' ? 'mx-auto' : ''} style={layoutMode === 'nebula' ? { maxWidth: 'min(120rem, 92vw)' } : undefined}>
         {layoutMode === 'nebula' && <NebulaPageHeading title={heading.title} subtitle={heading.subtitle} leading={nuvioCollectionsButton} />}
 
+        <BeginnerHint guideId="catalog-create">Catalogs are your own named lists of titles - separate from the Watchlist - that you can share with a code or push to a user's app.</BeginnerHint>
         <PageSection>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">

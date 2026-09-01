@@ -13,6 +13,7 @@ import {
 import { Card, Button, Badge, Modal, ConfirmModal, ToggleSwitch } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
+import { AUTOMATION_RECIPES } from './automationRecipes';
 import type {
   AutomationRegistry, AutomationRule, AutomationRun, AutomationCondition, AutomationActionConfig,
 } from '@/lib/api';
@@ -30,6 +31,7 @@ const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // snapshots, disaster recovery kit already on that page), not a page most
 // admins need parked in the sidebar every day.
 export function AutomationPanel() {
+  const [showRecipes, setShowRecipes] = useState(false);
   const [registry, setRegistry] = useState<AutomationRegistry | null>(null);
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [runs, setRuns] = useState<AutomationRun[]>([]);
@@ -42,7 +44,7 @@ export function AutomationPanel() {
   // page's "Automate" button pre-picking the addon.offline trigger scoped
   // to that addon). Read-and-clear from sessionStorage so a refresh of the
   // Tasks page later doesn't replay the handoff.
-  const [prefill, setPrefill] = useState<{ name?: string; triggerType?: string; conditions?: AutomationCondition[] } | null>(null);
+  const [prefill, setPrefill] = useState<{ name?: string; triggerType?: string; conditions?: AutomationCondition[]; actions?: AutomationActionConfig[] } | null>(null);
   useEffect(() => {
     const id = setTimeout(() => {
       try {
@@ -133,6 +135,9 @@ export function AutomationPanel() {
           <Button variant="secondary" size="sm" onClick={() => setShowHistory((v) => !v)}>
             {showHistory ? 'Hide history' : 'Run history'}
           </Button>
+          <Button variant="secondary" size="sm" onClick={() => setShowRecipes((v) => !v)}>
+            {showRecipes ? 'Hide recipes' : 'Recipes'}
+          </Button>
           <Button variant="primary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setEditingRule('new')}>
             New rule
           </Button>
@@ -167,6 +172,36 @@ export function AutomationPanel() {
               ))}
             </div>
           )}
+        </Card>
+      )}
+
+      {showRecipes && (
+        <Card padding="lg" className="mb-3">
+          <p className="text-sm font-medium text-default mb-1">Start from a recipe</p>
+          <p className="text-xs text-muted mb-3">
+            Picking one opens the normal rule editor with everything filled in - review it, adjust anything, then save. Nothing is created until you do.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {AUTOMATION_RECIPES.filter((r) => registry?.triggers.some((t) => t.type === r.triggerType)).map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => {
+                  setPrefill({ name: r.name, triggerType: r.triggerType, conditions: r.conditions, actions: r.actions });
+                  setEditingRule('new');
+                  setShowRecipes(false);
+                }}
+                className="text-left p-3 rounded-xl transition-colors nav-item-hover-pill"
+                style={{ background: 'var(--color-surface-hover)' }}
+              >
+                <span className="block text-sm font-medium text-default">{r.title}</span>
+                <span className="block text-xs text-muted mt-0.5">{r.description}</span>
+                {r.needs && (
+                  <span className="block text-xs mt-1" style={{ color: 'var(--color-warning)' }}>{r.needs}</span>
+                )}
+              </button>
+            ))}
+          </div>
         </Card>
       )}
 
@@ -265,7 +300,7 @@ function RuleEditorModal({
   registry: AutomationRegistry;
   rule: AutomationRule | null;
   /** New-rule defaults handed over by another page - see AutomationPanel. */
-  prefill?: { name?: string; triggerType?: string; conditions?: AutomationCondition[] } | null;
+  prefill?: { name?: string; triggerType?: string; conditions?: AutomationCondition[]; actions?: AutomationActionConfig[] } | null;
   onClose: () => void;
   onSaved: (rule: AutomationRule) => void;
 }) {
@@ -273,7 +308,7 @@ function RuleEditorModal({
   const [triggerType, setTriggerType] = useState(rule?.triggerType || prefill?.triggerType || registry.triggers[0]?.type || '');
   const [triggerConfig, setTriggerConfig] = useState<Record<string, unknown>>(rule?.triggerConfig || {});
   const [conditions, setConditions] = useState<AutomationCondition[]>(rule?.conditions || prefill?.conditions || []);
-  const [actions, setActions] = useState<AutomationActionConfig[]>(rule?.actions || (registry.actions[0] ? [{ type: registry.actions[0].type, config: {} }] : []));
+  const [actions, setActions] = useState<AutomationActionConfig[]>(rule?.actions || prefill?.actions || (registry.actions[0] ? [{ type: registry.actions[0].type, config: {} }] : []));
   const [saving, setSaving] = useState(false);
 
   const trigger = registry.triggers.find((t) => t.type === triggerType);

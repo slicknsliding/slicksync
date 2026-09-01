@@ -29,3 +29,6 @@ export * from './PosterCard';
 export * from './VirtualPosterGrid';
 export * from './ComboBox';
 export * from './DropdownSelect';
+export * from './BeginnerHint';
+export * from './SyncPreviewDialog';
+export * from './ProviderKeyHealthBadge';
