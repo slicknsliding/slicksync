@@ -712,20 +712,27 @@ export default function AddonsPage() {
               <div className="flex gap-2">
                 {/* Browse comes first: pasting a manifest URL assumes you
                     already found one somewhere, which is the harder path for
-                    anyone who isn't already deep in the ecosystem. */}
+                    anyone who isn't already deep in the ecosystem.
+                    Labels collapse to icons under sm so both actions still
+                    fit a phone toolbar rather than one of them wrapping or
+                    being dropped. */}
                 <Button
                   variant="secondary"
                   leftIcon={<MagnifyingGlassIcon className="w-5 h-5" />}
                   onClick={() => setIsDirectoryOpen(true)}
+                  aria-label="Browse addon directory"
+                  title="Browse addon directory"
                 >
-                  Browse
+                  <span className="hidden sm:inline">Browse</span>
                 </Button>
                 <Button
                   variant="primary"
                   leftIcon={<PlusIcon className="w-5 h-5" />}
                   onClick={() => setIsAddModalOpen(true)}
+                  aria-label="Add addon"
+                  title="Add addon"
                 >
-                  Add
+                  <span className="hidden sm:inline">Add</span>
                 </Button>
               </div>
             );

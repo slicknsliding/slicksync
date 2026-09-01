@@ -34,6 +34,46 @@ const { notifyPushForType } = require('./pushNotifications')
 
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
+// Overlap guard. pollOnce is async and this runs on a fixed 30s timer, so
+// without this a poll that takes longer than the interval - which is exactly
+// what happens when AIOStreams is slow or rate-limiting, since requests hang
+// and the 401 branch adds a re-login round trip - has the next one start on
+// top of it. They stack, each re-authenticating, which drives MORE requests
+// at an instance that is already refusing them. Reported in the wild as
+// SlickSync tripping an AIOStreams account's internal rate limiter while
+// appearing to poll far more often than its configured interval.
+//
+// The other two schedulers in this codebase already guard this way
+// (activityMonitor's isAccountsPassRunning, addonHealthCheck's isRunning);
+// this one simply never did.
+let isPolling = false
+
+// Backoff after the upstream signals rate limiting. Mirrors the escalating
+// breaker the Supabase provider already uses: back off further each
+// consecutive time, honour Retry-After when given, and reset once a poll
+// succeeds again. Without this, a 429 just became a thrown error and the
+// next tick retried 30s later, forever.
+const RATE_LIMIT_BASE_COOLDOWN_MS = 2 * 60 * 1000
+const RATE_LIMIT_MAX_COOLDOWN_MS = 15 * 60 * 1000
+let rateLimitedUntil = 0
+let consecutiveRateLimits = 0
+
+function noteRateLimited(retryAfterSeconds) {
+  consecutiveRateLimits += 1
+  const escalated = RATE_LIMIT_BASE_COOLDOWN_MS * Math.pow(2, consecutiveRateLimits - 1)
+  const headerMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0 ? retryAfterSeconds * 1000 : 0
+  const cooldown = Math.min(Math.max(escalated, headerMs), RATE_LIMIT_MAX_COOLDOWN_MS)
+  rateLimitedUntil = Date.now() + cooldown
+  console.warn(`[ProxyStreamMonitor] AIOStreams rate-limited us - pausing polls for ${Math.round(cooldown / 1000)}s`)
+  heartbeat('rate_limited', { cooldownMs: cooldown, consecutive: consecutiveRateLimits })
+}
+
+function noteRateLimitCleared() {
+  if (consecutiveRateLimits > 0) heartbeat('rate_limit_cleared', { after: consecutiveRateLimits })
+  consecutiveRateLimits = 0
+  rateLimitedUntil = 0
+}
+
 // Fallback identity for a stream AIOStreams couldn't attribute to a user at
 // all (empty `username` - StreamOpenInput's own comment: "Empty when the
 // caller could not be identified; exempt from limits"). Kept in the SAME
@@ -164,6 +204,17 @@ async function fetchLiveStreams(baseUrl, username, password) {
     res = await fetch(`${baseUrl}/api/v1/dashboard/streams/live`, {
       headers: { Cookie: cachedCookie },
     })
+  }
+
+  // Rate limited. Surfaced as a typed error so the caller can back off
+  // rather than treating it as a generic failure and retrying on the next
+  // 30s tick - retrying into a rate limiter is what deepens it.
+  if (res.status === 429) {
+    const retryAfter = parseInt(res.headers.get('retry-after') || '', 10)
+    const err = new Error('AIOStreams rate-limited this request (429)')
+    err.rateLimited = true
+    err.retryAfterSeconds = Number.isFinite(retryAfter) ? retryAfter : null
+    throw err
   }
 
   if (res.status === 404) {
@@ -635,6 +686,11 @@ async function pollOnce(prisma, accountId, config) {
     console.warn('[ProxyStreamMonitor] pollOnce failed:', error.message)
     lastPollStatus = { ok: false, at: new Date(), error: error.message }
     if (wasOk !== false) await notifyProxyHealthChange(prisma, accountId, false, error.message)
+    // Everything else stays swallowed - a failed poll should not take the
+    // scheduler down - but a rate limit has to reach the caller, which is
+    // what decides how long to back off. Swallowing it here would leave the
+    // poller retrying into the limiter every 30s forever.
+    if (error?.rateLimited) throw error
   }
 }
 
@@ -647,10 +703,32 @@ function scheduleProxyStreamMonitor(prisma, accountId, config) {
     return
   }
 
-  pollOnce(prisma, accountId, config)
-  pollTimer = setInterval(() => {
-    pollOnce(prisma, accountId, config)
-  }, CHECK_INTERVAL_MS)
+  const guardedPoll = async () => {
+    // Still working on the previous tick - skip entirely rather than
+    // stacking. The next tick picks it up 30s later.
+    if (isPolling) {
+      heartbeat('poll_skipped_still_running')
+      return
+    }
+    // Backing off after a rate limit.
+    if (Date.now() < rateLimitedUntil) {
+      heartbeat('poll_skipped_rate_limited', { msRemaining: rateLimitedUntil - Date.now() })
+      return
+    }
+    isPolling = true
+    try {
+      await pollOnce(prisma, accountId, config)
+      noteRateLimitCleared()
+    } catch (e) {
+      if (e?.rateLimited) noteRateLimited(e.retryAfterSeconds)
+      else console.error('[ProxyStreamMonitor] Poll failed:', e?.message)
+    } finally {
+      isPolling = false
+    }
+  }
+
+  guardedPoll()
+  pollTimer = setInterval(guardedPoll, CHECK_INTERVAL_MS)
 }
 
 module.exports = {

@@ -272,11 +272,12 @@ export function PageToolbar({
 
       {/* Right Section: Actions */}
       <div className="flex justify-end items-center gap-3 shrink-0">
-        {primaryAction && (
-          <div className="hidden md:block">
-            {primaryAction}
-          </div>
-        )}
+        {/* Shown at every width. This used to be `hidden md:block`, which
+            meant the main action of a page - Add user, Add group, Create
+            invitation, Add/Browse addon - simply did not exist on a phone.
+            The only way in was the empty-state button, so once a list had
+            anything in it the page became read-only on mobile. */}
+        {primaryAction && <div>{primaryAction}</div>}
         {rightContent ? rightContent : rightActions}
       </div>
     </div>
