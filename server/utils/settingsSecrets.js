@@ -17,6 +17,8 @@ const SETTINGS_SECRET_FIELDS = [
   'mdblistApiKey',
   'rpdbApiKey',
   'simklClientId',
+  'traktClientId',
+  'traktClientSecret',
   'nuvioAnonKey',
   // Failover partners - real keys, same handling as the primaries.
   'tmdbApiKeyBackup',

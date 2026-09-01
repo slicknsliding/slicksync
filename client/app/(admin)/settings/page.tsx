@@ -602,6 +602,8 @@ export default function SettingsPage() {
           rpdbApiKeyBackup: settings.rpdbApiKeyBackup || '',
           omdbApiKeyBackup: settings.omdbApiKeyBackup || '',
           simklClientId: settings.simklClientId || '',
+          traktClientId: settings.traktClientId || '',
+          traktClientSecret: settings.traktClientSecret || '',
           enableWatchlist: settings.enableWatchlist !== false,
           enableWatchedIndicators: settings.enableWatchedIndicators !== false,
           enableRecommendations: settings.enableRecommendations !== false,
@@ -1828,6 +1830,43 @@ export default function SettingsPage() {
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"
                 />
+              </div>
+
+
+              {/* Trakt app credentials - powers the one-time history import
+                  on a user's own page. Account-scoped like SIMKL above; this
+                  was env-only originally, which meant the Connect Trakt
+                  button existed but could only ever say "ask your admin" to
+                  anyone who couldn't edit the container's environment. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">Trakt Client ID &amp; Secret <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Powers the one-time Trakt history import on a user&apos;s page. Register an app at{' '}
+                  <a href="https://trakt.tv/oauth/applications/new" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">trakt.tv/oauth/applications</a>
+                  {' '}→ give it any name → tick <strong>/device</strong> under Permissions and put <code>urn:ietf:wg:oauth:2.0:oob</code> as the Redirect URI (the import uses the device-code flow, so nothing is hosted and no real redirect happens) → paste the <strong>Client ID</strong> and <strong>Client Secret</strong> here. Both are needed. Leave blank to use the server&apos;s own, if configured.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="text"
+                    value={syncSettings.traktClientId || ''}
+                    onChange={(e) => setSyncSettings(prev => ({ ...prev, traktClientId: e.target.value }))}
+                    onBlur={() => handleSaveSetting('traktClientId' as keyof SyncSettings, syncSettings.traktClientId)}
+                    placeholder="Trakt Client ID"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="input-base w-full px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="password"
+                    value={syncSettings.traktClientSecret || ''}
+                    onChange={(e) => setSyncSettings(prev => ({ ...prev, traktClientSecret: e.target.value }))}
+                    onBlur={() => handleSaveSetting('traktClientSecret' as keyof SyncSettings, syncSettings.traktClientSecret)}
+                    placeholder="Trakt Client Secret"
+                    autoComplete="new-password"
+                    spellCheck={false}
+                    className="input-base w-full px-3 py-2 text-sm"
+                  />
+                </div>
               </div>
 
               {/* Self-hosted Nuvio backend. Account-scoped like everything

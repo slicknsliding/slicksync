@@ -331,7 +331,7 @@ export default function UserDetailPage() {
       }, 5000); // Trakt's documented device-flow interval is typically 5s; polling any faster risks a 429
     } catch (err: any) {
       setTraktStatus('idle');
-      toast.error(err?.data?.notConfigured ? 'Trakt import isn\'t set up on this instance yet - ask your admin to add TRAKT_CLIENT_ID/TRAKT_CLIENT_SECRET' : (err.message || 'Failed to start Trakt connection'));
+      toast.error(err?.data?.notConfigured ? 'Trakt isn\'t set up yet - add a Trakt client ID and secret in Settings' : (err.message || 'Failed to start Trakt connection'));
     }
   };
 

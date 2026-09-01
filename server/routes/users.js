@@ -669,7 +669,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!user) return res.status(404).json({ error: 'User not found' })
 
       const { startDeviceAuth } = require('../utils/traktImport')
-      const auth = await startDeviceAuth()
+      const auth = await startDeviceAuth(prisma, accountId)
       res.json(auth)
     } catch (error) {
       if (error?.notConfigured) return res.status(400).json({ error: error.message, notConfigured: true })
@@ -694,7 +694,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!deviceCode) return res.status(400).json({ error: 'Missing deviceCode' })
 
       const { pollDeviceToken, importTraktData } = require('../utils/traktImport')
-      const poll = await pollDeviceToken(deviceCode)
+      const poll = await pollDeviceToken(prisma, accountId, deviceCode)
       if (poll.status !== 'approved') return res.json(poll)
 
       const result = await importTraktData(prisma, accountId, user.id, poll.accessToken)
