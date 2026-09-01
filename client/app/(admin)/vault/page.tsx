@@ -216,6 +216,61 @@ function DebridUsageBadge({ entry, onEntryUpdated }: { entry: VaultEntry; onEntr
   );
 }
 
+// Failover partner picker. Every credential can nominate another entry on
+// the account as its backup: when this key's own health check comes back
+// failing, consumers (debrid auto-remove, usenet, AI catalog, the metadata
+// key resolvers) transparently use the backup instead of just breaking.
+// Scoped to the same category on purpose - a debrid key backed by an OMDb
+// key would be accepted by the schema but is never what anyone means.
+function BackupKeySelect({ entry, allEntries, onEntryUpdated }: {
+  entry: VaultEntry;
+  allEntries: VaultEntry[];
+  onEntryUpdated: (id: string, patch: Partial<VaultEntry>) => void;
+}) {
+  const [saving, setSaving] = useState(false);
+
+  // An entry cannot back up itself (the server rejects it too), and only
+  // same-category entries are offered.
+  const candidates = allEntries.filter(
+    (e) => e.id !== entry.id && e.category === entry.category && e.isActive
+  );
+
+  // Nothing to fail over TO - showing an empty dropdown on every card in a
+  // one-key-per-category vault would be pure noise.
+  if (candidates.length === 0 && !entry.backupEntryId) return null;
+
+  const handleChange = async (value: string) => {
+    setSaving(true);
+    try {
+      await api.updateVaultEntry(entry.id, { backupEntryId: value || null });
+      onEntryUpdated(entry.id, { backupEntryId: value || null });
+      toast.success(value ? 'Backup key set' : 'Backup key cleared');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to set backup key');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mb-3 flex items-center justify-between gap-2">
+      <span className="text-xs shrink-0" style={{ color: 'var(--color-text-muted)' }}>Backup key</span>
+      <select
+        value={entry.backupEntryId || ''}
+        disabled={saving}
+        onChange={(e) => handleChange(e.target.value)}
+        className="text-xs rounded px-1.5 py-1 min-w-0 max-w-[60%]"
+        style={{ background: 'var(--color-subtle)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+      >
+        <option value="">None</option>
+        {candidates.map((c) => (
+          <option key={c.id} value={c.id}>{c.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 interface EntryFormState {
   name: string;
   category: VaultCategory;
@@ -895,6 +950,12 @@ function VaultPageContent() {
       )}
 
       <DebridUsageBadge entry={entry} onEntryUpdated={(id, patch) => setEntries(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e))} />
+
+      <BackupKeySelect
+        entry={entry}
+        allEntries={entries}
+        onEntryUpdated={(id, patch) => setEntries(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e))}
+      />
 
       <div className="mt-auto flex items-center gap-2 pt-2 flex-wrap" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
         {(() => {

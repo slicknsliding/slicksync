@@ -14,6 +14,7 @@
 // way a routine backup is.
 
 const crypto = require('crypto');
+const { SETTINGS_SECRET_FIELDS } = require('./settingsSecrets')
 const { scryptKey, aesGcmEncrypt, aesGcmDecrypt } = require('./encryption');
 
 const MIN_PASSPHRASE_LENGTH = 12;
@@ -52,12 +53,11 @@ async function buildKit(prisma, accountId, passphrase, req, { decrypt }) {
     let cfg = acct?.sync;
     if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
     if (cfg && typeof cfg === 'object') {
-      syncSecrets = {
-        webhookUrl: cfg.webhookUrl ?? null,
-        rpdbApiKey: cfg.rpdbApiKey ?? null,
-        tmdbApiKey: cfg.tmdbApiKey ?? null,
-        mdblistApiKey: cfg.mdblistApiKey ?? null,
-      };
+      // Every field the export strips, so nothing is stripped-and-lost.
+      // Hand-maintained copies of this list drifted before - see
+      // settingsSecrets.js.
+      syncSecrets = {};
+      for (const f of SETTINGS_SECRET_FIELDS) syncSecrets[f] = cfg[f] ?? null;
     }
   } catch { }
 

@@ -11,6 +11,7 @@ const INTERVAL_HOURS = 24
 async function runDebridAutoRemove(prisma, decrypt) {
   try {
     const { listEligibleTorrents, deleteTorrent } = require('./debridUsage')
+    const { resolveVaultSecret } = require('./vaultFailover')
     const entries = await prisma.vaultEntry.findMany({
       where: {
         autoRemoveEnabled: true,
@@ -22,13 +23,20 @@ async function runDebridAutoRemove(prisma, decrypt) {
     let removedTotal = 0
     for (const entry of entries) {
       try {
-        const apiKey = decrypt(entry.encryptedSecret, { appAccountId: entry.accountId })
+        // Failover to the configured backup when this key's own health
+        // check last came back failing - see vaultFailover.js for why the
+        // rule is "known bad only", never merely unchecked.
+        const { secret: apiKey, entry: sourceEntry, usedBackup } =
+          await resolveVaultSecret(prisma, entry, decrypt)
+        if (usedBackup) {
+          console.log(`[DebridAutoRemove] "${entry.name}" is failing its check - using backup "${sourceEntry.name}"`)
+        }
         if (!apiKey) continue
 
-        const eligible = await listEligibleTorrents(entry.testType, apiKey, entry.autoRemoveAfterDays)
+        const eligible = await listEligibleTorrents(sourceEntry.testType, apiKey, entry.autoRemoveAfterDays)
         let removedForEntry = 0
         for (const torrent of eligible) {
-          const ok = await deleteTorrent(entry.testType, apiKey, torrent.id)
+          const ok = await deleteTorrent(sourceEntry.testType, apiKey, torrent.id)
           if (ok) removedForEntry++
         }
 

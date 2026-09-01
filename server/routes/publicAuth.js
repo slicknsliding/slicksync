@@ -1,4 +1,5 @@
 const express = require('express');
+const { SETTINGS_SECRET_FIELDS } = require('../utils/settingsSecrets')
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
@@ -1525,13 +1526,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       // Kit regardless (disasterRecoveryKit.js), passphrase-encrypted like
       // Vault secrets - so leaving them out here never means losing them.
       if (accountSync && typeof accountSync === 'object' && !includeSecrets) {
-        delete accountSync.webhookUrl
-        delete accountSync.rpdbApiKey
-        delete accountSync.tmdbApiKey
-        delete accountSync.mdblistApiKey
-        delete accountSync.omdbApiKey
-        delete accountSync.simklClientId
-        delete accountSync.nuvioAnonKey
+        for (const f of SETTINGS_SECRET_FIELDS) delete accountSync[f]
       }
 
       const payload = { users: decryptedUsers, groups: cleanedGroups, addons: exportedAddons, sync: accountSync }

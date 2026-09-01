@@ -181,7 +181,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     tips: [
       'A failing check is a real signal, not a false alarm - it means the credential genuinely is not working right now. If an indexer blocks your server\'s IP and that is expected, use the Health page\'s Ignore instead of deleting the entry.',
     ],
-    related: ['vault-auto-remove', 'vault-cost-tracking', 'vault-organize', 'health-ignore'],
+    related: ['vault-auto-remove', 'vault-backup-key', 'vault-cost-tracking', 'vault-organize', 'health-ignore'],
     href: '/vault?open=add',
     linkLabel: 'Add an entry',
   },
@@ -193,6 +193,16 @@ export const HELP_ENTRIES: HelpEntry[] = [
     answer: 'On a Real-Debrid/TorBox Vault entry, toggle "Auto-remove" and set a day count. Once a torrent has finished downloading and sat idle past that many days, it\'s deleted from your provider account automatically. Off by default - opt in per entry.',
     href: '/vault',
     linkLabel: 'Open Vault',
+  },
+  {
+    id: 'vault-backup-key',
+    title: 'Backup keys & automatic failover',
+    category: 'Vault & credentials',
+    keywords: ['backup key', 'failover', 'spare key', 'second key', 'expired key', 'key rotation', 'redundancy'],
+    answer: 'Any Vault entry can nominate another entry as its backup using the "Backup key" dropdown on its card. If the health check finds that credential failing, anything using it - debrid auto-remove, usenet, AI catalog search, and the TMDb/OMDb/MDBList/RPDB metadata lookups - switches to the backup automatically instead of breaking. Only entries in the same category are offered, and the switch happens only when a check has actually found the key bad, never merely because it has not been checked yet. Set it back to "None" to turn failover off.',
+    href: '/vault',
+    linkLabel: 'Open Vault',
+    related: ['vault-add-credential', 'provider-key-health', 'health-ignore'],
   },
   {
     id: 'vault-renewal-forecast',

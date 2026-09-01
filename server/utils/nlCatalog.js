@@ -53,11 +53,17 @@ async function resolveAiCredentials(prisma, accountId, decrypt) {
     })
     if (!entry) return null
 
-    const apiKey = decrypt(entry.encryptedSecret, { appAccountId: accountId })
+    // Failover: a key whose own health check last came back failing hands
+    // off to its configured backup entry, so an expired or revoked AI key
+    // doesn't drop this back to the keyword parser when a spare exists.
+    // The backup's own testConfig wins too - a different provider needs its
+    // own baseUrl/model, not the dead entry's.
+    const { resolveVaultSecret } = require('./vaultFailover')
+    const { secret: apiKey, entry: sourceEntry } = await resolveVaultSecret(prisma, entry, decrypt)
     if (!apiKey) return null
 
     let config = {}
-    try { config = entry.testConfig ? JSON.parse(entry.testConfig) : {} } catch { config = {} }
+    try { config = sourceEntry.testConfig ? JSON.parse(sourceEntry.testConfig) : {} } catch { config = {} }
 
     return {
       apiKey,
