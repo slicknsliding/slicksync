@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.79.1",
+    "date": "2026-09-01",
+    "title": "1.79.1 — Trakt import reads more export variants and explains itself when it can't",
+    "features": [],
+    "bugFixes": [
+      "Trakt import now reads the export files produced by common third-party export tools, not just Trakt's own. Those tools rename a few fields while converting, which was enough to make an otherwise perfectly good file import nothing.",
+      "When an import finds nothing it can use, it now says what the file actually looked like instead of only reporting zero. Field names only — never anything about what you watched — which is enough to identify an unfamiliar format and fix it.",
+      "A file containing only episodes now says so, and how many, rather than reading as though the file itself were unreadable. Episode history still has no import path; movies and ratings do."
+    ]
+  },
+  {
     "version": "1.79.0",
     "date": "2026-09-01",
     "title": "1.79.0 — Trakt history comes across from Trakt's own export",
