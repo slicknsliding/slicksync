@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.79.0",
+    "date": "2026-09-01",
+    "title": "1.79.0 — Trakt history comes across from Trakt's own export",
+    "features": [
+      "Bringing a Trakt history over no longer needs an API key, an app registration, or a paid Trakt account. On trakt.tv go to Settings → Data and download your export, unzip it, then import the history or ratings JSON under a user's Watch History Import/Export. Movies and their ratings come across, and nothing already recorded here is overwritten, so importing twice simply fills gaps.",
+      "Episode entries in an export are counted and reported as skipped rather than quietly dropped, so the totals shown add up to what was actually in the file. Episode history still has no import path — that limit has always applied to file imports here, it is just visible now instead of silent.",
+      "The same importer still reads Letterboxd and IMDb CSV exports, and matches on column names rather than one fixed layout, so most third-party export tools work too."
+    ],
+    "bugFixes": [
+      "The previous Trakt connection has been removed. It relied on registering a Trakt API application, which Trakt now restricts to paid VIP accounts — so it could not work for anyone without one, and free Trakt accounts are limited to a single connected app besides. The export route has neither restriction. Earlier release notes describing the old flow have been updated."
+    ]
+  },
+  {
     "version": "1.78.0",
     "date": "2026-09-01",
     "title": "1.78.0 — Trakt import can be set up from Settings, and backup keys now cover everything",
