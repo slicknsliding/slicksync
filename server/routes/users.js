@@ -260,18 +260,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
   // Same opt-in-key pattern as discover.js's cast/crew deep-dive: per-account
   // (Settings, sync.tmdbApiKey) takes precedence, else TMDB_API_KEY env var.
-  // Duplicated here rather than shared, matching how RPDB key resolution is
-  // already duplicated between posters.js and settings.js in this codebase.
+  // Goes through the shared resolver (listImport.js), which also applies the
+  // backup-key failover - the previous hand-rolled copy here did not.
   async function resolveTmdbKeyForBackdrop(req) {
-    try {
-      const accountId = getAccountId(req) || 'default'
-      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
-      let cfg = acc?.sync
-      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
-      const fromSettings = cfg && typeof cfg === 'object' && typeof cfg.tmdbApiKey === 'string' ? cfg.tmdbApiKey.trim() : ''
-      if (fromSettings) return fromSettings
-    } catch {}
-    return (process.env.TMDB_API_KEY || '').trim()
+    const { resolveKeyFromSettings } = require('../utils/listImport')
+    return resolveKeyFromSettings(prisma, getAccountId, req, 'tmdbApiKey', 'TMDB_API_KEY')
   }
 
   // TMDb backdrop lookup by IMDb id, cached (backdrops don't change) - kept
