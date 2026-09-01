@@ -592,14 +592,20 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // A Trakt export JSON is flattened into the same column names the CSV
       // path already understands, so everything below this point is shared.
       const { parseTraktExport, looksLikeJson } = require('../utils/traktExportImport')
-      let headers, records, skippedNonMovie = 0
+      let headers, records, skippedNonMovie = 0, skippedNoTimestamp = 0
       if (looksLikeJson(text)) {
         const parsed = parseTraktExport(text)
         if (!parsed) return res.status(400).json({ error: 'That file is not valid JSON.' })
-        ;({ headers, records, skippedNonMovie } = parsed)
+        ;({ headers, records, skippedNonMovie, skippedNoTimestamp } = parsed)
         if (records.length === 0) {
           if (skippedNonMovie > 0) {
             return res.status(400).json({ error: `That file contains ${skippedNonMovie} episode or show entr${skippedNonMovie === 1 ? 'y' : 'ies'} and no movies. Movie history and ratings can be imported; episode history cannot yet.` })
+          }
+          if (skippedNoTimestamp > 0) {
+            // Named plainly - this is Trakt's collection or watchlist export
+            // (or similar), which is correctly not importable: a title
+            // merely owned or queued was never actually watched.
+            return res.status(400).json({ error: `That file lists ${skippedNoTimestamp} title(s) with no watch date or rating attached - looks like a collection or watchlist export rather than history. Only history and ratings files can be imported.` })
           }
           // Say what the file actually looked like. A format that doesn't
           // match is a one-line fix here, but only if the shape is known -
