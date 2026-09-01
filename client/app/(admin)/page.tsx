@@ -14,6 +14,7 @@ import { Button, Card, StatCard, Avatar, UserAvatar, Badge, StatusBadge, Version
 import { UpcomingEpisodesPanel } from '@/components/ui/UpcomingEpisodesPanel';
 import { NowPlayingSection } from '@/components/admin';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
+import { SetupChecklist } from '@/components/dashboard/SetupChecklist';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -1148,6 +1149,10 @@ export default function DashboardPage() {
             </Button>
           </div>
         )}
+
+        {/* What this instance still isn't set up with - hides itself once
+            everything's done, and can be dismissed permanently. */}
+        <SetupChecklist />
 
         {/* Stats Grid - Fixed height cards */}
         <PageSection className="mb-6">

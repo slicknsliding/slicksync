@@ -29,6 +29,34 @@ const inputClass = 'w-full px-3 py-2 rounded-lg text-sm border border-transparen
 const inputStyle = { background: 'var(--color-surface-hover)', color: 'var(--color-text)' } as const;
 
 export function MaintenancePanel() {
+  // History Doctor - scan is read-only; repair re-scans server-side (see
+  // utils/historyDoctor.js) rather than trusting ids from this page.
+  const [historyScan, setHistoryScan] = useState<Awaited<ReturnType<typeof api.scanHistory>> | null>(null);
+  const [scanningHistory, setScanningHistory] = useState(false);
+  const [repairingHistory, setRepairingHistory] = useState(false);
+  const runHistoryScan = async () => {
+    setScanningHistory(true);
+    try {
+      setHistoryScan(await api.scanHistory());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'History scan failed');
+    } finally {
+      setScanningHistory(false);
+    }
+  };
+  const runHistoryRepair = async () => {
+    setRepairingHistory(true);
+    try {
+      const res = await api.repairHistory();
+      toast.success(`Removed ${res.removed} bad record${res.removed === 1 ? '' : 's'}`);
+      setHistoryScan(await api.scanHistory());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'History repair failed');
+    } finally {
+      setRepairingHistory(false);
+    }
+  };
+
   const [targets, setTargets] = useState<BackupTargets | null>(null);
   const [maint, setMaint] = useState<DbMaintenanceSettings | null>(null);
   const [capability, setCapability] = useState<UpdateCapability | null>(null);
@@ -193,6 +221,49 @@ export function MaintenancePanel() {
                   {busy === 'test' ? 'Testing…' : 'Test target'}
                 </Button>
               </div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* --- History Doctor --- */}
+      <Card padding="lg">
+        <h3 className="text-base font-semibold text-default mb-1">Watch history check</h3>
+        <p className="text-xs text-muted mb-4">
+          Looks for watch records that are provably wrong - duplicates copied between providers, or rows belonging to a user that no longer exists. Scanning never changes anything.
+        </p>
+        <div className="flex flex-wrap gap-2 items-center">
+          <Button variant="secondary" size="sm" onClick={runHistoryScan} isLoading={scanningHistory}>
+            {historyScan ? 'Scan again' : 'Scan history'}
+          </Button>
+          {historyScan && historyScan.counts.total > 0 && (
+            <Button variant="primary" size="sm" onClick={runHistoryRepair} isLoading={repairingHistory}>
+              Fix {historyScan.counts.total} issue{historyScan.counts.total === 1 ? '' : 's'}
+            </Button>
+          )}
+        </div>
+
+        {historyScan && (
+          <div className="mt-3">
+            {historyScan.counts.total === 0 ? (
+              <p className="text-sm text-muted">No problems found - watch history looks clean.</p>
+            ) : (
+              <>
+                <p className="text-sm text-default mb-2">
+                  Found {historyScan.counts.total}: {historyScan.counts.cross_provider_duplicate} duplicate{historyScan.counts.cross_provider_duplicate === 1 ? '' : 's'}, {historyScan.counts.orphaned} orphaned.
+                </p>
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {historyScan.findings.slice(0, 50).map((f) => (
+                    <div key={f.id} className="p-2.5 rounded-lg" style={{ background: 'var(--color-surface-hover)' }}>
+                      <p className="text-sm text-default">{f.summary}</p>
+                      <p className="text-xs text-muted mt-0.5">{f.detail}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted mt-2">
+                  Fixing deletes only these redundant rows. The original watch record each duplicate was copied from is kept.
+                </p>
+              </>
             )}
           </div>
         )}

@@ -1479,6 +1479,98 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   });
 
+  // GET /settings/setup-status - what an instance has and hasn't been set up
+  // with yet, in one call.
+  //
+  // Every fact here was already discoverable, but only by opening five
+  // different pages and knowing what to look for - which is precisely what a
+  // new operator can't do. Aggregated server-side rather than assembled from
+  // five client requests so the checklist renders in one round-trip and can't
+  // half-populate.
+  //
+  // Deliberately reports FACTS, not a score or a nag: each item says what is
+  // or isn't configured and where to go. Nothing here is required for
+  // SlickSync to work, and the UI treats it as a checklist you can dismiss.
+  router.get('/setup-status', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+
+      const account = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let cfg = account?.sync
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+      if (!cfg || typeof cfg !== 'object') cfg = {}
+
+      const [userCount, addonCount, vaultCount, pushCount] = await Promise.all([
+        prisma.user.count({ where: { accountId } }),
+        prisma.addon.count({ where: { accountId } }),
+        prisma.vaultEntry.count({ where: { accountId } }).catch(() => 0),
+        prisma.pushSubscription.count({ where: { accountId } }).catch(() => 0),
+      ])
+
+      let backupTargetConfigured = false
+      try {
+        const { getSettings } = require('../utils/backupTargets')
+        const t = getSettings()
+        backupTargetConfigured = !!(t && t.type && t.type !== 'none')
+      } catch { /* targets file absent - simply not configured */ }
+
+      // Any notification type being on counts: the point is "will this
+      // instance ever tell you anything", not which specific types.
+      const anyNotifications = [
+        'notifyOnActivity', 'notifyOnSync', 'notifyOnInvite', 'notifyOnVault',
+        'notifyOnAddonHealth', 'notifyOnBackup', 'notifyOnProxyHealth',
+        'notifyOnUpdateAvailable', 'notifyOnMosaic',
+      ].some((k) => cfg[k] === true)
+
+      const automationCount = await prisma.automationRule.count({ where: { accountId } }).catch(() => 0)
+
+      return res.json({
+        users: { done: userCount > 0, count: userCount },
+        addons: { done: addonCount > 0, count: addonCount },
+        notifications: { done: anyNotifications || pushCount > 0, pushDevices: pushCount },
+        vault: { done: vaultCount > 0, count: vaultCount },
+        offsiteBackup: { done: backupTargetConfigured },
+        recoveryKit: { done: !!cfg.lastRecoveryKitExportAt, lastExportAt: cfg.lastRecoveryKitExportAt || null },
+        automation: { done: automationCount > 0, count: automationCount },
+        // accountTimezoneIsDefault is computed on read elsewhere, not stored -
+        // derived the same way here rather than looking for a field that
+        // never exists in the raw config.
+        timezone: { done: !!(typeof cfg.accountTimezone === 'string' && cfg.accountTimezone.trim()) },
+      })
+    } catch (e) {
+      return res.status(500).json({ error: e?.message || 'Failed to read setup status' })
+    }
+  })
+
+  // GET /settings/history-scan - read-only check for watch-history records
+  // that are provably wrong (see utils/historyDoctor.js). Never writes.
+  router.get('/history-scan', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { scanHistory } = require('../utils/historyDoctor')
+      return res.json(await scanHistory(prisma, accountId))
+    } catch (e) {
+      return res.status(500).json({ error: e?.message || 'History scan failed' })
+    }
+  })
+
+  // POST /settings/history-repair - deletes what a FRESH scan identifies.
+  // Re-scans server-side rather than accepting row ids from the client, so a
+  // stale page cannot ask this to delete rows that are no longer findings.
+  router.post('/history-repair', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { repairHistory } = require('../utils/historyDoctor')
+      const kinds = Array.isArray(req.body?.kinds) ? req.body.kinds : null
+      return res.json(await repairHistory(prisma, accountId, kinds))
+    } catch (e) {
+      return res.status(500).json({ error: e?.message || 'History repair failed' })
+    }
+  })
+
   // POST /settings/check-keys - on-demand validity check for the four
   // metadata-provider keys (TMDb/OMDb/MDBList/RPDB), same idea as Vault's
   // "Test" button on a credential entry. Checks whichever of the four

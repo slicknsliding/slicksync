@@ -1451,6 +1451,39 @@ class ApiClient {
    * (TMDb/OMDb/MDBList/RPDB) are actually configured for this account -
    * see server/utils/metadataKeyHealth.js. Returns the merged keyHealth
    * map, same shape SyncSettings.keyHealth carries. */
+  /** What this instance has and hasn't been configured with yet, in one
+   * call - see server/routes/settings.js's setup-status route. */
+  async getSetupStatus() {
+    return this.fetch<{
+      users: { done: boolean; count: number };
+      addons: { done: boolean; count: number };
+      notifications: { done: boolean; pushDevices: number };
+      vault: { done: boolean; count: number };
+      offsiteBackup: { done: boolean };
+      recoveryKit: { done: boolean; lastExportAt: string | null };
+      automation: { done: boolean; count: number };
+      timezone: { done: boolean };
+    }>('/settings/setup-status');
+  }
+
+  /** Read-only scan for provably-wrong watch history rows. Never writes -
+   * see server/utils/historyDoctor.js. */
+  async scanHistory() {
+    return this.fetch<{
+      findings: Array<{ id: string; kind: string; summary: string; detail: string }>;
+      counts: { cross_provider_duplicate: number; orphaned: number; total: number };
+      scannedAt: string;
+    }>('/settings/history-scan');
+  }
+
+  /** Deletes what a fresh server-side scan identifies. */
+  async repairHistory(kinds?: string[]) {
+    return this.fetch<{ removed: number; examined: number }>('/settings/history-repair', {
+      method: 'POST',
+      body: JSON.stringify({ kinds: kinds || null }),
+    });
+  }
+
   async checkProviderKeys(): Promise<{ keyHealth: SyncSettings['keyHealth'] }> {
     const res = await this.fetch<{ data?: { keyHealth: SyncSettings['keyHealth'] } } & Partial<{ keyHealth: SyncSettings['keyHealth'] }>>(
       '/settings/check-keys',
