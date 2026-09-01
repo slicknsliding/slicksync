@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.79.2",
+    "date": "2026-09-01",
+    "title": "1.79.2 — Links straight to where each export lives",
+    "features": [],
+    "bugFixes": [
+      "Watch History Import now links directly to the export page for IMDb, Letterboxd and Trakt. It previously described where to go and left you to find it, on a site you might not use often.",
+      "The same panel now separates where to get an export from what to do with it, instead of one paragraph carrying the source, the unzip step, the movies-only note and the export option together."
+    ]
+  },
+  {
     "version": "1.79.1",
     "date": "2026-09-01",
     "title": "1.79.1 — Trakt import reads more export variants and explains itself when it can't",
