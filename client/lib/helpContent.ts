@@ -278,7 +278,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'Importing or exporting watch history',
     category: 'Sharing & integrations',
     keywords: ['csv import', 'csv export', 'letterboxd', 'imdb export', 'trakt export', 'watch history import'],
-    answer: 'Open a user\'s detail page → History → Import or Export. Import accepts a Letterboxd or IMDb CSV, or the JSON files from Trakt own free export (Settings → Data on trakt.tv). Export produces a Letterboxd-compatible CSV, so your data is never stuck here.',
+    answer: 'Open a user\'s detail page → History → Import or Export. Import accepts a Letterboxd or IMDb CSV, or the JSON files from Trakt own free export. Get yours from imdb.com/exports, letterboxd.com/settings/data, or trakt.tv/settings/data. Export produces a Letterboxd-compatible CSV, so your data is never stuck here.',
     href: '/users',
     linkLabel: 'Open Users',
   },
@@ -1317,7 +1317,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     answer: 'SIMKL is an ongoing two-way sync, set up under a user -> Watch-Tracking Integrations. Trakt is a one-time migration and works from a file: download your data from Trakt itself, then import it under Watch History Import/Export on the same page.',
     steps: [
       'SIMKL: press Link SIMKL and follow the PIN flow. From then on history syncs both ways, checked every 30 minutes.',
-      'Trakt: on trakt.tv go to Settings -> Data and download your export. It arrives as a ZIP.',
+      'Trakt: go to trakt.tv/settings/data and download your export. It arrives as a ZIP.',
       'Unzip it. Inside are JSON files split by type - the history and ratings ones are what matter here.',
       'Back in SlickSync, open the user -> Watch History Import/Export -> Import history, and pick a JSON file. Import the history file and the ratings file separately if you want both.',
     ],
@@ -1328,7 +1328,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'This used to connect to Trakt API directly instead, which was smoother. Trakt now requires a paid VIP subscription to register an API application at all, so that route could only ever work for someone willing to pay Trakt in order to leave it. The export path has no such gate.',
     ],
     tips: [
-      'The same importer reads IMDb and Letterboxd CSV exports. It matches on column names rather than one fixed format, so most third-party export tools work too.',
+      'The same importer reads IMDb and Letterboxd CSV exports - get those from imdb.com/exports and letterboxd.com/settings/data. It matches on column names rather than one fixed format, so most third-party export tools work too.',
       'Big library? The import caps at 2000 entries per file. Trakt already splits large exports into numbered files, so import them one after another.',
     ],
     related: ['share-codes', 'csv-import-export'],
