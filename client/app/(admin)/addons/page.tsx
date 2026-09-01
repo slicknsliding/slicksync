@@ -11,6 +11,8 @@ import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { Header } from '@/components/layout/Header';
 import { Button, Card, ResourceBadge, SearchInput, Modal, Input, ConfirmModal, VersionBadge, ToggleSwitch, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
+import { BeginnerHint } from '@/components/ui/BeginnerHint';
+import { AddonDirectoryModal } from '@/components/addons/AddonDirectoryModal';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NebulaHeaderStats, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
@@ -31,6 +33,7 @@ import {
   ShieldCheckIcon,
   EllipsisVerticalIcon,
   LinkIcon,
+  MagnifyingGlassIcon,
   TrashIcon,
   CheckIcon,
   XMarkIcon,
@@ -192,6 +195,7 @@ export default function AddonsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const { viewMode, setViewMode } = useDefaultViewMode();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
   // Custom tag catalog (account-wide list of names) + which one is active as
   // a filter. null = no tag filter applied (shows every addon regardless of
@@ -702,17 +706,31 @@ export default function AddonsPage() {
           }}
           primaryAction={(() => {
             const btn = (
-              <Button
-                variant="primary"
-                leftIcon={<PlusIcon className="w-5 h-5" />}
-                onClick={() => setIsAddModalOpen(true)}
-              >
-                Add
-              </Button>
+              <div className="flex gap-2">
+                {/* Browse comes first: pasting a manifest URL assumes you
+                    already found one somewhere, which is the harder path for
+                    anyone who isn't already deep in the ecosystem. */}
+                <Button
+                  variant="secondary"
+                  leftIcon={<MagnifyingGlassIcon className="w-5 h-5" />}
+                  onClick={() => setIsDirectoryOpen(true)}
+                >
+                  Browse
+                </Button>
+                <Button
+                  variant="primary"
+                  leftIcon={<PlusIcon className="w-5 h-5" />}
+                  onClick={() => setIsAddModalOpen(true)}
+                >
+                  Add
+                </Button>
+              </div>
             );
             return isTV ? <TVFocusable onEnterPress={() => setIsAddModalOpen(true)}>{btn}</TVFocusable> : btn;
           })()}
         />
+
+        <BeginnerHint guideId="addons-overview">Addons are the sources your users stream from. Add one here, then assign it to a user or a group - assigning is what actually pushes it to their Stremio or Nuvio account.</BeginnerHint>
 
         {/* Custom tag pills — drag an addon card onto one to tag it (or click
             to filter by it). Own row below the built-in filter tabs since
@@ -976,6 +994,19 @@ export default function AddonsPage() {
       >
         <PlusIcon className="w-6 h-6" />
       </button>
+
+      {/* Browse the public addon directory - see AddonDirectoryModal */}
+      <AddonDirectoryModal
+        isOpen={isDirectoryOpen}
+        onClose={() => setIsDirectoryOpen(false)}
+        onAdded={async () => {
+          try {
+            setAddons(await api.getAddons());
+          } catch (err) {
+            console.error('Failed to refresh addons after directory add:', err);
+          }
+        }}
+      />
 
       {/* Add Addon Modal */}
       <AddAddonModal

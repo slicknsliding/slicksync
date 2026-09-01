@@ -223,7 +223,21 @@ export function CreateUserModal({
     // call before calling it, Safari silently opens/leaves a blank tab
     // instead of navigating it. Point this pre-opened tab at the real link
     // once the API call resolves instead of opening a fresh one then.
-    const preOpenedTab = typeof window !== 'undefined' ? window.open('', '_blank', 'noopener,noreferrer') : null;
+    //
+    // Deliberately WITHOUT 'noopener' here: per spec, window.open() returns
+    // null whenever noopener is set, so passing it meant this always got a
+    // null reference - the blank tab opened and then nothing ever navigated
+    // it, and the post-await fallback below fired outside the user gesture
+    // where the browser blocks it. That is exactly the reported "first click
+    // opens a blank page with no URL, second click works". The opener is
+    // severed manually below instead, which keeps the reverse-tabnabbing
+    // protection noopener was there for.
+    const preOpenedTab = typeof window !== 'undefined' ? window.open('', '_blank') : null;
+    if (preOpenedTab) {
+      // Sever the back-reference while the tab is still blank/same-origin,
+      // before the external OAuth page loads into it.
+      try { preOpenedTab.opener = null; } catch { /* cross-origin guard */ }
+    }
     try {
       const data = await api.generateStremioOAuth();
       if (!data?.code || !data?.link) throw new Error('Failed to generate link');

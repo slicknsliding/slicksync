@@ -174,6 +174,19 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
         } catch {}
       }
 
+      // The library cache moved from email-keyed to user-id-keyed filenames
+      // (see libraryCache.js's getCacheFilePath for the corruption that
+      // caused). The old email-keyed file is still safe to read for a user
+      // whose email nothing else on this account shares - that file can only
+      // have come from them. For a shared email it is exactly the ambiguous
+      // case, so those users skip it and simply re-fetch.
+      const emailCounts = new Map()
+      for (const u of users) {
+        if (!u.email) continue
+        emailCounts.set(u.email, (emailCounts.get(u.email) || 0) + 1)
+      }
+      const canUseLegacyCache = (user) => !!user?.email && emailCounts.get(user.email) === 1
+
       // Helper function to get library for a user via their provider
       // (Stremio or Nuvio); falls back to cache if no credentials or on error
       const getLibraryForUser = async (user) => {
@@ -183,7 +196,7 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
           if (!provider) {
             // No usable credentials, use cached library (library-email.json)
             heartbeat('getLibraryForUser:no_provider', { userId: user.id })
-            return getCachedLibrary(accountId, user) || []
+            return getCachedLibrary(accountId, user, { allowLegacyEmailFile: canUseLegacyCache(user) }) || []
           }
 
           const libraryItems = await provider.getLibrary()
@@ -207,7 +220,7 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
           const prefix = isAuthFailure(error.message) ? 'Reconnect needed: ' : 'Connection issue: '
           await recordConnectionError(user.id, prefix + error.message)
           // Fallback to cache if API call fails
-          const cachedLibrary = getCachedLibrary(accountId, user)
+          const cachedLibrary = getCachedLibrary(accountId, user, { allowLegacyEmailFile: canUseLegacyCache(user) })
           return cachedLibrary || []
         }
       }

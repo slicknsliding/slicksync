@@ -647,6 +647,11 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           mdblistApiKey: typeof syncCfg.mdblistApiKey === 'string' ? syncCfg.mdblistApiKey : '',
           rpdbApiKey: typeof syncCfg.rpdbApiKey === 'string' ? syncCfg.rpdbApiKey : '',
           omdbApiKey: typeof syncCfg.omdbApiKey === 'string' ? syncCfg.omdbApiKey : '',
+          // Per-provider {ok, message, rateLimited, checkedAt} from the last
+          // key health check (manual or scheduled) - see /check-keys below
+          // and utils/metadataKeyHealth.js. Absent entirely until the first
+          // check ever runs.
+          keyHealth: (syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
           simklClientId: typeof syncCfg.simklClientId === 'string' ? syncCfg.simklClientId : '',
           nuvioServerUrl: typeof syncCfg.nuvioServerUrl === 'string' ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: typeof syncCfg.nuvioAnonKey === 'string' ? syncCfg.nuvioAnonKey : '',
@@ -756,6 +761,23 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           simklClientId: simklClientId !== undefined ? (typeof simklClientId === 'string' ? simklClientId.trim() : '') : (baseCfg.simklClientId || ''),
           nuvioServerUrl: nuvioServerUrl !== undefined ? (typeof nuvioServerUrl === 'string' ? nuvioServerUrl.trim().replace(/\/+$/, '') : '') : (baseCfg.nuvioServerUrl || ''),
           nuvioAnonKey: nuvioAnonKey !== undefined ? (typeof nuvioAnonKey === 'string' ? nuvioAnonKey.trim() : '') : (baseCfg.nuvioAnonKey || ''),
+          // Drop this provider's stored health-check result the moment ITS
+          // key is the one being blanked out in this save (not on every
+          // save - `!== undefined` is only true for the single field this
+          // particular request actually touched, see handleSaveSetting on
+          // the client, which PUTs one field at a time). Otherwise a badge
+          // saved from a key that's since been removed keeps showing
+          // "Not working" against an empty field forever - confirmed live,
+          // caught from a leftover test key never cleared this way.
+          keyHealth: (() => {
+            const prevHealth = (baseCfg.keyHealth && typeof baseCfg.keyHealth === 'object') ? baseCfg.keyHealth : {}
+            const next = { ...prevHealth }
+            const touched = { tmdb: tmdbApiKey, omdb: omdbApiKey, mdblist: mdblistApiKey, rpdb: rpdbApiKey }
+            for (const [provider, incoming] of Object.entries(touched)) {
+              if (incoming !== undefined && (typeof incoming !== 'string' || !incoming.trim())) delete next[provider]
+            }
+            return next
+          })(),
         }
 
         try {
@@ -1454,6 +1476,27 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       return res.json({ message: 'Health check started' });
     } catch (e) {
       return res.status(500).json({ message: 'Failed to start health check', error: e?.message });
+    }
+  });
+
+  // POST /settings/check-keys - on-demand validity check for the four
+  // metadata-provider keys (TMDb/OMDb/MDBList/RPDB), same idea as Vault's
+  // "Test" button on a credential entry. Checks whichever of the four
+  // actually have a key configured for this account (own Settings value,
+  // falling back to the instance's env var - the same resolution every
+  // other use of these keys already follows) and persists the results into
+  // the account's own sync JSON so GET /account-sync can show them without
+  // re-checking on every page load. Also runs automatically once a day -
+  // see utils/metadataKeyHealth.js's scheduler wiring in index.js - this
+  // route exists for "check right now" rather than waiting for that.
+  router.post('/check-keys', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID;
+      const { checkAndPersistAccountKeys } = require('../utils/metadataKeyHealth');
+      const keyHealth = await checkAndPersistAccountKeys(prisma, accountId, { notify: true });
+      return res.json({ keyHealth });
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to check keys', error: e?.message });
     }
   });
 

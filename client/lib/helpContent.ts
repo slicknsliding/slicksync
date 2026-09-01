@@ -1258,10 +1258,76 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Each kind has its own prefix so a wrong paste fails cleanly instead of importing something unexpected: SSC1 for catalogs, SSN1 for collections, SSA1 for templates. Themes use the same idea (SST1).',
     ],
     tips: [
-      'Addon template codes include each addon\'s install URL, and those URLs often embed debrid/API keys - sharing the code shares those keys. The dialog warns before generating; treat a template code like a password.',
+      'Addon template codes include each addon\'s install URL, and those URLs often embed debrid/API keys. "Strip API keys" is ON by default: it replaces each key with a placeholder, so the code carries the setup and not your credentials, and whoever imports it is prompted for their own keys before anything is created. Turn it off only if you genuinely mean to hand over working keys.',
+      'An addon whose settings are encrypted by the addon\'s own server (AIOStreams and similar) cannot be safely stripped - there is no way to tell which part of an opaque blob is a secret. Those are left out of a stripped code entirely, and the dialog names which ones, rather than shipping a URL that looks stripped but is not.',
+      'Short codes get a "Show QR" button - handy for carrying one to a phone or TV without typing. Longer codes (a catalog of any real size) have no QR: past roughly a thousand characters the square stops being reliably scannable off a screen, so it is not offered rather than shown broken.',
       'Catalog and collection codes carry no credentials - only titles, folders, and which catalogs a folder points at.',
     ],
     related: ['catalog-create', 'theme-build-share'],
+  },
+  {
+    id: 'provider-key-health',
+    title: 'Checking whether your TMDb / OMDb / MDBList / RPDB keys still work',
+    category: 'Health & maintenance',
+    keywords: ['api key not working', 'key expired', 'key revoked', 'rate limited', 'posters missing', 'ratings missing', 'check keys', 'tmdb key', 'omdb key', 'mdblist key', 'rpdb key', 'key health'],
+    answer: 'Settings -> External API Keys -> Check keys now. Each configured key is tested against the provider for real, and a badge next to it shows Working, Not working, or Rate limited. The same check also runs quietly once a day.',
+    steps: [
+      'Settings -> scroll to External API Keys.',
+      'Press "Check keys now". Only keys you have actually filled in are checked - blank fields are skipped and reported as "No API keys configured to check".',
+      'Read the badge beside each key. Hover it to see the exact message and when it was last checked.',
+    ],
+    details: [
+      'These keys fail silently by design: a revoked OMDb key does not throw an error, it just quietly stops returning ratings, and a rate-limited RPDB key just stops returning posters. Nothing in the app would otherwise tell you - you would notice missing artwork and have nothing to report.',
+      'The daily background check notifies you the first time a working key starts failing, and again when it recovers - not on every check, so a key that has been broken for a week will not nag you daily.',
+      'MDBList also reports real usage against its quota (for example 1,240/100,000), turning amber past 70% and red past 90%. The other three providers expose no usage figure at all - TMDb removed rate limiting years ago, and OMDb and RPDB publish no usage endpoint - so no number is shown for them rather than a made-up one.',
+    ],
+    tips: [
+      'Clearing a key also clears its stored result, so a badge can never linger against an empty field.',
+      'Automation can act on this too: metadata_key.failed and metadata_key.recovered are available as triggers.',
+    ],
+    related: ['maintenance-and-updates', 'system-health-overview'],
+  },
+  {
+    id: 'watch-tracking-integrations',
+    title: 'Linking a user to SIMKL or importing their history from Trakt',
+    category: 'Sharing & integrations',
+    keywords: ['simkl', 'trakt', 'import trakt', 'leave trakt', 'trakt history', 'watch tracker', 'sync history', 'link simkl', 'connect trakt', 'migrate from trakt'],
+    answer: 'Open a user -> Watch-Tracking Integrations. SIMKL is an ongoing two-way sync; Trakt is a one-time pull of their history and ratings, after which the connection is dropped.',
+    steps: [
+      'SIMKL: press Link SIMKL and follow the PIN flow. From then on history syncs both ways, checked every 30 minutes.',
+      'Trakt: press Connect Trakt, then open the link shown and enter the code on Trakt own site. The import runs automatically the moment you approve it - nothing else to click here.',
+    ],
+    details: [
+      'The two work differently on purpose. SIMKL stays connected and keeps syncing. Trakt is a migration path: it pulls what is already there, writes it into SlickTrax, and then forgets the connection - the access token is never stored.',
+      'Trakt import covers movies and their ratings. It never overwrites history SlickSync already recorded natively, so running it twice is safe and simply fills gaps.',
+      'Trakt own CSV export is VIP-gated and inconsistent between accounts, which is why this connects to their API directly instead of asking you for a file.',
+    ],
+    tips: [
+      'Trakt import needs a one-time app registration by whoever runs this instance (TRAKT_CLIENT_ID / TRAKT_CLIENT_SECRET). Until that is set, the button explains that rather than failing silently.',
+      'Already have a CSV from IMDb or Letterboxd instead? Use Watch History Import/Export on the same page - that path is for files, this one is for Trakt specifically.',
+    ],
+    related: ['share-codes'],
+  },
+  {
+    id: 'container-health-check',
+    title: 'Checking that SlickSync itself is actually up',
+    category: 'Health & maintenance',
+    keywords: ['health check', 'healthcheck', 'container unhealthy', 'is it running', 'api not responding', 'backend down', 'liveness', 'readiness', 'docker healthy', '503'],
+    answer: 'The container reports its own health, and /health on the API port answers 200 when the backend and database are both fine, or 503 when the database is unreachable.',
+    steps: [
+      'From the host: docker ps - the STATUS column shows healthy or unhealthy.',
+      'Directly: curl http://localhost:4000/health inside the container, or against whatever port you mapped 4000 to.',
+      'For a picture of your addons, Vault and sync instead, use the System Health page in the app - that is a different thing (see below).',
+    ],
+    details: [
+      'This container runs two processes - the web frontend and the API backend - and either can fail on its own. The health check probes both, so a dead backend marks the container unhealthy even while the frontend still serves pages. It used to check only the frontend, which meant a dead backend could sit unnoticed behind a "healthy" container.',
+      '/health is deliberately tiny: it confirms the backend answers and does one trivial database round-trip. It carries no account data and needs no login, so it is safe to point a monitor or an orchestrator probe at.',
+      '200 means serving normally. 503 means the process is alive but the database is not reachable - a genuinely different situation from a crash, and worth distinguishing when something is restarting in a loop.',
+    ],
+    tips: [
+      'Do not confuse this with System Health in the app (Metrics -> Health). That answers "are my addons and credentials working"; this answers "is SlickSync itself running".',
+    ],
+    related: ['system-health-overview', 'maintenance-and-updates'],
   },
   {
     id: 'maintenance-and-updates',

@@ -179,6 +179,18 @@ export default function TasksPage() {
   // Share codes for templates (ShareCodeDialog / PasteCodeDialog).
   const [sharingSnapshot, setSharingSnapshot] = useState<AddonSnapshot | null>(null);
   const [showPasteTemplate, setShowPasteTemplate] = useState(false);
+  // Defaults on - the whole point of this control is "safe by default,"
+  // matching the warning already shown right below it. See
+  // addonTemplateSanitize.ts for what stripping actually does.
+  const [stripKeysOnExport, setStripKeysOnExport] = useState(true);
+  const [pendingTemplateImport, setPendingTemplateImport] = useState<{
+    name: string;
+    description?: string;
+    addons: Array<{ name: string; manifestUrl: string | null; stremioAddonId: string | null; version: string | null }>;
+    placeholders: Array<{ addonName: string; fieldKeys: string[] }>;
+  } | null>(null);
+  const [templateKeyValues, setTemplateKeyValues] = useState<Record<string, string>>({});
+  const [submittingTemplateKeys, setSubmittingTemplateKeys] = useState(false);
   // Off-site backups, database upkeep, and applying updates.
   const [isMaintenanceOpen, setIsMaintenanceOpen] = useState(false);
 
@@ -1823,19 +1835,43 @@ export default function TasksPage() {
         onClose={() => setSharingSnapshot(null)}
         title="Share template as code"
         summary={sharingSnapshot ? `the template “${sharingSnapshot.name}” and its ${sharingSnapshot.addonCount} addon${sharingSnapshot.addonCount === 1 ? '' : 's'}, including each addon's install URL` : ''}
-        warning="Addon install URLs often contain API keys (Real-Debrid, TorBox and similar). Anyone you send this code to gets those keys, and can use your subscription. Only share it with people you'd hand your credentials to."
+        warning={stripKeysOnExport
+          ? "Even with keys stripped, this still shares which addons you use and how they're set up. Only share it with people you're comfortable knowing that."
+          : "Addon install URLs often contain API keys (Real-Debrid, TorBox and similar). Anyone you send this code to gets those keys, and can use your subscription. Only share it with people you'd hand your credentials to."}
+        extraContent={
+          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={stripKeysOnExport}
+              onChange={(e) => setStripKeysOnExport(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-default">
+              Strip API keys <span className="text-muted">— share the setup, not your credentials. Whoever imports it fills in their own keys.</span>
+            </span>
+          </label>
+        }
         generate={async () => {
           if (!sharingSnapshot) throw new Error('No template selected');
           const detail = await api.getSnapshot(sharingSnapshot.id);
+          let addons = detail.addons.map((a) => ({
+            name: a.name,
+            manifestUrl: a.manifestUrl,
+            stremioAddonId: a.stremioAddonId,
+            version: a.version,
+          }));
+          if (stripKeysOnExport) {
+            const { sanitizeTemplateAddons } = await import('@/lib/addonTemplateSanitize');
+            const result = sanitizeTemplateAddons(addons);
+            addons = result.addons;
+            if (result.excluded.length > 0) {
+              toast(`${result.excluded.length} addon${result.excluded.length === 1 ? '' : 's'} left out of the code - their config couldn't be safely stripped: ${result.excluded.join(', ')}`, { icon: '⚠️', duration: 6000 });
+            }
+          }
           return encodeAddonTemplateShareCode({
             name: detail.name,
             description: detail.description || undefined,
-            addons: detail.addons.map((a) => ({
-              name: a.name,
-              manifestUrl: a.manifestUrl,
-              stremioAddonId: a.stremioAddonId,
-              version: a.version,
-            })),
+            addons,
           });
         }}
       />
@@ -1849,6 +1885,30 @@ export default function TasksPage() {
           if (!decoded || decoded.kind !== 'addonTemplate') {
             throw new Error("That code isn't an addon template share code");
           }
+          // A code generated with "Strip API keys" on has each redacted
+          // field carrying a placeholder instead of a real value - detect
+          // that BEFORE creating anything, so the addons this template
+          // deploys never end up broken from a still-placeholder'd key with
+          // no warning why.
+          const { findPlaceholderFields } = await import('@/lib/addonTemplateSanitize');
+          const placeholders = findPlaceholderFields(decoded.payload.addons);
+          if (placeholders.length > 0) {
+            setPendingTemplateImport({
+              name: decoded.payload.name,
+              description: decoded.payload.description,
+              // Share-code payloads carry these two as optional; normalize
+              // to the explicit-null shape the sanitizer and importSnapshot
+              // both expect.
+              addons: decoded.payload.addons.map((a) => ({
+                name: a.name,
+                manifestUrl: a.manifestUrl,
+                stremioAddonId: a.stremioAddonId ?? null,
+                version: a.version ?? null,
+              })),
+              placeholders,
+            });
+            return;
+          }
           const created = await api.importSnapshot({
             name: decoded.payload.name,
             description: decoded.payload.description,
@@ -1858,6 +1918,81 @@ export default function TasksPage() {
           fetchSnapshots();
         }}
       />
+
+      {/* Fill-in-your-own-keys step, only shown when the imported template
+          code had "Strip API keys" applied on the export side (see
+          addonTemplateSanitize.ts) - the template's structure imports fine
+          without this, but any redacted field left as the placeholder would
+          otherwise deploy a broken addon with no indication why. */}
+      <Modal
+        isOpen={!!pendingTemplateImport}
+        onClose={() => { setPendingTemplateImport(null); setTemplateKeyValues({}); }}
+        title={`Finish importing "${pendingTemplateImport?.name || ''}"`}
+        size="md"
+      >
+        {pendingTemplateImport && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted">
+              This template had its API keys stripped before sharing. Fill in your own for each addon below before it's created.
+            </p>
+            <div className="space-y-4 max-h-80 overflow-y-auto pr-1">
+              {pendingTemplateImport.placeholders.map(({ addonName, fieldKeys }) => (
+                <div key={addonName}>
+                  <p className="text-sm font-medium text-default mb-1.5">{addonName}</p>
+                  <div className="space-y-2">
+                    {fieldKeys.map((fieldKey) => {
+                      const stateKey = `${addonName}::${fieldKey}`;
+                      return (
+                        <input
+                          key={stateKey}
+                          type="text"
+                          value={templateKeyValues[stateKey] || ''}
+                          onChange={(e) => setTemplateKeyValues((prev) => ({ ...prev, [stateKey]: e.target.value }))}
+                          placeholder={fieldKey}
+                          autoComplete="off"
+                          spellCheck={false}
+                          className="input-base w-full px-3 py-2 text-sm"
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="ghost" size="sm" onClick={() => { setPendingTemplateImport(null); setTemplateKeyValues({}); }}>Cancel</Button>
+              <Button
+                variant="primary"
+                size="sm"
+                isLoading={submittingTemplateKeys}
+                onClick={async () => {
+                  if (!pendingTemplateImport) return;
+                  setSubmittingTemplateKeys(true);
+                  try {
+                    const { applyPlaceholderValues } = await import('@/lib/addonTemplateSanitize');
+                    const addons = applyPlaceholderValues(pendingTemplateImport.addons, templateKeyValues);
+                    const created = await api.importSnapshot({
+                      name: pendingTemplateImport.name,
+                      description: pendingTemplateImport.description,
+                      addons,
+                    });
+                    toast.success(`Imported "${created.name}" (${created.addonCount} addon${created.addonCount !== 1 ? 's' : ''})`);
+                    fetchSnapshots();
+                    setPendingTemplateImport(null);
+                    setTemplateKeyValues({});
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : 'Failed to import template');
+                  } finally {
+                    setSubmittingTemplateKeys(false);
+                  }
+                }}
+              >
+                Create addons
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Maintenance: off-site backups, database upkeep, updates */}
       <Modal

@@ -295,4 +295,88 @@ async function dismissContinueWatching(prisma, accountId, userId, showId) {
   })
 }
 
-module.exports = { getContinueWatching, dismissContinueWatching }
+
+// The inverse of getContinueWatching: shows someone genuinely started and
+// then stopped watching, long enough ago that they are not "in progress" in
+// any honest sense.
+//
+// Continue Watching deliberately looks at a 120-day window, so anything
+// older silently vanishes from the app entirely - it is neither resumable
+// nor acknowledged, it is just gone. This surfaces exactly that population
+// so it can be dealt with: pick it back up, or bury it and stop thinking
+// about it.
+//
+// Reuses DismissedContinueWatching for burying rather than adding a second
+// dismissal table - "I am done with this show" is the same statement in
+// both places, and a show buried here should equally never resurface in
+// Continue Watching if it somehow became recent again.
+const ABANDONED_AFTER_DAYS = 45
+
+async function getAbandonedShows(prisma, accountId, limit = 20) {
+  const accountIdValue = accountId || 'default'
+  const cutoff = new Date(Date.now() - ABANDONED_AFTER_DAYS * 24 * 60 * 60 * 1000)
+
+  // Every episode row for this account, newest first, so the first row seen
+  // per (user, show) is that pairing's most recent watch - same reduce-in-JS
+  // approach getContinueWatching uses and for the same reason.
+  const rows = await prisma.episodeWatchHistory.findMany({
+    where: { accountId: accountIdValue },
+    orderBy: { watchedAt: 'desc' },
+    select: {
+      userId: true, showId: true, showName: true, season: true, episode: true,
+      poster: true, watchedAt: true, completed: true,
+    },
+  })
+
+  const latestPerShow = new Map()
+  const episodeCounts = new Map()
+  for (const row of rows) {
+    const key = `${row.userId}:${row.showId}`
+    episodeCounts.set(key, (episodeCounts.get(key) || 0) + 1)
+    if (!latestPerShow.has(key)) latestPerShow.set(key, row)
+  }
+
+  const dismissed = await prisma.dismissedContinueWatching.findMany({
+    where: { accountId: accountIdValue },
+    select: { userId: true, showId: true },
+  })
+  const dismissedKeys = new Set(dismissed.map((d) => `${d.userId}:${d.showId}`))
+
+  const candidates = []
+  for (const [key, row] of latestPerShow) {
+    if (dismissedKeys.has(key)) continue
+    if (new Date(row.watchedAt) > cutoff) continue
+    // A show whose most recent watched episode is marked completed was
+    // finished, not abandoned - that is a different thing entirely and does
+    // not belong in a "you never finished these" list.
+    if (row.completed === true) continue
+    candidates.push({ key, row, episodesWatched: episodeCounts.get(key) || 1 })
+  }
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: [...new Set(candidates.map((c) => c.row.userId))] } },
+    select: { id: true, username: true, providerType: true },
+  })
+  const userMap = new Map(users.map((u) => [u.id, u]))
+
+  return candidates
+    // Longest-abandoned first: the ones most likely to be a genuine "no, I am
+    // never going back to this" and quickest to clear out.
+    .sort((a, b) => new Date(a.row.watchedAt) - new Date(b.row.watchedAt))
+    .slice(0, limit)
+    .map(({ row, episodesWatched }) => ({
+      userId: row.userId,
+      username: userMap.get(row.userId)?.username || 'Unknown',
+      providerType: userMap.get(row.userId)?.providerType || null,
+      showId: row.showId,
+      showName: row.showName,
+      poster: row.poster,
+      lastSeason: row.season,
+      lastEpisode: row.episode,
+      episodesWatched,
+      lastWatchedAt: row.watchedAt,
+      daysSince: Math.floor((Date.now() - new Date(row.watchedAt).getTime()) / (24 * 60 * 60 * 1000)),
+    }))
+}
+
+module.exports = { getContinueWatching, dismissContinueWatching, getAbandonedShows, ABANDONED_AFTER_DAYS }

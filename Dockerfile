@@ -119,9 +119,17 @@ USER appuser
 # Expose ports
 EXPOSE 3000 4000
 
-# Health check
+# Health check - probes BOTH processes, because this container runs two and
+# either can fail independently. The previous version checked only the
+# frontend (port 3000), which meant a dead backend left the container
+# reporting "healthy" while every API request failed - that exact failure
+# happened in practice and went unnoticed because of this.
+#
+# The backend's /health additionally does one trivial DB round-trip and
+# answers 503 if the database is unreachable, so `curl -f` fails on a
+# degraded database too, not just on a dead process.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:3000/ || exit 1
+  CMD curl -f http://localhost:4000/health && curl -f http://localhost:3000/ || exit 1
 
 # Start the application
 CMD ["./start.sh"]

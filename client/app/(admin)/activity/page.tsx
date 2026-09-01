@@ -10,6 +10,7 @@ import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
 import { TVLink } from '@/components/tv/TVLink';
 import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal } from '@/components/ui';
+import { DroppedShowsPanel } from '@/components/activity/DroppedShowsPanel';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -1505,7 +1506,7 @@ function ActivityPageContent() {
   const handleFilterByEpisode = useCallback((act: ActivityItem) => {
     setEpisodeFilter({ name: act.contentName, season: act.season, episode: act.episode });
   }, []);
-  const [viewMode, setViewMode] = useState<'watch' | 'tasks' | 'invites' | 'proxy'>('watch');
+  const [viewMode, setViewMode] = useState<'watch' | 'tasks' | 'invites' | 'proxy' | 'dropped'>('watch');
   const { viewMode: watchActivityViewMode, setViewMode: setWatchActivityViewMode } = useDefaultViewMode();
   const [visibleCount, setVisibleCount] = useState(50); // lazy-load activity in chunks
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -1922,9 +1923,11 @@ function ActivityPageContent() {
               { key: 'tasks', label: 'Tasks', icon: <ClockIcon className="w-4 h-4" /> },
               { key: 'invites', label: 'Invites', icon: <EnvelopeIcon className="w-4 h-4" /> },
               { key: 'proxy', label: 'Proxy', icon: <ShieldCheckIcon className="w-4 h-4" /> },
+              // Shows started and then dropped - see getAbandonedShows.
+              { key: 'dropped', label: 'Dropped', icon: <ArchiveBoxIcon className="w-4 h-4" /> },
             ],
             activeKey: viewMode,
-            onChange: (key) => setViewMode(key as 'watch' | 'tasks' | 'invites' | 'proxy'),
+            onChange: (key) => setViewMode(key as 'watch' | 'tasks' | 'invites' | 'proxy' | 'dropped'),
             layoutId: 'activity-primary-tabs',
           }}
         />
@@ -2237,6 +2240,10 @@ function ActivityPageContent() {
               )}
             </div>
           </>
+        ) : viewMode === 'dropped' ? (
+          <PageSection delay={0.05}>
+            <DroppedShowsPanel />
+          </PageSection>
         ) : viewMode === 'proxy' ? (
           <ProxyHistoryView />
         ) : (

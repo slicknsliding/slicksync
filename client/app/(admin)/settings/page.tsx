@@ -4,12 +4,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Header } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
-import { Button, Card, Badge, Modal, ConfirmModal, Avatar, ComboBox } from '@/components/ui';
+import { Button, Card, Badge, Modal, ConfirmModal, Avatar, ComboBox, ProviderKeyHealthBadge, ProviderKeyHealthUnchecked } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { useTheme } from '@/lib/theme';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats, PushDevice } from '@/lib/api';
-import { toast } from '@/components/ui/Toast';
+import { toast, showToast } from '@/components/ui/Toast';
+import { isBeginnerMode, setBeginnerMode as setBeginnerModePref } from '@/lib/beginnerMode';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
 import { invalidatePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
@@ -222,6 +223,37 @@ export default function SettingsPage() {
   const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   
+  const [checkingKeys, setCheckingKeys] = useState(false);
+  // Mirrors the localStorage flag so the switch reflects reality after mount
+  // (reading it during render would disagree with the server render).
+  const [beginnerMode, setBeginnerModeState] = useState(false);
+  useEffect(() => { setBeginnerModeState(isBeginnerMode()); }, []);
+  const handleCheckProviderKeys = async () => {
+    setCheckingKeys(true);
+    try {
+      const { keyHealth } = await api.checkProviderKeys();
+      setSyncSettings((prev) => ({ ...prev, keyHealth }));
+      const checkedProviders = Object.keys(keyHealth || {});
+      const failing = checkedProviders.filter((k) => keyHealth?.[k] && !keyHealth[k].ok).length;
+      // 0 failing out of 0 configured is vacuously "all passing" but reads
+      // as false reassurance - confirmed live (a removed key's stale result
+      // is correctly cleared now, and "0 failing" alone doesn't distinguish
+      // that from "everything's fine"). Distinct copy for the empty case.
+      // Neutral info icon, not a warning triangle - every one of these four
+      // keys is explicitly optional (see each field's own label), so having
+      // none configured is a normal, intentional state, not a problem to
+      // flag. A warning here would be the same false-alarm mistake the
+      // vacuous "all keys working" copy just got caught making.
+      if (checkedProviders.length === 0) showToast.info('No API keys configured to check');
+      else if (failing > 0) toast.error(`${failing} of ${checkedProviders.length} key${checkedProviders.length === 1 ? '' : 's'} not working - see below`);
+      else toast.success(`${checkedProviders.length} key${checkedProviders.length === 1 ? '' : 's'} working`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to check keys');
+    } finally {
+      setCheckingKeys(false);
+    }
+  };
+
   // Sync settings state
   const [syncSettings, setSyncSettings] = useState<Partial<SyncSettings>>({
     mode: 'normal',
@@ -924,6 +956,20 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-3">
+              {/* Per-device, not an account setting - see lib/beginnerMode.ts
+                  for why one household member being new shouldn't flip a
+                  switch for everyone else. */}
+              <SettingRow
+                label="Beginner Mode"
+                description="Show short explanations on each page, with a link into the full guide"
+              >
+                <ToggleSwitch
+                  enabled={beginnerMode}
+                  onChange={(v) => { setBeginnerModePref(v); setBeginnerModeState(v); }}
+                  label="Toggle beginner mode"
+                />
+              </SettingRow>
+
               <SettingRow
                 label="Private Mode"
                 description="Hide sensitive information like emails, IPs, and API keys"
@@ -1547,12 +1593,34 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {/* Manual trigger for the daily key-validity check (see
+                  server/utils/metadataKeyHealth.js) - runs automatically
+                  once a day regardless, this is just "check right now"
+                  instead of waiting. Shown once, above all four key fields
+                  rather than duplicated per-field, since one click checks
+                  whichever of the four are actually configured. */}
+              <div className="flex items-center justify-between pb-1">
+                <span className="text-sm font-medium text-default">Provider key status</span>
+                <Button variant="secondary" size="sm" onClick={handleCheckProviderKeys} disabled={checkingKeys}>
+                  {checkingKeys ? 'Checking…' : 'Check keys now'}
+                </Button>
+              </div>
+
               {/* TMDb key for the cast/crew deep-dive. Text field, not a
                   toggle - the feature simply appears once a valid key is set.
                   Free from themoviedb.org (Settings -> API). Saved on blur,
                   same pattern as the webhook URL above. */}
               <div>
-                <label className="block text-sm font-medium text-default mb-1.5">TMDb API key <span className="text-subtle font-normal">(optional)</span></label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-default">TMDb API key <span className="text-subtle font-normal">(optional)</span></label>
+                  {syncSettings.tmdbApiKey ? (
+                    syncSettings.keyHealth?.tmdb ? (
+                      <ProviderKeyHealthBadge result={syncSettings.keyHealth.tmdb} />
+                    ) : (
+                      <ProviderKeyHealthUnchecked />
+                    )
+                  ) : null}
+                </div>
                 <p className="text-xs text-muted mb-2">
                   Enables the cast/crew deep-dive — click any actor in a title's detail popup to see everything else they're in. Get a free key at themoviedb.org → Settings → API. Leave blank to keep the feature off.
                 </p>
@@ -1572,7 +1640,16 @@ export default function SettingsPage() {
                   from mdblist.com -> Preferences -> API Access. Same
                   optional-text-field pattern as the TMDb key above. */}
               <div className="pt-1">
-                <label className="block text-sm font-medium text-default mb-1.5">MDBList API key <span className="text-subtle font-normal">(optional)</span></label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-default">MDBList API key <span className="text-subtle font-normal">(optional)</span></label>
+                  {syncSettings.mdblistApiKey ? (
+                    syncSettings.keyHealth?.mdblist ? (
+                      <ProviderKeyHealthBadge result={syncSettings.keyHealth.mdblist} />
+                    ) : (
+                      <ProviderKeyHealthUnchecked />
+                    )
+                  ) : null}
+                </div>
                 <p className="text-xs text-muted mb-2">
                   Enables importing an MDBList list into Lists. Get a free key at mdblist.com → Preferences → API Access. Leave blank to keep list import to TMDb lists only.
                 </p>
@@ -1593,7 +1670,16 @@ export default function SettingsPage() {
                   tier (Tier 0) already includes ratings, just not the
                   customizable badge styles - plenty for this purpose. */}
               <div className="pt-1">
-                <label className="block text-sm font-medium text-default mb-1.5">RPDB API key <span className="text-subtle font-normal">(optional)</span></label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-default">RPDB API key <span className="text-subtle font-normal">(optional)</span></label>
+                  {syncSettings.rpdbApiKey ? (
+                    syncSettings.keyHealth?.rpdb ? (
+                      <ProviderKeyHealthBadge result={syncSettings.keyHealth.rpdb} />
+                    ) : (
+                      <ProviderKeyHealthUnchecked />
+                    )
+                  ) : null}
+                </div>
                 <p className="text-xs text-muted mb-2">
                   Upgrades posters everywhere to rating-embedded art from RatingPosterDB, when Poster ratings (in SlickTrax above) is also on. The free key works fine. Get one at ratingposterdb.com → API Key. Leave blank to keep today's posters.
                 </p>
@@ -1614,7 +1700,16 @@ export default function SettingsPage() {
                   it so this account's OMDb quota isn't shared with everyone
                   else on the instance. */}
               <div className="pt-1">
-                <label className="block text-sm font-medium text-default mb-1.5">OMDb API key <span className="text-subtle font-normal">(optional)</span></label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-default">OMDb API key <span className="text-subtle font-normal">(optional)</span></label>
+                  {syncSettings.omdbApiKey ? (
+                    syncSettings.keyHealth?.omdb ? (
+                      <ProviderKeyHealthBadge result={syncSettings.keyHealth.omdb} />
+                    ) : (
+                      <ProviderKeyHealthUnchecked />
+                    )
+                  ) : null}
+                </div>
                 <p className="text-xs text-muted mb-2">
                   Adds Rotten Tomatoes/Metacritic ratings. Get a free key at omdbapi.com/apikey.aspx. Paste just the key itself, not the test URL OMDb's confirmation email shows (the one starting "http://www.omdbapi.com/?i=..."). Leave blank to use the server's own key, if one is configured.
                 </p>

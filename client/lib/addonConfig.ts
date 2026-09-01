@@ -174,7 +174,17 @@ export function decodeAddonConfig(manifestUrl: string): DecodedAddonConfig | nul
   if (b64 && b64.startsWith('{')) {
     try {
       const obj = JSON.parse(b64);
-      if (obj && typeof obj === 'object' && !Array.isArray(obj) && !looksLikeEncryptedEnvelope(obj)) {
+      // An encrypted envelope is CONCLUSIVELY undecodable - return here
+      // rather than falling through. Falling through was an actual bug: a
+      // base64 segment's `=` padding satisfies the key=value pattern below,
+      // so an AIOStreams envelope came back "decoded" as a single bogus
+      // field (key = the whole base64 blob, value = "="), which put the
+      // Edit config button back on exactly the addons it was meant to
+      // exclude. Verified against a real AIOStreams install URL.
+      if (obj && typeof obj === 'object' && !Array.isArray(obj) && looksLikeEncryptedEnvelope(obj)) {
+        return null;
+      }
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
         // Preserve the alphabet the addon itself used - a server expecting
         // url-safe base64 may reject `+`/`/`.
         const urlSafe = /[-_]/.test(rawSegment) || !/[+/]/.test(rawSegment);

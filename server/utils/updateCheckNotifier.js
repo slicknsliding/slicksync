@@ -35,6 +35,18 @@ async function runUpdateCheck(prisma) {
         url: '/metrics?tab=health',
       })
 
+      // Also emitted as an automation event so a rule can act on it (e.g.
+      // webhook into a deploy channel). Sits inside the same
+      // once-per-version guard above, so it fires once per new release
+      // rather than on every check.
+      try {
+        const { emitAutomationEvent } = require('./automation/engine')
+        await emitAutomationEvent(prisma, acc.id, 'update.available', {
+          latestVersion: latestRelease,
+          runningVersion: running,
+        })
+      } catch { /* automation must never break the update check */ }
+
       const nextCfg = { ...cfg, lastNotifiedUpdateVersion: latestRelease }
       try {
         await prisma.appAccount.update({ where: { id: acc.id }, data: { sync: nextCfg } })

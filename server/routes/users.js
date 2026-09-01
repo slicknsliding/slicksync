@@ -651,6 +651,63 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // ==================== TRAKT ONE-TIME IMPORT ====================
+  // See traktImport.js's own header for why this exists alongside the CSV
+  // importer above (Trakt has no reliable CSV export to point that path at)
+  // and exactly which Trakt endpoints this talks to.
+
+  // POST /users/:id/trakt-import/start - kicks off the OAuth device flow.
+  // Returns the code+link the user needs to approve at trakt.tv/activate;
+  // the device_code itself doubles as the polling session token below (no
+  // server-side state needed between the two calls - Trakt's own protocol
+  // is already designed that way).
+  router.post('/:id/trakt-import/start', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+
+      const { startDeviceAuth } = require('../utils/traktImport')
+      const auth = await startDeviceAuth()
+      res.json(auth)
+    } catch (error) {
+      if (error?.notConfigured) return res.status(400).json({ error: error.message, notConfigured: true })
+      console.error('Error starting Trakt import:', error)
+      res.status(500).json({ error: error?.message || 'Failed to start Trakt connection' })
+    }
+  })
+
+  // POST /users/:id/trakt-import/poll - body: {deviceCode}. Called on the
+  // client's own timer at the `interval` /start returned. Once Trakt
+  // reports the device approved, this same call performs the actual pull +
+  // write and returns the import result - no separate "now do the import"
+  // step, so the client's polling loop naturally ends the moment there's
+  // something to show.
+  router.post('/:id/trakt-import/poll', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      const { deviceCode } = req.body || {}
+      if (!deviceCode) return res.status(400).json({ error: 'Missing deviceCode' })
+
+      const { pollDeviceToken, importTraktData } = require('../utils/traktImport')
+      const poll = await pollDeviceToken(deviceCode)
+      if (poll.status !== 'approved') return res.json(poll)
+
+      const result = await importTraktData(prisma, accountId, user.id, poll.accessToken)
+      // The access token was only ever needed for this one pull - "connect
+      // once, then disconnects" means literally not holding onto it past
+      // this response, not just not writing it to a settings field.
+      res.json({ status: 'done', ...result })
+    } catch (error) {
+      console.error('Error polling/importing Trakt data:', error)
+      res.status(500).json({ error: error?.message || 'Failed to import from Trakt' })
+    }
+  })
+
   // GET /users/:id/export-history.csv - Letterboxd-import-compatible CSV
   // (Title,Year,imdbID,WatchedDate,Rating10 - the exact column names
   // Letterboxd's own importer accepts, confirmed against
@@ -791,6 +848,21 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     } catch (error) {
       console.error('Error fetching continue watching:', error)
       res.status(500).json({ error: 'Failed to fetch continue watching' })
+    }
+  })
+
+  // GET /users/abandoned-shows - shows started and then dropped long enough
+  // ago that Continue Watching's own 120-day window has stopped showing them
+  // at all. See getAbandonedShows. Must be before /:id route.
+  router.get('/abandoned-shows', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { getAbandonedShows } = require('../utils/continueWatching')
+      res.json(await getAbandonedShows(prisma, accountId))
+    } catch (error) {
+      console.error('Error fetching abandoned shows:', error)
+      res.status(500).json({ error: 'Failed to fetch abandoned shows' })
     }
   })
 
