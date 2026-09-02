@@ -1269,6 +1269,18 @@ class ApiClient {
   // DESTRUCTIVE - replaces all current users/groups/addons with the
   // backup's contents. Caller is responsible for confirming with the user
   // first; this just performs the restore.
+  /** What restoring this backup would change - names only, computed before
+   * anything is touched. Feeds the confirmation dialog. */
+  async diffBackup(filename: string) {
+    return this.fetch<{
+      backupDate: string | null;
+      addons: { added: string[]; removed: string[]; changed: string[] };
+      users: { added: string[]; removed: string[] };
+      groups: { added: string[]; removed: string[] };
+      counts: { backup: { addons: number; users: number; groups: number }; current: { addons: number; users: number; groups: number } };
+    }>(`/settings/backups/${encodeURIComponent(filename)}/diff`);
+  }
+
   async restoreBackup(filename: string) {
     return this.fetch<ImportConfigResult>(`/settings/backups/${encodeURIComponent(filename)}/restore`, {
       method: 'POST',

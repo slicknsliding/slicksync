@@ -429,7 +429,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'Backing up or restoring your setup',
     category: 'Health & maintenance',
     keywords: ['backup', 'restore', 'disaster recovery', 'export config', 'snapshot'],
-    answer: 'Tasks → Automatic Backups (or Configuration → Export Config) for a full config snapshot, and Vault\'s own Disaster Recovery Kit for a passphrase-encrypted bundle that includes every stored secret too.',
+    answer: 'Tasks → Automatic Backups (or Configuration → Export Config) for a full config snapshot, and Vault\'s own Disaster Recovery Kit for a passphrase-encrypted bundle that includes every stored secret too. Restoring first shows exactly what would change - which addons, users, and groups would be removed, brought back, or rewound - before anything is touched.',
     steps: [
       'For config only: Tasks → Configuration → Export Config downloads a full settings snapshot.',
       'For config plus every Vault secret: Vault → Disaster Recovery Kit, choose a passphrase, download the bundle.',

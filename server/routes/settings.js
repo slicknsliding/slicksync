@@ -184,6 +184,76 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     // tested /public-auth/config-import handler (same internal-fetch
     // pattern performBackupOnce() already uses to call sibling endpoints)
     // rather than duplicating its import-ordering logic here.
+    // GET /settings/backups/:filename/diff - what a restore would actually
+    // change, computed BEFORE anything is touched. Restore replaces this
+    // account's users/groups/addons with the file's contents (see
+    // config-import), so "restore" without this was a leap of faith: no way
+    // to know whether Tuesday's backup still contains the addon you added
+    // Wednesday. Names only in the response - it feeds a confirmation
+    // dialog, not an export.
+    router.get('/backups/:filename/diff', async (req, res) => {
+      try {
+        if (!isValidBackupFilename(req.params.filename)) {
+          return res.status(400).json({ message: 'Invalid backup filename' })
+        }
+        const filePath = path.join(BACKUP_DIR, req.params.filename)
+        if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'Backup not found' })
+        let parsed
+        try { parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) } catch {
+          return res.status(422).json({ message: 'Backup file is not valid JSON' })
+        }
+        const data = parsed.data || parsed
+        const accountId = getAccountId(req) || 'default'
+
+        const bAddons = Array.isArray(data.addons) ? data.addons : []
+        const bUsers = Array.isArray(data.users) ? data.users : []
+        const bGroups = Array.isArray(data.groups) ? data.groups : []
+
+        const [curAddons, curUsers, curGroups] = await Promise.all([
+          prisma.addon.findMany({ where: { accountId }, select: { name: true, manifestUrl: true } }),
+          prisma.user.findMany({ where: { accountId }, select: { username: true } }),
+          prisma.group.findMany({ where: { accountId }, select: { name: true } }),
+        ])
+
+        const norm = (v) => String(v || '').trim().toLowerCase()
+        const diffNames = (backupNames, currentNames) => {
+          const b = new Set(backupNames.map(norm))
+          const c = new Set(currentNames.map(norm))
+          return {
+            added: backupNames.filter((n) => n && !c.has(norm(n))),
+            removed: currentNames.filter((n) => n && !b.has(norm(n))),
+          }
+        }
+
+        // Addons additionally get "changed": same name, different URL - the
+        // case where a restore silently rewinds a config edit (or a key
+        // rotation) is exactly what someone previewing needs to see.
+        const curUrlByName = new Map()
+        for (const a of curAddons) {
+          let url = null
+          try { url = getDecryptedManifestUrl(a, req) } catch { url = null }
+          curUrlByName.set(norm(a.name), url)
+        }
+        const changed = []
+        for (const a of bAddons) {
+          const cur = curUrlByName.get(norm(a.name))
+          const bUrl = a.manifestUrl || a.transportUrl || null
+          if (cur && bUrl && cur !== bUrl) changed.push(a.name)
+        }
+
+        const addons = diffNames(bAddons.map((a) => a.name), curAddons.map((a) => a.name))
+        return res.json({
+          backupDate: (() => { try { return fs.statSync(filePath).mtime.toISOString() } catch { return null } })(),
+          addons: { ...addons, changed },
+          users: diffNames(bUsers.map((u) => u.username || u.name), curUsers.map((u) => u.username)),
+          groups: diffNames(bGroups.map((g) => g.name), curGroups.map((g) => g.name)),
+          counts: { backup: { addons: bAddons.length, users: bUsers.length, groups: bGroups.length }, current: { addons: curAddons.length, users: curUsers.length, groups: curGroups.length } },
+        })
+      } catch (e) {
+        return res.status(500).json({ message: 'Failed to diff backup', error: e?.message })
+      }
+    })
+
     router.post('/backups/:filename/restore', async (req, res) => {
       try {
         if (!isValidBackupFilename(req.params.filename)) {

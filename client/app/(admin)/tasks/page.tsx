@@ -767,10 +767,30 @@ export default function TasksPage() {
   // DESTRUCTIVE - replaces all current users/groups/addons. Reload after a
   // successful restore so every part of the app (this page included) picks
   // up the new data instead of continuing to show now-stale state.
-  const handleRestoreBackup = (backup: BackupFile) => {
+  const handleRestoreBackup = async (backup: BackupFile) => {
+    // Time Machine: show what this restore would actually DO before asking
+    // for the irreversible yes. "Replaces everything" was true but useless -
+    // the question someone is really asking is "does Tuesday's backup still
+    // contain what I added on Wednesday?", and now the dialog answers it.
+    let detail = '';
+    try {
+      const d = await api.diffBackup(backup.filename);
+      const list = (names: string[]) => names.slice(0, 6).join(', ') + (names.length > 6 ? ` and ${names.length - 6} more` : '');
+      const parts: string[] = [];
+      if (d.addons.removed.length) parts.push(`REMOVE ${d.addons.removed.length} addon${d.addons.removed.length === 1 ? '' : 's'} added since (${list(d.addons.removed)})`);
+      if (d.addons.added.length) parts.push(`bring back ${d.addons.added.length} addon${d.addons.added.length === 1 ? '' : 's'} (${list(d.addons.added)})`);
+      if (d.addons.changed.length) parts.push(`rewind ${d.addons.changed.length} addon config${d.addons.changed.length === 1 ? '' : 's'} (${list(d.addons.changed)})`);
+      if (d.users.removed.length) parts.push(`REMOVE ${d.users.removed.length} user${d.users.removed.length === 1 ? '' : 's'} (${list(d.users.removed)})`);
+      if (d.users.added.length) parts.push(`bring back ${d.users.added.length} user${d.users.added.length === 1 ? '' : 's'} (${list(d.users.added)})`);
+      if (d.groups.removed.length) parts.push(`REMOVE ${d.groups.removed.length} group${d.groups.removed.length === 1 ? '' : 's'} (${list(d.groups.removed)})`);
+      if (d.groups.added.length) parts.push(`bring back ${d.groups.added.length} group${d.groups.added.length === 1 ? '' : 's'} (${list(d.groups.added)})`);
+      detail = parts.length === 0
+        ? ' Nothing differs from the current state - restoring changes nothing.'
+        : ` This restore would: ${parts.join('; ')}.`;
+    } catch { /* diff is best-effort - the generic warning below still stands */ }
     openConfirm({
       title: 'Restore Backup',
-      description: `This replaces ALL current users, groups, and addons with the contents of this backup (${formatBackupDate(backup.createdAt)}). Anything created or changed since then will be lost. This cannot be undone.`,
+      description: `Restores the backup from ${formatBackupDate(backup.createdAt)}.${detail} This cannot be undone.`,
       variant: 'danger',
       onConfirm: async () => {
         setRestoringBackup(backup.filename);
