@@ -767,6 +767,8 @@ export default function SettingsPage() {
           omdbApiKeyPool: settings.omdbApiKeyPool || [],
           mdblistApiKeyPool: settings.mdblistApiKeyPool || [],
           rpdbApiKeyPool: settings.rpdbApiKeyPool || [],
+          keyPoolQuotaWeighting: settings.keyPoolQuotaWeighting === true,
+          keyPoolAutoRetire: settings.keyPoolAutoRetire === true,
           // Carried over from the server rather than left undefined. The
           // daily scheduler (utils/metadataKeyHealth.js) has been storing
           // results all along, but this page only ever populated keyHealth
@@ -2034,6 +2036,51 @@ export default function SettingsPage() {
                   }}
                 />
               </div>
+
+              {/* Pool behavior - both opt-in, both meaningless without pool
+                  keys, hence living right under the pool fields. */}
+              {(['tmdbApiKeyPool', 'omdbApiKeyPool', 'mdblistApiKeyPool', 'rpdbApiKeyPool'] as const).some((f) => (syncSettings[f] || []).length > 0) && (
+                <div className="space-y-2 pt-1">
+                  <SettingRow
+                    label="Spread by remaining quota"
+                    description="Send requests to the pool key with the most allowance left instead of taking strict turns. Applies where usage is reported (MDBList today); other providers keep taking turns."
+                  >
+                    <ToggleSwitch
+                      enabled={syncSettings.keyPoolQuotaWeighting === true}
+                      onChange={async (v) => {
+                        setSyncSettings((prev) => ({ ...prev, keyPoolQuotaWeighting: v }));
+                        try {
+                          await api.updateSyncSettings({ keyPoolQuotaWeighting: v });
+                          toast.success(v ? 'Pool requests now favor the key with the most quota left' : 'Pool back to taking strict turns');
+                        } catch {
+                          toast.error('Could not save that setting');
+                          setSyncSettings((prev) => ({ ...prev, keyPoolQuotaWeighting: !v }));
+                        }
+                      }}
+                      label="Toggle quota-aware pool weighting"
+                    />
+                  </SettingRow>
+                  <SettingRow
+                    label="Auto-retire failing pool keys"
+                    description="A pool key that has been failing for 3 straight days is removed from the pool automatically, with a notification naming it. Your primary and backup keys are never touched."
+                  >
+                    <ToggleSwitch
+                      enabled={syncSettings.keyPoolAutoRetire === true}
+                      onChange={async (v) => {
+                        setSyncSettings((prev) => ({ ...prev, keyPoolAutoRetire: v }));
+                        try {
+                          await api.updateSyncSettings({ keyPoolAutoRetire: v });
+                          toast.success(v ? 'Dead pool keys will retire themselves after 3 days' : 'Pool keys will only be removed by hand');
+                        } catch {
+                          toast.error('Could not save that setting');
+                          setSyncSettings((prev) => ({ ...prev, keyPoolAutoRetire: !v }));
+                        }
+                      }}
+                      label="Toggle auto-retire for failing pool keys"
+                    />
+                  </SettingRow>
+                </div>
+              )}
 
               {/* SIMKL Client ID - powers the "Link SIMKL" flow on a user's
                   own page (watch-history pull/push). Account-scoped like the

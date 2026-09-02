@@ -3143,6 +3143,12 @@ export interface SyncSettings {
    * watchdog rolls back automatically on a failed health check. */
   autoUpdateEnabled?: boolean;
   autoUpdateHour?: number;
+  /** Key Pool, opt-in: spread requests toward the pool key with the most
+   * remaining quota (providers that report usage only - MDBList today). */
+  keyPoolQuotaWeighting?: boolean;
+  /** Key Pool, opt-in: a pool EXTRA failing for 3 straight days is removed
+   * from the pool automatically, with one notification. */
+  keyPoolAutoRetire?: boolean;
 
   simklClientId?: string;
   /** Self-hosted Nuvio backend URL, e.g. https://backend.example.com. Blank uses api.nuvio.tv. */

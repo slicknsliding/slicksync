@@ -198,7 +198,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'key-pool',
     title: 'The Key Pool - several keys per provider, one shared allowance',
     category: 'Vault & credentials',
-    keywords: ['key pool', 'multiple keys', 'quota', 'rate limit', 'mdblist limit', 'spread keys', 'rotate keys', 'pooled allowance'],
+    keywords: ['key pool', 'multiple keys', 'quota', 'rate limit', 'mdblist limit', 'spread keys', 'rotate keys', 'pooled allowance', 'quota weighting', 'auto retire', 'remove dead key'],
     answer: 'Each metadata key in Settings can hold extra keys beyond the primary and backup - the "Add key pool" chip under the field. With any pool keys present, lookups rotate across every healthy key instead of always using the primary, so three free MDBList keys stop being three separate 1,000/day allowances and become one pooled one.',
     steps: [
       'Settings -> External API Keys -> "Add key pool" under the key you want to spread.',
@@ -210,6 +210,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'If every key in the pool is marked bad, lookups fall back to the primary rather than nothing: a marked-bad key is still better than no key, and the next check unmarks it the moment it recovers.',
       'With no pool keys configured, nothing changes: the primary is used, with the backup taking over only when a check has found the primary bad - exactly the failover behaviour that already existed.',
       'Pool keys are real secrets: stripped from plain config exports and carried in the Disaster Recovery Kit, the same as the primaries.',
+      'Two opt-in behaviours appear under the pool fields once any pool has keys. "Spread by remaining quota" sends requests to the key with the most allowance left instead of strict turns - for providers that report usage (MDBList today); near-equal keys still alternate so no single key gets driven to its limit. "Auto-retire failing pool keys" removes a pool key that has failed for 3 straight days, with one notification naming it by its last 4 characters - primaries and backups are never touched, one bad check never retires anything.',
     ],
     related: ['vault-backup-key', 'provider-key-health', 'vault-key-rotation'],
   },

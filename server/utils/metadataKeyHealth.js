@@ -221,17 +221,66 @@ async function checkAndPersistAccountKeys(prisma, accountId, { notify = true, on
   // rate-limited. Only runs for providers with a ring bigger than one key -
   // the single-key case is exactly what the primary check above already is.
   try {
-    const { buildRing, keyTag } = require('./keyPool');
+    const { buildRing, readPool, keyTag } = require('./keyPool');
     const FIELD_OF = { tmdb: 'tmdbApiKey', omdb: 'omdbApiKey', mdblist: 'mdblistApiKey', rpdb: 'rpdbApiKey' };
+    // Auto-retire threshold: three days of CONTINUOUS failing, tracked via
+    // firstFailedAt below - one bad check never retires anything.
+    const RETIRE_AFTER_MS = 3 * 86400000;
     for (const provider of Object.keys(toCheck)) {
-      const ring = buildRing(cfg, FIELD_OF[provider]);
+      const field = FIELD_OF[provider];
+      const ring = buildRing(cfg, field);
       if (ring.length <= 1) continue;
+      const prevPool = Array.isArray(previousHealth[provider]?.pool) ? previousHealth[provider].pool : [];
       const perKey = [];
       for (const key of ring) {
         const r = await CHECKERS[provider](key);
-        perKey.push({ tag: keyTag(key), last4: String(key).slice(-4), ok: r.ok, rateLimited: !!r.rateLimited, checkedAt: new Date().toISOString() });
+        const tag = keyTag(key);
+        const prev = prevPool.find((p) => p && p.tag === tag);
+        perKey.push({
+          tag,
+          last4: String(key).slice(-4),
+          ok: r.ok,
+          rateLimited: !!r.rateLimited,
+          // Remaining-allowance signal for quota-aware weighting (keyPool.js)
+          // - only providers whose check reports usage carry it.
+          ...(r.usage && Number.isFinite(r.usage.percentUsed) ? { percentUsed: r.usage.percentUsed } : {}),
+          // Failing streak: carried forward while the key keeps failing,
+          // dropped the moment it passes - the auto-retire clock.
+          ...(r.ok === false ? { firstFailedAt: prev?.firstFailedAt || new Date().toISOString() } : {}),
+          checkedAt: new Date().toISOString(),
+        });
       }
       results[provider] = { ...(results[provider] || {}), pool: perKey };
+
+      // Auto-retire (opt-in, keyPoolAutoRetire): a POOL EXTRA that has been
+      // failing for three straight days is removed from the pool, with one
+      // notification saying so. Only extras - the primary and backup carry
+      // failover/promotion semantics of their own and are never touched.
+      // The retired key is named by its last 4 characters, never in full.
+      if (cfg.keyPoolAutoRetire === true) {
+        const pool = readPool(cfg, field);
+        const retired = [];
+        const kept = pool.filter((key) => {
+          const rec = perKey.find((p) => p.tag === keyTag(key));
+          const dead = !!(rec && rec.ok === false && rec.firstFailedAt
+            && (Date.now() - new Date(rec.firstFailedAt).getTime() >= RETIRE_AFTER_MS));
+          if (dead) retired.push(rec);
+          return !dead;
+        });
+        if (retired.length > 0) {
+          cfg[`${field}Pool`] = kept;
+          const label = PROVIDER_LABEL[provider] || provider;
+          const { createNotification } = require('./notificationStore');
+          for (const rec of retired) {
+            await createNotification(prisma, accountId, {
+              type: 'task',
+              title: `Retired a failing ${label} pool key`,
+              body: `The pool key ending in ${rec.last4} had been failing for 3 days and was removed from the ${label} pool. The rest of the ring carries on; add a replacement when you can.`,
+              dedupeKey: `keyretire-${provider}-${rec.tag}`,
+            }).catch(() => {});
+          }
+        }
+      }
     }
   } catch (e) {
     console.warn('[KeyHealth] Pool ring check failed:', e?.message);
