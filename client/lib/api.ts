@@ -2163,8 +2163,16 @@ class ApiClient {
     return this.fetch<{
       userId: string; username: string; showId: string; showName: string;
       poster: string | null; lastSeason: number | null; lastEpisode: number | null;
-      lastWatchedAt: string | null; buriedAt: string;
+      lastWatchedAt: string | null; episodesWatched: number; buriedAt: string;
     }[]>('/users/graveyard');
+  }
+
+  /** The permanent exit: erases the show's entire watch history for that
+   * user plus the burial. Irreversible - the UI confirms with the count. */
+  async wipeBuriedShow(userId: string, showId: string) {
+    return this.fetch<{ success: boolean; episodesDeleted: number }>('/users/graveyard/wipe', {
+      method: 'POST', body: JSON.stringify({ userId, showId }),
+    });
   }
 
   /** Dig a show back up - it returns to Continue Watching or the unfinished list. */

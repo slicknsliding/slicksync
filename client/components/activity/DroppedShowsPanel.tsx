@@ -54,7 +54,7 @@ export function DroppedShowsPanel() {
       setBuried((prev) => [{
         userId: item.userId, username: item.username, showId: item.showId, showName: item.showName,
         poster: item.poster, lastSeason: item.lastSeason, lastEpisode: item.lastEpisode,
-        lastWatchedAt: item.lastWatchedAt, buriedAt: new Date().toISOString(),
+        lastWatchedAt: item.lastWatchedAt, episodesWatched: item.episodesWatched, buriedAt: new Date().toISOString(),
       }, ...(prev || [])]);
       toast.success(`Buried ${item.showName}`);
     } catch (e) {
@@ -75,6 +75,31 @@ export function DroppedShowsPanel() {
       api.getAbandonedShows().then(setItems).catch(() => {});
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not unbury that show');
+    } finally {
+      setWorking(null);
+    }
+  };
+
+  // The permanent exit. Two-step on purpose: Wipe arms a confirmation state
+  // on the row itself (button turns into "Erase N episodes forever?"), so
+  // the destructive click is never the first click and the count of what
+  // dies is in the button text. No modal - the row IS the context.
+  const [wipeArmed, setWipeArmed] = useState<string | null>(null);
+  const wipe = async (item: Buried) => {
+    const key = `${item.userId}:${item.showId}`;
+    if (wipeArmed !== key) {
+      setWipeArmed(key);
+      setTimeout(() => setWipeArmed((cur) => (cur === key ? null : cur)), 5000);
+      return;
+    }
+    setWipeArmed(null);
+    setWorking(key);
+    try {
+      const r = await api.wipeBuriedShow(item.userId, item.showId);
+      setBuried((prev) => (prev || []).filter((i) => `${i.userId}:${i.showId}` !== key));
+      toast.success(`${item.showName} wiped - ${r.episodesDeleted} episode${r.episodesDeleted === 1 ? '' : 's'} of history erased permanently`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not wipe that show');
     } finally {
       setWorking(null);
     }
@@ -155,7 +180,7 @@ export function DroppedShowsPanel() {
             <div>
               <h3 className="text-lg font-semibold text-default">The Graveyard</h3>
               <p className="text-sm text-muted mt-0.5">
-                {buried.length} buried show{buried.length === 1 ? '' : 's'} resting here. Any of them can be dug back up.
+                {buried.length} buried show{buried.length === 1 ? '' : 's'} resting here. Dig one back up any time - or Wipe it to erase its watch history permanently.
               </p>
             </div>
             <span className="text-xs text-muted shrink-0">{graveOpen ? 'Hide' : 'Show'}</span>
@@ -182,15 +207,26 @@ export function DroppedShowsPanel() {
                         Buried {new Date(item.buriedAt).toLocaleDateString()}
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="shrink-0"
-                      isLoading={working === key}
-                      onClick={() => unbury(item)}
-                    >
-                      Dig up
-                    </Button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        isLoading={working === key}
+                        onClick={() => unbury(item)}
+                      >
+                        Dig up
+                      </Button>
+                      <Button
+                        variant={wipeArmed === key ? 'danger' : 'ghost'}
+                        size="sm"
+                        isLoading={working === key && wipeArmed === null}
+                        onClick={() => wipe(item)}
+                      >
+                        {wipeArmed === key
+                          ? `Erase ${item.episodesWatched} episode${item.episodesWatched === 1 ? '' : 's'} forever?`
+                          : 'Wipe'}
+                      </Button>
+                    </div>
                   </div>
                 );
               })}

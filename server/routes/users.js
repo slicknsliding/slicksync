@@ -940,6 +940,24 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // POST /users/graveyard/wipe - the permanent exit. Deletes every episode
+  // watch-history row for that user+show plus the burial itself. Watch time
+  // and metrics stop counting it; nothing brings it back. The client's
+  // confirmation names the episode count before this ever runs.
+  router.post('/graveyard/wipe', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { userId, showId } = req.body || {}
+      if (!userId || !showId) return res.status(400).json({ error: 'Missing userId or showId' })
+      const { wipeBuriedShow } = require('../utils/continueWatching')
+      const result = await wipeBuriedShow(prisma, accountId, userId, showId)
+      res.json({ success: true, ...result })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to wipe' })
+    }
+  })
+
   // POST /users/continue-watching/dismiss - remove a show from the Continue
   // Watching row. Must be before /:id route.
   router.post('/continue-watching/dismiss', async (req, res) => {
