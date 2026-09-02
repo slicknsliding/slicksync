@@ -214,6 +214,25 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['vault-backup-key', 'provider-key-health', 'vault-key-rotation'],
   },
   {
+    id: 'vault-injection',
+    title: 'Keys that never leave the server',
+    category: 'Vault & credentials',
+    keywords: ['vault inject', 'placeholder', 'hide key', 'key in url', 'secure addon url', 'proxy key', 'key never leaves'],
+    answer: 'Vault-inject an addon (its page -> Proxy -> "Keys stay in the Vault") and the key inside its URL is replaced by a Vault reference. Devices receive the proxied address; the server resolves the real secret on every request. The key then never appears in the stored URL, in synced manifests, or on any device - and rotating it needs no rewrite and no re-sync at all, because there is nothing downstream holding a copy.',
+    steps: [
+      'Put the key in the Vault first, as its own entry.',
+      'Open the addon -> Proxy section -> "Vault-inject". It names which Vault entries it matched and turns the proxy on for that addon.',
+      'Users pick up the proxied URL on their next sync. Done - from now on, rotate the Vault entry and every device follows instantly.',
+    ],
+    details: [
+      'This is the step past rotation propagation: propagation rewrites configs when a key changes; injection removes the key from configs entirely, so a change has nothing to chase.',
+      'Works for keys that appear plainly in the addon URL (Torrentio-style). Keys buried inside encoded config blobs are detected and named, but not converted - those addons keep full rotation-propagation coverage instead.',
+      '"Restore plain URL" undoes it, writing the current secrets back into the URL - refused if a referenced Vault entry no longer resolves, so a working setup is never replaced with a broken one.',
+      'A leaked proxied URL exposes no credential - the reference only resolves server-side, for the account that owns it.',
+    ],
+    related: ['vault-key-rotation', 'vault-add-credential'],
+  },
+  {
     id: 'vault-key-rotation',
     title: 'Rotate a key once and every addon follows',
     category: 'Vault & credentials',

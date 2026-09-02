@@ -1664,6 +1664,19 @@ class ApiClient {
 
   // Watch-history CSV import (IMDb/Letterboxd/loose-Trakt-export compatible -
   // see server/utils/csvHistoryImport.js) for one household member.
+  /** Vault-inject an addon: its embedded secrets become {{vault:id}}
+   * placeholders that only the server-side proxy resolves, so the real key
+   * never again appears in the stored URL or on any device. */
+  async vaultifyAddon(addonId: string) {
+    return this.fetch<{ data?: { vaultified: boolean; entries: string[]; proxyManifestUrl: string; note: string } } & { message?: string }>(
+      `/addons/${encodeURIComponent(addonId)}/vaultify`, { method: 'POST' });
+  }
+
+  async unvaultifyAddon(addonId: string) {
+    return this.fetch<{ data?: { vaultified: boolean } } & { message?: string }>(
+      `/addons/${encodeURIComponent(addonId)}/unvaultify`, { method: 'POST' });
+  }
+
   async importUserHistory(userId: string, file: File) {
     const formData = new FormData();
     formData.append('file', file);

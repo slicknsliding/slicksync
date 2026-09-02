@@ -238,9 +238,30 @@ async function getGroupAddons(prisma, groupId, req) {
     if (!manifest) return null
 
     // Decrypt manifestUrl for transportUrl
-    const transportUrl = (() => {
+    let transportUrl = (() => {
       try { return decrypt(bestAddon.manifestUrl, req) } catch { return bestAddon.manifestUrl }
     })()
+
+    // Vault-injected addon: the stored URL carries {{vault:...}} placeholders
+    // that only the server-side /proxy layer can resolve, so the account MUST
+    // receive the proxy URL - pushing the raw placeholder URL would hand
+    // devices an unfetchable address. Uses the same base-URL resolution the
+    // SlickTrax addon injection uses: PUBLIC_APP_URL wins, else the base an
+    // admin's own session observed. With neither, the raw URL goes through
+    // unchanged and the vaultify endpoint refuses to create this state in
+    // the first place (it requires a resolvable base).
+    if (typeof transportUrl === 'string' && transportUrl.includes('{{vault:') && bestAddon.proxyEnabled && bestAddon.proxyUuid) {
+      let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+      if (!base) {
+        try {
+          const acct = await prisma.appAccount.findUnique({ where: { id: bestAddon.accountId }, select: { sync: true } })
+          let cfg = acct?.sync
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+          base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
+        } catch { base = '' }
+      }
+      if (base) transportUrl = `${base}/proxy/${bestAddon.proxyUuid}/manifest.json`
+    }
 
     // Set transportName to empty string
     const transportName = ""
