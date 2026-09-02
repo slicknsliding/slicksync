@@ -278,28 +278,22 @@ export function AutomationPanel() {
         <Card padding="lg"><p className="text-sm text-muted">Loading...</p></Card>
       ) : rules.length === 0 ? (
         <Card padding="lg">
-          <div className="text-center pt-6 pb-2">
+          {/* No duplicate recipe grid here - the New Rule chooser is THE
+              recipe surface, and rendering the same grid in the empty state
+              put the identical list on screen twice, stacked, the moment
+              someone clicked New rule. */}
+          <div className="text-center py-8">
             <BoltIcon className="w-10 h-10 text-subtle mx-auto mb-3" />
             <p className="text-default font-medium mb-1">No automation rules yet</p>
-            <p className="text-sm text-muted mb-5">Each rule is one sentence: when something happens, do something about it. Pick one below and it opens ready to save - or start from scratch via New rule.</p>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 mb-2">
-            {AUTOMATION_RECIPES.filter((r) => registry?.triggers.some((t) => t.type === r.triggerType)).map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => {
-                  setPrefill({ name: r.name, triggerType: r.triggerType, conditions: r.conditions, actions: r.actions });
-                  setEditingRule('new');
-                }}
-                title={r.description}
-                className="text-left p-2.5 rounded-xl transition-colors nav-item-hover-pill"
-                style={{ background: 'var(--color-surface-hover)' }}
-              >
-                <span className="block text-sm font-medium text-default leading-snug">{r.title}</span>
-                <span className="block text-xs text-muted mt-0.5 leading-snug" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{r.description}</span>
-              </button>
-            ))}
+            <p className="text-sm text-muted mb-4 max-w-md mx-auto">Each rule is one sentence: when something happens, do something about it. The ready-made recipes cover the ones people set up first.</p>
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="primary" size="sm" onClick={() => setShowChooser(true)}>
+                Browse recipes
+              </Button>
+              <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => setEditingRule('new')}>
+                Start from scratch
+              </Button>
+            </div>
           </div>
         </Card>
       ) : (
