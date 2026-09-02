@@ -2169,6 +2169,19 @@ class ApiClient {
 
   /** The permanent exit: erases the show's entire watch history for that
    * user plus the burial. Irreversible - the UI confirms with the count. */
+  // Account Guard - see server/utils/accountGuard.js
+  async acceptGuardChange(userId: string) {
+    return this.fetch<{ success: boolean }>('/users/guard/accept', {
+      method: 'POST', body: JSON.stringify({ userId }),
+    });
+  }
+
+  async runGuardSweep() {
+    return this.fetch<{ success: boolean; checked: number; alerted: number; adopted: number; skipped: number }>('/users/guard/sweep', {
+      method: 'POST', body: JSON.stringify({}),
+    });
+  }
+
   async wipeBuriedShow(userId: string, showId: string) {
     return this.fetch<{ success: boolean; episodesDeleted: number }>('/users/graveyard/wipe', {
       method: 'POST', body: JSON.stringify({ userId, showId }),
@@ -2728,6 +2741,15 @@ export interface User {
   // hardcoded 'Unknown'.
   lastSyncedAt?: string | null;
   syncStatus?: string | null;
+  // Account Guard: non-null when this user's provider account was changed by
+  // something other than SlickSync since our last write - carries the diff
+  // for display. Cleared by a sync (re-assert) or by accepting the change.
+  guardExternal?: {
+    provider: 'stremio' | 'nuvio';
+    detectedAt: string;
+    added: Array<{ url: string; name: string }>;
+    removed: Array<{ url: string; name: string }>;
+  } | null;
 }
 
 export interface MergeCandidate {

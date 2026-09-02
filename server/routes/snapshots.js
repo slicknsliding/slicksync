@@ -225,6 +225,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt, createProvider }) =>
         return res.status(400).json({ error: 'Target user is not connected to a provider (no auth key/token on file)' });
       }
       await provider.setAddons(collection);
+      await require('../utils/accountGuard').recordAssertedState(prisma, targetUserId, targetUser.providerType, collection);
 
       res.json({ deployed: collection.length, failed: failed.length, targetUserId });
     } catch (error) {

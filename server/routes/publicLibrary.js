@@ -1968,6 +1968,7 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
 
       // Set the filtered addons
       await provider.setAddons(filteredAddons);
+      await require('../utils/accountGuard').recordAssertedState(prisma, userId, user.providerType, filteredAddons);
 
       res.json({ message: `Addon removed from ${isNuvio ? 'Nuvio' : 'Stremio'} account successfully` });
     } catch (error) {

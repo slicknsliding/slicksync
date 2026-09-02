@@ -45,6 +45,11 @@ model User {
   // generated on first enable, never derived from anything guessable.
   traxAddonEnabled   Boolean  @default(false)
   traxToken          String?  @unique
+  // Account Guard: JSON state for external-writer detection - per-provider
+  // fingerprints of what SlickSync last wrote to this user's addon
+  // collection, plus any standing "changed outside SlickSync" alarm with its
+  // diff. Written by server/utils/accountGuard.js only.
+  guardStateJson     String?
   activityVisibility String    @default("private") // "public" or "private" - when public, group members can see this user's library/history
   // See schema.sqlite.prisma's comment - a genuinely public, unauthenticated
   // share link, distinct from activityVisibility above.

@@ -247,7 +247,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           // syncUserAddons now records the outcome of every sync, so these
           // two are the real values rather than always-null columns.
           lastSyncedAt: user.lastSyncedAt || null,
-          syncStatus: user.syncStatus || null
+          syncStatus: user.syncStatus || null,
+          // Account Guard: non-null when the provider account was changed by
+          // something other than SlickSync since our last write (see
+          // utils/accountGuard.js) - {provider, detectedAt, added[], removed[]}.
+          guardExternal: require('../utils/accountGuard').summarizeExternal(user.guardStateJson)
         };
       }));
 
@@ -944,6 +948,35 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   // watch-history row for that user+show plus the burial itself. Watch time
   // and metrics stop counting it; nothing brings it back. The client's
   // confirmation names the episode count before this ever runs.
+  // Account Guard: accept an externally-made change as the new baseline
+  // (the alternative to re-asserting via a normal sync). Must be before /:id.
+  router.post('/guard/accept', async (req, res) => {
+    try {
+      const { userId } = req.body || {}
+      if (!userId) return res.status(400).json({ error: 'userId is required' })
+      const user = await prisma.user.findFirst({ where: scopedWhere(req, { id: userId }), select: { id: true } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      const { acceptExternalState } = require('../utils/accountGuard')
+      const accepted = await acceptExternalState(prisma, userId)
+      if (!accepted) return res.status(400).json({ error: 'No external change is recorded for this user' })
+      res.json({ success: true })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to accept change' })
+    }
+  })
+
+  // Account Guard: run a detection pass now instead of waiting for the hourly
+  // sweep - used right after someone suspects a foreign write ("check now").
+  router.post('/guard/sweep', async (req, res) => {
+    try {
+      const { runGuardSweep } = require('../utils/accountGuard')
+      const summary = await runGuardSweep(prisma, { decrypt, StremioAPIClient, createProvider }, { onlyAccountId: getAccountId(req) })
+      res.json({ success: true, ...summary })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Sweep failed' })
+    }
+  })
+
   router.post('/graveyard/wipe', async (req, res) => {
     try {
       const accountId = getAccountId(req)
@@ -5008,6 +5041,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         // Clear all addons
         const { clearAddons } = require('../utils/addonHelpers')
         await clearAddons(apiClient)
+        await require('../utils/accountGuard').recordAssertedState(prisma, user.id, 'stremio', [])
 
         res.json({
           message: 'All addons cleared successfully',
@@ -5116,6 +5150,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
         // Set the filtered addons using the proper format
         await apiClient.request('addonCollectionSet', { addons: filteredAddons })
+        await require('../utils/accountGuard').recordAssertedState(prisma, id, 'stremio', filteredAddons)
       } catch (e) {
         console.error(`❌ Failed to remove addon:`, e.message)
         throw e
@@ -6991,6 +7026,9 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
 
     if (plan.alreadySynced) {
       console.log(`✅ User already synced`)
+      // Account Guard: already-synced still CONFIRMS the account state, so
+      // refresh the asserted baseline (and clear any stale alarm).
+      await require('../utils/accountGuard').recordAssertedState(prismaClient, credentials.id, credentials.providerType, plan.desired || [])
       return { success: true, total: (plan.desired || []).length, alreadySynced: true }
     }
 
@@ -6999,11 +7037,13 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
     if (finalDesired.length === 0) {
       await provider.clearAddons()
       console.log('📦 Empty group detected, cleared all addons')
+      await require('../utils/accountGuard').recordAssertedState(prismaClient, credentials.id, credentials.providerType, [])
       return { success: true, total: 0 }
     }
 
     await provider.setAddons(finalDesired)
     console.log('✅ User now synced')
+    await require('../utils/accountGuard').recordAssertedState(prismaClient, credentials.id, credentials.providerType, finalDesired)
     return { success: true, total: (plan.desired || []).length }
   } catch (e) {
     console.error('❌ Failed to apply sync plan:', e?.message)

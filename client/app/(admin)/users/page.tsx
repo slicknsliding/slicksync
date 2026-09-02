@@ -98,6 +98,10 @@ export default function UsersPage() {
   const [reconnectUserName, setReconnectUserName] = useState<string>('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncingUserIds, setSyncingUserIds] = useState<Set<string>>(new Set());
+  // Account Guard actions (see server/utils/accountGuard.js). Re-assert is a
+  // normal sync - syncing records a fresh baseline, which IS the all-clear;
+  // Accept adopts the outside change as the new baseline instead.
+  const [guardBusyId, setGuardBusyId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Single item delete state (for quick action menu)
@@ -269,6 +273,32 @@ export default function UsersPage() {
   const deselectAll = useCallback(() => {
     setSelectedIds(new Set());
   }, []);
+
+  const refreshUsersQuietly = useCallback(async () => {
+    try { setUsers(await api.getUsers()); } catch { /* keep last known list */ }
+  }, []);
+
+  const handleGuardReassert = useCallback(async (id: string, name: string) => {
+    setGuardBusyId(id);
+    try {
+      await api.syncUser(id);
+      await refreshUsersQuietly();
+      toast.success(`${name} re-synced - SlickSync's setup is back on the account`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Failed to sync ${name}`);
+    } finally { setGuardBusyId(null); }
+  }, [refreshUsersQuietly]);
+
+  const handleGuardAccept = useCallback(async (id: string, name: string) => {
+    setGuardBusyId(id);
+    try {
+      await api.acceptGuardChange(id);
+      await refreshUsersQuietly();
+      toast.success(`Kept the outside change to ${name}'s account`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to accept the change');
+    } finally { setGuardBusyId(null); }
+  }, [refreshUsersQuietly]);
 
   const handleSyncSelected = useCallback(async () => {
     setIsSyncing(true);
@@ -450,6 +480,36 @@ export default function UsersPage() {
           <NebulaCompactStatCard label="Expired" value={isLoading ? '...' : expiredCount} icon={<XMarkIcon className="w-4 h-4 md:w-6 md:h-6" />} colorIndex={0} />
         </div>
       )}
+      {/* Account Guard: a provider account was changed outside SlickSync.
+          One banner per affected user, gone the moment it's re-asserted or
+          accepted - it lives up here, not inside a detail page, because the
+          entire point of the guard is being impossible to miss. */}
+      {users.filter((u) => u.guardExternal).map((u) => {
+        const ext = u.guardExternal!;
+        const name = u.username || 'User';
+        const bits: string[] = [];
+        if (ext.added.length) bits.push(`${ext.added.length} addon${ext.added.length === 1 ? '' : 's'} added`);
+        if (ext.removed.length) bits.push(`${ext.removed.length} removed`);
+        const names = [...ext.added, ...ext.removed].map((a) => a.name).filter(Boolean).slice(0, 3);
+        const total = ext.added.length + ext.removed.length;
+        return (
+          <div key={`guard-${u.id}`} className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3" style={{ borderColor: 'color-mix(in srgb, var(--color-warning) 45%, transparent)', background: 'color-mix(in srgb, var(--color-warning) 10%, transparent)' }}>
+            <ExclamationTriangleIcon className="w-5 h-5 text-warning shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-default">
+                {name}&apos;s {ext.provider === 'nuvio' ? 'Nuvio' : 'Stremio'} account was changed outside SlickSync
+              </p>
+              <p className="text-xs text-muted mt-0.5">
+                {bits.join(', ') || 'The addon set changed'}{names.length ? ` (${names.join(', ')}${total > 3 ? ', ...' : ''})` : ''} - most likely another logged-in session. Re-assert to put SlickSync&apos;s setup back, or accept it as the new normal.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button size="sm" variant="primary" isLoading={guardBusyId === u.id} onClick={() => handleGuardReassert(u.id, name)}>Re-assert</Button>
+              <Button size="sm" variant="ghost" disabled={guardBusyId === u.id} onClick={() => handleGuardAccept(u.id, name)}>Accept change</Button>
+            </div>
+          </div>
+        );
+      })}
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}
         {/* Filters and controls */}
