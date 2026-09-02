@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { ArchiveBoxIcon } from '@heroicons/react/24/outline';
@@ -18,11 +19,18 @@ import { ArchiveBoxIcon } from '@heroicons/react/24/outline';
 //  - The graveyard itself: what burying produced. Burying reuses the same
 //    dismissal Continue Watching uses ("done with this show" means the same
 //    thing in both places), so shows dismissed there rest here too - and
-//    every one of them can be dug back up, which is the half that was
-//    missing: buried shows used to vanish with no list and no way back.
+//    every one of them can be dug back up, or wiped permanently.
+//
+// Both shelves support multi-select: a household purge is dozens of shows,
+// and one-at-a-time was the entire cost of doing it. Bulk operations loop
+// the same single-item endpoints - at household scale that is a handful of
+// fast requests, and it keeps one code path per operation (wipes, notably,
+// each land their own Trash entry so each show stays individually undoable).
 
 type Dropped = Awaited<ReturnType<typeof api.getAbandonedShows>>[number];
 type Buried = Awaited<ReturnType<typeof api.getBuriedShows>>[number];
+
+const keyOf = (item: { userId: string; showId: string }) => `${item.userId}:${item.showId}`;
 
 export function DroppedShowsPanel() {
   const [items, setItems] = useState<Dropped[] | null>(null);
@@ -30,6 +38,12 @@ export function DroppedShowsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [graveOpen, setGraveOpen] = useState(false);
+
+  // Multi-select, one set per shelf. Keys are `${userId}:${showId}` - the
+  // same identity every row action already uses.
+  const [selUnfinished, setSelUnfinished] = useState<Set<string>>(new Set());
+  const [selBuried, setSelBuried] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -43,12 +57,21 @@ export function DroppedShowsPanel() {
 
   useEffect(() => { load(); }, [load]);
 
+  const toggleSel = (set: React.Dispatch<React.SetStateAction<Set<string>>>, key: string) => {
+    set((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
   const bury = async (item: Dropped) => {
-    const key = `${item.userId}:${item.showId}`;
+    const key = keyOf(item);
     setWorking(key);
     try {
       await api.dismissContinueWatching(item.userId, item.showId);
-      setItems((prev) => (prev || []).filter((i) => `${i.userId}:${i.showId}` !== key));
+      setItems((prev) => (prev || []).filter((i) => keyOf(i) !== key));
+      setSelUnfinished((prev) => { const n = new Set(prev); n.delete(key); return n; });
       // Appears in the graveyard immediately, without a refetch flashing the
       // whole panel - buriedAt is "now" by definition.
       setBuried((prev) => [{
@@ -65,11 +88,12 @@ export function DroppedShowsPanel() {
   };
 
   const unbury = async (item: Buried) => {
-    const key = `${item.userId}:${item.showId}`;
+    const key = keyOf(item);
     setWorking(key);
     try {
       await api.unburyShow(item.userId, item.showId);
-      setBuried((prev) => (prev || []).filter((i) => `${i.userId}:${i.showId}` !== key));
+      setBuried((prev) => (prev || []).filter((i) => keyOf(i) !== key));
+      setSelBuried((prev) => { const n = new Set(prev); n.delete(key); return n; });
       toast.success(`${item.showName} dug back up - it returns to Continue Watching or the unfinished list`);
       // The unfinished list may now contain it again - refresh just that half.
       api.getAbandonedShows().then(setItems).catch(() => {});
@@ -86,7 +110,7 @@ export function DroppedShowsPanel() {
   // dies is in the button text. No modal - the row IS the context.
   const [wipeArmed, setWipeArmed] = useState<string | null>(null);
   const wipe = async (item: Buried) => {
-    const key = `${item.userId}:${item.showId}`;
+    const key = keyOf(item);
     if (wipeArmed !== key) {
       setWipeArmed(key);
       setTimeout(() => setWipeArmed((cur) => (cur === key ? null : cur)), 5000);
@@ -96,13 +120,75 @@ export function DroppedShowsPanel() {
     setWorking(key);
     try {
       const r = await api.wipeBuriedShow(item.userId, item.showId);
-      setBuried((prev) => (prev || []).filter((i) => `${i.userId}:${i.showId}` !== key));
-      toast.success(`${item.showName} wiped - ${r.episodesDeleted} episode${r.episodesDeleted === 1 ? '' : 's'} of history erased permanently`);
+      setBuried((prev) => (prev || []).filter((i) => keyOf(i) !== key));
+      setSelBuried((prev) => { const n = new Set(prev); n.delete(key); return n; });
+      toast.success(`${item.showName} wiped - ${r.episodesDeleted} episode${r.episodesDeleted === 1 ? '' : 's'} of history erased (undoable for 30 days in the Trash)`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not wipe that show');
     } finally {
       setWorking(null);
     }
+  };
+
+  // ---- Bulk operations: loop the single-item calls, then reconcile once.
+
+  const buryBulk = async () => {
+    const targets = (items || []).filter((i) => selUnfinished.has(keyOf(i)));
+    if (targets.length === 0) return;
+    setBulkBusy(true);
+    let ok = 0;
+    for (const item of targets) {
+      try { await api.dismissContinueWatching(item.userId, item.showId); ok++; } catch { /* counted below */ }
+    }
+    setBulkBusy(false);
+    setSelUnfinished(new Set());
+    await load();
+    if (ok === targets.length) toast.success(`Buried ${ok} show${ok === 1 ? '' : 's'}`);
+    else toast.error(`Buried ${ok} of ${targets.length} - the rest failed, try them again`);
+  };
+
+  const unburyBulk = async () => {
+    const targets = (buried || []).filter((i) => selBuried.has(keyOf(i)));
+    if (targets.length === 0) return;
+    setBulkBusy(true);
+    let ok = 0;
+    for (const item of targets) {
+      try { await api.unburyShow(item.userId, item.showId); ok++; } catch { /* counted below */ }
+    }
+    setBulkBusy(false);
+    setSelBuried(new Set());
+    await load();
+    if (ok === targets.length) toast.success(`Dug up ${ok} show${ok === 1 ? '' : 's'}`);
+    else toast.error(`Dug up ${ok} of ${targets.length} - the rest failed, try them again`);
+  };
+
+  // Bulk wipe gets the same two-step arming as a single wipe, with the
+  // grand total of episodes named before anything is erased.
+  const [bulkWipeArmed, setBulkWipeArmed] = useState(false);
+  const wipeBulk = async () => {
+    const targets = (buried || []).filter((i) => selBuried.has(keyOf(i)));
+    if (targets.length === 0) return;
+    if (!bulkWipeArmed) {
+      setBulkWipeArmed(true);
+      setTimeout(() => setBulkWipeArmed(false), 6000);
+      return;
+    }
+    setBulkWipeArmed(false);
+    setBulkBusy(true);
+    let ok = 0;
+    let episodes = 0;
+    for (const item of targets) {
+      try {
+        const r = await api.wipeBuriedShow(item.userId, item.showId);
+        episodes += r.episodesDeleted;
+        ok++;
+      } catch { /* counted below */ }
+    }
+    setBulkBusy(false);
+    setSelBuried(new Set());
+    await load();
+    if (ok === targets.length) toast.success(`Wiped ${ok} show${ok === 1 ? '' : 's'} - ${episodes} episode${episodes === 1 ? '' : 's'} of history erased (each undoable for 30 days in the Trash)`);
+    else toast.error(`Wiped ${ok} of ${targets.length} - the rest failed, try them again`);
   };
 
   if (error) {
@@ -118,14 +204,34 @@ export function DroppedShowsPanel() {
     return <Card padding="lg"><p className="text-sm text-muted">Visiting the graveyard...</p></Card>;
   }
 
+  const selBuriedEpisodes = buried.filter((i) => selBuried.has(keyOf(i))).reduce((n, i) => n + (i.episodesWatched || 0), 0);
+
   return (
     <div className="space-y-4">
       <Card padding="lg">
-        <div className="mb-4">
-          <h3 className="text-lg font-semibold text-default">Unfinished</h3>
-          <p className="text-sm text-muted mt-0.5">
-            Started, then not touched in over 45 days. Pick one back up, or bury it.
-          </p>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-default">Unfinished</h3>
+            <p className="text-sm text-muted mt-0.5">
+              Started, then not touched in over 45 days. Pick one back up, or bury it.
+            </p>
+          </div>
+          {items.length > 1 && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="text-xs text-muted hover:text-default transition-colors"
+                onClick={() => setSelUnfinished(selUnfinished.size === items.length ? new Set() : new Set(items.map(keyOf)))}
+              >
+                {selUnfinished.size === items.length ? 'Select none' : 'Select all'}
+              </button>
+              {selUnfinished.size > 0 && (
+                <Button variant="secondary" size="sm" isLoading={bulkBusy} onClick={buryBulk}>
+                  Bury {selUnfinished.size} selected
+                </Button>
+              )}
+            </div>
+          )}
         </div>
         {items.length === 0 ? (
           <div className="text-center py-6">
@@ -136,9 +242,10 @@ export function DroppedShowsPanel() {
         ) : (
           <div className="space-y-2">
             {items.map((item) => {
-              const key = `${item.userId}:${item.showId}`;
+              const key = keyOf(item);
               return (
                 <div key={key} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
+                  <SelectionCheckbox checked={selUnfinished.has(key)} onChange={() => toggleSel(setSelUnfinished, key)} />
                   {item.poster ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={item.poster} alt="" width={40} height={60} className="w-10 rounded object-cover shrink-0" style={{ height: '3.75rem' }} />
@@ -186,51 +293,77 @@ export function DroppedShowsPanel() {
             <span className="text-xs text-muted shrink-0">{graveOpen ? 'Hide' : 'Show'}</span>
           </button>
           {graveOpen && (
-            <div className="space-y-2 mt-4">
-              {buried.map((item) => {
-                const key = `${item.userId}:${item.showId}`;
-                return (
-                  <div key={key} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)', opacity: 0.85 }}>
-                    {item.poster ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.poster} alt="" width={40} height={60} className="w-10 rounded object-cover shrink-0 grayscale" style={{ height: '3.75rem' }} />
-                    ) : (
-                      <div className="w-10 shrink-0 rounded" style={{ height: '3.75rem', background: 'var(--color-bg-subtle)' }} />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-default truncate">{item.showName}</span>
-                        <Badge variant="muted" size="sm">{item.username}</Badge>
+            <>
+              {buried.length > 1 && (
+                <div className="flex flex-wrap items-center justify-end gap-2 mt-3">
+                  <button
+                    type="button"
+                    className="text-xs text-muted hover:text-default transition-colors"
+                    onClick={() => { setBulkWipeArmed(false); setSelBuried(selBuried.size === buried.length ? new Set() : new Set(buried.map(keyOf))); }}
+                  >
+                    {selBuried.size === buried.length ? 'Select none' : 'Select all'}
+                  </button>
+                  {selBuried.size > 0 && (
+                    <>
+                      <Button variant="secondary" size="sm" isLoading={bulkBusy && !bulkWipeArmed} onClick={unburyBulk}>
+                        Dig up {selBuried.size} selected
+                      </Button>
+                      <Button variant={bulkWipeArmed ? 'danger' : 'ghost'} size="sm" isLoading={bulkBusy && bulkWipeArmed} onClick={wipeBulk}>
+                        {bulkWipeArmed
+                          ? `Erase ${selBuriedEpisodes} episode${selBuriedEpisodes === 1 ? '' : 's'} across ${selBuried.size} show${selBuried.size === 1 ? '' : 's'} forever?`
+                          : `Wipe ${selBuried.size} selected`}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+              <div className="space-y-2 mt-4">
+                {buried.map((item) => {
+                  const key = keyOf(item);
+                  return (
+                    <div key={key} className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)', opacity: 0.85 }}>
+                      <SelectionCheckbox checked={selBuried.has(key)} onChange={() => toggleSel(setSelBuried, key)} />
+                      {item.poster ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={item.poster} alt="" width={40} height={60} className="w-10 rounded object-cover shrink-0 grayscale" style={{ height: '3.75rem' }} />
+                      ) : (
+                        <div className="w-10 shrink-0 rounded" style={{ height: '3.75rem', background: 'var(--color-bg-subtle)' }} />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-default truncate">{item.showName}</span>
+                          <Badge variant="muted" size="sm">{item.username}</Badge>
+                        </div>
+                        <p className="text-xs text-muted mt-0.5">
+                          {item.lastSeason != null && item.lastEpisode != null ? `Rested at S${item.lastSeason}E${item.lastEpisode} · ` : ''}
+                          Buried {new Date(item.buriedAt).toLocaleDateString()}
+                        </p>
                       </div>
-                      <p className="text-xs text-muted mt-0.5">
-                        {item.lastSeason != null && item.lastEpisode != null ? `Rested at S${item.lastSeason}E${item.lastEpisode} · ` : ''}
-                        Buried {new Date(item.buriedAt).toLocaleDateString()}
-                      </p>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          isLoading={working === key}
+                          onClick={() => unbury(item)}
+                        >
+                          Dig up
+                        </Button>
+                        <Button
+                          variant={wipeArmed === key ? 'danger' : 'ghost'}
+                          size="sm"
+                          isLoading={working === key && wipeArmed === null}
+                          onClick={() => wipe(item)}
+                        >
+                          {wipeArmed === key
+                            ? `Erase ${item.episodesWatched} episode${item.episodesWatched === 1 ? '' : 's'} forever?`
+                            : 'Wipe'}
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        isLoading={working === key}
-                        onClick={() => unbury(item)}
-                      >
-                        Dig up
-                      </Button>
-                      <Button
-                        variant={wipeArmed === key ? 'danger' : 'ghost'}
-                        size="sm"
-                        isLoading={working === key && wipeArmed === null}
-                        onClick={() => wipe(item)}
-                      >
-                        {wipeArmed === key
-                          ? `Erase ${item.episodesWatched} episode${item.episodesWatched === 1 ? '' : 's'} forever?`
-                          : 'Wipe'}
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </Card>
       )}

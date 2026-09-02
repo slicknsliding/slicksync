@@ -1559,6 +1559,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Activity -> Graveyard.',
       'Pick a show back up, or press Bury to lay it to rest.',
       'In the graveyard, Dig up brings a show back - or press Wipe twice to erase it and its watch history permanently.',
+      'Tick the checkboxes (or Select all) to bury, dig up, or wipe many shows at once - a bulk wipe names the total episode count and asks twice, same as a single one.',
     ],
     details: [
       'Continue Watching only looks back 120 days, so anything older quietly disappeared from the app altogether - never resumed, never acknowledged. This is where those end up.',
