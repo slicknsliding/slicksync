@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
-import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon, HandThumbUpIcon, HandThumbDownIcon } from '@heroicons/react/24/outline';
+import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon, HandThumbUpIcon, HandThumbDownIcon, CheckCircleIcon, CheckIcon as CheckIconMini } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { AddToListButton } from './AddToListButton';
@@ -175,7 +175,7 @@ export function MediaDetailModal({
   const effectiveFallbackRottenTomatoes = overrideItem ? null : fallbackRottenTomatoes;
   const effectiveFallbackMetacritic = overrideItem ? null : fallbackMetacritic;
 
-  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions, enableWatchProviders } = usePersonalFeatures();
+  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions, enableWatchProviders, enableWatchedIndicators } = usePersonalFeatures();
   const isTV = useIsTV();
 
   // usePersonalFeatures resolves asynchronously (starts from a default of
@@ -284,6 +284,50 @@ export function MediaDetailModal({
   // client/lib/api.ts's setRating/getRatings if that changes.
   const [reaction, setReactionState] = useState<'happy' | 'sad' | null>(null);
   const [reactionBusy, setReactionBusy] = useState(false);
+
+  // Watched state + the unwatch option. The mechanism (ManualWatchOverride,
+  // winning over polled history in either direction) predates this UI - the
+  // poster context menu on Discover could already toggle it, but the detail
+  // modal, the one place you're actually LOOKING at a title, had no way to
+  // say "I didn't really watch this". Account-level, same as the indicators.
+  const [selfWatched, setSelfWatched] = useState<boolean | null>(null);
+  const [selfWatchedBusy, setSelfWatchedBusy] = useState(false);
+  // Per-part watched map for the collection row's "watched X of N".
+  const [partsWatched, setPartsWatched] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!isOpen || !effectiveId) return;
+    let cancelled = false;
+    setSelfWatched(null);
+    api.getWatchedStatus([effectiveId])
+      .then((m) => { if (!cancelled) setSelfWatched(!!m[effectiveId]); })
+      .catch(() => { if (!cancelled) setSelfWatched(null); });
+    return () => { cancelled = true; };
+  }, [isOpen, effectiveId]);
+
+  useEffect(() => {
+    const parts = details?.collection?.parts;
+    if (!isOpen || !parts || parts.length === 0) { setPartsWatched({}); return; }
+    let cancelled = false;
+    api.getWatchedStatus(parts.map((pt) => pt.id))
+      .then((m) => { if (!cancelled) setPartsWatched(m); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen, details?.collection]);
+
+  const toggleSelfWatched = async () => {
+    if (selfWatchedBusy || selfWatched === null) return;
+    setSelfWatchedBusy(true);
+    const next = !selfWatched;
+    setSelfWatched(next); // optimistic, same pattern as watchlist above
+    try {
+      await api.markWatched(effectiveId, next);
+    } catch {
+      setSelfWatched(!next);
+    } finally {
+      setSelfWatchedBusy(false);
+    }
+  };
 
   // Watching Together (series only) - watch-ahead protection's management
   // surface. A pact = this show + the members watching it together; once
@@ -1002,6 +1046,24 @@ export function MediaDetailModal({
                     {inWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
                   </button>
                 );
+                const watchedBtn = enableWatchedIndicators && selfWatched !== null && (
+                  <button
+                    type="button"
+                    onClick={toggleSelfWatched}
+                    disabled={selfWatchedBusy}
+                    aria-label={selfWatched ? 'Mark as unwatched' : 'Mark as watched'}
+                    title={selfWatched ? 'Marks this title unwatched for the household - the underlying watch history is kept, only the indicator changes' : 'Marks this title watched for the household, e.g. seen on another service'}
+                    className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${
+                      selfWatched
+                        ? 'bg-success/15 text-success hover:bg-success/25'
+                        : 'bg-surface-hover text-default hover:bg-success/15 hover:text-success'
+                    } ${selfWatchedBusy ? 'opacity-60 cursor-wait' : ''}`}
+                    style={selfWatched ? { color: 'var(--color-success)', background: 'color-mix(in srgb, var(--color-success) 15%, transparent)' } : undefined}
+                  >
+                    <CheckCircleIcon className="w-4 h-4" />
+                    {selfWatched ? 'Watched · unwatch' : 'Mark watched'}
+                  </button>
+                );
                 const stremioBtn = (
                   <a
                     href={buildStremioAppUrl(details.imdb_id, effectiveType)}
@@ -1048,6 +1110,9 @@ export function MediaDetailModal({
                       {enableWatchlist && (
                         <TVFocusable onEnterPress={toggleWatchlist}>{watchlistBtn}</TVFocusable>
                       )}
+                      {enableWatchedIndicators && selfWatched !== null && (
+                        <TVFocusable onEnterPress={toggleSelfWatched}>{watchedBtn}</TVFocusable>
+                      )}
                       <TVFocusable onEnterPress={() => { window.location.href = buildStremioAppUrl(details.imdb_id!, effectiveType); }}>
                         {stremioBtn}
                       </TVFocusable>
@@ -1064,6 +1129,7 @@ export function MediaDetailModal({
                   // the original single-row flex-wrap from sm: up.
                   <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                     {watchlistBtn}
+                    {watchedBtn}
                     <div className="flex justify-center sm:contents">
                       <AddToListButton item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
                     </div>
@@ -1325,7 +1391,21 @@ export function MediaDetailModal({
                       <span className="flex items-center justify-between w-full py-1 text-base text-muted hover:text-default transition-colors">
                         <span className="flex items-center gap-2">
                           Part of the {details.collection.name}
-                          <span className="text-xs text-subtle">({details.collection.parts.length})</span>
+                          {(() => {
+                            // Membership = this title + the other parts; the
+                            // completion count is the collection's entire
+                            // reason to exist as a stat.
+                            const others = details.collection.parts;
+                            const watchedOthers = others.filter((pt) => partsWatched[pt.id]).length;
+                            const watchedTotal = watchedOthers + (selfWatched ? 1 : 0);
+                            const total = others.length + 1;
+                            const done = watchedTotal >= total;
+                            return (
+                              <span className="text-xs" style={{ color: done ? 'var(--color-success)' : undefined }}>
+                                {done ? 'saga complete' : `watched ${watchedTotal} of ${total}`}
+                              </span>
+                            );
+                          })()}
                         </span>
                         <ChevronDownIcon className={`w-4 h-4 transition-transform ${collectionExpanded ? 'rotate-180' : ''}`} />
                       </span>
@@ -1364,7 +1444,12 @@ export function MediaDetailModal({
                             onClick={goToPart}
                             className="shrink-0 w-28 text-left group tap-card"
                           >
-                            <div className="w-28 h-40 rounded-lg overflow-hidden bg-surface-hover">
+                            <div className="w-28 h-40 rounded-lg overflow-hidden bg-surface-hover relative">
+                              {partsWatched[part.id] && (
+                                <span className="absolute top-1.5 right-1.5 z-10 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--color-success)' }}>
+                                  <CheckIconMini className="w-3.5 h-3.5 text-white" />
+                                </span>
+                              )}
                               {part.poster ? (
                                 <img
                                   src={part.poster}

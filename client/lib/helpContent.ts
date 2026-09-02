@@ -1575,6 +1575,24 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['now-playing-continue-watching', 'rewatch-completion'],
   },
   {
+    id: 'franchise-completion',
+    title: 'Finish the Saga - franchise progress and marking things unwatched',
+    category: 'Watching & Discover',
+    keywords: ['franchise', 'saga', 'collection progress', 'watched 4 of 6', 'mark unwatched', 'unwatch', 'mark watched', 'false positive watched', 'accidentally watched'],
+    answer: 'A movie in a franchise now shows "watched X of N" on the "Part of the..." row of its detail popup, with checkmarks on the entries already seen. Discover -> For You leads with "Finish the saga" rows - franchises the household is mid-way through, closest to finished first. And the detail popup has a Watched button: press it to mark a title watched (seen elsewhere) or unwatch it (opened by accident, fell asleep, does not count).',
+    steps: [
+      'Open any franchise film - the collection row says how far through it the household is.',
+      'Discover -> For You: "Finish the saga" rows list exactly the films still missing.',
+      'To fix a wrong watched state: open the title and press "Watched - unwatch" (or "Mark watched").',
+    ],
+    details: [
+      'Unwatching never deletes watch history - it sets an override on the indicator, so the record of what actually played is kept, and clearing things up later loses nothing. The same toggle has always existed in the poster right-click menu; the detail popup is just the natural place for it.',
+      'Watched status here is household-level, the same as the poster checkmarks and the hide-watched filter.',
+      'Saga rows favor near-complete franchises - one film left ranks above a nine-film series you have seen one of. Recomputed a few times a day.',
+    ],
+    related: ['discover-browse', 'dropped-shows', 'watching-together'],
+  },
+  {
     id: 'watching-together',
     title: 'Watching together - the watch-ahead alarm',
     category: 'Watching & Discover',

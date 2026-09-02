@@ -976,6 +976,65 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   // watch-history row for that user+show plus the burial itself. Watch time
   // and metrics stop counting it; nothing brings it back. The client's
   // confirmation names the episode count before this ever runs.
+  // Finish the Saga - franchises the household is mid-way through. For each
+  // recently-watched movie, resolve its TMDb collection (fetchTmdbCollection
+  // above, 24h-cached) and keep collections with at least one watched and at
+  // least one unwatched member. Watched-ness uses the same account-level
+  // semantics as /watchlist/watched-status: history rows, with manual
+  // overrides winning in either direction. The whole answer is cached for
+  // 6h per account - franchise membership and watch history both move
+  // slowly, and a cold run can cost a few dozen TMDb calls.
+  const sagaCache = new Map()
+  const SAGA_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+  const SAGA_CANDIDATES = 40
+  router.get('/finish-the-saga', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const cached = sagaCache.get(accountId)
+      if (cached && Date.now() - cached.at < SAGA_CACHE_TTL_MS) return res.json(cached.value)
+
+      const [historyRows, overrides] = await Promise.all([
+        prisma.movieWatchHistory.findMany({
+          where: { accountId },
+          select: { itemId: true },
+          orderBy: { watchedAt: 'desc' },
+        }),
+        prisma.manualWatchOverride.findMany({ where: { accountId }, select: { itemId: true, watched: true } }),
+      ])
+      const overrideMap = new Map(overrides.map((o) => [o.itemId, o.watched]))
+      const watchedSet = new Set()
+      const ordered = []
+      for (const r of historyRows) {
+        if (overrideMap.get(r.itemId) === false) continue
+        if (!watchedSet.has(r.itemId)) { watchedSet.add(r.itemId); ordered.push(r.itemId) }
+      }
+      for (const [id, w] of overrideMap.entries()) { if (w === true) watchedSet.add(id) }
+
+      const seenCollections = new Set()
+      const sagas = []
+      for (const imdbId of ordered.slice(0, SAGA_CANDIDATES)) {
+        const coll = await fetchTmdbCollection(imdbId, 'movie', req)
+        if (!coll || seenCollections.has(coll.id)) continue
+        seenCollections.add(coll.id)
+        // fetchTmdbCollection's parts exclude the seed - membership is
+        // seed + parts, and the seed is watched by construction.
+        const unwatched = coll.parts.filter((p) => p.id && !watchedSet.has(p.id))
+        if (unwatched.length === 0) continue
+        const total = coll.parts.length + 1
+        const watchedCount = total - unwatched.length
+        sagas.push({ collectionId: coll.id, name: coll.name, watchedCount, total, unwatched })
+      }
+      // Closest-to-finished first - "one film left" is the itch worth
+      // scratching, a 1-of-9 franchise barely counts as started.
+      sagas.sort((a, b) => (b.watchedCount / b.total) - (a.watchedCount / a.total))
+      const value = sagas.slice(0, 8)
+      sagaCache.set(accountId, { at: Date.now(), value })
+      res.json(value)
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to compute sagas' })
+    }
+  })
+
   // Account Guard: accept an externally-made change as the new baseline
   // (the alternative to re-asserting via a normal sync). Must be before /:id.
   router.post('/guard/accept', async (req, res) => {

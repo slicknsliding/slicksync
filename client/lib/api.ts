@@ -2169,6 +2169,18 @@ class ApiClient {
 
   /** The permanent exit: erases the show's entire watch history for that
    * user plus the burial. Irreversible - the UI confirms with the count. */
+  // Finish the Saga - franchises the household is mid-way through, closest
+  // to finished first. `unwatched` are the members still to watch.
+  async getFinishTheSaga() {
+    return this.fetch<Array<{
+      collectionId: number;
+      name: string;
+      watchedCount: number;
+      total: number;
+      unwatched: Array<{ id: string; title: string; poster: string | null; releaseYear: string | null }>;
+    }>>('/users/finish-the-saga');
+  }
+
   // Watch-ahead protection - "watching together" pacts (see
   // server/utils/watchTogether.js). Frontier = furthest episode EVERYONE in
   // the pact has seen; null until every member has started the show.

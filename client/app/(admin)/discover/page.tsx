@@ -146,6 +146,19 @@ export default function DiscoverPage() {
   // Household-wide (not tied to the personal/shared user picker), so it only
   // depends on the type toggle - a lead row above the personalized rows.
   const [householdPicks, setHouseholdPicks] = useState<{ items: DiscoverItem[]; genres: string[]; memberCount: number; sharedAppeal: boolean } | null>(null);
+  // Finish the Saga - franchises the household is mid-way through, served
+  // closest-to-finished first (server-cached 6h; see /users/finish-the-saga).
+  // Fetched once per For You visit - independent of the personal/shared
+  // picker because franchise progress is account-level, like watched status.
+  const [sagas, setSagas] = useState<Awaited<ReturnType<typeof api.getFinishTheSaga>>>([]);
+  const [sagasLoaded, setSagasLoaded] = useState(false);
+  useEffect(() => {
+    if (source !== 'foryou' || sagasLoaded) return;
+    api.getFinishTheSaga()
+      .then((r) => setSagas(r))
+      .catch(() => setSagas([]))
+      .finally(() => setSagasLoaded(true));
+  }, [source, sagasLoaded]);
   // SIMKL Trending row - independent of everything else on this page (no
   // linked user needed, just a SIMKL Client ID in Settings), so a plain
   // fetch-once-on-mount rather than tied to the type/catalog/genre state
@@ -912,6 +925,38 @@ export default function DiscoverPage() {
                     />
                   ))}
                 </div>
+              </div>
+            )}
+
+            {sagas.length > 0 && (
+              <div className="space-y-8 mb-8">
+                {sagas.map((saga) => (
+                  <div key={saga.collectionId}>
+                    <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+                      <h3 className="text-base font-semibold font-display text-default">Finish the saga: {saga.name}</h3>
+                      <span className="text-xs text-muted">· watched {saga.watchedCount} of {saga.total}{saga.unwatched.length === 1 ? ' - one to go' : ''}</span>
+                    </div>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
+                      {saga.unwatched.map((part) => (
+                        <PosterCard
+                          key={part.id}
+                          item={{ id: part.id, type: 'movie', name: part.title, poster: part.poster, releaseInfo: part.releaseYear }}
+                          inWatchlist={inWatchlistIds.has(part.id)}
+                          showWatchlistMenu={enableWatchlist}
+                          showWatchlistBadge={enableWatchlist}
+                          onOpenDetails={setDetailItem}
+                          onToggleWatchlist={handleToggleWatchlist}
+                          onToggleWatched={handleToggleWatched}
+                          showWatchedMenu={enableWatchedIndicators}
+                          isMenuOpen={openMenuKey === 'saga:' + part.id}
+                          menuKey={'saga:' + part.id}
+                          onMenuOpenChange={handleMenuOpenChange}
+                          focusable={isTV}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
