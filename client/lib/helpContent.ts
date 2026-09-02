@@ -1385,6 +1385,21 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['share-codes', 'watch-tracking-integrations'],
   },
   {
+    id: 'self-updating',
+    title: 'Updates that apply themselves - and undo themselves',
+    category: 'Health & maintenance',
+    keywords: ['auto update', 'automatic update', 'self update', 'rollback', 'update rollback', 'watchdog', 'unattended update'],
+    answer: 'Tasks -> Maintenance -> Applying updates. "Back up and update now" has always been one click; the "Update automatically" toggle makes it unattended - a daily check at an hour you pick, backup first, and a watchdog that restores the previous version automatically if the new one fails its health check within two minutes.',
+    details: [
+      'The watchdog is a tiny detached helper that outlives the restart - the one process that can still act if the new version never comes up. It polls the container health check and, on failure, retags the previous image and recreates. No compose edits, nothing to configure.',
+      'After every update (or rollback) the instance reports its own verdict as a notification: "Updated to X" or "Update rolled back - running normally on the old image."',
+      'A rolled-back release is not retried every hour - the next automatic attempt waits for the following day, and the notification tells you to check the release notes first.',
+      '"Roll back to the previous version" is also a button, for the case where the new version is healthy but you want the old one anyway. It works until the previous image is pruned from the host.',
+      'All of this needs the Docker socket mounted into the container, the same requirement one-click updates always had - the panel explains the trade-off where that is not set up.',
+    ],
+    related: ['updating-slicksync', 'backup-restore'],
+  },
+  {
     id: 'one-code-migration',
     title: 'Moving to a new server with one code',
     category: 'Health & maintenance',

@@ -32,7 +32,7 @@ SlickSync manages a private streaming group's accounts from one place: groups, a
 
 ### New here? Start with the Guides
 
-Once SlickSync is running, **`/guides`** is the fastest way to actually learn it — 102 topic pages covering every page and setting, organized by category and searchable, each with step-by-step instructions and the gotchas that actually come up. The same content answers free-text questions straight from the **command palette** (`Ctrl+K` / `Cmd+K`) — no AI key required.
+Once SlickSync is running, **`/guides`** is the fastest way to actually learn it — 103 topic pages covering every page and setting, organized by category and searchable, each with step-by-step instructions and the gotchas that actually come up. The same content answers free-text questions straight from the **command palette** (`Ctrl+K` / `Cmd+K`) — no AI key required.
 
 ## Quick start
 

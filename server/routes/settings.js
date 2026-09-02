@@ -465,7 +465,19 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     })
 
     // Manual backup trigger
-    router.post('/backup-now', async (req, res) => {
+    // POST /settings/update-rollback - back to the image recorded before the
+  // last self-update (see performRollback for the retag mechanism).
+  router.post('/update-rollback', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { performRollback } = require('../utils/selfUpdate')
+      return res.json(await performRollback())
+    } catch (e) {
+      return res.status(e?.status || 500).json({ message: e?.message || 'Rollback failed' })
+    }
+  })
+
+  router.post('/backup-now', async (req, res) => {
       try {
         await performBackupOnce(prisma)
         return res.json({ message: 'Backup started' })
@@ -739,6 +751,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // time. The client-side hydration fix could not help - the field
           // it hydrated from simply never arrived on this branch.
           keyHealth: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
+          autoUpdateEnabled: (syncCfg && typeof syncCfg === 'object' && syncCfg.autoUpdateEnabled === true),
+          autoUpdateHour: (syncCfg && typeof syncCfg === 'object' && Number.isInteger(syncCfg.autoUpdateHour)) ? syncCfg.autoUpdateHour : 4,
           tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           mdblistApiKeyPool: Array.isArray(syncCfg?.mdblistApiKeyPool) ? syncCfg.mdblistApiKeyPool.filter((k) => typeof k === 'string') : [],
@@ -797,6 +811,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // and utils/metadataKeyHealth.js. Absent entirely until the first
           // check ever runs.
           keyHealth: (syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
+          autoUpdateEnabled: syncCfg.autoUpdateEnabled === true,
+          autoUpdateHour: Number.isInteger(syncCfg.autoUpdateHour) ? syncCfg.autoUpdateHour : 4,
           tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           mdblistApiKeyPool: Array.isArray(syncCfg?.mdblistApiKeyPool) ? syncCfg.mdblistApiKeyPool.filter((k) => typeof k === 'string') : [],
@@ -939,6 +955,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           rpdbApiKeyPool: Array.isArray(req.body?.rpdbApiKeyPool)
             ? req.body.rpdbApiKeyPool.map((k) => (typeof k === 'string' ? k.trim() : '')).filter(Boolean).slice(0, 10)
             : (Array.isArray(baseCfg.rpdbApiKeyPool) ? baseCfg.rpdbApiKeyPool : []),
+          autoUpdateEnabled: req.body?.autoUpdateEnabled !== undefined ? req.body.autoUpdateEnabled === true : (baseCfg.autoUpdateEnabled === true),
+          autoUpdateHour: Number.isInteger(req.body?.autoUpdateHour) ? Math.min(23, Math.max(0, req.body.autoUpdateHour)) : (Number.isInteger(baseCfg.autoUpdateHour) ? baseCfg.autoUpdateHour : 4),
           keyHealth: (() => {
             const prevHealth = (baseCfg.keyHealth && typeof baseCfg.keyHealth === 'object') ? baseCfg.keyHealth : {}
             const next = { ...prevHealth }

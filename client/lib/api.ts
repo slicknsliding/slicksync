@@ -1363,6 +1363,10 @@ class ApiClient {
   async applyUpdate() {
     return this.fetch<{ started: boolean; note: string }>('/settings/update-apply', { method: 'POST' });
   }
+  /** Restart onto the image recorded before the last self-update. */
+  async rollbackUpdate() {
+    return this.fetch<{ started: boolean; rollingBackTo: string; note: string }>('/settings/update-rollback', { method: 'POST' });
+  }
 
   /** Create a template directly from an addon list (share-code import) -
    * the server encrypts the manifest URLs at rest with ITS key. */
@@ -3087,6 +3091,11 @@ export interface SyncSettings {
     usage?: { used: number; limit: number; percentUsed: number; plan: string | null };
   }>;
   notifyOnKeyHealth?: boolean;
+  /** Opt-in scheduled self-update (private instances with the socket
+   * mounted): checks daily at autoUpdateHour, backs up, updates, and the
+   * watchdog rolls back automatically on a failed health check. */
+  autoUpdateEnabled?: boolean;
+  autoUpdateHour?: number;
 
   simklClientId?: string;
   /** Self-hosted Nuvio backend URL, e.g. https://backend.example.com. Blank uses api.nuvio.tv. */
