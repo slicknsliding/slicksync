@@ -368,8 +368,18 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         // name). Groups only in the backup are reported, not resurrected -
         // that is the full restore's job.
         const bGroups = Array.isArray(data.groups) ? data.groups : []
+        // Export groups are NORMALIZED: membership is a `users` array of
+        // USERNAMES (confirmed against a real backup file - no ids anywhere
+        // in the export). Older/raw shapes with a userIds JSON string are
+        // handled too, matching by either id or username.
+        const bUserName = norm(bUser.username || bUser.name)
         const memberInBackup = (g) => {
-          try { return JSON.parse(g.userIds || '[]').includes(bUser.id) } catch { return false }
+          let members = g.users
+          if (!Array.isArray(members)) {
+            try { members = JSON.parse(g.userIds || '[]') } catch { members = [] }
+          }
+          if (!Array.isArray(members)) return false
+          return members.some((m) => m === bUser.id || m === userId || norm(m) === bUserName)
         }
         const backupMemberKeys = new Set(bGroups.filter(memberInBackup).flatMap((g) => [g.id, norm(g.name)]))
         const curGroups = await prisma.group.findMany({ where: { accountId } })
