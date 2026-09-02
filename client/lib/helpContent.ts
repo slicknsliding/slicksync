@@ -1385,6 +1385,24 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['share-codes', 'watch-tracking-integrations'],
   },
   {
+    id: 'migrate-from-syncio',
+    title: 'Switching from Syncio (or a Syncio-family manager)',
+    category: 'Getting started',
+    keywords: ['syncio', 'migrate', 'switch from syncio', 'import syncio', 'aiomanager', 'competitor', 'move to slicksync'],
+    answer: 'Export your config from the old manager, then import it here: Settings -> Backup & Restore -> Import. SlickSync\'s importer descends from Syncio\'s own export format, so users, groups, and addons come across directly - and common field-name variations from sibling forks are handled automatically.',
+    steps: [
+      'In the old manager, export your configuration (usually Settings -> Export or Backup).',
+      'Here: Settings -> Backup & Restore -> Import, pick the file.',
+      'Review what arrived, then run a sync. Users reconnect nothing - their provider credentials come across with the import.',
+    ],
+    details: [
+      'Importing REPLACES this account\'s current users, groups, and addons with the file\'s contents - it is a migration, not a merge. Run it on a fresh instance, or export a backup here first.',
+      'A file the importer does not recognise reports exactly what it contained (field names only, never values) - send that message along and support for that format is usually a quick addition.',
+      'Managers that are not Syncio-descended keep their own storage formats; their files will produce that diagnostic rather than a broken half-import.',
+    ],
+    related: ['backup-restore', 'invite-household'],
+  },
+  {
     id: 'watch-tracking-integrations',
     title: 'Linking a user to SIMKL, or bringing a history over from Trakt',
     category: 'Sharing & integrations',
