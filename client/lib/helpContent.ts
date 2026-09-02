@@ -195,6 +195,25 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Vault',
   },
   {
+    id: 'vault-key-rotation',
+    title: 'Rotate a key once and every addon follows',
+    category: 'Vault & credentials',
+    keywords: ['key rotation', 'rotate key', 'debrid key changed', 'new real-debrid key', 'update addon key', 'propagation', 'heal addons'],
+    answer: 'With "Rotation fixes addons automatically" turned on (Vault page - off by default), saving a changed secret rewrites every addon config that embeds the old key and re-syncs the users carrying those addons. Debrid and usenet keys live inside addon URLs - Torrentio, AIOStreams and the rest each carry a copy - so without this, rotating a key in the Vault fixed nothing downstream.',
+    steps: [
+      'Vault -> toggle "Rotation fixes addons automatically" on. It stays off until you choose it - rewriting addon configs as a side effect of saving a key should never be a surprise.',
+      'Edit the Vault entry and paste the new secret, exactly as you normally would.',
+      'The save reports what happened: how many addons were rewritten and how many users re-synced. A notification carries the same summary with the addon names.',
+    ],
+    details: [
+      'It finds the old key whether it sits raw in the URL or inside a base64-encoded config blob, and re-encodes the blob exactly as it found it - same alphabet, same padding.',
+      'Secrets shorter than 12 characters never propagate, so a short test value can never rewrite half a URL by coincidence.',
+      'Only the addon URL changes - the addon itself, its name, its group assignments all stay put. Users are re-synced only if one of their groups carries an affected addon.',
+      'If propagation hits a problem, the Vault save itself still succeeds - the new secret is stored either way, and the summary says what did and did not happen.',
+    ],
+    related: ['vault-add-credential', 'vault-backup-key'],
+  },
+  {
     id: 'vault-backup-key',
     title: 'Backup keys & automatic failover',
     category: 'Vault & credentials',

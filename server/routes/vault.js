@@ -268,8 +268,49 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         }
       }
 
+      // Captured BEFORE the update overwrites it - the whole point of
+      // rotation propagation is knowing what the old value was.
+      let oldSecret = null;
+      if (secret) {
+        try { oldSecret = decrypt(existing.encryptedSecret, req); } catch { oldSecret = null; }
+      }
+
       await prisma.vaultEntry.update({ where: { id: existing.id }, data });
-      res.json({ success: true });
+
+      // Key-rotation propagation - opt-in per account (keyRotationPropagation
+      // in Settings, OFF by default). When the secret actually changed, find
+      // every addon config embedding the old value, rewrite it, and re-sync
+      // the users carrying those addons. See utils/keyRotation.js for the
+      // safety rules. A propagation failure never fails this save - the new
+      // secret is already stored.
+      let rotation = null;
+      if (secret && oldSecret && oldSecret !== secret) {
+        try {
+          const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } });
+          let cfg = acct?.sync;
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = null; } }
+          if (cfg && cfg.keyRotationPropagation === true) {
+            const { propagateSecretRotation } = require('../utils/keyRotation');
+            const { getDecryptedManifestUrl } = require('../utils/encryption');
+            const { manifestUrlHmac } = require('../utils/hashing');
+            rotation = await propagateSecretRotation(prisma, req, { encrypt, decrypt, getDecryptedManifestUrl, manifestUrlHmac }, {
+              accountId, oldSecret, newSecret: secret,
+            });
+            if (rotation.addonsUpdated.length > 0) {
+              const { createNotification } = require('../utils/notificationStore');
+              await createNotification(prisma, accountId, {
+                type: 'task',
+                title: `Key rotation: "${existing.name}" propagated`,
+                body: `Updated ${rotation.addonsUpdated.length} addon(s) (${rotation.addonsUpdated.map(a => a.name).join(', ')}) and re-synced ${rotation.usersSynced} user(s)${rotation.userFailures.length ? `; ${rotation.userFailures.length} sync failure(s)` : ''}.`,
+              }).catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.warn('[Vault] Rotation propagation failed (save itself succeeded):', e?.message);
+        }
+      }
+
+      res.json({ success: true, rotation });
     } catch (error) {
       console.error('Error updating vault entry:', error);
       res.status(500).json({ error: 'Failed to update vault entry' });

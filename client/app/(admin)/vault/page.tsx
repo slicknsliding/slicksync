@@ -461,6 +461,32 @@ function VaultPageContent() {
   // detail list of every individual upcoming renewal is worth having but
   // not worth always taking up vertical space for.
   const [renewalExpanded, setRenewalExpanded] = useState(false);
+
+  // Opt-in: rotating a secret here rewrites every addon config that embeds
+  // the old value and re-syncs affected users (utils/keyRotation.js). OFF
+  // until the account turns it on - rewriting addon configs and touching
+  // user accounts as a side effect of saving a key is exactly the kind of
+  // thing that must never be a surprise default.
+  const [rotationPropagation, setRotationPropagation] = useState<boolean | null>(null);
+  const [savingRotationPropagation, setSavingRotationPropagation] = useState(false);
+  useEffect(() => {
+    api.getSyncSettings()
+      .then((sset) => setRotationPropagation(sset.keyRotationPropagation === true))
+      .catch(() => setRotationPropagation(false));
+  }, []);
+  const handleToggleRotationPropagation = async () => {
+    const next = !rotationPropagation;
+    setSavingRotationPropagation(true);
+    try {
+      await api.updateSyncSettings({ keyRotationPropagation: next });
+      setRotationPropagation(next);
+      toast.success(next ? 'Rotation now heals addon configs automatically' : 'Rotation propagation turned off');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update setting');
+    } finally {
+      setSavingRotationPropagation(false);
+    }
+  };
   useEffect(() => {
     api.getVaultEntries().then((d) => {
       setAllCostEntries(d.entries);
@@ -702,8 +728,16 @@ function VaultPageContent() {
       }
 
       if (editingId) {
-        await api.updateVaultEntry(editingId, payload);
-        toast.success('Vault entry updated');
+        const result = await api.updateVaultEntry(editingId, payload);
+        // Rotation propagation ran (opt-in) and touched something - say
+        // exactly what, since addon configs and user accounts just changed
+        // as a side effect of saving a key.
+        if (result?.rotation && result.rotation.addonsUpdated.length > 0) {
+          const r = result.rotation;
+          toast.success(`Key rotated - updated ${r.addonsUpdated.length} addon${r.addonsUpdated.length === 1 ? '' : 's'} and re-synced ${r.usersSynced} user${r.usersSynced === 1 ? '' : 's'}${r.userFailures.length ? ` (${r.userFailures.length} sync failure${r.userFailures.length === 1 ? '' : 's'} - see notifications)` : ''}`);
+        } else {
+          toast.success('Vault entry updated');
+        }
       } else {
         await api.createVaultEntry(payload);
         toast.success('Vault entry added');
@@ -1093,6 +1127,26 @@ function VaultPageContent() {
                 </div>
               );
             })}
+          </div>
+
+          {/* Key-rotation propagation opt-in. Lives here, not in Settings -
+              the decision is about what saving a key on THIS page does. */}
+          <div className={`${NEBULA_GLASS_CLASS} p-4 sm:p-5 mb-4`} style={nebulaGlassStyle}>
+            <NebulaGlassStripe />
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-default">Rotation fixes addons automatically</p>
+                <p className="text-xs text-muted mt-0.5">
+                  When on: saving a changed secret rewrites every addon config that embeds the old key (Torrentio, AIOStreams, and the rest carry a copy inside their URLs) and re-syncs the users carrying those addons. One paste heals the household. When off: rotating here changes only the Vault entry, exactly as before.
+                </p>
+              </div>
+              <ToggleSwitch
+                checked={rotationPropagation === true}
+                onChange={handleToggleRotationPropagation}
+                disabled={rotationPropagation === null || savingRotationPropagation}
+                title="Toggle rotation propagation"
+              />
+            </div>
           </div>
 
           {upcomingRenewals.length > 0 && (

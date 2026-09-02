@@ -2008,15 +2008,15 @@ class ApiClient {
     });
   }
 
-  async updateVaultEntry(id: string, data: Partial<VaultEntryInput> & { isActive?: boolean; backupEntryId?: string | null }) {
-    return this.fetch<{ success: boolean }>(`/vault/${id}`, {
+  async updateVaultEntry(id: string, data: Partial<VaultEntryInput> & { isActive?: boolean; backupEntryId?: string | null }): Promise<{ success: boolean; rotation?: { addonsUpdated: { id: string; name: string }[]; usersSynced: number; userFailures: { username: string; error: string }[] } | null }> {
+    return this.fetch(`/vault/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
   async deleteVaultEntry(id: string) {
-    return this.fetch<{ success: boolean }>(`/vault/${id}`, { method: 'DELETE' });
+    return this.fetch(`/vault/${id}`, { method: 'DELETE' });
   }
 
   async reorderVaultEntries(category: string, orderedIds: string[]) {
@@ -2369,7 +2369,7 @@ class ApiClient {
   // and its notifications - for something like an indexer that blocks this
   // server's IP, where the admin doesn't want repeated pinging about it.
   async setVaultHealthIgnored(id: string, healthIgnored: boolean) {
-    return this.fetch<{ success: boolean }>(`/vault/${id}`, {
+    return this.fetch(`/vault/${id}`, {
       method: 'PUT',
       body: JSON.stringify({ healthIgnored }),
     });
@@ -3037,6 +3037,9 @@ export interface SyncSettings {
     usage?: { used: number; limit: number; percentUsed: number; plan: string | null };
   }>;
   notifyOnKeyHealth?: boolean;
+  /** Opt-in: rotating a Vault secret rewrites every addon config embedding
+   * the old value and re-syncs affected users. OFF by default. */
+  keyRotationPropagation?: boolean;
   simklClientId?: string;
   /** Self-hosted Nuvio backend URL, e.g. https://backend.example.com. Blank uses api.nuvio.tv. */
   nuvioServerUrl?: string;
