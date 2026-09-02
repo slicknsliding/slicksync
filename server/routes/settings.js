@@ -279,6 +279,159 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       }
     })
 
+
+    // POST /settings/backups/:filename/restore-user - Time Machine scoped to
+    // ONE person: rewinds a single user's config (identity, provider
+    // connection, exclusions, notification prefs, group memberships) to what
+    // the backup holds, touching nobody else. body: { userId, preview } -
+    // preview:true computes the per-user diff and applies NOTHING, which is
+    // what the confirmation dialog shows. The full restore stays what it
+    // was; this exists because one person's mishap should not cost the
+    // whole household a rewind.
+    //
+    // Deliberately preserved (never rewound): guardStateJson, lastSyncedAt/
+    // syncStatus, traxToken/traxAddonEnabled - live machinery, not config;
+    // rewinding the trax token would silently kill the URL already synced
+    // onto devices. Watch history is untouched - backups never carried it.
+    router.post('/backups/:filename/restore-user', async (req, res) => {
+      try {
+        if (!isValidBackupFilename(req.params.filename)) {
+          return res.status(400).json({ message: 'Invalid backup filename' })
+        }
+        const filePath = path.join(BACKUP_DIR, req.params.filename)
+        if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'Backup not found' })
+        let parsed
+        try { parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) } catch {
+          return res.status(422).json({ message: 'Backup file is not valid JSON' })
+        }
+        const data = parsed.data || parsed
+        const accountId = getAccountId(req) || 'default'
+        const { userId, preview } = req.body || {}
+        if (!userId) return res.status(400).json({ message: 'userId is required' })
+
+        const current = await prisma.user.findFirst({ where: { id: userId, accountId } })
+        if (!current) return res.status(404).json({ message: 'User not found (a fully deleted user is restored from the Trash, not from here)' })
+
+        const norm = (v) => String(v || '').trim().toLowerCase()
+        const bUsers = Array.isArray(data.users) ? data.users : []
+        const bUser = bUsers.find((u) => u.id === userId) || bUsers.find((u) => norm(u.username || u.name) === norm(current.username))
+        if (!bUser) return res.status(404).json({ message: `"${current.username}" is not in this backup` })
+
+        // Backup exports store excludedAddons as NAMES (portable); the live
+        // row stores ids. Translate back through the current addon list -
+        // a name that no longer exists here simply drops out.
+        const curAddons = await prisma.addon.findMany({ where: { accountId }, select: { id: true, name: true } })
+        const addonIdByName = new Map(curAddons.map((a) => [norm(a.name), a.id]))
+        let excludedIds = null
+        try {
+          const names = JSON.parse(bUser.excludedAddons || '[]')
+          if (Array.isArray(names)) {
+            excludedIds = JSON.stringify(names.map((n) => addonIdByName.get(norm(n)) || null).filter(Boolean))
+          }
+        } catch {}
+
+        const plainFields = ['username', 'email', 'isActive', 'expiresAt', 'colorIndex', 'avatarUrl', 'providerType', 'discordWebhookUrl', 'discordUserId', 'notifyOnWatch', 'activityVisibility', 'apiKey', 'protectedAddons']
+        const updates = {}
+        const changedFields = []
+        for (const f of plainFields) {
+          if (!(f in bUser)) continue
+          const bVal = f === 'expiresAt' && bUser[f] ? new Date(bUser[f]) : bUser[f]
+          const differs = f === 'expiresAt'
+            ? String(current[f] || '') !== String(bVal || '')
+            : (current[f] ?? null) !== (bVal ?? null)
+          if (differs) { updates[f] = bVal; changedFields.push(f) }
+        }
+        if (excludedIds !== null && excludedIds !== (current.excludedAddons || '[]')) {
+          updates.excludedAddons = excludedIds
+          changedFields.push('excludedAddons')
+        }
+        // Provider credentials arrive DECRYPTED in the backup (that is what
+        // makes it portable) - re-encrypt before they touch the row, and
+        // report only that the connection changes, never any value.
+        for (const [field, label] of [['stremioAuthKey', 'Stremio connection'], ['nuvioRefreshToken', 'Nuvio connection']]) {
+          if (!(field in bUser)) continue
+          let currentPlain = null
+          try { currentPlain = current[field] ? decrypt(current[field], req) : null } catch {}
+          const bVal = bUser[field] || null
+          if ((currentPlain || null) !== (bVal || null)) {
+            updates[field] = bVal ? encrypt(bVal, req) : null
+            changedFields.push(label)
+          }
+        }
+        if ('nuvioUserId' in bUser && (current.nuvioUserId || null) !== (bUser.nuvioUserId || null)) {
+          updates.nuvioUserId = bUser.nuvioUserId || null
+          if (!changedFields.includes('Nuvio connection')) changedFields.push('Nuvio connection')
+        }
+
+        // Group membership: what the backup says this user belonged to,
+        // applied against the groups that exist NOW (matched by id, then
+        // name). Groups only in the backup are reported, not resurrected -
+        // that is the full restore's job.
+        const bGroups = Array.isArray(data.groups) ? data.groups : []
+        const memberInBackup = (g) => {
+          try { return JSON.parse(g.userIds || '[]').includes(bUser.id) } catch { return false }
+        }
+        const backupMemberKeys = new Set(bGroups.filter(memberInBackup).flatMap((g) => [g.id, norm(g.name)]))
+        const curGroups = await prisma.group.findMany({ where: { accountId } })
+        const groupsJoin = []
+        const groupsLeave = []
+        const membershipWrites = []
+        for (const g of curGroups) {
+          let ids = []
+          try { ids = JSON.parse(g.userIds || '[]') } catch {}
+          const isMember = ids.includes(userId)
+          const shouldBe = backupMemberKeys.has(g.id) || backupMemberKeys.has(norm(g.name))
+          if (shouldBe && !isMember) {
+            groupsJoin.push(g.name)
+            membershipWrites.push(prisma.group.update({ where: { id: g.id }, data: { userIds: JSON.stringify([...ids, userId]) } }))
+          } else if (!shouldBe && isMember) {
+            groupsLeave.push(g.name)
+            membershipWrites.push(prisma.group.update({ where: { id: g.id }, data: { userIds: JSON.stringify(ids.filter((i) => i !== userId)) } }))
+          }
+        }
+        const missingGroups = bGroups
+          .filter(memberInBackup)
+          .filter((g) => !curGroups.some((cg) => cg.id === g.id || norm(cg.name) === norm(g.name)))
+          .map((g) => g.name)
+
+        const summary = {
+          username: current.username,
+          backupUsername: bUser.username || bUser.name || null,
+          changedFields,
+          groupsJoin,
+          groupsLeave,
+          missingGroups,
+          nothingToDo: changedFields.length === 0 && groupsJoin.length === 0 && groupsLeave.length === 0,
+        }
+        if (preview === true) return res.json({ preview: true, ...summary })
+        if (summary.nothingToDo) return res.json({ applied: false, ...summary })
+
+        // Undo net: the user's CURRENT state goes to the Trash before the
+        // rewind - kind 'userstate' updates the row back in place.
+        try {
+          const groupsNow = curGroups.filter((g) => { try { return JSON.parse(g.userIds || '[]').includes(userId) } catch { return false } })
+          await prisma.trashItem.create({
+            data: {
+              accountId,
+              kind: 'userstate',
+              label: `${current.username} - state before per-user restore`,
+              payload: JSON.stringify({ user: current, groupIds: groupsNow.map((g) => g.id) }),
+            },
+          })
+        } catch (e) {
+          return res.status(500).json({ message: `Could not archive the current state first - restore aborted (${e?.message})` })
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await prisma.user.update({ where: { id: userId }, data: updates })
+        }
+        for (const write of membershipWrites) await write
+        return res.json({ applied: true, ...summary })
+      } catch (e) {
+        return res.status(500).json({ message: 'Failed to restore user', error: e?.message })
+      }
+    })
+
     // POST /settings/migration/offer - mint a one-code migration offer for
     // THIS instance's data. See routes/migration.js for the model.
     router.post('/migration/offer', async (req, res) => {

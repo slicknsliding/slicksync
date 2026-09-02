@@ -430,7 +430,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'backup-restore',
     title: 'Backing up or restoring your setup',
     category: 'Health & maintenance',
-    keywords: ['backup', 'restore', 'disaster recovery', 'export config', 'snapshot'],
+    keywords: ['backup', 'restore', 'disaster recovery', 'export config', 'snapshot', 'restore one user', 'per user restore', 'rewind user'],
     answer: 'Tasks → Automatic Backups (or Configuration → Export Config) for a full config snapshot, and Vault\'s own Disaster Recovery Kit for a passphrase-encrypted bundle that includes every stored secret too. Restoring first shows exactly what would change - which addons, users, and groups would be removed, brought back, or rewound - before anything is touched.',
     steps: [
       'For config only: Tasks → Configuration → Export Config downloads a full settings snapshot.',
@@ -439,6 +439,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Automatic backups run on a schedule and are validated for real restorability, not just "is this valid JSON".',
     ],
     details: [
+      'A backup can also restore just ONE person: the person icon on any backup row opens "Restore one user" - pick who, see exactly what would rewind for them (identity, provider connection, exclusions, group memberships), and apply it without touching anyone else. Their pre-restore state goes to the Trash first, so even that rewind is undoable for 30 days. Watch history is never part of it - backups do not carry history.',
       'The Disaster Recovery Kit is the one that survives losing the whole server - it is portable to a brand new instance because the secrets travel with it, re-encrypted under your passphrase rather than the instance key.',
       'A plain config export deliberately does NOT include Vault secrets. That is what makes it safe to hand around or keep in normal storage.',
       'Backup notifications are configured to stay silent when a backup succeeds - you only get pinged if one fails validation.',

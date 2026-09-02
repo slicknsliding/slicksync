@@ -2169,6 +2169,23 @@ class ApiClient {
 
   /** The permanent exit: erases the show's entire watch history for that
    * user plus the burial. Irreversible - the UI confirms with the count. */
+  // Per-user restore - Time Machine scoped to one person. preview:true
+  // returns the per-user diff without applying anything.
+  async restoreBackupUser(filename: string, userId: string, preview = false) {
+    return this.fetch<{
+      preview?: boolean;
+      applied?: boolean;
+      username: string;
+      changedFields: string[];
+      groupsJoin: string[];
+      groupsLeave: string[];
+      missingGroups: string[];
+      nothingToDo: boolean;
+    }>(`/settings/backups/${encodeURIComponent(filename)}/restore-user`, {
+      method: 'POST', body: JSON.stringify({ userId, preview }),
+    });
+  }
+
   // Device claims - per-person attribution on a shared provider login.
   // A claim pins a proxy client IP to a managed user, beating the learned
   // affinity guess; `guess` is what the guesser currently thinks when no

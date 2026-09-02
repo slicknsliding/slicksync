@@ -348,6 +348,31 @@ async function restoreExtendedKind(prisma, accountIdValue, item, payload) {
     return { kind: 'user', label: item.label }
   }
 
+  if (item.kind === 'userstate') {
+    // A per-user restore's undo: put the archived row state back IN PLACE
+    // (the row exists - this kind is only written while it does) and set
+    // group membership to exactly what it was.
+    const { user, groupIds } = payload
+    const existingRow = await prisma.user.findUnique({ where: { id: user.id } }).catch(() => null)
+    if (!existingRow) throw new Error('That user no longer exists - restore them from their own Trash entry instead')
+    const { id, accountId: _a, ...fields } = user
+    await prisma.user.update({ where: { id: user.id }, data: fields })
+    const wanted = new Set(groupIds || [])
+    const groups = await prisma.group.findMany({ where: { accountId: accountIdValue } })
+    for (const g of groups) {
+      let ids = []
+      try { ids = JSON.parse(g.userIds || '[]') } catch {}
+      const isMember = ids.includes(user.id)
+      const shouldBe = wanted.has(g.id)
+      if (shouldBe && !isMember) {
+        await prisma.group.update({ where: { id: g.id }, data: { userIds: JSON.stringify([...ids, user.id]) } }).catch(() => {})
+      } else if (!shouldBe && isMember) {
+        await prisma.group.update({ where: { id: g.id }, data: { userIds: JSON.stringify(ids.filter((i) => i !== user.id)) } }).catch(() => {})
+      }
+    }
+    return { kind: 'userstate', label: item.label }
+  }
+
   if (item.kind === 'group') {
     const { group, groupAddons } = payload
     const existing = await prisma.group.findUnique({ where: { id: group.id } }).catch(() => null)
