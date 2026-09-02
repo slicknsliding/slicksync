@@ -96,6 +96,27 @@ export function AutomationPanel() {
   // two builder sections is the power path, and leading with it is exactly
   // why this panel went unused ("seems very complicated" - direct quote).
   const [showChooser, setShowChooser] = useState(false);
+  // The AI rule-writer input inside the chooser. Drafts open in the editor
+  // exactly like a recipe - reviewed, never auto-created.
+  const [composeText, setComposeText] = useState('');
+  const [isComposing, setIsComposing] = useState(false);
+  const handleCompose = async () => {
+    if (!composeText.trim() || isComposing) return;
+    setIsComposing(true);
+    try {
+      const { rule, warnings } = await api.composeAutomationRule(composeText.trim());
+      setPrefill({ name: rule.name, triggerType: rule.triggerType, conditions: rule.conditions, actions: rule.actions });
+      setEditingRule('new');
+      setShowChooser(false);
+      setComposeText('');
+      if (warnings.length > 0) toast.success(`Drafted, with notes: ${warnings.join('; ')}`);
+      else toast.success('Drafted - review the sentence at the top, then save');
+    } catch (err: any) {
+      toast.error(err.message || 'Could not draft a rule from that');
+    } finally {
+      setIsComposing(false);
+    }
+  };
   const [registry, setRegistry] = useState<AutomationRegistry | null>(null);
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [runs, setRuns] = useState<AutomationRun[]>([]);
@@ -247,6 +268,21 @@ export function AutomationPanel() {
             </p>
             <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => { setShowChooser(false); setEditingRule('new'); }}>
               Start from scratch
+            </Button>
+          </div>
+          {/* Describe-it row: the AI path sits above the recipes because a
+              wish that fits no recipe is exactly when someone opens this. */}
+          <div className="flex items-center gap-2">
+            <input
+              value={composeText}
+              onChange={(e) => setComposeText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCompose(); }}
+              placeholder='Or describe it: "if RPDB dies and has no backup, alert me loudly"'
+              className="flex-1 px-3 py-2 rounded-xl text-sm focus:outline-none"
+              style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+            />
+            <Button variant="secondary" size="sm" isLoading={isComposing} onClick={handleCompose}>
+              Draft it
             </Button>
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

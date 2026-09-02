@@ -1509,6 +1509,19 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['maintenance-and-updates', 'provider-key-health'],
   },
   {
+    id: 'automation-ai-writer',
+    title: 'Describing an automation in plain English',
+    category: 'Notifications & Automation',
+    keywords: ['ai rule', 'describe automation', 'plain english rule', 'draft rule', 'write automation for me', 'natural language automation'],
+    answer: 'Tasks -> Automation -> New rule has a "describe it" box: write what you want ("if RPDB dies and has no backup, alert me loudly") and Draft it opens the normal editor with a real rule filled in. Review the plain-words sentence at the top, adjust anything, save. Nothing is created until you do.',
+    details: [
+      'Needs AI Services configured (Settings -> External API Keys) - the same key natural-language Catalog building uses. Without it, the box says so instead of failing quietly.',
+      'The model only proposes. Everything it returns is validated against the real trigger/condition/action registry: an invented trigger is rejected outright, and unknown fields are dropped with a note - a draft can never contain anything the editor itself could not build.',
+      'A draft is an ordinary rule afterwards - nothing special about it, fully editable, same as one built by hand or from a recipe.',
+    ],
+    related: ['automation-recipes'],
+  },
+  {
     id: 'automation-recipes',
     title: 'Setting up automation without building a rule from scratch',
     category: 'Notifications & Automation',

@@ -2219,6 +2219,13 @@ class ApiClient {
     return this.fetch<{ success: boolean; trashId?: string | null }>(`/lists/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
   // Automation rules ("when X happens, do Y") - see server/utils/automation/registry.js.
+  /** The AI rule-writer: plain English -> a validated rule draft for the
+   * editor. Server-side the model only proposes; the registry validates. */
+  async composeAutomationRule(text: string) {
+    return this.fetch<{ rule: { name: string; triggerType: string; triggerConfig: Record<string, unknown>; conditions: AutomationCondition[]; actions: AutomationActionConfig[] }; warnings: string[] }>(
+      '/automation/compose', { method: 'POST', body: JSON.stringify({ text }) });
+  }
+
   async getAutomationRegistry() {
     return this.fetch<AutomationRegistry>('/automation/registry');
   }
