@@ -308,6 +308,18 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     const computedCompleted = computeCompleted(item.state)
     const completed = existing?.completed === true ? true : computedCompleted
 
+    // Watch-ahead protection: fires on the FIRST record of this episode for
+    // this user only (existing == null) - progress updates of an episode
+    // already alerted on must not nag again. Best-effort by design.
+    if (!existing) {
+      try {
+        const { checkWatchAhead } = require('./watchTogether')
+        await checkWatchAhead(prisma, accountIdValue, { userId, showId, showName, season, episode, videoId })
+      } catch (e) {
+        console.warn('[WatchTogether] check failed:', e?.message)
+      }
+    }
+
     // Upsert the episode watch (updates watchedAt if already exists)
     await prisma.episodeWatchHistory.upsert({
       where: {

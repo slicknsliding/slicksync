@@ -100,6 +100,19 @@ const TRIGGERS = {
       { name: 'contentType', label: 'Type (movie/series)', type: 'string' },
     ],
   },
+  'watch.ahead': {
+    label: 'Someone watches ahead of the group',
+    description: 'Fires when a member of a "watching together" show starts an episode that another member has not seen yet (Activity -> Watched -> a show\'s Watching Together setting). The built-in alert already covers push and the bell - this trigger is for anything extra, like a pointed Discord message.',
+    fields: [
+      { name: 'username', label: 'Who watched ahead', type: 'string' },
+      { name: 'userId', label: 'User ID', type: 'string' },
+      { name: 'itemName', label: 'Show', type: 'string' },
+      { name: 'showId', label: 'Show ID', type: 'string' },
+      { name: 'season', label: 'Season', type: 'number' },
+      { name: 'episode', label: 'Episode', type: 'number' },
+      { name: 'behindUsernames', label: 'Who they left behind', type: 'string' },
+    ],
+  },
   'watch.finished': {
     label: 'A title is finished',
     description: 'Fires once when a watch crosses the real-completion threshold - the same playback-position test the history record uses, so it means genuinely finished, not merely stopped. Fires once per title per user - finishing cannot un-finish, so it cannot repeat.',

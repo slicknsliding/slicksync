@@ -56,14 +56,23 @@ export function ProviderKeyHealthBadge({ result }: ProviderKeyHealthBadgeProps) 
     );
   }
 
+  // The WHY is visible text, not just a hover tooltip - a failing key whose
+  // reason hides behind a title attribute reads as "broken, no explanation"
+  // on touch screens and to anyone who doesn't think to hover (confirmed
+  // live: an OMDb key at its daily limit showed a bare "Not working").
   return (
-    <span
-      className="inline-flex items-center gap-1 text-xs font-medium"
-      style={{ color: result.rateLimited ? 'var(--color-warning)' : 'var(--color-error)' }}
-      title={`${result.message} - last checked ${checkedAgo}`}
-    >
-      <ExclamationTriangleIcon className="w-3.5 h-3.5" />
-      {result.rateLimited ? 'Rate limited' : 'Not working'}
+    <span className="inline-flex flex-col items-end gap-0.5 max-w-[16rem] text-right">
+      <span
+        className="inline-flex items-center gap-1 text-xs font-medium"
+        style={{ color: result.rateLimited ? 'var(--color-warning)' : 'var(--color-error)' }}
+        title={`Last checked ${checkedAgo}`}
+      >
+        <ExclamationTriangleIcon className="w-3.5 h-3.5" />
+        {result.rateLimited ? 'Limit reached' : 'Not working'}
+      </span>
+      {result.message && result.message !== 'OK' && (
+        <span className="text-[11px] leading-snug text-muted">{result.message}</span>
+      )}
     </span>
   );
 }

@@ -1570,6 +1570,26 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['now-playing-continue-watching', 'rewatch-completion'],
   },
   {
+    id: 'watching-together',
+    title: 'Watching together - the watch-ahead alarm',
+    category: 'Watching & Discover',
+    keywords: ['watch together', 'watch ahead', 'watching ahead', 'shared show', 'frontier', 'spoiler protection', 'watch pact', 'couple show'],
+    answer: 'Open any series (its detail popup from Discover, Continue Watching, or a catalog) and use the Watching Together section to pick who is watching it as a group. From then on, if any member starts an episode another member has not seen, the household gets a push and bell alert naming exactly who got ahead of whom.',
+    steps: [
+      'Open the show and expand Watching Together.',
+      'Tap the people watching it together (at least two), then Start watching together.',
+      'That is it - the alarm arms itself. Stop ends the pact any time.',
+    ],
+    details: [
+      'The shared frontier is the furthest episode EVERYONE in the group has seen - shown in the section header, along with who the group is waiting on.',
+      'The alert fires when the watch is first recorded, one alert per person per episode - pausing and resuming the same episode never nags twice.',
+      'Nothing is ever blocked. SlickSync does not sit in the play path; it makes getting ahead visible while there is still time to grab the remote.',
+      'Rewatching an episode everyone has already seen never alerts - only genuinely new ground does.',
+      'Automation has a matching trigger, "Someone watches ahead of the group", for anything beyond the built-in alert - a pointed Discord message, for instance.',
+    ],
+    related: ['now-playing-continue-watching', 'automation-create', 'dropped-shows'],
+  },
+  {
     id: 'setup-checklist',
     title: 'The "finish setting up" card on the Dashboard',
     category: 'Getting started',

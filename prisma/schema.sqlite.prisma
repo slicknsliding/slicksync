@@ -746,6 +746,22 @@ model WatchSession {
 // Dashboard: shows a user has removed from their own Continue Watching row.
 // Account-scoped (not per-browser) so a dismissal made from one browser/
 // device stays dismissed when checking the Dashboard from another.
+// Watch-ahead protection: a show a set of household members have declared
+// they are watching TOGETHER. The shared frontier is computed live from
+// EpisodeWatchHistory; this row only stores the pact itself. See
+// server/utils/watchTogether.js.
+model WatchTogetherShow {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  showId    String
+  showName  String
+  userIds   String // JSON array of member user ids (2+)
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, showId])
+  @@map("watch_together_shows")
+}
+
 model DismissedContinueWatching {
   id        String   @id @default(cuid())
   accountId String   @default("default")

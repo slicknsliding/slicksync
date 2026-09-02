@@ -8,6 +8,7 @@ import { Badge } from './Badge';
 import { AddToListButton } from './AddToListButton';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
 import { api, MediaDetails, DiscoverItem } from '@/lib/api';
+import { toast } from './Toast';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { posterUrl } from '@/lib/posterUrl';
@@ -283,6 +284,69 @@ export function MediaDetailModal({
   // client/lib/api.ts's setRating/getRatings if that changes.
   const [reaction, setReactionState] = useState<'happy' | 'sad' | null>(null);
   const [reactionBusy, setReactionBusy] = useState(false);
+
+  // Watching Together (series only) - watch-ahead protection's management
+  // surface. A pact = this show + the members watching it together; once
+  // saved, anyone starting an episode another member hasn't seen triggers
+  // the household alert (server/utils/watchTogether.js). Data loads lazily
+  // on first expand - most modal opens never touch this.
+  const [wtOpen, setWtOpen] = useState(false);
+  const [wtLoaded, setWtLoaded] = useState(false);
+  const [wtUsers, setWtUsers] = useState<Array<{ id: string; username: string }>>([]);
+  const [wtSelected, setWtSelected] = useState<Set<string>>(new Set());
+  const [wtHasPact, setWtHasPact] = useState(false);
+  const [wtFrontier, setWtFrontier] = useState<{ season: number; episode: number } | null>(null);
+  const [wtWaitingOn, setWtWaitingOn] = useState<string[]>([]);
+  const [wtBusy, setWtBusy] = useState(false);
+
+  useEffect(() => {
+    // Reset per title so a "More Like This" drill-down never shows the
+    // previous show's pact.
+    setWtOpen(false); setWtLoaded(false); setWtSelected(new Set());
+    setWtHasPact(false); setWtFrontier(null); setWtWaitingOn([]);
+  }, [effectiveId]);
+
+  const loadWatchTogether = async () => {
+    if (wtLoaded) return;
+    try {
+      const [users, pacts] = await Promise.all([api.getUsers(), api.getWatchTogether()]);
+      setWtUsers(users.map((u) => ({ id: u.id, username: u.username || 'Unnamed' })));
+      const pact = pacts.find((pt) => pt.showId === effectiveId);
+      if (pact) {
+        setWtHasPact(true);
+        setWtSelected(new Set(pact.members.map((m) => m.userId)));
+        setWtFrontier(pact.frontier);
+        setWtWaitingOn(pact.waitingOn);
+      }
+      setWtLoaded(true);
+    } catch { setWtLoaded(true); }
+  };
+
+  const saveWatchTogether = async () => {
+    setWtBusy(true);
+    try {
+      await api.saveWatchTogether(effectiveId, details?.title || effectiveFallbackTitle || effectiveId, Array.from(wtSelected));
+      setWtHasPact(true);
+      toast.success('Watching together - anyone getting ahead now sets off the alarm');
+      // Frontier may exist immediately (members may have history) - refresh.
+      const pacts = await api.getWatchTogether().catch(() => []);
+      const pact = pacts.find((pt) => pt.showId === effectiveId);
+      if (pact) { setWtFrontier(pact.frontier); setWtWaitingOn(pact.waitingOn); }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save');
+    } finally { setWtBusy(false); }
+  };
+
+  const removeWatchTogether = async () => {
+    setWtBusy(true);
+    try {
+      await api.deleteWatchTogether(effectiveId);
+      setWtHasPact(false); setWtSelected(new Set()); setWtFrontier(null); setWtWaitingOn([]);
+      toast.success('No longer watching together - everyone is free to run ahead');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not remove');
+    } finally { setWtBusy(false); }
+  };
 
   useEffect(() => {
     if (!isOpen || !effectiveId || !enableReactions) return;
@@ -1026,6 +1090,89 @@ export function MediaDetailModal({
                   <span className="text-muted">Director: </span>
                   <span className="text-default">{details.director.join(', ')}</span>
                 </p>
+              )}
+
+              {effectiveType === 'series' && (
+                <div className="rounded-xl border border-default bg-surface-hover/40">
+                  <button
+                    type="button"
+                    onClick={() => { setWtOpen((v) => !v); if (!wtOpen) loadWatchTogether(); }}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium text-default">Watching together</span>
+                      {wtHasPact && (
+                        <span className="text-xs text-muted truncate">
+                          {wtSelected.size} people
+                          {wtFrontier
+                            ? ` · everyone is at S${wtFrontier.season}E${wtFrontier.episode}${wtWaitingOn.length ? ` (waiting on ${wtWaitingOn.join(', ')})` : ''}`
+                            : ' · not everyone has started yet'}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted shrink-0">{wtOpen ? 'Hide' : wtHasPact ? 'Edit' : 'Set up'}</span>
+                  </button>
+                  {wtOpen && (
+                    <div className="px-3 pb-3">
+                      <p className="text-xs text-muted mb-2">
+                        Pick who is watching this show together. When anyone starts an episode someone else here has not seen, the household gets told - by name.
+                      </p>
+                      {!wtLoaded ? (
+                        <p className="text-xs text-subtle">Loading...</p>
+                      ) : wtUsers.length < 2 ? (
+                        <p className="text-xs text-subtle">Watching together takes at least two users on this instance.</p>
+                      ) : (
+                        <>
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {wtUsers.map((u) => {
+                              const on = wtSelected.has(u.id);
+                              return (
+                                <button
+                                  key={u.id}
+                                  type="button"
+                                  onClick={() => setWtSelected((prev) => { const n = new Set(prev); if (n.has(u.id)) n.delete(u.id); else n.add(u.id); return n; })}
+                                  className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors"
+                                  style={{
+                                    background: on ? 'var(--color-primary)' : 'var(--color-surface)',
+                                    color: on ? 'var(--color-bg)' : 'var(--color-text-muted)',
+                                    border: '1px solid',
+                                    borderColor: on ? 'var(--color-primary)' : 'var(--color-surface-border)',
+                                  }}
+                                >
+                                  {u.username}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={wtBusy || wtSelected.size < 2}
+                              onClick={saveWatchTogether}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity disabled:opacity-40"
+                              style={{ background: 'var(--color-primary)', color: 'var(--color-bg)' }}
+                            >
+                              {wtHasPact ? 'Update' : 'Start watching together'}
+                            </button>
+                            {wtHasPact && (
+                              <button
+                                type="button"
+                                disabled={wtBusy}
+                                onClick={removeWatchTogether}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted hover:text-default transition-colors"
+                              >
+                                Stop
+                              </button>
+                            )}
+                            {wtSelected.size === 1 && (
+                              <span className="text-xs text-subtle">Pick at least one more person</span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
 
               {details.cast && details.cast.length > 0 && (

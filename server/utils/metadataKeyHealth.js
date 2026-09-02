@@ -55,11 +55,17 @@ async function checkTmdb(key) {
 async function checkOmdb(key) {
   try {
     const res = await timedFetch(`https://www.omdbapi.com/?apikey=${encodeURIComponent(key)}&i=tt0111161`);
-    if (res.status === 401) return { ok: false, message: 'Key rejected (401) - likely revoked or mistyped', rateLimited: false };
+    // OMDb answers 401 for BOTH a bad key and a key that hit its daily
+    // limit - the body's Error string is the only way to tell them apart,
+    // so it must be read before deciding. Returning on the status alone
+    // reported an exhausted (perfectly valid) free key as "revoked or
+    // mistyped" - confirmed live 2026-09-03, and precisely the wrong thing
+    // to tell someone whose key will work again at midnight UTC.
     const body = await res.json().catch(() => null);
     if (body && body.Response === 'True') return { ok: true, message: 'OK', rateLimited: false };
     const err = (body && body.Error) || '';
-    if (/limit reached/i.test(err)) return { ok: false, message: 'Daily request limit reached', rateLimited: true };
+    if (/limit reached/i.test(err)) return { ok: false, message: 'Daily request limit reached (1,000/day on the free tier) - the key is fine and resets at midnight UTC. A backup key or key pool covers the gap.', rateLimited: true };
+    if (res.status === 401 && !err) return { ok: false, message: 'Key rejected (401) - likely revoked or mistyped', rateLimited: false };
     if (/invalid api key/i.test(err)) return { ok: false, message: 'Invalid API key', rateLimited: false };
     return { ok: false, message: err || `OMDb returned ${res.status}`, rateLimited: false };
   } catch (e) {

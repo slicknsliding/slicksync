@@ -2169,6 +2169,32 @@ class ApiClient {
 
   /** The permanent exit: erases the show's entire watch history for that
    * user plus the burial. Irreversible - the UI confirms with the count. */
+  // Watch-ahead protection - "watching together" pacts (see
+  // server/utils/watchTogether.js). Frontier = furthest episode EVERYONE in
+  // the pact has seen; null until every member has started the show.
+  async getWatchTogether() {
+    return this.fetch<Array<{
+      showId: string;
+      showName: string;
+      members: Array<{ userId: string; username: string; colorIndex?: number; avatarUrl?: string | null; furthest: { season: number; episode: number } | null }>;
+      frontier: { season: number; episode: number } | null;
+      waitingOn: string[];
+      createdAt: string;
+    }>>('/watch-together');
+  }
+
+  async saveWatchTogether(showId: string, showName: string, userIds: string[]) {
+    return this.fetch<{ success: boolean }>('/watch-together', {
+      method: 'POST', body: JSON.stringify({ showId, showName, userIds }),
+    });
+  }
+
+  async deleteWatchTogether(showId: string) {
+    return this.fetch<{ success: boolean }>(`/watch-together/${encodeURIComponent(showId)}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Account Guard - see server/utils/accountGuard.js
   async acceptGuardChange(userId: string) {
     return this.fetch<{ success: boolean }>('/users/guard/accept', {
