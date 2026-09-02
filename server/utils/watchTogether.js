@@ -133,6 +133,16 @@ async function checkWatchAhead(prisma, accountId, { userId, showId, showName, se
   }).catch(() => null)
   if (!pact) return null
 
+  // Feature switch (Settings -> SlickTrax): off means no alerts fire even
+  // for standing pacts - checked only after a pact matched, so the common
+  // no-pact case costs nothing extra.
+  try {
+    const acc = await prisma.appAccount.findUnique({ where: { id: accountIdValue }, select: { sync: true } })
+    let cfg = acc?.sync
+    if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+    if (cfg && cfg.enableWatchTogether === false) return null
+  } catch {}
+
   const userIds = parseUserIds(pact.userIds)
   if (!userIds.includes(userId)) return null
   const others = userIds.filter((id) => id !== userId)

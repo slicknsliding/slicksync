@@ -175,7 +175,7 @@ export function MediaDetailModal({
   const effectiveFallbackRottenTomatoes = overrideItem ? null : fallbackRottenTomatoes;
   const effectiveFallbackMetacritic = overrideItem ? null : fallbackMetacritic;
 
-  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions, enableWatchProviders, enableWatchedIndicators } = usePersonalFeatures();
+  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions, enableWatchProviders, enableWatchedIndicators, enableWatchTogether } = usePersonalFeatures();
   const isTV = useIsTV();
 
   // usePersonalFeatures resolves asynchronously (starts from a default of
@@ -1053,12 +1053,10 @@ export function MediaDetailModal({
                     disabled={selfWatchedBusy}
                     aria-label={selfWatched ? 'Mark as unwatched' : 'Mark as watched'}
                     title={selfWatched ? 'Marks this title unwatched for the household - the underlying watch history is kept, only the indicator changes' : 'Marks this title watched for the household, e.g. seen on another service'}
-                    className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${
-                      selfWatched
-                        ? 'bg-success/15 text-success hover:bg-success/25'
-                        : 'bg-surface-hover text-muted hover:text-default'
-                    } ${selfWatchedBusy ? 'opacity-60 cursor-wait' : ''}`}
-                    style={selfWatched ? { color: 'var(--color-success)', background: 'color-mix(in srgb, var(--color-success) 15%, transparent)' } : undefined}
+                    className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${selfWatchedBusy ? 'opacity-60 cursor-wait' : ''}`}
+                    style={selfWatched
+                      ? { color: 'var(--color-success)', background: 'color-mix(in srgb, var(--color-success) 15%, transparent)' }
+                      : { color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
                   >
                     <CheckCircleIcon className="w-4 h-4" />
                     {selfWatched ? 'Watched' : 'Unwatched'}
@@ -1158,7 +1156,7 @@ export function MediaDetailModal({
                 </p>
               )}
 
-              {effectiveType === 'series' && (
+              {effectiveType === 'series' && enableWatchTogether && (
                 <div className="rounded-xl border border-default bg-surface-hover/40">
                   <button
                     type="button"

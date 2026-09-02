@@ -779,6 +779,7 @@ export default function SettingsPage() {
           simklClientId: settings.simklClientId || '',
           enableWatchlist: settings.enableWatchlist !== false,
           enableWatchedIndicators: settings.enableWatchedIndicators !== false,
+          enableWatchTogether: settings.enableWatchTogether !== false,
           enableRecommendations: settings.enableRecommendations !== false,
           enableAutoplayTrailer: settings.enableAutoplayTrailer === true,
           autoplayTrailerStartMuted: settings.autoplayTrailerStartMuted !== false,
@@ -1640,6 +1641,17 @@ export default function SettingsPage() {
                   enabled={syncSettings.enableWatchedIndicators !== false}
                   onChange={async (v) => { await handleSaveSetting('enableWatchedIndicators' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
                   label="Toggle watched indicators"
+                />
+              </SettingRow>
+
+              <SettingRow
+                label="Watching Together"
+                description="The watch-ahead alarm: declare on a show's detail popup who is watching it together, and anyone starting an episode another member hasn't seen triggers a household alert. Off: the section disappears and no alerts fire, even for shows already set up."
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.enableWatchTogether !== false}
+                  onChange={async (v) => { await handleSaveSetting('enableWatchTogether' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
+                  label="Toggle Watching Together"
                 />
               </SettingRow>
 

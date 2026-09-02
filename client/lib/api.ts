@@ -3187,6 +3187,10 @@ export interface SyncSettings {
   // Personal-features opt-outs (v1.31+). Default true when absent.
   enableWatchlist?: boolean;
   enableWatchedIndicators?: boolean;
+  /** Watching Together (watch-ahead protection) - the show-detail section
+   * and its alerts. On by default; per-show pacts are still the real
+   * opt-in, this hides the whole feature. */
+  enableWatchTogether?: boolean;
   enableRecommendations?: boolean;
   enableAutoplayTrailer?: boolean;
   autoplayTrailerStartMuted?: boolean;

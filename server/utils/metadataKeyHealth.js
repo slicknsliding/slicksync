@@ -292,6 +292,52 @@ async function checkAndPersistAccountKeys(prisma, accountId, { notify = true, on
     console.warn('[KeyHealth] Pool ring check failed:', e?.message);
   }
 
+  // Promotion round trip: a promotion stamped this provider, and the ring
+  // check just found the DEMOTED original (now in the backup slot) passing
+  // again - swap the pair back, clear the stamp, rewrite addons carrying
+  // the interim key, and say so. The original ordering is restored without
+  // anyone touching Settings.
+  try {
+    const { keyTag } = require('./keyPool');
+    const FIELD_OF2 = { tmdb: 'tmdbApiKey', omdb: 'omdbApiKey', mdblist: 'mdblistApiKey', rpdb: 'rpdbApiKey' };
+    for (const provider of Object.keys(cfg.promotedKeys || {})) {
+      const field = FIELD_OF2[provider];
+      if (!field || !(provider in toCheck)) continue;
+      const backupKey = typeof cfg[`${field}Backup`] === 'string' ? cfg[`${field}Backup`].trim() : '';
+      const primaryKey = typeof cfg[field] === 'string' ? cfg[field].trim() : '';
+      if (!backupKey || !primaryKey) continue;
+      const perKey = results[provider]?.pool;
+      const rec = Array.isArray(perKey) ? perKey.find((r) => r && r.tag === keyTag(backupKey)) : null;
+      if (!rec || rec.ok !== true) continue;
+
+      cfg[field] = backupKey;   // the recovered original returns to primary
+      cfg[`${field}Backup`] = primaryKey; // the stand-in returns to backup
+      delete cfg.promotedKeys[provider];
+      if (results[provider]) delete results[provider].pool; // stale tags - next check re-records
+      results[provider] = { ok: true, message: 'Original key recovered and restored as primary', rateLimited: false, checkedAt: new Date().toISOString() };
+
+      try {
+        const { propagateSecretRotation } = require('./keyRotation');
+        const { encrypt, decrypt, getDecryptedManifestUrl } = require('./encryption');
+        const { manifestUrlHmac } = require('./hashing');
+        await propagateSecretRotation(prisma, { appAccountId: accountId }, { encrypt, decrypt, getDecryptedManifestUrl, manifestUrlHmac }, {
+          accountId, oldSecret: primaryKey, newSecret: backupKey,
+        });
+      } catch (e) { console.warn('[KeyHealth] swap-back rotation failed:', e?.message); }
+
+      const label = PROVIDER_LABEL[provider] || provider;
+      try {
+        const { createNotification } = require('./notificationStore');
+        await createNotification(prisma, accountId, {
+          type: 'task',
+          title: `${label} key recovered - promoted back to primary`,
+          body: 'The original key passed its check again, so the automatic promotion was reversed: it is the primary once more and the spare went back to being the backup.',
+          dedupeKey: `keyswapback-${provider}-${new Date().toDateString()}`,
+        });
+      } catch {}
+    }
+  } catch (e) { console.warn('[KeyHealth] promotion round-trip failed:', e?.message); }
+
   const mergedHealth = { ...previousHealth, ...results };
 
   await prisma.appAccount.update({

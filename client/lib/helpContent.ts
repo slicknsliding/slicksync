@@ -268,7 +268,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'What actually swaps: metadata lookups (posters, ratings, list imports) and AI catalog search. Debrid auto-remove deliberately does NOT swap - it deletes torrents from the provider account the key belongs to, and Vault entries have no owner, so a "backup" may well be a different person’s account. Reading a quota with the wrong key is harmless; deleting with it is not. If a spare account should also be swept, give it its own entry and turn auto-remove on there.',
       'Keys are shared across everyone on the SlickSync account, not set per user. The metadata keys power SlickSync’s own posters and ratings, and Vault is the operator’s credential register. The keys that genuinely differ per person are the ones inside each user’s addon URLs - those are separate addons, and an addon has its own "backup addon" setting for the same purpose.',
       'Automation can react to all of this: "A backup credential takes over" and "A backup metadata key takes over" fire the moment a spare picks up the slack, and the failure triggers carry a "Has a backup key" field so you can alert loudly only when there is nothing to fall back on. Tasks -> Automation -> Recipes has ready-made versions of both.',
-      'Failover can also complete itself: the "Promote the backup key to primary" automation action makes the succession permanent - the backup becomes the primary, the dead key is kept as the new backup, and any addon still embedding the old key is rewritten and re-synced. Two ready-made recipes pair it with the takeover triggers.',
+      'Failover can also complete itself: the "Promote the backup key to primary" automation action makes the succession permanent - the backup becomes the primary, the dead key is kept as the new backup, and any addon still embedding the old key is rewritten and re-synced. Two ready-made recipes pair it with the takeover triggers. The promotion also reverses itself: when the demoted original passes a check again, the pair swaps back automatically and a notification says so - your preferred key ends up primary again with nothing to clean up.',
     ],
     href: '/vault',
     linkLabel: 'Open Vault',
@@ -1621,6 +1621,9 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Open the show and expand Watching Together.',
       'Tap the people watching it together (at least two), then Start watching together.',
       'That is it - the alarm arms itself. Stop ends the pact any time.',
+    ],
+    tips: [
+      'The whole feature has an on/off switch under Settings -> SlickTrax ("Watching Together") - off hides the section and silences every alert, even for shows already set up.',
     ],
     details: [
       'The shared frontier is the furthest episode EVERYONE in the group has seen - shown in the section header, along with who the group is waiting on.',

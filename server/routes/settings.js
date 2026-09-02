@@ -880,6 +880,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // the corresponding UI.
           enableWatchlist: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchlist === 'boolean') ? syncCfg.enableWatchlist : true,
           enableWatchedIndicators: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchedIndicators === 'boolean') ? syncCfg.enableWatchedIndicators : true,
+          enableWatchTogether: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchTogether === 'boolean') ? syncCfg.enableWatchTogether : true,
           enableRecommendations: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableRecommendations === 'boolean') ? syncCfg.enableRecommendations : true,
           // Opt-in, not opt-out (unlike the other SlickTrax toggles above) -
           // autoplaying a trailer the moment a title's modal opens is
@@ -960,6 +961,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           vaultCurrency: (typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD',
           enableWatchlist: typeof syncCfg.enableWatchlist === 'boolean' ? syncCfg.enableWatchlist : true,
           enableWatchedIndicators: typeof syncCfg.enableWatchedIndicators === 'boolean' ? syncCfg.enableWatchedIndicators : true,
+          enableWatchTogether: typeof syncCfg.enableWatchTogether === 'boolean' ? syncCfg.enableWatchTogether : true,
           enableRecommendations: typeof syncCfg.enableRecommendations === 'boolean' ? syncCfg.enableRecommendations : true,
           enableAutoplayTrailer: typeof syncCfg.enableAutoplayTrailer === 'boolean' ? syncCfg.enableAutoplayTrailer : false,
           autoplayTrailerStartMuted: typeof syncCfg.autoplayTrailerStartMuted === 'boolean' ? syncCfg.autoplayTrailerStartMuted : true,
@@ -990,7 +992,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnRecoveryKitStale: false, lastRecoveryKitExportAt: null, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableWatchProviders: true, enableAutoThemedCatalogs: false })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnRecoveryKitStale: false, lastRecoveryKitExportAt: null, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableWatchTogether: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableWatchProviders: true, enableAutoThemedCatalogs: false })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -998,7 +1000,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableWatchTogether, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -1068,6 +1070,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           vaultCurrency: typeof vaultCurrency === 'string' && vaultCurrency.trim() ? vaultCurrency.trim().toUpperCase() : (baseCfg.vaultCurrency || 'USD'),
           enableWatchlist: enableWatchlist !== undefined ? !!enableWatchlist : (typeof baseCfg.enableWatchlist === 'boolean' ? baseCfg.enableWatchlist : true),
           enableWatchedIndicators: enableWatchedIndicators !== undefined ? !!enableWatchedIndicators : (typeof baseCfg.enableWatchedIndicators === 'boolean' ? baseCfg.enableWatchedIndicators : true),
+          enableWatchTogether: enableWatchTogether !== undefined ? !!enableWatchTogether : (typeof baseCfg.enableWatchTogether === 'boolean' ? baseCfg.enableWatchTogether : true),
           enableRecommendations: enableRecommendations !== undefined ? !!enableRecommendations : (typeof baseCfg.enableRecommendations === 'boolean' ? baseCfg.enableRecommendations : true),
           enableAutoplayTrailer: enableAutoplayTrailer !== undefined ? !!enableAutoplayTrailer : (typeof baseCfg.enableAutoplayTrailer === 'boolean' ? baseCfg.enableAutoplayTrailer : false),
           autoplayTrailerStartMuted: autoplayTrailerStartMuted !== undefined ? !!autoplayTrailerStartMuted : (typeof baseCfg.autoplayTrailerStartMuted === 'boolean' ? baseCfg.autoplayTrailerStartMuted : true),
@@ -1182,6 +1185,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (typeof vaultCurrency === 'string' && vaultCurrency.trim()) partial.vaultCurrency = vaultCurrency.trim().toUpperCase()
       if (enableWatchlist !== undefined) partial.enableWatchlist = !!enableWatchlist
       if (enableWatchedIndicators !== undefined) partial.enableWatchedIndicators = !!enableWatchedIndicators
+      if (enableWatchTogether !== undefined) partial.enableWatchTogether = !!enableWatchTogether
       if (enableRecommendations !== undefined) partial.enableRecommendations = !!enableRecommendations
       if (enableAutoplayTrailer !== undefined) partial.enableAutoplayTrailer = !!enableAutoplayTrailer
       if (autoplayTrailerStartMuted !== undefined) partial.autoplayTrailerStartMuted = !!autoplayTrailerStartMuted

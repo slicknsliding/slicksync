@@ -415,6 +415,18 @@ const ACTIONS = {
           prisma.vaultEntry.update({ where: { id: backup.id }, data: { encryptedSecret: entry.encryptedSecret, lastCheckStatus: 'unknown', lastCheckMessage: 'Demoted failed primary - replace this key' } }),
         ])
 
+        // Stamp the promotion so the vault monitor can complete the round
+        // trip: when the demoted key (now sitting in the backup entry)
+        // passes a check again, the secrets swap back automatically.
+        try {
+          const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+          let cfg2 = acc?.sync
+          if (typeof cfg2 === 'string') { try { cfg2 = JSON.parse(cfg2) } catch { cfg2 = {} } }
+          if (!cfg2 || typeof cfg2 !== 'object') cfg2 = {}
+          cfg2.vaultPromotions = { ...(cfg2.vaultPromotions || {}), [entry.id]: { backupId: backup.id, at: new Date().toISOString() } }
+          await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(cfg2) } })
+        } catch (e) { console.warn('[Automation] promotion stamp failed:', e?.message) }
+
         let rotated = 0
         if (oldSecret && oldSecret !== newSecret) {
           try {
@@ -443,6 +455,9 @@ const ACTIONS = {
 
       cfg[field] = backupKey
       cfg[`${field}Backup`] = primary // the dead key becomes the backup - kept, not discarded
+      // Stamped so the daily key check can swap back automatically the
+      // moment the demoted original passes a check again.
+      cfg.promotedKeys = { ...(cfg.promotedKeys || {}), [provider]: { at: new Date().toISOString() } }
       // Reset this provider's health so lookups stop routing around a
       // "failed primary" that is now the working key, and the next check
       // records the truth fresh.
