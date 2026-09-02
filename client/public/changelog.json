@@ -1,5 +1,37 @@
 [
   {
+    "version": "1.80.0",
+    "date": "2026-09-02",
+    "title": "1.80.0 — Keys that heal themselves, a Stremio addon of your own, and a way out of any server",
+    "features": [
+      "Backup API keys with automatic failover: give any debrid, usenet or metadata key a backup, and when the primary stops working the backup takes over on its own - no addon reconfiguring, no broken posters while you sleep.",
+      "The Key Pool: stack up to ten keys per service and requests rotate across them, skipping any key that goes bad. Pool keys live alongside your primary and backup in Settings, each with its own health indicator.",
+      "Key rotation now repairs addons automatically. Change a key in Settings or the Vault and every addon carrying the old one is rewritten and re-synced with the new one - what used to be a manual hunt through configuration URLs now just happens.",
+      "Vault-only keys: an addon can carry a placeholder instead of its real secret, with the secret resolved from the Vault only at the moment a request passes through. Exported configs and shared screenshots never contain the real key.",
+      "The SlickTrax Addon: install it in Stremio and get Continue Watching that follows you across providers, plus your Watchlist and custom lists as catalogs - per-person, with a private link for each user.",
+      "Watch history import from Trakt, IMDb and Letterboxd export files - including full Trakt account exports, which are free to download. No VIP subscription, no API app, no OAuth dance.",
+      "Automation, rewritten for humans: rules read as plain sentences, a recipe gallery covers the common cases in one click, and you can simply describe what you want - \"if the RPDB key dies and there is no backup, alert me\" - and a rule is drafted for you to approve.",
+      "Watch-event triggers for automation: rules can now fire when someone starts, finishes, or drops a title - not just on schedules and health events.",
+      "Ratings push to SIMKL: thumbs given in SlickSync flow to your SIMKL account on their own.",
+      "Hide watched: For You and Discover rows can now show only what the household hasn't seen yet.",
+      "The Graveyard: shows started and abandoned now have a place. See how far everyone got, bury what nobody will finish, dig it back up if you were wrong - or wipe a show and its watch history permanently, with the exact episode count named before anything is erased.",
+      "Time Machine: restoring a backup now shows exactly what would change first - which users, addons and groups would be added, removed or rewound - so a restore is never a leap of faith.",
+      "Move to a New Server: generate a single-use code on the old instance, paste it on the new one, and everything transfers - users, groups, addons, settings and every Vault secret. The code dies in 15 minutes or after one use, whichever comes first.",
+      "Import from Syncio-family managers: bring an existing setup over from a config export, with clear diagnostics when a file isn't in the shape SlickSync expects.",
+      "Self-updating with automatic rollback: the instance can update itself to the latest release, watch its own health afterwards, and put the previous version back on its own if the new one fails to come up. Optional scheduled updates pick the quiet hour you choose.",
+      "Invitations can now be shown as a QR code - hand a phone a camera instead of a link."
+    ],
+    "bugFixes": [
+      "The top bar no longer bounces between collapsed and expanded while scrolling near the top of a page.",
+      "Copying links now works on plain-HTTP instances too, and the toast only says \"copied\" when something was actually copied.",
+      "API key health is remembered between visits to Settings instead of showing \"Not checked yet\" every time, and stale results refresh themselves.",
+      "Right-clicking a poster no longer opens the menu on a different card when the same title appears in more than one row.",
+      "Proxied addon links now work on instances with authentication enabled.",
+      "The Activity tabs are now Watched, Graveyard, Tasks, Invites and Proxy - the two content views first.",
+      "The Disaster Recovery Kit and Move to a New Server cards now each say when they're the right tool: the kit survives a dead server, the code needs the old one still running."
+    ]
+  },
+  {
     "version": "1.79.2",
     "date": "2026-09-01",
     "title": "1.79.2 — Links straight to where each export lives",
