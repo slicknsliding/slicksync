@@ -5,6 +5,8 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
+import { toast } from '@/components/ui/Toast';
+import { useTheme } from '@/lib/theme';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -978,6 +980,84 @@ const TaskHistoryCard = memo(function TaskHistoryCard({ task }: { task: TaskHist
 });
 
 // Proxy History View Component
+// Device claims - per-person attribution on a shared provider login. The
+// AIOStreams proxy sees which client IP each stream comes from; attribution
+// already GUESSES who that is (learned IP affinity, see proxyNowPlaying.js),
+// and this panel lets the admin simply SAY it: "the bedroom Shield is
+// Sarah". A claim is permanent until removed and beats every guess, so
+// history, taste profiles and watch-ahead all land on the right person even
+// when the whole household shares one login.
+function DeviceClaimsPanel() {
+  const [data, setData] = useState<Awaited<ReturnType<typeof api.getDeviceClaims>> | null>(null);
+  const [busyIp, setBusyIp] = useState<string | null>(null);
+  const { hideSensitive } = useTheme();
+
+  const load = useCallback(() => {
+    api.getDeviceClaims().then(setData).catch(() => setData({ devices: [], users: [] }));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  if (!data || data.devices.length === 0) return null;
+
+  const claimTo = async (clientIp: string, userId: string) => {
+    setBusyIp(clientIp);
+    try {
+      if (userId === '') {
+        await api.deleteDeviceClaim(clientIp);
+        toast.success('Claim removed - attribution goes back to guessing');
+      } else {
+        await api.saveDeviceClaim(clientIp, userId);
+        const name = data.users.find((u) => u.id === userId)?.username || 'that user';
+        toast.success(`Device claimed - streams from it now count as ${name}`);
+      }
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save the claim');
+    } finally {
+      setBusyIp(null);
+    }
+  };
+
+  return (
+    <div className="mb-6">
+      <div className="mb-3">
+        <h3 className="text-lg font-semibold text-default">Device Claims</h3>
+        <p className="text-sm text-muted">
+          Devices seen streaming through the proxy in the last 30 days. Claim one for a person and every stream from it counts as theirs - no more guessing on a shared login.
+        </p>
+      </div>
+      <div className="space-y-2">
+        {data.devices.map((d) => (
+          <div key={d.clientIp} className="flex flex-wrap items-center gap-3 p-3 rounded-lg" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)' }}>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-default">
+                {hideSensitive ? '•••.•••.•••.•••' : d.clientIp}
+                {d.claim?.label && <span className="text-muted font-normal"> · {d.claim.label}</span>}
+              </p>
+              <p className="text-xs text-muted mt-0.5">
+                {d.lastSeenAt ? `Last seen ${new Date(d.lastSeenAt).toLocaleString()}` : 'Not seen recently'}
+                {d.lastTitle ? ` · ${d.lastTitle}` : ''}
+                {!d.claim && d.guess?.username ? ` · best guess: ${d.guess.username}` : ''}
+              </p>
+            </div>
+            <select
+              value={d.claim?.userId || ''}
+              disabled={busyIp === d.clientIp}
+              onChange={(e) => claimTo(d.clientIp, e.target.value)}
+              className="px-3 py-1.5 bg-surface border border-default rounded-lg text-sm text-default"
+            >
+              <option value="">{d.claim ? 'Remove claim' : 'Unclaimed - guessing'}</option>
+              {data.users.map((u) => (
+                <option key={u.id} value={u.id}>{u.username}</option>
+              ))}
+            </select>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ProxyHistoryView() {
   const [proxyLogs, setProxyLogs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1012,6 +1092,7 @@ function ProxyHistoryView() {
 
   const body = (
     <>
+      <DeviceClaimsPanel />
       <div className="flex items-center justify-between mb-6">
         <div>
           <h3 className="text-lg font-semibold text-default">Proxy Request History</h3>

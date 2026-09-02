@@ -1041,6 +1041,89 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // Device claims - per-person attribution on a shared provider login.
+  // GET lists every client IP the AIOStreams proxy has seen recently, with
+  // what it was last carrying, who the guesser currently thinks it is, and
+  // any standing claim; POST/DELETE manage the claims themselves. Claims
+  // beat learned affinity in proxyNowPlaying's disambiguation.
+  router.get('/device-claims', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const since = new Date(Date.now() - 30 * 86400000)
+      const [sessions, claims, affinity, accountUsers] = await Promise.all([
+        prisma.proxyStreamSession.findMany({
+          where: { accountId, lastSeenAt: { gte: since } },
+          select: { clientIp: true, displayName: true, lastSeenAt: true },
+          orderBy: { lastSeenAt: 'desc' },
+          take: 500,
+        }),
+        prisma.proxyDeviceClaim.findMany({ where: { accountId } }),
+        prisma.proxyUserIpAffinity.findMany({ where: { accountId } }),
+        prisma.user.findMany({ where: { accountId }, select: { id: true, username: true } }),
+      ])
+      const nameOf = (id) => accountUsers.find((u) => u.id === id)?.username || null
+      const byIp = new Map()
+      for (const sess of sessions) {
+        if (!sess.clientIp) continue
+        const cur = byIp.get(sess.clientIp)
+        if (!cur) {
+          byIp.set(sess.clientIp, { clientIp: sess.clientIp, lastSeenAt: sess.lastSeenAt, lastTitle: sess.displayName || null, streams: 1 })
+        } else {
+          cur.streams++
+          if (!cur.lastTitle && sess.displayName) cur.lastTitle = sess.displayName
+        }
+      }
+      // Claimed IPs always appear, even quiet ones - a claim you can't see
+      // is a claim you can't remove.
+      for (const c of claims) {
+        if (!byIp.has(c.clientIp)) byIp.set(c.clientIp, { clientIp: c.clientIp, lastSeenAt: null, lastTitle: null, streams: 0 })
+      }
+      const claimByIp = new Map(claims.map((c) => [c.clientIp, c]))
+      const affinityByIp = new Map(affinity.map((a) => [a.clientIp, a.userId]))
+      const devices = [...byIp.values()].map((d) => {
+        const claim = claimByIp.get(d.clientIp) || null
+        const guessId = affinityByIp.get(d.clientIp) || null
+        return {
+          ...d,
+          claim: claim ? { userId: claim.userId, username: nameOf(claim.userId), label: claim.label || null } : null,
+          guess: !claim && guessId ? { userId: guessId, username: nameOf(guessId) } : null,
+        }
+      }).sort((a, b) => new Date(b.lastSeenAt || 0).getTime() - new Date(a.lastSeenAt || 0).getTime())
+      res.json({ devices, users: accountUsers })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to list devices' })
+    }
+  })
+
+  router.post('/device-claims', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const { clientIp, userId, label } = req.body || {}
+      if (!clientIp || typeof clientIp !== 'string') return res.status(400).json({ error: 'clientIp is required' })
+      if (!userId || typeof userId !== 'string') return res.status(400).json({ error: 'userId is required' })
+      const user = await prisma.user.findFirst({ where: { id: userId, accountId }, select: { id: true } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      await prisma.proxyDeviceClaim.upsert({
+        where: { accountId_clientIp: { accountId, clientIp } },
+        create: { accountId, clientIp, userId, label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : null },
+        update: { userId, label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : null },
+      })
+      res.json({ success: true })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to save claim' })
+    }
+  })
+
+  router.delete('/device-claims/:clientIp', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      await prisma.proxyDeviceClaim.deleteMany({ where: { accountId, clientIp: req.params.clientIp } })
+      res.json({ success: true })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to remove claim' })
+    }
+  })
+
   // Account Guard: accept an externally-made change as the new baseline
   // (the alternative to re-asserting via a normal sync). Must be before /:id.
   router.post('/guard/accept', async (req, res) => {

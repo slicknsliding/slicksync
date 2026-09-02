@@ -1126,6 +1126,24 @@ model ProxyStreamSession {
 // last time" is a much better guess than a static id order - and unlike the
 // static order, it can never be wrong in the SAME way twice once it's had
 // one confident observation to learn from.
+// Device claims - the HUMAN tier above ProxyUserIpAffinity's learned
+// guesses. "The bedroom Shield is Sarah": an explicit, permanent statement
+// that streams from this client IP belong to this managed user, set by the
+// admin on the Activity -> Proxy tab. Affinity learns and can be
+// overwritten by the next confident observation; a claim stands until
+// removed. See proxyNowPlaying.js's disambiguateMatch for where it applies.
+model ProxyDeviceClaim {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  clientIp  String
+  userId    String
+  label     String? // e.g. "Bedroom Shield" - display only
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, clientIp])
+  @@map("proxy_device_claims")
+}
+
 model ProxyUserIpAffinity {
   id          String   @id @default(cuid())
   accountId   String   @default("default")

@@ -1593,6 +1593,24 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['discover-browse', 'dropped-shows', 'watching-together'],
   },
   {
+    id: 'device-claims',
+    title: 'Device claims - who is really watching on a shared login',
+    category: 'Users & Groups',
+    keywords: ['device claims', 'shared account', 'shared login', 'wrong user watching', 'attribution', 'claim device', 'ip', 'whose device', 'misattributed'],
+    answer: 'When several people share one provider login, streams can only be guessed onto the right person. Activity -> Proxy -> Device Claims lists every device seen streaming through the proxy; claim one for a person and every stream from it counts as theirs from then on - history, taste profiles, watch-ahead, all of it.',
+    steps: [
+      'Activity -> Proxy. The Device Claims panel lists devices seen in the last 30 days, with what each last played and the current best guess.',
+      'Pick the person from the dropdown next to a device. Done - the claim is permanent until removed.',
+      'To undo, pick "Remove claim" and attribution goes back to guessing.',
+    ],
+    details: [
+      'A claim beats every automatic guess: the learned this-device-was-them-last-time memory, the title matching, and the fallback order. It only ever picks among people who could plausibly be on that login; it never invents an attribution from nothing.',
+      'Devices are identified by the address the proxy sees. If two devices share one address, a claim covers both - claim the one that matters most, and the guesser still handles the rest.',
+      'Private Mode hides the addresses in this panel the same way it hides emails and keys elsewhere.',
+    ],
+    related: ['now-playing-continue-watching', 'watching-together'],
+  },
+  {
     id: 'watching-together',
     title: 'Watching together - the watch-ahead alarm',
     category: 'Watching & Discover',
