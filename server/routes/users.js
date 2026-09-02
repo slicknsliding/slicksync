@@ -5011,14 +5011,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     try {
       const { id } = req.params
 
+      // Full row, not a narrow select: createProvider needs the provider
+      // credentials, and the guard record below needs id + providerType (a
+      // prior narrow select silently passed undefined as the user id there).
       const user = await prisma.user.findFirst({
         where: {
           id,
           accountId: getAccountId(req)
-        },
-        select: {
-          stremioAuthKey: true,
-          isActive: true
         }
       })
 
@@ -5026,8 +5025,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return responseUtils.notFound(res, 'User')
       }
 
-      if (!user.stremioAuthKey) {
-        return res.status(400).json({ message: 'User not connected to Stremio' })
+      // Provider-agnostic: was Stremio-only, so Clear All on a Nuvio user's
+      // Account Addons failed - same fix as the reorder/delete routes.
+      const hasClearCreds = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
+      if (!hasClearCreds) {
+        return res.status(400).json({ message: 'User is not connected to a provider' })
       }
 
       if (!user.isActive) {
@@ -5035,13 +5037,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       try {
-        const authKeyPlain = decrypt(user.stremioAuthKey, req)
-        const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKeyPlain })
-
-        // Clear all addons
-        const { clearAddons } = require('../utils/addonHelpers')
-        await clearAddons(apiClient)
-        await require('../utils/accountGuard').recordAssertedState(prisma, user.id, 'stremio', [])
+        const provider = createProvider(user, { decrypt, req })
+        if (!provider) {
+          return res.status(400).json({ message: 'Provider credentials are invalid' })
+        }
+        await provider.clearAddons()
+        await require('../utils/accountGuard').recordAssertedState(prisma, user.id, user.providerType, [])
 
         res.json({
           message: 'All addons cleared successfully',
@@ -5063,16 +5064,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const { id, addonName } = req.params
       const { unsafe } = req.query
 
-      // Get user to check for user-defined protected addons and Stremio auth
+      // Full row: createProvider needs whichever provider's credentials this
+      // user actually has (the old narrow Stremio-only select is why removal
+      // failed for Nuvio users).
       const user = await prisma.user.findFirst({
         where: {
           id,
           accountId: getAccountId(req)
-        },
-        select: {
-          stremioAuthKey: true,
-          isActive: true,
-          protectedAddons: true
         }
       })
 
@@ -5122,23 +5120,22 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(403).json({ message: 'This addon is protected and cannot be deleted' })
       }
 
-      // Decrypt stored auth key
-      let authKeyPlain
-      try {
-        authKeyPlain = decrypt(user.stremioAuthKey, req)
-      } catch (e) {
-        return res.status(500).json({ message: 'Failed to decrypt Stremio credentials' })
+      // Provider-agnostic: same fix as the reorder route above - this was
+      // Stremio-only, so removing a single Account Addon failed for Nuvio.
+      const hasDeleteCreds = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
+      if (!hasDeleteCreds) {
+        return res.status(400).json({ message: 'User is not connected to a provider' })
+      }
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) {
+        return res.status(400).json({ message: 'Provider credentials are invalid' })
       }
 
-      // Use StremioAPIClient with proper addon collection format
-      const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKeyPlain })
-
       // 1) Pull current collection
-      const current = await apiClient.request('addonCollectionGet', {})
-      const currentAddonsRaw = current?.addons || current || []
+      const { addons: currentAddonsRaw } = await provider.getAddons()
       const currentAddons = Array.isArray(currentAddonsRaw)
         ? currentAddonsRaw
-        : (typeof currentAddonsRaw === 'object' ? Object.values(currentAddonsRaw) : [])
+        : (currentAddonsRaw && typeof currentAddonsRaw === 'object' ? Object.values(currentAddonsRaw) : [])
 
       // Filter out the target addon by matching name (normalized)
       let filteredAddons = currentAddons
@@ -5149,8 +5146,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         })
 
         // Set the filtered addons using the proper format
-        await apiClient.request('addonCollectionSet', { addons: filteredAddons })
-        await require('../utils/accountGuard').recordAssertedState(prisma, id, 'stremio', filteredAddons)
+        await provider.setAddons(filteredAddons)
+        await require('../utils/accountGuard').recordAssertedState(prisma, id, user.providerType, filteredAddons)
       } catch (e) {
         console.error(`❌ Failed to remove addon:`, e.message)
         throw e
@@ -5544,27 +5541,25 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return responseUtils.notFound(res, 'User')
       }
 
-      if (!user.stremioAuthKey) {
-        return res.status(400).json({ message: 'User is not connected to Stremio' })
+      // Provider-agnostic: this route was hard-wired to StremioAPIClient, so
+      // dragging Account Addons on a Nuvio user errored "User is not
+      // connected to Stremio" (confirmed live 2026-09-02). Both providers
+      // implement getAddons()/setAddons() with the same {addons:[...]} shape.
+      const hasReorderCreds = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
+      if (!hasReorderCreds) {
+        return res.status(400).json({ message: 'User is not connected to a provider' })
       }
-
-      // Decrypt auth key
-      let authKeyPlain
-      try {
-        authKeyPlain = decrypt(user.stremioAuthKey, req)
-      } catch {
-        return res.status(500).json({ message: 'Failed to decrypt Stremio credentials' })
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) {
+        return res.status(400).json({ message: 'Provider credentials are invalid' })
       }
-
-      // Use StremioAPIClient to get current addons
-      const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKeyPlain })
-      const current = await apiClient.request('addonCollectionGet', {})
-      const currentAddons = current?.addons || []
+      const { addons: currentRaw } = await provider.getAddons()
+      const currentAddons = Array.isArray(currentRaw) ? currentRaw : []
 
       // Build a map name -> queue of addons with that name to handle duplicates
       const nameToAddons = new Map()
       for (const addon of currentAddons) {
-        const name = addon?.manifest?.name || addon?.transportName || 'Addon'
+        const name = addon?.manifest?.name || addon?.transportName || addon?.name || 'Addon'
         if (!nameToAddons.has(name)) nameToAddons.set(name, [])
         nameToAddons.get(name).push(addon)
       }
@@ -5590,7 +5585,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       // Set the reordered collection
-      await apiClient.request('addonCollectionSet', { addons: reorderedAddons })
+      await provider.setAddons(reorderedAddons)
 
       res.json({
         message: 'Addons reordered successfully (by name)',
