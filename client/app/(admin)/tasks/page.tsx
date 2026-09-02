@@ -1589,7 +1589,7 @@ export default function TasksPage() {
               </div>
               <div>
                 <h3 className="text-base font-semibold font-display text-default">Disaster Recovery Kit</h3>
-                <p className="text-xs text-muted">Users, Groups, Addons AND Vault, in one passphrase-protected file - portable to a brand-new instance</p>
+                <p className="text-xs text-muted">Users, Groups, Addons AND Vault in one passphrase-protected file you keep - restores onto a fresh instance even after this server is gone</p>
               </div>
             </div>
 
@@ -1684,7 +1684,7 @@ export default function TasksPage() {
               </div>
               <div>
                 <h3 className="text-base font-semibold font-display text-default">Move to a New Server</h3>
-                <p className="text-sm text-muted">One code carries everything - users, groups, addons, settings, and every Vault secret</p>
+                <p className="text-sm text-muted">One code moves everything, live, no file to handle - for when the old server is still running. If it is already gone, restore a Disaster Recovery Kit instead</p>
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 mt-4">
