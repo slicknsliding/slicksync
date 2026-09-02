@@ -463,31 +463,6 @@ function VaultPageContent() {
   // not worth always taking up vertical space for.
   const [renewalExpanded, setRenewalExpanded] = useState(false);
 
-  // Opt-in: rotating a secret here rewrites every addon config that embeds
-  // the old value and re-syncs affected users (utils/keyRotation.js). OFF
-  // until the account turns it on - rewriting addon configs and touching
-  // user accounts as a side effect of saving a key is exactly the kind of
-  // thing that must never be a surprise default.
-  const [rotationPropagation, setRotationPropagation] = useState<boolean | null>(null);
-  const [savingRotationPropagation, setSavingRotationPropagation] = useState(false);
-  useEffect(() => {
-    api.getSyncSettings()
-      .then((sset) => setRotationPropagation(sset.keyRotationPropagation === true))
-      .catch(() => setRotationPropagation(false));
-  }, []);
-  const handleToggleRotationPropagation = async () => {
-    const next = !rotationPropagation;
-    setSavingRotationPropagation(true);
-    try {
-      await api.updateSyncSettings({ keyRotationPropagation: next });
-      setRotationPropagation(next);
-      toast.success(next ? 'Rotation now heals addon configs automatically' : 'Rotation propagation turned off');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update setting');
-    } finally {
-      setSavingRotationPropagation(false);
-    }
-  };
   useEffect(() => {
     api.getVaultEntries().then((d) => {
       setAllCostEntries(d.entries);
@@ -1167,28 +1142,6 @@ function VaultPageContent() {
         </>
       )}
 
-      {/* Key-rotation propagation opt-in. Sized to its content, never the
-          page: a lone toggle stretched across the full width read as a
-          banner. The explanation sits right on the card in plain text -
-          hover-only tooltips hid it on touch and looked wrong everywhere. */}
-      <div className={`${NEBULA_GLASS_CLASS} px-4 py-3 mb-4 inline-block`} style={{ ...nebulaGlassStyle, maxWidth: 'min(34rem, 100%)' }}>
-        <NebulaGlassStripe />
-        <div className="flex items-center gap-2.5">
-          <ArrowPathIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} />
-          <p className="text-sm font-semibold text-default">Rotation fixes addons automatically</p>
-          <div className="ml-auto pl-4 shrink-0">
-            <ToggleSwitch
-              checked={rotationPropagation === true}
-              onChange={handleToggleRotationPropagation}
-              disabled={rotationPropagation === null || savingRotationPropagation}
-              title="Toggle rotation propagation"
-            />
-          </div>
-        </div>
-        <p className="text-xs text-muted mt-1.5 leading-relaxed">
-          Saving a changed secret rewrites every addon config that embeds the old key and re-syncs the users carrying those addons. Off: rotating changes only the Vault entry.
-        </p>
-      </div>
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}
         <div className="mb-5">

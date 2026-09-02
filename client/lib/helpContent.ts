@@ -218,9 +218,9 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'Rotate a key once and every addon follows',
     category: 'Vault & credentials',
     keywords: ['key rotation', 'rotate key', 'debrid key changed', 'new real-debrid key', 'update addon key', 'propagation', 'heal addons'],
-    answer: 'With "Rotation fixes addons automatically" turned on (Vault page - off by default), saving a changed secret rewrites every addon config that embeds the old key and re-syncs the users carrying those addons. Debrid and usenet keys live inside addon URLs - Torrentio, AIOStreams and the rest each carry a copy - so without this, rotating a key in the Vault fixed nothing downstream.',
+    answer: 'With "Rotation fixes addons automatically" turned on (Settings -> External API Keys - off by default), saving a changed secret rewrites every addon config that embeds the old key and re-syncs the users carrying those addons. Debrid and usenet keys live inside addon URLs - Torrentio, AIOStreams and the rest each carry a copy - so without this, rotating a key in the Vault fixed nothing downstream.',
     steps: [
-      'Vault -> toggle "Rotation fixes addons automatically" on. It stays off until you choose it - rewriting addon configs as a side effect of saving a key should never be a surprise.',
+      'Settings -> External API Keys -> toggle "Rotation fixes addons automatically" on. It stays off until you choose it - rewriting addon configs as a side effect of saving a key should never be a surprise.',
       'Edit the Vault entry and paste the new secret, exactly as you normally would.',
       'The save reports what happened: how many addons were rewritten and how many users re-synced. A notification carries the same summary with the addon names.',
     ],
