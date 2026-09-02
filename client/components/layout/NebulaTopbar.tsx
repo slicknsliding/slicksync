@@ -100,10 +100,33 @@ export function NebulaTopbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   useEffect(() => {
     if (isTV) return;
-    const onScroll = () => setIsScrolled(window.scrollY > 24);
-    onScroll();
+    // Two thresholds, not one. A single cutoff (the old `scrollY > 24`)
+    // oscillates right at the boundary: collapsing hides the nav rows, the
+    // document gets SHORTER, the browser clamps scrollY back down, that
+    // re-crosses the same cutoff, the nav expands, the document grows, and
+    // round it goes - felt as the bar getting "stuck" fighting itself while
+    // you scroll away from the top. The gap between the two thresholds is
+    // wider than the height the collapse removes, so crossing one can never
+    // bounce you back across the other. rAF-coalesced so a fast wheel flick
+    // sets state once per frame, not once per scroll event.
+    const COLLAPSE_AT = 96;
+    const EXPAND_AT = 12;
+    let collapsed = window.scrollY > COLLAPSE_AT;
+    let raf = 0;
+    setIsScrolled(collapsed);
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const y = window.scrollY;
+        const next = collapsed ? y > EXPAND_AT : y > COLLAPSE_AT;
+        if (next !== collapsed) {
+          collapsed = next;
+          setIsScrolled(next);
+        }
+      });
+    };
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('scroll', onScroll); };
   }, [isTV]);
   // Scrolling back to top should always reveal the full nav again, even if
   // it was left open from a scrolled-down state - closing here means

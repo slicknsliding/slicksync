@@ -604,6 +604,12 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           simklClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.simklClientId === 'string') ? syncCfg.simklClientId : '',
           nuvioServerUrl: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioServerUrl === 'string') ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioAnonKey === 'string') ? syncCfg.nuvioAnonKey : '',
+          // Was only in the OTHER branch's response below, so private-mode
+          // instances (which take this path) always showed "Not checked yet"
+          // on load even while the daily check was storing results the whole
+          // time. The client-side hydration fix could not help - the field
+          // it hydrated from simply never arrived on this branch.
+          keyHealth: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
         }
 
         return res.json(response)

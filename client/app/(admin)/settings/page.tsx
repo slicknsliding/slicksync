@@ -665,7 +665,7 @@ export default function SettingsPage() {
           // from the manual "Check keys now" button - so every fresh page
           // load showed "Not checked yet" and the usage figures vanished,
           // which made the daily check look like it was never running.
-          keyHealth: settings.keyHealth || undefined,
+          keyHealth: settings.keyHealth && Object.keys(settings.keyHealth).length > 0 ? settings.keyHealth : undefined,
           simklClientId: settings.simklClientId || '',
           enableWatchlist: settings.enableWatchlist !== false,
           enableWatchedIndicators: settings.enableWatchedIndicators !== false,
@@ -677,6 +677,25 @@ export default function SettingsPage() {
           enableWatchProviders: settings.enableWatchProviders !== false,
           enableAutoThemedCatalogs: settings.enableAutoThemedCatalogs === true,
         });
+
+        // Keeps the key badges near-live without anyone pressing "Check keys
+        // now": if the newest stored result is over an hour old (or absent)
+        // when the page opens, one full check runs silently in the
+        // background and the badges update in place. The hour cap is the
+        // rate-limit guard - reloading the page repeatedly still checks at
+        // most hourly, the daily scheduler continues regardless, and a check
+        // is four tiny requests (MDBList's own allowance is 1,000/day, so
+        // even hourly is noise).
+        try {
+          const hasAnyKey = !!(settings.tmdbApiKey || settings.omdbApiKey || settings.mdblistApiKey || settings.rpdbApiKey);
+          const kh = settings.keyHealth;
+          const newest = kh ? Math.max(0, ...Object.values(kh).map((r) => new Date(r.checkedAt || 0).getTime())) : 0;
+          if (hasAnyKey && Date.now() - newest > 60 * 60 * 1000) {
+            api.checkProviderKeys()
+              .then(({ keyHealth }) => setSyncSettings((prev) => ({ ...prev, keyHealth })))
+              .catch(() => { /* silent - the manual button and daily sweep remain */ });
+          }
+        } catch { /* freshness is best-effort */ }
 
         // Nobody has ever explicitly saved a timezone for this account - the
         // browser already knows the OS's own zone, so silently fill that in

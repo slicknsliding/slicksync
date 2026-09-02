@@ -53,7 +53,10 @@ function describeRule(
       // The registry marks value-less operators (is true / is false) as
       // unary - same flag ConditionBuilder itself uses to hide the input.
       const unary = !!(op as { unary?: boolean }).unary;
-      return `${f.label.toLowerCase()} ${op.label}${unary ? '' : ` "${c.value ?? ''}"`}`;
+      // An unfilled value renders as an ellipsis, not a bare "" - the
+      // sentence previews while you're still typing the condition.
+      const val = c.value === undefined || c.value === '' ? '…' : c.value;
+      return `${f.label.toLowerCase()} ${op.label}${unary ? '' : ` "${val}"`}`;
     })
     .filter(Boolean)
     .join(' and ');
@@ -231,12 +234,22 @@ export function AutomationPanel() {
         </Card>
       )}
 
-      <Modal isOpen={showChooser} onClose={() => setShowChooser(false)} title="New Rule" size="lg">
-        <div className="space-y-4">
-          <p className="text-sm text-muted">
-            Pick something ready-made - it opens the editor with everything filled in, and nothing is created until you save. Or start from scratch if you know what you want.
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
+      {/* Recipe cards are deliberately dense - title + two clamped lines,
+          three columns - so the whole catalogue is visible at once. The
+          earlier two-column layout with full descriptions meant scrolling
+          inside the modal to even learn what the options were, which is the
+          reverse of what a menu is for. */}
+      <Modal isOpen={showChooser} onClose={() => setShowChooser(false)} title="New Rule" size="full">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-sm text-muted">
+              Pick something ready-made - the editor opens filled in, nothing is created until you save.
+            </p>
+            <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => { setShowChooser(false); setEditingRule('new'); }}>
+              Start from scratch
+            </Button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {AUTOMATION_RECIPES.filter((r) => registry?.triggers.some((t) => t.type === r.triggerType)).map((r) => (
               <button
                 key={r.id}
@@ -246,21 +259,17 @@ export function AutomationPanel() {
                   setEditingRule('new');
                   setShowChooser(false);
                 }}
-                className="text-left p-3 rounded-xl transition-colors nav-item-hover-pill"
+                title={r.description}
+                className="text-left p-2.5 rounded-xl transition-colors nav-item-hover-pill"
                 style={{ background: 'var(--color-surface-hover)' }}
               >
-                <span className="block text-sm font-medium text-default">{r.title}</span>
-                <span className="block text-xs text-muted mt-0.5">{r.description}</span>
+                <span className="block text-sm font-medium text-default leading-snug">{r.title}</span>
+                <span className="block text-xs text-muted mt-0.5 leading-snug" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{r.description}</span>
                 {r.needs && (
-                  <span className="block text-xs mt-1" style={{ color: 'var(--color-warning)' }}>{r.needs}</span>
+                  <span className="block text-[11px] mt-0.5" style={{ color: 'var(--color-warning)' }}>{r.needs}</span>
                 )}
               </button>
             ))}
-          </div>
-          <div className="flex justify-end pt-1">
-            <Button variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} onClick={() => { setShowChooser(false); setEditingRule('new'); }}>
-              Start from scratch
-            </Button>
           </div>
         </div>
       </Modal>
@@ -272,10 +281,10 @@ export function AutomationPanel() {
           <div className="text-center pt-6 pb-2">
             <BoltIcon className="w-10 h-10 text-subtle mx-auto mb-3" />
             <p className="text-default font-medium mb-1">No automation rules yet</p>
-            <p className="text-sm text-muted mb-5">Each rule is one sentence: when something happens, do something about it. These are the ones people set up first - pick one and it opens ready to save.</p>
+            <p className="text-sm text-muted mb-5">Each rule is one sentence: when something happens, do something about it. Pick one below and it opens ready to save - or start from scratch via New rule.</p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 mb-4">
-            {AUTOMATION_RECIPES.filter((r) => registry?.triggers.some((t) => t.type === r.triggerType)).slice(0, 4).map((r) => (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 mb-2">
+            {AUTOMATION_RECIPES.filter((r) => registry?.triggers.some((t) => t.type === r.triggerType)).map((r) => (
               <button
                 key={r.id}
                 type="button"
@@ -283,18 +292,14 @@ export function AutomationPanel() {
                   setPrefill({ name: r.name, triggerType: r.triggerType, conditions: r.conditions, actions: r.actions });
                   setEditingRule('new');
                 }}
-                className="text-left p-3 rounded-xl transition-colors nav-item-hover-pill"
+                title={r.description}
+                className="text-left p-2.5 rounded-xl transition-colors nav-item-hover-pill"
                 style={{ background: 'var(--color-surface-hover)' }}
               >
-                <span className="block text-sm font-medium text-default">{r.title}</span>
-                <span className="block text-xs text-muted mt-0.5">{r.description}</span>
+                <span className="block text-sm font-medium text-default leading-snug">{r.title}</span>
+                <span className="block text-xs text-muted mt-0.5 leading-snug" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{r.description}</span>
               </button>
             ))}
-          </div>
-          <div className="text-center pb-2">
-            <Button variant="secondary" size="sm" onClick={() => setShowChooser(true)}>
-              See all recipes
-            </Button>
           </div>
         </Card>
       ) : (
