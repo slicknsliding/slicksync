@@ -7,6 +7,7 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { Button, Card, Badge, Modal, ConfirmModal, Avatar, ComboBox, ProviderKeyHealthBadge, ProviderKeyHealthUnchecked } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { useTheme } from '@/lib/theme';
+import { copyToClipboard } from '@/lib/clipboard';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats, PushDevice } from '@/lib/api';
 import { toast, showToast } from '@/components/ui/Toast';
@@ -35,6 +36,7 @@ import {
   TrashIcon,
   CheckIcon,
   XMarkIcon,
+  Squares2X2Icon,
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 
@@ -218,6 +220,108 @@ const AI_MODEL_OPTIONS_ALL = Object.values(AI_MODEL_OPTIONS_BY_PROVIDER).flat();
 // for, so the common one-key setup looks exactly as it always did.
 // The backup is used only when the health check has actually found the
 // primary failing or rate-limited - see server/utils/listImport.js.
+
+// Key Pool editor - extra keys beyond the primary/backup pair. Same compact
+// chip-then-expand pattern as BackupKeyField above (and the same click-away
+// collapse), because the page's sizing complaints were heard: nothing here
+// takes space until asked for. With any pool keys present, lookups rotate
+// across every healthy key instead of hammering the primary - three free
+// MDBList keys become one pooled allowance.
+function PoolKeysField({
+  field, keys, primaryFilled, onSave,
+}: {
+  field: string;
+  keys: string[];
+  primaryFilled: boolean;
+  onSave: (next: string[]) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  if (!primaryFilled) return null;
+
+  const commit = async (next: string[]) => {
+    setSaving(true);
+    try { await onSave(next); } finally { setSaving(false); }
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors ml-2"
+        style={{
+          background: keys.length > 0 ? 'var(--color-primary-muted)' : 'transparent',
+          color: keys.length > 0 ? 'var(--color-primary)' : 'var(--color-text-muted)',
+          border: `1px solid ${keys.length > 0 ? 'transparent' : 'var(--color-surface-border)'}`,
+        }}
+      >
+        <Squares2X2Icon className="w-3.5 h-3.5" />
+        {keys.length > 0 ? `Key pool (${keys.length})` : 'Add key pool'}
+      </button>
+    );
+  }
+
+  return (
+    <div ref={wrapRef} className="mt-2 inline-block align-top rounded-lg p-2.5" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', maxWidth: '22rem' }}>
+      <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+        Extra keys - lookups rotate across every healthy key, spreading the quota
+      </p>
+      {keys.map((k, i) => (
+        <div key={`${k}-${i}`} className="flex items-center gap-1.5 mb-1">
+          <code className="text-xs truncate flex-1" style={{ color: 'var(--color-text-muted)' }}>{'\u2022'.repeat(6)}{k.slice(-4)}</code>
+          <button
+            type="button"
+            onClick={() => commit(keys.filter((_, idx) => idx !== i))}
+            disabled={saving}
+            title="Remove this key"
+            aria-label="Remove this key"
+            className="p-1 rounded transition-colors shrink-0"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            <XMarkIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-1.5 mt-1.5">
+        <input
+          type="text"
+          value={draft}
+          autoFocus
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && draft.trim()) { commit([...keys, draft.trim()]); setDraft(''); }
+          }}
+          placeholder="Paste a key, press Enter"
+          autoComplete="off"
+          spellCheck={false}
+          data-field={field}
+          className="input-base px-2 py-1 text-xs w-52"
+        />
+      </div>
+    </div>
+  );
+}
+
 function BackupKeyField({
   field, value, primaryFilled, onChange, onSave,
 }: {
@@ -227,37 +331,82 @@ function BackupKeyField({
   onChange: (v: string) => void;
   onSave: () => void;
 }) {
-  const [open, setOpen] = useState(!!value);
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const hasValue = !!value.trim();
+
+  // Collapses when focus or a click goes elsewhere on the page. This is a
+  // secondary field most people never touch, so leaving it expanded until
+  // manually closed just left clutter behind on a page that already has a
+  // lot of it. The input's own onBlur saves first, so collapsing never
+  // discards a value that was being typed.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   if (!primaryFilled) return null;
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="mt-1.5 text-xs text-muted hover:text-default underline underline-offset-2 transition-colors"
-      >
-        Add a backup key
-      </button>
-    );
-  }
-
   return (
-    <div className="mt-2">
-      <label className="block text-xs text-muted mb-1">
-        Backup key <span className="text-subtle">- used automatically if the key above stops working</span>
-      </label>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onSave}
-        placeholder="Backup key (optional)"
-        autoComplete="off"
-        spellCheck={false}
-        data-field={field}
-        className="input-base w-full px-3 py-2 text-sm"
-      />
+    <div ref={wrapRef} className="mt-1.5">
+      {!open ? (
+        // Sized to its content rather than the full panel width - it is a
+        // secondary control and should not read as another key field.
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors"
+          style={{
+            background: hasValue ? 'var(--color-successMuted)' : 'transparent',
+            color: hasValue ? 'var(--color-success)' : 'var(--color-text-muted)',
+            border: `1px solid ${hasValue ? 'transparent' : 'var(--color-surface-border)'}`,
+          }}
+        >
+          <ShieldCheckIcon className="w-3.5 h-3.5" />
+          {hasValue ? 'Backup key set' : 'Add backup key'}
+        </button>
+      ) : (
+        <div className="inline-flex items-center gap-1.5 max-w-full">
+          <input
+            type="text"
+            value={value}
+            autoFocus
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={onSave}
+            placeholder="Backup key"
+            autoComplete="off"
+            spellCheck={false}
+            data-field={field}
+            className="input-base px-2.5 py-1.5 text-xs w-56 max-w-full"
+          />
+          {hasValue && (
+            <button
+              type="button"
+              onClick={() => { onChange(''); setTimeout(onSave, 0); }}
+              title="Remove backup key"
+              aria-label="Remove backup key"
+              className="p-1.5 rounded-md transition-colors shrink-0"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              <XMarkIcon className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <span className="text-[11px] shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
+            used if the key above fails
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -278,6 +427,19 @@ export default function SettingsPage() {
   // (reading it during render would disagree with the server render).
   const [beginnerMode, setBeginnerModeState] = useState(false);
   useEffect(() => { setBeginnerModeState(isBeginnerMode()); }, []);
+
+  // Save-time verification for one key: fires after the field's own save,
+  // checks only that provider (see /settings/check-keys), and refreshes the
+  // badge. Silent on failure - the badge simply keeps its last state; the
+  // full "Check keys now" button and the daily sweep stay the loud paths.
+  const checkSingleKey = async (provider: 'tmdb' | 'omdb' | 'mdblist' | 'rpdb', value?: string) => {
+    if (!value || !value.trim()) return; // cleared field - nothing to verify
+    try {
+      const { keyHealth } = await api.checkProviderKeys(provider);
+      setSyncSettings((prev) => ({ ...prev, keyHealth }));
+    } catch { /* badge keeps last known state */ }
+  };
+
   const handleCheckProviderKeys = async () => {
     setCheckingKeys(true);
     try {
@@ -601,6 +763,17 @@ export default function SettingsPage() {
           mdblistApiKeyBackup: settings.mdblistApiKeyBackup || '',
           rpdbApiKeyBackup: settings.rpdbApiKeyBackup || '',
           omdbApiKeyBackup: settings.omdbApiKeyBackup || '',
+          tmdbApiKeyPool: settings.tmdbApiKeyPool || [],
+          omdbApiKeyPool: settings.omdbApiKeyPool || [],
+          mdblistApiKeyPool: settings.mdblistApiKeyPool || [],
+          rpdbApiKeyPool: settings.rpdbApiKeyPool || [],
+          // Carried over from the server rather than left undefined. The
+          // daily scheduler (utils/metadataKeyHealth.js) has been storing
+          // results all along, but this page only ever populated keyHealth
+          // from the manual "Check keys now" button - so every fresh page
+          // load showed "Not checked yet" and the usage figures vanished,
+          // which made the daily check look like it was never running.
+          keyHealth: settings.keyHealth && Object.keys(settings.keyHealth).length > 0 ? settings.keyHealth : undefined,
           simklClientId: settings.simklClientId || '',
           enableWatchlist: settings.enableWatchlist !== false,
           enableWatchedIndicators: settings.enableWatchedIndicators !== false,
@@ -612,6 +785,25 @@ export default function SettingsPage() {
           enableWatchProviders: settings.enableWatchProviders !== false,
           enableAutoThemedCatalogs: settings.enableAutoThemedCatalogs === true,
         });
+
+        // Keeps the key badges near-live without anyone pressing "Check keys
+        // now": if the newest stored result is over an hour old (or absent)
+        // when the page opens, one full check runs silently in the
+        // background and the badges update in place. The hour cap is the
+        // rate-limit guard - reloading the page repeatedly still checks at
+        // most hourly, the daily scheduler continues regardless, and a check
+        // is four tiny requests (MDBList's own allowance is 1,000/day, so
+        // even hourly is noise).
+        try {
+          const hasAnyKey = !!(settings.tmdbApiKey || settings.omdbApiKey || settings.mdblistApiKey || settings.rpdbApiKey);
+          const kh = settings.keyHealth;
+          const newest = kh ? Math.max(0, ...Object.values(kh).map((r) => new Date(r.checkedAt || 0).getTime())) : 0;
+          if (hasAnyKey && Date.now() - newest > 60 * 60 * 1000) {
+            api.checkProviderKeys()
+              .then(({ keyHealth }) => setSyncSettings((prev) => ({ ...prev, keyHealth })))
+              .catch(() => { /* silent - the manual button and daily sweep remain */ });
+          }
+        } catch { /* freshness is best-effort */ }
 
         // Nobody has ever explicitly saved a timezone for this account - the
         // browser already knows the OS's own zone, so silently fill that in
@@ -741,7 +933,7 @@ export default function SettingsPage() {
     try {
       const result = apiKey ? await api.rotateApiKey() : await api.generateApiKey();
       setApiKey(result.apiKey);
-      navigator.clipboard.writeText(result.apiKey);
+      copyToClipboard(result.apiKey);
       toast.success(apiKey ? 'API key rotated and copied' : 'API key generated and copied');
     } catch (e: any) {
       toast.error(e.message || 'Failed to generate API key');
@@ -752,7 +944,7 @@ export default function SettingsPage() {
 
   const handleCopyApiKey = () => {
     if (apiKey) {
-      navigator.clipboard.writeText(apiKey);
+      copyToClipboard(apiKey);
       toast.success('API key copied to clipboard');
     }
   };
@@ -826,7 +1018,7 @@ export default function SettingsPage() {
 
   const handleCopyBackupCodes = () => {
     if (!twoFaBackupCodes) return;
-    navigator.clipboard.writeText(twoFaBackupCodes.join('\n'));
+    copyToClipboard(twoFaBackupCodes.join('\n'));
     toast.success('Backup codes copied to clipboard');
   };
 
@@ -1682,7 +1874,7 @@ export default function SettingsPage() {
                   type="text"
                   value={syncSettings.tmdbApiKey || ''}
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, tmdbApiKey: e.target.value }))}
-                  onBlur={() => handleSaveSetting('tmdbApiKey' as keyof SyncSettings, syncSettings.tmdbApiKey)}
+                  onBlur={async () => { await handleSaveSetting('tmdbApiKey' as keyof SyncSettings, syncSettings.tmdbApiKey); checkSingleKey('tmdb', syncSettings.tmdbApiKey); }}
                   placeholder="TMDb API key"
                   autoComplete="off"
                   spellCheck={false}
@@ -1694,6 +1886,15 @@ export default function SettingsPage() {
                   primaryFilled={!!syncSettings.tmdbApiKey}
                   onChange={(v) => setSyncSettings(prev => ({ ...prev, tmdbApiKeyBackup: v }))}
                   onSave={() => handleSaveSetting('tmdbApiKeyBackup' as keyof SyncSettings, syncSettings.tmdbApiKeyBackup)}
+                />
+                <PoolKeysField
+                  field="tmdbApiKeyPool"
+                  keys={syncSettings.tmdbApiKeyPool || []}
+                  primaryFilled={!!syncSettings.tmdbApiKey}
+                  onSave={async (next) => {
+                    setSyncSettings((prev) => ({ ...prev, tmdbApiKeyPool: next }));
+                    await api.updateSyncSettings({ tmdbApiKeyPool: next });
+                  }}
                 />
               </div>
 
@@ -1718,7 +1919,7 @@ export default function SettingsPage() {
                   type="text"
                   value={syncSettings.mdblistApiKey || ''}
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, mdblistApiKey: e.target.value }))}
-                  onBlur={() => handleSaveSetting('mdblistApiKey' as keyof SyncSettings, syncSettings.mdblistApiKey)}
+                  onBlur={async () => { await handleSaveSetting('mdblistApiKey' as keyof SyncSettings, syncSettings.mdblistApiKey); checkSingleKey('mdblist', syncSettings.mdblistApiKey); }}
                   placeholder="MDBList API key"
                   autoComplete="off"
                   spellCheck={false}
@@ -1730,6 +1931,15 @@ export default function SettingsPage() {
                   primaryFilled={!!syncSettings.mdblistApiKey}
                   onChange={(v) => setSyncSettings(prev => ({ ...prev, mdblistApiKeyBackup: v }))}
                   onSave={() => handleSaveSetting('mdblistApiKeyBackup' as keyof SyncSettings, syncSettings.mdblistApiKeyBackup)}
+                />
+                <PoolKeysField
+                  field="mdblistApiKeyPool"
+                  keys={syncSettings.mdblistApiKeyPool || []}
+                  primaryFilled={!!syncSettings.mdblistApiKey}
+                  onSave={async (next) => {
+                    setSyncSettings((prev) => ({ ...prev, mdblistApiKeyPool: next }));
+                    await api.updateSyncSettings({ mdblistApiKeyPool: next });
+                  }}
                 />
               </div>
 
@@ -1755,7 +1965,7 @@ export default function SettingsPage() {
                   type="text"
                   value={syncSettings.rpdbApiKey || ''}
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, rpdbApiKey: e.target.value }))}
-                  onBlur={async () => { await handleSaveSetting('rpdbApiKey' as keyof SyncSettings, syncSettings.rpdbApiKey); invalidatePersonalFeatures(); }}
+                  onBlur={async () => { await handleSaveSetting('rpdbApiKey' as keyof SyncSettings, syncSettings.rpdbApiKey); invalidatePersonalFeatures(); checkSingleKey('rpdb', syncSettings.rpdbApiKey); }}
                   placeholder="RPDB API key"
                   autoComplete="off"
                   spellCheck={false}
@@ -1767,6 +1977,15 @@ export default function SettingsPage() {
                   primaryFilled={!!syncSettings.rpdbApiKey}
                   onChange={(v) => setSyncSettings(prev => ({ ...prev, rpdbApiKeyBackup: v }))}
                   onSave={() => handleSaveSetting('rpdbApiKeyBackup' as keyof SyncSettings, syncSettings.rpdbApiKeyBackup)}
+                />
+                <PoolKeysField
+                  field="rpdbApiKeyPool"
+                  keys={syncSettings.rpdbApiKeyPool || []}
+                  primaryFilled={!!syncSettings.rpdbApiKey}
+                  onSave={async (next) => {
+                    setSyncSettings((prev) => ({ ...prev, rpdbApiKeyPool: next }));
+                    await api.updateSyncSettings({ rpdbApiKeyPool: next });
+                  }}
                 />
               </div>
 
@@ -1792,7 +2011,7 @@ export default function SettingsPage() {
                   type="text"
                   value={syncSettings.omdbApiKey || ''}
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, omdbApiKey: e.target.value }))}
-                  onBlur={() => handleSaveSetting('omdbApiKey' as keyof SyncSettings, syncSettings.omdbApiKey)}
+                  onBlur={async () => { await handleSaveSetting('omdbApiKey' as keyof SyncSettings, syncSettings.omdbApiKey); checkSingleKey('omdb', syncSettings.omdbApiKey); }}
                   placeholder="OMDb API key"
                   autoComplete="off"
                   spellCheck={false}
@@ -1804,6 +2023,15 @@ export default function SettingsPage() {
                   primaryFilled={!!syncSettings.omdbApiKey}
                   onChange={(v) => setSyncSettings(prev => ({ ...prev, omdbApiKeyBackup: v }))}
                   onSave={() => handleSaveSetting('omdbApiKeyBackup' as keyof SyncSettings, syncSettings.omdbApiKeyBackup)}
+                />
+                <PoolKeysField
+                  field="omdbApiKeyPool"
+                  keys={syncSettings.omdbApiKeyPool || []}
+                  primaryFilled={!!syncSettings.omdbApiKey}
+                  onSave={async (next) => {
+                    setSyncSettings((prev) => ({ ...prev, omdbApiKeyPool: next }));
+                    await api.updateSyncSettings({ omdbApiKeyPool: next });
+                  }}
                 />
               </div>
 
@@ -1898,6 +2126,7 @@ export default function SettingsPage() {
                   Both fields are needed for the override to apply — a URL on its own is ignored rather than half-applied.
                 </p>
               </div>
+
             </div>
           </Card>
         </PageSection>
@@ -2151,7 +2380,7 @@ export default function SettingsPage() {
                   variant="secondary"
                   size="sm"
                   onClick={() => {
-                    navigator.clipboard.writeText(accountInfo.uuid!);
+                    copyToClipboard(accountInfo.uuid!);
                     setUuidCopied(true);
                     toast.success('Account ID copied to clipboard');
                     setTimeout(() => setUuidCopied(false), 2000);

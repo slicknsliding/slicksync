@@ -184,6 +184,76 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     // tested /public-auth/config-import handler (same internal-fetch
     // pattern performBackupOnce() already uses to call sibling endpoints)
     // rather than duplicating its import-ordering logic here.
+    // GET /settings/backups/:filename/diff - what a restore would actually
+    // change, computed BEFORE anything is touched. Restore replaces this
+    // account's users/groups/addons with the file's contents (see
+    // config-import), so "restore" without this was a leap of faith: no way
+    // to know whether Tuesday's backup still contains the addon you added
+    // Wednesday. Names only in the response - it feeds a confirmation
+    // dialog, not an export.
+    router.get('/backups/:filename/diff', async (req, res) => {
+      try {
+        if (!isValidBackupFilename(req.params.filename)) {
+          return res.status(400).json({ message: 'Invalid backup filename' })
+        }
+        const filePath = path.join(BACKUP_DIR, req.params.filename)
+        if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'Backup not found' })
+        let parsed
+        try { parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) } catch {
+          return res.status(422).json({ message: 'Backup file is not valid JSON' })
+        }
+        const data = parsed.data || parsed
+        const accountId = getAccountId(req) || 'default'
+
+        const bAddons = Array.isArray(data.addons) ? data.addons : []
+        const bUsers = Array.isArray(data.users) ? data.users : []
+        const bGroups = Array.isArray(data.groups) ? data.groups : []
+
+        const [curAddons, curUsers, curGroups] = await Promise.all([
+          prisma.addon.findMany({ where: { accountId }, select: { name: true, manifestUrl: true } }),
+          prisma.user.findMany({ where: { accountId }, select: { username: true } }),
+          prisma.group.findMany({ where: { accountId }, select: { name: true } }),
+        ])
+
+        const norm = (v) => String(v || '').trim().toLowerCase()
+        const diffNames = (backupNames, currentNames) => {
+          const b = new Set(backupNames.map(norm))
+          const c = new Set(currentNames.map(norm))
+          return {
+            added: backupNames.filter((n) => n && !c.has(norm(n))),
+            removed: currentNames.filter((n) => n && !b.has(norm(n))),
+          }
+        }
+
+        // Addons additionally get "changed": same name, different URL - the
+        // case where a restore silently rewinds a config edit (or a key
+        // rotation) is exactly what someone previewing needs to see.
+        const curUrlByName = new Map()
+        for (const a of curAddons) {
+          let url = null
+          try { url = getDecryptedManifestUrl(a, req) } catch { url = null }
+          curUrlByName.set(norm(a.name), url)
+        }
+        const changed = []
+        for (const a of bAddons) {
+          const cur = curUrlByName.get(norm(a.name))
+          const bUrl = a.manifestUrl || a.transportUrl || null
+          if (cur && bUrl && cur !== bUrl) changed.push(a.name)
+        }
+
+        const addons = diffNames(bAddons.map((a) => a.name), curAddons.map((a) => a.name))
+        return res.json({
+          backupDate: (() => { try { return fs.statSync(filePath).mtime.toISOString() } catch { return null } })(),
+          addons: { ...addons, changed },
+          users: diffNames(bUsers.map((u) => u.username || u.name), curUsers.map((u) => u.username)),
+          groups: diffNames(bGroups.map((g) => g.name), curGroups.map((g) => g.name)),
+          counts: { backup: { addons: bAddons.length, users: bUsers.length, groups: bGroups.length }, current: { addons: curAddons.length, users: curUsers.length, groups: curGroups.length } },
+        })
+      } catch (e) {
+        return res.status(500).json({ message: 'Failed to diff backup', error: e?.message })
+      }
+    })
+
     router.post('/backups/:filename/restore', async (req, res) => {
       try {
         if (!isValidBackupFilename(req.params.filename)) {
@@ -206,6 +276,65 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         return res.json(result)
       } catch (e) {
         return res.status(500).json({ message: 'Failed to restore backup', error: e?.message })
+      }
+    })
+
+    // POST /settings/migration/offer - mint a one-code migration offer for
+    // THIS instance's data. See routes/migration.js for the model.
+    router.post('/migration/offer', async (req, res) => {
+      try {
+        const accountId = getAccountId(req) || 'default'
+        let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+        if (!base) {
+          const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+          let cfg = acc?.sync
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+          base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
+        }
+        if (!base) {
+          const reqBase = `${req.protocol}://${req.get('host')}`
+          if (!/^https?:\/\/(localhost|127\.|\[?::1)/i.test(reqBase)) base = reqBase
+        }
+        if (!base) return res.status(400).json({ message: 'No reachable address known for this instance - the new server must be able to fetch from this one. Set PUBLIC_APP_URL, or open this page via the address your devices use.' })
+        const { mintOffer, encodeCode } = require('./migration')
+        const { token, passphrase } = mintOffer(accountId)
+        return res.json({ code: encodeCode(base, token, passphrase), expiresInMinutes: 15 })
+      } catch (e) {
+        return res.status(500).json({ message: 'Failed to create migration code', error: e?.message })
+      }
+    })
+
+    // POST /settings/migration/receive - paste a code on the NEW instance:
+    // fetches the bundle from the old one and restores it here. DESTRUCTIVE
+    // like every restore - meant for a fresh instance.
+    router.post('/migration/receive', async (req, res) => {
+      try {
+        const { decodeCode } = require('./migration')
+        const parsed = decodeCode(req.body?.code)
+        if (!parsed) return res.status(400).json({ message: 'That is not a migration code' })
+        const accountId = getAccountId(req) || 'default'
+
+        let bundle
+        try {
+          const controller = new AbortController()
+          const timer = setTimeout(() => controller.abort(), 30000)
+          const rsp = await fetch(`${parsed.u.replace(/\/+$/, '')}/api/migration/bundle?token=${encodeURIComponent(parsed.t)}`, { signal: controller.signal })
+          clearTimeout(timer)
+          const body = await rsp.json().catch(() => ({}))
+          if (!rsp.ok) return res.status(502).json({ message: body?.error || `The old instance answered ${rsp.status}` })
+          bundle = body?.kit
+        } catch (e) {
+          return res.status(502).json({ message: `Could not reach the old instance at ${parsed.u} - both servers must be able to see each other. (${e?.message || 'network error'})` })
+        }
+        if (!bundle) return res.status(502).json({ message: 'The old instance returned no bundle' })
+
+        const { restoreKit } = require('../utils/disasterRecoveryKit')
+        const { encrypt } = require('../utils/encryption')
+        const result = await restoreKit(prisma, accountId, parsed.k, bundle, req, { encrypt })
+        return res.json(result)
+      } catch (e) {
+        console.error('[Migration] receive failed:', e?.message)
+        return res.status(500).json({ message: e?.message || 'Migration failed' })
       }
     })
 
@@ -336,7 +465,19 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     })
 
     // Manual backup trigger
-    router.post('/backup-now', async (req, res) => {
+    // POST /settings/update-rollback - back to the image recorded before the
+  // last self-update (see performRollback for the retag mechanism).
+  router.post('/update-rollback', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { performRollback } = require('../utils/selfUpdate')
+      return res.json(await performRollback())
+    } catch (e) {
+      return res.status(e?.status || 500).json({ message: e?.message || 'Rollback failed' })
+    }
+  })
+
+  router.post('/backup-now', async (req, res) => {
       try {
         await performBackupOnce(prisma)
         return res.json({ message: 'Backup started' })
@@ -604,6 +745,18 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           simklClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.simklClientId === 'string') ? syncCfg.simklClientId : '',
           nuvioServerUrl: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioServerUrl === 'string') ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioAnonKey === 'string') ? syncCfg.nuvioAnonKey : '',
+          // Was only in the OTHER branch's response below, so private-mode
+          // instances (which take this path) always showed "Not checked yet"
+          // on load even while the daily check was storing results the whole
+          // time. The client-side hydration fix could not help - the field
+          // it hydrated from simply never arrived on this branch.
+          keyHealth: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
+          autoUpdateEnabled: (syncCfg && typeof syncCfg === 'object' && syncCfg.autoUpdateEnabled === true),
+          autoUpdateHour: (syncCfg && typeof syncCfg === 'object' && Number.isInteger(syncCfg.autoUpdateHour)) ? syncCfg.autoUpdateHour : 4,
+          tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
+          omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
+          mdblistApiKeyPool: Array.isArray(syncCfg?.mdblistApiKeyPool) ? syncCfg.mdblistApiKeyPool.filter((k) => typeof k === 'string') : [],
+          rpdbApiKeyPool: Array.isArray(syncCfg?.rpdbApiKeyPool) ? syncCfg.rpdbApiKeyPool.filter((k) => typeof k === 'string') : [],
         }
 
         return res.json(response)
@@ -658,6 +811,12 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // and utils/metadataKeyHealth.js. Absent entirely until the first
           // check ever runs.
           keyHealth: (syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
+          autoUpdateEnabled: syncCfg.autoUpdateEnabled === true,
+          autoUpdateHour: Number.isInteger(syncCfg.autoUpdateHour) ? syncCfg.autoUpdateHour : 4,
+          tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
+          omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
+          mdblistApiKeyPool: Array.isArray(syncCfg?.mdblistApiKeyPool) ? syncCfg.mdblistApiKeyPool.filter((k) => typeof k === 'string') : [],
+          rpdbApiKeyPool: Array.isArray(syncCfg?.rpdbApiKeyPool) ? syncCfg.rpdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           simklClientId: typeof syncCfg.simklClientId === 'string' ? syncCfg.simklClientId : '',
           nuvioServerUrl: typeof syncCfg.nuvioServerUrl === 'string' ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: typeof syncCfg.nuvioAnonKey === 'string' ? syncCfg.nuvioAnonKey : '',
@@ -780,6 +939,24 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // saved from a key that's since been removed keeps showing
           // "Not working" against an empty field forever - confirmed live,
           // caught from a leftover test key never cleared this way.
+          // Key Pool extras - capped at 10, trimmed, blanks dropped.
+          tmdbApiKeyPool: Array.isArray(req.body?.tmdbApiKeyPool)
+            ? req.body.tmdbApiKeyPool.map((k) => (typeof k === 'string' ? k.trim() : '')).filter(Boolean).slice(0, 10)
+            : (Array.isArray(baseCfg.tmdbApiKeyPool) ? baseCfg.tmdbApiKeyPool : []),
+          // Key Pool extras - capped at 10, trimmed, blanks dropped.
+          omdbApiKeyPool: Array.isArray(req.body?.omdbApiKeyPool)
+            ? req.body.omdbApiKeyPool.map((k) => (typeof k === 'string' ? k.trim() : '')).filter(Boolean).slice(0, 10)
+            : (Array.isArray(baseCfg.omdbApiKeyPool) ? baseCfg.omdbApiKeyPool : []),
+          // Key Pool extras - capped at 10, trimmed, blanks dropped.
+          mdblistApiKeyPool: Array.isArray(req.body?.mdblistApiKeyPool)
+            ? req.body.mdblistApiKeyPool.map((k) => (typeof k === 'string' ? k.trim() : '')).filter(Boolean).slice(0, 10)
+            : (Array.isArray(baseCfg.mdblistApiKeyPool) ? baseCfg.mdblistApiKeyPool : []),
+          // Key Pool extras - capped at 10, trimmed, blanks dropped.
+          rpdbApiKeyPool: Array.isArray(req.body?.rpdbApiKeyPool)
+            ? req.body.rpdbApiKeyPool.map((k) => (typeof k === 'string' ? k.trim() : '')).filter(Boolean).slice(0, 10)
+            : (Array.isArray(baseCfg.rpdbApiKeyPool) ? baseCfg.rpdbApiKeyPool : []),
+          autoUpdateEnabled: req.body?.autoUpdateEnabled !== undefined ? req.body.autoUpdateEnabled === true : (baseCfg.autoUpdateEnabled === true),
+          autoUpdateHour: Number.isInteger(req.body?.autoUpdateHour) ? Math.min(23, Math.max(0, req.body.autoUpdateHour)) : (Number.isInteger(baseCfg.autoUpdateHour) ? baseCfg.autoUpdateHour : 4),
           keyHealth: (() => {
             const prevHealth = (baseCfg.keyHealth && typeof baseCfg.keyHealth === 'object') ? baseCfg.keyHealth : {}
             const next = { ...prevHealth }
@@ -1244,7 +1421,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
       const existing = await findAiVaultEntry(accountId)
       if (existing) {
-        const data = { testConfig }
+        const data = { testConfig, testType: 'openai_compatible' }
         if (trimmedKey) data.encryptedSecret = encrypt(trimmedKey, req)
         const updated = await prisma.vaultEntry.update({ where: { id: existing.id }, data })
         const verdict = await verifyAndRecordAiServices(accountId, updated)
@@ -1266,7 +1443,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           category: 'ai',
           secretLabel: 'API Key',
           encryptedSecret: encrypt(trimmedKey, req),
-          testType: 'manual',
+          testType: 'openai_compatible',
           testConfig,
           position: (maxPositionEntry?.position ?? -1) + 1,
         },
@@ -1635,7 +1812,12 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     try {
       const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID;
       const { checkAndPersistAccountKeys } = require('../utils/metadataKeyHealth');
-      const keyHealth = await checkAndPersistAccountKeys(prisma, accountId, { notify: true });
+      // Optional body {provider} narrows to one key - the save-time check
+      // for a single edited field. Notifications stay off for those: a key
+      // someone is mid-way through correcting should not fire "key broken"
+      // alerts on each attempt; the full check and the daily sweep notify.
+      const only = ['tmdb', 'omdb', 'mdblist', 'rpdb'].includes(req.body?.provider) ? req.body.provider : null;
+      const keyHealth = await checkAndPersistAccountKeys(prisma, accountId, { notify: !only, only });
       return res.json({ keyHealth });
     } catch (e) {
       return res.status(500).json({ message: 'Failed to check keys', error: e?.message });

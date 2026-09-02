@@ -4,6 +4,7 @@ import { useState, useCallback, memo, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import { api, Addon, StremioAddon, MergeCandidate, MergePreview, MergeInfo, User } from '@/lib/api';
+import { copyToClipboard } from '@/lib/clipboard';
 import { useTheme } from '@/lib/theme';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -251,22 +252,85 @@ export default function UserDetailPage() {
   const historyFileInputRef = useRef<HTMLInputElement>(null);
   const [isImportingHistory, setIsImportingHistory] = useState(false);
   const [isExportingHistory, setIsExportingHistory] = useState(false);
-  const [historyImportResult, setHistoryImportResult] = useState<{ imported: number; skipped: number; totalRows: number; truncated: boolean; unresolvedTitles: string[] } | null>(null);
 
+  // SlickTrax Addon toggle - see server/routes/traxAddon.js. The manifest
+  // URL comes back from the toggle call (the server knows the right base);
+  // reconstructed on load from the user's stored token as a best-effort
+  // display until the first toggle response replaces it.
+  const [isTogglingTrax, setIsTogglingTrax] = useState(false);
+  const [traxManifestUrl, setTraxManifestUrl] = useState<string | null>(null);
+
+  const [historyImportResult, setHistoryImportResult] = useState<{
+    filesProcessed: number;
+    filesUsed: number;
+    filesUnusable: string[];
+    imported: number;
+    skipped: number;
+    truncated: boolean;
+    unresolvedTitles: string[];
+  } | null>(null);
+  // Only shown while a multi-file batch is running - counts down so someone
+  // watching a 20+ file Trakt export import (collections, comments, lists,
+  // network, hidden progress, etc. - only history/ratings are actually
+  // importable) can see it is progressing rather than staring at a spinner
+  // that could be stuck.
+  const [historyImportProgress, setHistoryImportProgress] = useState<{ done: number; total: number } | null>(null);
+
+  // Handles one file OR a whole batch selected at once (the input now allows
+  // multiple). A real Trakt export unzips into 20-30+ files - collections,
+  // comments, lists, network, hidden progress, settings, stats - and only
+  // the history/ratings ones are actually importable. Rather than make
+  // someone pick through that list one at a time, or throw an error toast
+  // for every irrelevant file, every selected file is sent to the SAME
+  // tested single-file endpoint in sequence, and the results are folded into
+  // one summary: files that contributed rows count toward the totals, files
+  // that came back with nothing usable are named once at the end rather than
+  // erroring individually.
   const handleImportHistoryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // allow re-selecting the same file next time
-    if (!file || !params.id) return;
+    const files = Array.from(e.target.files || []);
+    e.target.value = ''; // allow re-selecting the same file(s) next time
+    if (files.length === 0 || !params.id) return;
+
     setIsImportingHistory(true);
     setHistoryImportResult(null);
-    try {
-      const result = await api.importUserHistory(params.id as string, file);
-      setHistoryImportResult(result);
-      toast.success(`Imported ${result.imported} title${result.imported === 1 ? '' : 's'}${result.skipped > 0 ? `, skipped ${result.skipped}` : ''}`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to import history');
-    } finally {
-      setIsImportingHistory(false);
+    setHistoryImportProgress(files.length > 1 ? { done: 0, total: files.length } : null);
+
+    let imported = 0;
+    let skipped = 0;
+    let truncated = false;
+    let filesUsed = 0;
+    const filesUnusable: string[] = [];
+    const unresolvedTitles: string[] = [];
+    let lastError: string | null = null;
+
+    for (const file of files) {
+      try {
+        const result = await api.importUserHistory(params.id as string, file);
+        if (result.imported > 0) filesUsed++;
+        else filesUnusable.push(file.name);
+        imported += result.imported;
+        skipped += result.skipped;
+        truncated = truncated || result.truncated;
+        for (const t of result.unresolvedTitles) if (!unresolvedTitles.includes(t)) unresolvedTitles.push(t);
+      } catch (err: any) {
+        // A file this endpoint cannot use at all (wrong format, or one of
+        // the non-history Trakt files) - counted, not fatal to the batch.
+        filesUnusable.push(file.name);
+        lastError = err?.message || 'Failed to import';
+      }
+      setHistoryImportProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : null));
+    }
+
+    setHistoryImportResult({ filesProcessed: files.length, filesUsed, filesUnusable, imported, skipped, truncated, unresolvedTitles });
+    setHistoryImportProgress(null);
+    setIsImportingHistory(false);
+
+    if (imported > 0) {
+      toast.success(`Imported ${imported} title${imported === 1 ? '' : 's'}${filesUsed < files.length ? ` from ${filesUsed} of ${files.length} file${files.length === 1 ? '' : 's'}` : ''}`);
+    } else if (files.length === 1 && lastError) {
+      toast.error(lastError);
+    } else {
+      toast.error(files.length === 1 ? 'Nothing importable in that file' : `Nothing importable across ${files.length} files - see the summary below`);
     }
   };
 
@@ -397,6 +461,35 @@ export default function UserDetailPage() {
 
   // Data state
   const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    if (user?.traxAddonEnabled && user?.traxToken && !traxManifestUrl) {
+      setTraxManifestUrl(`${window.location.origin}/trax/${user.traxToken}/manifest.json`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.traxAddonEnabled, user?.traxToken]);
+
+  const handleToggleTraxAddon = async () => {
+    if (!params.id || !user) return;
+    const next = !user.traxAddonEnabled;
+    setIsTogglingTrax(true);
+    try {
+      const r = await api.setTraxAddon(params.id as string, next);
+      setUser((prev: any) => prev ? { ...prev, traxAddonEnabled: r.enabled } : prev);
+      setTraxManifestUrl(r.manifestUrl || null);
+      if (r.enabled) {
+        toast.success(r.autoInstall
+          ? 'SlickTrax Addon enabled - it installs on the next sync'
+          : 'Enabled. Set PUBLIC_APP_URL on the server for auto-install, or install the URL below manually.');
+      } else {
+        toast.success('SlickTrax Addon disabled - the next sync removes it');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to toggle SlickTrax Addon');
+    } finally {
+      setIsTogglingTrax(false);
+    }
+  };
   const [groups, setGroups] = useState<any[]>([]);
   const [watchTimeData, setWatchTimeData] = useState<WatchTimeDataPoint[]>([]);
   const [totalWatchTimeSeconds, setTotalWatchTimeSeconds] = useState(0);
@@ -1254,6 +1347,51 @@ export default function UserDetailPage() {
                   )}
                 </div>
 
+                <div className="border-t" style={{ borderColor: 'var(--color-surface-border)' }} />
+
+                {/* SlickTrax Addon - SlickSync AS a Stremio addon: one
+                    per-user manifest URL serving Continue Watching /
+                    Watchlist / Catalogs as live rows inside Stremio and
+                    Nuvio. Enabled here, installed by the next sync. */}
+                <div className="py-3">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${user.traxAddonEnabled ? 'bg-success-muted' : 'bg-primary-muted'}`}>
+                        <PuzzlePieceIcon className={`w-5 h-5 ${user.traxAddonEnabled ? 'text-success' : 'text-primary'}`} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-default">SlickTrax Addon</h4>
+                          {user.traxAddonEnabled && <Badge variant="success" size="sm">Enabled</Badge>}
+                        </div>
+                        <p className="text-sm text-muted">
+                          {user.traxAddonEnabled
+                            ? 'Continue Watching, Watchlist and Catalogs appear as rows inside Stremio/Nuvio. Kept installed by sync.'
+                            : 'Put SlickTrax inside the apps: Continue Watching, Watchlist and every Catalog as real rows on this user\'s devices.'}
+                        </p>
+                        {user.traxAddonEnabled && traxManifestUrl && (
+                          <button
+                            type="button"
+                            className="mt-1 text-xs text-muted hover:text-default underline underline-offset-2 break-all text-left"
+                            title="Copy manifest URL"
+                            onClick={async () => { (await copyToClipboard(traxManifestUrl)) ? toast.success('Manifest URL copied') : toast.error('Copy failed - select and copy the URL text directly'); }}
+                          >
+                            {traxManifestUrl}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant={user.traxAddonEnabled ? 'ghost' : 'primary'}
+                      size="sm"
+                      isLoading={isTogglingTrax}
+                      onClick={handleToggleTraxAddon}
+                    >
+                      {user.traxAddonEnabled ? 'Disable' : 'Enable'}
+                    </Button>
+                  </div>
+                </div>
+
               </Card>
             </PageSection>
 
@@ -1321,7 +1459,7 @@ export default function UserDetailPage() {
                       <a href="https://trakt.tv/settings/data" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Trakt</a>.
                     </p>
                     <p className="text-sm text-muted mt-1">
-                      IMDb and Letterboxd give you a CSV you can import directly. Trakt gives you a ZIP &mdash; unzip it first and pick the history or ratings JSON. Movies and their ratings are imported; episode history is skipped. You can also export this user&apos;s history as a Letterboxd-compatible CSV.
+                      IMDb and Letterboxd give you a CSV you can import directly. Trakt gives you a ZIP &mdash; unzip it and select every file inside at once; only the history and ratings JSON actually carry anything importable, everything else is skipped automatically. Netflix (Account &rarr; Viewing activity &rarr; Download all), TV Time, Plex/Tautulli and Movary CSV exports work through the same button too. Movies and their ratings are imported; episode history is skipped. You can also export this user&apos;s history as a Letterboxd-compatible CSV.
                     </p>
                   </div>
                 </div>
@@ -1330,6 +1468,7 @@ export default function UserDetailPage() {
                     ref={historyFileInputRef}
                     type="file"
                     accept=".csv,text/csv,.json,application/json"
+                    multiple
                     className="hidden"
                     onChange={handleImportHistoryFile}
                   />
@@ -1340,7 +1479,7 @@ export default function UserDetailPage() {
                     onClick={() => historyFileInputRef.current?.click()}
                     isLoading={isImportingHistory}
                   >
-                    Import history
+                    {historyImportProgress ? `Importing ${historyImportProgress.done}/${historyImportProgress.total}...` : 'Import history'}
                   </Button>
                   <Button
                     variant="secondary"
@@ -1355,13 +1494,24 @@ export default function UserDetailPage() {
                 {historyImportResult && (
                   <div className="mt-4 p-3 rounded-lg text-sm" style={{ background: 'var(--color-surface-hover)' }}>
                     <p className="text-default">
-                      Imported <strong>{historyImportResult.imported}</strong> of {historyImportResult.totalRows} row{historyImportResult.totalRows === 1 ? '' : 's'}
+                      Imported <strong>{historyImportResult.imported}</strong> title{historyImportResult.imported === 1 ? '' : 's'}
+                      {historyImportResult.filesProcessed > 1 && ` from ${historyImportResult.filesUsed} of ${historyImportResult.filesProcessed} files`}
                       {historyImportResult.skipped > 0 && ` (${historyImportResult.skipped} skipped)`}
-                      {historyImportResult.truncated && ' - file was larger than the 2,000-row import cap'}
+                      {historyImportResult.truncated && ' - a file was larger than the 2,000-row import cap'}
                     </p>
                     {historyImportResult.unresolvedTitles.length > 0 && (
                       <p className="text-muted text-xs mt-1.5">
                         Couldn't resolve: {historyImportResult.unresolvedTitles.join(', ')}
+                      </p>
+                    )}
+                    {/* Named rather than silently dropped - lets someone
+                        importing a whole unzipped Trakt export confirm the
+                        files skipped were the expected ones (collections,
+                        comments, lists, network, hidden progress, and so on)
+                        rather than history/ratings that failed to parse. */}
+                    {historyImportResult.filesUnusable.length > 0 && (
+                      <p className="text-muted text-xs mt-1.5">
+                        No importable entries in: {historyImportResult.filesUnusable.join(', ')}
                       </p>
                     )}
                   </div>
@@ -1424,7 +1574,7 @@ export default function UserDetailPage() {
                       <button
                         onClick={() => {
                           const text = JSON.stringify({ current: syncPlan.current, desired: syncPlan.desired }, null, 2);
-                          navigator.clipboard.writeText(text);
+                          copyToClipboard(text);
                           toast.success('Copied to clipboard');
                         }}
                         className="mt-3 px-3 py-1 text-xs bg-surface-hover hover:bg-primary hover:text-white rounded transition-colors"

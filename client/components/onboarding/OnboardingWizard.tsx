@@ -95,7 +95,8 @@ const STEPS: Step[] = [
     bullets: [
       'Encrypted at rest, with real health checks against each provider\'s own API.',
       'Tracks cost and billing cycle, then projects a 90-day renewal and spend forecast.',
-      'Shows live debrid usage - active downloads and premium days remaining - on the card.',
+      'Any credential can name a backup that takes over automatically the moment a check finds it failing.',
+      'Opt-in rotation propagation: paste a new key once and every addon config embedding the old one is rewritten and re-synced.',
     ],
     helpId: 'vault-add-credential',
     href: '/vault',
@@ -110,6 +111,7 @@ const STEPS: Step[] = [
       'Live Now Playing comes from the AIOStreams proxy - real-time presence, gone the moment playback stops.',
       'History and watch time come from each provider\'s own library - the permanent record, including usenet, which the proxy can\'t see.',
       'That\'s why Now Playing can be empty while History fills in normally. It\'s two different systems, not a bug.',
+      'The SlickTrax Addon puts Continue Watching, the Watchlist and every Catalog as live rows inside Stremio and Nuvio - enable it on a user page and sync installs it.',
     ],
     helpId: 'now-playing-empty',
   },
@@ -154,14 +156,16 @@ const STEPS: Step[] = [
           {
             group: 'Providers & Vault',
             lines: [
-              'Nuvio as a full second provider alongside Stremio, plus optional SIMKL sync',
+              'Nuvio as a full second provider alongside Stremio, plus optional SIMKL sync (history and ratings, both ways)',
               'Encrypted credential Vault with real active health-checks, expiry alerts, and cost tracking',
+              'Backup keys with automatic failover, and opt-in key rotation that heals every addon config in one paste',
             ],
           },
           {
             group: 'Watch tracking & Discover',
             lines: [
               'SlickTrax: built-in watchlist, rewatch tracking, and "For You" recommendations - no external service',
+              'The SlickTrax Addon: Continue Watching, Watchlist and Catalogs as live rows inside Stremio and Nuvio themselves',
               'Live Now Playing, resume-on-another-device links, and true completion tracking',
               'Taste Profiles, Year in Review, Airing Calendar, and TMDb-powered "More Like This"',
             ],
@@ -171,13 +175,13 @@ const STEPS: Step[] = [
             lines: [
               'Named catalogs from an MDBList/TMDb URL, with content-rating allowlists and auto-refresh',
               'Full Nuvio Collections manager - templates, cover art, community covers, drag reorder',
-              'Export catalogs to MDBList or SIMKL, or import from Trakt/Letterboxd/IMDb',
+              'Import your history from Trakt, Netflix, TV Time, Letterboxd, IMDb, Plex/Tautulli, or Movary - no API keys, no VIP',
             ],
           },
           {
             group: 'Automation & alerts',
             lines: [
-              'Webhook + time/event-based Automation rules, and a renewal calendar with spend forecasts',
+              'Automation rules that read as plain sentences, with ready-made recipes, watch-event triggers, and webhooks',
               'Native push + in-app bell, digest mode, and per-user Discord opt-out',
               'A Trakt-compatible scrobble API so third-party players can write into SlickTrax',
             ],
@@ -187,7 +191,7 @@ const STEPS: Step[] = [
             lines: [
               'Build-your-own themes (colors, fonts, radius) with export/import share codes',
               'A public shareable stats page, command palette (Ctrl+K), and TV/D-pad mode',
-              'System Health board, backup/restore, addon templates, and opt-in 2FA/SSO',
+              'System Health board, backup/restore, Recently Deleted undo, an in-app addon directory, and opt-in 2FA/SSO',
             ],
           },
         ].map(({ group, lines }) => (

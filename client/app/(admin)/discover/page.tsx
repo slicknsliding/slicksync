@@ -252,6 +252,18 @@ export default function DiscoverPage() {
     ? watchlistAsDiscover.filter((i) => i.type === type && (!debouncedQuery || i.name.toLowerCase().includes(debouncedQuery.toLowerCase())))
     : items;
   const { watchedStatus, toggleWatched: handleToggleWatched } = useWatchedStatusBatch(sourceItems.map((i) => i.id), enableWatchedIndicators);
+  // Watched status for the For You rows - previously the watched filter
+  // deliberately skipped this view ("renders as personalized rows, not a
+  // single filterable list"), which meant recommendations happily kept
+  // resurfacing things the household had already seen with no way to hide
+  // them. Separate hook call because the id set is disjoint from the grid's.
+  const recItemIds = useMemo(() => {
+    const ids = recRows.flatMap((r) => r.items.map((i) => i.id));
+    if (householdPicks?.items) ids.push(...householdPicks.items.map((i) => i.id));
+    return ids;
+  }, [recRows, householdPicks]);
+  const { watchedStatus: recWatchedStatus } = useWatchedStatusBatch(recItemIds, enableWatchedIndicators && source === 'foryou');
+  const hideRecWatched = source === 'foryou' && watchedFilter === 'hide';
   const displayedItems = sourceItems.filter((i) => {
     if (watchedFilter === 'all') return true;
     const seen = !!watchedStatus[i.id];
@@ -576,19 +588,24 @@ export default function DiscoverPage() {
               })()}
 
               {/* Watched filter + sort — right side of the same row, stacked
-                  (Show above Sort) rather than crammed side by side. Sort/
-                  watched filter only apply to the flat grid views (Discover
-                  browse+search, Watchlist) - For You renders as personalized
-                  rows, not a single sortable/filterable list. Watched filter
-                  additionally hides in People mode - watchedStatus is keyed
-                  by IMDb id, and person-credit results only carry a TMDb id,
-                  so it could never actually match anything there. */}
-              {source !== 'foryou' && (
+                  (Show above Sort). Sort applies to the flat grid views only
+                  (browse/search/Watchlist); the watched filter now ALSO
+                  covers For You - recommendations kept resurfacing titles
+                  the household had already seen with no way to hide them.
+                  Watched filter still hides in People mode - watchedStatus
+                  is keyed by IMDb id, and person credits only carry TMDb
+                  ids, so it could never match anything there. */}
               <div className="ml-auto flex flex-col items-end gap-1.5">
                 {enableWatchedIndicators && searchMode !== 'people' && (
                   <div className="flex gap-1 items-center">
                     <span className="text-xs text-muted mr-1 hidden sm:inline">Show:</span>
-                    {([['all', 'All'], ['hide', 'Unwatched'], ['only', 'Watched']] as const).map(([key, label]) => {
+                    {/* For You gets All/Unwatched only - "Watched" as a
+                        recommendations filter would mean "recommend me
+                        things I've seen", which is nobody's intent. */}
+                    {(source === 'foryou'
+                      ? ([['all', 'All'], ['hide', 'Unwatched']] as const)
+                      : ([['all', 'All'], ['hide', 'Unwatched'], ['only', 'Watched']] as const)
+                    ).map(([key, label]) => {
                       const btn = (
                         <button
                           type="button"
@@ -610,6 +627,7 @@ export default function DiscoverPage() {
                     })}
                   </div>
                 )}
+                {source !== 'foryou' && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-muted hidden sm:inline">Sort:</span>
                   <select
@@ -623,8 +641,8 @@ export default function DiscoverPage() {
                     ))}
                   </select>
                 </div>
+                )}
               </div>
-              )}
             </div>
           </PageSection>
         )}
@@ -649,7 +667,8 @@ export default function DiscoverPage() {
                     onOpenDetails={setDetailItem}
                     onToggleWatchlist={handleToggleWatchlist}
                     onToggleWatched={handleToggleWatched}
-                    isMenuOpen={openMenuKey === item.id}
+                    isMenuOpen={openMenuKey === 'trend:' + item.id}
+                    menuKey={'trend:' + item.id}
                     onMenuOpenChange={handleMenuOpenChange}
                     focusable={isTV}
                   />
@@ -870,7 +889,7 @@ export default function DiscoverPage() {
                   <span className="text-xs text-muted">· {householdPicks.genres.join(', ')} the whole house likes</span>
                 </div>
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
-                  {householdPicks.items.map((item) => (
+                  {(hideRecWatched ? householdPicks.items.filter((i) => !recWatchedStatus[i.id]) : householdPicks.items).map((item) => (
                     <PosterCard
                       key={item.id}
                       item={item}
@@ -886,7 +905,8 @@ export default function DiscoverPage() {
                       onOpenDetails={setDetailItem}
                       onToggleWatchlist={handleToggleWatchlist}
                       onToggleWatched={handleToggleWatched}
-                      isMenuOpen={openMenuKey === item.id}
+                      isMenuOpen={openMenuKey === 'picks:' + item.id}
+                      menuKey={'picks:' + item.id}
                       onMenuOpenChange={handleMenuOpenChange}
                       focusable={isTV}
                     />
@@ -909,7 +929,13 @@ export default function DiscoverPage() {
               ) : null
             ) : (
               <div className="space-y-8">
-                {recRows.map((row) => (
+                {recRows.map((row) => {
+                  // "Unwatched" filter applied per row - a row whose every
+                  // suggestion is already watched disappears entirely rather
+                  // than leaving an empty header.
+                  const visibleItems = hideRecWatched ? row.items.filter((i) => !recWatchedStatus[i.id]) : row.items;
+                  if (visibleItems.length === 0) return null;
+                  return (
                   <div key={row.seedId}>
                     <div className="flex items-baseline gap-2 mb-3 flex-wrap">
                       <h3 className="text-base font-semibold font-display text-default">{row.reason}</h3>
@@ -937,12 +963,12 @@ export default function DiscoverPage() {
                       <span className="text-xs text-muted">· Top Rated {row.genre}</span>
                     </div>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
-                      {row.items.map((item) => (
+                      {visibleItems.map((item) => (
                         <PosterCard
                           key={item.id}
                           item={item}
                           ratings={ratingsById[item.id]}
-                          watched={watchedStatus[item.id]}
+                          watched={recWatchedStatus[item.id]}
                           inWatchlist={inWatchlistIds.has(item.id)}
                           showWatchlistMenu={enableWatchlist}
                           showWatchlistBadge={enableWatchlist}
@@ -953,14 +979,16 @@ export default function DiscoverPage() {
                           onOpenDetails={setDetailItem}
                           onToggleWatchlist={handleToggleWatchlist}
                           onToggleWatched={handleToggleWatched}
-                          isMenuOpen={openMenuKey === item.id}
+                          isMenuOpen={openMenuKey === row.seedId + ':' + item.id}
+                          menuKey={row.seedId + ':' + item.id}
                           onMenuOpenChange={handleMenuOpenChange}
                           focusable={isTV}
                         />
                       ))}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
                 <p className="text-xs text-muted italic text-center pt-2">
                   Powered by SlickTrax — rows are based on the genres you actually spend the most time watching (weighted toward recent viewing), plus what's on your Watchlist. Up to three at a time, and they shift as your habits do.
                 </p>
@@ -1068,7 +1096,8 @@ export default function DiscoverPage() {
                     onOpenDetails={setDetailItem}
                     onToggleWatchlist={handleToggleWatchlist}
                     onToggleWatched={handleToggleWatched}
-                    isMenuOpen={openMenuKey === item.id}
+                    isMenuOpen={openMenuKey === 'grid:' + item.id}
+                    menuKey={'grid:' + item.id}
                     onMenuOpenChange={handleMenuOpenChange}
                     focusable={isTV}
                   />

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, Invitation, Group, InviteRequest } from '@/lib/api';
+import { copyToClipboard } from '@/lib/clipboard';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { Button, Card, Badge, ConfirmModal, UserAvatar } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
@@ -101,7 +102,7 @@ export default function InvitationDetailPage() {
 
   const handleCopyLink = () => {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    navigator.clipboard.writeText(`${origin}/invite/${invitation?.code || invitation?.inviteCode}`);
+    copyToClipboard(`${origin}/invite/${invitation?.code || invitation?.inviteCode}`);
     setCopiedLink(true);
     toast.success('Invite link copied to clipboard');
     setTimeout(() => setCopiedLink(false), 2000);

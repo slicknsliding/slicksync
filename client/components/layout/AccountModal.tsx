@@ -13,6 +13,7 @@ import {
     LinkIcon,
 } from '@heroicons/react/24/outline';
 import { api } from '@/lib/api';
+import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui/Toast';
 import { PasswordToggleButton } from '@/components/ui/Input';
 
@@ -150,7 +151,7 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
     };
 
     const handleCopyUuid = (uuid: string) => {
-        navigator.clipboard.writeText(uuid);
+        copyToClipboard(uuid);
         setCopied(true);
         toast.success('UUID copied to clipboard');
         setTimeout(() => setCopied(false), 2000);

@@ -34,6 +34,25 @@ module.exports = ({ prisma, getAccountId }) => {
     res.json(describeRegistry());
   });
 
+  // POST /compose - the AI rule-writer. Plain English in, a validated rule
+  // draft out. The draft opens in the SAME editor recipes use - nothing is
+  // created here, a person reviews and saves. See utils/automation/
+  // composer.js for the propose/validate split.
+  router.post('/compose', async (req, res) => {
+    try {
+      const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+      if (!text) return res.status(400).json({ error: 'Describe the rule you want first' });
+      const { composeRule } = require('../utils/automation/composer');
+      const { decrypt } = require('../utils/encryption');
+      const accountId = getAccountId(req) || 'default';
+      const { rule, warnings } = await composeRule(prisma, accountId, text, decrypt);
+      res.json({ rule, warnings });
+    } catch (e) {
+      if (e?.notConfigured) return res.status(400).json({ error: e.message, notConfigured: true });
+      res.status(422).json({ error: e?.message || 'Could not draft a rule from that' });
+    }
+  });
+
   // GET /api/automation - this account's rules, most recently updated first.
   router.get('/', async (req, res) => {
     try {

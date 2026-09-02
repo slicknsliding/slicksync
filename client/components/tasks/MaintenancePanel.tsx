@@ -61,6 +61,18 @@ export function MaintenancePanel() {
   const [targets, setTargets] = useState<BackupTargets | null>(null);
   const [maint, setMaint] = useState<DbMaintenanceSettings | null>(null);
   const [capability, setCapability] = useState<UpdateCapability | null>(null);
+  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(false);
+  const [autoUpdateHour, setAutoUpdateHour] = useState(4);
+  const saveAutoUpdate = async (enabled: boolean, hour: number) => {
+    setAutoUpdateEnabled(enabled);
+    setAutoUpdateHour(hour);
+    try {
+      await api.updateSyncSettings({ autoUpdateEnabled: enabled, autoUpdateHour: hour });
+      toast.success(enabled ? `Automatic updates on - daily at ${String(hour).padStart(2, '0')}:00` : 'Automatic updates off');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save');
+    }
+  };
   const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
@@ -68,6 +80,10 @@ export function MaintenancePanel() {
       api.getBackupTargets().then(setTargets).catch(() => setTargets(null));
       api.getDbMaintenance().then(setMaint).catch(() => setMaint(null));
       api.getUpdateCapability().then(setCapability).catch(() => setCapability(null));
+      api.getSyncSettings().then((ss) => {
+        setAutoUpdateEnabled(ss.autoUpdateEnabled === true);
+        if (Number.isInteger(ss.autoUpdateHour)) setAutoUpdateHour(ss.autoUpdateHour as number);
+      }).catch(() => {});
     }, 0);
     return () => clearTimeout(id);
   }, []);
@@ -321,7 +337,9 @@ export function MaintenancePanel() {
           <div className="space-y-3">
             <p className="text-xs text-muted">
               This instance can update itself: it backs up first, downloads the new image, then restarts into it.
-              The restart takes a few seconds and everyone is briefly disconnected.
+              A watchdog stays behind for the switch - if the new version fails its health check within two
+              minutes, the previous image is restored automatically. The restart takes a few seconds and
+              everyone is briefly disconnected.
             </p>
             <Button
               variant="secondary"
@@ -338,6 +356,46 @@ export function MaintenancePanel() {
               }}
             >
               {busy === 'update' ? 'Updating…' : 'Back up and update now'}
+            </Button>
+            <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-surface-hover">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-default">Update automatically</p>
+                <p className="text-xs text-muted mt-0.5">
+                  Checks once a day at{' '}
+                  <select
+                    value={autoUpdateHour}
+                    onChange={(e) => saveAutoUpdate(autoUpdateEnabled, Number(e.target.value))}
+                    className="inline-block px-1 py-0.5 rounded text-xs"
+                    style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                  >
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                    ))}
+                  </select>
+                  {' '}and applies new releases on its own - backup first, watchdog rollback if the new version fails its health check.
+                </p>
+              </div>
+              <ToggleSwitch
+                checked={autoUpdateEnabled}
+                onChange={() => saveAutoUpdate(!autoUpdateEnabled, autoUpdateHour)}
+                title="Toggle automatic updates"
+              />
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy === 'rollback'}
+              onClick={async () => {
+                setBusy('rollback');
+                try {
+                  const r = await api.rollbackUpdate();
+                  toast.success(r.note || 'Rollback started');
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : 'Rollback failed');
+                } finally { setBusy(null); }
+              }}
+            >
+              {busy === 'rollback' ? 'Rolling back…' : 'Roll back to the previous version'}
             </Button>
           </div>
         ) : (

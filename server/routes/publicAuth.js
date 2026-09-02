@@ -1666,8 +1666,34 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       let configData = jsonData.data || jsonData;
       console.log('Config data structure:', Object.keys(configData));
 
+      // Competitor/legacy tolerance: this importer descends from Syncio's
+      // export format, and other Syncio-family managers rename a field here
+      // and there. Alias the common variants BEFORE validating, so their
+      // files drop straight in instead of failing on a synonym.
+      if (configData && typeof configData === 'object') {
+        for (const arrKey of ['users', 'groups', 'addons']) {
+          if (Array.isArray(configData[arrKey])) {
+            configData[arrKey] = configData[arrKey].map((item) => {
+              if (!item || typeof item !== 'object') return item;
+              const mapped = { ...item };
+              if (!mapped.manifestUrl && typeof mapped.url === 'string') mapped.manifestUrl = mapped.url;
+              if (!mapped.name && typeof mapped.title === 'string') mapped.name = mapped.title;
+              if (arrKey === 'users' && !mapped.username && typeof mapped.name === 'string') mapped.username = mapped.name;
+              return mapped;
+            });
+          }
+        }
+      }
+
       if (!configData || (!configData.users && !configData.addons)) {
-        return responseUtils.badRequest(res, 'Invalid config format');
+        // Same playbook as the Trakt importer: an unrecognised file should
+        // say what it actually looked like - top-level key names, never
+        // values - so adding support for a new manager's format is a
+        // one-message fix instead of a guessing game.
+        const shape = configData && typeof configData === 'object'
+          ? `an object with keys: ${Object.keys(configData).slice(0, 12).join(', ')}`
+          : typeof configData;
+        return responseUtils.badRequest(res, `Not a recognised config export - expected "users" and/or "addons" arrays (Syncio-family format). This file is ${shape}.`);
       }
 
       const { users, groups, addons, sync: importedSync } = configData;

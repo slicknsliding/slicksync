@@ -54,6 +54,21 @@ function pathIsAllowlisted(path) {
     // allowlist any future publish/revoke routes added to the same router,
     // which is exactly the mistake documented on '/api/public-auth' above.
     '/api/federation/catalog/',
+    // Addon proxy - the caller is a Stremio app with no session; the UUID in
+    // the URL is the credential and proxy.js resolves it on every request.
+    // This entry was MISSING while the feature shipped: on any instance with
+    // auth enabled (slicksync.vip confirmed live), /proxy/<uuid>/manifest.json
+    // returned 401 to Stremio's fetches, so the proxied URL never worked
+    // outside auth-disabled dev setups. Trailing slash keeps it narrow.
+    '/proxy/',
+    // SlickTrax Addon - same model exactly: per-user token in the URL,
+    // resolved by traxAddon.js on every request, Stremio apps as callers.
+    '/trax/',
+    // One-code migration: the receiving instance pulls the bundle
+    // server-to-server with no session; the single-use 15-minute token in
+    // the query is the credential (see routes/migration.js). Narrow path -
+    // offer/receive stay behind normal auth.
+    '/api/migration/bundle',
     '/invite', // Public invitation endpoints (request submission, status check, OAuth completion)
     '/api/public-library', // Public library endpoints (OAuth-based access)
     // /api/superadmin runs its OWN completely separate auth (a distinct

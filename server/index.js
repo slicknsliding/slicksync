@@ -394,6 +394,15 @@ app.use('/api/public-library', publicLibraryRouter({ prisma, DEFAULT_ACCOUNT_ID,
 // Addon proxy router (no auth required - UUID serves as bearer token)
 app.use('/proxy', proxyRouter({ prisma, decrypt, getAccountId, getServerKey }));
 
+// SlickTrax Addon - SlickSync serving the Stremio addon protocol itself
+// (per-user token in the URL is the credential; allowlisted like /proxy)
+app.use('/trax', require('./routes/traxAddon')({ prisma }));
+
+// One-code instance migration - /bundle is token-gated and allowlisted (the
+// caller is the receiving server, sessionless); offer/receive live under
+// /api/settings with normal auth.
+app.use('/api/migration', require('./routes/migration')({ prisma, decrypt }));
+
 // Stream proxy router (no auth required - handles encrypted stream URLs)
 app.use('/stream', streamProxyRouter({ getServerKey }).router);
 
@@ -506,6 +515,45 @@ async function bootstrap() {
 
     // Schedule vault monitor (active-checks + expiry notifications, every 6h)
     try {
+      // Self-update verdict: performSelfUpdate leaves a marker on the data
+      // volume before the restart. Whichever process boots next - the new
+      // version, or the old one restored by the watchdog - reads it and
+      // says plainly what happened. Without this, an automatic rollback
+      // would be indistinguishable from the update never running.
+      try {
+        const fs = require('fs')
+        const path = require('path')
+        const marker = path.join(process.cwd(), 'data', 'pending-update-check.json')
+        if (fs.existsSync(marker)) {
+          let info = null
+          try { info = JSON.parse(fs.readFileSync(marker, 'utf8')) } catch { info = null }
+          fs.unlinkSync(marker)
+          const nowVersion = (() => { try { return require('../package.json')?.version || null } catch { return null } })()
+          const { createNotification } = require('./utils/notificationStore')
+          if (info && nowVersion && info.fromVersion && nowVersion !== info.fromVersion) {
+            await createNotification(prisma, DEFAULT_ACCOUNT_ID, {
+              type: 'task',
+              title: `Updated to ${nowVersion}`,
+              body: `Self-update from ${info.fromVersion} completed and the new version passed its health check.`,
+            }).catch(() => {})
+          } else if (info) {
+            await createNotification(prisma, DEFAULT_ACCOUNT_ID, {
+              type: 'task',
+              title: 'Update rolled back',
+              body: `The new version failed its health check, so the watchdog restored ${info.fromVersion || 'the previous version'}. This instance is running normally on the old image - check the release notes before retrying.`,
+            }).catch(() => {})
+          }
+        }
+      } catch (e) {
+        console.warn('Update-verdict check failed:', e?.message)
+      }
+
+      // Opt-in scheduled self-update (see utils/selfUpdate.js)
+      try {
+        const { scheduleAutoUpdate } = require('./utils/selfUpdate')
+        scheduleAutoUpdate(prisma, { INSTANCE_TYPE })
+      } catch (e) { console.warn('Auto-update scheduler failed to start:', e?.message) }
+
       const { scheduleVaultMonitor } = require('./utils/vaultMonitor')
       scheduleVaultMonitor({ prisma, decrypt, getAccountId })
     } catch (err) {

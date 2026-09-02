@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { copyToClipboard } from '@/lib/clipboard';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -21,6 +22,7 @@ import {
   PlusIcon,
   EnvelopeIcon,
   ClipboardIcon,
+  QrCodeIcon,
   CheckIcon,
   XMarkIcon,
   ClockIcon,
@@ -482,7 +484,7 @@ export default function InvitationsPage() {
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         const origin = typeof window !== 'undefined' ? window.location.origin : '';
-                                        navigator.clipboard.writeText(`${origin}/invite/${invite.code}`);
+                                        copyToClipboard(`${origin}/invite/${invite.code}`);
                                         toast.success('Invite link copied');
                                       }}
                                     >
@@ -762,11 +764,17 @@ function InvitationCard({
     }
   };
 
+  // QR onboarding: hand a phone the invite without typing anything - point
+  // the camera, open the link, connect the provider, and the existing
+  // invite flow does the rest (group assignment + sync-on-join).
+  const [qrOpen, setQrOpen] = useState(false);
+  const inviteUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/invite/${invitation.code}`;
+
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     close();
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    navigator.clipboard.writeText(`${origin}/invite/${invitation.code}`);
+    copyToClipboard(`${origin}/invite/${invitation.code}`);
     setCopiedLink(true);
     toast.success('Invite link copied to clipboard');
     setTimeout(() => setCopiedLink(false), 2000);
@@ -774,7 +782,7 @@ function InvitationCard({
 
   const handleCopyCode = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    navigator.clipboard.writeText(invitation.code);
+    copyToClipboard(invitation.code);
     setCopiedCode(true);
     toast.success('Invitation code copied to clipboard');
     setTimeout(() => setCopiedCode(false), 2000);
@@ -1030,6 +1038,13 @@ function InvitationCard({
           <ClipboardIcon className="w-4 h-4" />
           Copy Link
         </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); close(); setQrOpen(true); }}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
+        >
+          <QrCodeIcon className="w-4 h-4" />
+          Show QR
+        </button>
         <div className="my-1 border-t border-default" />
         <button
           onClick={handleDelete}
@@ -1039,6 +1054,27 @@ function InvitationCard({
           Delete
         </button>
       </ContextMenu>
+
+      <Modal isOpen={qrOpen} onClose={() => setQrOpen(false)} title="Scan to join" size="sm">
+        <div className="text-center space-y-3">
+          {/* Served by /api/qr (allowlisted), so this renders even on the
+              pre-login page a scanned phone lands on. White padding behind
+              the PNG keeps it scannable on dark themes. */}
+          <div className="inline-block p-3 rounded-xl bg-white">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/qr?data=${encodeURIComponent(inviteUrl)}`}
+              alt={`QR code for invitation ${invitation.name || invitation.code}`}
+              width={240}
+              height={240}
+            />
+          </div>
+          <p className="text-sm text-muted">
+            Point a phone camera at this. It opens the invite, they connect their own account, and sync sets them up - nothing to type, no credentials through you.
+          </p>
+          <code className="block text-xs text-subtle break-all">{inviteUrl}</code>
+        </div>
+      </Modal>
     </>
   );
 }
@@ -1140,7 +1176,7 @@ function RequestCard({ request, onUpdate }: { request: RequestDisplay; onUpdate?
 
   const handleCopyCode = () => {
     if (request.oauthCode) {
-      navigator.clipboard.writeText(request.oauthCode);
+      copyToClipboard(request.oauthCode);
       setCopiedCode(true);
       toast.success('OAuth code copied');
       setTimeout(() => setCopiedCode(false), 2000);
@@ -1149,7 +1185,7 @@ function RequestCard({ request, onUpdate }: { request: RequestDisplay; onUpdate?
 
   const handleCopyLink = () => {
     if (request.oauthLink) {
-      navigator.clipboard.writeText(request.oauthLink);
+      copyToClipboard(request.oauthLink);
       setCopiedLink(true);
       toast.success('OAuth link copied');
       setTimeout(() => setCopiedLink(false), 2000);

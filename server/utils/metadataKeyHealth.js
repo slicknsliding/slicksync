@@ -182,7 +182,7 @@ const FIELD_BY_PROVIDER = {
   rpdb: 'rpdbApiKey',
 };
 
-async function checkAndPersistAccountKeys(prisma, accountId, { notify = true } = {}) {
+async function checkAndPersistAccountKeys(prisma, accountId, { notify = true, only = null } = {}) {
   const { resolveKeyFromSettings } = require('./listImport');
   const noReq = null;
   const getId = () => accountId;
@@ -199,13 +199,44 @@ async function checkAndPersistAccountKeys(prisma, accountId, { notify = true } =
     resolveKeyFromSettings(prisma, getId, noReq, 'rpdbApiKey', 'RPDB_API_KEY', opts),
   ]);
 
-  const results = await runKeyHealthChecks({ tmdb, omdb, mdblist, rpdb });
+  // `only` narrows the run to one provider - used by the on-blur check when
+  // a single key is edited in Settings, where re-testing the other three on
+  // every blur would be pure waste. The merge below already preserves
+  // previous results for providers not in this run.
+  const all = { tmdb, omdb, mdblist, rpdb };
+  const toCheck = only && all[only] !== undefined ? { [only]: all[only] } : all;
+  const results = await runKeyHealthChecks(toCheck);
 
   const account = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } });
   let cfg = account?.sync;
   if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
   if (!cfg || typeof cfg !== 'object') cfg = {};
   const previousHealth = (cfg.keyHealth && typeof cfg.keyHealth === 'object') ? cfg.keyHealth : {};
+
+  // Per-key ring health for the Key Pool: every configured key for a
+  // provider (primary, backup, extras) gets its own check, stored under
+  // keyHealth[provider].pool keyed by a hash-prefix tag - never the key
+  // itself, since keyHealth rides in the same JSON config exports read.
+  // The ring selector (keyPool.js) skips members marked failing or
+  // rate-limited. Only runs for providers with a ring bigger than one key -
+  // the single-key case is exactly what the primary check above already is.
+  try {
+    const { buildRing, keyTag } = require('./keyPool');
+    const FIELD_OF = { tmdb: 'tmdbApiKey', omdb: 'omdbApiKey', mdblist: 'mdblistApiKey', rpdb: 'rpdbApiKey' };
+    for (const provider of Object.keys(toCheck)) {
+      const ring = buildRing(cfg, FIELD_OF[provider]);
+      if (ring.length <= 1) continue;
+      const perKey = [];
+      for (const key of ring) {
+        const r = await CHECKERS[provider](key);
+        perKey.push({ tag: keyTag(key), last4: String(key).slice(-4), ok: r.ok, rateLimited: !!r.rateLimited, checkedAt: new Date().toISOString() });
+      }
+      results[provider] = { ...(results[provider] || {}), pool: perKey };
+    }
+  } catch (e) {
+    console.warn('[KeyHealth] Pool ring check failed:', e?.message);
+  }
+
   const mergedHealth = { ...previousHealth, ...results };
 
   await prisma.appAccount.update({

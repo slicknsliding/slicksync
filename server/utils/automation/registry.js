@@ -89,6 +89,30 @@ const TRIGGERS = {
       { name: 'providerType', label: 'Provider', type: 'string' },
     ],
   },
+  'watch.started': {
+    label: 'Someone starts watching',
+    description: 'Fires when a live stream starts (the same event as the "started watching" notification). With the webhook action this is scrobble-out to anything that accepts HTTP.',
+    fields: [
+      { name: 'username', label: 'Username', type: 'string' },
+      { name: 'userId', label: 'User ID', type: 'string' },
+      { name: 'itemName', label: 'Title', type: 'string' },
+      { name: 'itemId', label: 'IMDb ID', type: 'string' },
+      { name: 'contentType', label: 'Type (movie/series)', type: 'string' },
+    ],
+  },
+  'watch.finished': {
+    label: 'A title is finished',
+    description: 'Fires once when a watch crosses the real-completion threshold - the same playback-position test the history record uses, so it means genuinely finished, not merely stopped. Fires once per title per user - finishing cannot un-finish, so it cannot repeat.',
+    fields: [
+      { name: 'username', label: 'Username', type: 'string' },
+      { name: 'userId', label: 'User ID', type: 'string' },
+      { name: 'itemName', label: 'Title', type: 'string' },
+      { name: 'itemId', label: 'IMDb ID', type: 'string' },
+      { name: 'contentType', label: 'Type (movie/series)', type: 'string' },
+      { name: 'season', label: 'Season (episodes only)', type: 'number' },
+      { name: 'episode', label: 'Episode (episodes only)', type: 'number' },
+    ],
+  },
   'invite.accepted': {
     label: 'An invitation is accepted',
     description: 'Fires when someone completes an invite and their user is created.',
@@ -314,6 +338,40 @@ const ACTIONS = {
       if (!addon) throw new Error('Addon not found on this account')
       await prisma.addon.update({ where: { id: addon.id }, data: { isActive: true } })
       return `Enabled addon "${addon.name}"`
+    },
+  },
+
+  'keys.check': {
+    label: 'Run an API key check now',
+    description: 'Tests the configured TMDb/OMDb/MDBList/RPDB keys immediately and records the results - the same check "Check keys now" and the daily sweep run. Pairs with "At a scheduled time" for more-than-daily checking, or with a recovery trigger to confirm a fix.',
+    configFields: [],
+    async run({ prisma, accountId }) {
+      const { checkAndPersistAccountKeys } = require('../metadataKeyHealth')
+      const keyHealth = await checkAndPersistAccountKeys(prisma, accountId, { notify: true })
+      const checked = Object.keys(keyHealth || {})
+      const failing = checked.filter((k) => keyHealth[k] && keyHealth[k].ok === false)
+      if (checked.length === 0) return 'No API keys configured to check'
+      return failing.length === 0
+        ? `Checked ${checked.length} key(s) - all working`
+        : `Checked ${checked.length} key(s) - failing: ${failing.join(', ')}`
+    },
+  },
+
+  'backup.run': {
+    label: 'Run a backup now',
+    description: 'Writes a backup immediately, in addition to the nightly schedule - and uploads it off-site if a remote target is configured. Pairs with "At a scheduled time" for an extra daily backup at an hour you choose.',
+    configFields: [],
+    async run({ prisma }) {
+      // Private-instance action: performBackupOnce with no public-mode deps
+      // backs up the single account this instance is. On a public instance
+      // one tenant's rule must not trigger instance-wide backup work, so it
+      // declines rather than half-working - the nightly schedule covers
+      // tenants there.
+      const { INSTANCE_TYPE } = require('../config')
+      if (INSTANCE_TYPE === 'public') throw new Error('Not available on this instance - nightly backups already cover it')
+      const { performBackupOnce } = require('../backup')
+      const result = await performBackupOnce(prisma, {})
+      return result === false ? 'Backup failed - see server logs' : 'Backup written'
     },
   },
 

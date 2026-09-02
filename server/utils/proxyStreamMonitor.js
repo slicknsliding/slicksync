@@ -446,6 +446,22 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
         poster: fresh?.posterUrl || null,
       }, user)
     }
+    // Automation runs off the same start edge as the notification above,
+    // but is deliberately NOT gated on notifyOnWatch/webhook configuration -
+    // a rule whose action is "post to my dashboard" must still run on an
+    // instance with no Discord webhook set. Same reasoning as
+    // vault.check_failed's own emit.
+    try {
+      const { emitAutomationEvent } = require('./automation/engine')
+      await emitAutomationEvent(prisma, accountId, 'watch.started', {
+        username: user.username || '',
+        userId: user.id,
+        itemName: displayName,
+        itemId: fresh?.metadataItemId || '',
+        contentType: fresh?.metadataItemType === 'series' ? 'series' : 'movie',
+      })
+    } catch { /* emit never throws; guards the require itself */ }
+
     // Mirror to phone push (self-gates on the same notifyOnActivity toggle).
     const whoName = user.username || user.email || 'Someone'
     await notifyPushForType(prisma, accountId, 'notifyOnActivity', {

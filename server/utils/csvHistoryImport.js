@@ -58,11 +58,31 @@ function parseCsv(text) {
 // case-insensitively in this priority order.
 const COLUMN_ALIASES = {
   imdbId: ['Const', 'imdbID', 'imdb_id', 'IMDb ID', 'imdbId'],
-  title: ['Title', 'Name'],
+  // 'movie_name' is TV Time's GDPR export; 'full_title' is Tautulli's
+  // history export. Matching stays case-insensitive (see findColumn), so
+  // Movary's lowercase headers ride the same aliases.
+  title: ['Title', 'Name', 'movie_name', 'full_title'],
   year: ['Year'],
-  watchedDate: ['Date Rated', 'WatchedDate', 'Watched Date', 'Date'],
-  rating: ['Your Rating', 'Rating10', 'Rating'],
-  titleType: ['Title Type'],
+  // 'Watched At' is Plex's watch-history export, 'created_at' TV Time's,
+  // 'watchedAt' Movary's CSV. Netflix's viewing-activity CSV is just
+  // Title,Date - both already covered. Its M/D/YY dates parse natively
+  // (verified: '9/1/26' -> 2026-09-01), so no format shim is needed.
+  watchedDate: ['Date Rated', 'WatchedDate', 'Watched Date', 'Date', 'Watched At', 'created_at', 'watchedAt'],
+  rating: ['Your Rating', 'Rating10', 'Rating', 'userRating'],
+  titleType: ['Title Type', 'type', 'media_type'],
+}
+
+// Netflix's viewing-activity CSV mixes movies and episodes in one file, and
+// an episode row's title is the show + a middle segment naming the season
+// unit + the episode ("Dark: Season 1: Secrets"). There is no type column,
+// so without this check every one of those rows would burn an OMDb title
+// lookup that cannot succeed and then land in "couldn't resolve" noise -
+// hundreds of rows for a normal account. Keyed on Netflix's own segment
+// vocabulary rather than counting colons, so "Mission: Impossible" stays a
+// movie.
+const NETFLIX_EPISODE_SEGMENT = /:\s*(Season \d+|Series \d+|Part \d+|Volume \d+|Book \d+|Chapter \d+|Limited Series|Collection \d+)\s*:/i
+function looksLikeSeriesEpisodeTitle(title) {
+  return typeof title === 'string' && NETFLIX_EPISODE_SEGMENT.test(title)
 }
 
 function findColumn(headers, aliases) {
@@ -126,4 +146,4 @@ function normalizeRating(raw) {
   return Math.min(10, Math.round(n))
 }
 
-module.exports = { parseCsv, mapColumns, resolveRowToImdbItem, parseWatchedDate, normalizeRating, COLUMN_ALIASES }
+module.exports = { parseCsv, mapColumns, resolveRowToImdbItem, parseWatchedDate, normalizeRating, looksLikeSeriesEpisodeTitle, COLUMN_ALIASES }

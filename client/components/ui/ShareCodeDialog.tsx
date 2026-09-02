@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { ExclamationTriangleIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
+import { copyToClipboard } from '@/lib/clipboard';
 
 // Two-phase share flow, used by every share-code producer (catalogs, Nuvio
 // collections, addon templates). Phase one states exactly WHAT the code
@@ -60,7 +61,7 @@ export function ShareCodeDialog({ isOpen, onClose, title, summary, warning, extr
   const handleCopy = async () => {
     if (!code) return;
     try {
-      await navigator.clipboard.writeText(code);
+      await copyToClipboard(code);
       toast.success('Code copied');
     } catch {
       toast.error('Could not copy - select the text and copy manually');

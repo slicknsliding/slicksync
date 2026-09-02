@@ -1269,6 +1269,30 @@ class ApiClient {
   // DESTRUCTIVE - replaces all current users/groups/addons with the
   // backup's contents. Caller is responsible for confirming with the user
   // first; this just performs the restore.
+  /** What restoring this backup would change - names only, computed before
+   * anything is touched. Feeds the confirmation dialog. */
+  async diffBackup(filename: string) {
+    return this.fetch<{
+      backupDate: string | null;
+      addons: { added: string[]; removed: string[]; changed: string[] };
+      users: { added: string[]; removed: string[] };
+      groups: { added: string[]; removed: string[] };
+      counts: { backup: { addons: number; users: number; groups: number }; current: { addons: number; users: number; groups: number } };
+    }>(`/settings/backups/${encodeURIComponent(filename)}/diff`);
+  }
+
+  /** One-code migration: mint a single-use 15-minute code carrying this
+   * instance's whole household to a new server. */
+  async offerMigration() {
+    return this.fetch<{ code: string; expiresInMinutes: number }>('/settings/migration/offer', { method: 'POST' });
+  }
+
+  /** Paste the code on the NEW instance - fetches and restores everything.
+   * Destructive: replaces this instance's data. */
+  async receiveMigration(code: string) {
+    return this.fetch<Record<string, unknown>>('/settings/migration/receive', { method: 'POST', body: JSON.stringify({ code }) });
+  }
+
   async restoreBackup(filename: string) {
     return this.fetch<ImportConfigResult>(`/settings/backups/${encodeURIComponent(filename)}/restore`, {
       method: 'POST',
@@ -1338,6 +1362,10 @@ class ApiClient {
   }
   async applyUpdate() {
     return this.fetch<{ started: boolean; note: string }>('/settings/update-apply', { method: 'POST' });
+  }
+  /** Restart onto the image recorded before the last self-update. */
+  async rollbackUpdate() {
+    return this.fetch<{ started: boolean; rollingBackTo: string; note: string }>('/settings/update-rollback', { method: 'POST' });
   }
 
   /** Create a template directly from an addon list (share-code import) -
@@ -1504,10 +1532,12 @@ class ApiClient {
     return this.fetch<{ success: boolean }>(`/settings/trash/${encodeURIComponent(trashId)}`, { method: 'DELETE' });
   }
 
-  async checkProviderKeys(): Promise<{ keyHealth: SyncSettings['keyHealth'] }> {
+  /** No argument checks all four keys; a provider name checks just that one
+   * (the save-time verification for a single edited field). */
+  async checkProviderKeys(provider?: 'tmdb' | 'omdb' | 'mdblist' | 'rpdb'): Promise<{ keyHealth: SyncSettings['keyHealth'] }> {
     const res = await this.fetch<{ data?: { keyHealth: SyncSettings['keyHealth'] } } & Partial<{ keyHealth: SyncSettings['keyHealth'] }>>(
       '/settings/check-keys',
-      { method: 'POST' }
+      { method: 'POST', body: JSON.stringify(provider ? { provider } : {}) }
     );
     return (res?.data ?? res) as { keyHealth: SyncSettings['keyHealth'] };
   }
@@ -1650,8 +1680,31 @@ class ApiClient {
     return response.json() as Promise<ImportConfigResult>;
   }
 
+  /** Enable/disable the SlickTrax Addon for a user - the per-user Stremio
+   * addon serving Continue Watching / Watchlist / Catalogs inside the apps.
+   * rotate: true issues a fresh URL token, killing the old URL everywhere. */
+  async setTraxAddon(userId: string, enabled: boolean, rotate = false) {
+    return this.fetch<{ enabled: boolean; manifestUrl: string; autoInstall: boolean }>(
+      `/users/${encodeURIComponent(userId)}/trax-addon`,
+      { method: 'POST', body: JSON.stringify({ enabled, rotate }) },
+    );
+  }
+
   // Watch-history CSV import (IMDb/Letterboxd/loose-Trakt-export compatible -
   // see server/utils/csvHistoryImport.js) for one household member.
+  /** Vault-inject an addon: its embedded secrets become {{vault:id}}
+   * placeholders that only the server-side proxy resolves, so the real key
+   * never again appears in the stored URL or on any device. */
+  async vaultifyAddon(addonId: string) {
+    return this.fetch<{ data?: { vaultified: boolean; entries: string[]; proxyManifestUrl: string; note: string } } & { message?: string }>(
+      `/addons/${encodeURIComponent(addonId)}/vaultify`, { method: 'POST' });
+  }
+
+  async unvaultifyAddon(addonId: string) {
+    return this.fetch<{ data?: { vaultified: boolean } } & { message?: string }>(
+      `/addons/${encodeURIComponent(addonId)}/unvaultify`, { method: 'POST' });
+  }
+
   async importUserHistory(userId: string, file: File) {
     const formData = new FormData();
     formData.append('file', file);
@@ -1996,15 +2049,15 @@ class ApiClient {
     });
   }
 
-  async updateVaultEntry(id: string, data: Partial<VaultEntryInput> & { isActive?: boolean; backupEntryId?: string | null }) {
-    return this.fetch<{ success: boolean }>(`/vault/${id}`, {
+  async updateVaultEntry(id: string, data: Partial<VaultEntryInput> & { isActive?: boolean; backupEntryId?: string | null }): Promise<{ success: boolean; rotation?: { addonsUpdated: { id: string; name: string }[]; usersSynced: number; userFailures: { username: string; error: string }[] } | null }> {
+    return this.fetch(`/vault/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
   async deleteVaultEntry(id: string) {
-    return this.fetch<{ success: boolean }>(`/vault/${id}`, { method: 'DELETE' });
+    return this.fetch(`/vault/${id}`, { method: 'DELETE' });
   }
 
   async reorderVaultEntries(category: string, orderedIds: string[]) {
@@ -2104,6 +2157,31 @@ class ApiClient {
     }>>('/users/abandoned-shows');
   }
 
+  /** The Graveyard: every buried show (Continue Watching dismissals rest
+   * here too - both gestures mean "done with this"). */
+  async getBuriedShows() {
+    return this.fetch<{
+      userId: string; username: string; showId: string; showName: string;
+      poster: string | null; lastSeason: number | null; lastEpisode: number | null;
+      lastWatchedAt: string | null; episodesWatched: number; buriedAt: string;
+    }[]>('/users/graveyard');
+  }
+
+  /** The permanent exit: erases the show's entire watch history for that
+   * user plus the burial. Irreversible - the UI confirms with the count. */
+  async wipeBuriedShow(userId: string, showId: string) {
+    return this.fetch<{ success: boolean; episodesDeleted: number }>('/users/graveyard/wipe', {
+      method: 'POST', body: JSON.stringify({ userId, showId }),
+    });
+  }
+
+  /** Dig a show back up - it returns to Continue Watching or the unfinished list. */
+  async unburyShow(userId: string, showId: string) {
+    return this.fetch<{ success: boolean }>('/users/graveyard/unbury', {
+      method: 'POST', body: JSON.stringify({ userId, showId }),
+    });
+  }
+
   async dismissContinueWatching(userId: string, showId: string) {
     return this.fetch<{ success: boolean }>('/users/continue-watching/dismiss', {
       method: 'POST',
@@ -2194,6 +2272,13 @@ class ApiClient {
     return this.fetch<{ success: boolean; trashId?: string | null }>(`/lists/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
   // Automation rules ("when X happens, do Y") - see server/utils/automation/registry.js.
+  /** The AI rule-writer: plain English -> a validated rule draft for the
+   * editor. Server-side the model only proposes; the registry validates. */
+  async composeAutomationRule(text: string) {
+    return this.fetch<{ rule: { name: string; triggerType: string; triggerConfig: Record<string, unknown>; conditions: AutomationCondition[]; actions: AutomationActionConfig[] }; warnings: string[] }>(
+      '/automation/compose', { method: 'POST', body: JSON.stringify({ text }) });
+  }
+
   async getAutomationRegistry() {
     return this.fetch<AutomationRegistry>('/automation/registry');
   }
@@ -2357,7 +2442,7 @@ class ApiClient {
   // and its notifications - for something like an indexer that blocks this
   // server's IP, where the admin doesn't want repeated pinging about it.
   async setVaultHealthIgnored(id: string, healthIgnored: boolean) {
-    return this.fetch<{ success: boolean }>(`/vault/${id}`, {
+    return this.fetch(`/vault/${id}`, {
       method: 'PUT',
       body: JSON.stringify({ healthIgnored }),
     });
@@ -2613,6 +2698,9 @@ export interface User {
   name?: string; // Legacy field, prefer username
   email?: string;
   providerType?: 'stremio' | 'nuvio';
+  /** SlickTrax Addon - per-user Stremio addon toggle + its URL token. */
+  traxAddonEnabled?: boolean;
+  traxToken?: string | null;
   createdAt?: string;
   updatedAt?: string;
   expiresAt?: string | null;
@@ -2711,7 +2799,7 @@ export type VaultCategory =
   | 'debrid' | 'usenet_provider' | 'usenet_indexer' | 'stremio' | 'nuvio'
   | 'metadata' | 'ai' | 'vpn' | 'aiostreams' | 'custom';
 
-export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth';
+export type VaultTestType = 'manual' | 'generic_http' | 'real_debrid' | 'torbox' | 'newznab_caps' | 'tcp_reachability' | 'stremio_auth' | 'nuvio_auth' | 'openai_compatible';
 
 export interface VaultEntry {
   id: string;
@@ -3010,6 +3098,12 @@ export interface SyncSettings {
   tmdbApiKeyBackup?: string;
   mdblistApiKeyBackup?: string;
   rpdbApiKeyBackup?: string;
+  /** Key Pool extras beyond the primary/backup pair. When any exist, lookups
+   * rotate across every healthy key instead of always using the primary. */
+  tmdbApiKeyPool?: string[];
+  omdbApiKeyPool?: string[];
+  mdblistApiKeyPool?: string[];
+  rpdbApiKeyPool?: string[];
   omdbApiKeyBackup?: string;
   /** Result of the last validity check per provider - see checkProviderKeys()
    * and server/utils/metadataKeyHealth.js. Absent for a provider that's
@@ -3022,6 +3116,12 @@ export interface SyncSettings {
     usage?: { used: number; limit: number; percentUsed: number; plan: string | null };
   }>;
   notifyOnKeyHealth?: boolean;
+  /** Opt-in scheduled self-update (private instances with the socket
+   * mounted): checks daily at autoUpdateHour, backs up, updates, and the
+   * watchdog rolls back automatically on a failed health check. */
+  autoUpdateEnabled?: boolean;
+  autoUpdateHour?: number;
+
   simklClientId?: string;
   /** Self-hosted Nuvio backend URL, e.g. https://backend.example.com. Blank uses api.nuvio.tv. */
   nuvioServerUrl?: string;

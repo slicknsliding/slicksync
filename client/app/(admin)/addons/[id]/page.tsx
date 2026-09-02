@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, Addon, Group } from '@/lib/api';
+import { copyToClipboard } from '@/lib/clipboard';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -458,6 +459,31 @@ export default function AddonDetailPage() {
   // Proxy state
   const [isTogglingProxy, setIsTogglingProxy] = useState(false);
   const [isRegeneratingProxy, setIsRegeneratingProxy] = useState(false);
+  // Vault-injection state - see server/utils/vaultInjection.js. Lives in
+  // the Proxy card because the proxy IS the mechanism: only proxied serving
+  // can resolve the placeholders.
+  const [isVaultifying, setIsVaultifying] = useState(false);
+
+  const handleToggleVaultify = async () => {
+    if (!addon) return;
+    setIsVaultifying(true);
+    try {
+      if ((addon as any).vaultified) {
+        await api.unvaultifyAddon(addon.id);
+        setAddon((prev: any) => prev ? { ...prev, vaultified: false } : prev);
+        toast.success('Addon URL restored with the current secrets');
+      } else {
+        const r: any = await api.vaultifyAddon(addon.id);
+        const d = r?.data ?? r;
+        setAddon((prev: any) => prev ? { ...prev, vaultified: true, proxyEnabled: true, proxyManifestUrl: d.proxyManifestUrl || prev.proxyManifestUrl } : prev);
+        toast.success(`Keys now live only in the Vault${d.entries?.length ? ` (${d.entries.join(', ')})` : ''} - users pick up the proxy URL on their next sync`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update vault-injection');
+    } finally {
+      setIsVaultifying(false);
+    }
+  };
 
   // Drag sensors
   const sensors = useSortableSensors();
@@ -1469,7 +1495,7 @@ export default function AddonDetailPage() {
                   const url = (addon as any).url || (addon as any).manifestUrl;
                   if (url) {
                     try {
-                      await navigator.clipboard.writeText(url);
+                      await copyToClipboard(url);
                       toast.success('Copied to clipboard');
                     } catch (err) {
                       toast.error('Failed to copy to clipboard');
@@ -1979,6 +2005,27 @@ export default function AddonDetailPage() {
               </div>
             </div>
 
+            {/* Vault-injection - the step past proxying: the stored URL
+                itself stops containing the key. */}
+            <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-surface-hover mb-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-default">Keys stay in the Vault</p>
+                <p className="text-xs text-muted mt-0.5">
+                  {(anyAddon as any)?.vaultified
+                    ? 'The stored URL holds a placeholder, not the key. Rotating the Vault entry needs no rewrite and no re-sync - the proxy resolves the current secret on every request.'
+                    : 'Replace the key inside the addon URL with a Vault reference. The real key then never appears in the stored URL, synced manifests, or on any device.'}
+                </p>
+              </div>
+              <Button
+                variant={(anyAddon as any)?.vaultified ? 'ghost' : 'secondary'}
+                size="sm"
+                isLoading={isVaultifying}
+                onClick={handleToggleVaultify}
+              >
+                {(anyAddon as any)?.vaultified ? 'Restore plain URL' : 'Vault-inject'}
+              </Button>
+            </div>
+
             {anyAddon?.proxyEnabled && (
               <div className="space-y-4">
                 <div className="p-4 rounded-xl bg-surface border border-default">
@@ -1996,7 +2043,7 @@ export default function AddonDetailPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          navigator.clipboard.writeText(proxyUrlFor(anyAddon?.proxyUuid, anyAddon?.proxyManifestUrl) || '');
+                          copyToClipboard(proxyUrlFor(anyAddon?.proxyUuid, anyAddon?.proxyManifestUrl) || '');
                           toast.success('Copied to clipboard');
                         }}
                       >

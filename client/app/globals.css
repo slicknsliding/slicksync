@@ -959,4 +959,15 @@ body {
    crossing the overflow threshold can no longer change layout at all. */
 html {
   scrollbar-gutter: stable;
+  /* Scroll anchoring rewrites scrollY whenever content above the viewport
+     changes height - which is exactly what the sticky topbar does when its
+     nav rows collapse/expand. Anchoring turned that into a feedback loop at
+     the top of the page: expand -> browser bumps scrollY up to compensate ->
+     re-crosses the collapse threshold -> collapse -> browser pulls scrollY
+     back -> expand, bouncing the user between states (confirmed on video).
+     No threshold pair narrower than the nav's height delta can survive
+     that, so the anchoring itself is turned off; the topbar is the only
+     above-viewport element that resizes, and its own thresholds handle the
+     rest. */
+  overflow-anchor: none;
 }

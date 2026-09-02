@@ -13,6 +13,7 @@ import {
   ArrowRightIcon,
 } from '@heroicons/react/24/outline';
 import { userOAuth, userAuth as userAuthApi } from '@/lib/user-api';
+import { copyToClipboard } from '@/lib/clipboard';
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { PasswordToggleButton } from '@/components/ui/Input';
 import { api } from '@/lib/api';
@@ -451,7 +452,7 @@ function LoginContent() {
 
   const copyNuvioCode = useCallback(() => {
     if (!nuvioCode) return;
-    navigator.clipboard.writeText(nuvioCode);
+    copyToClipboard(nuvioCode);
     setNuvioCopied(true);
     setTimeout(() => setNuvioCopied(false), 2000);
   }, [nuvioCode]);
@@ -471,7 +472,7 @@ function LoginContent() {
   // Copy code
   const copyCode = useCallback(() => {
     if (!oauthCode) return;
-    navigator.clipboard.writeText(oauthCode);
+    copyToClipboard(oauthCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [oauthCode]);

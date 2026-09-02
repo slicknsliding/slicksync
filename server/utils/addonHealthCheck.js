@@ -242,7 +242,16 @@ async function performHealthChecks(prisma, accountId = null) {
           continue;
         }
 
-        const manifestUrl = getDecryptedManifestUrl(addon);
+        let manifestUrl = getDecryptedManifestUrl(addon);
+        // Vault-injected addons carry {{vault:...}} placeholders - resolve
+        // them here (server-side, same as /proxy does) so the health check
+        // probes the real upstream instead of failing on a placeholder URL.
+        try {
+          const { hasVaultPlaceholders, resolvePlaceholders } = require('./vaultInjection');
+          if (hasVaultPlaceholders(manifestUrl)) {
+            manifestUrl = await resolvePlaceholders(prisma, addon.accountId, manifestUrl, decrypt);
+          }
+        } catch { /* fall through - probe fails loudly rather than silently skipping */ }
         // Custom probe URL: checks something the admin considers a better
         // liveness signal than the manifest (a catalog endpoint, a status
         // page) - a manifest served from cache while the backend is dead is

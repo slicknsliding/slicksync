@@ -12,6 +12,7 @@ import {
   THEME_REAL_COLORS, encodeThemeShareCode, decodeThemeShareCode,
 } from '@/lib/theme';
 import { useLayoutMode, layoutModeMeta, layoutModeIds, LayoutModeId } from '@/lib/layout-mode';
+import { copyToClipboard } from '@/lib/clipboard';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle';
 import { toast } from '@/components/ui/Toast';
@@ -441,7 +442,7 @@ export default function ThemesPage() {
   const handleExportCode = async () => {
     const code = encodeThemeShareCode(buildDraft(), builderName.trim() || activeCustomTheme?.name || 'My theme');
     try {
-      await navigator.clipboard.writeText(code);
+      await copyToClipboard(code);
       toast.success('Theme code copied - paste it anywhere to share');
     } catch {
       toast.error('Failed to copy - your browser may be blocking clipboard access');

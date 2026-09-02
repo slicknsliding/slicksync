@@ -45,7 +45,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
           id: e.id, name: e.name, category: e.category, provider: e.provider,
           dashboardUrl: e.dashboardUrl, cost: e.cost, costCycle: e.costCycle, expiresAt: e.expiresAt, notifyDaysBefore: e.notifyDaysBefore,
           lastCheckedAt: e.lastCheckedAt, lastCheckStatus: e.lastCheckStatus, lastCheckMessage: e.lastCheckMessage,
-          isActive: e.isActive, testType: e.testType, secretLabel: e.secretLabel, updatedAt: e.updatedAt,
+          isActive: e.isActive, testType: (e.category === 'ai' && e.testType === 'manual') ? 'openai_compatible' : e.testType, secretLabel: e.secretLabel, updatedAt: e.updatedAt,
           position: e.position, autoRemoveEnabled: e.autoRemoveEnabled, autoRemoveAfterDays: e.autoRemoveAfterDays,
           backupEntryId: e.backupEntryId,
         })),
@@ -268,8 +268,54 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         }
       }
 
+      // Captured BEFORE the update overwrites it - the whole point of
+      // rotation propagation is knowing what the old value was.
+      let oldSecret = null;
+      if (secret) {
+        try { oldSecret = decrypt(existing.encryptedSecret, req); } catch { oldSecret = null; }
+      }
+
       await prisma.vaultEntry.update({ where: { id: existing.id }, data });
-      res.json({ success: true });
+
+      // Key-rotation propagation - opt-in per account (keyRotationPropagation
+      // in Settings, OFF by default). When the secret actually changed, find
+      // every addon config embedding the old value, rewrite it, and re-sync
+      // the users carrying those addons. See utils/keyRotation.js for the
+      // safety rules. A propagation failure never fails this save - the new
+      // secret is already stored.
+      let rotation = null;
+      if (secret && oldSecret && oldSecret !== secret) {
+        try {
+          // Always on - the opt-in toggle was removed at the user's own
+          // call after living for one day. The mechanism is conservative
+          // enough not to need one: it only ever rewrites exact matches of
+          // the OLD secret (12-char minimum, base64 round-trip verified),
+          // no-ops when nothing embeds it, and reports loudly via the save
+          // response and a notification. The one side effect - re-syncing
+          // affected users - is strictly better than leaving them on a key
+          // that just stopped existing.
+          {
+            const { propagateSecretRotation } = require('../utils/keyRotation');
+            const { getDecryptedManifestUrl } = require('../utils/encryption');
+            const { manifestUrlHmac } = require('../utils/hashing');
+            rotation = await propagateSecretRotation(prisma, req, { encrypt, decrypt, getDecryptedManifestUrl, manifestUrlHmac }, {
+              accountId, oldSecret, newSecret: secret,
+            });
+            if (rotation.addonsUpdated.length > 0) {
+              const { createNotification } = require('../utils/notificationStore');
+              await createNotification(prisma, accountId, {
+                type: 'task',
+                title: `Key rotation: "${existing.name}" propagated`,
+                body: `Updated ${rotation.addonsUpdated.length} addon(s) (${rotation.addonsUpdated.map(a => a.name).join(', ')}) and re-synced ${rotation.usersSynced} user(s)${rotation.userFailures.length ? `; ${rotation.userFailures.length} sync failure(s)` : ''}.`,
+              }).catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.warn('[Vault] Rotation propagation failed (save itself succeeded):', e?.message);
+        }
+      }
+
+      res.json({ success: true, rotation });
     } catch (error) {
       console.error('Error updating vault entry:', error);
       res.status(500).json({ error: 'Failed to update vault entry' });
@@ -302,7 +348,11 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       const config = entry.testConfig ? JSON.parse(entry.testConfig) : {};
       config.identifier = entry.provider || config.identifier; // for stremio_auth/nuvio_auth checkers
 
-      const result = await runCheck(entry.testType, secret, config);
+      // AI entries created before the openai_compatible checker existed carry
+      // testType 'manual' - coerced here (and in the list mapping) so they
+      // become checkable without anyone having to re-save the key.
+      const effectiveTestType = (entry.category === 'ai' && entry.testType === 'manual') ? 'openai_compatible' : entry.testType;
+      const result = await runCheck(effectiveTestType, secret, config);
 
       const updateData = {
         lastCheckedAt: new Date(),

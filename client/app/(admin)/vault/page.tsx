@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense, Fragment } from 'r
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { copyToClipboard } from '@/lib/clipboard';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -70,6 +71,7 @@ const TEST_TYPE_LABELS: Record<VaultTestType, string> = {
   tcp_reachability: 'TCP reachability',
   stremio_auth: 'Stremio login',
   nuvio_auth: 'Nuvio login',
+  openai_compatible: 'AI provider (OpenAI-compatible)',
 };
 
 // Common currency codes for the Vault cost selector. Intl.NumberFormat
@@ -460,6 +462,7 @@ function VaultPageContent() {
   // detail list of every individual upcoming renewal is worth having but
   // not worth always taking up vertical space for.
   const [renewalExpanded, setRenewalExpanded] = useState(false);
+
   useEffect(() => {
     api.getVaultEntries().then((d) => {
       setAllCostEntries(d.entries);
@@ -701,8 +704,16 @@ function VaultPageContent() {
       }
 
       if (editingId) {
-        await api.updateVaultEntry(editingId, payload);
-        toast.success('Vault entry updated');
+        const result = await api.updateVaultEntry(editingId, payload);
+        // Rotation propagation ran (opt-in) and touched something - say
+        // exactly what, since addon configs and user accounts just changed
+        // as a side effect of saving a key.
+        if (result?.rotation && result.rotation.addonsUpdated.length > 0) {
+          const r = result.rotation;
+          toast.success(`Key rotated - updated ${r.addonsUpdated.length} addon${r.addonsUpdated.length === 1 ? '' : 's'} and re-synced ${r.usersSynced} user${r.usersSynced === 1 ? '' : 's'}${r.userFailures.length ? ` (${r.userFailures.length} sync failure${r.userFailures.length === 1 ? '' : 's'} - see notifications)` : ''}`);
+        } else {
+          toast.success('Vault entry updated');
+        }
       } else {
         await api.createVaultEntry(payload);
         toast.success('Vault entry added');
@@ -853,7 +864,7 @@ function VaultPageContent() {
   const handleCopy = async (entry: VaultEntry) => {
     try {
       const value = revealed[entry.id] ?? (await api.revealVaultSecret(entry.id)).secret;
-      await navigator.clipboard.writeText(value);
+      await copyToClipboard(value);
       toast.success('Copied to clipboard');
     } catch (err: any) {
       toast.error(err.message || 'Failed to copy');
@@ -1130,6 +1141,7 @@ function VaultPageContent() {
           )}
         </>
       )}
+
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}
         <div className="mb-5">

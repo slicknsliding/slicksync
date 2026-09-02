@@ -94,6 +94,7 @@ function parseTraktExport(text) {
 
   const records = []
   let skippedNonMovie = 0
+  let skippedNoTimestamp = 0
 
   for (const entry of entries) {
     const titleObj = extractTitleObject(entry)
@@ -103,18 +104,29 @@ function parseTraktExport(text) {
     // reasonable "when", and the CSV path already treats IMDb's rating date
     // the same way.
     const when = entry.watched_at || entry.last_watched_at || entry.rated_at || null
-    const rating = typeof entry.rating === 'number' ? String(entry.rating) : ''
 
+    // A real timestamp is required, not optional. Trakt's collection
+    // (collected_at) and watchlist (listed_at) exports carry the exact same
+    // movie/ids.imdb shape as history and ratings, with no watched_at or
+    // rated_at at all - confirmed against real export shapes, not assumed.
+    // The CSV import loop defaults a blank Watched Date to "right now", so
+    // without this check, importing someone's whole unzipped export (now
+    // that multi-file select makes that the obvious thing to do) would mark
+    // every movie in their COLLECTION and WATCHLIST as watched today. A
+    // title merely owned or queued is not a title watched.
+    if (typeof when !== 'string' || !when) { skippedNoTimestamp++; continue }
+
+    const rating = typeof entry.rating === 'number' ? String(entry.rating) : ''
     records.push({
       imdbID: imdbIdOf(titleObj) || '',
       Title: typeof titleObj.title === 'string' ? titleObj.title : '',
       Year: titleObj.year != null ? String(titleObj.year) : '',
-      'Watched Date': typeof when === 'string' ? when : '',
+      'Watched Date': when,
       Rating: rating,
     })
   }
 
-  return { headers: HEADERS, records, skippedNonMovie, shape: describeShape(entries) }
+  return { headers: HEADERS, records, skippedNonMovie, skippedNoTimestamp, shape: describeShape(entries) }
 }
 
 /** Cheap check so the route can pick a parser without guessing on extension alone. */

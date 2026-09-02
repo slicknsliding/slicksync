@@ -100,10 +100,37 @@ export function NebulaTopbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   useEffect(() => {
     if (isTV) return;
-    const onScroll = () => setIsScrolled(window.scrollY > 24);
-    onScroll();
+    // Two thresholds, not one. A single cutoff (the old `scrollY > 24`)
+    // oscillates right at the boundary: collapsing hides the nav rows, the
+    // document gets SHORTER, the browser clamps scrollY back down, that
+    // re-crosses the same cutoff, the nav expands, the document grows, and
+    // round it goes - felt as the bar getting "stuck" fighting itself while
+    // you scroll away from the top. The gap between the two thresholds is
+    // wider than the height the collapse removes, so crossing one can never
+    // bounce you back across the other. rAF-coalesced so a fast wheel flick
+    // sets state once per frame, not once per scroll event.
+    // Gap must exceed the nav rows' full height (~100px on desktop) so a
+    // collapse-induced scroll clamp can never land back past the expand
+    // threshold - the earlier 96/12 pair did not clear that bar. Scroll
+    // anchoring, the other half of the bounce, is disabled in globals.css.
+    const COLLAPSE_AT = 160;
+    const EXPAND_AT = 8;
+    let collapsed = window.scrollY > COLLAPSE_AT;
+    let raf = 0;
+    setIsScrolled(collapsed);
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const y = window.scrollY;
+        const next = collapsed ? y > EXPAND_AT : y > COLLAPSE_AT;
+        if (next !== collapsed) {
+          collapsed = next;
+          setIsScrolled(next);
+        }
+      });
+    };
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('scroll', onScroll); };
   }, [isTV]);
   // Scrolling back to top should always reveal the full nav again, even if
   // it was left open from a scrolled-down state - closing here means

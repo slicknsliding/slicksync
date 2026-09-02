@@ -78,6 +78,20 @@ async function resolveKeyFromSettings(prisma, getAccountId, req, settingsField, 
     // which un-marks the primary as bad, which sends the next lookup back to
     // the dead primary, which fails the next check - flip-flopping between
     // keys every cycle and never settling.
+    // Key Pool: when EXTRA keys exist beyond the primary/backup pair,
+    // rotation across every healthy key replaces the primary-first
+    // semantics - spreading quota is the whole point of configuring a pool.
+    // allowBackup:false (the health check's own path) always bypasses this:
+    // checks address specific keys, never "whichever the ring serves next".
+    if (allowBackup) {
+      const { readPool, pickFromRing } = require('./keyPool')
+      if (readPool(cfg, settingsField).length > 0) {
+        const provider = HEALTH_PROVIDER_BY_FIELD[settingsField]
+        const pooled = pickFromRing(cfg, settingsField, provider, accountId)
+        if (pooled) return pooled
+      }
+    }
+
     if (primary) {
       if (!allowBackup) return primary
       const provider = HEALTH_PROVIDER_BY_FIELD[settingsField]

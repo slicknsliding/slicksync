@@ -59,6 +59,14 @@ export interface PosterCardProps {
   /** Only-one-menu-open-at-a-time state, lifted to the parent so opening
    *  a second card's menu closes the previous card's. */
   isMenuOpen?: boolean;
+  /** Identity reported through onMenuOpenChange - defaults to item.id.
+   *  Parents rendering the SAME title in multiple sections (For You rows
+   *  regularly repeat items, trending overlaps the grid) must scope this
+   *  (e.g. `${rowId}:${item.id}`): with a bare item.id, every card sharing
+   *  the id believed the menu was ITS OWN open menu, and the duplicates -
+   *  having never received click coordinates - rendered a ghost copy of the
+   *  menu at the viewport origin. */
+  menuKey?: string;
   // Receives this card's own item id as a second argument so the parent can
   // use ONE stable useCallback for every card. Passing an inline
   // `(open) => setOpenMenuKey(open ? item.id : null)` gives each card a fresh
@@ -88,6 +96,7 @@ export const PosterCard = memo(function PosterCard({
   onRemoveFromCatalog,
   isMenuOpen,
   onMenuOpenChange,
+  menuKey,
   focusable = false,
 }: PosterCardProps) {
   const [imageError, setImageError] = useState(false);
@@ -102,7 +111,7 @@ export const PosterCard = memo(function PosterCard({
   // menu is visible at a time across the whole grid.
   const { position, handleContextMenu, close: closeInternal, setExternalClose } = useContextMenu();
   const controlledOpen = isMenuOpen === true;
-  const close = () => { closeInternal(); onMenuOpenChange?.(false, item.id); setCatalogView(false); };
+  const close = () => { closeInternal(); onMenuOpenChange?.(false, menuKey ?? item.id); setCatalogView(false); };
   // Registers the REAL close (above) for cross-page/cross-section closing -
   // this card's own isMenuOpen is lifted, so closeInternal alone (this hook's
   // unused-for-rendering internal state) wouldn't actually hide anything.
@@ -115,7 +124,7 @@ export const PosterCard = memo(function PosterCard({
   const longPress = useLongPress({
     onLongPress: (e, x, y) => {
       handleContextMenu(e, x, y);
-      onMenuOpenChange?.(true, item.id);
+      onMenuOpenChange?.(true, menuKey ?? item.id);
     },
   });
 
@@ -131,7 +140,7 @@ export const PosterCard = memo(function PosterCard({
       }}
       onContextMenu={(e) => {
         handleContextMenu(e);
-        onMenuOpenChange?.(true, item.id);
+        onMenuOpenChange?.(true, menuKey ?? item.id);
       }}
       {...longPress}
     >

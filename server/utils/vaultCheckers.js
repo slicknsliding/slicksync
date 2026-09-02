@@ -308,7 +308,35 @@ async function checkNuvioAuth(secret, config = {}) {
   }
 }
 
+// AI Services entries (category 'ai', created by Settings' AI front door).
+// GET /models against the entry's own configured base URL - the cheapest
+// call every OpenAI-compatible provider implements, and the same endpoint
+// Settings' model dropdown already relies on. These entries used to be
+// testType 'manual', which disabled the Vault card's check button entirely -
+// the one credential with a rich live API was the one you couldn't test.
+async function checkOpenAiCompatible(secret, config = {}) {
+  if (!secret) return { ok: false, message: 'No API key on file for this entry' }
+  const base = (typeof config.baseUrl === 'string' && config.baseUrl.trim())
+    ? config.baseUrl.trim().replace(/\/+$/, '')
+    : 'https://api.openai.com/v1'
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 10000)
+    let res
+    try {
+      res = await fetch(`${base}/models`, { headers: { Authorization: `Bearer ${secret}` }, signal: controller.signal })
+    } finally { clearTimeout(timer) }
+    if (res.ok) return { ok: true, message: 'Provider accepted the key' }
+    if (res.status === 401 || res.status === 403) return { ok: false, message: `Provider rejected the key (${res.status})` }
+    if (res.status === 429) return { ok: false, message: 'Provider is rate-limiting this key (429)' }
+    return { ok: false, message: `Provider returned ${res.status}` }
+  } catch (err) {
+    return { ok: false, message: err?.name === 'AbortError' ? 'Provider did not respond within 10s' : (err?.message || 'Request failed') }
+  }
+}
+
 const CHECKERS = {
+  openai_compatible: checkOpenAiCompatible,
   generic_http: checkGenericHttp,
   real_debrid: checkRealDebrid,
   torbox: checkTorBox,

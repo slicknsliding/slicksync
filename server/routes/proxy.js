@@ -184,6 +184,16 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
       let originalManifestUrl;
       try {
         originalManifestUrl = decrypt(addon.manifestUrl, req);
+        // Vault-injected configs: {{vault:<id>}} placeholders resolve to the
+        // entry's CURRENT secret here, server-side, at request time - the
+        // real key exists only between this line and the upstream fetch.
+        // See utils/vaultInjection.js.
+        {
+          const { hasVaultPlaceholders, resolvePlaceholders } = require('../utils/vaultInjection');
+          if (hasVaultPlaceholders(originalManifestUrl)) {
+            originalManifestUrl = await resolvePlaceholders(prisma, addon.accountId, originalManifestUrl, decrypt);
+          }
+        }
         upstreamUrl = originalManifestUrl;
       } catch (e) {
         console.error('Error decrypting manifest URL:', e);
@@ -267,6 +277,16 @@ module.exports = ({ prisma, decrypt, getAccountId, getServerKey }) => {
       let originalManifestUrl;
       try {
         originalManifestUrl = decrypt(addon.manifestUrl, req);
+        // Vault-injected configs: {{vault:<id>}} placeholders resolve to the
+        // entry's CURRENT secret here, server-side, at request time - the
+        // real key exists only between this line and the upstream fetch.
+        // See utils/vaultInjection.js.
+        {
+          const { hasVaultPlaceholders, resolvePlaceholders } = require('../utils/vaultInjection');
+          if (hasVaultPlaceholders(originalManifestUrl)) {
+            originalManifestUrl = await resolvePlaceholders(prisma, addon.accountId, originalManifestUrl, decrypt);
+          }
+        }
       } catch (e) {
         console.error('Error decrypting manifest URL:', e);
         errorMessage = 'Failed to resolve addon URL';

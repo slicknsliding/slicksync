@@ -716,6 +716,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
           proxyManifestUrl: addon.proxyEnabled && addon.proxyUuid
             ? `${req.protocol}://${req.get('host')}/proxy/${addon.proxyUuid}/manifest.json`
             : null,
+          vaultified: (() => { try { return (getDecryptedManifestUrl(addon, req) || '').includes('{{vault:') } catch { return false } })(),
           // Health check info
           isOnline: addon.isOnline,
           lastHealthCheck: addon.lastHealthCheck,
@@ -1596,6 +1597,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
         proxyManifestUrl: addon.proxyEnabled && addon.proxyUuid
           ? `${req.protocol}://${req.get('host')}/proxy/${addon.proxyUuid}/manifest.json`
           : null,
+        vaultified: (() => { try { return (getDecryptedManifestUrl(addon, req) || '').includes('{{vault:') } catch { return false } })(),
         // Health check info
         isOnline: addon.isOnline,
         lastHealthCheck: addon.lastHealthCheck,
@@ -2366,6 +2368,137 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       }, 'Proxy enabled successfully');
     } catch (error) {
       console.error('Error enabling proxy:', error);
+      return responseUtils.internalError(res, error.message);
+    }
+  });
+
+
+  // ==================== VAULT-INJECTED CONFIGS ====================
+  // POST /:id/vaultify - replace this addon's embedded secrets with
+  // {{vault:<entryId>}} placeholders and turn on the proxy, so the real key
+  // never again appears in the stored URL, any synced manifest, or any
+  // device. See utils/vaultInjection.js for scope (raw-URL secrets only in
+  // v1; base64-buried ones are reported, not converted).
+  router.post('/:id/vaultify', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const accountId = getAccountId(req);
+      const addon = await prisma.addon.findFirst({ where: { id, accountId } });
+      if (!addon) return responseUtils.notFound(res, 'Addon');
+
+      // Auto-install needs a base the account's devices can reach; without
+      // one, sync would push an unfetchable placeholder URL. Refuse up
+      // front rather than create that state. The toggle route for the
+      // SlickTrax addon records observedBaseUrl on the same reasoning.
+      let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '');
+      if (!base) {
+        const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } });
+        let cfg = acct?.sync;
+        if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = null; } }
+        base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '');
+        if (!base) {
+          // The admin reaching this route proves a working base right now -
+          // but never a loopback one: a script running on the server itself
+          // would poison the stored base sync hands to real devices
+          // (confirmed live when a localhost test persisted localhost:4000).
+          const reqBase = `${req.protocol}://${req.get('host')}`;
+          if (/^https?:\/\/(localhost|127\.|\[?::1)/i.test(reqBase)) {
+            return res.status(400).json({ error: 'No reachable base URL known for this instance. Open this page from the address your devices use (not localhost), or set PUBLIC_APP_URL.' });
+          }
+          base = reqBase;
+          try {
+            const nextCfg = { ...(cfg && typeof cfg === 'object' ? cfg : {}), observedBaseUrl: base };
+            await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(nextCfg) } });
+          } catch { /* best-effort */ }
+        }
+      }
+
+      const url = getDecryptedManifestUrl(addon, req);
+      if (!url) return res.status(500).json({ error: 'Could not read this addon\'s URL' });
+
+      const { insertPlaceholders, findBase64BuriedSecrets, hasVaultPlaceholders } = require('../utils/vaultInjection');
+      if (hasVaultPlaceholders(url)) {
+        return res.status(400).json({ error: 'This addon is already vault-injected' });
+      }
+
+      const rawEntries = await prisma.vaultEntry.findMany({ where: { accountId, isActive: true } });
+      const entries = rawEntries.map((e) => {
+        let secret = '';
+        try { secret = decrypt(e.encryptedSecret, req); } catch { secret = ''; }
+        return { id: e.id, name: e.name, secret };
+      }).filter((e) => e.secret);
+
+      const { url: nextUrl, used } = insertPlaceholders(url, entries);
+      const buried = findBase64BuriedSecrets(url, entries);
+
+      if (used.length === 0) {
+        return res.status(400).json({
+          error: buried.length > 0
+            ? 'This addon\'s key sits inside an encoded config blob, which vault-injection does not convert yet. Rotation propagation still covers it fully.'
+            : 'No Vault secret appears in this addon\'s URL. Add the key to the Vault first, or it may already use a different credential.',
+          buriedEntryNames: buried.map((id) => entries.find((e) => e.id === id)?.name).filter(Boolean),
+        });
+      }
+
+      const proxyUuid = addon.proxyUuid || crypto.randomUUID();
+      await prisma.addon.update({
+        where: { id: addon.id },
+        data: {
+          manifestUrl: encrypt(nextUrl, req),
+          manifestUrlHash: manifestUrlHmac(req, nextUrl),
+          proxyUuid,
+          proxyEnabled: true,
+        },
+      });
+
+      const usedNames = used.map((uid) => entries.find((e) => e.id === uid)?.name).filter(Boolean);
+      return responseUtils.success(res, {
+        vaultified: true,
+        entries: usedNames,
+        proxyManifestUrl: `${base}/proxy/${proxyUuid}/manifest.json`,
+        note: 'Users pick up the proxy URL on their next sync. From then on, rotating these Vault entries needs no rewrite and no re-sync at all.',
+      }, `Keys now live only in the Vault (${usedNames.join(', ')})`);
+    } catch (error) {
+      console.error('Error vaultifying addon:', error);
+      return responseUtils.internalError(res, error.message);
+    }
+  });
+
+  // POST /:id/unvaultify - resolve placeholders back to the CURRENT secrets
+  // and store the plain URL again. Proxy stays enabled (turning it off is
+  // the existing proxy/disable route's job, and the plain URL works either
+  // way).
+  router.post('/:id/unvaultify', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const accountId = getAccountId(req);
+      const addon = await prisma.addon.findFirst({ where: { id, accountId } });
+      if (!addon) return responseUtils.notFound(res, 'Addon');
+
+      const url = getDecryptedManifestUrl(addon, req);
+      const { hasVaultPlaceholders, resolvePlaceholders } = require('../utils/vaultInjection');
+      if (!url || !hasVaultPlaceholders(url)) {
+        return res.status(400).json({ error: 'This addon is not vault-injected' });
+      }
+      // Verify every referenced entry still resolves BEFORE storing anything:
+      // writing a URL with a silently-emptied secret over a working
+      // placeholder URL would break the addon while looking like success.
+      const { PLACEHOLDER_RE } = require('../utils/vaultInjection');
+      const ids = [...new Set([...url.matchAll(PLACEHOLDER_RE)].map((m) => m[1]))];
+      const live = await prisma.vaultEntry.findMany({ where: { id: { in: ids }, accountId, isActive: true } });
+      const resolvable = new Set(live.filter((e) => { try { return !!decrypt(e.encryptedSecret, req); } catch { return false; } }).map((e) => e.id));
+      const dead = ids.filter((i) => !resolvable.has(i));
+      if (dead.length > 0) {
+        return res.status(409).json({ error: 'A referenced Vault entry no longer resolves - fix or recreate it before un-injecting' });
+      }
+      const resolved = await resolvePlaceholders(prisma, accountId, url, (v) => decrypt(v, req));
+      await prisma.addon.update({
+        where: { id: addon.id },
+        data: { manifestUrl: encrypt(resolved, req), manifestUrlHash: manifestUrlHmac(req, resolved) },
+      });
+      return responseUtils.success(res, { vaultified: false }, 'Addon URL restored with the current secrets');
+    } catch (error) {
+      console.error('Error un-vaultifying addon:', error);
       return responseUtils.internalError(res, error.message);
     }
   });

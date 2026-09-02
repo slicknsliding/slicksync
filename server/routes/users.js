@@ -583,7 +583,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!user) return res.status(404).json({ error: 'User not found' })
       if (!req.file) return res.status(400).json({ error: 'No file uploaded (expected multipart field "file")' })
 
-      const { parseCsv, mapColumns, resolveRowToImdbItem, parseWatchedDate, normalizeRating } = require('../utils/csvHistoryImport')
+      const { parseCsv, mapColumns, resolveRowToImdbItem, parseWatchedDate, normalizeRating, looksLikeSeriesEpisodeTitle } = require('../utils/csvHistoryImport')
       const { resolveSinglePoster } = require('../utils/libraryHelpers')
       const { resolveOmdbKeyForAccount } = require('../utils/listImport')
 
@@ -592,14 +592,20 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // A Trakt export JSON is flattened into the same column names the CSV
       // path already understands, so everything below this point is shared.
       const { parseTraktExport, looksLikeJson } = require('../utils/traktExportImport')
-      let headers, records, skippedNonMovie = 0
+      let headers, records, skippedNonMovie = 0, skippedNoTimestamp = 0
       if (looksLikeJson(text)) {
         const parsed = parseTraktExport(text)
         if (!parsed) return res.status(400).json({ error: 'That file is not valid JSON.' })
-        ;({ headers, records, skippedNonMovie } = parsed)
+        ;({ headers, records, skippedNonMovie, skippedNoTimestamp } = parsed)
         if (records.length === 0) {
           if (skippedNonMovie > 0) {
             return res.status(400).json({ error: `That file contains ${skippedNonMovie} episode or show entr${skippedNonMovie === 1 ? 'y' : 'ies'} and no movies. Movie history and ratings can be imported; episode history cannot yet.` })
+          }
+          if (skippedNoTimestamp > 0) {
+            // Named plainly - this is Trakt's collection or watchlist export
+            // (or similar), which is correctly not importable: a title
+            // merely owned or queued was never actually watched.
+            return res.status(400).json({ error: `That file lists ${skippedNoTimestamp} title(s) with no watch date or rating attached - looks like a collection or watchlist export rather than history. Only history and ratings files can be imported.` })
           }
           // Say what the file actually looked like. A format that doesn't
           // match is a one-line fix here, but only if the shape is known -
@@ -628,6 +634,16 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const unresolved = []
 
       for (const row of rows) {
+        // Netflix-style episode rows (Show: Season N: Episode) carry no id
+        // and cannot resolve as movies - counted with the other episode
+        // skips instead of burning a doomed OMDb lookup each and landing in
+        // "couldn't resolve" noise. Only when there's no real id to trust.
+        const rawRowId = colMap.imdbId ? row[colMap.imdbId] : null
+        const hasRealId = rawRowId && /^tt\d+$/.test(String(rawRowId).trim())
+        if (!hasRealId && looksLikeSeriesEpisodeTitle(colMap.title ? row[colMap.title] : null)) {
+          skippedNonMovie++
+          continue
+        }
         const resolved = await resolveRowToImdbItem(row, colMap, omdbApiKey)
         if (!resolved) {
           skipped++
@@ -671,6 +687,69 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     } catch (error) {
       console.error('Error importing history CSV:', error)
       res.status(500).json({ error: error?.message || 'Failed to import history' })
+    }
+  })
+
+
+  // POST /users/:id/trax-addon - enable/disable the SlickTrax Addon for this
+  // user (body: {enabled}). The URL token is a bearer credential (see
+  // routes/traxAddon.js): crypto-random, generated on first enable, and kept
+  // stable across later toggles so the URL already synced into the account
+  // keeps working. Pass {rotate: true} to force a fresh token - which
+  // deliberately kills the old URL everywhere it was ever installed.
+  router.post('/:id/trax-addon', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+
+      const enabled = !!req.body?.enabled
+      const rotate = !!req.body?.rotate
+      let traxToken = user.traxToken
+      if ((enabled && !traxToken) || rotate) {
+        traxToken = require('crypto').randomBytes(24).toString('hex')
+      }
+      await prisma.user.update({ where: { id: user.id }, data: { traxAddonEnabled: enabled, traxToken } })
+
+      // The base URL sync will use. Reported honestly rather than guessed
+      // from the request: sync itself has no request to borrow a hostname
+      // from, so if PUBLIC_APP_URL is unset the auto-install genuinely will
+      // not happen and the UI should say so instead of showing a URL that
+      // only works from this browser's vantage point.
+      const base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+      // The admin reaching this route just proved a working public URL for
+      // this instance - the one in their address bar. Persisted so sync can
+      // auto-install without PUBLIC_APP_URL being set; the env var, when
+      // present, stays the explicit override. Recorded only here, from an
+      // authenticated admin request (behind trust proxy = 1, so req.protocol
+      // is honest behind Traefik) - never from unauthenticated traffic,
+      // where a spoofed Host header could poison the stored base.
+      const reqBase = `${req.protocol}://${req.get('host')}`
+      // Never learn a loopback base: an API call made on the server itself
+      // (scripts, health probes) would otherwise poison the stored base
+      // that sync hands to real devices - confirmed live when a localhost
+      // test persisted http://localhost:4000.
+      const reqBaseUsable = !/^https?:\/\/(localhost|127\.|\[?::1)/i.test(reqBase)
+      if (enabled && !base && reqBaseUsable) {
+        try {
+          const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+          let cfg = acct?.sync
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = {} } }
+          if (!cfg || typeof cfg !== 'object') cfg = {}
+          if (cfg.observedBaseUrl !== reqBase) {
+            await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify({ ...cfg, observedBaseUrl: reqBase }) } })
+          }
+        } catch { /* best-effort - manual install still works */ }
+      }
+      res.json({
+        enabled,
+        manifestUrl: `${base || reqBase}/trax/${traxToken}/manifest.json`,
+        autoInstall: true,
+      })
+    } catch (error) {
+      console.error('Error toggling SlickTrax addon:', error)
+      res.status(500).json({ error: 'Failed to update SlickTrax addon' })
     }
   })
 
@@ -829,6 +908,53 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     } catch (error) {
       console.error('Error fetching abandoned shows:', error)
       res.status(500).json({ error: 'Failed to fetch abandoned shows' })
+    }
+  })
+
+  // GET /users/graveyard - every buried show (see getBuriedShows for why
+  // Continue Watching dismissals rest here too). Must be before /:id.
+  router.get('/graveyard', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { getBuriedShows } = require('../utils/continueWatching')
+      res.json(await getBuriedShows(prisma, accountId))
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to load the graveyard' })
+    }
+  })
+
+  // POST /users/graveyard/unbury - dig a show back up. It reappears in
+  // Continue Watching (if recent) or the abandoned list (if not).
+  router.post('/graveyard/unbury', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { userId, showId } = req.body || {}
+      if (!userId || !showId) return res.status(400).json({ error: 'Missing userId or showId' })
+      const { unburyShow } = require('../utils/continueWatching')
+      await unburyShow(prisma, accountId, userId, showId)
+      res.json({ success: true })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to unbury' })
+    }
+  })
+
+  // POST /users/graveyard/wipe - the permanent exit. Deletes every episode
+  // watch-history row for that user+show plus the burial itself. Watch time
+  // and metrics stop counting it; nothing brings it back. The client's
+  // confirmation names the episode count before this ever runs.
+  router.post('/graveyard/wipe', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { userId, showId } = req.body || {}
+      if (!userId || !showId) return res.status(400).json({ error: 'Missing userId or showId' })
+      const { wipeBuriedShow } = require('../utils/continueWatching')
+      const result = await wipeBuriedShow(prisma, accountId, userId, showId)
+      res.json({ success: true, ...result })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to wipe' })
     }
   })
 
@@ -2071,6 +2197,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         providerConnectionErrorAt: user.providerConnectionErrorAt || null,
         simklConnected: !!user.simklAccessToken,
         simklConnectedAt: user.simklConnectedAt || null,
+        // SlickTrax Addon state. The token is a bearer credential, but this
+        // response is admin-session-only and the admin can already read it
+        // from the manifest URL the toggle returns - it is needed here so a
+        // page reload can still display/copy that URL.
+        traxAddonEnabled: !!user.traxAddonEnabled,
+        traxToken: user.traxToken || null,
       }
 
       res.json(transformedUser)
