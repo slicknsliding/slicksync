@@ -17,6 +17,7 @@ import {
   BeakerIcon,
 } from '@heroicons/react/24/outline';
 import { useUserAuth, useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
+import { copyToClipboard } from '@/lib/clipboard';
 import { userAuth, userExport } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
 import { ToggleSwitch, Avatar, ConfirmModal } from '@/components/ui';
@@ -245,7 +246,7 @@ export default function UserSettingsPage() {
                 setCurrentApiKey(newKey);
                 setApiKeyStatus({ hasKey: true });
                 toast.success('API key auto-generated');
-                navigator.clipboard.writeText(newKey).catch(() => {});
+                copyToClipboard(newKey).catch(() => {});
               }
             } catch (e: any) {
               toast.error('Failed to auto-generate API key');
@@ -309,7 +310,7 @@ export default function UserSettingsPage() {
   const handleCopyPublicStatsUrl = async () => {
     if (!publicStatsUrl) return;
     try {
-      await navigator.clipboard.writeText(publicStatsUrl);
+      await copyToClipboard(publicStatsUrl);
       toast.success('Link copied to clipboard');
     } catch {
       toast.error('Failed to copy link');
@@ -417,7 +418,7 @@ export default function UserSettingsPage() {
       if (newKey) {
         setCurrentApiKey(newKey);
         setApiKeyStatus({ hasKey: true });
-        navigator.clipboard.writeText(newKey);
+        copyToClipboard(newKey);
         toast.success(currentApiKey ? 'API key rotated and copied' : 'API key generated and copied');
       }
     } catch (e: any) {
@@ -430,7 +431,7 @@ export default function UserSettingsPage() {
   // Copy API key
   const handleCopyApiKey = () => {
     if (currentApiKey) {
-      navigator.clipboard.writeText(currentApiKey);
+      copyToClipboard(currentApiKey);
       toast.success('API key copied to clipboard');
     }
   };
@@ -927,7 +928,7 @@ export default function UserSettingsPage() {
                 onClick={() => {
                   if (currentApiKey) {
                     const fullHeader = `Bearer ${currentApiKey}`;
-                    navigator.clipboard.writeText(fullHeader);
+                    copyToClipboard(fullHeader);
                     toast.success('Authorization header copied');
                   }
                 }}

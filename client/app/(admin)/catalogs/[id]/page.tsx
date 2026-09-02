@@ -16,6 +16,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, CustomListItem, CatalogSuggestion, RatingsBatchEntry } from '@/lib/api';
 import { encodeCatalogShareCode } from '@/lib/shareCodes';
@@ -561,7 +562,7 @@ export default function ListDetailPage() {
   const copyShareLink = async () => {
     if (!shareLink) return;
     try {
-      await navigator.clipboard.writeText(shareLink);
+      await copyToClipboard(shareLink);
       toast.success('Link copied');
     } catch {
       // Clipboard is blocked on insecure origins and in some embedded

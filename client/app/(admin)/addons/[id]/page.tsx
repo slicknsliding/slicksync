@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, Addon, Group } from '@/lib/api';
+import { copyToClipboard } from '@/lib/clipboard';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -1469,7 +1470,7 @@ export default function AddonDetailPage() {
                   const url = (addon as any).url || (addon as any).manifestUrl;
                   if (url) {
                     try {
-                      await navigator.clipboard.writeText(url);
+                      await copyToClipboard(url);
                       toast.success('Copied to clipboard');
                     } catch (err) {
                       toast.error('Failed to copy to clipboard');
@@ -1996,7 +1997,7 @@ export default function AddonDetailPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          navigator.clipboard.writeText(proxyUrlFor(anyAddon?.proxyUuid, anyAddon?.proxyManifestUrl) || '');
+                          copyToClipboard(proxyUrlFor(anyAddon?.proxyUuid, anyAddon?.proxyManifestUrl) || '');
                           toast.success('Copied to clipboard');
                         }}
                       >

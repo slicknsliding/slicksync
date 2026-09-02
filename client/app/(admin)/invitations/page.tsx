@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { copyToClipboard } from '@/lib/clipboard';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -482,7 +483,7 @@ export default function InvitationsPage() {
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         const origin = typeof window !== 'undefined' ? window.location.origin : '';
-                                        navigator.clipboard.writeText(`${origin}/invite/${invite.code}`);
+                                        copyToClipboard(`${origin}/invite/${invite.code}`);
                                         toast.success('Invite link copied');
                                       }}
                                     >
@@ -766,7 +767,7 @@ function InvitationCard({
     e.stopPropagation();
     close();
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    navigator.clipboard.writeText(`${origin}/invite/${invitation.code}`);
+    copyToClipboard(`${origin}/invite/${invitation.code}`);
     setCopiedLink(true);
     toast.success('Invite link copied to clipboard');
     setTimeout(() => setCopiedLink(false), 2000);
@@ -774,7 +775,7 @@ function InvitationCard({
 
   const handleCopyCode = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    navigator.clipboard.writeText(invitation.code);
+    copyToClipboard(invitation.code);
     setCopiedCode(true);
     toast.success('Invitation code copied to clipboard');
     setTimeout(() => setCopiedCode(false), 2000);
@@ -1140,7 +1141,7 @@ function RequestCard({ request, onUpdate }: { request: RequestDisplay; onUpdate?
 
   const handleCopyCode = () => {
     if (request.oauthCode) {
-      navigator.clipboard.writeText(request.oauthCode);
+      copyToClipboard(request.oauthCode);
       setCopiedCode(true);
       toast.success('OAuth code copied');
       setTimeout(() => setCopiedCode(false), 2000);
@@ -1149,7 +1150,7 @@ function RequestCard({ request, onUpdate }: { request: RequestDisplay; onUpdate?
 
   const handleCopyLink = () => {
     if (request.oauthLink) {
-      navigator.clipboard.writeText(request.oauthLink);
+      copyToClipboard(request.oauthLink);
       setCopiedLink(true);
       toast.success('OAuth link copied');
       setTimeout(() => setCopiedLink(false), 2000);

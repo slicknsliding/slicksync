@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense, Fragment } from 'r
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { useIsTV } from '@/lib/hooks/useIsTV';
+import { copyToClipboard } from '@/lib/clipboard';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { TVFocusable } from '@/components/tv/TVFocusable';
@@ -888,7 +889,7 @@ function VaultPageContent() {
   const handleCopy = async (entry: VaultEntry) => {
     try {
       const value = revealed[entry.id] ?? (await api.revealVaultSecret(entry.id)).secret;
-      await navigator.clipboard.writeText(value);
+      await copyToClipboard(value);
       toast.success('Copied to clipboard');
     } catch (err: any) {
       toast.error(err.message || 'Failed to copy');
@@ -1129,26 +1130,6 @@ function VaultPageContent() {
             })}
           </div>
 
-          {/* Key-rotation propagation opt-in. Lives here, not in Settings -
-              the decision is about what saving a key on THIS page does. */}
-          <div className={`${NEBULA_GLASS_CLASS} p-4 sm:p-5 mb-4`} style={nebulaGlassStyle}>
-            <NebulaGlassStripe />
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-default">Rotation fixes addons automatically</p>
-                <p className="text-xs text-muted mt-0.5">
-                  When on: saving a changed secret rewrites every addon config that embeds the old key (Torrentio, AIOStreams, and the rest carry a copy inside their URLs) and re-syncs the users carrying those addons. One paste heals the household. When off: rotating here changes only the Vault entry, exactly as before.
-                </p>
-              </div>
-              <ToggleSwitch
-                checked={rotationPropagation === true}
-                onChange={handleToggleRotationPropagation}
-                disabled={rotationPropagation === null || savingRotationPropagation}
-                title="Toggle rotation propagation"
-              />
-            </div>
-          </div>
-
           {upcomingRenewals.length > 0 && (
             <div className={`${NEBULA_GLASS_CLASS} p-4 sm:p-5 mb-4`} style={nebulaGlassStyle}>
               <NebulaGlassStripe />
@@ -1185,6 +1166,26 @@ function VaultPageContent() {
           )}
         </>
       )}
+
+      {/* Key-rotation propagation opt-in. Lives here, not in Settings -
+          the decision is about what saving a key on THIS page does. */}
+      <div className={`${NEBULA_GLASS_CLASS} p-4 sm:p-5 mb-4`} style={nebulaGlassStyle}>
+        <NebulaGlassStripe />
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-default">Rotation fixes addons automatically</p>
+            <p className="text-xs text-muted mt-0.5">
+              When on: saving a changed secret rewrites every addon config that embeds the old key (Torrentio, AIOStreams, and the rest carry a copy inside their URLs) and re-syncs the users carrying those addons. One paste heals the household. When off: rotating here changes only the Vault entry, exactly as before.
+            </p>
+          </div>
+          <ToggleSwitch
+            checked={rotationPropagation === true}
+            onChange={handleToggleRotationPropagation}
+            disabled={rotationPropagation === null || savingRotationPropagation}
+            title="Toggle rotation propagation"
+          />
+        </div>
+      </div>
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}
         <div className="mb-5">

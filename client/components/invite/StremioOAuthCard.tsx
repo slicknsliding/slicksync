@@ -10,6 +10,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { stremioOAuth } from '@/lib/invite-api';
+import { copyToClipboard } from '@/lib/clipboard';
 
 interface StremioOAuthCardProps {
   /** OAuth link provided by admin (if already generated) */
@@ -188,7 +189,7 @@ export function StremioOAuthCard({
   // Copy code to clipboard
   const copyCode = useCallback(() => {
     if (!oauthCode) return;
-    navigator.clipboard.writeText(oauthCode);
+    copyToClipboard(oauthCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [oauthCode]);

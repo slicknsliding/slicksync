@@ -7,6 +7,7 @@ import { Card, Button, Badge } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui/Toast';
 import {
   TagIcon,
@@ -278,7 +279,7 @@ export default function ChangelogPage() {
   const copyUpdateCommand = () => {
     const composeFile = INSTANCE_TYPE === 'public' ? 'docker-compose.public.yml' : 'docker-compose.private.yml';
     const command = `docker compose -f ${composeFile} pull && docker compose -f ${composeFile} up -d --force-recreate`;
-    navigator.clipboard.writeText(command).then(() => {
+    copyToClipboard(command).then(() => {
       setCopied(true);
       toast.success('Update command copied to clipboard!');
       setTimeout(() => setCopied(false), 2000);

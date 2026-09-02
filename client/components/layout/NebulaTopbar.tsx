@@ -109,8 +109,12 @@ export function NebulaTopbar() {
     // wider than the height the collapse removes, so crossing one can never
     // bounce you back across the other. rAF-coalesced so a fast wheel flick
     // sets state once per frame, not once per scroll event.
-    const COLLAPSE_AT = 96;
-    const EXPAND_AT = 12;
+    // Gap must exceed the nav rows' full height (~100px on desktop) so a
+    // collapse-induced scroll clamp can never land back past the expand
+    // threshold - the earlier 96/12 pair did not clear that bar. Scroll
+    // anchoring, the other half of the bounce, is disabled in globals.css.
+    const COLLAPSE_AT = 160;
+    const EXPAND_AT = 8;
     let collapsed = window.scrollY > COLLAPSE_AT;
     let raf = 0;
     setIsScrolled(collapsed);

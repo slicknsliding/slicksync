@@ -7,6 +7,7 @@ import { ClipboardIcon, CheckIcon, ArrowRightIcon } from '@heroicons/react/24/ou
 import { SlickSyncLogo } from '@/components/ui/SlickSyncLogo';
 import { PasswordToggleButton } from '@/components/ui/Input';
 import { api } from '@/lib/api';
+import { copyToClipboard } from '@/lib/clipboard';
 
 // Public-mode (multi-tenant) self-registration - the flow the README already
 // documented ("first visit shows a registration screen") but that had no
@@ -45,7 +46,7 @@ export default function RegisterPage() {
 
   const copyUuid = () => {
     if (!uuid) return;
-    navigator.clipboard.writeText(uuid);
+    copyToClipboard(uuid);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

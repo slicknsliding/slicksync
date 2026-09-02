@@ -7,6 +7,7 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { Button, Card, Badge, Modal, ConfirmModal, Avatar, ComboBox, ProviderKeyHealthBadge, ProviderKeyHealthUnchecked } from '@/components/ui';
 import { PageSection } from '@/components/layout/PageContainer';
 import { useTheme } from '@/lib/theme';
+import { copyToClipboard } from '@/lib/clipboard';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats, PushDevice } from '@/lib/api';
 import { toast, showToast } from '@/components/ui/Toast';
@@ -825,7 +826,7 @@ export default function SettingsPage() {
     try {
       const result = apiKey ? await api.rotateApiKey() : await api.generateApiKey();
       setApiKey(result.apiKey);
-      navigator.clipboard.writeText(result.apiKey);
+      copyToClipboard(result.apiKey);
       toast.success(apiKey ? 'API key rotated and copied' : 'API key generated and copied');
     } catch (e: any) {
       toast.error(e.message || 'Failed to generate API key');
@@ -836,7 +837,7 @@ export default function SettingsPage() {
 
   const handleCopyApiKey = () => {
     if (apiKey) {
-      navigator.clipboard.writeText(apiKey);
+      copyToClipboard(apiKey);
       toast.success('API key copied to clipboard');
     }
   };
@@ -910,7 +911,7 @@ export default function SettingsPage() {
 
   const handleCopyBackupCodes = () => {
     if (!twoFaBackupCodes) return;
-    navigator.clipboard.writeText(twoFaBackupCodes.join('\n'));
+    copyToClipboard(twoFaBackupCodes.join('\n'));
     toast.success('Backup codes copied to clipboard');
   };
 
@@ -2235,7 +2236,7 @@ export default function SettingsPage() {
                   variant="secondary"
                   size="sm"
                   onClick={() => {
-                    navigator.clipboard.writeText(accountInfo.uuid!);
+                    copyToClipboard(accountInfo.uuid!);
                     setUuidCopied(true);
                     toast.success('Account ID copied to clipboard');
                     setTimeout(() => setUuidCopied(false), 2000);

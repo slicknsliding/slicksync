@@ -4,6 +4,7 @@ import { useState, useCallback, memo, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import { api, Addon, StremioAddon, MergeCandidate, MergePreview, MergeInfo, User } from '@/lib/api';
+import { copyToClipboard } from '@/lib/clipboard';
 import { useTheme } from '@/lib/theme';
 import Link from 'next/link';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
@@ -1373,7 +1374,7 @@ export default function UserDetailPage() {
                             type="button"
                             className="mt-1 text-xs text-muted hover:text-default underline underline-offset-2 break-all text-left"
                             title="Copy manifest URL"
-                            onClick={() => { navigator.clipboard?.writeText(traxManifestUrl); toast.success('Manifest URL copied'); }}
+                            onClick={async () => { (await copyToClipboard(traxManifestUrl)) ? toast.success('Manifest URL copied') : toast.error('Copy failed - select and copy the URL text directly'); }}
                           >
                             {traxManifestUrl}
                           </button>
@@ -1573,7 +1574,7 @@ export default function UserDetailPage() {
                       <button
                         onClick={() => {
                           const text = JSON.stringify({ current: syncPlan.current, desired: syncPlan.desired }, null, 2);
-                          navigator.clipboard.writeText(text);
+                          copyToClipboard(text);
                           toast.success('Copied to clipboard');
                         }}
                         className="mt-3 px-3 py-1 text-xs bg-surface-hover hover:bg-primary hover:text-white rounded transition-colors"
