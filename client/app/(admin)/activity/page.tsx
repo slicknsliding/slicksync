@@ -1919,12 +1919,12 @@ function ActivityPageContent() {
           animate={false}
           filterTabs={{
             options: [
-              { key: 'watch', label: 'Watch', icon: <PlayIcon className="w-4 h-4" /> },
+              { key: 'watch', label: 'Watched', icon: <PlayIcon className="w-4 h-4" /> },
+              // Shows started and then dropped - see getAbandonedShows.
+              { key: 'dropped', label: 'Graveyard', icon: <ArchiveBoxIcon className="w-4 h-4" /> },
               { key: 'tasks', label: 'Tasks', icon: <ClockIcon className="w-4 h-4" /> },
               { key: 'invites', label: 'Invites', icon: <EnvelopeIcon className="w-4 h-4" /> },
               { key: 'proxy', label: 'Proxy', icon: <ShieldCheckIcon className="w-4 h-4" /> },
-              // Shows started and then dropped - see getAbandonedShows.
-              { key: 'dropped', label: 'Graveyard', icon: <ArchiveBoxIcon className="w-4 h-4" /> },
             ],
             activeKey: viewMode,
             onChange: (key) => setViewMode(key as 'watch' | 'tasks' | 'invites' | 'proxy' | 'dropped'),
