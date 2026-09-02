@@ -2397,8 +2397,15 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
         if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = null; } }
         base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '');
         if (!base) {
-          // The admin reaching this route proves a working base right now.
-          base = `${req.protocol}://${req.get('host')}`;
+          // The admin reaching this route proves a working base right now -
+          // but never a loopback one: a script running on the server itself
+          // would poison the stored base sync hands to real devices
+          // (confirmed live when a localhost test persisted localhost:4000).
+          const reqBase = `${req.protocol}://${req.get('host')}`;
+          if (/^https?:\/\/(localhost|127\.|\[?::1)/i.test(reqBase)) {
+            return res.status(400).json({ error: 'No reachable base URL known for this instance. Open this page from the address your devices use (not localhost), or set PUBLIC_APP_URL.' });
+          }
+          base = reqBase;
           try {
             const nextCfg = { ...(cfg && typeof cfg === 'object' ? cfg : {}), observedBaseUrl: base };
             await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(nextCfg) } });

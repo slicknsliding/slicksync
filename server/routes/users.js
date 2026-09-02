@@ -726,7 +726,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // is honest behind Traefik) - never from unauthenticated traffic,
       // where a spoofed Host header could poison the stored base.
       const reqBase = `${req.protocol}://${req.get('host')}`
-      if (enabled && !base) {
+      // Never learn a loopback base: an API call made on the server itself
+      // (scripts, health probes) would otherwise poison the stored base
+      // that sync hands to real devices - confirmed live when a localhost
+      // test persisted http://localhost:4000.
+      const reqBaseUsable = !/^https?:\/\/(localhost|127\.|\[?::1)/i.test(reqBase)
+      if (enabled && !base && reqBaseUsable) {
         try {
           const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
           let cfg = acct?.sync
