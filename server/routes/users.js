@@ -1018,9 +1018,15 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         seenCollections.add(coll.id)
         // fetchTmdbCollection's parts exclude the seed - membership is
         // seed + parts, and the seed is watched by construction.
-        const unwatched = coll.parts.filter((p) => p.id && !watchedSet.has(p.id))
+        // Unreleased entries (no release year, or a year still in the
+        // future) can't be watched - counting "Untitled Sequel" as the one
+        // film keeping a saga incomplete is a treadmill, not an itch
+        // (confirmed live: 'Untitled Michael Sequel' ranked as one-to-go).
+        const currentYear = new Date().getFullYear()
+        const released = (p) => p.releaseYear && Number(p.releaseYear) <= currentYear
+        const unwatched = coll.parts.filter((p) => p.id && !watchedSet.has(p.id) && released(p))
         if (unwatched.length === 0) continue
-        const total = coll.parts.length + 1
+        const total = coll.parts.filter((p) => released(p) || watchedSet.has(p.id)).length + 1
         const watchedCount = total - unwatched.length
         sagas.push({ collectionId: coll.id, name: coll.name, watchedCount, total, unwatched })
       }
