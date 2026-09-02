@@ -1167,23 +1167,28 @@ function VaultPageContent() {
         </>
       )}
 
-      {/* Key-rotation propagation opt-in. Lives here, not in Settings -
-          the decision is about what saving a key on THIS page does. */}
-      <div className={`${NEBULA_GLASS_CLASS} p-4 sm:p-5 mb-4`} style={nebulaGlassStyle}>
+      {/* Key-rotation propagation opt-in - one compact row; the full
+          explanation lives in the tooltip and the guide, not a permanent
+          paragraph on the page. */}
+      <div className={`${NEBULA_GLASS_CLASS} px-4 py-2.5 mb-4`} style={nebulaGlassStyle}>
         <NebulaGlassStripe />
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-default">Rotation fixes addons automatically</p>
-            <p className="text-xs text-muted mt-0.5">
-              When on: saving a changed secret rewrites every addon config that embeds the old key (Torrentio, AIOStreams, and the rest carry a copy inside their URLs) and re-syncs the users carrying those addons. One paste heals the household. When off: rotating here changes only the Vault entry, exactly as before.
-            </p>
+        <div className="flex items-center gap-2.5">
+          <ArrowPathIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} />
+          <p className="text-sm font-medium text-default truncate">Rotation fixes addons automatically</p>
+          <span
+            className="text-xs text-muted cursor-help shrink-0"
+            title="When on: saving a changed secret rewrites every addon config that embeds the old key (Torrentio, AIOStreams and the rest carry a copy inside their URLs) and re-syncs the users carrying those addons. When off: rotating changes only the Vault entry. Guide: Rotate a key once and every addon follows."
+          >
+            &#9432;
+          </span>
+          <div className="ml-auto shrink-0">
+            <ToggleSwitch
+              checked={rotationPropagation === true}
+              onChange={handleToggleRotationPropagation}
+              disabled={rotationPropagation === null || savingRotationPropagation}
+              title="Toggle rotation propagation"
+            />
           </div>
-          <ToggleSwitch
-            checked={rotationPropagation === true}
-            onChange={handleToggleRotationPropagation}
-            disabled={rotationPropagation === null || savingRotationPropagation}
-            title="Toggle rotation propagation"
-          />
         </div>
       </div>
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>

@@ -444,7 +444,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'Browsing and searching in Discover',
     category: 'Watching & Discover',
     keywords: ['discover', 'browse', 'search movies', 'genre filter', 'because you watched'],
-    answer: 'Discover → browse Popular/New/Top Rated, filter by genre, or search titles and people (actors/directors, with a filmography deep-dive). "Because you watched" / "For You" rows use your own household\'s taste once there\'s enough watch history.',
+    answer: 'Discover → browse Popular/New/Top Rated, filter by genre, or search titles and people (actors/directors, with a filmography deep-dive). "Because you watched" / "For You" rows use your own household\'s taste once there\'s enough watch history. The Show: All / Unwatched switch on For You rows hides everything the household has already seen.',
     href: '/discover',
     linkLabel: 'Open Discover',
   },
