@@ -23,6 +23,11 @@ const SETTINGS_SECRET_FIELDS = [
   'omdbApiKeyBackup',
   'mdblistApiKeyBackup',
   'rpdbApiKeyBackup',
+  // Key Pool extras - arrays of real keys, same treatment as the scalars.
+  'tmdbApiKeyPool',
+  'omdbApiKeyPool',
+  'mdblistApiKeyPool',
+  'rpdbApiKeyPool',
 ]
 
 module.exports = { SETTINGS_SECRET_FIELDS }

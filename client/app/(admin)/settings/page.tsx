@@ -36,6 +36,7 @@ import {
   TrashIcon,
   CheckIcon,
   XMarkIcon,
+  Squares2X2Icon,
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 
@@ -219,6 +220,108 @@ const AI_MODEL_OPTIONS_ALL = Object.values(AI_MODEL_OPTIONS_BY_PROVIDER).flat();
 // for, so the common one-key setup looks exactly as it always did.
 // The backup is used only when the health check has actually found the
 // primary failing or rate-limited - see server/utils/listImport.js.
+
+// Key Pool editor - extra keys beyond the primary/backup pair. Same compact
+// chip-then-expand pattern as BackupKeyField above (and the same click-away
+// collapse), because the page's sizing complaints were heard: nothing here
+// takes space until asked for. With any pool keys present, lookups rotate
+// across every healthy key instead of hammering the primary - three free
+// MDBList keys become one pooled allowance.
+function PoolKeysField({
+  field, keys, primaryFilled, onSave,
+}: {
+  field: string;
+  keys: string[];
+  primaryFilled: boolean;
+  onSave: (next: string[]) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  if (!primaryFilled) return null;
+
+  const commit = async (next: string[]) => {
+    setSaving(true);
+    try { await onSave(next); } finally { setSaving(false); }
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors ml-2"
+        style={{
+          background: keys.length > 0 ? 'var(--color-primary-muted)' : 'transparent',
+          color: keys.length > 0 ? 'var(--color-primary)' : 'var(--color-text-muted)',
+          border: `1px solid ${keys.length > 0 ? 'transparent' : 'var(--color-surface-border)'}`,
+        }}
+      >
+        <Squares2X2Icon className="w-3.5 h-3.5" />
+        {keys.length > 0 ? `Key pool (${keys.length})` : 'Add key pool'}
+      </button>
+    );
+  }
+
+  return (
+    <div ref={wrapRef} className="mt-2 inline-block align-top rounded-lg p-2.5" style={{ background: 'var(--color-surface-hover)', border: '1px solid var(--color-surface-border)', maxWidth: '22rem' }}>
+      <p className="text-[11px] mb-1.5" style={{ color: 'var(--color-text-subtle)' }}>
+        Extra keys - lookups rotate across every healthy key, spreading the quota
+      </p>
+      {keys.map((k, i) => (
+        <div key={`${k}-${i}`} className="flex items-center gap-1.5 mb-1">
+          <code className="text-xs truncate flex-1" style={{ color: 'var(--color-text-muted)' }}>{'\u2022'.repeat(6)}{k.slice(-4)}</code>
+          <button
+            type="button"
+            onClick={() => commit(keys.filter((_, idx) => idx !== i))}
+            disabled={saving}
+            title="Remove this key"
+            aria-label="Remove this key"
+            className="p-1 rounded transition-colors shrink-0"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            <XMarkIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-1.5 mt-1.5">
+        <input
+          type="text"
+          value={draft}
+          autoFocus
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && draft.trim()) { commit([...keys, draft.trim()]); setDraft(''); }
+          }}
+          placeholder="Paste a key, press Enter"
+          autoComplete="off"
+          spellCheck={false}
+          data-field={field}
+          className="input-base px-2 py-1 text-xs w-52"
+        />
+      </div>
+    </div>
+  );
+}
+
 function BackupKeyField({
   field, value, primaryFilled, onChange, onSave,
 }: {
@@ -660,6 +763,10 @@ export default function SettingsPage() {
           mdblistApiKeyBackup: settings.mdblistApiKeyBackup || '',
           rpdbApiKeyBackup: settings.rpdbApiKeyBackup || '',
           omdbApiKeyBackup: settings.omdbApiKeyBackup || '',
+          tmdbApiKeyPool: settings.tmdbApiKeyPool || [],
+          omdbApiKeyPool: settings.omdbApiKeyPool || [],
+          mdblistApiKeyPool: settings.mdblistApiKeyPool || [],
+          rpdbApiKeyPool: settings.rpdbApiKeyPool || [],
           // Carried over from the server rather than left undefined. The
           // daily scheduler (utils/metadataKeyHealth.js) has been storing
           // results all along, but this page only ever populated keyHealth
@@ -1780,6 +1887,15 @@ export default function SettingsPage() {
                   onChange={(v) => setSyncSettings(prev => ({ ...prev, tmdbApiKeyBackup: v }))}
                   onSave={() => handleSaveSetting('tmdbApiKeyBackup' as keyof SyncSettings, syncSettings.tmdbApiKeyBackup)}
                 />
+                <PoolKeysField
+                  field="tmdbApiKeyPool"
+                  keys={syncSettings.tmdbApiKeyPool || []}
+                  primaryFilled={!!syncSettings.tmdbApiKey}
+                  onSave={async (next) => {
+                    setSyncSettings((prev) => ({ ...prev, tmdbApiKeyPool: next }));
+                    await api.updateSyncSettings({ tmdbApiKeyPool: next });
+                  }}
+                />
               </div>
 
               {/* MDBList key for List import (Lists page - "Import"). Free
@@ -1815,6 +1931,15 @@ export default function SettingsPage() {
                   primaryFilled={!!syncSettings.mdblistApiKey}
                   onChange={(v) => setSyncSettings(prev => ({ ...prev, mdblistApiKeyBackup: v }))}
                   onSave={() => handleSaveSetting('mdblistApiKeyBackup' as keyof SyncSettings, syncSettings.mdblistApiKeyBackup)}
+                />
+                <PoolKeysField
+                  field="mdblistApiKeyPool"
+                  keys={syncSettings.mdblistApiKeyPool || []}
+                  primaryFilled={!!syncSettings.mdblistApiKey}
+                  onSave={async (next) => {
+                    setSyncSettings((prev) => ({ ...prev, mdblistApiKeyPool: next }));
+                    await api.updateSyncSettings({ mdblistApiKeyPool: next });
+                  }}
                 />
               </div>
 
@@ -1853,6 +1978,15 @@ export default function SettingsPage() {
                   onChange={(v) => setSyncSettings(prev => ({ ...prev, rpdbApiKeyBackup: v }))}
                   onSave={() => handleSaveSetting('rpdbApiKeyBackup' as keyof SyncSettings, syncSettings.rpdbApiKeyBackup)}
                 />
+                <PoolKeysField
+                  field="rpdbApiKeyPool"
+                  keys={syncSettings.rpdbApiKeyPool || []}
+                  primaryFilled={!!syncSettings.rpdbApiKey}
+                  onSave={async (next) => {
+                    setSyncSettings((prev) => ({ ...prev, rpdbApiKeyPool: next }));
+                    await api.updateSyncSettings({ rpdbApiKeyPool: next });
+                  }}
+                />
               </div>
 
               {/* OMDb key - Rotten Tomatoes/Metacritic ratings on posters and
@@ -1889,6 +2023,15 @@ export default function SettingsPage() {
                   primaryFilled={!!syncSettings.omdbApiKey}
                   onChange={(v) => setSyncSettings(prev => ({ ...prev, omdbApiKeyBackup: v }))}
                   onSave={() => handleSaveSetting('omdbApiKeyBackup' as keyof SyncSettings, syncSettings.omdbApiKeyBackup)}
+                />
+                <PoolKeysField
+                  field="omdbApiKeyPool"
+                  keys={syncSettings.omdbApiKeyPool || []}
+                  primaryFilled={!!syncSettings.omdbApiKey}
+                  onSave={async (next) => {
+                    setSyncSettings((prev) => ({ ...prev, omdbApiKeyPool: next }));
+                    await api.updateSyncSettings({ omdbApiKeyPool: next });
+                  }}
                 />
               </div>
 

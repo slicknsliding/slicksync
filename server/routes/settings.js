@@ -611,6 +611,10 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // it hydrated from simply never arrived on this branch.
           keyHealth: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
           keyRotationPropagation: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyRotationPropagation === true),
+          tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
+          omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
+          mdblistApiKeyPool: Array.isArray(syncCfg?.mdblistApiKeyPool) ? syncCfg.mdblistApiKeyPool.filter((k) => typeof k === 'string') : [],
+          rpdbApiKeyPool: Array.isArray(syncCfg?.rpdbApiKeyPool) ? syncCfg.rpdbApiKeyPool.filter((k) => typeof k === 'string') : [],
         }
 
         return res.json(response)
@@ -666,6 +670,10 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // check ever runs.
           keyHealth: (syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
           keyRotationPropagation: syncCfg.keyRotationPropagation === true,
+          tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
+          omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
+          mdblistApiKeyPool: Array.isArray(syncCfg?.mdblistApiKeyPool) ? syncCfg.mdblistApiKeyPool.filter((k) => typeof k === 'string') : [],
+          rpdbApiKeyPool: Array.isArray(syncCfg?.rpdbApiKeyPool) ? syncCfg.rpdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           simklClientId: typeof syncCfg.simklClientId === 'string' ? syncCfg.simklClientId : '',
           nuvioServerUrl: typeof syncCfg.nuvioServerUrl === 'string' ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: typeof syncCfg.nuvioAnonKey === 'string' ? syncCfg.nuvioAnonKey : '',
@@ -794,6 +802,22 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           keyRotationPropagation: req.body?.keyRotationPropagation !== undefined
             ? req.body.keyRotationPropagation === true
             : (baseCfg.keyRotationPropagation === true),
+          // Key Pool extras - capped at 10, trimmed, blanks dropped.
+          tmdbApiKeyPool: Array.isArray(req.body?.tmdbApiKeyPool)
+            ? req.body.tmdbApiKeyPool.map((k) => (typeof k === 'string' ? k.trim() : '')).filter(Boolean).slice(0, 10)
+            : (Array.isArray(baseCfg.tmdbApiKeyPool) ? baseCfg.tmdbApiKeyPool : []),
+          // Key Pool extras - capped at 10, trimmed, blanks dropped.
+          omdbApiKeyPool: Array.isArray(req.body?.omdbApiKeyPool)
+            ? req.body.omdbApiKeyPool.map((k) => (typeof k === 'string' ? k.trim() : '')).filter(Boolean).slice(0, 10)
+            : (Array.isArray(baseCfg.omdbApiKeyPool) ? baseCfg.omdbApiKeyPool : []),
+          // Key Pool extras - capped at 10, trimmed, blanks dropped.
+          mdblistApiKeyPool: Array.isArray(req.body?.mdblistApiKeyPool)
+            ? req.body.mdblistApiKeyPool.map((k) => (typeof k === 'string' ? k.trim() : '')).filter(Boolean).slice(0, 10)
+            : (Array.isArray(baseCfg.mdblistApiKeyPool) ? baseCfg.mdblistApiKeyPool : []),
+          // Key Pool extras - capped at 10, trimmed, blanks dropped.
+          rpdbApiKeyPool: Array.isArray(req.body?.rpdbApiKeyPool)
+            ? req.body.rpdbApiKeyPool.map((k) => (typeof k === 'string' ? k.trim() : '')).filter(Boolean).slice(0, 10)
+            : (Array.isArray(baseCfg.rpdbApiKeyPool) ? baseCfg.rpdbApiKeyPool : []),
           keyHealth: (() => {
             const prevHealth = (baseCfg.keyHealth && typeof baseCfg.keyHealth === 'object') ? baseCfg.keyHealth : {}
             const next = { ...prevHealth }

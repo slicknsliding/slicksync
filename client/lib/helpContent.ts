@@ -195,6 +195,25 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Vault',
   },
   {
+    id: 'key-pool',
+    title: 'The Key Pool - several keys per provider, one shared allowance',
+    category: 'Vault & credentials',
+    keywords: ['key pool', 'multiple keys', 'quota', 'rate limit', 'mdblist limit', 'spread keys', 'rotate keys', 'pooled allowance'],
+    answer: 'Each metadata key in Settings can hold extra keys beyond the primary and backup - the "Add key pool" chip under the field. With any pool keys present, lookups rotate across every healthy key instead of always using the primary, so three free MDBList keys stop being three separate 1,000/day allowances and become one pooled one.',
+    steps: [
+      'Settings -> External API Keys -> "Add key pool" under the key you want to spread.',
+      'Paste a key, press Enter. Repeat for as many as you have (up to 10).',
+      'That is all - rotation starts on the next lookup.',
+    ],
+    details: [
+      'The daily check tests every key in the pool individually, and rotation skips any key it found failing or rate-limited - a dead pool member is routed around, not retried on every third request.',
+      'If every key in the pool is marked bad, lookups fall back to the primary rather than nothing: a marked-bad key is still better than no key, and the next check unmarks it the moment it recovers.',
+      'With no pool keys configured, nothing changes: the primary is used, with the backup taking over only when a check has found the primary bad - exactly the failover behaviour that already existed.',
+      'Pool keys are real secrets: stripped from plain config exports and carried in the Disaster Recovery Kit, the same as the primaries.',
+    ],
+    related: ['vault-backup-key', 'provider-key-health', 'vault-key-rotation'],
+  },
+  {
     id: 'vault-key-rotation',
     title: 'Rotate a key once and every addon follows',
     category: 'Vault & credentials',

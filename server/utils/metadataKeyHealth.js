@@ -212,6 +212,31 @@ async function checkAndPersistAccountKeys(prisma, accountId, { notify = true, on
   if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = {}; } }
   if (!cfg || typeof cfg !== 'object') cfg = {};
   const previousHealth = (cfg.keyHealth && typeof cfg.keyHealth === 'object') ? cfg.keyHealth : {};
+
+  // Per-key ring health for the Key Pool: every configured key for a
+  // provider (primary, backup, extras) gets its own check, stored under
+  // keyHealth[provider].pool keyed by a hash-prefix tag - never the key
+  // itself, since keyHealth rides in the same JSON config exports read.
+  // The ring selector (keyPool.js) skips members marked failing or
+  // rate-limited. Only runs for providers with a ring bigger than one key -
+  // the single-key case is exactly what the primary check above already is.
+  try {
+    const { buildRing, keyTag } = require('./keyPool');
+    const FIELD_OF = { tmdb: 'tmdbApiKey', omdb: 'omdbApiKey', mdblist: 'mdblistApiKey', rpdb: 'rpdbApiKey' };
+    for (const provider of Object.keys(toCheck)) {
+      const ring = buildRing(cfg, FIELD_OF[provider]);
+      if (ring.length <= 1) continue;
+      const perKey = [];
+      for (const key of ring) {
+        const r = await CHECKERS[provider](key);
+        perKey.push({ tag: keyTag(key), last4: String(key).slice(-4), ok: r.ok, rateLimited: !!r.rateLimited, checkedAt: new Date().toISOString() });
+      }
+      results[provider] = { ...(results[provider] || {}), pool: perKey };
+    }
+  } catch (e) {
+    console.warn('[KeyHealth] Pool ring check failed:', e?.message);
+  }
+
   const mergedHealth = { ...previousHealth, ...results };
 
   await prisma.appAccount.update({

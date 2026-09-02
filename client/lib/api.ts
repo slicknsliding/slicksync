@@ -3025,6 +3025,12 @@ export interface SyncSettings {
   tmdbApiKeyBackup?: string;
   mdblistApiKeyBackup?: string;
   rpdbApiKeyBackup?: string;
+  /** Key Pool extras beyond the primary/backup pair. When any exist, lookups
+   * rotate across every healthy key instead of always using the primary. */
+  tmdbApiKeyPool?: string[];
+  omdbApiKeyPool?: string[];
+  mdblistApiKeyPool?: string[];
+  rpdbApiKeyPool?: string[];
   omdbApiKeyBackup?: string;
   /** Result of the last validity check per provider - see checkProviderKeys()
    * and server/utils/metadataKeyHealth.js. Absent for a provider that's
