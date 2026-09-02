@@ -1056,12 +1056,12 @@ export function MediaDetailModal({
                     className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${
                       selfWatched
                         ? 'bg-success/15 text-success hover:bg-success/25'
-                        : 'bg-surface-hover text-default hover:bg-success/15 hover:text-success'
+                        : 'bg-surface-hover text-muted hover:text-default'
                     } ${selfWatchedBusy ? 'opacity-60 cursor-wait' : ''}`}
                     style={selfWatched ? { color: 'var(--color-success)', background: 'color-mix(in srgb, var(--color-success) 15%, transparent)' } : undefined}
                   >
                     <CheckCircleIcon className="w-4 h-4" />
-                    {selfWatched ? 'Watched · unwatch' : 'Mark watched'}
+                    {selfWatched ? 'Watched' : 'Unwatched'}
                   </button>
                 );
                 const stremioBtn = (
