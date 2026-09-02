@@ -38,7 +38,7 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     description: 'Sends a notification the moment any addon stops responding, so you find out before someone reports that streams stopped working.',
     name: 'Addon went offline',
     triggerType: 'addon.offline',
-    actions: [{ type: 'notify', config: { title: 'Addon offline', body: 'An addon stopped responding.' } }],
+    actions: [{ type: 'notify', config: { title: 'Addon offline', message: 'An addon stopped responding.' } }],
   },
   {
     id: 'addon-back-notify',
@@ -46,7 +46,7 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     description: 'The other half of the pair - confirms an addon is working again without you having to go and check.',
     name: 'Addon back online',
     triggerType: 'addon.online',
-    actions: [{ type: 'notify', config: { title: 'Addon back online', body: 'An addon is responding again.' } }],
+    actions: [{ type: 'notify', config: { title: 'Addon back online', message: 'An addon is responding again.' } }],
   },
   {
     id: 'key-failed-notify',
@@ -54,7 +54,7 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     description: 'TMDb, OMDb, MDBList and RPDB keys fail silently - posters and ratings just quietly stop appearing. This turns that into an actual alert.',
     name: 'Metadata key failed',
     triggerType: 'metadata_key.failed',
-    actions: [{ type: 'notify', config: { title: 'API key not working', body: 'A metadata provider key stopped working.' } }],
+    actions: [{ type: 'notify', config: { title: 'API key not working', message: 'A metadata provider key stopped working.' } }],
   },
   {
     id: 'backup-failed-notify',
@@ -62,7 +62,7 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     description: 'The local backup still gets written, but the copy going to S3/WebDAV did not arrive. Worth knowing immediately rather than the day you need it.',
     name: 'Off-site backup failed',
     triggerType: 'backup.failed',
-    actions: [{ type: 'notify', config: { title: 'Off-site backup failed', body: 'The backup was written locally but did not reach the remote target.' } }],
+    actions: [{ type: 'notify', config: { title: 'Off-site backup failed', message: 'The backup was written locally but did not reach the remote target.' } }],
   },
   {
     id: 'vault-expiring-notify',
@@ -70,7 +70,7 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     description: 'Fires on the lead time set for each Vault entry, so a debrid subscription never lapses without warning.',
     name: 'Vault entry expiring',
     triggerType: 'vault.expiring',
-    actions: [{ type: 'notify', config: { title: 'Subscription expiring soon', body: 'A Vault entry is approaching its renewal date.' } }],
+    actions: [{ type: 'notify', config: { title: 'Subscription expiring soon', message: 'A Vault entry is approaching its renewal date.' } }],
   },
   {
     id: 'new-user-sync',
@@ -86,7 +86,7 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     description: 'Fires once per new release when this instance is behind the latest published version.',
     name: 'Update available',
     triggerType: 'update.available',
-    actions: [{ type: 'notify', config: { title: 'SlickSync update available', body: 'A newer release has been published.' } }],
+    actions: [{ type: 'notify', config: { title: 'SlickSync update available', message: 'A newer release has been published.' } }],
   },
   {
     id: 'addon-down-webhook',
@@ -104,7 +104,29 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     name: 'Metadata key failed with no backup',
     triggerType: 'metadata_key.failed',
     conditions: [{ field: 'hasBackup', op: 'is_false' }],
-    actions: [{ type: 'notify', config: { title: 'API key down, no backup', body: 'A metadata provider key stopped working and has no backup key configured.' } }],
+    actions: [{ type: 'notify', config: { title: 'API key down, no backup', message: 'A metadata provider key stopped working and has no backup key configured.' } }],
+  },
+  {
+    id: 'key-failover-promote',
+    title: 'If a backup key takes over, make it the new primary',
+    description: 'Completes the failover instead of running on a detour forever: the backup becomes the primary, the dead key is kept as the new backup, and any addon still carrying the old key is rewritten and re-synced. You get one notification saying the succession happened.',
+    name: 'Promote the backup key when it takes over',
+    triggerType: 'metadata_key.failover_activated',
+    actions: [
+      { type: 'keys.promote_backup', config: {} },
+      { type: 'notify', config: { title: 'Backup key promoted', message: 'The backup {{providerLabel}} key is now the primary. The failed key was kept as the backup - replace it when you can.' } },
+    ],
+  },
+  {
+    id: 'vault-failover-promote',
+    title: 'If a backup credential takes over, make it the new primary',
+    description: 'The Vault version: when a stored credential fails and its backup steps in, swap them for good. Everything referencing the credential keeps working, addons embedding the old key are rewritten, and the dead key stays on file as the backup.',
+    name: 'Promote the backup credential when it takes over',
+    triggerType: 'vault.failover_activated',
+    actions: [
+      { type: 'keys.promote_backup', config: {} },
+      { type: 'notify', config: { title: 'Backup credential promoted', message: '{{backupName}} is now the primary for {{entryName}}. The failed key was kept as the backup - replace it when you can.' } },
+    ],
   },
   {
     id: 'key-failover-notify',
@@ -112,7 +134,7 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     description: 'Nothing is broken for anyone using the app - the spare picked up the slack. Worth knowing anyway, because you are now running on your last key for that provider.',
     name: 'Backup metadata key took over',
     triggerType: 'metadata_key.failover_activated',
-    actions: [{ type: 'notify', config: { title: 'Running on the backup key', body: 'A metadata key failed and its backup is now being used. Replace the primary when you can.' } }],
+    actions: [{ type: 'notify', config: { title: 'Running on the backup key', message: 'A metadata key failed and its backup is now being used. Replace the primary when you can.' } }],
   },
   {
     id: 'vault-failover-notify',
@@ -120,7 +142,7 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     description: 'The Vault version of the same thing - a stored credential failed its check and its configured backup is now in use.',
     name: 'Backup credential took over',
     triggerType: 'vault.failover_activated',
-    actions: [{ type: 'notify', config: { title: 'Running on the backup credential', body: 'A Vault credential failed its check and its backup is now being used.' } }],
+    actions: [{ type: 'notify', config: { title: 'Running on the backup credential', message: 'A Vault credential failed its check and its backup is now being used.' } }],
   },
   {
     id: 'vault-failed-no-backup',
@@ -129,7 +151,7 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
     name: 'Credential failed with no backup',
     triggerType: 'vault.check_failed',
     conditions: [{ field: 'hasBackup', op: 'is_false' }],
-    actions: [{ type: 'notify', config: { title: 'Credential down, no backup', body: 'A Vault credential stopped working and has no backup configured.' } }],
+    actions: [{ type: 'notify', config: { title: 'Credential down, no backup', message: 'A Vault credential stopped working and has no backup configured.' } }],
   },
   {
     id: 'key-quota-failover-webhook',

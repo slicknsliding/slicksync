@@ -357,6 +357,98 @@ const ACTIONS = {
     },
   },
 
+  // Failover already happens on its own the moment a primary key goes bad -
+  // requests quietly use the backup. What failover does NOT do is make that
+  // permanent: the dead key stays "primary", every lookup keeps consulting
+  // health state to route around it, and addons that embed the key keep
+  // carrying a corpse. This action completes the succession: the backup
+  // becomes the primary, the failed key becomes the (dead) backup - nothing
+  // is discarded, so it is fully reversible by hand - and rotation
+  // propagation rewrites any addon still embedding the old key.
+  //
+  // Previously shelved as "promotion semantics too ambiguous to automate";
+  // the swap definition above is the disambiguation, and the user asked for
+  // exactly this pairing (2026-09-02).
+  'keys.promote_backup': {
+    label: 'Promote the backup key to primary',
+    description: 'Makes a failover permanent: swaps the failed key with its backup (for a Settings metadata key or a Vault credential), so the working key IS the primary instead of being routed to around a dead one. The old key is kept as the new backup - nothing is thrown away. Addons that embed the old key are rewritten and re-synced automatically. Acts on the key named by the trigger; pair it with "A backup key/credential takes over".',
+    configFields: [],
+    async run({ prisma, accountId, payload }) {
+      const reqLike = { appAccountId: accountId }
+      const { encrypt, decrypt, getDecryptedManifestUrl } = require('../encryption')
+      const { manifestUrlHmac } = require('../hashing')
+      const { propagateSecretRotation } = require('../keyRotation')
+      const rotationDeps = { encrypt, decrypt, getDecryptedManifestUrl, manifestUrlHmac }
+
+      // Vault credential path (vault.failover_activated / vault.check_failed)
+      if (payload?.entryId) {
+        const entry = await prisma.vaultEntry.findFirst({ where: { id: payload.entryId, accountId } })
+        if (!entry) throw new Error('The failed Vault entry no longer exists')
+        const backupId = payload.backupId || entry.backupEntryId
+        if (!backupId) throw new Error(`"${entry.name}" has no backup credential to promote`)
+        const backup = await prisma.vaultEntry.findFirst({ where: { id: backupId, accountId } })
+        if (!backup) throw new Error('The backup credential no longer exists')
+
+        let oldSecret = null, newSecret = null
+        try { oldSecret = decrypt(entry.encryptedSecret, reqLike) } catch {}
+        try { newSecret = decrypt(backup.encryptedSecret, reqLike) } catch {}
+        if (!newSecret) throw new Error('Could not decrypt the backup credential')
+
+        // Swap the SECRETS, not the rows: everything that references the
+        // primary entry (vault-injected addons, failover pairs) keeps
+        // pointing at the same entry id, which now carries the working key.
+        await prisma.$transaction([
+          prisma.vaultEntry.update({ where: { id: entry.id }, data: { encryptedSecret: backup.encryptedSecret, lastCheckStatus: 'unknown', lastCheckMessage: 'Promoted from backup - awaiting first check' } }),
+          prisma.vaultEntry.update({ where: { id: backup.id }, data: { encryptedSecret: entry.encryptedSecret, lastCheckStatus: 'unknown', lastCheckMessage: 'Demoted failed primary - replace this key' } }),
+        ])
+
+        let rotated = 0
+        if (oldSecret && oldSecret !== newSecret) {
+          try {
+            const rotation = await propagateSecretRotation(prisma, reqLike, rotationDeps, { accountId, oldSecret, newSecret })
+            rotated = rotation.addonsUpdated?.length || 0
+          } catch (e) {
+            console.warn('[Automation] promote_backup rotation failed:', e?.message)
+          }
+        }
+        return `Promoted "${backup.name}" over "${entry.name}"${rotated ? ` and rewrote ${rotated} addon(s)` : ''} - the failed key is kept as the backup`
+      }
+
+      // Settings metadata-key path (metadata_key.failed / failover_activated)
+      const FIELD_BY_PROVIDER = { tmdb: 'tmdbApiKey', omdb: 'omdbApiKey', mdblist: 'mdblistApiKey', rpdb: 'rpdbApiKey' }
+      const provider = payload?.provider
+      const field = FIELD_BY_PROVIDER[provider]
+      if (!field) throw new Error('The trigger named no key to promote - pair this action with a key-failure or failover trigger')
+
+      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let cfg = acc?.sync
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+      if (!cfg || typeof cfg !== 'object') cfg = {}
+      const primary = typeof cfg[field] === 'string' ? cfg[field].trim() : ''
+      const backupKey = typeof cfg[`${field}Backup`] === 'string' ? cfg[`${field}Backup`].trim() : ''
+      if (!backupKey) throw new Error(`No backup ${payload?.providerLabel || provider} key is configured to promote`)
+
+      cfg[field] = backupKey
+      cfg[`${field}Backup`] = primary // the dead key becomes the backup - kept, not discarded
+      // Reset this provider's health so lookups stop routing around a
+      // "failed primary" that is now the working key, and the next check
+      // records the truth fresh.
+      if (cfg.keyHealth && cfg.keyHealth[provider]) delete cfg.keyHealth[provider]
+      await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(cfg) } })
+
+      let rotated = 0
+      if (primary && primary !== backupKey) {
+        try {
+          const rotation = await propagateSecretRotation(prisma, reqLike, rotationDeps, { accountId, oldSecret: primary, newSecret: backupKey })
+          rotated = rotation.addonsUpdated?.length || 0
+        } catch (e) {
+          console.warn('[Automation] promote_backup rotation failed:', e?.message)
+        }
+      }
+      return `Promoted the backup ${payload?.providerLabel || provider} key to primary${rotated ? ` and rewrote ${rotated} addon(s)` : ''} - the failed key is kept as the backup`
+    },
+  },
+
   'backup.run': {
     label: 'Run a backup now',
     description: 'Writes a backup immediately, in addition to the nightly schedule - and uploads it off-site if a remote target is configured. Pairs with "At a scheduled time" for an extra daily backup at an hour you choose.',
