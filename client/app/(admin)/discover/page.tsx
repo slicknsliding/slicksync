@@ -667,7 +667,8 @@ export default function DiscoverPage() {
                     onOpenDetails={setDetailItem}
                     onToggleWatchlist={handleToggleWatchlist}
                     onToggleWatched={handleToggleWatched}
-                    isMenuOpen={openMenuKey === item.id}
+                    isMenuOpen={openMenuKey === 'trend:' + item.id}
+                    menuKey={'trend:' + item.id}
                     onMenuOpenChange={handleMenuOpenChange}
                     focusable={isTV}
                   />
@@ -904,7 +905,8 @@ export default function DiscoverPage() {
                       onOpenDetails={setDetailItem}
                       onToggleWatchlist={handleToggleWatchlist}
                       onToggleWatched={handleToggleWatched}
-                      isMenuOpen={openMenuKey === item.id}
+                      isMenuOpen={openMenuKey === 'picks:' + item.id}
+                      menuKey={'picks:' + item.id}
                       onMenuOpenChange={handleMenuOpenChange}
                       focusable={isTV}
                     />
@@ -977,7 +979,8 @@ export default function DiscoverPage() {
                           onOpenDetails={setDetailItem}
                           onToggleWatchlist={handleToggleWatchlist}
                           onToggleWatched={handleToggleWatched}
-                          isMenuOpen={openMenuKey === item.id}
+                          isMenuOpen={openMenuKey === row.seedId + ':' + item.id}
+                          menuKey={row.seedId + ':' + item.id}
                           onMenuOpenChange={handleMenuOpenChange}
                           focusable={isTV}
                         />
@@ -1093,7 +1096,8 @@ export default function DiscoverPage() {
                     onOpenDetails={setDetailItem}
                     onToggleWatchlist={handleToggleWatchlist}
                     onToggleWatched={handleToggleWatched}
-                    isMenuOpen={openMenuKey === item.id}
+                    isMenuOpen={openMenuKey === 'grid:' + item.id}
+                    menuKey={'grid:' + item.id}
                     onMenuOpenChange={handleMenuOpenChange}
                     focusable={isTV}
                   />
