@@ -1167,21 +1167,16 @@ function VaultPageContent() {
         </>
       )}
 
-      {/* Key-rotation propagation opt-in - one compact row; the full
-          explanation lives in the tooltip and the guide, not a permanent
-          paragraph on the page. */}
-      <div className={`${NEBULA_GLASS_CLASS} px-4 py-2.5 mb-4`} style={nebulaGlassStyle}>
+      {/* Key-rotation propagation opt-in. Sized to its content, never the
+          page: a lone toggle stretched across the full width read as a
+          banner. The explanation sits right on the card in plain text -
+          hover-only tooltips hid it on touch and looked wrong everywhere. */}
+      <div className={`${NEBULA_GLASS_CLASS} px-4 py-3 mb-4 inline-block`} style={{ ...nebulaGlassStyle, maxWidth: 'min(34rem, 100%)' }}>
         <NebulaGlassStripe />
         <div className="flex items-center gap-2.5">
           <ArrowPathIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-primary)' }} />
-          <p className="text-sm font-medium text-default truncate">Rotation fixes addons automatically</p>
-          <span
-            className="text-xs text-muted cursor-help shrink-0"
-            title="When on: saving a changed secret rewrites every addon config that embeds the old key (Torrentio, AIOStreams and the rest carry a copy inside their URLs) and re-syncs the users carrying those addons. When off: rotating changes only the Vault entry. Guide: Rotate a key once and every addon follows."
-          >
-            &#9432;
-          </span>
-          <div className="ml-auto shrink-0">
+          <p className="text-sm font-semibold text-default">Rotation fixes addons automatically</p>
+          <div className="ml-auto pl-4 shrink-0">
             <ToggleSwitch
               checked={rotationPropagation === true}
               onChange={handleToggleRotationPropagation}
@@ -1190,6 +1185,9 @@ function VaultPageContent() {
             />
           </div>
         </div>
+        <p className="text-xs text-muted mt-1.5 leading-relaxed">
+          Saving a changed secret rewrites every addon config that embeds the old key and re-syncs the users carrying those addons. Off: rotating changes only the Vault entry.
+        </p>
       </div>
       <div className={layoutMode === 'nebula' ? `${NEBULA_GLASS_CLASS} p-5` : ''} style={layoutMode === 'nebula' ? nebulaGlassStyle : undefined}>
       {layoutMode === 'nebula' && <NebulaGlassStripe />}
