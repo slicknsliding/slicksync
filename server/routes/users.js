@@ -637,6 +637,18 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       let skipped = 0
       const unresolved = []
 
+      // Undo bookkeeping: snapshot which items/ratings already exist so the
+      // rows this run CREATES can be told apart from ones it merely skipped
+      // (the upserts below never modify existing rows - update: {}).
+      const preExistingItemIds = new Set(
+        (await prisma.movieWatchHistory.findMany({ where: { accountId, userId: user.id }, select: { itemId: true } })).map((r) => r.itemId)
+      )
+      const preExistingRatingIds = new Set(
+        (await prisma.titleRating.findMany({ where: { accountId, season: 0 }, select: { itemId: true } })).map((r) => r.itemId)
+      )
+      const createdItemIds = []
+      const createdRatingIds = []
+
       for (const row of rows) {
         // Netflix-style episode rows (Show: Season N: Episode) carry no id
         // and cannot resolve as movies - counted with the other episode
@@ -664,17 +676,33 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
             create: { accountId, userId: user.id, itemId: resolved.imdbId, itemName: resolved.title || resolved.imdbId, poster, profileLabel: 'Imported', completed: true, watchedAt },
             update: {}, // never overwrite an existing native record with an imported one
           })
+          if (!preExistingItemIds.has(resolved.imdbId)) {
+            preExistingItemIds.add(resolved.imdbId) // a file can repeat a title
+            createdItemIds.push(resolved.imdbId)
+          }
           if (rating) {
             await prisma.titleRating.upsert({
               where: { accountId_itemId_season: { accountId, itemId: resolved.imdbId, season: 0 } },
               create: { accountId, itemId: resolved.imdbId, itemType: 'movie', season: 0, rating, itemName: resolved.title || null },
               update: {},
             }).catch(() => {}) // best-effort - a rating conflict must never fail the whole import
+            if (!preExistingRatingIds.has(resolved.imdbId)) {
+              preExistingRatingIds.add(resolved.imdbId)
+              createdRatingIds.push(resolved.imdbId)
+            }
           }
           imported++
         } catch (e) {
           skipped++
         }
+      }
+
+      // One Trash entry per import run: undoing it deletes exactly the rows
+      // this run created and nothing that predated it.
+      try {
+        await require('../utils/trash').archiveHistoryImport(prisma, accountId, user.id, { createdItemIds, createdRatingIds })
+      } catch (e) {
+        console.warn('Import undo-archive failed (import itself succeeded):', e?.message)
       }
 
       res.json({
@@ -983,6 +1011,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
       const { userId, showId } = req.body || {}
       if (!userId || !showId) return res.status(400).json({ error: 'Missing userId or showId' })
+      // Even the permanent option gets the 30-day net: the erased rows go
+      // to the Trash first, so "forever" still survives a same-week regret.
+      await require('../utils/trash').archiveGraveyardWipe(prisma, accountId, userId, showId)
       const { wipeBuriedShow } = require('../utils/continueWatching')
       const result = await wipeBuriedShow(prisma, accountId, userId, showId)
       res.json({ success: true, ...result })
@@ -2576,6 +2607,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!existingUser) {
         return responseUtils.notFound(res, 'User')
       }
+
+      // Into the Trash first (30-day undo) - archived BEFORE anything is
+      // removed, so a failed archive aborts the delete, never the reverse.
+      await require('../utils/trash').archiveUserDelete(prisma, getAccountId(req), id)
 
       // Remove user from all groups first (update userIds arrays)
       const groups = await prisma.group.findMany({

@@ -864,7 +864,7 @@ export default function UsersPage() {
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleDeleteSelected}
         title="Delete Users"
-        description={`Are you sure you want to delete ${selectedIds.size} user${selectedIds.size !== 1 ? 's' : ''}? This action cannot be undone.`}
+        description={`Delete ${selectedIds.size} user${selectedIds.size !== 1 ? 's' : ''}? Deleted users go to the Trash on the Tasks page and can be restored for 30 days.`}
         confirmText={isDeleting ? 'Deleting...' : 'Delete Users'}
         variant="danger"
         isLoading={isDeleting}
@@ -876,7 +876,7 @@ export default function UsersPage() {
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDeleteSingle}
         title="Delete User"
-        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
+        description={`Delete "${deleteTarget?.name}"? Deleted users go to the Trash on the Tasks page and can be restored for 30 days.`}
         confirmText={isDeleting ? 'Deleting...' : 'Delete User'}
         variant="danger"
         isLoading={isDeleting}

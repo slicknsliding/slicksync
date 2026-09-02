@@ -728,7 +728,7 @@ function VaultPageContent() {
   };
 
   const handleDelete = async (entry: VaultEntry) => {
-    if (!confirm(`Delete "${entry.name}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete "${entry.name}"? It goes to the Trash on the Tasks page and can be restored for 30 days.`)) return;
     try {
       await api.deleteVaultEntry(entry.id);
       toast.success('Deleted');
