@@ -420,7 +420,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'Inviting your household',
     category: 'Getting started',
     keywords: ['invite', 'invitation', 'add household member', 'invite link'],
-    answer: 'Invitations → New Invitation. Share the generated link - whoever opens it connects their own Stremio/Nuvio account without you doing it for them, and they land in your account\'s Users list automatically.',
+    answer: 'Invitations → New Invitation. Share the generated link - whoever opens it connects their own Stremio/Nuvio account without you doing it for them, and they land in your account\'s Users list automatically. Right-click an invitation -> Show QR to hand it to a phone: point the camera, the invite opens, they connect their own account, and sync sets them up - nothing typed, no credentials through you.',
     href: '/invitations',
     linkLabel: 'Open Invitations',
   },
