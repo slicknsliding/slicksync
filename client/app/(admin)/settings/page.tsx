@@ -2127,23 +2127,6 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              {/* Key-rotation propagation. Lives here (the user's own call)
-                  with the rest of the key behaviour, rendered as a normal
-                  SettingRow so it looks like every other toggle instead of
-                  a one-off card. The switch controls what saving a changed
-                  VAULT secret does - named plainly in the description. */}
-              <div className="pt-2 mt-2" style={{ borderTop: '1px solid var(--color-surface-border)' }}>
-                <SettingRow
-                  label="Rotation fixes addons automatically"
-                  description="When a Vault secret changes (a new debrid key, say), rewrite every addon config that embeds the old key and re-sync the users carrying those addons. Off: rotating updates only the Vault entry."
-                >
-                  <ToggleSwitch
-                    enabled={syncSettings.keyRotationPropagation || false}
-                    onChange={(v) => handleSaveSetting('keyRotationPropagation', v)}
-                    label="Toggle rotation propagation"
-                  />
-                </SettingRow>
-              </div>
             </div>
           </Card>
         </PageSection>

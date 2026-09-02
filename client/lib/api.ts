@@ -3043,9 +3043,7 @@ export interface SyncSettings {
     usage?: { used: number; limit: number; percentUsed: number; plan: string | null };
   }>;
   notifyOnKeyHealth?: boolean;
-  /** Opt-in: rotating a Vault secret rewrites every addon config embedding
-   * the old value and re-syncs affected users. OFF by default. */
-  keyRotationPropagation?: boolean;
+
   simklClientId?: string;
   /** Self-hosted Nuvio backend URL, e.g. https://backend.example.com. Blank uses api.nuvio.tv. */
   nuvioServerUrl?: string;

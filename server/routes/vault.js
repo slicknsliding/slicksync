@@ -286,10 +286,15 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       let rotation = null;
       if (secret && oldSecret && oldSecret !== secret) {
         try {
-          const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } });
-          let cfg = acct?.sync;
-          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch { cfg = null; } }
-          if (cfg && cfg.keyRotationPropagation === true) {
+          // Always on - the opt-in toggle was removed at the user's own
+          // call after living for one day. The mechanism is conservative
+          // enough not to need one: it only ever rewrites exact matches of
+          // the OLD secret (12-char minimum, base64 round-trip verified),
+          // no-ops when nothing embeds it, and reports loudly via the save
+          // response and a notification. The one side effect - re-syncing
+          // affected users - is strictly better than leaving them on a key
+          // that just stopped existing.
+          {
             const { propagateSecretRotation } = require('../utils/keyRotation');
             const { getDecryptedManifestUrl } = require('../utils/encryption');
             const { manifestUrlHmac } = require('../utils/hashing');

@@ -610,7 +610,6 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // time. The client-side hydration fix could not help - the field
           // it hydrated from simply never arrived on this branch.
           keyHealth: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
-          keyRotationPropagation: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyRotationPropagation === true),
           tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           mdblistApiKeyPool: Array.isArray(syncCfg?.mdblistApiKeyPool) ? syncCfg.mdblistApiKeyPool.filter((k) => typeof k === 'string') : [],
@@ -669,7 +668,6 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // and utils/metadataKeyHealth.js. Absent entirely until the first
           // check ever runs.
           keyHealth: (syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
-          keyRotationPropagation: syncCfg.keyRotationPropagation === true,
           tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           mdblistApiKeyPool: Array.isArray(syncCfg?.mdblistApiKeyPool) ? syncCfg.mdblistApiKeyPool.filter((k) => typeof k === 'string') : [],
@@ -796,12 +794,6 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // saved from a key that's since been removed keeps showing
           // "Not working" against an empty field forever - confirmed live,
           // caught from a leftover test key never cleared this way.
-          // Opt-in for key-rotation propagation (see utils/keyRotation.js) -
-          // read straight off req.body rather than joining the giant
-          // destructure above; absent means keep the stored choice.
-          keyRotationPropagation: req.body?.keyRotationPropagation !== undefined
-            ? req.body.keyRotationPropagation === true
-            : (baseCfg.keyRotationPropagation === true),
           // Key Pool extras - capped at 10, trimmed, blanks dropped.
           tmdbApiKeyPool: Array.isArray(req.body?.tmdbApiKeyPool)
             ? req.body.tmdbApiKeyPool.map((k) => (typeof k === 'string' ? k.trim() : '')).filter(Boolean).slice(0, 10)
@@ -885,7 +877,6 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (mdblistApiKey !== undefined) partial.mdblistApiKey = typeof mdblistApiKey === 'string' ? mdblistApiKey.trim() : ''
       if (rpdbApiKey !== undefined) partial.rpdbApiKey = typeof rpdbApiKey === 'string' ? rpdbApiKey.trim() : ''
       if (omdbApiKey !== undefined) partial.omdbApiKey = typeof omdbApiKey === 'string' ? normalizeOmdbApiKey(omdbApiKey.trim()) : ''
-      if (req.body?.keyRotationPropagation !== undefined) partial.keyRotationPropagation = req.body.keyRotationPropagation === true
       if (simklClientId !== undefined) partial.simklClientId = typeof simklClientId === 'string' ? simklClientId.trim() : ''
       // Trailing slash stripped on save so it can't produce `//rest/v1/...`
       // downstream regardless of how it was typed.
