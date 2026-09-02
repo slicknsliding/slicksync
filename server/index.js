@@ -501,14 +501,6 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize activity monitor:', err)
     }
 
-    // Account Guard - hourly external-writer detection (see utils/accountGuard.js)
-    try {
-      const { scheduleAccountGuard } = require('./utils/accountGuard')
-      scheduleAccountGuard(prisma, { decrypt, StremioAPIClient, createProvider })
-    } catch (err) {
-      console.error('⚠️ Failed to initialize Account Guard:', err)
-    }
-
     // Schedule proxy stream monitor ("Now Playing" via AIOStreams proxy stats)
     try {
       const { scheduleProxyStreamMonitor } = require('./utils/proxyStreamMonitor')

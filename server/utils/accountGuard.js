@@ -35,7 +35,6 @@
 
 const crypto = require('crypto')
 
-const SWEEP_EVERY_MS = 60 * 60 * 1000 // hourly
 const BETWEEN_USERS_MS = 250 // gentle on provider APIs when sweeping many users
 
 function parseGuardState(raw) {
@@ -130,21 +129,28 @@ function summarizeExternal(guardStateJson) {
 
 /**
  * Check one user's live collection against the asserted baseline.
- * Returns 'alerted' | 'changed-silent' | 'match' | 'adopted' | 'skipped'.
+ * Returns { verdict, liveAddons, external }: verdict is one of 'alerted' |
+ * 'changed-silent' | 'match' | 'adopted' | 'skipped'; liveAddons is the
+ * fetched collection (so the caller can reuse it - the Sync Guardian passes
+ * it straight into getUserSyncStatus, one provider call serving both);
+ * external is the standing alarm after this check, or null.
  */
-async function checkUser(prisma, user, req, deps) {
+async function checkUser(prisma, user, req, deps, { prefetchedAddons = null } = {}) {
   const { decrypt, StremioAPIClient, createProvider } = deps
   const { canonicalizeManifestUrl } = require('./validation')
   const provider = user.providerType || 'stremio'
   const state = parseGuardState(user.guardStateJson)
   const asserted = state.byProvider?.[provider]
 
-  const { getUserAddons } = require('./sync')
-  const result = await getUserAddons(user, req, { decrypt, StremioAPIClient, createProvider })
-  if (!result.success) return 'skipped' // auth trouble etc. - the sync-status path owns reporting that
-  let live = result.addons
-  if (live && !Array.isArray(live) && Array.isArray(live.addons)) live = live.addons
-  if (!Array.isArray(live)) return 'skipped'
+  let live = prefetchedAddons
+  if (!Array.isArray(live)) {
+    const { getUserAddons } = require('./sync')
+    const result = await getUserAddons(user, req, { decrypt, StremioAPIClient, createProvider })
+    if (!result.success) return { verdict: 'skipped', liveAddons: null, external: null }
+    live = result.addons
+    if (live && !Array.isArray(live) && Array.isArray(live.addons)) live = live.addons
+  }
+  if (!Array.isArray(live)) return { verdict: 'skipped', liveAddons: null, external: null }
 
   const { keys: currentKeys, hash: currentHash } = computeFingerprint(live, provider)
   const currentAddons = live.map(describeAddon)
@@ -154,7 +160,7 @@ async function checkUser(prisma, user, req, deps) {
     state.byProvider = state.byProvider || {}
     state.byProvider[provider] = { keys: currentKeys, hash: currentHash, addons: currentAddons, assertedAt: new Date().toISOString() }
     await prisma.user.update({ where: { id: user.id }, data: { guardStateJson: JSON.stringify(state) } })
-    return 'adopted'
+    return { verdict: 'adopted', liveAddons: live, external: null }
   }
 
   if (currentHash === asserted.hash) {
@@ -163,7 +169,7 @@ async function checkUser(prisma, user, req, deps) {
       delete state.external
       await prisma.user.update({ where: { id: user.id }, data: { guardStateJson: JSON.stringify(state) } })
     }
-    return 'match'
+    return { verdict: 'match', liveAddons: live, external: null }
   }
 
   // Foreign state. Diff against the baseline for the human-readable alert.
@@ -200,7 +206,7 @@ async function checkUser(prisma, user, req, deps) {
     removed,
   }
   await prisma.user.update({ where: { id: user.id }, data: { guardStateJson: JSON.stringify(state) } })
-  return alreadyAlerted ? 'changed-silent' : 'alerted'
+  return { verdict: alreadyAlerted ? 'changed-silent' : 'alerted', liveAddons: live, external: state.external }
 }
 
 async function dispatchAlert(prisma, accountId, user, state) {
@@ -263,13 +269,11 @@ async function runGuardSweep(prisma, deps, { onlyAccountId = null } = {}) {
     })
     for (const user of users) {
       try {
-        const verdict = await checkUser(prisma, user, req, deps)
+        const { verdict, external } = await checkUser(prisma, user, req, deps)
         summary.checked++
         if (verdict === 'alerted') {
           summary.alerted++
-          const fresh = await prisma.user.findFirst({ where: { id: user.id }, select: { guardStateJson: true } })
-          const ext = parseGuardState(fresh?.guardStateJson).external
-          if (ext) await dispatchAlert(prisma, account.id, user, ext)
+          if (external) await dispatchAlert(prisma, account.id, user, external)
         } else if (verdict === 'adopted') summary.adopted++
         else if (verdict === 'skipped') summary.skipped++
       } catch (e) {
@@ -282,28 +286,14 @@ async function runGuardSweep(prisma, deps, { onlyAccountId = null } = {}) {
   return summary
 }
 
-let guardTimer = null
-
-function scheduleAccountGuard(prisma, deps) {
-  if (guardTimer) clearInterval(guardTimer)
-  const tick = async () => {
-    try {
-      const s = await runGuardSweep(prisma, deps)
-      if (s.alerted > 0) console.log(`[AccountGuard] sweep: ${s.checked} checked, ${s.alerted} external change(s) detected`)
-    } catch (e) {
-      console.warn('[AccountGuard] sweep failed:', e?.message)
-    }
-  }
-  guardTimer = setInterval(tick, SWEEP_EVERY_MS)
-  // First pass a few minutes after boot - not instantly, so startup isn't a
-  // burst of provider API calls on top of everything else booting.
-  setTimeout(tick, 3 * 60 * 1000)
-}
-
+// No scheduler of its own: detection runs inside the Sync Guardian's
+// 5-minute loop (see syncGuardian.js), reusing its per-user provider fetch -
+// a second poller here would double both the API calls and the alerts.
 module.exports = {
   recordAssertedState,
   acceptExternalState,
   summarizeExternal,
+  checkUser,
+  dispatchAlert,
   runGuardSweep,
-  scheduleAccountGuard,
 }

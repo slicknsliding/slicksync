@@ -51,7 +51,7 @@ async function checkAccount(prisma, accountId, deps) {
 
   const users = await prisma.user.findMany({
     where: { accountId, isActive: true },
-    select: { id: true, username: true, stremioAuthKey: true, nuvioRefreshToken: true, nuvioUserId: true, providerType: true },
+    select: { id: true, username: true, stremioAuthKey: true, nuvioRefreshToken: true, nuvioUserId: true, providerType: true, isActive: true, excludedAddons: true, protectedAddons: true, accountId: true, guardStateJson: true },
   })
   if (users.length === 0) return
 
@@ -67,9 +67,21 @@ async function checkAccount(prisma, accountId, deps) {
     const hasCredentials = !!(user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId))
     if (!hasCredentials || !groupedUserIds.has(user.id)) continue
 
+    // Account Guard rides this same pass: checkUser fetches the live addon
+    // collection once, attributes any change SlickSync didn't write (with a
+    // diff), and hands the collection back so getUserSyncStatus below doesn't
+    // fetch it a second time. One provider call serves both detectors.
+    let guard = { verdict: 'skipped', liveAddons: null, external: null }
+    try {
+      const { checkUser } = require('./accountGuard')
+      guard = await checkUser(prisma, user, req, deps)
+    } catch (e) {
+      console.warn('[SyncGuardian] guard check failed:', e?.message)
+    }
+
     let status
     try {
-      status = await getUserSyncStatus(user.id, {}, req)
+      status = await getUserSyncStatus(user.id, Array.isArray(guard.liveAddons) ? { _prefetchedUserAddons: guard.liveAddons } : {}, req)
     } catch {
       continue
     }
@@ -80,11 +92,23 @@ async function checkAccount(prisma, accountId, deps) {
       .findUnique({ where: { accountId_userId: { accountId, userId: user.id } } })
       .catch(() => null)
 
+    let driftNotifiedThisPass = false
     if (state && state.wasSynced === true && status.isSynced === false) {
+      driftNotifiedThisPass = true
+      // When Account Guard attributed the change, name exactly what happened
+      // instead of the generic drift text - same notification row either way
+      // (the dedupeKey keeps the Health board's incident listing and the
+      // self-heal delete below working unchanged).
+      const ext = guard.external
+      const bits = []
+      if (ext?.added?.length) bits.push(`${ext.added.length} addon${ext.added.length === 1 ? '' : 's'} added`)
+      if (ext?.removed?.length) bits.push(`${ext.removed.length} removed`)
       await createNotification(prisma, accountId, {
         type: 'sync',
         title: 'Addons changed outside SlickSync',
-        body: `${user.username}'s addons no longer match its group - something outside SlickSync (likely another signed-in Stremio/Nuvio session) changed them. Resync to restore.`,
+        body: ext
+          ? `${user.username}'s ${ext.provider === 'nuvio' ? 'Nuvio' : 'Stremio'} account was changed outside SlickSync (${bits.join(', ') || 'addon set changed'}) - likely another signed-in session. Re-assert or accept it on the Users page.`
+          : `${user.username}'s addons no longer match its group - something outside SlickSync (likely another signed-in Stremio/Nuvio session) changed them. Resync to restore.`,
         url: `/users/${user.id}`,
         dedupeKey,
       })
@@ -108,8 +132,24 @@ async function checkAccount(prisma, accountId, deps) {
         })
       } catch { /* emit never throws; guarding the require itself */ }
     } else if (status.isSynced === true) {
-      // Self-heal: confirmed synced again - clear any standing drift alert.
+      // Self-heal: confirmed synced again - clear any standing drift alert,
+      // and the Account Guard's own bell rows for this user with it (a
+      // confirmed re-sync recorded a fresh baseline, so the alarm is over).
       await prisma.notification.deleteMany({ where: { accountId, dedupeKey } }).catch(() => {})
+      await prisma.notification.deleteMany({ where: { accountId, dedupeKey: { startsWith: `guard:${user.id}:` } } }).catch(() => {})
+    }
+
+    // A foreign write the drift edge above didn't cover (the user was already
+    // unsynced, or the outside change coincidentally still matches the
+    // desired set): the guard raises its own alert - once per distinct
+    // foreign state, and never doubled with the drift notification.
+    if (guard.verdict === 'alerted' && guard.external && !driftNotifiedThisPass) {
+      try {
+        const { dispatchAlert } = require('./accountGuard')
+        await dispatchAlert(prisma, accountId, user, guard.external)
+      } catch (e) {
+        console.warn('[SyncGuardian] guard alert dispatch failed:', e?.message)
+      }
     }
 
     await prisma.userSyncGuardState.upsert({

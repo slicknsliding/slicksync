@@ -355,7 +355,10 @@ function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds,
     }
   }
 
-  return async function getUserSyncStatus(userId, { groupId = undefined, unsafe = false } = {}, req) {
+  // _prefetchedUserAddons: the Sync Guardian + Account Guard loop fetches the
+  // live collection once per user per pass - passing it here avoids this
+  // function immediately re-fetching the identical list from the provider.
+  return async function getUserSyncStatus(userId, { groupId = undefined, unsafe = false, _prefetchedUserAddons = null } = {}, req) {
     const user = await prisma.user.findFirst({
       where: { id: userId, accountId: getAccountId(req) },
       select: { id: true, stremioAuthKey: true, isActive: true, excludedAddons: true, protectedAddons: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
@@ -384,7 +387,9 @@ function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds,
     } catch {}
 
     // Get user's current addons from their provider
-    const { success: userAddonsSuccess, addons: userAddonsResponse, error: userAddonsError } = await getUserAddons(user, req, { decrypt, StremioAPIClient, createProvider })
+    const { success: userAddonsSuccess, addons: userAddonsResponse, error: userAddonsError } = Array.isArray(_prefetchedUserAddons)
+      ? { success: true, addons: _prefetchedUserAddons, error: null }
+      : await getUserAddons(user, req, { decrypt, StremioAPIClient, createProvider })
     if (!userAddonsSuccess) {
       // If the error is related to authentication, treat it as "connect" status
       if (userAddonsError && (
