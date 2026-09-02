@@ -398,6 +398,11 @@ app.use('/proxy', proxyRouter({ prisma, decrypt, getAccountId, getServerKey }));
 // (per-user token in the URL is the credential; allowlisted like /proxy)
 app.use('/trax', require('./routes/traxAddon')({ prisma }));
 
+// One-code instance migration - /bundle is token-gated and allowlisted (the
+// caller is the receiving server, sessionless); offer/receive live under
+// /api/settings with normal auth.
+app.use('/api/migration', require('./routes/migration')({ prisma, decrypt }));
+
 // Stream proxy router (no auth required - handles encrypted stream URLs)
 app.use('/stream', streamProxyRouter({ getServerKey }).router);
 

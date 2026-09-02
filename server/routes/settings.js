@@ -279,6 +279,65 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       }
     })
 
+    // POST /settings/migration/offer - mint a one-code migration offer for
+    // THIS instance's data. See routes/migration.js for the model.
+    router.post('/migration/offer', async (req, res) => {
+      try {
+        const accountId = getAccountId(req) || 'default'
+        let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+        if (!base) {
+          const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+          let cfg = acc?.sync
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+          base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
+        }
+        if (!base) {
+          const reqBase = `${req.protocol}://${req.get('host')}`
+          if (!/^https?:\/\/(localhost|127\.|\[?::1)/i.test(reqBase)) base = reqBase
+        }
+        if (!base) return res.status(400).json({ message: 'No reachable address known for this instance - the new server must be able to fetch from this one. Set PUBLIC_APP_URL, or open this page via the address your devices use.' })
+        const { mintOffer, encodeCode } = require('./migration')
+        const { token, passphrase } = mintOffer(accountId)
+        return res.json({ code: encodeCode(base, token, passphrase), expiresInMinutes: 15 })
+      } catch (e) {
+        return res.status(500).json({ message: 'Failed to create migration code', error: e?.message })
+      }
+    })
+
+    // POST /settings/migration/receive - paste a code on the NEW instance:
+    // fetches the bundle from the old one and restores it here. DESTRUCTIVE
+    // like every restore - meant for a fresh instance.
+    router.post('/migration/receive', async (req, res) => {
+      try {
+        const { decodeCode } = require('./migration')
+        const parsed = decodeCode(req.body?.code)
+        if (!parsed) return res.status(400).json({ message: 'That is not a migration code' })
+        const accountId = getAccountId(req) || 'default'
+
+        let bundle
+        try {
+          const controller = new AbortController()
+          const timer = setTimeout(() => controller.abort(), 30000)
+          const rsp = await fetch(`${parsed.u.replace(/\/+$/, '')}/api/migration/bundle?token=${encodeURIComponent(parsed.t)}`, { signal: controller.signal })
+          clearTimeout(timer)
+          const body = await rsp.json().catch(() => ({}))
+          if (!rsp.ok) return res.status(502).json({ message: body?.error || `The old instance answered ${rsp.status}` })
+          bundle = body?.kit
+        } catch (e) {
+          return res.status(502).json({ message: `Could not reach the old instance at ${parsed.u} - both servers must be able to see each other. (${e?.message || 'network error'})` })
+        }
+        if (!bundle) return res.status(502).json({ message: 'The old instance returned no bundle' })
+
+        const { restoreKit } = require('../utils/disasterRecoveryKit')
+        const { encrypt } = require('../utils/encryption')
+        const result = await restoreKit(prisma, accountId, parsed.k, bundle, req, { encrypt })
+        return res.json(result)
+      } catch (e) {
+        console.error('[Migration] receive failed:', e?.message)
+        return res.status(500).json({ message: e?.message || 'Migration failed' })
+      }
+    })
+
     // POST /settings/disaster-recovery-kit/export - unlike the regular
     // config backup above (Users/Groups/Addons only), this also bundles
     // every Vault secret, decrypted and re-encrypted under the passphrase

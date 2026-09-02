@@ -1281,6 +1281,18 @@ class ApiClient {
     }>(`/settings/backups/${encodeURIComponent(filename)}/diff`);
   }
 
+  /** One-code migration: mint a single-use 15-minute code carrying this
+   * instance's whole household to a new server. */
+  async offerMigration() {
+    return this.fetch<{ code: string; expiresInMinutes: number }>('/settings/migration/offer', { method: 'POST' });
+  }
+
+  /** Paste the code on the NEW instance - fetches and restores everything.
+   * Destructive: replaces this instance's data. */
+  async receiveMigration(code: string) {
+    return this.fetch<Record<string, unknown>>('/settings/migration/receive', { method: 'POST', body: JSON.stringify({ code }) });
+  }
+
   async restoreBackup(filename: string) {
     return this.fetch<ImportConfigResult>(`/settings/backups/${encodeURIComponent(filename)}/restore`, {
       method: 'POST',

@@ -9,6 +9,7 @@ import { AutomationPanel } from '@/components/automation/AutomationPanel';
 import { ShareCodeDialog, PasteCodeDialog } from '@/components/ui/ShareCodeDialog';
 import { MaintenancePanel } from '@/components/tasks/MaintenancePanel';
 import { encodeAddonTemplateShareCode, decodeShareCode } from '@/lib/shareCodes';
+import { copyToClipboard } from '@/lib/clipboard';
 import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -20,6 +21,7 @@ import {
   TrashIcon,
   ArrowDownTrayIcon,
   ArrowUpTrayIcon,
+  ArrowsRightLeftIcon,
   UserGroupIcon,
   UsersIcon,
   PuzzlePieceIcon,
@@ -767,6 +769,44 @@ export default function TasksPage() {
   // DESTRUCTIVE - replaces all current users/groups/addons. Reload after a
   // successful restore so every part of the app (this page included) picks
   // up the new data instead of continuing to show now-stale state.
+  // One-code migration - see server/routes/migration.js for the model.
+  const [migrationCode, setMigrationCode] = useState<string | null>(null);
+  const [isOfferingMigration, setIsOfferingMigration] = useState(false);
+  const [receiveCode, setReceiveCode] = useState('');
+  const [isReceivingMigration, setIsReceivingMigration] = useState(false);
+
+  const handleOfferMigration = async () => {
+    setIsOfferingMigration(true);
+    try {
+      const r = await api.offerMigration();
+      setMigrationCode(r.code);
+      toast.success('Code ready - paste it on the new instance within 15 minutes');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create migration code');
+    } finally {
+      setIsOfferingMigration(false);
+    }
+  };
+
+  const handleReceiveMigration = () => {
+    openConfirm({
+      title: 'Receive Migration',
+      description: 'This REPLACES everything on this instance - users, groups, addons, settings, and Vault - with the data from the old server. Meant for a fresh install. This cannot be undone.',
+      variant: 'danger',
+      onConfirm: async () => {
+        setIsReceivingMigration(true);
+        try {
+          const r: any = await api.receiveMigration(receiveCode.trim());
+          toast.success(`Migration complete${r?.counts ? `: ${r.counts.users ?? '?'} users, ${r.counts.groups ?? '?'} groups, ${r.counts.addons ?? '?'} addons` : ''} - reloading`);
+          setTimeout(() => window.location.reload(), 1500);
+        } catch (err: any) {
+          toast.error(err.message || 'Migration failed');
+          setIsReceivingMigration(false);
+        }
+      },
+    });
+  };
+
   const handleRestoreBackup = async (backup: BackupFile) => {
     // Time Machine: show what this restore would actually DO before asking
     // for the irreversible yes. "Replaces everything" was true but useless -
@@ -1631,6 +1671,57 @@ export default function TasksPage() {
               e.target.value = '';
             }}
           />
+        </PageSection>
+
+        {/* One-code migration - the DR Kit's live sibling: one code moves
+            the whole household to a new instance in a minute, instead of
+            export-file / carry / import / retype-passphrase. */}
+        <PageSection className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary-muted">
+                <ArrowsRightLeftIcon className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold font-display text-default">Move to a New Server</h3>
+                <p className="text-sm text-muted">One code carries everything - users, groups, addons, settings, and every Vault secret</p>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 mt-4">
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1.5">This is the OLD server</label>
+                <p className="text-xs text-subtle mb-2">Generate a code here, paste it on the new instance. Single-use, dies in 15 minutes, and the new server fetches directly from this one - both must be able to reach each other.</p>
+                <Button variant="secondary" size="sm" onClick={handleOfferMigration} isLoading={isOfferingMigration}>
+                  Generate migration code
+                </Button>
+                {migrationCode && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <code className="flex-1 p-2 bg-surface-hover rounded-lg text-xs text-subtle break-all font-mono">{migrationCode}</code>
+                    <Button variant="ghost" size="sm" onClick={async () => { (await copyToClipboard(migrationCode)) ? toast.success('Code copied') : toast.error('Copy failed - select the code text'); }}>
+                      <DocumentDuplicateIcon className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1.5">This is the NEW server</label>
+                <p className="text-xs text-subtle mb-2">Paste the code from the old instance. This REPLACES everything currently here - meant for a fresh install.</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={receiveCode}
+                    onChange={(e) => setReceiveCode(e.target.value)}
+                    placeholder="slickmig1.…"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="input-base flex-1 px-3 py-2 text-sm font-mono"
+                  />
+                  <Button variant="primary" size="sm" onClick={handleReceiveMigration} isLoading={isReceivingMigration} disabled={!receiveCode.trim()}>
+                    Receive
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Card>
         </PageSection>
 
         {/* Automatic Sync */}

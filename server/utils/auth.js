@@ -64,6 +64,11 @@ function pathIsAllowlisted(path) {
     // SlickTrax Addon - same model exactly: per-user token in the URL,
     // resolved by traxAddon.js on every request, Stremio apps as callers.
     '/trax/',
+    // One-code migration: the receiving instance pulls the bundle
+    // server-to-server with no session; the single-use 15-minute token in
+    // the query is the credential (see routes/migration.js). Narrow path -
+    // offer/receive stay behind normal auth.
+    '/api/migration/bundle',
     '/invite', // Public invitation endpoints (request submission, status check, OAuth completion)
     '/api/public-library', // Public library endpoints (OAuth-based access)
     // /api/superadmin runs its OWN completely separate auth (a distinct

@@ -1385,6 +1385,25 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['share-codes', 'watch-tracking-integrations'],
   },
   {
+    id: 'one-code-migration',
+    title: 'Moving to a new server with one code',
+    category: 'Health & maintenance',
+    keywords: ['migrate server', 'move instance', 'migration code', 'new vps', 'transfer everything', 'change server'],
+    answer: 'Tasks -> Maintenance -> Move to a New Server. Generate a code on the OLD instance, paste it on the NEW one, and everything transfers - users, groups, addons, settings, and every Vault secret - over an encrypted handshake. The Disaster Recovery Kit is the manual version of this; the code collapses it into a minute.',
+    steps: [
+      'On the old server: Generate migration code. It is single-use and expires in 15 minutes.',
+      'On the new (fresh) server: paste it under "This is the NEW server" and press Receive.',
+      'Done. Point your devices and DNS at the new address whenever you are ready.',
+    ],
+    details: [
+      'Receiving REPLACES the new instance\'s data - it is meant for a fresh install, and the confirmation says so before anything happens.',
+      'The two servers must be able to reach each other directly - the new one fetches the bundle straight from the old.',
+      'Treat the code like a password: whoever holds it holds the household, exactly as with a Disaster Recovery Kit file plus its passphrase. It stops working after one use or 15 minutes, whichever comes first.',
+      'If the old server cannot be reached (dead machine), the Disaster Recovery Kit file remains the offline path - this feature does not replace it.',
+    ],
+    related: ['backup-restore', 'migrate-from-syncio'],
+  },
+  {
     id: 'migrate-from-syncio',
     title: 'Switching from Syncio (or a Syncio-family manager)',
     category: 'Getting started',
