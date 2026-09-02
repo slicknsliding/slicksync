@@ -1527,18 +1527,18 @@ export const HELP_ENTRIES: HelpEntry[] = [
   },
   {
     id: 'dropped-shows',
-    title: 'Shows someone started and never finished',
+    title: 'The Graveyard - shows started, never finished, and buried',
     category: 'Watching & Discover',
     keywords: ['dropped shows', 'abandoned', 'unfinished', 'never finished', 'gave up on', 'stopped watching', 'graveyard', 'bury show'],
-    answer: 'Activity -> Dropped. Shows that were started and then left alone for over 45 days, with how far you got and how long ago.',
+    answer: 'Activity -> Graveyard. Shows started and then left alone for over 45 days sit on the Unfinished shelf, with how far you got. Bury one and it moves to the graveyard below - where every buried show is listed and can be dug back up.',
     steps: [
-      'Activity -> Dropped.',
-      'Pick a show back up, or press Bury to stop it appearing here.',
+      'Activity -> Graveyard.',
+      'Pick a show back up, or press Bury to lay it to rest.',
     ],
     details: [
       'Continue Watching only looks back 120 days, so anything older quietly disappeared from the app altogether - never resumed, never acknowledged. This is where those end up.',
       'Shows whose last watched episode is marked finished are not listed. Finishing something is not abandoning it.',
-      'Burying uses the same dismissal as Continue Watching, so a buried show will not resurface there either.',
+      'Burying uses the same dismissal as Continue Watching, so a buried show will not resurface there either - and shows dismissed from Continue Watching rest in the graveyard too. Dig up returns a show to wherever it belongs: Continue Watching if recent, Unfinished if not.',
     ],
     related: ['now-playing-continue-watching', 'rewatch-completion'],
   },

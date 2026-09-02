@@ -2157,6 +2157,23 @@ class ApiClient {
     }>>('/users/abandoned-shows');
   }
 
+  /** The Graveyard: every buried show (Continue Watching dismissals rest
+   * here too - both gestures mean "done with this"). */
+  async getBuriedShows() {
+    return this.fetch<{
+      userId: string; username: string; showId: string; showName: string;
+      poster: string | null; lastSeason: number | null; lastEpisode: number | null;
+      lastWatchedAt: string | null; buriedAt: string;
+    }[]>('/users/graveyard');
+  }
+
+  /** Dig a show back up - it returns to Continue Watching or the unfinished list. */
+  async unburyShow(userId: string, showId: string) {
+    return this.fetch<{ success: boolean }>('/users/graveyard/unbury', {
+      method: 'POST', body: JSON.stringify({ userId, showId }),
+    });
+  }
+
   async dismissContinueWatching(userId: string, showId: string) {
     return this.fetch<{ success: boolean }>('/users/continue-watching/dismiss', {
       method: 'POST',

@@ -379,4 +379,59 @@ async function getAbandonedShows(prisma, accountId, limit = 20) {
     }))
 }
 
-module.exports = { getContinueWatching, dismissContinueWatching, getAbandonedShows, ABANDONED_AFTER_DAYS }
+// The Graveyard proper: what burying actually produced. Burying reuses the
+// Continue Watching dismissal (see the comment above getAbandonedShows), so
+// this lists that table - which means a show dismissed from Continue
+// Watching rests here too. That is correct, not incidental: both gestures
+// say "done with this", and a graveyard that silently omitted half its
+// occupants would be the old vanishing problem all over again.
+async function getBuriedShows(prisma, accountId) {
+  const accountIdValue = accountId || 'default'
+  const dismissed = await prisma.dismissedContinueWatching.findMany({
+    where: { accountId: accountIdValue },
+    orderBy: { createdAt: 'desc' },
+  })
+  if (dismissed.length === 0) return []
+
+  // Enrich from watch history - the dismissal row itself stores only ids.
+  const rows = await prisma.episodeWatchHistory.findMany({
+    where: { accountId: accountIdValue, showId: { in: [...new Set(dismissed.map((d) => d.showId))] } },
+    orderBy: { watchedAt: 'desc' },
+    select: { userId: true, showId: true, showName: true, season: true, episode: true, poster: true, watchedAt: true },
+  })
+  const latest = new Map()
+  for (const r of rows) {
+    const key = `${r.userId}:${r.showId}`
+    if (!latest.has(key)) latest.set(key, r)
+  }
+  const users = await prisma.user.findMany({
+    where: { id: { in: [...new Set(dismissed.map((d) => d.userId))] } },
+    select: { id: true, username: true },
+  })
+  const userMap = new Map(users.map((u) => [u.id, u.username]))
+
+  return dismissed.map((d) => {
+    const hist = latest.get(`${d.userId}:${d.showId}`) || null
+    return {
+      userId: d.userId,
+      username: userMap.get(d.userId) || 'Unknown',
+      showId: d.showId,
+      showName: hist?.showName || d.showId,
+      poster: hist?.poster || null,
+      lastSeason: hist?.season ?? null,
+      lastEpisode: hist?.episode ?? null,
+      lastWatchedAt: hist?.watchedAt || null,
+      buriedAt: d.createdAt,
+    }
+  })
+}
+
+/** Dig a show back up: the dismissal is removed, so it reappears in
+ * Continue Watching (if recent) or the abandoned list (if not). */
+async function unburyShow(prisma, accountId, userId, showId) {
+  await prisma.dismissedContinueWatching.deleteMany({
+    where: { accountId: accountId || 'default', userId, showId },
+  })
+}
+
+module.exports = { getContinueWatching, dismissContinueWatching, getAbandonedShows, getBuriedShows, unburyShow, ABANDONED_AFTER_DAYS }

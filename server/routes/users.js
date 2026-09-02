@@ -911,6 +911,35 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // GET /users/graveyard - every buried show (see getBuriedShows for why
+  // Continue Watching dismissals rest here too). Must be before /:id.
+  router.get('/graveyard', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { getBuriedShows } = require('../utils/continueWatching')
+      res.json(await getBuriedShows(prisma, accountId))
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to load the graveyard' })
+    }
+  })
+
+  // POST /users/graveyard/unbury - dig a show back up. It reappears in
+  // Continue Watching (if recent) or the abandoned list (if not).
+  router.post('/graveyard/unbury', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { userId, showId } = req.body || {}
+      if (!userId || !showId) return res.status(400).json({ error: 'Missing userId or showId' })
+      const { unburyShow } = require('../utils/continueWatching')
+      await unburyShow(prisma, accountId, userId, showId)
+      res.json({ success: true })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to unbury' })
+    }
+  })
+
   // POST /users/continue-watching/dismiss - remove a show from the Continue
   // Watching row. Must be before /:id route.
   router.post('/continue-watching/dismiss', async (req, res) => {
