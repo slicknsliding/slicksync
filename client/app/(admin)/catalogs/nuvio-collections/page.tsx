@@ -1501,6 +1501,11 @@ export default function NuvioCollectionsPage() {
             loads a JSON file back into this page as a draft - review it, then hit Save changes to push it through the normal sync path. Nothing is written until you save.
           </p>
           <p>
+            Folders linked to a SlickSync Catalog travel too - but the link points at the ORIGINAL user&apos;s SlickTrax Addon.
+            Importing onto a different account keeps showing that user&apos;s catalog; re-link the folder there if it should follow
+            the new account&apos;s own catalogs instead.
+          </p>
+          <p className="text-sm text-muted mt-3">
             Nuvio&apos;s own site has a matching Import/Export on its Collections page, if you&apos;d rather manage things from there:
           </p>
           <a
@@ -1559,22 +1564,7 @@ export default function NuvioCollectionsPage() {
             — separate from SlickSync&apos;s — or they won&apos;t render on-device.
           </p>
           <p>
-            Want to turn a local Catalog into a folder here? Nuvio folders can only reference a live addon catalog, TMDb list, or Trakt
-            list — not a fixed set of titles directly — so open the Catalog, use{' '}
-            <button
-              type="button"
-              onClick={() => { setTipsInfoOpen(false); router.push('/catalogs'); }}
-              className="text-primary hover:underline font-medium"
-            >
-              Export to MDBList
-            </button>{' '}
-            to create a real MDBList list from it, then add that list&apos;s URL as a Custom Catalog (provider: MDBList) in either{' '}
-            {/* AIOStreams/AIOMetadata deliberately left as plain text, not
-                links - this account doesn't host either for anyone else to
-                use, and pointing at a specific instance would be wrong for
-                most readers; find your own is the correct answer here. */}
-            AIOStreams or AIOMetadata&apos;s own config — both
-            work fine as sources. Once saved there, it shows up as a normal source in{' '}
+            Want to turn a SlickSync Catalog into a folder here? Open any folder, press{' '}
             <button
               type="button"
               onClick={() => setTipsInfoOpen(false)}
@@ -1582,7 +1572,27 @@ export default function NuvioCollectionsPage() {
             >
               Add source
             </button>{' '}
-            below.
+            and pick it under <span className="text-default font-medium">Link a SlickSync Catalog</span> — the folder then follows the
+            catalog automatically: refresh it, auto-refresh it, edit it, and the device updates on its own. The link is served through
+            that user&apos;s SlickTrax Addon; if the addon isn&apos;t on the account yet, linking installs and syncs it in the same step.
+            Press Save changes to push, and from then on there is nothing to re-push.
+          </p>
+          <p className="text-sm text-muted mt-3">
+            Prefer the folder to work without the SlickTrax Addon? The older route still works: open the Catalog, use{' '}
+            <button
+              type="button"
+              onClick={() => { setTipsInfoOpen(false); router.push('/catalogs'); }}
+              className="text-primary hover:underline font-medium"
+            >
+              Export to MDBList
+            </button>{' '}
+            to create a real MDBList list from it, then add that list&apos;s URL as a Custom Catalog (provider: MDBList) in{' '}
+            {/* AIOStreams/AIOMetadata deliberately left as plain text, not
+                links - this account doesn't host either for anyone else to
+                use, and pointing at a specific instance would be wrong for
+                most readers; find your own is the correct answer here. */}
+            AIOStreams or AIOMetadata&apos;s own config, and add that as the source instead. That copy lives on MDBList and does not
+            follow later edits by itself — linking is the set-and-forget option.
           </p>
         </div>
       </Modal>
