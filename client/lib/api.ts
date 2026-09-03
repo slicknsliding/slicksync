@@ -3224,7 +3224,7 @@ export interface SyncSettings {
     /** MDBList only - the one provider that actually exposes live quota
      * usage (confirmed against their own OpenAPI spec). TMDb has no rate
      * limit to show, OMDb and RPDB expose no usage endpoint at all. */
-    usage?: { used: number; limit: number; percentUsed: number; plan: string | null };
+    usage?: { used: number; limit: number; percentUsed: number; plan: string | null; approximate?: boolean };
   }>;
   notifyOnKeyHealth?: boolean;
   /** Opt-in scheduled self-update (private instances with the socket

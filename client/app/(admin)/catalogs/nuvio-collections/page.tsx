@@ -948,11 +948,22 @@ export default function NuvioCollectionsPage() {
     if (!pickerTarget || !selectedUserId) return;
     setLinkBusyId(list.id);
     try {
-      if (traxEnabled === false) {
-        await api.setTraxAddon(selectedUserId, true);
+      // The toggle being on is NOT enough - the addon only reaches the
+      // account when a sync runs (confirmed live: toggle Enabled, addon
+      // absent, every linked source "not found"). What matters is presence
+      // in the LIVE account list; missing means enable if needed, sync, and
+      // re-read the addons so the new sources resolve immediately.
+      const traxId = `vip.slicksync.trax.${selectedUserId}`;
+      const traxInstalled = addons.some((a) => a.manifest?.id === traxId);
+      if (!traxInstalled) {
+        if (traxEnabled === false) await api.setTraxAddon(selectedUserId, true);
+        toast.success('Installing the SlickTrax Addon on the account (one sync)...');
         await api.syncUser(selectedUserId);
         setTraxEnabled(true);
-        toast.success('SlickTrax Addon enabled and synced onto the account');
+        try {
+          const fresh = await api.getUserStremioAddons(selectedUserId);
+          setAddons(Array.isArray(fresh) ? fresh : []);
+        } catch { /* sources may show as pending until next page load */ }
       }
       const types = [...new Set((list.items || []).map((i) => i.type).filter((t) => t === 'movie' || t === 'series'))];
       const useTypes = types.length > 0 ? types : ['movie', 'series'];
@@ -1368,6 +1379,8 @@ export default function NuvioCollectionsPage() {
                                           <span className="flex-1 truncate text-default">
                                             {found ? (
                                               <>{catalogName}{genreSuffix} <span className="text-subtle">· {addonName} ({source.type})</span>{linked && <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--color-primary-muted)', color: 'var(--color-primary)' }}>linked · auto-updates</span>}</>
+                                            ) : linked ? (
+                                              <span className="text-warning">Linked catalog - SlickTrax Addon not on the account <span className="text-subtle">· press Sync on the user to install it, then this resolves by itself</span></span>
                                             ) : (
                                               <span className="text-warning">Source not found <span className="text-subtle">· addon removed or catalog no longer exists</span></span>
                                             )}

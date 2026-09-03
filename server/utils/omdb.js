@@ -51,6 +51,7 @@ async function fetchOmdbRatings(imdbId, apiKey) {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 5000)
 
+    require('./omdbMeter').recordOmdbRequest(key)
     const response = await fetch(`https://www.omdbapi.com/?i=${encodeURIComponent(imdbId)}&apikey=${encodeURIComponent(key)}`, {
       signal: controller.signal
     })

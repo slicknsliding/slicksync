@@ -54,6 +54,11 @@ async function checkTmdb(key) {
 // is checked for explicitly.
 async function checkOmdb(key) {
   try {
+    const { recordOmdbRequest, readOmdbUsage } = require('./omdbMeter');
+    recordOmdbRequest(key);
+    // OMDb reports no usage of its own - this figure is SlickSync counting
+    // its own requests (see omdbMeter.js), so it can only understate.
+    const usage = () => readOmdbUsage(key) || undefined;
     const res = await timedFetch(`https://www.omdbapi.com/?apikey=${encodeURIComponent(key)}&i=tt0111161`);
     // OMDb answers 401 for BOTH a bad key and a key that hit its daily
     // limit - the body's Error string is the only way to tell them apart,
@@ -62,9 +67,9 @@ async function checkOmdb(key) {
     // mistyped" - confirmed live 2026-09-03, and precisely the wrong thing
     // to tell someone whose key will work again at midnight UTC.
     const body = await res.json().catch(() => null);
-    if (body && body.Response === 'True') return { ok: true, message: 'OK', rateLimited: false };
+    if (body && body.Response === 'True') return { ok: true, message: 'OK', rateLimited: false, usage: usage() };
     const err = (body && body.Error) || '';
-    if (/limit reached/i.test(err)) return { ok: false, message: 'Daily request limit reached (1,000/day on the free tier) - the key is fine and resets at midnight UTC. A backup key or key pool covers the gap.', rateLimited: true };
+    if (/limit reached/i.test(err)) return { ok: false, message: 'Daily request limit reached (1,000/day on the free tier) - the key is fine and resets at midnight UTC. A backup key or key pool covers the gap.', rateLimited: true, usage: usage() };
     if (res.status === 401 && !err) return { ok: false, message: 'Key rejected (401) - likely revoked or mistyped', rateLimited: false };
     if (/invalid api key/i.test(err)) return { ok: false, message: 'Invalid API key', rateLimited: false };
     return { ok: false, message: err || `OMDb returned ${res.status}`, rateLimited: false };

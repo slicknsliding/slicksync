@@ -115,6 +115,7 @@ async function resolveRowToImdbItem(row, colMap, omdbApiKey) {
   if (!title || !omdbApiKey) return null
   const year = colMap.year ? row[colMap.year]?.trim() : null
   try {
+    require('./omdbMeter').recordOmdbRequest(omdbApiKey)
     const url = `https://www.omdbapi.com/?apikey=${encodeURIComponent(omdbApiKey)}&t=${encodeURIComponent(title)}${year ? `&y=${encodeURIComponent(year)}` : ''}`
     const res = await fetch(url)
     if (!res.ok) return null
