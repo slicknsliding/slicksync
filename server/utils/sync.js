@@ -361,7 +361,12 @@ function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds,
   return async function getUserSyncStatus(userId, { groupId = undefined, unsafe = false, _prefetchedUserAddons = null } = {}, req) {
     const user = await prisma.user.findFirst({
       where: { id: userId, accountId: getAccountId(req) },
-      select: { id: true, stremioAuthKey: true, isActive: true, excludedAddons: true, protectedAddons: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
+      // traxAddonEnabled/traxToken MUST ride along: appendTraxAddon reads
+      // them off this object, and a select that omits them silently disables
+      // SlickTrax injection for the whole path (confirmed live 2026-09-03 -
+      // sync ran, addon never installed, and status agreed because desired
+      // was missing it too).
+      select: { id: true, stremioAuthKey: true, isActive: true, excludedAddons: true, protectedAddons: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true, accountId: true, traxAddonEnabled: true, traxToken: true }
     })
     if (!user) return { status: 'error', isSynced: false, message: 'User not found' }
     const hasCredentials = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)

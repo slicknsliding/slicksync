@@ -2849,7 +2849,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // Get user
       const user = await prisma.user.findFirst({
         where: { id, accountId: getAccountId(req) },
-        select: { id: true, stremioAuthKey: true, isActive: true, protectedAddons: true, excludedAddons: true, accountId: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
+        select: { id: true, stremioAuthKey: true, isActive: true, protectedAddons: true, excludedAddons: true, accountId: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true, traxAddonEnabled: true, traxToken: true }
       })
       console.log('[sync-plan] User found:', user ? user.id : 'null')
       if (!user) return res.status(404).json({ message: 'User not found' })
@@ -2957,7 +2957,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           isActive: true,
           providerType: true,
           nuvioRefreshToken: true,
-          nuvioUserId: true
+          nuvioUserId: true,
+          traxAddonEnabled: true,
+          traxToken: true
         }
       })
 
@@ -3311,7 +3313,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           protectedAddons: true,
           providerType: true,
           nuvioRefreshToken: true,
-          nuvioUserId: true
+          nuvioUserId: true,
+          traxAddonEnabled: true,
+          traxToken: true
         }
       })
 
@@ -4802,7 +4806,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           isActive: true,
           providerType: true,
           nuvioRefreshToken: true,
-          nuvioUserId: true
+          nuvioUserId: true,
+          traxAddonEnabled: true,
+          traxToken: true
         }
       })
 
@@ -4919,7 +4925,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           isActive: true,
           providerType: true,
           nuvioRefreshToken: true,
-          nuvioUserId: true
+          nuvioUserId: true,
+          traxAddonEnabled: true,
+          traxToken: true
         }
       })
 
@@ -4994,7 +5002,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           email: true,
           providerType: true,
           nuvioRefreshToken: true,
-          nuvioUserId: true
+          nuvioUserId: true,
+          traxAddonEnabled: true,
+          traxToken: true
         }
       })
 
@@ -5065,7 +5075,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           isActive: true,
           providerType: true,
           nuvioRefreshToken: true,
-          nuvioUserId: true
+          nuvioUserId: true,
+          traxAddonEnabled: true,
+          traxToken: true
         }
       })
 
@@ -7256,7 +7268,10 @@ async function syncUserAddons(prismaClient, userId, excludedManifestUrls = [], u
         accountId: true,
         providerType: true,
         nuvioRefreshToken: true,
-        nuvioUserId: true
+        nuvioUserId: true,
+        // SlickTrax injection reads these in appendTraxAddon - see sync.js.
+        traxAddonEnabled: true,
+        traxToken: true
       }
     })
 
@@ -7292,6 +7307,8 @@ async function syncUserAddons(prismaClient, userId, excludedManifestUrls = [], u
           protectedAddons: user.protectedAddons,
           excludedAddons: user.excludedAddons,
           accountId: user.accountId,
+          traxAddonEnabled: user.traxAddonEnabled,
+          traxToken: user.traxToken,
           providerType: secondaryCredential.providerType,
           stremioAuthKey: secondaryCredential.stremioAuthKey,
           nuvioRefreshToken: secondaryCredential.nuvioRefreshToken,
