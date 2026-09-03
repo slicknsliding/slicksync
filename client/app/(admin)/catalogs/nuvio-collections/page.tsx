@@ -540,8 +540,16 @@ export default function NuvioCollectionsPage() {
   const [savedSnapshot, setSavedSnapshot] = useState('[]');
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [importExportInfoOpen, setImportExportInfoOpen] = useState(false);
-  // Share codes for the whole collection layout (ShareCodeDialog).
+  // Share codes for collections (ShareCodeDialog). Which ones go into the
+  // code is chosen in the dialog - defaults to all, because "share my
+  // layout" is the common case, but a household's whole shabang is rarely
+  // what a friend actually asked for.
   const [showShareCode, setShowShareCode] = useState(false);
+  const [shareSelected, setShareSelected] = useState<Set<string>>(new Set());
+  const openShareCode = () => {
+    setShareSelected(new Set(collections.map((c) => c.id)));
+    setShowShareCode(true);
+  };
   const [showPasteCode, setShowPasteCode] = useState(false);
   // The two info banners (TMDb templates, bridging a Catalog in) read fine
   // the first time but are a permanent eyesore taking up space on every
@@ -1239,7 +1247,7 @@ export default function NuvioCollectionsPage() {
                     <Button variant="ghost" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setShowPasteCode(true)} title="Paste a collections share code - stages it into your draft for review before saving">
                       Paste code
                     </Button>
-                    <Button variant="ghost" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setShowShareCode(true)} disabled={collections.length === 0} title="Turn this profile's collections into a copy-paste share code">
+                    <Button variant="ghost" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openShareCode} disabled={collections.length === 0} title="Turn collections into a copy-paste share code - pick which ones in the dialog">
                       Share code
                     </Button>
                     <button
@@ -1528,10 +1536,43 @@ export default function NuvioCollectionsPage() {
         isOpen={showShareCode}
         onClose={() => setShowShareCode(false)}
         title="Share collections as code"
-        summary={`${collections.length} collection${collections.length === 1 ? '' : 's'} and their folders (titles, covers, and which catalogs each folder pulls from)`}
-        generate={() => encodeNuvioCollectionsShareCode({
-          collections: collections as unknown as Array<{ title: string; folders: unknown[] } & Record<string, unknown>>,
-        })}
+        summary={`${shareSelected.size} of ${collections.length} collection${collections.length === 1 ? '' : 's'} and their folders (titles, covers, and which catalogs each folder pulls from)`}
+        extraContent={collections.length > 1 ? (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-muted">Which collections go in the code</p>
+              <button
+                type="button"
+                className="text-xs text-muted hover:text-default transition-colors"
+                onClick={() => setShareSelected(shareSelected.size === collections.length ? new Set() : new Set(collections.map((c) => c.id)))}
+              >
+                {shareSelected.size === collections.length ? 'Select none' : 'Select all'}
+              </button>
+            </div>
+            {collections.map((c) => {
+              const on = shareSelected.has(c.id);
+              return (
+                <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer" style={{ background: 'var(--color-surface-hover)' }}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => setShareSelected((prev) => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
+                    className="accent-[var(--color-primary)]"
+                  />
+                  <span className="text-sm text-default truncate">{c.title}</span>
+                  <span className="text-xs text-subtle shrink-0">{(c.folders || []).length} folder{(c.folders || []).length === 1 ? '' : 's'}</span>
+                </label>
+              );
+            })}
+          </div>
+        ) : undefined}
+        generate={() => {
+          const chosen = collections.filter((c) => shareSelected.has(c.id));
+          if (chosen.length === 0) throw new Error('Pick at least one collection to share');
+          return encodeNuvioCollectionsShareCode({
+            collections: chosen as unknown as Array<{ title: string; folders: unknown[] } & Record<string, unknown>>,
+          });
+        }}
       />
       <PasteCodeDialog
         isOpen={showPasteCode}

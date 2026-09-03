@@ -1357,7 +1357,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     answer: 'Catalogs, Nuvio collection layouts, and addon templates can each be turned into one copy-paste code that any other SlickSync can import. No accounts, no files, no external service - the code itself carries everything.',
     steps: [
       'Catalog: open it → More → Share as code. Import by pasting the code into Catalogs → Import, in the same field that takes a URL.',
-      'Nuvio collections: Collections page → Share code. Import with Paste code - it stages into your draft, so you review and press Save changes like any other edit.',
+      'Nuvio collections: Collections page → Share code, then tick which collections go into the code (all by default). Import with Paste code - it stages into your draft, so you review and press Save changes like any other edit.',
       'Addon template: Tasks → Addon Templates → Share on the template. Import with Import from Code.',
     ],
     details: [
