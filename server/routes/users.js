@@ -776,7 +776,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
       res.json({
         enabled,
-        manifestUrl: `${base || reqBase}/trax/${traxToken}/manifest.json`,
+        manifestUrl: `${base || reqBase}/trax/${traxToken}/v${require('./traxAddon').TRAX_MANIFEST_VERSION}/manifest.json`,
         autoInstall: true,
       })
     } catch (error) {

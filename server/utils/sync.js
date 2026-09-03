@@ -152,7 +152,9 @@ async function appendTraxAddon(user, addons, prisma) {
     const { buildTraxManifest, getListsForAccount } = require('../routes/traxAddon')
     const lists = await getListsForAccount(prisma, user.accountId)
     const manifest = buildTraxManifest(user, lists)
-    const transportUrl = `${base}/trax/${user.traxToken}/manifest.json`
+    // Version segment in the path = cache bust: Nuvio never refetches a
+    // manifest while the URL is unchanged (see TRAX_MANIFEST_VERSION).
+    const transportUrl = `${base}/trax/${user.traxToken}/v${manifest.version}/manifest.json`
     if (addons.some((a) => (a?.transportUrl || a?.manifestUrl || a?.url || '') === transportUrl)) return addons
     return [...addons, { transportUrl, transportName: 'SlickTrax', manifest }]
   } catch {

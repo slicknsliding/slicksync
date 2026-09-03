@@ -24,6 +24,15 @@ const express = require('express')
 // user's own addons' job (and AIOStreams' aggregation job) - this addon adds
 // rows, it never touches playback.
 
+// Bumped whenever the catalog layout changes shape. It rides IN THE
+// TRANSPORT URL PATH (/trax/<token>/v<this>/manifest.json), because Nuvio
+// caches an installed addon's manifest by URL and never refetches while the
+// URL is unchanged - confirmed live: three manifest revisions in a row
+// never reached the device. A version bump changes the URL, sync sees a
+// different addon (fingerprints canonicalize away query strings but not
+// paths) and replaces it on the account, and the client fetches fresh.
+const TRAX_MANIFEST_VERSION = '1.5.0'
+
 const CACHE_SECONDS = 60 // catalogs recompute cheaply; 60s keeps app scrolling snappy without staleness anyone would notice
 
 function metaPreview(id, type, name, poster) {
@@ -64,10 +73,7 @@ function buildTraxManifest(user, lists) {
   }
   return {
     id: `vip.slicksync.trax.${user.id}`,
-    // Bumped when the catalog layout changes shape - clients refresh
-    // manifests from the transport URL on their own, and a changed version
-    // makes the refresh stick.
-    version: '1.5.0',
+    version: TRAX_MANIFEST_VERSION,
     name: 'SlickTrax',
     description: `SlickTrax for ${user.username || 'this household'} - Continue Watching, Watchlist and Catalogs, live from SlickSync.`,
     logo: 'https://slicksync.vip/android-chrome-192x192.png',
@@ -95,6 +101,14 @@ module.exports = ({ prisma }) => {
   // browser-side directory install fallback). These endpoints only ever
   // return catalog previews for a bearer token, so * is appropriate here
   // in a way it wouldn't be on the API.
+  // Versioned-path shim: /<token>/v1.5.0/manifest.json (and every resource
+  // under it) serves identically to /<token>/manifest.json - the version
+  // segment exists purely to give clients a fresh URL to cache against.
+  router.use((req, res, next) => {
+    req.url = req.url.replace(/^\/([^/]+)\/v[0-9][\w.]*\//, '/$1/')
+    next()
+  })
+
   router.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Headers', '*')
@@ -177,3 +191,4 @@ module.exports = ({ prisma }) => {
 
 module.exports.buildTraxManifest = buildTraxManifest
 module.exports.getListsForAccount = getListsForAccount
+module.exports.TRAX_MANIFEST_VERSION = TRAX_MANIFEST_VERSION
