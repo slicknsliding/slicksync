@@ -93,20 +93,29 @@ async function ensureTraxHomePlacement(provider, user, catalogKey) {
       }
 
       const others = items.filter((i) => !(i.addon_id === addonId && i.catalog_id === catalogId))
-      const minOrder = others.reduce((m, i) => (Number.isFinite(i?.order) && i.order < m ? i.order : m), 0)
+      // Placed at the HEAD OF ITS OWN ADDON'S GROUP, not the global top -
+      // order min-1 put the row 28 slots above its family (Watchlist, the
+      // user's packs), which read as lost, not promoted (user feedback).
+      // Target = the lowest order among the addon's OTHER rows; everything
+      // at or after that slot shifts down one to make room.
+      const siblingOrders = others.filter((i) => i.addon_id === addonId).map((i) => (Number.isFinite(i?.order) ? i.order : 0))
+      const target = siblingOrders.length > 0
+        ? Math.min(...siblingOrders)
+        : others.reduce((m, i) => (Number.isFinite(i?.order) && i.order > m ? i.order : m), -1) + 1 // no siblings yet - append
+      const shifted = others.map((i) => (Number.isFinite(i?.order) && i.order >= target ? { ...i, order: i.order + 1 } : i))
       const placed = {
         addon_id: addonId,
         type: catalogType,
         catalog_id: catalogId,
         enabled: true,
-        order: minOrder - 1,
+        order: target,
         custom_title: 'Continue Watching',
         collection_id: '',
         is_collection: false,
       }
       try {
-        await provider.pushHomeCatalogSettings(profileId, platform, { ...settings, items: [placed, ...others] })
-        console.log(`[NuvioHomePlacement] Continue Watching placed on top (profile ${profileId}, ${platform})`)
+        await provider.pushHomeCatalogSettings(profileId, platform, { ...settings, items: [placed, ...shifted] })
+        console.log(`[NuvioHomePlacement] Continue Watching placed at the head of its group (profile ${profileId}, ${platform})`)
       } catch (e) {
         console.warn('[NuvioHomePlacement] push failed:', e?.message)
       }
