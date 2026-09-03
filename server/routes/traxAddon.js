@@ -41,15 +41,13 @@ function buildTraxManifest(user, lists) {
     // declared entry, not one per type: the row mixes movies and series
     // (each meta carries its own real type, which is what Stremio uses for
     // opening), so declaring both types just rendered two identical-looking
-    // "Continue Watching" rows. The declared type is only the protocol's
-    // required anchor, but clients render the header as name + type - so
-    // 'Continue Watching' under 'series' read "Continue Watching Series",
-    // and under 'all' read "Continue Watching All". Both halves of that
-    // concatenation are OURS (the type string is arbitrary and our route
-    // accepts anything), so the name is 'Continue' and the type 'Watching'
-    // and the client assembles exactly the title wanted. The handler has
-    // ignored the requested type since the rows merged.
-    { type: 'Watching', id: 'slicktrax-continue', name: 'Continue' },
+    // "Continue Watching" rows. Declared once under 'all' (the handler has
+    // ignored the requested type since the rows merged). Nuvio renders row
+    // headers as name + type and appends new rows last - both are fixed
+    // through its own synced home-catalog settings instead of protocol
+    // tricks: sync writes a preference for this row with customTitle
+    // "Continue Watching" and top position (utils/nuvioHomePlacement.js).
+    { type: 'all', id: 'slicktrax-continue', name: 'Continue Watching' },
     { type: 'movie', id: 'slicktrax-watchlist', name: 'Watchlist' },
     { type: 'series', id: 'slicktrax-watchlist', name: 'Watchlist' },
   ]
@@ -65,12 +63,12 @@ function buildTraxManifest(user, lists) {
     // Bumped when the catalog layout changes shape - clients refresh
     // manifests from the transport URL on their own, and a changed version
     // makes the refresh stick.
-    version: '1.3.0',
+    version: '1.4.0',
     name: 'SlickTrax',
     description: `SlickTrax for ${user.username || 'this household'} - Continue Watching, Watchlist and Catalogs, live from SlickSync.`,
     logo: 'https://slicksync.vip/android-chrome-192x192.png',
     resources: ['catalog'],
-    types: ['movie', 'series', 'Watching'],
+    types: ['movie', 'series', 'all'],
     idPrefixes: ['tt'],
     catalogs,
     behaviorHints: { configurable: false, configurationRequired: false },

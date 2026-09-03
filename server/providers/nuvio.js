@@ -360,6 +360,32 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
       return Array.isArray(raw) ? raw : []
     },
 
+    // Home catalog settings - the synced per-profile blob that controls
+    // home ROW ORDER and per-row title overrides (see
+    // utils/nuvioHomePlacement.js for the full shape, learned from the
+    // desktop client's own HomeCatalogSettingsSyncService). Platform is
+    // 'mobile' / 'desktop' / the 'home_catalog_shared' fallback bucket.
+    async getHomeCatalogSettings(profileId, platform) {
+      const accessToken = await ensureAuth()
+      const rows = await supabaseRpc('sync_pull_home_catalog_settings', {
+        p_profile_id: profileId,
+        p_platform: platform,
+      }, accessToken, await getServerConfig())
+      return Array.isArray(rows) ? rows : []
+    },
+
+    // p_settings_json must be the raw object, NOT a JSON string - same
+    // double-encoding trap sync_push_collections already taught us (see
+    // setCollections below).
+    async pushHomeCatalogSettings(profileId, platform, settings) {
+      const accessToken = await ensureAuth()
+      await supabaseRpc('sync_push_home_catalog_settings', {
+        p_profile_id: profileId,
+        p_platform: platform,
+        p_settings_json: settings,
+      }, accessToken, await getServerConfig())
+    },
+
     // Full replace, matching sync_push_collections' own semantics - there is
     // no partial-update RPC, so callers must always push the complete array.
     //

@@ -7219,6 +7219,11 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
       // Account Guard: already-synced still CONFIRMS the account state, so
       // refresh the asserted baseline (and clear any stale alarm).
       await require('../utils/accountGuard').recordAssertedState(prismaClient, credentials.id, credentials.providerType, plan.desired || [])
+      if (credentials.providerType === 'nuvio' && credentials.traxAddonEnabled && credentials.traxToken) {
+        const { ensureTraxHomePlacement } = require('../utils/nuvioHomePlacement')
+        ensureTraxHomePlacement(provider, { id: credentials.id }, `vip.slicksync.trax.${credentials.id}:all:slicktrax-continue`)
+          .catch((e) => console.warn('[NuvioHomePlacement] failed:', e?.message))
+      }
       return { success: true, total: (plan.desired || []).length, alreadySynced: true }
     }
 
@@ -7234,6 +7239,13 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
     await provider.setAddons(finalDesired)
     console.log('✅ User now synced')
     await require('../utils/accountGuard').recordAssertedState(prismaClient, credentials.id, credentials.providerType, finalDesired)
+    // Nuvio home placement for the SlickTrax row - fire-and-forget, once
+    // per user per boot, and never overrides an existing preference.
+    if (credentials.providerType === 'nuvio' && credentials.traxAddonEnabled && credentials.traxToken) {
+      const { ensureTraxHomePlacement } = require('../utils/nuvioHomePlacement')
+      ensureTraxHomePlacement(provider, { id: credentials.id }, `vip.slicksync.trax.${credentials.id}:all:slicktrax-continue`)
+        .catch((e) => console.warn('[NuvioHomePlacement] failed:', e?.message))
+    }
     return { success: true, total: (plan.desired || []).length }
   } catch (e) {
     console.error('❌ Failed to apply sync plan:', e?.message)
