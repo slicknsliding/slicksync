@@ -43,6 +43,20 @@ async function ensureTraxHomePlacement(provider, user, catalogKey) {
   if (placedThisBoot.has(user.id)) return
   placedThisBoot.add(user.id)
 
+  // catalogKey is `<addonId>:<type>:<catalogId>` - split into the fields the
+  // REAL sync item schema uses. Learned the hard way: items are
+  // SyncCatalogItem { addon_id, type, catalog_id, enabled, order,
+  // custom_title, collection_id, is_collection } (snake_case, no 'key'
+  // field), confirmed against a client-written blob. The first version
+  // pushed stored-preference-shaped items instead; the client's strict
+  // decoder throws on the first malformed item and silently discards the
+  // ENTIRE blob - so those writes didn't just fail to place the row, they
+  // poisoned arrangement sync for every row until repaired here.
+  const [addonId, catalogType, catalogId] = (() => {
+    const parts = String(catalogKey).split(':')
+    return [parts.slice(0, -2).join(':'), parts[parts.length - 2], parts[parts.length - 1]]
+  })()
+
   let profiles = []
   try {
     profiles = await provider.getProfiles()
@@ -52,46 +66,68 @@ async function ensureTraxHomePlacement(provider, user, catalogKey) {
     const profileId = profile?.profile_index
     if (!Number.isInteger(profileId)) continue
 
-    // Read every bucket first. The platform list [mobile, desktop] is
-    // literally named LEGACY_SYNC_PLATFORMS in the client - older builds
-    // read ONLY their own platform blob and never the shared bucket
-    // (confirmed live: shared carried the preference, the phone's own
-    // 'mobile' bucket was empty, and the phone "preserved local" forever).
-    // So the preference must exist in EVERY bucket, with missing ones
-    // seeded from the richest existing blob so no arrangement is lost.
-    const blobs = {}
+    let anyBlobSeen = false
     for (const platform of PLATFORMS) {
+      let rows
       try {
-        const rows = await provider.getHomeCatalogSettings(profileId, platform)
-        blobs[platform] = parseSettings(rows?.[0]?.settings_json)
-      } catch {
-        blobs[platform] = undefined // pull failed - do not blindly overwrite
+        rows = await provider.getHomeCatalogSettings(profileId, platform)
+      } catch { continue }
+      const settings = parseSettings(rows?.[0]?.settings_json)
+      if (!settings) continue
+      anyBlobSeen = true
+
+      // Repair: drop every malformed item (anything without addon_id -
+      // that's the poison from the first version of this file).
+      const items = (Array.isArray(settings.items) ? settings.items : []).filter((i) => i && typeof i.addon_id === 'string')
+
+      const ours = items.find((i) => i.addon_id === addonId && i.catalog_id === catalogId)
+      if (ours && ours.custom_title === 'Continue Watching') {
+        // Already placed by us on a previous pass - if the human has moved
+        // it since, that arrangement is theirs to keep.
+        if ((Array.isArray(settings.items) ? settings.items.length : 0) === items.length) continue
+        // (Malformed leftovers still need purging even when ours is fine.)
+        try {
+          await provider.pushHomeCatalogSettings(profileId, platform, { ...settings, items })
+        } catch (e) { console.warn('[NuvioHomePlacement] repair push failed:', e?.message) }
+        continue
       }
-    }
-    const richest = PLATFORMS.map((pf) => blobs[pf]).filter(Boolean)
-      .sort((a, b) => (Array.isArray(b.items) ? b.items.length : 0) - (Array.isArray(a.items) ? a.items.length : 0))[0] || null
 
-    for (const platform of PLATFORMS) {
-      if (blobs[platform] === undefined) continue // unreadable - leave alone
-      const base = blobs[platform] || richest || { show_catalog_type: true, hide_unreleased_content: false, items: [] }
-      const items = Array.isArray(base.items) ? base.items : []
-      if (blobs[platform] && items.some((i) => i && i.key === catalogKey)) continue // human's row, human's order
-
-      const minOrder = items.reduce((m, i) => (Number.isFinite(i?.order) && i.order < m ? i.order : m), 0)
-      const next = {
-        ...base,
-        items: items.some((i) => i && i.key === catalogKey)
-          ? items
-          : [
-              { key: catalogKey, customTitle: 'Continue Watching', enabled: true, heroSourceEnabled: false, order: minOrder - 1 },
-              ...items,
-            ],
+      const others = items.filter((i) => !(i.addon_id === addonId && i.catalog_id === catalogId))
+      const minOrder = others.reduce((m, i) => (Number.isFinite(i?.order) && i.order < m ? i.order : m), 0)
+      const placed = {
+        addon_id: addonId,
+        type: catalogType,
+        catalog_id: catalogId,
+        enabled: true,
+        order: minOrder - 1,
+        custom_title: 'Continue Watching',
+        collection_id: '',
+        is_collection: false,
       }
       try {
-        await provider.pushHomeCatalogSettings(profileId, platform, next)
+        await provider.pushHomeCatalogSettings(profileId, platform, { ...settings, items: [placed, ...others] })
         console.log(`[NuvioHomePlacement] Continue Watching placed on top (profile ${profileId}, ${platform})`)
       } catch (e) {
         console.warn('[NuvioHomePlacement] push failed:', e?.message)
+      }
+    }
+
+    if (!anyBlobSeen) {
+      // Nothing synced for this profile yet: seed the shared bucket in the
+      // client's own observed top-level shape.
+      try {
+        await provider.pushHomeCatalogSettings(profileId, 'home_catalog_shared', {
+          items: [{
+            addon_id: addonId, type: catalogType, catalog_id: catalogId,
+            enabled: true, order: 0, custom_title: 'Continue Watching',
+            collection_id: '', is_collection: false,
+          }],
+          hide_catalog_underline: false,
+          hide_unreleased_content: false,
+        })
+        console.log(`[NuvioHomePlacement] seeded shared settings (profile ${profileId})`)
+      } catch (e) {
+        console.warn('[NuvioHomePlacement] seed failed:', e?.message)
       }
     }
   }
