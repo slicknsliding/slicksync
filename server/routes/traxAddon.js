@@ -37,9 +37,13 @@ function metaPreview(id, type, name, poster) {
  */
 function buildTraxManifest(user, lists) {
   const catalogs = [
-    // Continue Watching first - it's the row people open the app for.
+    // Continue Watching first - it's the row people open the app for. ONE
+    // declared entry, not one per type: the row mixes movies and series
+    // (each meta carries its own real type, which is what Stremio uses for
+    // opening), so declaring both types just rendered two identical-looking
+    // "Continue Watching" rows. 'series' is only the declaration anchor the
+    // protocol demands.
     { type: 'series', id: 'slicktrax-continue', name: 'Continue Watching' },
-    { type: 'movie', id: 'slicktrax-continue', name: 'Continue Watching' },
     { type: 'movie', id: 'slicktrax-watchlist', name: 'Watchlist' },
     { type: 'series', id: 'slicktrax-watchlist', name: 'Watchlist' },
   ]
@@ -113,11 +117,16 @@ module.exports = ({ prisma }) => {
       const catalogId = req.params.id
 
       if (catalogId === 'slicktrax-continue') {
+        // One MIXED row: movies and shows together, most recent first -
+        // exactly the order you stopped watching things in. The requested
+        // type is ignored (the manifest declares this catalog once under
+        // 'series' as its protocol anchor; accounts still carrying the old
+        // two-entry manifest get the same mixed row for either request).
         const { getContinueWatching } = require('../utils/continueWatching')
         const entries = await getContinueWatching(prisma, user.accountId, 40)
         const metas = entries
-          .filter((e) => e.userId === user.id && e.contentType === type && /^tt\d+$/.test(e.showId || ''))
-          .map((e) => metaPreview(e.showId, type, e.showName, e.poster))
+          .filter((e) => e.userId === user.id && /^tt\d+$/.test(e.showId || ''))
+          .map((e) => metaPreview(e.showId, e.contentType === 'movie' ? 'movie' : 'series', e.showName, e.poster))
         return res.json({ metas })
       }
 
