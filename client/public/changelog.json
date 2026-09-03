@@ -1,5 +1,32 @@
 [
   {
+    "version": "1.81.0",
+    "date": "2026-09-03",
+    "title": "1.81.0 — An account that defends itself, undo for everything, and a Continue Watching row that behaves",
+    "features": [
+      "Account Guard: SlickSync now watches every connected account for changes it didn't make - another logged-in app quietly rewriting your addons is the classic case - and raises a banner plus a push alert with one-click Re-assert (put it back) or Accept (keep the new state).",
+      "Undo for every destructive action: deleting a user, addon, catalog, or Vault entry, removing someone from a group, importing over existing data, and Graveyard wipes all land in a Recent Changes panel with a 30-day window to restore them in one click.",
+      "Watching Together: mark a show as watched together and get an alert the moment someone starts an episode past the shared frontier. Works as a push, a bell notification, or an automation trigger - and any account can opt out.",
+      "SlickTrax's Continue Watching is now one row: movies and shows together, ordered by last watched, named exactly \"Continue Watching\". On Nuvio it even places itself among your home rows - no manual reordering, and if you move it later your arrangement wins.",
+      "The SlickTrax addon has a front door: it sits at the top of Addons - Browse with a user picker, an enable-and-sync button, and a copy-the-manifest-URL shortcut.",
+      "Linked Nuvio collections: add a SlickSync catalog as a folder source and the folder on the device follows the catalog from then on - edit the catalog here, the Nuvio home screen updates on its own.",
+      "Collection share codes now come with a picker - share exactly the collections you choose instead of the whole layout.",
+      "Franchise completion: a saga you're partway through shows \"4 of 6 watched\" on its detail popup, and a Finish the Saga row surfaces the released entries you're missing. The watched flag is now a proper toggle too, so a mis-marked title is one click to fix.",
+      "Device claims: on a shared provider login, claim a streaming device as yours and its activity is attributed to the right person from then on.",
+      "Time Machine restores can now be scoped to a single user - preview the diff and put one person back without touching anyone else.",
+      "The Key Pool learned two opt-in tricks: quota-aware weighting (send traffic to the keys with the most room left today) and auto-retire for keys that stay dead.",
+      "The promote-backup-key automation now round-trips: when the demoted original passes a later health check, the pair swaps back automatically and every addon carrying the key is updated - one rule covers both directions.",
+      "OMDb usage meter: Settings now shows today's request count against the free 1,000-per-day limit, tracked by your own server since OMDb's API won't report it."
+    ],
+    "bugFixes": [
+      "The SlickTrax addon could be missing from an account while sync still reported \"Synced\" - the addon is now injected on every sync path, and the linked-collection flow checks the account's live addon list rather than the toggle.",
+      "A wiped Graveyard title could crawl back into Continue Watching - a wipe now erases movie history too and leaves a tombstone, so the provider's own library can't resurrect it.",
+      "OMDb ratings are now cached on disk, so a restart no longer re-spends daily quota re-fetching ratings it already had.",
+      "An OMDb key that had simply hit its daily limit was reported as invalid - the two cases are now told apart, and an exhausted key recovers on its own after the midnight-UTC reset.",
+      "The Nuvio Collections tips and export/import dialogs now explain linked catalogs and the built-in import path."
+    ]
+  },
+  {
     "version": "1.80.0",
     "date": "2026-09-02",
     "title": "1.80.0 — Keys that heal themselves, a Stremio addon of your own, and a way out of any server",
