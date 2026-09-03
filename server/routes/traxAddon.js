@@ -31,7 +31,7 @@ const express = require('express')
 // never reached the device. A version bump changes the URL, sync sees a
 // different addon (fingerprints canonicalize away query strings but not
 // paths) and replaces it on the account, and the client fetches fresh.
-const TRAX_MANIFEST_VERSION = '1.5.0'
+const TRAX_MANIFEST_VERSION = '1.6.0'
 
 const CACHE_SECONDS = 60 // catalogs recompute cheaply; 60s keeps app scrolling snappy without staleness anyone would notice
 
@@ -51,16 +51,16 @@ function buildTraxManifest(user, lists) {
     // (each meta carries its own real type, which is what Stremio uses for
     // opening), so declaring both types just rendered two identical-looking
     // "Continue Watching" - ONE mixed row (the handler ignores the
-    // requested type). Older Nuvio builds render the header as name + type
-    // and group an addon's rows by the manifest's types array IN ORDER,
-    // with unfamiliar types last - so both levers are pulled at once:
-    // name 'Continue' + type 'Watching' makes the client's own header
-    // concatenation read "Continue Watching", and 'Watching' leads the
-    // types array (below) so the row heads the addon's group. Newer builds
-    // additionally honor the synced home-catalog preference sync writes
-    // (utils/nuvioHomePlacement.js) - top position, exact title - which
-    // older builds simply never fetch.
-    { type: 'Watching', id: 'slicktrax-continue', name: 'Continue' },
+    // requested type and serves movies and series together, most recent
+    // first). Declared under 'series' because that is the only universally
+    // safe anchor: the mobile client HIDES catalogs of unknown types
+    // outright (confirmed live - 'Watching' and 'all' rows vanished once
+    // the manifest genuinely reached the device), so clever type strings
+    // cost the row its existence. Clients that suffix the declared type
+    // onto the header will show "Continue Watching Series"; clients that
+    // honor the synced home-catalog preference (nuvioHomePlacement.js) show
+    // the exact title and position instead.
+    { type: 'series', id: 'slicktrax-continue', name: 'Continue Watching' },
     { type: 'movie', id: 'slicktrax-watchlist', name: 'Watchlist' },
     { type: 'series', id: 'slicktrax-watchlist', name: 'Watchlist' },
   ]
@@ -78,7 +78,7 @@ function buildTraxManifest(user, lists) {
     description: `SlickTrax for ${user.username || 'this household'} - Continue Watching, Watchlist and Catalogs, live from SlickSync.`,
     logo: 'https://slicksync.vip/android-chrome-192x192.png',
     resources: ['catalog'],
-    types: ['Watching', 'movie', 'series'],
+    types: ['movie', 'series'],
     idPrefixes: ['tt'],
     catalogs,
     behaviorHints: { configurable: false, configurationRequired: false },
