@@ -41,13 +41,17 @@ function buildTraxManifest(user, lists) {
     // declared entry, not one per type: the row mixes movies and series
     // (each meta carries its own real type, which is what Stremio uses for
     // opening), so declaring both types just rendered two identical-looking
-    // "Continue Watching" rows. Declared once under 'all' (the handler has
-    // ignored the requested type since the rows merged). Nuvio renders row
-    // headers as name + type and appends new rows last - both are fixed
-    // through its own synced home-catalog settings instead of protocol
-    // tricks: sync writes a preference for this row with customTitle
-    // "Continue Watching" and top position (utils/nuvioHomePlacement.js).
-    { type: 'all', id: 'slicktrax-continue', name: 'Continue Watching' },
+    // "Continue Watching" - ONE mixed row (the handler ignores the
+    // requested type). Older Nuvio builds render the header as name + type
+    // and group an addon's rows by the manifest's types array IN ORDER,
+    // with unfamiliar types last - so both levers are pulled at once:
+    // name 'Continue' + type 'Watching' makes the client's own header
+    // concatenation read "Continue Watching", and 'Watching' leads the
+    // types array (below) so the row heads the addon's group. Newer builds
+    // additionally honor the synced home-catalog preference sync writes
+    // (utils/nuvioHomePlacement.js) - top position, exact title - which
+    // older builds simply never fetch.
+    { type: 'Watching', id: 'slicktrax-continue', name: 'Continue' },
     { type: 'movie', id: 'slicktrax-watchlist', name: 'Watchlist' },
     { type: 'series', id: 'slicktrax-watchlist', name: 'Watchlist' },
   ]
@@ -63,12 +67,12 @@ function buildTraxManifest(user, lists) {
     // Bumped when the catalog layout changes shape - clients refresh
     // manifests from the transport URL on their own, and a changed version
     // makes the refresh stick.
-    version: '1.4.0',
+    version: '1.5.0',
     name: 'SlickTrax',
     description: `SlickTrax for ${user.username || 'this household'} - Continue Watching, Watchlist and Catalogs, live from SlickSync.`,
     logo: 'https://slicksync.vip/android-chrome-192x192.png',
     resources: ['catalog'],
-    types: ['movie', 'series', 'all'],
+    types: ['Watching', 'movie', 'series'],
     idPrefixes: ['tt'],
     catalogs,
     behaviorHints: { configurable: false, configurationRequired: false },
