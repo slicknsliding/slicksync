@@ -1400,9 +1400,10 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'The SlickTrax Addon - your rows inside Stremio and Nuvio',
     category: 'Sharing & integrations',
     keywords: ['slicktrax addon', 'stremio addon', 'continue watching in stremio', 'watchlist in stremio', 'catalogs in stremio', 'trax addon', 'addon rows'],
-    answer: 'SlickSync can serve a real Stremio addon of its own, per user: Continue Watching, the household Watchlist, and every Catalog appear as live rows inside Stremio and Nuvio on that user\'s devices. Enable it on the user\'s page under Watch-Tracking Integrations - sync installs it and keeps it installed.',
+    answer: 'SlickSync can serve a real Stremio addon of its own, per user: Continue Watching, the household Watchlist, and every Catalog appear as live rows inside Stremio and Nuvio on that user\'s devices. Quickest way in: Addons -> Browse - the SlickTrax card sits at the top, above the public directory. Pick a user and Enable & sync, or copy their manifest URL for a manual install anywhere. The per-user toggle also lives on the user\'s page under Watch-Tracking Integrations.',
     steps: [
-      'Open the user -> Watch-Tracking Integrations -> SlickTrax Addon -> Enable.',
+      'Addons -> Browse -> the SlickTrax card at the top: pick the user, press Enable & sync.',
+      'Or per-user: open the user -> Watch-Tracking Integrations -> SlickTrax Addon -> Enable.',
       'Run a sync (or let the schedule do it). The addon appears in their app like any other.',
       'That\'s all - the rows update themselves, because they are computed live from SlickSync\'s own data on every request.',
     ],
