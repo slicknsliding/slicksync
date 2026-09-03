@@ -122,7 +122,10 @@ export function DroppedShowsPanel() {
       const r = await api.wipeBuriedShow(item.userId, item.showId);
       setBuried((prev) => (prev || []).filter((i) => keyOf(i) !== key));
       setSelBuried((prev) => { const n = new Set(prev); n.delete(key); return n; });
-      toast.success(`${item.showName} wiped - ${r.episodesDeleted} episode${r.episodesDeleted === 1 ? '' : 's'} of history erased (undoable for 30 days in the Trash)`);
+      const erased = r.episodesDeleted > 0
+        ? `${r.episodesDeleted} episode${r.episodesDeleted === 1 ? '' : 's'} of history erased`
+        : 'its watch history erased';
+      toast.success(`${item.showName} wiped - ${erased} (undoable for 30 days in the Trash)`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not wipe that show');
     } finally {
@@ -310,7 +313,7 @@ export function DroppedShowsPanel() {
                       </Button>
                       <Button variant={bulkWipeArmed ? 'danger' : 'ghost'} size="sm" isLoading={bulkBusy && bulkWipeArmed} onClick={wipeBulk}>
                         {bulkWipeArmed
-                          ? `Erase ${selBuriedEpisodes} episode${selBuriedEpisodes === 1 ? '' : 's'} across ${selBuried.size} show${selBuried.size === 1 ? '' : 's'} forever?`
+                          ? (selBuriedEpisodes > 0 ? `Erase ${selBuriedEpisodes} episode${selBuriedEpisodes === 1 ? '' : 's'} across ${selBuried.size} title${selBuried.size === 1 ? '' : 's'} forever?` : `Erase ${selBuried.size} title${selBuried.size === 1 ? '' : 's'} and their watch history forever?`)
                           : `Wipe ${selBuried.size} selected`}
                       </Button>
                     </>
@@ -355,7 +358,7 @@ export function DroppedShowsPanel() {
                           onClick={() => wipe(item)}
                         >
                           {wipeArmed === key
-                            ? `Erase ${item.episodesWatched} episode${item.episodesWatched === 1 ? '' : 's'} forever?`
+                            ? (item.episodesWatched > 0 ? `Erase ${item.episodesWatched} episode${item.episodesWatched === 1 ? '' : 's'} forever?` : 'Erase its watch history forever?')
                             : 'Wipe'}
                         </Button>
                       </div>

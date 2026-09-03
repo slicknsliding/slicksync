@@ -274,20 +274,19 @@ async function archiveVaultDelete(prisma, accountId, entryId) {
 /** Graveyard wipe - the episode rows and burial about to be erased. */
 async function archiveGraveyardWipe(prisma, accountId, userId, showId) {
   const accountIdValue = accountId || 'default'
-  const episodes = await prisma.episodeWatchHistory.findMany({
-    where: { accountId: accountIdValue, userId, showId },
-  })
-  const dismissals = await prisma.dismissedContinueWatching.findMany({
-    where: { accountId: accountIdValue, userId, showId },
-  }).catch(() => [])
-  const user = await prisma.user.findFirst({ where: { id: userId }, select: { username: true } }).catch(() => null)
-  const showName = episodes[0]?.showName || showId
+  const [episodes, movies, dismissals, user] = await Promise.all([
+    prisma.episodeWatchHistory.findMany({ where: { accountId: accountIdValue, userId, showId } }),
+    prisma.movieWatchHistory.findMany({ where: { accountId: accountIdValue, userId, itemId: showId } }).catch(() => []),
+    prisma.dismissedContinueWatching.findMany({ where: { accountId: accountIdValue, userId, showId } }).catch(() => []),
+    prisma.user.findFirst({ where: { id: userId }, select: { username: true } }).catch(() => null),
+  ])
+  const showName = episodes[0]?.showName || movies[0]?.itemName || showId
   return prisma.trashItem.create({
     data: {
       accountId: accountIdValue,
       kind: 'wipe',
       label: `${showName} wiped for ${user?.username || userId}`,
-      payload: JSON.stringify({ userId, showId, episodes, dismissals }),
+      payload: JSON.stringify({ userId, showId, episodes, movies, dismissals }),
     },
   })
 }
@@ -415,15 +414,33 @@ async function restoreExtendedKind(prisma, accountIdValue, item, payload) {
   }
 
   if (item.kind === 'wipe') {
-    const { episodes, dismissals } = payload
+    const { episodes, movies, dismissals } = payload
     let restored = 0
     for (const ep of (episodes || [])) {
       try { await prisma.episodeWatchHistory.create({ data: ep }); restored++ } catch { /* re-watched since - keep the newer row */ }
     }
+    for (const m of (movies || [])) {
+      try { await prisma.movieWatchHistory.create({ data: m }); restored++ } catch { /* re-watched since */ }
+    }
+    // The wipe left a tombstone dismissal behind (see wipeBuriedShow) -
+    // undoing turns it back into an ordinary burial: the title returns to
+    // the graveyard, not to Continue Watching.
     for (const d of (dismissals || [])) {
-      // The burial comes back too: the show returns to the graveyard, not to
-      // Continue Watching - undoing a wipe shouldn't also dig the show up.
-      await prisma.dismissedContinueWatching.create({ data: d }).catch(() => {})
+      const { wipedAt: _w, ...row } = d
+      await prisma.dismissedContinueWatching.upsert({
+        where: { accountId_userId_showId: { accountId: row.accountId, userId: row.userId, showId: row.showId } },
+        create: row,
+        update: { wipedAt: null },
+      }).catch(() => {})
+    }
+    if ((dismissals || []).length === 0) {
+      // Pre-tombstone wipes archived no dismissal (it had been deleted) -
+      // re-bury explicitly so the undo still lands in the graveyard.
+      await prisma.dismissedContinueWatching.upsert({
+        where: { accountId_userId_showId: { accountId: accountIdValue, userId: payload.userId, showId: payload.showId } },
+        create: { accountId: accountIdValue, userId: payload.userId, showId: payload.showId },
+        update: { wipedAt: null },
+      }).catch(() => {})
     }
     return { kind: 'wipe', label: item.label, restoredEpisodes: restored }
   }

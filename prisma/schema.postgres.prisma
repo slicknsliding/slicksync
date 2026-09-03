@@ -673,6 +673,13 @@ model DismissedContinueWatching {
   accountId String   @default("default")
   userId    String // The show's owner (matches ContinueWatchingItem.userId), not who dismissed it - this is a single shared admin dashboard
   showId    String
+  // Set when the show was WIPED from the graveyard. The row survives as a
+  // tombstone: the provider's own library still holds the title's progress
+  // and the native poller would happily resurface it in Continue Watching
+  // the moment the dismissal disappeared (confirmed live 2026-09-03 - two
+  // wiped titles marched straight back). A wiped dismissal keeps
+  // suppressing Continue Watching but is hidden from the graveyard list.
+  wipedAt   DateTime?
   createdAt DateTime @default(now())
 
   @@unique([accountId, userId, showId])

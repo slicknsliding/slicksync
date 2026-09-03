@@ -2268,7 +2268,7 @@ class ApiClient {
   }
 
   async wipeBuriedShow(userId: string, showId: string) {
-    return this.fetch<{ success: boolean; episodesDeleted: number }>('/users/graveyard/wipe', {
+    return this.fetch<{ success: boolean; episodesDeleted: number; moviesDeleted?: number }>('/users/graveyard/wipe', {
       method: 'POST', body: JSON.stringify({ userId, showId }),
     });
   }

@@ -388,7 +388,9 @@ async function getAbandonedShows(prisma, accountId, limit = 20) {
 async function getBuriedShows(prisma, accountId) {
   const accountIdValue = accountId || 'default'
   const dismissed = await prisma.dismissedContinueWatching.findMany({
-    where: { accountId: accountIdValue },
+    // Tombstones (wiped shows) stay out of the graveyard - they exist only
+    // to keep Continue Watching from resurfacing what was erased.
+    where: { accountId: accountIdValue, wipedAt: null },
     orderBy: { createdAt: 'desc' },
   })
   if (dismissed.length === 0) return []
@@ -412,17 +414,26 @@ async function getBuriedShows(prisma, accountId) {
   })
   const userMap = new Map(users.map((u) => [u.id, u.username]))
 
+  // Movie burials have no episode rows - name and poster come from the
+  // movie history instead (a buried movie used to list as its bare tt id).
+  const movieRows = await prisma.movieWatchHistory.findMany({
+    where: { accountId: accountIdValue, itemId: { in: [...new Set(dismissed.map((d) => d.showId))] } },
+    select: { userId: true, itemId: true, itemName: true, poster: true, watchedAt: true },
+  }).catch(() => [])
+  const movieByKey = new Map(movieRows.map((m) => [`${m.userId}:${m.itemId}`, m]))
+
   return dismissed.map((d) => {
     const hist = latest.get(`${d.userId}:${d.showId}`) || null
+    const movie = movieByKey.get(`${d.userId}:${d.showId}`) || null
     return {
       userId: d.userId,
       username: userMap.get(d.userId) || 'Unknown',
       showId: d.showId,
-      showName: hist?.showName || d.showId,
-      poster: hist?.poster || null,
+      showName: hist?.showName || movie?.itemName || d.showId,
+      poster: hist?.poster || movie?.poster || null,
       lastSeason: hist?.season ?? null,
       lastEpisode: hist?.episode ?? null,
-      lastWatchedAt: hist?.watchedAt || null,
+      lastWatchedAt: hist?.watchedAt || movie?.watchedAt || null,
       episodesWatched: counts.get(`${d.userId}:${d.showId}`) || 0,
       buriedAt: d.createdAt,
     }
@@ -438,19 +449,29 @@ async function unburyShow(prisma, accountId, userId, showId) {
 }
 
 /**
- * The permanent exit: erase a buried show's watch history entirely - every
- * episode row for that user+show, plus the dismissal itself. Gone means
- * gone: watch time, streaks, and metrics stop counting it, and nothing can
- * bring it back. The route confirms with the episode count for exactly that
- * reason - "wipe" must never delete more than the dialog said it would.
+ * The permanent exit: erase a buried title's watch history entirely - every
+ * episode row for that user+show, AND its movie history (a buried movie has
+ * no episode rows at all; the first version deleted only episodes, so a
+ * wiped movie kept its history). The dismissal is NOT deleted: it becomes a
+ * tombstone (wipedAt set). The provider's own library still remembers the
+ * title's progress, and the native poller re-writes history rows from it -
+ * without the tombstone, a wiped title resurfaced in Continue Watching
+ * within minutes (confirmed live 2026-09-03, twice).
  */
 async function wipeBuriedShow(prisma, accountId, userId, showId) {
   const accountIdValue = accountId || 'default'
-  const [episodes] = await prisma.$transaction([
+  const [episodes, movies] = await prisma.$transaction([
     prisma.episodeWatchHistory.deleteMany({ where: { accountId: accountIdValue, userId, showId } }),
-    prisma.dismissedContinueWatching.deleteMany({ where: { accountId: accountIdValue, userId, showId } }),
+    prisma.movieWatchHistory.deleteMany({ where: { accountId: accountIdValue, userId, itemId: showId } }),
   ])
-  return { episodesDeleted: episodes.count }
+  // Upsert, not update: this also repairs a title whose dismissal was
+  // deleted by the pre-tombstone wipe.
+  await prisma.dismissedContinueWatching.upsert({
+    where: { accountId_userId_showId: { accountId: accountIdValue, userId, showId } },
+    create: { accountId: accountIdValue, userId, showId, wipedAt: new Date() },
+    update: { wipedAt: new Date() },
+  })
+  return { episodesDeleted: episodes.count, moviesDeleted: movies.count }
 }
 
 module.exports = { getContinueWatching, dismissContinueWatching, getAbandonedShows, getBuriedShows, unburyShow, wipeBuriedShow, ABANDONED_AFTER_DAYS }
