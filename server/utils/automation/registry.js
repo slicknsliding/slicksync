@@ -384,7 +384,7 @@ const ACTIONS = {
   // exactly this pairing (2026-09-02).
   'keys.promote_backup': {
     label: 'Promote the backup key to primary',
-    description: 'Makes a failover permanent: swaps the failed key with its backup (for a Settings metadata key or a Vault credential), so the working key IS the primary instead of being routed to around a dead one. The old key is kept as the new backup - nothing is thrown away. Addons that embed the old key are rewritten and re-synced automatically. Acts on the key named by the trigger; pair it with "A backup key/credential takes over".',
+    description: 'Makes a failover permanent AND round-trips on its own: swaps the failed key with its backup (for a Settings metadata key or a Vault credential), so the working key IS the primary instead of being routed to around a dead one - and when the failed original passes a later health check (e.g. an OMDb daily limit resetting at midnight UTC), the pair swaps back automatically with a notification, no second rule needed. The old key is kept as the backup throughout - nothing is thrown away, and addons embedding the old key are rewritten and re-synced at each swap. Acts on the key named by the trigger; pair it with "A backup key/credential takes over". This ONE action covers both directions - never add a separate switch-back action or rule.',
     configFields: [],
     async run({ prisma, accountId, payload }) {
       const reqLike = { appAccountId: accountId }

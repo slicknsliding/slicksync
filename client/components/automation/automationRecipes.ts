@@ -109,7 +109,7 @@ export const AUTOMATION_RECIPES: AutomationRecipe[] = [
   {
     id: 'key-failover-promote',
     title: 'If a backup key takes over, make it the new primary',
-    description: 'Completes the failover instead of running on a detour forever: the backup becomes the primary, the dead key is kept as the new backup, and any addon still carrying the old key is rewritten and re-synced. You get one notification saying the succession happened.',
+    description: 'Completes the failover instead of running on a detour forever: the backup becomes the primary, the dead key is kept as the new backup, and any addon still carrying the old key is rewritten and re-synced. And it round-trips by itself - when the failed original passes a later check (a daily limit resetting, say), the pair swaps back automatically. One notification each way.',
     name: 'Promote the backup key when it takes over',
     triggerType: 'metadata_key.failover_activated',
     actions: [
