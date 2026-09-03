@@ -41,9 +41,11 @@ function buildTraxManifest(user, lists) {
     // declared entry, not one per type: the row mixes movies and series
     // (each meta carries its own real type, which is what Stremio uses for
     // opening), so declaring both types just rendered two identical-looking
-    // "Continue Watching" rows. 'series' is only the declaration anchor the
-    // protocol demands.
-    { type: 'series', id: 'slicktrax-continue', name: 'Continue Watching' },
+    // "Continue Watching" rows. The declared type is only the protocol's
+    // required anchor - clients append it to the row header, and "Continue
+    // Watching Series" for a mixed row read wrong (user feedback), so it is
+    // declared under 'all' to keep the header clean.
+    { type: 'all', id: 'slicktrax-continue', name: 'Continue Watching' },
     { type: 'movie', id: 'slicktrax-watchlist', name: 'Watchlist' },
     { type: 'series', id: 'slicktrax-watchlist', name: 'Watchlist' },
   ]
@@ -56,12 +58,15 @@ function buildTraxManifest(user, lists) {
   }
   return {
     id: `vip.slicksync.trax.${user.id}`,
-    version: '1.0.0',
+    // Bumped when the catalog layout changes shape - clients refresh
+    // manifests from the transport URL on their own, and a changed version
+    // makes the refresh stick.
+    version: '1.2.0',
     name: 'SlickTrax',
     description: `SlickTrax for ${user.username || 'this household'} - Continue Watching, Watchlist and Catalogs, live from SlickSync.`,
     logo: 'https://slicksync.vip/android-chrome-192x192.png',
     resources: ['catalog'],
-    types: ['movie', 'series'],
+    types: ['movie', 'series', 'all'],
     idPrefixes: ['tt'],
     catalogs,
     behaviorHints: { configurable: false, configurationRequired: false },
