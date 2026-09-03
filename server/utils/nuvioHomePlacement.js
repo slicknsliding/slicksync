@@ -52,49 +52,46 @@ async function ensureTraxHomePlacement(provider, user, catalogKey) {
     const profileId = profile?.profile_index
     if (!Number.isInteger(profileId)) continue
 
-    let anyBlobSeen = false
+    // Read every bucket first. The platform list [mobile, desktop] is
+    // literally named LEGACY_SYNC_PLATFORMS in the client - older builds
+    // read ONLY their own platform blob and never the shared bucket
+    // (confirmed live: shared carried the preference, the phone's own
+    // 'mobile' bucket was empty, and the phone "preserved local" forever).
+    // So the preference must exist in EVERY bucket, with missing ones
+    // seeded from the richest existing blob so no arrangement is lost.
+    const blobs = {}
     for (const platform of PLATFORMS) {
-      let rows
       try {
-        rows = await provider.getHomeCatalogSettings(profileId, platform)
-      } catch { continue }
-      const raw = rows?.[0]?.settings_json
-      const settings = parseSettings(raw)
-      if (!settings) continue
-      anyBlobSeen = true
+        const rows = await provider.getHomeCatalogSettings(profileId, platform)
+        blobs[platform] = parseSettings(rows?.[0]?.settings_json)
+      } catch {
+        blobs[platform] = undefined // pull failed - do not blindly overwrite
+      }
+    }
+    const richest = PLATFORMS.map((pf) => blobs[pf]).filter(Boolean)
+      .sort((a, b) => (Array.isArray(b.items) ? b.items.length : 0) - (Array.isArray(a.items) ? a.items.length : 0))[0] || null
 
-      const items = Array.isArray(settings.items) ? settings.items : []
-      if (items.some((i) => i && i.key === catalogKey)) continue // human's row, human's order
+    for (const platform of PLATFORMS) {
+      if (blobs[platform] === undefined) continue // unreadable - leave alone
+      const base = blobs[platform] || richest || { show_catalog_type: true, hide_unreleased_content: false, items: [] }
+      const items = Array.isArray(base.items) ? base.items : []
+      if (blobs[platform] && items.some((i) => i && i.key === catalogKey)) continue // human's row, human's order
 
       const minOrder = items.reduce((m, i) => (Number.isFinite(i?.order) && i.order < m ? i.order : m), 0)
       const next = {
-        ...settings,
-        items: [
-          { key: catalogKey, customTitle: 'Continue Watching', enabled: true, heroSourceEnabled: false, order: minOrder - 1 },
-          ...items,
-        ],
+        ...base,
+        items: items.some((i) => i && i.key === catalogKey)
+          ? items
+          : [
+              { key: catalogKey, customTitle: 'Continue Watching', enabled: true, heroSourceEnabled: false, order: minOrder - 1 },
+              ...items,
+            ],
       }
       try {
         await provider.pushHomeCatalogSettings(profileId, platform, next)
         console.log(`[NuvioHomePlacement] Continue Watching placed on top (profile ${profileId}, ${platform})`)
       } catch (e) {
         console.warn('[NuvioHomePlacement] push failed:', e?.message)
-      }
-    }
-
-    // Nothing synced yet for this profile: seed the shared blob so every
-    // client platform inherits the placement on its first pull. Defaults
-    // mirror the client's own (type suffixes on, unreleased visible).
-    if (!anyBlobSeen) {
-      try {
-        await provider.pushHomeCatalogSettings(profileId, 'home_catalog_shared', {
-          show_catalog_type: true,
-          hide_unreleased_content: false,
-          items: [{ key: catalogKey, customTitle: 'Continue Watching', enabled: true, heroSourceEnabled: false, order: 0 }],
-        })
-        console.log(`[NuvioHomePlacement] seeded shared settings (profile ${profileId})`)
-      } catch (e) {
-        console.warn('[NuvioHomePlacement] seed failed:', e?.message)
       }
     }
   }
