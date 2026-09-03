@@ -717,6 +717,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         return responseUtils.notFound(res, 'Group')
       }
 
+      // Into the Trash first (30-day undo) - archive failure aborts the delete.
+      await require('../utils/trash').archiveGroupDelete(prisma, getAccountId(req), id)
+
       await prisma.$transaction([
         // GroupMember model removed - using JSON arrays instead
         prisma.groupAddon.deleteMany({ where: { groupId: id } }),
@@ -758,6 +761,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
       const currentUserIds = group.userIds ? JSON.parse(group.userIds) : []
       const updatedUserIds = currentUserIds.filter(id => id !== userId)
       
+      // Only an actual removal is archived - removing someone who wasn't in
+      // the group would otherwise leave a no-op undo entry in the Trash.
+      if (updatedUserIds.length !== currentUserIds.length) {
+        await require('../utils/trash').archiveMembershipRemoval(prisma, getAccountId(req), groupId, userId)
+      }
+
       await prisma.group.update({
         where: { id: groupId },
         data: { userIds: JSON.stringify(updatedUserIds) }

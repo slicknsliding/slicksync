@@ -13,6 +13,7 @@ import { api } from '@/lib/api';
 export interface PersonalFeatures {
   enableWatchlist: boolean;
   enableWatchedIndicators: boolean;
+  enableWatchTogether: boolean;
   enableRecommendations: boolean;
   // Trailer in the detail modal starts playing automatically instead of
   // waiting for a "Play Trailer" click. Default false (opt-in, not
@@ -55,6 +56,7 @@ export interface PersonalFeatures {
 const DEFAULT: PersonalFeatures = {
   enableWatchlist: true,
   enableWatchedIndicators: true,
+  enableWatchTogether: true,
   enableRecommendations: true,
   enableAutoplayTrailer: false,
   autoplayTrailerStartMuted: true,
@@ -80,6 +82,7 @@ async function fetchOnce(): Promise<PersonalFeatures> {
       cached = {
         enableWatchlist: s?.enableWatchlist !== false,
         enableWatchedIndicators: s?.enableWatchedIndicators !== false,
+        enableWatchTogether: s?.enableWatchTogether !== false,
         enableRecommendations: s?.enableRecommendations !== false,
         enableAutoplayTrailer: s?.enableAutoplayTrailer === true,
         autoplayTrailerStartMuted: s?.autoplayTrailerStartMuted !== false,

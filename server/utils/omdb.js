@@ -17,6 +17,38 @@ const ENV_OMDB_API_KEY = process.env.OMDB_API_KEY || null
 const omdbCache = new Map()
 const OMDB_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
+// The cache PERSISTS across restarts (data/omdb-cache.json). It used to be
+// memory-only on the reasoning that deploy restarts were rare - but every
+// deploy restarted with a cold cache, and the self-usage meter revealed
+// what that actually cost: a busy deploy day re-fetched ratings for
+// everything the background jobs touch and burned most of the 1,000/day
+// free quota with the user nowhere near the app. Loaded lazily on first
+// lookup, saved debounced (10s) so hot paths never wait on disk.
+const OMDB_CACHE_FILE = require('path').join(process.cwd(), 'data', 'omdb-cache.json')
+let cacheLoaded = false
+let cacheSaveTimer = null
+function loadOmdbCacheOnce() {
+  if (cacheLoaded) return
+  cacheLoaded = true
+  try {
+    const raw = JSON.parse(require('fs').readFileSync(OMDB_CACHE_FILE, 'utf8'))
+    const cutoff = Date.now() - OMDB_CACHE_TTL_MS
+    for (const [k, v] of Object.entries(raw)) {
+      if (v && v.at > cutoff) omdbCache.set(k, v)
+    }
+  } catch { /* first run or unreadable - start empty, same as before */ }
+}
+function saveOmdbCacheSoon() {
+  if (cacheSaveTimer) return
+  cacheSaveTimer = setTimeout(() => {
+    cacheSaveTimer = null
+    try {
+      require('fs').writeFileSync(OMDB_CACHE_FILE, JSON.stringify(Object.fromEntries(omdbCache)))
+    } catch { /* cache persistence is best-effort */ }
+  }, 10000)
+  if (cacheSaveTimer.unref) cacheSaveTimer.unref()
+}
+
 // OMDb's own "test your key" confirmation page/email shows a full URL like
 // http://www.omdbapi.com/?i=tt3896198&apikey=<key> - easy to paste that
 // whole thing into Settings instead of just the key (confirmed real case).
@@ -42,6 +74,7 @@ async function fetchOmdbRatings(imdbId, apiKey) {
   const key = normalizeOmdbApiKey(apiKey || ENV_OMDB_API_KEY)
   if (!key || !imdbId || !/^tt\d+$/.test(imdbId)) return null
 
+  loadOmdbCacheOnce()
   const cached = omdbCache.get(imdbId)
   if (cached && (Date.now() - cached.at) < OMDB_CACHE_TTL_MS) {
     return cached.value
@@ -51,6 +84,7 @@ async function fetchOmdbRatings(imdbId, apiKey) {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 5000)
 
+    require('./omdbMeter').recordOmdbRequest(key)
     const response = await fetch(`https://www.omdbapi.com/?i=${encodeURIComponent(imdbId)}&apikey=${encodeURIComponent(key)}`, {
       signal: controller.signal
     })
@@ -60,7 +94,7 @@ async function fetchOmdbRatings(imdbId, apiKey) {
     const data = await response.json()
 
     if (data?.Response === 'False') {
-      omdbCache.set(imdbId, { value: null, at: Date.now() })
+      omdbCache.set(imdbId, { value: null, at: Date.now() }); saveOmdbCacheSoon()
       return null
     }
 
@@ -88,12 +122,12 @@ async function fetchOmdbRatings(imdbId, apiKey) {
     const rated = data.Rated && data.Rated !== 'N/A' ? data.Rated : null
 
     if (!rottenTomatoes && !metacritic && !imdbRating && !boxOffice && !rated) {
-      omdbCache.set(imdbId, { value: null, at: Date.now() })
+      omdbCache.set(imdbId, { value: null, at: Date.now() }); saveOmdbCacheSoon()
       return null
     }
 
     const result = { imdbRating, rottenTomatoes, metacritic, boxOffice, rated }
-    omdbCache.set(imdbId, { value: result, at: Date.now() })
+    omdbCache.set(imdbId, { value: result, at: Date.now() }); saveOmdbCacheSoon()
     return result
   } catch {
     return null

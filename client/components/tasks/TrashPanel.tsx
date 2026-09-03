@@ -8,13 +8,22 @@ import { toast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { TrashIcon } from '@heroicons/react/24/outline';
 
-// Recently deleted catalogs and addons, restorable for 30 days.
+// Recently deleted things, restorable for 30 days - grown from catalogs and
+// addons to the full destructive set: users, groups, group memberships,
+// vault entries, graveyard wipes and history imports.
 //
 // The undo toast (see undoToast.tsx) covers the "I just did that by mistake"
 // case; this covers "I deleted that last week and want it back". Same
 // archive behind both.
 
 type TrashRow = Awaited<ReturnType<typeof api.getTrash>>[number];
+
+// The stored kind keys are compact - render them as words. An import entry
+// inverts the verb: "restoring" it REMOVES the rows that import created.
+const KIND_LABELS: Record<string, string> = {
+  catalog: 'Catalog', addon: 'Addon', user: 'User', group: 'Group',
+  membership: 'Group removal', vault: 'Vault entry', wipe: 'Graveyard wipe', import: 'History import',
+};
 
 export function TrashPanel() {
   const [items, setItems] = useState<TrashRow[] | null>(null);
@@ -36,7 +45,7 @@ export function TrashPanel() {
     setBusyId(item.id);
     try {
       await api.restoreFromTrash(item.id);
-      toast.success(`Restored ${item.label}`);
+      toast.success(item.kind === 'import' ? `Import undone - ${item.label} removed again` : `Restored ${item.label}`);
       setItems((prev) => (prev || []).filter((i) => i.id !== item.id));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Restore failed');
@@ -65,7 +74,7 @@ export function TrashPanel() {
     <Card padding="lg">
       <h3 className="text-base font-semibold text-default mb-1">Recently deleted</h3>
       <p className="text-xs text-muted mb-4">
-        Deleted catalogs and addons are kept for 30 days. Restoring puts one back exactly as it was, including its group assignments.
+        Deleted users, groups, addons, catalogs, vault entries, graveyard wipes and history imports are kept for 30 days. Restoring puts one back exactly as it was.
       </p>
       <div className="space-y-2">
         {items.map((item) => (
@@ -74,14 +83,14 @@ export function TrashPanel() {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-medium text-default truncate">{item.label}</span>
-                <Badge variant="muted" size="sm">{item.kind}</Badge>
+                <Badge variant="muted" size="sm">{KIND_LABELS[item.kind] || item.kind}</Badge>
               </div>
               <p className="text-xs text-muted mt-0.5">
                 Deleted {new Date(item.deletedAt).toLocaleDateString()} · {item.expiresInDays} day{item.expiresInDays === 1 ? '' : 's'} left
               </p>
             </div>
             <div className="flex gap-2 shrink-0">
-              <Button variant="secondary" size="sm" isLoading={busyId === item.id} onClick={() => restore(item)}>Restore</Button>
+              <Button variant="secondary" size="sm" isLoading={busyId === item.id} onClick={() => restore(item)}>{item.kind === 'import' ? 'Undo import' : 'Restore'}</Button>
               <Button variant="ghost" size="sm" disabled={busyId === item.id} onClick={() => purge(item)}>Delete forever</Button>
             </div>
           </div>

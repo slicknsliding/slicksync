@@ -52,6 +52,11 @@ model User {
   // generated on first enable, never derived from anything guessable.
   traxAddonEnabled   Boolean  @default(false)
   traxToken          String?  @unique
+  // Account Guard: JSON state for external-writer detection - per-provider
+  // fingerprints of what SlickSync last wrote to this user's addon
+  // collection, plus any standing "changed outside SlickSync" alarm with its
+  // diff. Written by server/utils/accountGuard.js only.
+  guardStateJson     String?
   activityVisibility String    @default("private") // "public" or "private" - when public, group members can see this user's library/history
   // A genuinely public, unauthenticated share link (unlike activityVisibility
   // above, which only ever exposes data to other members of THIS account) -
@@ -741,11 +746,34 @@ model WatchSession {
 // Dashboard: shows a user has removed from their own Continue Watching row.
 // Account-scoped (not per-browser) so a dismissal made from one browser/
 // device stays dismissed when checking the Dashboard from another.
+// Watch-ahead protection: a show a set of household members have declared
+// they are watching TOGETHER. The shared frontier is computed live from
+// EpisodeWatchHistory; this row only stores the pact itself. See
+// server/utils/watchTogether.js.
+model WatchTogetherShow {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  showId    String
+  showName  String
+  userIds   String // JSON array of member user ids (2+)
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, showId])
+  @@map("watch_together_shows")
+}
+
 model DismissedContinueWatching {
   id        String   @id @default(cuid())
   accountId String   @default("default")
   userId    String // The show's owner (matches ContinueWatchingItem.userId), not who dismissed it - this is a single shared admin dashboard
   showId    String
+  // Set when the show was WIPED from the graveyard. The row survives as a
+  // tombstone: the provider's own library still holds the title's progress
+  // and the native poller would happily resurface it in Continue Watching
+  // the moment the dismissal disappeared (confirmed live 2026-09-03 - two
+  // wiped titles marched straight back). A wiped dismissal keeps
+  // suppressing Continue Watching but is hidden from the graveyard list.
+  wipedAt   DateTime?
   createdAt DateTime @default(now())
 
   @@unique([accountId, userId, showId])
@@ -1105,6 +1133,24 @@ model ProxyStreamSession {
 // last time" is a much better guess than a static id order - and unlike the
 // static order, it can never be wrong in the SAME way twice once it's had
 // one confident observation to learn from.
+// Device claims - the HUMAN tier above ProxyUserIpAffinity's learned
+// guesses. "The bedroom Shield is Sarah": an explicit, permanent statement
+// that streams from this client IP belong to this managed user, set by the
+// admin on the Activity -> Proxy tab. Affinity learns and can be
+// overwritten by the next confident observation; a claim stands until
+// removed. See proxyNowPlaying.js's disambiguateMatch for where it applies.
+model ProxyDeviceClaim {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  clientIp  String
+  userId    String
+  label     String? // e.g. "Bedroom Shield" - display only
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, clientIp])
+  @@map("proxy_device_claims")
+}
+
 model ProxyUserIpAffinity {
   id          String   @id @default(cuid())
   accountId   String   @default("default")

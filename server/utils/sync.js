@@ -152,7 +152,9 @@ async function appendTraxAddon(user, addons, prisma) {
     const { buildTraxManifest, getListsForAccount } = require('../routes/traxAddon')
     const lists = await getListsForAccount(prisma, user.accountId)
     const manifest = buildTraxManifest(user, lists)
-    const transportUrl = `${base}/trax/${user.traxToken}/manifest.json`
+    // Version segment in the path = cache bust: Nuvio never refetches a
+    // manifest while the URL is unchanged (see TRAX_MANIFEST_VERSION).
+    const transportUrl = `${base}/trax/${user.traxToken}/v${manifest.version}/manifest.json`
     if (addons.some((a) => (a?.transportUrl || a?.manifestUrl || a?.url || '') === transportUrl)) return addons
     return [...addons, { transportUrl, transportName: 'SlickTrax', manifest }]
   } catch {
@@ -355,10 +357,18 @@ function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds,
     }
   }
 
-  return async function getUserSyncStatus(userId, { groupId = undefined, unsafe = false } = {}, req) {
+  // _prefetchedUserAddons: the Sync Guardian + Account Guard loop fetches the
+  // live collection once per user per pass - passing it here avoids this
+  // function immediately re-fetching the identical list from the provider.
+  return async function getUserSyncStatus(userId, { groupId = undefined, unsafe = false, _prefetchedUserAddons = null } = {}, req) {
     const user = await prisma.user.findFirst({
       where: { id: userId, accountId: getAccountId(req) },
-      select: { id: true, stremioAuthKey: true, isActive: true, excludedAddons: true, protectedAddons: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
+      // traxAddonEnabled/traxToken MUST ride along: appendTraxAddon reads
+      // them off this object, and a select that omits them silently disables
+      // SlickTrax injection for the whole path (confirmed live 2026-09-03 -
+      // sync ran, addon never installed, and status agreed because desired
+      // was missing it too).
+      select: { id: true, stremioAuthKey: true, isActive: true, excludedAddons: true, protectedAddons: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true, accountId: true, traxAddonEnabled: true, traxToken: true }
     })
     if (!user) return { status: 'error', isSynced: false, message: 'User not found' }
     const hasCredentials = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
@@ -384,7 +394,9 @@ function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds,
     } catch {}
 
     // Get user's current addons from their provider
-    const { success: userAddonsSuccess, addons: userAddonsResponse, error: userAddonsError } = await getUserAddons(user, req, { decrypt, StremioAPIClient, createProvider })
+    const { success: userAddonsSuccess, addons: userAddonsResponse, error: userAddonsError } = Array.isArray(_prefetchedUserAddons)
+      ? { success: true, addons: _prefetchedUserAddons, error: null }
+      : await getUserAddons(user, req, { decrypt, StremioAPIClient, createProvider })
     if (!userAddonsSuccess) {
       // If the error is related to authentication, treat it as "connect" status
       if (userAddonsError && (

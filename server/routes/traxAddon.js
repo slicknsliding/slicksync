@@ -24,6 +24,15 @@ const express = require('express')
 // user's own addons' job (and AIOStreams' aggregation job) - this addon adds
 // rows, it never touches playback.
 
+// Bumped whenever the catalog layout changes shape. It rides IN THE
+// TRANSPORT URL PATH (/trax/<token>/v<this>/manifest.json), because Nuvio
+// caches an installed addon's manifest by URL and never refetches while the
+// URL is unchanged - confirmed live: three manifest revisions in a row
+// never reached the device. A version bump changes the URL, sync sees a
+// different addon (fingerprints canonicalize away query strings but not
+// paths) and replaces it on the account, and the client fetches fresh.
+const TRAX_MANIFEST_VERSION = '1.6.0'
+
 const CACHE_SECONDS = 60 // catalogs recompute cheaply; 60s keeps app scrolling snappy without staleness anyone would notice
 
 function metaPreview(id, type, name, poster) {
@@ -37,9 +46,21 @@ function metaPreview(id, type, name, poster) {
  */
 function buildTraxManifest(user, lists) {
   const catalogs = [
-    // Continue Watching first - it's the row people open the app for.
+    // Continue Watching first - it's the row people open the app for. ONE
+    // declared entry, not one per type: the row mixes movies and series
+    // (each meta carries its own real type, which is what Stremio uses for
+    // opening), so declaring both types just rendered two identical-looking
+    // "Continue Watching" - ONE mixed row (the handler ignores the
+    // requested type and serves movies and series together, most recent
+    // first). Declared under 'series' because that is the only universally
+    // safe anchor: the mobile client HIDES catalogs of unknown types
+    // outright (confirmed live - 'Watching' and 'all' rows vanished once
+    // the manifest genuinely reached the device), so clever type strings
+    // cost the row its existence. Clients that suffix the declared type
+    // onto the header will show "Continue Watching Series"; clients that
+    // honor the synced home-catalog preference (nuvioHomePlacement.js) show
+    // the exact title and position instead.
     { type: 'series', id: 'slicktrax-continue', name: 'Continue Watching' },
-    { type: 'movie', id: 'slicktrax-continue', name: 'Continue Watching' },
     { type: 'movie', id: 'slicktrax-watchlist', name: 'Watchlist' },
     { type: 'series', id: 'slicktrax-watchlist', name: 'Watchlist' },
   ]
@@ -52,7 +73,7 @@ function buildTraxManifest(user, lists) {
   }
   return {
     id: `vip.slicksync.trax.${user.id}`,
-    version: '1.0.0',
+    version: TRAX_MANIFEST_VERSION,
     name: 'SlickTrax',
     description: `SlickTrax for ${user.username || 'this household'} - Continue Watching, Watchlist and Catalogs, live from SlickSync.`,
     logo: 'https://slicksync.vip/android-chrome-192x192.png',
@@ -80,6 +101,14 @@ module.exports = ({ prisma }) => {
   // browser-side directory install fallback). These endpoints only ever
   // return catalog previews for a bearer token, so * is appropriate here
   // in a way it wouldn't be on the API.
+  // Versioned-path shim: /<token>/v1.5.0/manifest.json (and every resource
+  // under it) serves identically to /<token>/manifest.json - the version
+  // segment exists purely to give clients a fresh URL to cache against.
+  router.use((req, res, next) => {
+    req.url = req.url.replace(/^\/([^/]+)\/v[0-9][\w.]*\//, '/$1/')
+    next()
+  })
+
   router.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Headers', '*')
@@ -113,11 +142,16 @@ module.exports = ({ prisma }) => {
       const catalogId = req.params.id
 
       if (catalogId === 'slicktrax-continue') {
+        // One MIXED row: movies and shows together, most recent first -
+        // exactly the order you stopped watching things in. The requested
+        // type is ignored (the manifest declares this catalog once under
+        // 'series' as its protocol anchor; accounts still carrying the old
+        // two-entry manifest get the same mixed row for either request).
         const { getContinueWatching } = require('../utils/continueWatching')
         const entries = await getContinueWatching(prisma, user.accountId, 40)
         const metas = entries
-          .filter((e) => e.userId === user.id && e.contentType === type && /^tt\d+$/.test(e.showId || ''))
-          .map((e) => metaPreview(e.showId, type, e.showName, e.poster))
+          .filter((e) => e.userId === user.id && /^tt\d+$/.test(e.showId || ''))
+          .map((e) => metaPreview(e.showId, e.contentType === 'movie' ? 'movie' : 'series', e.showName, e.poster))
         return res.json({ metas })
       }
 
@@ -157,3 +191,4 @@ module.exports = ({ prisma }) => {
 
 module.exports.buildTraxManifest = buildTraxManifest
 module.exports.getListsForAccount = getListsForAccount
+module.exports.TRAX_MANIFEST_VERSION = TRAX_MANIFEST_VERSION

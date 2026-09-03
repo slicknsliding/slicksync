@@ -247,7 +247,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           // syncUserAddons now records the outcome of every sync, so these
           // two are the real values rather than always-null columns.
           lastSyncedAt: user.lastSyncedAt || null,
-          syncStatus: user.syncStatus || null
+          syncStatus: user.syncStatus || null,
+          // Account Guard: non-null when the provider account was changed by
+          // something other than SlickSync since our last write (see
+          // utils/accountGuard.js) - {provider, detectedAt, added[], removed[]}.
+          guardExternal: require('../utils/accountGuard').summarizeExternal(user.guardStateJson)
         };
       }));
 
@@ -633,6 +637,18 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       let skipped = 0
       const unresolved = []
 
+      // Undo bookkeeping: snapshot which items/ratings already exist so the
+      // rows this run CREATES can be told apart from ones it merely skipped
+      // (the upserts below never modify existing rows - update: {}).
+      const preExistingItemIds = new Set(
+        (await prisma.movieWatchHistory.findMany({ where: { accountId, userId: user.id }, select: { itemId: true } })).map((r) => r.itemId)
+      )
+      const preExistingRatingIds = new Set(
+        (await prisma.titleRating.findMany({ where: { accountId, season: 0 }, select: { itemId: true } })).map((r) => r.itemId)
+      )
+      const createdItemIds = []
+      const createdRatingIds = []
+
       for (const row of rows) {
         // Netflix-style episode rows (Show: Season N: Episode) carry no id
         // and cannot resolve as movies - counted with the other episode
@@ -660,17 +676,33 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
             create: { accountId, userId: user.id, itemId: resolved.imdbId, itemName: resolved.title || resolved.imdbId, poster, profileLabel: 'Imported', completed: true, watchedAt },
             update: {}, // never overwrite an existing native record with an imported one
           })
+          if (!preExistingItemIds.has(resolved.imdbId)) {
+            preExistingItemIds.add(resolved.imdbId) // a file can repeat a title
+            createdItemIds.push(resolved.imdbId)
+          }
           if (rating) {
             await prisma.titleRating.upsert({
               where: { accountId_itemId_season: { accountId, itemId: resolved.imdbId, season: 0 } },
               create: { accountId, itemId: resolved.imdbId, itemType: 'movie', season: 0, rating, itemName: resolved.title || null },
               update: {},
             }).catch(() => {}) // best-effort - a rating conflict must never fail the whole import
+            if (!preExistingRatingIds.has(resolved.imdbId)) {
+              preExistingRatingIds.add(resolved.imdbId)
+              createdRatingIds.push(resolved.imdbId)
+            }
           }
           imported++
         } catch (e) {
           skipped++
         }
+      }
+
+      // One Trash entry per import run: undoing it deletes exactly the rows
+      // this run created and nothing that predated it.
+      try {
+        await require('../utils/trash').archiveHistoryImport(prisma, accountId, user.id, { createdItemIds, createdRatingIds })
+      } catch (e) {
+        console.warn('Import undo-archive failed (import itself succeeded):', e?.message)
       }
 
       res.json({
@@ -744,7 +776,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
       res.json({
         enabled,
-        manifestUrl: `${base || reqBase}/trax/${traxToken}/manifest.json`,
+        manifestUrl: `${base || reqBase}/trax/${traxToken}/v${require('./traxAddon').TRAX_MANIFEST_VERSION}/manifest.json`,
         autoInstall: true,
       })
     } catch (error) {
@@ -944,12 +976,192 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   // watch-history row for that user+show plus the burial itself. Watch time
   // and metrics stop counting it; nothing brings it back. The client's
   // confirmation names the episode count before this ever runs.
+  // Finish the Saga - franchises the household is mid-way through. For each
+  // recently-watched movie, resolve its TMDb collection (fetchTmdbCollection
+  // above, 24h-cached) and keep collections with at least one watched and at
+  // least one unwatched member. Watched-ness uses the same account-level
+  // semantics as /watchlist/watched-status: history rows, with manual
+  // overrides winning in either direction. The whole answer is cached for
+  // 6h per account - franchise membership and watch history both move
+  // slowly, and a cold run can cost a few dozen TMDb calls.
+  const sagaCache = new Map()
+  const SAGA_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+  const SAGA_CANDIDATES = 40
+  router.get('/finish-the-saga', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const cached = sagaCache.get(accountId)
+      if (cached && Date.now() - cached.at < SAGA_CACHE_TTL_MS) return res.json(cached.value)
+
+      const [historyRows, overrides] = await Promise.all([
+        prisma.movieWatchHistory.findMany({
+          where: { accountId },
+          select: { itemId: true },
+          orderBy: { watchedAt: 'desc' },
+        }),
+        prisma.manualWatchOverride.findMany({ where: { accountId }, select: { itemId: true, watched: true } }),
+      ])
+      const overrideMap = new Map(overrides.map((o) => [o.itemId, o.watched]))
+      const watchedSet = new Set()
+      const ordered = []
+      for (const r of historyRows) {
+        if (overrideMap.get(r.itemId) === false) continue
+        if (!watchedSet.has(r.itemId)) { watchedSet.add(r.itemId); ordered.push(r.itemId) }
+      }
+      for (const [id, w] of overrideMap.entries()) { if (w === true) watchedSet.add(id) }
+
+      const seenCollections = new Set()
+      const sagas = []
+      for (const imdbId of ordered.slice(0, SAGA_CANDIDATES)) {
+        const coll = await fetchTmdbCollection(imdbId, 'movie', req)
+        if (!coll || seenCollections.has(coll.id)) continue
+        seenCollections.add(coll.id)
+        // fetchTmdbCollection's parts exclude the seed - membership is
+        // seed + parts, and the seed is watched by construction.
+        // Unreleased entries (no release year, or a year still in the
+        // future) can't be watched - counting "Untitled Sequel" as the one
+        // film keeping a saga incomplete is a treadmill, not an itch
+        // (confirmed live: 'Untitled Michael Sequel' ranked as one-to-go).
+        const currentYear = new Date().getFullYear()
+        const released = (p) => p.releaseYear && Number(p.releaseYear) <= currentYear
+        const unwatched = coll.parts.filter((p) => p.id && !watchedSet.has(p.id) && released(p))
+        if (unwatched.length === 0) continue
+        const total = coll.parts.filter((p) => released(p) || watchedSet.has(p.id)).length + 1
+        const watchedCount = total - unwatched.length
+        sagas.push({ collectionId: coll.id, name: coll.name, watchedCount, total, unwatched })
+      }
+      // Closest-to-finished first - "one film left" is the itch worth
+      // scratching, a 1-of-9 franchise barely counts as started.
+      sagas.sort((a, b) => (b.watchedCount / b.total) - (a.watchedCount / a.total))
+      const value = sagas.slice(0, 8)
+      sagaCache.set(accountId, { at: Date.now(), value })
+      res.json(value)
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to compute sagas' })
+    }
+  })
+
+  // Device claims - per-person attribution on a shared provider login.
+  // GET lists every client IP the AIOStreams proxy has seen recently, with
+  // what it was last carrying, who the guesser currently thinks it is, and
+  // any standing claim; POST/DELETE manage the claims themselves. Claims
+  // beat learned affinity in proxyNowPlaying's disambiguation.
+  router.get('/device-claims', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const since = new Date(Date.now() - 30 * 86400000)
+      const [sessions, claims, affinity, accountUsers] = await Promise.all([
+        prisma.proxyStreamSession.findMany({
+          where: { accountId, lastSeenAt: { gte: since } },
+          select: { clientIp: true, displayName: true, lastSeenAt: true },
+          orderBy: { lastSeenAt: 'desc' },
+          take: 500,
+        }),
+        prisma.proxyDeviceClaim.findMany({ where: { accountId } }),
+        prisma.proxyUserIpAffinity.findMany({ where: { accountId } }),
+        prisma.user.findMany({ where: { accountId }, select: { id: true, username: true } }),
+      ])
+      const nameOf = (id) => accountUsers.find((u) => u.id === id)?.username || null
+      const byIp = new Map()
+      for (const sess of sessions) {
+        if (!sess.clientIp) continue
+        const cur = byIp.get(sess.clientIp)
+        if (!cur) {
+          byIp.set(sess.clientIp, { clientIp: sess.clientIp, lastSeenAt: sess.lastSeenAt, lastTitle: sess.displayName || null, streams: 1 })
+        } else {
+          cur.streams++
+          if (!cur.lastTitle && sess.displayName) cur.lastTitle = sess.displayName
+        }
+      }
+      // Claimed IPs always appear, even quiet ones - a claim you can't see
+      // is a claim you can't remove.
+      for (const c of claims) {
+        if (!byIp.has(c.clientIp)) byIp.set(c.clientIp, { clientIp: c.clientIp, lastSeenAt: null, lastTitle: null, streams: 0 })
+      }
+      const claimByIp = new Map(claims.map((c) => [c.clientIp, c]))
+      const affinityByIp = new Map(affinity.map((a) => [a.clientIp, a.userId]))
+      const devices = [...byIp.values()].map((d) => {
+        const claim = claimByIp.get(d.clientIp) || null
+        const guessId = affinityByIp.get(d.clientIp) || null
+        return {
+          ...d,
+          claim: claim ? { userId: claim.userId, username: nameOf(claim.userId), label: claim.label || null } : null,
+          guess: !claim && guessId ? { userId: guessId, username: nameOf(guessId) } : null,
+        }
+      }).sort((a, b) => new Date(b.lastSeenAt || 0).getTime() - new Date(a.lastSeenAt || 0).getTime())
+      res.json({ devices, users: accountUsers })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to list devices' })
+    }
+  })
+
+  router.post('/device-claims', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      const { clientIp, userId, label } = req.body || {}
+      if (!clientIp || typeof clientIp !== 'string') return res.status(400).json({ error: 'clientIp is required' })
+      if (!userId || typeof userId !== 'string') return res.status(400).json({ error: 'userId is required' })
+      const user = await prisma.user.findFirst({ where: { id: userId, accountId }, select: { id: true } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      await prisma.proxyDeviceClaim.upsert({
+        where: { accountId_clientIp: { accountId, clientIp } },
+        create: { accountId, clientIp, userId, label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : null },
+        update: { userId, label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : null },
+      })
+      res.json({ success: true })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to save claim' })
+    }
+  })
+
+  router.delete('/device-claims/:clientIp', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default'
+      await prisma.proxyDeviceClaim.deleteMany({ where: { accountId, clientIp: req.params.clientIp } })
+      res.json({ success: true })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to remove claim' })
+    }
+  })
+
+  // Account Guard: accept an externally-made change as the new baseline
+  // (the alternative to re-asserting via a normal sync). Must be before /:id.
+  router.post('/guard/accept', async (req, res) => {
+    try {
+      const { userId } = req.body || {}
+      if (!userId) return res.status(400).json({ error: 'userId is required' })
+      const user = await prisma.user.findFirst({ where: scopedWhere(req, { id: userId }), select: { id: true } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      const { acceptExternalState } = require('../utils/accountGuard')
+      const accepted = await acceptExternalState(prisma, userId)
+      if (!accepted) return res.status(400).json({ error: 'No external change is recorded for this user' })
+      res.json({ success: true })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to accept change' })
+    }
+  })
+
+  // Account Guard: run a detection pass now instead of waiting for the hourly
+  // sweep - used right after someone suspects a foreign write ("check now").
+  router.post('/guard/sweep', async (req, res) => {
+    try {
+      const { runGuardSweep } = require('../utils/accountGuard')
+      const summary = await runGuardSweep(prisma, { decrypt, StremioAPIClient, createProvider }, { onlyAccountId: getAccountId(req) })
+      res.json({ success: true, ...summary })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Sweep failed' })
+    }
+  })
+
   router.post('/graveyard/wipe', async (req, res) => {
     try {
       const accountId = getAccountId(req)
       if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
       const { userId, showId } = req.body || {}
       if (!userId || !showId) return res.status(400).json({ error: 'Missing userId or showId' })
+      // Even the permanent option gets the 30-day net: the erased rows go
+      // to the Trash first, so "forever" still survives a same-week regret.
+      await require('../utils/trash').archiveGraveyardWipe(prisma, accountId, userId, showId)
       const { wipeBuriedShow } = require('../utils/continueWatching')
       const result = await wipeBuriedShow(prisma, accountId, userId, showId)
       res.json({ success: true, ...result })
@@ -2544,6 +2756,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return responseUtils.notFound(res, 'User')
       }
 
+      // Into the Trash first (30-day undo) - archived BEFORE anything is
+      // removed, so a failed archive aborts the delete, never the reverse.
+      await require('../utils/trash').archiveUserDelete(prisma, getAccountId(req), id)
+
       // Remove user from all groups first (update userIds arrays)
       const groups = await prisma.group.findMany({
         where: {
@@ -2633,7 +2849,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // Get user
       const user = await prisma.user.findFirst({
         where: { id, accountId: getAccountId(req) },
-        select: { id: true, stremioAuthKey: true, isActive: true, protectedAddons: true, excludedAddons: true, accountId: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
+        select: { id: true, stremioAuthKey: true, isActive: true, protectedAddons: true, excludedAddons: true, accountId: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true, traxAddonEnabled: true, traxToken: true }
       })
       console.log('[sync-plan] User found:', user ? user.id : 'null')
       if (!user) return res.status(404).json({ message: 'User not found' })
@@ -2741,7 +2957,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           isActive: true,
           providerType: true,
           nuvioRefreshToken: true,
-          nuvioUserId: true
+          nuvioUserId: true,
+          traxAddonEnabled: true,
+          traxToken: true
         }
       })
 
@@ -3095,7 +3313,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           protectedAddons: true,
           providerType: true,
           nuvioRefreshToken: true,
-          nuvioUserId: true
+          nuvioUserId: true,
+          traxAddonEnabled: true,
+          traxToken: true
         }
       })
 
@@ -4586,7 +4806,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           isActive: true,
           providerType: true,
           nuvioRefreshToken: true,
-          nuvioUserId: true
+          nuvioUserId: true,
+          traxAddonEnabled: true,
+          traxToken: true
         }
       })
 
@@ -4703,7 +4925,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           isActive: true,
           providerType: true,
           nuvioRefreshToken: true,
-          nuvioUserId: true
+          nuvioUserId: true,
+          traxAddonEnabled: true,
+          traxToken: true
         }
       })
 
@@ -4778,7 +5002,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           email: true,
           providerType: true,
           nuvioRefreshToken: true,
-          nuvioUserId: true
+          nuvioUserId: true,
+          traxAddonEnabled: true,
+          traxToken: true
         }
       })
 
@@ -4849,7 +5075,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           isActive: true,
           providerType: true,
           nuvioRefreshToken: true,
-          nuvioUserId: true
+          nuvioUserId: true,
+          traxAddonEnabled: true,
+          traxToken: true
         }
       })
 
@@ -4978,14 +5206,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     try {
       const { id } = req.params
 
+      // Full row, not a narrow select: createProvider needs the provider
+      // credentials, and the guard record below needs id + providerType (a
+      // prior narrow select silently passed undefined as the user id there).
       const user = await prisma.user.findFirst({
         where: {
           id,
           accountId: getAccountId(req)
-        },
-        select: {
-          stremioAuthKey: true,
-          isActive: true
         }
       })
 
@@ -4993,8 +5220,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return responseUtils.notFound(res, 'User')
       }
 
-      if (!user.stremioAuthKey) {
-        return res.status(400).json({ message: 'User not connected to Stremio' })
+      // Provider-agnostic: was Stremio-only, so Clear All on a Nuvio user's
+      // Account Addons failed - same fix as the reorder/delete routes.
+      const hasClearCreds = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
+      if (!hasClearCreds) {
+        return res.status(400).json({ message: 'User is not connected to a provider' })
       }
 
       if (!user.isActive) {
@@ -5002,12 +5232,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       try {
-        const authKeyPlain = decrypt(user.stremioAuthKey, req)
-        const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKeyPlain })
-
-        // Clear all addons
-        const { clearAddons } = require('../utils/addonHelpers')
-        await clearAddons(apiClient)
+        const provider = createProvider(user, { decrypt, req })
+        if (!provider) {
+          return res.status(400).json({ message: 'Provider credentials are invalid' })
+        }
+        await provider.clearAddons()
+        await require('../utils/accountGuard').recordAssertedState(prisma, user.id, user.providerType, [])
 
         res.json({
           message: 'All addons cleared successfully',
@@ -5029,16 +5259,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const { id, addonName } = req.params
       const { unsafe } = req.query
 
-      // Get user to check for user-defined protected addons and Stremio auth
+      // Full row: createProvider needs whichever provider's credentials this
+      // user actually has (the old narrow Stremio-only select is why removal
+      // failed for Nuvio users).
       const user = await prisma.user.findFirst({
         where: {
           id,
           accountId: getAccountId(req)
-        },
-        select: {
-          stremioAuthKey: true,
-          isActive: true,
-          protectedAddons: true
         }
       })
 
@@ -5088,23 +5315,22 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(403).json({ message: 'This addon is protected and cannot be deleted' })
       }
 
-      // Decrypt stored auth key
-      let authKeyPlain
-      try {
-        authKeyPlain = decrypt(user.stremioAuthKey, req)
-      } catch (e) {
-        return res.status(500).json({ message: 'Failed to decrypt Stremio credentials' })
+      // Provider-agnostic: same fix as the reorder route above - this was
+      // Stremio-only, so removing a single Account Addon failed for Nuvio.
+      const hasDeleteCreds = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
+      if (!hasDeleteCreds) {
+        return res.status(400).json({ message: 'User is not connected to a provider' })
+      }
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) {
+        return res.status(400).json({ message: 'Provider credentials are invalid' })
       }
 
-      // Use StremioAPIClient with proper addon collection format
-      const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKeyPlain })
-
       // 1) Pull current collection
-      const current = await apiClient.request('addonCollectionGet', {})
-      const currentAddonsRaw = current?.addons || current || []
+      const { addons: currentAddonsRaw } = await provider.getAddons()
       const currentAddons = Array.isArray(currentAddonsRaw)
         ? currentAddonsRaw
-        : (typeof currentAddonsRaw === 'object' ? Object.values(currentAddonsRaw) : [])
+        : (currentAddonsRaw && typeof currentAddonsRaw === 'object' ? Object.values(currentAddonsRaw) : [])
 
       // Filter out the target addon by matching name (normalized)
       let filteredAddons = currentAddons
@@ -5115,7 +5341,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         })
 
         // Set the filtered addons using the proper format
-        await apiClient.request('addonCollectionSet', { addons: filteredAddons })
+        await provider.setAddons(filteredAddons)
+        await require('../utils/accountGuard').recordAssertedState(prisma, id, user.providerType, filteredAddons)
       } catch (e) {
         console.error(`❌ Failed to remove addon:`, e.message)
         throw e
@@ -5509,27 +5736,25 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return responseUtils.notFound(res, 'User')
       }
 
-      if (!user.stremioAuthKey) {
-        return res.status(400).json({ message: 'User is not connected to Stremio' })
+      // Provider-agnostic: this route was hard-wired to StremioAPIClient, so
+      // dragging Account Addons on a Nuvio user errored "User is not
+      // connected to Stremio" (confirmed live 2026-09-02). Both providers
+      // implement getAddons()/setAddons() with the same {addons:[...]} shape.
+      const hasReorderCreds = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
+      if (!hasReorderCreds) {
+        return res.status(400).json({ message: 'User is not connected to a provider' })
       }
-
-      // Decrypt auth key
-      let authKeyPlain
-      try {
-        authKeyPlain = decrypt(user.stremioAuthKey, req)
-      } catch {
-        return res.status(500).json({ message: 'Failed to decrypt Stremio credentials' })
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) {
+        return res.status(400).json({ message: 'Provider credentials are invalid' })
       }
-
-      // Use StremioAPIClient to get current addons
-      const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKeyPlain })
-      const current = await apiClient.request('addonCollectionGet', {})
-      const currentAddons = current?.addons || []
+      const { addons: currentRaw } = await provider.getAddons()
+      const currentAddons = Array.isArray(currentRaw) ? currentRaw : []
 
       // Build a map name -> queue of addons with that name to handle duplicates
       const nameToAddons = new Map()
       for (const addon of currentAddons) {
-        const name = addon?.manifest?.name || addon?.transportName || 'Addon'
+        const name = addon?.manifest?.name || addon?.transportName || addon?.name || 'Addon'
         if (!nameToAddons.has(name)) nameToAddons.set(name, [])
         nameToAddons.get(name).push(addon)
       }
@@ -5555,7 +5780,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       // Set the reordered collection
-      await apiClient.request('addonCollectionSet', { addons: reorderedAddons })
+      await provider.setAddons(reorderedAddons)
 
       res.json({
         message: 'Addons reordered successfully (by name)',
@@ -6991,6 +7216,14 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
 
     if (plan.alreadySynced) {
       console.log(`✅ User already synced`)
+      // Account Guard: already-synced still CONFIRMS the account state, so
+      // refresh the asserted baseline (and clear any stale alarm).
+      await require('../utils/accountGuard').recordAssertedState(prismaClient, credentials.id, credentials.providerType, plan.desired || [])
+      if (credentials.providerType === 'nuvio' && credentials.traxAddonEnabled && credentials.traxToken) {
+        const { ensureTraxHomePlacement } = require('../utils/nuvioHomePlacement')
+        ensureTraxHomePlacement(provider, { id: credentials.id }, `vip.slicksync.trax.${credentials.id}:series:slicktrax-continue`)
+          .catch((e) => console.warn('[NuvioHomePlacement] failed:', e?.message))
+      }
       return { success: true, total: (plan.desired || []).length, alreadySynced: true }
     }
 
@@ -6999,11 +7232,20 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
     if (finalDesired.length === 0) {
       await provider.clearAddons()
       console.log('📦 Empty group detected, cleared all addons')
+      await require('../utils/accountGuard').recordAssertedState(prismaClient, credentials.id, credentials.providerType, [])
       return { success: true, total: 0 }
     }
 
     await provider.setAddons(finalDesired)
     console.log('✅ User now synced')
+    await require('../utils/accountGuard').recordAssertedState(prismaClient, credentials.id, credentials.providerType, finalDesired)
+    // Nuvio home placement for the SlickTrax row - head of its own group,
+    // once, never fighting a later human rearrangement.
+    if (credentials.providerType === 'nuvio' && credentials.traxAddonEnabled && credentials.traxToken) {
+      const { ensureTraxHomePlacement } = require('../utils/nuvioHomePlacement')
+      ensureTraxHomePlacement(provider, { id: credentials.id }, `vip.slicksync.trax.${credentials.id}:series:slicktrax-continue`)
+        .catch((e) => console.warn('[NuvioHomePlacement] failed:', e?.message))
+    }
     return { success: true, total: (plan.desired || []).length }
   } catch (e) {
     console.error('❌ Failed to apply sync plan:', e?.message)
@@ -7038,7 +7280,10 @@ async function syncUserAddons(prismaClient, userId, excludedManifestUrls = [], u
         accountId: true,
         providerType: true,
         nuvioRefreshToken: true,
-        nuvioUserId: true
+        nuvioUserId: true,
+        // SlickTrax injection reads these in appendTraxAddon - see sync.js.
+        traxAddonEnabled: true,
+        traxToken: true
       }
     })
 
@@ -7074,6 +7319,8 @@ async function syncUserAddons(prismaClient, userId, excludedManifestUrls = [], u
           protectedAddons: user.protectedAddons,
           excludedAddons: user.excludedAddons,
           accountId: user.accountId,
+          traxAddonEnabled: user.traxAddonEnabled,
+          traxToken: user.traxToken,
           providerType: secondaryCredential.providerType,
           stremioAuthKey: secondaryCredential.stremioAuthKey,
           nuvioRefreshToken: secondaryCredential.nuvioRefreshToken,

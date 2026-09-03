@@ -307,6 +307,7 @@ app.use('/api/nuvio', accountScopingMiddleware);
 app.use('/api/snapshots', accountScopingMiddleware);
 app.use('/api/vault', accountScopingMiddleware);
 app.use('/api/automation', accountScopingMiddleware);
+app.use('/api/watch-together', accountScopingMiddleware);
 
 // Mount routers
 const publicAuthRouterInstance = publicAuthRouter({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, PRIVATE_AUTH_USERNAME, PRIVATE_AUTH_PASSWORD, DEFAULT_ACCOUNT_ID, issueAccessToken, issueRefreshToken, cookieName, isProdEnv, encrypt, decrypt, getDecryptedManifestUrl, scopedWhere, getAccountDek, decryptWithFallback, manifestUrlHmac, manifestHash, filterManifestByResources, filterManifestByCatalogs, parseCookies, JWT_SECRET });
@@ -322,6 +323,7 @@ app.use('/api/snapshots', snapshotsRouter({ prisma, getAccountId, encrypt, decry
 app.use('/api/avatars', avatarsRouter({ imageUpload }));
 app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/automation', automationRouter({ prisma, getAccountId }));
+app.use('/api/watch-together', require('./routes/watchTogether')({ prisma, getAccountId }));
 app.use('/api/settings', settingsRouter({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }));
 app.use('/api/push', pushRouter({ prisma, getAccountId }));
 app.use('/api/watchlist', watchlistRouter({ prisma, getAccountId }));

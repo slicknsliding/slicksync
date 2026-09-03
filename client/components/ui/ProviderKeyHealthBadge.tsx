@@ -31,11 +31,10 @@ export function ProviderKeyHealthBadge({ result }: ProviderKeyHealthBadgeProps) 
           <CheckCircleIcon className="w-3.5 h-3.5" />
           Working
         </span>
-        {/* Quota pressure - MDBList only, the one provider whose real usage
-            is actually checkable (see metadataKeyHealth.js's own comment for
-            why TMDb/OMDb/RPDB don't get one). Color escalates as a genuinely
-            shared instance key (everyone falling back to it) approaches its
-            cap, which is the whole point - catching pressure before it
+        {/* Quota pressure. MDBList reports real usage from its own API;
+            OMDb reports nothing, so its figure is SlickSync counting its own
+            requests (usage.approximate - see omdbMeter.js). Color escalates
+            as the key approaches its cap - catching pressure before it
             becomes an outage. */}
         {result.usage && (
           <span
@@ -47,7 +46,7 @@ export function ProviderKeyHealthBadge({ result }: ProviderKeyHealthBadgeProps) 
                   ? 'var(--color-warning)'
                   : 'var(--color-text-muted)',
             }}
-            title={`${result.usage.used.toLocaleString()} of ${result.usage.limit.toLocaleString()} requests used${result.usage.plan ? ` (${result.usage.plan} plan)` : ''}`}
+            title={`${result.usage.used.toLocaleString()} of ${result.usage.limit.toLocaleString()} requests used${result.usage.plan ? ` (${result.usage.plan} plan)` : ''}${(result.usage as { approximate?: boolean }).approximate ? ' - counted by SlickSync (other apps using this key are not included), resets midnight UTC' : ''}`}
           >
             {result.usage.used.toLocaleString()}/{result.usage.limit.toLocaleString()} ({result.usage.percentUsed}%)
           </span>
@@ -56,14 +55,26 @@ export function ProviderKeyHealthBadge({ result }: ProviderKeyHealthBadgeProps) 
     );
   }
 
+  // The WHY is visible text, not just a hover tooltip - a failing key whose
+  // reason hides behind a title attribute reads as "broken, no explanation"
+  // on touch screens and to anyone who doesn't think to hover (confirmed
+  // live: an OMDb key at its daily limit showed a bare "Not working").
   return (
-    <span
-      className="inline-flex items-center gap-1 text-xs font-medium"
-      style={{ color: result.rateLimited ? 'var(--color-warning)' : 'var(--color-error)' }}
-      title={`${result.message} - last checked ${checkedAgo}`}
-    >
-      <ExclamationTriangleIcon className="w-3.5 h-3.5" />
-      {result.rateLimited ? 'Rate limited' : 'Not working'}
+    <span className="inline-flex flex-col items-end gap-0.5 max-w-[16rem] text-right">
+      <span
+        className="inline-flex items-center gap-1 text-xs font-medium"
+        style={{ color: result.rateLimited ? 'var(--color-warning)' : 'var(--color-error)' }}
+        title={`Last checked ${checkedAgo}`}
+      >
+        <ExclamationTriangleIcon className="w-3.5 h-3.5" />
+        {result.rateLimited ? 'Limit reached' : 'Not working'}
+      </span>
+      {result.message && result.message !== 'OK' && (
+        <span className="text-[11px] leading-snug text-muted">{result.message}</span>
+      )}
+      {result.usage && (
+        <span className="text-[11px] text-subtle">{result.usage.used.toLocaleString()}/{result.usage.limit.toLocaleString()} today</span>
+      )}
     </span>
   );
 }

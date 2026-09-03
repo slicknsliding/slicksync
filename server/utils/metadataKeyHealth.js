@@ -54,12 +54,23 @@ async function checkTmdb(key) {
 // is checked for explicitly.
 async function checkOmdb(key) {
   try {
+    const { recordOmdbRequest, readOmdbUsage } = require('./omdbMeter');
+    recordOmdbRequest(key);
+    // OMDb reports no usage of its own - this figure is SlickSync counting
+    // its own requests (see omdbMeter.js), so it can only understate.
+    const usage = () => readOmdbUsage(key) || undefined;
     const res = await timedFetch(`https://www.omdbapi.com/?apikey=${encodeURIComponent(key)}&i=tt0111161`);
-    if (res.status === 401) return { ok: false, message: 'Key rejected (401) - likely revoked or mistyped', rateLimited: false };
+    // OMDb answers 401 for BOTH a bad key and a key that hit its daily
+    // limit - the body's Error string is the only way to tell them apart,
+    // so it must be read before deciding. Returning on the status alone
+    // reported an exhausted (perfectly valid) free key as "revoked or
+    // mistyped" - confirmed live 2026-09-03, and precisely the wrong thing
+    // to tell someone whose key will work again at midnight UTC.
     const body = await res.json().catch(() => null);
-    if (body && body.Response === 'True') return { ok: true, message: 'OK', rateLimited: false };
+    if (body && body.Response === 'True') return { ok: true, message: 'OK', rateLimited: false, usage: usage() };
     const err = (body && body.Error) || '';
-    if (/limit reached/i.test(err)) return { ok: false, message: 'Daily request limit reached', rateLimited: true };
+    if (/limit reached/i.test(err)) return { ok: false, message: 'Daily request limit reached (1,000/day on the free tier) - the key is fine and resets at midnight UTC. A backup key or key pool covers the gap.', rateLimited: true, usage: usage() };
+    if (res.status === 401 && !err) return { ok: false, message: 'Key rejected (401) - likely revoked or mistyped', rateLimited: false };
     if (/invalid api key/i.test(err)) return { ok: false, message: 'Invalid API key', rateLimited: false };
     return { ok: false, message: err || `OMDb returned ${res.status}`, rateLimited: false };
   } catch (e) {
@@ -221,21 +232,116 @@ async function checkAndPersistAccountKeys(prisma, accountId, { notify = true, on
   // rate-limited. Only runs for providers with a ring bigger than one key -
   // the single-key case is exactly what the primary check above already is.
   try {
-    const { buildRing, keyTag } = require('./keyPool');
+    const { buildRing, readPool, keyTag } = require('./keyPool');
     const FIELD_OF = { tmdb: 'tmdbApiKey', omdb: 'omdbApiKey', mdblist: 'mdblistApiKey', rpdb: 'rpdbApiKey' };
+    // Auto-retire threshold: three days of CONTINUOUS failing, tracked via
+    // firstFailedAt below - one bad check never retires anything.
+    const RETIRE_AFTER_MS = 3 * 86400000;
     for (const provider of Object.keys(toCheck)) {
-      const ring = buildRing(cfg, FIELD_OF[provider]);
+      const field = FIELD_OF[provider];
+      const ring = buildRing(cfg, field);
       if (ring.length <= 1) continue;
+      const prevPool = Array.isArray(previousHealth[provider]?.pool) ? previousHealth[provider].pool : [];
       const perKey = [];
       for (const key of ring) {
         const r = await CHECKERS[provider](key);
-        perKey.push({ tag: keyTag(key), last4: String(key).slice(-4), ok: r.ok, rateLimited: !!r.rateLimited, checkedAt: new Date().toISOString() });
+        const tag = keyTag(key);
+        const prev = prevPool.find((p) => p && p.tag === tag);
+        perKey.push({
+          tag,
+          last4: String(key).slice(-4),
+          ok: r.ok,
+          rateLimited: !!r.rateLimited,
+          // Remaining-allowance signal for quota-aware weighting (keyPool.js)
+          // - only providers whose check reports usage carry it.
+          ...(r.usage && Number.isFinite(r.usage.percentUsed) ? { percentUsed: r.usage.percentUsed } : {}),
+          // Failing streak: carried forward while the key keeps failing,
+          // dropped the moment it passes - the auto-retire clock.
+          ...(r.ok === false ? { firstFailedAt: prev?.firstFailedAt || new Date().toISOString() } : {}),
+          checkedAt: new Date().toISOString(),
+        });
       }
       results[provider] = { ...(results[provider] || {}), pool: perKey };
+
+      // Auto-retire (opt-in, keyPoolAutoRetire): a POOL EXTRA that has been
+      // failing for three straight days is removed from the pool, with one
+      // notification saying so. Only extras - the primary and backup carry
+      // failover/promotion semantics of their own and are never touched.
+      // The retired key is named by its last 4 characters, never in full.
+      if (cfg.keyPoolAutoRetire === true) {
+        const pool = readPool(cfg, field);
+        const retired = [];
+        const kept = pool.filter((key) => {
+          const rec = perKey.find((p) => p.tag === keyTag(key));
+          const dead = !!(rec && rec.ok === false && rec.firstFailedAt
+            && (Date.now() - new Date(rec.firstFailedAt).getTime() >= RETIRE_AFTER_MS));
+          if (dead) retired.push(rec);
+          return !dead;
+        });
+        if (retired.length > 0) {
+          cfg[`${field}Pool`] = kept;
+          const label = PROVIDER_LABEL[provider] || provider;
+          const { createNotification } = require('./notificationStore');
+          for (const rec of retired) {
+            await createNotification(prisma, accountId, {
+              type: 'task',
+              title: `Retired a failing ${label} pool key`,
+              body: `The pool key ending in ${rec.last4} had been failing for 3 days and was removed from the ${label} pool. The rest of the ring carries on; add a replacement when you can.`,
+              dedupeKey: `keyretire-${provider}-${rec.tag}`,
+            }).catch(() => {});
+          }
+        }
+      }
     }
   } catch (e) {
     console.warn('[KeyHealth] Pool ring check failed:', e?.message);
   }
+
+  // Promotion round trip: a promotion stamped this provider, and the ring
+  // check just found the DEMOTED original (now in the backup slot) passing
+  // again - swap the pair back, clear the stamp, rewrite addons carrying
+  // the interim key, and say so. The original ordering is restored without
+  // anyone touching Settings.
+  try {
+    const { keyTag } = require('./keyPool');
+    const FIELD_OF2 = { tmdb: 'tmdbApiKey', omdb: 'omdbApiKey', mdblist: 'mdblistApiKey', rpdb: 'rpdbApiKey' };
+    for (const provider of Object.keys(cfg.promotedKeys || {})) {
+      const field = FIELD_OF2[provider];
+      if (!field || !(provider in toCheck)) continue;
+      const backupKey = typeof cfg[`${field}Backup`] === 'string' ? cfg[`${field}Backup`].trim() : '';
+      const primaryKey = typeof cfg[field] === 'string' ? cfg[field].trim() : '';
+      if (!backupKey || !primaryKey) continue;
+      const perKey = results[provider]?.pool;
+      const rec = Array.isArray(perKey) ? perKey.find((r) => r && r.tag === keyTag(backupKey)) : null;
+      if (!rec || rec.ok !== true) continue;
+
+      cfg[field] = backupKey;   // the recovered original returns to primary
+      cfg[`${field}Backup`] = primaryKey; // the stand-in returns to backup
+      delete cfg.promotedKeys[provider];
+      if (results[provider]) delete results[provider].pool; // stale tags - next check re-records
+      results[provider] = { ok: true, message: 'Original key recovered and restored as primary', rateLimited: false, checkedAt: new Date().toISOString() };
+
+      try {
+        const { propagateSecretRotation } = require('./keyRotation');
+        const { encrypt, decrypt, getDecryptedManifestUrl } = require('./encryption');
+        const { manifestUrlHmac } = require('./hashing');
+        await propagateSecretRotation(prisma, { appAccountId: accountId }, { encrypt, decrypt, getDecryptedManifestUrl, manifestUrlHmac }, {
+          accountId, oldSecret: primaryKey, newSecret: backupKey,
+        });
+      } catch (e) { console.warn('[KeyHealth] swap-back rotation failed:', e?.message); }
+
+      const label = PROVIDER_LABEL[provider] || provider;
+      try {
+        const { createNotification } = require('./notificationStore');
+        await createNotification(prisma, accountId, {
+          type: 'task',
+          title: `${label} key recovered - promoted back to primary`,
+          body: 'The original key passed its check again, so the automatic promotion was reversed: it is the primary once more and the spare went back to being the backup.',
+          dedupeKey: `keyswapback-${provider}-${new Date().toDateString()}`,
+        });
+      } catch {}
+    }
+  } catch (e) { console.warn('[KeyHealth] promotion round-trip failed:', e?.message); }
 
   const mergedHealth = { ...previousHealth, ...results };
 

@@ -384,7 +384,7 @@ const ContinueWatchingCard = memo(function ContinueWatchingCard({
           onClick={() => {
             onMenuOpenChange(false, `${item.userId}-${item.showId}`);
             onRemove(item);
-            toast.success(`Removed "${item.showName}" from Continue Watching`);
+            toast.success(`Removed "${item.showName}" - it rests in the Graveyard now (Activity -> Graveyard). Digging it up there brings it back here.`);
           }}
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors"
         >

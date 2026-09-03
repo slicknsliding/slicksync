@@ -2169,8 +2169,106 @@ class ApiClient {
 
   /** The permanent exit: erases the show's entire watch history for that
    * user plus the burial. Irreversible - the UI confirms with the count. */
+  // Per-user restore - Time Machine scoped to one person. preview:true
+  // returns the per-user diff without applying anything.
+  async restoreBackupUser(filename: string, userId: string, preview = false) {
+    return this.fetch<{
+      preview?: boolean;
+      applied?: boolean;
+      username: string;
+      changedFields: string[];
+      groupsJoin: string[];
+      groupsLeave: string[];
+      missingGroups: string[];
+      nothingToDo: boolean;
+    }>(`/settings/backups/${encodeURIComponent(filename)}/restore-user`, {
+      method: 'POST', body: JSON.stringify({ userId, preview }),
+    });
+  }
+
+  // Device claims - per-person attribution on a shared provider login.
+  // A claim pins a proxy client IP to a managed user, beating the learned
+  // affinity guess; `guess` is what the guesser currently thinks when no
+  // claim stands.
+  async getDeviceClaims() {
+    return this.fetch<{
+      devices: Array<{
+        clientIp: string;
+        lastSeenAt: string | null;
+        lastTitle: string | null;
+        streams: number;
+        claim: { userId: string; username: string | null; label: string | null } | null;
+        guess: { userId: string; username: string | null } | null;
+      }>;
+      users: Array<{ id: string; username: string }>;
+    }>('/users/device-claims');
+  }
+
+  async saveDeviceClaim(clientIp: string, userId: string, label?: string) {
+    return this.fetch<{ success: boolean }>('/users/device-claims', {
+      method: 'POST', body: JSON.stringify({ clientIp, userId, label }),
+    });
+  }
+
+  async deleteDeviceClaim(clientIp: string) {
+    return this.fetch<{ success: boolean }>(`/users/device-claims/${encodeURIComponent(clientIp)}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Finish the Saga - franchises the household is mid-way through, closest
+  // to finished first. `unwatched` are the members still to watch.
+  async getFinishTheSaga() {
+    return this.fetch<Array<{
+      collectionId: number;
+      name: string;
+      watchedCount: number;
+      total: number;
+      unwatched: Array<{ id: string; title: string; poster: string | null; releaseYear: string | null }>;
+    }>>('/users/finish-the-saga');
+  }
+
+  // Watch-ahead protection - "watching together" pacts (see
+  // server/utils/watchTogether.js). Frontier = furthest episode EVERYONE in
+  // the pact has seen; null until every member has started the show.
+  async getWatchTogether() {
+    return this.fetch<Array<{
+      showId: string;
+      showName: string;
+      members: Array<{ userId: string; username: string; colorIndex?: number; avatarUrl?: string | null; furthest: { season: number; episode: number } | null }>;
+      frontier: { season: number; episode: number } | null;
+      waitingOn: string[];
+      createdAt: string;
+    }>>('/watch-together');
+  }
+
+  async saveWatchTogether(showId: string, showName: string, userIds: string[]) {
+    return this.fetch<{ success: boolean }>('/watch-together', {
+      method: 'POST', body: JSON.stringify({ showId, showName, userIds }),
+    });
+  }
+
+  async deleteWatchTogether(showId: string) {
+    return this.fetch<{ success: boolean }>(`/watch-together/${encodeURIComponent(showId)}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Account Guard - see server/utils/accountGuard.js
+  async acceptGuardChange(userId: string) {
+    return this.fetch<{ success: boolean }>('/users/guard/accept', {
+      method: 'POST', body: JSON.stringify({ userId }),
+    });
+  }
+
+  async runGuardSweep() {
+    return this.fetch<{ success: boolean; checked: number; alerted: number; adopted: number; skipped: number }>('/users/guard/sweep', {
+      method: 'POST', body: JSON.stringify({}),
+    });
+  }
+
   async wipeBuriedShow(userId: string, showId: string) {
-    return this.fetch<{ success: boolean; episodesDeleted: number }>('/users/graveyard/wipe', {
+    return this.fetch<{ success: boolean; episodesDeleted: number; moviesDeleted?: number }>('/users/graveyard/wipe', {
       method: 'POST', body: JSON.stringify({ userId, showId }),
     });
   }
@@ -2728,6 +2826,15 @@ export interface User {
   // hardcoded 'Unknown'.
   lastSyncedAt?: string | null;
   syncStatus?: string | null;
+  // Account Guard: non-null when this user's provider account was changed by
+  // something other than SlickSync since our last write - carries the diff
+  // for display. Cleared by a sync (re-assert) or by accepting the change.
+  guardExternal?: {
+    provider: 'stremio' | 'nuvio';
+    detectedAt: string;
+    added: Array<{ url: string; name: string }>;
+    removed: Array<{ url: string; name: string }>;
+  } | null;
 }
 
 export interface MergeCandidate {
@@ -3080,6 +3187,10 @@ export interface SyncSettings {
   // Personal-features opt-outs (v1.31+). Default true when absent.
   enableWatchlist?: boolean;
   enableWatchedIndicators?: boolean;
+  /** Watching Together (watch-ahead protection) - the show-detail section
+   * and its alerts. On by default; per-show pacts are still the real
+   * opt-in, this hides the whole feature. */
+  enableWatchTogether?: boolean;
   enableRecommendations?: boolean;
   enableAutoplayTrailer?: boolean;
   autoplayTrailerStartMuted?: boolean;
@@ -3113,7 +3224,7 @@ export interface SyncSettings {
     /** MDBList only - the one provider that actually exposes live quota
      * usage (confirmed against their own OpenAPI spec). TMDb has no rate
      * limit to show, OMDb and RPDB expose no usage endpoint at all. */
-    usage?: { used: number; limit: number; percentUsed: number; plan: string | null };
+    usage?: { used: number; limit: number; percentUsed: number; plan: string | null; approximate?: boolean };
   }>;
   notifyOnKeyHealth?: boolean;
   /** Opt-in scheduled self-update (private instances with the socket
@@ -3121,6 +3232,12 @@ export interface SyncSettings {
    * watchdog rolls back automatically on a failed health check. */
   autoUpdateEnabled?: boolean;
   autoUpdateHour?: number;
+  /** Key Pool, opt-in: spread requests toward the pool key with the most
+   * remaining quota (providers that report usage only - MDBList today). */
+  keyPoolQuotaWeighting?: boolean;
+  /** Key Pool, opt-in: a pool EXTRA failing for 3 straight days is removed
+   * from the pool automatically, with one notification. */
+  keyPoolAutoRetire?: boolean;
 
   simklClientId?: string;
   /** Self-hosted Nuvio backend URL, e.g. https://backend.example.com. Blank uses api.nuvio.tv. */

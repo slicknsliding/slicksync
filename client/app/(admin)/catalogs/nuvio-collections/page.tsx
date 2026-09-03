@@ -540,8 +540,16 @@ export default function NuvioCollectionsPage() {
   const [savedSnapshot, setSavedSnapshot] = useState('[]');
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [importExportInfoOpen, setImportExportInfoOpen] = useState(false);
-  // Share codes for the whole collection layout (ShareCodeDialog).
+  // Share codes for collections (ShareCodeDialog). Which ones go into the
+  // code is chosen in the dialog - defaults to all, because "share my
+  // layout" is the common case, but a household's whole shabang is rarely
+  // what a friend actually asked for.
   const [showShareCode, setShowShareCode] = useState(false);
+  const [shareSelected, setShareSelected] = useState<Set<string>>(new Set());
+  const openShareCode = () => {
+    setShareSelected(new Set(collections.map((c) => c.id)));
+    setShowShareCode(true);
+  };
   const [showPasteCode, setShowPasteCode] = useState(false);
   // The two info banners (TMDb templates, bridging a Catalog in) read fine
   // the first time but are a permanent eyesore taking up space on every
@@ -557,6 +565,15 @@ export default function NuvioCollectionsPage() {
   const [templatesOpen, setTemplatesOpen] = useState(false);
 
   const [pickerTarget, setPickerTarget] = useState<PickerTarget>(null);
+  // Linked SlickSync catalogs: a folder source pointing at this user's own
+  // SlickTrax Addon catalog (slicktrax-list-<id>). The addon serves the
+  // catalog's CURRENT items on every request, so the folder follows the
+  // catalog automatically - auto-refresh, manual edits, everything - with
+  // no push machinery at all. The only precondition is the user's SlickTrax
+  // Addon being enabled and synced onto the account.
+  const [slickCatalogs, setSlickCatalogs] = useState<Awaited<ReturnType<typeof api.getLists>> | null>(null);
+  const [traxEnabled, setTraxEnabled] = useState<boolean | null>(null);
+  const [linkBusyId, setLinkBusyId] = useState<string | null>(null);
   const [pickerAddonId, setPickerAddonId] = useState<string | null>(null);
   const [pickerCatalog, setPickerCatalog] = useState<{ id: string; type: string; name?: string } | null>(null);
   const [pickerPreview, setPickerPreview] = useState<{ id: string; type: string; name: string; poster: string | null }[]>([]);
@@ -626,7 +643,9 @@ export default function NuvioCollectionsPage() {
   const describeSource = useCallback((source: NuvioCatalogSource) => {
     const addon = addons.find((a) => a.manifest?.id === source.addonId);
     const catalog = addon?.manifest?.catalogs?.find((c) => c.id === source.catalogId && c.type === source.type);
+    const linked = typeof source.addonId === 'string' && source.addonId.startsWith('vip.slicksync.trax.');
     return {
+      linked,
       addonName: addon?.name || addon?.manifest?.name || source.addonId,
       catalogName: catalog?.name || source.catalogId,
       // False when the addon was removed, or is still installed but no
@@ -921,6 +940,55 @@ export default function NuvioCollectionsPage() {
     setPickerAddonId(null);
     setPickerCatalog(null);
     setPickerPreview([]);
+    // Lazy per open: the catalog list is tiny and the trax flag can change
+    // from the user's own page between opens.
+    api.getLists().then((ls) => setSlickCatalogs(ls.filter((l) => (l as any).isOwner !== false))).catch(() => setSlickCatalogs([]));
+    if (selectedUserId) {
+      api.getUser(selectedUserId).then((u) => setTraxEnabled(u.traxAddonEnabled === true)).catch(() => setTraxEnabled(null));
+    }
+  };
+
+  // Adds a linked source for every content type the catalog actually holds
+  // (both when it holds neither/unknown - an empty trax row is harmless,
+  // a missing one is a gap). Enables + syncs the SlickTrax Addon first when
+  // it is off, since the addon IS the delivery mechanism.
+  const linkSlickCatalog = async (list: NonNullable<typeof slickCatalogs>[number]) => {
+    if (!pickerTarget || !selectedUserId) return;
+    setLinkBusyId(list.id);
+    try {
+      // The toggle being on is NOT enough - the addon only reaches the
+      // account when a sync runs (confirmed live: toggle Enabled, addon
+      // absent, every linked source "not found"). What matters is presence
+      // in the LIVE account list; missing means enable if needed, sync, and
+      // re-read the addons so the new sources resolve immediately.
+      const traxId = `vip.slicksync.trax.${selectedUserId}`;
+      const traxInstalled = addons.some((a) => a.manifest?.id === traxId);
+      if (!traxInstalled) {
+        if (traxEnabled === false) await api.setTraxAddon(selectedUserId, true);
+        toast.success('Installing the SlickTrax Addon on the account (one sync)...');
+        await api.syncUser(selectedUserId);
+        setTraxEnabled(true);
+        try {
+          const fresh = await api.getUserStremioAddons(selectedUserId);
+          setAddons(Array.isArray(fresh) ? fresh : []);
+        } catch { /* sources may show as pending until next page load */ }
+      }
+      const types = [...new Set((list.items || []).map((i) => i.type).filter((t) => t === 'movie' || t === 'series'))];
+      const useTypes = types.length > 0 ? types : ['movie', 'series'];
+      for (const type of useTypes) {
+        addSource(pickerTarget.collectionId, pickerTarget.folderId, {
+          addonId: `vip.slicksync.trax.${selectedUserId}`,
+          type,
+          catalogId: `slicktrax-list-${list.id}`,
+        });
+      }
+      setPickerTarget(null);
+      toast.success(`Linked "${list.name}" - press Save changes to push it. From then on the folder follows the catalog automatically`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not link that catalog');
+    } finally {
+      setLinkBusyId(null);
+    }
   };
 
   const pickerAddon = addons.find((a) => a.manifest?.id === pickerAddonId) || null;
@@ -1179,7 +1247,7 @@ export default function NuvioCollectionsPage() {
                     <Button variant="ghost" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setShowPasteCode(true)} title="Paste a collections share code - stages it into your draft for review before saving">
                       Paste code
                     </Button>
-                    <Button variant="ghost" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setShowShareCode(true)} disabled={collections.length === 0} title="Turn this profile's collections into a copy-paste share code">
+                    <Button variant="ghost" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openShareCode} disabled={collections.length === 0} title="Turn collections into a copy-paste share code - pick which ones in the dialog">
                       Share code
                     </Button>
                     <button
@@ -1311,14 +1379,16 @@ export default function NuvioCollectionsPage() {
                                 {expanded[folder.id] && (
                                   <div className="mt-2 pl-6 space-y-1.5">
                                     {(folder.catalogSources || []).map((source, sIndex) => {
-                                      const { addonName, catalogName, found } = describeSource(source);
+                                      const { addonName, catalogName, found, linked } = describeSource(source);
                                       const genreSuffix = source.genre && source.genre !== 'none' ? ` — ${source.genre}` : '';
                                       return (
                                         <div key={sIndex} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-md bg-surface-hover">
                                           {!found && <ExclamationTriangleIcon className="w-3.5 h-3.5 text-warning shrink-0" />}
                                           <span className="flex-1 truncate text-default">
                                             {found ? (
-                                              <>{catalogName}{genreSuffix} <span className="text-subtle">· {addonName} ({source.type})</span></>
+                                              <>{catalogName}{genreSuffix} <span className="text-subtle">· {addonName} ({source.type})</span>{linked && <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--color-primary-muted)', color: 'var(--color-primary)' }}>linked · auto-updates</span>}</>
+                                            ) : linked ? (
+                                              <span className="text-warning">Linked catalog - SlickTrax Addon not on the account <span className="text-subtle">· press Sync on the user to install it, then this resolves by itself</span></span>
                                             ) : (
                                               <span className="text-warning">Source not found <span className="text-subtle">· addon removed or catalog no longer exists</span></span>
                                             )}
@@ -1439,6 +1509,11 @@ export default function NuvioCollectionsPage() {
             loads a JSON file back into this page as a draft - review it, then hit Save changes to push it through the normal sync path. Nothing is written until you save.
           </p>
           <p>
+            Folders linked to a SlickSync Catalog travel too - but the link points at the ORIGINAL user&apos;s SlickTrax Addon.
+            Importing onto a different account keeps showing that user&apos;s catalog; re-link the folder there if it should follow
+            the new account&apos;s own catalogs instead.
+          </p>
+          <p className="text-sm text-muted mt-3">
             Nuvio&apos;s own site has a matching Import/Export on its Collections page, if you&apos;d rather manage things from there:
           </p>
           <a
@@ -1461,10 +1536,43 @@ export default function NuvioCollectionsPage() {
         isOpen={showShareCode}
         onClose={() => setShowShareCode(false)}
         title="Share collections as code"
-        summary={`${collections.length} collection${collections.length === 1 ? '' : 's'} and their folders (titles, covers, and which catalogs each folder pulls from)`}
-        generate={() => encodeNuvioCollectionsShareCode({
-          collections: collections as unknown as Array<{ title: string; folders: unknown[] } & Record<string, unknown>>,
-        })}
+        summary={`${shareSelected.size} of ${collections.length} collection${collections.length === 1 ? '' : 's'} and their folders (titles, covers, and which catalogs each folder pulls from)`}
+        extraContent={collections.length > 1 ? (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-muted">Which collections go in the code</p>
+              <button
+                type="button"
+                className="text-xs text-muted hover:text-default transition-colors"
+                onClick={() => setShareSelected(shareSelected.size === collections.length ? new Set() : new Set(collections.map((c) => c.id)))}
+              >
+                {shareSelected.size === collections.length ? 'Select none' : 'Select all'}
+              </button>
+            </div>
+            {collections.map((c) => {
+              const on = shareSelected.has(c.id);
+              return (
+                <label key={c.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer" style={{ background: 'var(--color-surface-hover)' }}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => setShareSelected((prev) => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
+                    className="accent-[var(--color-primary)]"
+                  />
+                  <span className="text-sm text-default truncate">{c.title}</span>
+                  <span className="text-xs text-subtle shrink-0">{(c.folders || []).length} folder{(c.folders || []).length === 1 ? '' : 's'}</span>
+                </label>
+              );
+            })}
+          </div>
+        ) : undefined}
+        generate={() => {
+          const chosen = collections.filter((c) => shareSelected.has(c.id));
+          if (chosen.length === 0) throw new Error('Pick at least one collection to share');
+          return encodeNuvioCollectionsShareCode({
+            collections: chosen as unknown as Array<{ title: string; folders: unknown[] } & Record<string, unknown>>,
+          });
+        }}
       />
       <PasteCodeDialog
         isOpen={showPasteCode}
@@ -1497,22 +1605,7 @@ export default function NuvioCollectionsPage() {
             — separate from SlickSync&apos;s — or they won&apos;t render on-device.
           </p>
           <p>
-            Want to turn a local Catalog into a folder here? Nuvio folders can only reference a live addon catalog, TMDb list, or Trakt
-            list — not a fixed set of titles directly — so open the Catalog, use{' '}
-            <button
-              type="button"
-              onClick={() => { setTipsInfoOpen(false); router.push('/catalogs'); }}
-              className="text-primary hover:underline font-medium"
-            >
-              Export to MDBList
-            </button>{' '}
-            to create a real MDBList list from it, then add that list&apos;s URL as a Custom Catalog (provider: MDBList) in either{' '}
-            {/* AIOStreams/AIOMetadata deliberately left as plain text, not
-                links - this account doesn't host either for anyone else to
-                use, and pointing at a specific instance would be wrong for
-                most readers; find your own is the correct answer here. */}
-            AIOStreams or AIOMetadata&apos;s own config — both
-            work fine as sources. Once saved there, it shows up as a normal source in{' '}
+            Want to turn a SlickSync Catalog into a folder here? Open any folder, press{' '}
             <button
               type="button"
               onClick={() => setTipsInfoOpen(false)}
@@ -1520,7 +1613,27 @@ export default function NuvioCollectionsPage() {
             >
               Add source
             </button>{' '}
-            below.
+            and pick it under <span className="text-default font-medium">Link a SlickSync Catalog</span> — the folder then follows the
+            catalog automatically: refresh it, auto-refresh it, edit it, and the device updates on its own. The link is served through
+            that user&apos;s SlickTrax Addon; if the addon isn&apos;t on the account yet, linking installs and syncs it in the same step.
+            Press Save changes to push, and from then on there is nothing to re-push.
+          </p>
+          <p className="text-sm text-muted mt-3">
+            Prefer the folder to work without the SlickTrax Addon? The older route still works: open the Catalog, use{' '}
+            <button
+              type="button"
+              onClick={() => { setTipsInfoOpen(false); router.push('/catalogs'); }}
+              className="text-primary hover:underline font-medium"
+            >
+              Export to MDBList
+            </button>{' '}
+            to create a real MDBList list from it, then add that list&apos;s URL as a Custom Catalog (provider: MDBList) in{' '}
+            {/* AIOStreams/AIOMetadata deliberately left as plain text, not
+                links - this account doesn't host either for anyone else to
+                use, and pointing at a specific instance would be wrong for
+                most readers; find your own is the correct answer here. */}
+            AIOStreams or AIOMetadata&apos;s own config, and add that as the source instead. That copy lives on MDBList and does not
+            follow later edits by itself — linking is the set-and-forget option.
           </p>
         </div>
       </Modal>
@@ -1565,6 +1678,34 @@ export default function NuvioCollectionsPage() {
             <p className="text-sm text-muted text-center py-6">This account has no installed addons to pick a catalog from yet.</p>
           ) : (
             <>
+              {slickCatalogs && slickCatalogs.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1.5">Link a SlickSync Catalog</label>
+                  <p className="text-[11px] text-subtle mb-2">
+                    A linked folder follows the catalog automatically - refresh it, auto-refresh it, edit it, and the folder updates on its own. Served through this user&apos;s SlickTrax Addon{traxEnabled === false ? ', which is currently off and will be enabled and synced when you link' : ''}.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {slickCatalogs.map((list) => (
+                      <button
+                        key={list.id}
+                        type="button"
+                        disabled={linkBusyId !== null}
+                        onClick={() => linkSlickCatalog(list)}
+                        className="text-left px-3 py-2 rounded-lg border text-xs transition-colors border-default hover:border-primary/50 disabled:opacity-50"
+                      >
+                        <p className="font-medium text-default truncate">{linkBusyId === list.id ? 'Linking...' : list.name}</p>
+                        <p className="text-subtle">{(list.items || []).length} title{(list.items || []).length === 1 ? '' : 's'} · stays in sync</p>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 my-4">
+                    <div className="flex-1 h-px bg-surface-border" style={{ background: 'var(--color-surface-border)' }} />
+                    <span className="text-[10px] uppercase tracking-wide text-subtle">or pick from an installed addon</span>
+                    <div className="flex-1 h-px" style={{ background: 'var(--color-surface-border)' }} />
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-medium text-muted mb-1.5">Addon</label>
                 <select

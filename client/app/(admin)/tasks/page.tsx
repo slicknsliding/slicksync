@@ -807,6 +807,54 @@ export default function TasksPage() {
     });
   };
 
+  // Per-user restore - Time Machine scoped to one person. Pick a backup's
+  // person icon, pick who, see exactly what would rewind for them, confirm.
+  // Everyone else is untouched, and the user's pre-restore state goes to the
+  // Trash first, so even this rewind is undoable for 30 days.
+  const [userRestore, setUserRestore] = useState<{ backup: BackupFile } | null>(null);
+  const [userRestoreUsers, setUserRestoreUsers] = useState<User[]>([]);
+  const [userRestoreUserId, setUserRestoreUserId] = useState('');
+  const [userRestorePreview, setUserRestorePreview] = useState<Awaited<ReturnType<typeof api.restoreBackupUser>> | null>(null);
+  const [userRestoreBusy, setUserRestoreBusy] = useState(false);
+
+  const openUserRestore = (backup: BackupFile) => {
+    setUserRestore({ backup });
+    setUserRestoreUserId('');
+    setUserRestorePreview(null);
+    if (userRestoreUsers.length === 0) {
+      api.getUsers().then(setUserRestoreUsers).catch(() => {});
+    }
+  };
+
+  const previewUserRestore = async (userId: string) => {
+    setUserRestoreUserId(userId);
+    setUserRestorePreview(null);
+    if (!userId || !userRestore) return;
+    setUserRestoreBusy(true);
+    try {
+      setUserRestorePreview(await api.restoreBackupUser(userRestore.backup.filename, userId, true));
+    } catch (e: any) {
+      toast.error(e.message || 'Could not preview');
+      setUserRestoreUserId('');
+    } finally {
+      setUserRestoreBusy(false);
+    }
+  };
+
+  const applyUserRestore = async () => {
+    if (!userRestore || !userRestoreUserId) return;
+    setUserRestoreBusy(true);
+    try {
+      const r = await api.restoreBackupUser(userRestore.backup.filename, userRestoreUserId, false);
+      toast.success(`${r.username} rewound to this backup - the previous state is in the Trash for 30 days`);
+      setUserRestore(null);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to restore user');
+    } finally {
+      setUserRestoreBusy(false);
+    }
+  };
+
   const handleRestoreBackup = async (backup: BackupFile) => {
     // Time Machine: show what this restore would actually DO before asking
     // for the irreversible yes. "Replaces everything" was true but useless -
@@ -1554,6 +1602,9 @@ export default function TasksPage() {
                       <Button variant="ghost" size="sm" onClick={() => handleDownloadBackup(backup.filename)} title="Download">
                         <ArrowDownTrayIcon className="w-4 h-4" />
                       </Button>
+                      <Button variant="ghost" size="sm" onClick={() => openUserRestore(backup)} title="Restore just one user from this backup">
+                        <UserIcon className="w-4 h-4" />
+                      </Button>
                       <Button variant="ghost" size="sm" onClick={() => handleRestoreBackup(backup)} isLoading={restoringBackup === backup.filename} title="Restore this backup">
                         {restoringBackup !== backup.filename && <ArrowUturnLeftIcon className="w-4 h-4" />}
                       </Button>
@@ -2103,6 +2154,60 @@ export default function TasksPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Per-user restore: pick a person, see their diff, rewind just them */}
+      <Modal isOpen={!!userRestore} onClose={() => setUserRestore(null)} title="Restore one user" size="md">
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Rewinds a single person to this backup - identity, provider connection, addon exclusions, notification settings and group memberships. Nobody else changes, watch history is untouched, and their current state goes to the Trash first (undoable for 30 days).
+          </p>
+          <select
+            value={userRestoreUserId}
+            onChange={(e) => previewUserRestore(e.target.value)}
+            className="input-base px-3 py-2 w-full appearance-none pr-10 text-sm"
+          >
+            <option value="">Pick a user...</option>
+            {userRestoreUsers.map((u) => (
+              <option key={u.id} value={u.id}>{u.username}</option>
+            ))}
+          </select>
+          {userRestoreBusy && !userRestorePreview && <p className="text-xs text-subtle">Working out what would change...</p>}
+          {userRestorePreview && (
+            <div className="rounded-lg p-3 text-sm" style={{ background: 'var(--color-surface-hover)' }}>
+              {userRestorePreview.nothingToDo ? (
+                <p className="text-muted">Nothing differs for {userRestorePreview.username} - this backup matches their current state.</p>
+              ) : (
+                <ul className="space-y-1 text-muted">
+                  {userRestorePreview.changedFields.length > 0 && (
+                    <li>Rewinds: <span className="text-default">{userRestorePreview.changedFields.join(', ')}</span></li>
+                  )}
+                  {userRestorePreview.groupsJoin.length > 0 && (
+                    <li>Rejoins: <span className="text-default">{userRestorePreview.groupsJoin.join(', ')}</span></li>
+                  )}
+                  {userRestorePreview.groupsLeave.length > 0 && (
+                    <li>Leaves: <span className="text-default">{userRestorePreview.groupsLeave.join(', ')}</span></li>
+                  )}
+                  {userRestorePreview.missingGroups.length > 0 && (
+                    <li className="text-subtle">Was also in {userRestorePreview.missingGroups.join(', ')} - those groups no longer exist and are not resurrected.</li>
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setUserRestore(null)}>Cancel</Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={!userRestorePreview || userRestorePreview.nothingToDo}
+              isLoading={userRestoreBusy && !!userRestorePreview}
+              onClick={applyUserRestore}
+            >
+              Restore this user
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {/* Maintenance: off-site backups, database upkeep, updates */}

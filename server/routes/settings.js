@@ -279,6 +279,169 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       }
     })
 
+
+    // POST /settings/backups/:filename/restore-user - Time Machine scoped to
+    // ONE person: rewinds a single user's config (identity, provider
+    // connection, exclusions, notification prefs, group memberships) to what
+    // the backup holds, touching nobody else. body: { userId, preview } -
+    // preview:true computes the per-user diff and applies NOTHING, which is
+    // what the confirmation dialog shows. The full restore stays what it
+    // was; this exists because one person's mishap should not cost the
+    // whole household a rewind.
+    //
+    // Deliberately preserved (never rewound): guardStateJson, lastSyncedAt/
+    // syncStatus, traxToken/traxAddonEnabled - live machinery, not config;
+    // rewinding the trax token would silently kill the URL already synced
+    // onto devices. Watch history is untouched - backups never carried it.
+    router.post('/backups/:filename/restore-user', async (req, res) => {
+      try {
+        if (!isValidBackupFilename(req.params.filename)) {
+          return res.status(400).json({ message: 'Invalid backup filename' })
+        }
+        const filePath = path.join(BACKUP_DIR, req.params.filename)
+        if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'Backup not found' })
+        let parsed
+        try { parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) } catch {
+          return res.status(422).json({ message: 'Backup file is not valid JSON' })
+        }
+        const data = parsed.data || parsed
+        const accountId = getAccountId(req) || 'default'
+        const { userId, preview } = req.body || {}
+        if (!userId) return res.status(400).json({ message: 'userId is required' })
+
+        const current = await prisma.user.findFirst({ where: { id: userId, accountId } })
+        if (!current) return res.status(404).json({ message: 'User not found (a fully deleted user is restored from the Trash, not from here)' })
+
+        const norm = (v) => String(v || '').trim().toLowerCase()
+        const bUsers = Array.isArray(data.users) ? data.users : []
+        const bUser = bUsers.find((u) => u.id === userId) || bUsers.find((u) => norm(u.username || u.name) === norm(current.username))
+        if (!bUser) return res.status(404).json({ message: `"${current.username}" is not in this backup` })
+
+        // Backup exports store excludedAddons as NAMES (portable); the live
+        // row stores ids. Translate back through the current addon list -
+        // a name that no longer exists here simply drops out.
+        const curAddons = await prisma.addon.findMany({ where: { accountId }, select: { id: true, name: true } })
+        const addonIdByName = new Map(curAddons.map((a) => [norm(a.name), a.id]))
+        let excludedIds = null
+        try {
+          const names = JSON.parse(bUser.excludedAddons || '[]')
+          if (Array.isArray(names)) {
+            excludedIds = JSON.stringify(names.map((n) => addonIdByName.get(norm(n)) || null).filter(Boolean))
+          }
+        } catch {}
+
+        const plainFields = ['username', 'email', 'isActive', 'expiresAt', 'colorIndex', 'avatarUrl', 'providerType', 'discordWebhookUrl', 'discordUserId', 'notifyOnWatch', 'activityVisibility', 'apiKey', 'protectedAddons']
+        const updates = {}
+        const changedFields = []
+        for (const f of plainFields) {
+          if (!(f in bUser)) continue
+          const bVal = f === 'expiresAt' && bUser[f] ? new Date(bUser[f]) : bUser[f]
+          const differs = f === 'expiresAt'
+            ? String(current[f] || '') !== String(bVal || '')
+            : (current[f] ?? null) !== (bVal ?? null)
+          if (differs) { updates[f] = bVal; changedFields.push(f) }
+        }
+        if (excludedIds !== null && excludedIds !== (current.excludedAddons || '[]')) {
+          updates.excludedAddons = excludedIds
+          changedFields.push('excludedAddons')
+        }
+        // Provider credentials arrive DECRYPTED in the backup (that is what
+        // makes it portable) - re-encrypt before they touch the row, and
+        // report only that the connection changes, never any value.
+        for (const [field, label] of [['stremioAuthKey', 'Stremio connection'], ['nuvioRefreshToken', 'Nuvio connection']]) {
+          if (!(field in bUser)) continue
+          let currentPlain = null
+          try { currentPlain = current[field] ? decrypt(current[field], req) : null } catch {}
+          const bVal = bUser[field] || null
+          if ((currentPlain || null) !== (bVal || null)) {
+            updates[field] = bVal ? encrypt(bVal, req) : null
+            changedFields.push(label)
+          }
+        }
+        if ('nuvioUserId' in bUser && (current.nuvioUserId || null) !== (bUser.nuvioUserId || null)) {
+          updates.nuvioUserId = bUser.nuvioUserId || null
+          if (!changedFields.includes('Nuvio connection')) changedFields.push('Nuvio connection')
+        }
+
+        // Group membership: what the backup says this user belonged to,
+        // applied against the groups that exist NOW (matched by id, then
+        // name). Groups only in the backup are reported, not resurrected -
+        // that is the full restore's job.
+        const bGroups = Array.isArray(data.groups) ? data.groups : []
+        // Export groups are NORMALIZED: membership is a `users` array of
+        // USERNAMES (confirmed against a real backup file - no ids anywhere
+        // in the export). Older/raw shapes with a userIds JSON string are
+        // handled too, matching by either id or username.
+        const bUserName = norm(bUser.username || bUser.name)
+        const memberInBackup = (g) => {
+          let members = g.users
+          if (!Array.isArray(members)) {
+            try { members = JSON.parse(g.userIds || '[]') } catch { members = [] }
+          }
+          if (!Array.isArray(members)) return false
+          return members.some((m) => m === bUser.id || m === userId || norm(m) === bUserName)
+        }
+        const backupMemberKeys = new Set(bGroups.filter(memberInBackup).flatMap((g) => [g.id, norm(g.name)]))
+        const curGroups = await prisma.group.findMany({ where: { accountId } })
+        const groupsJoin = []
+        const groupsLeave = []
+        const membershipWrites = []
+        for (const g of curGroups) {
+          let ids = []
+          try { ids = JSON.parse(g.userIds || '[]') } catch {}
+          const isMember = ids.includes(userId)
+          const shouldBe = backupMemberKeys.has(g.id) || backupMemberKeys.has(norm(g.name))
+          if (shouldBe && !isMember) {
+            groupsJoin.push(g.name)
+            membershipWrites.push(prisma.group.update({ where: { id: g.id }, data: { userIds: JSON.stringify([...ids, userId]) } }))
+          } else if (!shouldBe && isMember) {
+            groupsLeave.push(g.name)
+            membershipWrites.push(prisma.group.update({ where: { id: g.id }, data: { userIds: JSON.stringify(ids.filter((i) => i !== userId)) } }))
+          }
+        }
+        const missingGroups = bGroups
+          .filter(memberInBackup)
+          .filter((g) => !curGroups.some((cg) => cg.id === g.id || norm(cg.name) === norm(g.name)))
+          .map((g) => g.name)
+
+        const summary = {
+          username: current.username,
+          backupUsername: bUser.username || bUser.name || null,
+          changedFields,
+          groupsJoin,
+          groupsLeave,
+          missingGroups,
+          nothingToDo: changedFields.length === 0 && groupsJoin.length === 0 && groupsLeave.length === 0,
+        }
+        if (preview === true) return res.json({ preview: true, ...summary })
+        if (summary.nothingToDo) return res.json({ applied: false, ...summary })
+
+        // Undo net: the user's CURRENT state goes to the Trash before the
+        // rewind - kind 'userstate' updates the row back in place.
+        try {
+          const groupsNow = curGroups.filter((g) => { try { return JSON.parse(g.userIds || '[]').includes(userId) } catch { return false } })
+          await prisma.trashItem.create({
+            data: {
+              accountId,
+              kind: 'userstate',
+              label: `${current.username} - state before per-user restore`,
+              payload: JSON.stringify({ user: current, groupIds: groupsNow.map((g) => g.id) }),
+            },
+          })
+        } catch (e) {
+          return res.status(500).json({ message: `Could not archive the current state first - restore aborted (${e?.message})` })
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await prisma.user.update({ where: { id: userId }, data: updates })
+        }
+        for (const write of membershipWrites) await write
+        return res.json({ applied: true, ...summary })
+      } catch (e) {
+        return res.status(500).json({ message: 'Failed to restore user', error: e?.message })
+      }
+    })
+
     // POST /settings/migration/offer - mint a one-code migration offer for
     // THIS instance's data. See routes/migration.js for the model.
     router.post('/migration/offer', async (req, res) => {
@@ -717,6 +880,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // the corresponding UI.
           enableWatchlist: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchlist === 'boolean') ? syncCfg.enableWatchlist : true,
           enableWatchedIndicators: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchedIndicators === 'boolean') ? syncCfg.enableWatchedIndicators : true,
+          enableWatchTogether: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableWatchTogether === 'boolean') ? syncCfg.enableWatchTogether : true,
           enableRecommendations: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.enableRecommendations === 'boolean') ? syncCfg.enableRecommendations : true,
           // Opt-in, not opt-out (unlike the other SlickTrax toggles above) -
           // autoplaying a trailer the moment a title's modal opens is
@@ -753,6 +917,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           keyHealth: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
           autoUpdateEnabled: (syncCfg && typeof syncCfg === 'object' && syncCfg.autoUpdateEnabled === true),
           autoUpdateHour: (syncCfg && typeof syncCfg === 'object' && Number.isInteger(syncCfg.autoUpdateHour)) ? syncCfg.autoUpdateHour : 4,
+          keyPoolQuotaWeighting: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyPoolQuotaWeighting === true),
+          keyPoolAutoRetire: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyPoolAutoRetire === true),
           tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           mdblistApiKeyPool: Array.isArray(syncCfg?.mdblistApiKeyPool) ? syncCfg.mdblistApiKeyPool.filter((k) => typeof k === 'string') : [],
@@ -795,6 +961,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           vaultCurrency: (typeof syncCfg.vaultCurrency === 'string' && syncCfg.vaultCurrency.trim()) ? syncCfg.vaultCurrency.trim() : 'USD',
           enableWatchlist: typeof syncCfg.enableWatchlist === 'boolean' ? syncCfg.enableWatchlist : true,
           enableWatchedIndicators: typeof syncCfg.enableWatchedIndicators === 'boolean' ? syncCfg.enableWatchedIndicators : true,
+          enableWatchTogether: typeof syncCfg.enableWatchTogether === 'boolean' ? syncCfg.enableWatchTogether : true,
           enableRecommendations: typeof syncCfg.enableRecommendations === 'boolean' ? syncCfg.enableRecommendations : true,
           enableAutoplayTrailer: typeof syncCfg.enableAutoplayTrailer === 'boolean' ? syncCfg.enableAutoplayTrailer : false,
           autoplayTrailerStartMuted: typeof syncCfg.autoplayTrailerStartMuted === 'boolean' ? syncCfg.autoplayTrailerStartMuted : true,
@@ -813,6 +980,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           keyHealth: (syncCfg.keyHealth && typeof syncCfg.keyHealth === 'object') ? syncCfg.keyHealth : {},
           autoUpdateEnabled: syncCfg.autoUpdateEnabled === true,
           autoUpdateHour: Number.isInteger(syncCfg.autoUpdateHour) ? syncCfg.autoUpdateHour : 4,
+          keyPoolQuotaWeighting: syncCfg.keyPoolQuotaWeighting === true,
+          keyPoolAutoRetire: syncCfg.keyPoolAutoRetire === true,
           tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           mdblistApiKeyPool: Array.isArray(syncCfg?.mdblistApiKeyPool) ? syncCfg.mdblistApiKeyPool.filter((k) => typeof k === 'string') : [],
@@ -823,7 +992,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
         }
         return res.json(resp)
       }
-      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnRecoveryKitStale: false, lastRecoveryKitExportAt: null, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableWatchProviders: true, enableAutoThemedCatalogs: false })
+      return res.json({ enabled: false, frequency: 0, safe: true, mode: 'normal', useCustomFields: false, notifyOnActivity: false, notifyOnSync: false, notifyOnInvite: false, notifyOnVault: false, notifyOnAddonHealth: false, notifyOnBackup: false, notifyOnProxyHealth: false, notifyOnUpdateAvailable: false, notifyOnRecoveryKitStale: false, lastRecoveryKitExportAt: null, notifyOnMosaic: false, notifyOnAutomation: true, notifyDigestEnabled: false, notifyDigestFrequency: 'daily', accountTimezone: DEFAULT_TIMEZONE, accountTimezoneIsDefault: true, vaultCurrency: 'USD', enableWatchlist: true, enableWatchedIndicators: true, enableWatchTogether: true, enableRecommendations: true, enableAutoplayTrailer: false, autoplayTrailerStartMuted: true, enablePosterRatings: false, enableReactions: true, enableWatchProviders: true, enableAutoThemedCatalogs: false })
     } catch (e) {
       return res.status(500).json({ message: 'Failed to read account sync settings' })
     }
@@ -831,7 +1000,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableWatchTogether, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -901,6 +1070,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           vaultCurrency: typeof vaultCurrency === 'string' && vaultCurrency.trim() ? vaultCurrency.trim().toUpperCase() : (baseCfg.vaultCurrency || 'USD'),
           enableWatchlist: enableWatchlist !== undefined ? !!enableWatchlist : (typeof baseCfg.enableWatchlist === 'boolean' ? baseCfg.enableWatchlist : true),
           enableWatchedIndicators: enableWatchedIndicators !== undefined ? !!enableWatchedIndicators : (typeof baseCfg.enableWatchedIndicators === 'boolean' ? baseCfg.enableWatchedIndicators : true),
+          enableWatchTogether: enableWatchTogether !== undefined ? !!enableWatchTogether : (typeof baseCfg.enableWatchTogether === 'boolean' ? baseCfg.enableWatchTogether : true),
           enableRecommendations: enableRecommendations !== undefined ? !!enableRecommendations : (typeof baseCfg.enableRecommendations === 'boolean' ? baseCfg.enableRecommendations : true),
           enableAutoplayTrailer: enableAutoplayTrailer !== undefined ? !!enableAutoplayTrailer : (typeof baseCfg.enableAutoplayTrailer === 'boolean' ? baseCfg.enableAutoplayTrailer : false),
           autoplayTrailerStartMuted: autoplayTrailerStartMuted !== undefined ? !!autoplayTrailerStartMuted : (typeof baseCfg.autoplayTrailerStartMuted === 'boolean' ? baseCfg.autoplayTrailerStartMuted : true),
@@ -957,6 +1127,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
             : (Array.isArray(baseCfg.rpdbApiKeyPool) ? baseCfg.rpdbApiKeyPool : []),
           autoUpdateEnabled: req.body?.autoUpdateEnabled !== undefined ? req.body.autoUpdateEnabled === true : (baseCfg.autoUpdateEnabled === true),
           autoUpdateHour: Number.isInteger(req.body?.autoUpdateHour) ? Math.min(23, Math.max(0, req.body.autoUpdateHour)) : (Number.isInteger(baseCfg.autoUpdateHour) ? baseCfg.autoUpdateHour : 4),
+          keyPoolQuotaWeighting: req.body?.keyPoolQuotaWeighting !== undefined ? req.body.keyPoolQuotaWeighting === true : (baseCfg.keyPoolQuotaWeighting === true),
+          keyPoolAutoRetire: req.body?.keyPoolAutoRetire !== undefined ? req.body.keyPoolAutoRetire === true : (baseCfg.keyPoolAutoRetire === true),
           keyHealth: (() => {
             const prevHealth = (baseCfg.keyHealth && typeof baseCfg.keyHealth === 'object') ? baseCfg.keyHealth : {}
             const next = { ...prevHealth }
@@ -1013,6 +1185,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (typeof vaultCurrency === 'string' && vaultCurrency.trim()) partial.vaultCurrency = vaultCurrency.trim().toUpperCase()
       if (enableWatchlist !== undefined) partial.enableWatchlist = !!enableWatchlist
       if (enableWatchedIndicators !== undefined) partial.enableWatchedIndicators = !!enableWatchedIndicators
+      if (enableWatchTogether !== undefined) partial.enableWatchTogether = !!enableWatchTogether
       if (enableRecommendations !== undefined) partial.enableRecommendations = !!enableRecommendations
       if (enableAutoplayTrailer !== undefined) partial.enableAutoplayTrailer = !!enableAutoplayTrailer
       if (autoplayTrailerStartMuted !== undefined) partial.autoplayTrailerStartMuted = !!autoplayTrailerStartMuted

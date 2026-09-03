@@ -2,12 +2,13 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
-import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon, HandThumbUpIcon, HandThumbDownIcon } from '@heroicons/react/24/outline';
+import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon, HandThumbUpIcon, HandThumbDownIcon, CheckCircleIcon, CheckIcon as CheckIconMini } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { AddToListButton } from './AddToListButton';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
 import { api, MediaDetails, DiscoverItem } from '@/lib/api';
+import { toast } from './Toast';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { posterUrl } from '@/lib/posterUrl';
@@ -174,7 +175,7 @@ export function MediaDetailModal({
   const effectiveFallbackRottenTomatoes = overrideItem ? null : fallbackRottenTomatoes;
   const effectiveFallbackMetacritic = overrideItem ? null : fallbackMetacritic;
 
-  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions, enableWatchProviders } = usePersonalFeatures();
+  const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions, enableWatchProviders, enableWatchedIndicators, enableWatchTogether } = usePersonalFeatures();
   const isTV = useIsTV();
 
   // usePersonalFeatures resolves asynchronously (starts from a default of
@@ -283,6 +284,113 @@ export function MediaDetailModal({
   // client/lib/api.ts's setRating/getRatings if that changes.
   const [reaction, setReactionState] = useState<'happy' | 'sad' | null>(null);
   const [reactionBusy, setReactionBusy] = useState(false);
+
+  // Watched state + the unwatch option. The mechanism (ManualWatchOverride,
+  // winning over polled history in either direction) predates this UI - the
+  // poster context menu on Discover could already toggle it, but the detail
+  // modal, the one place you're actually LOOKING at a title, had no way to
+  // say "I didn't really watch this". Account-level, same as the indicators.
+  const [selfWatched, setSelfWatched] = useState<boolean | null>(null);
+  const [selfWatchedBusy, setSelfWatchedBusy] = useState(false);
+  // Per-part watched map for the collection row's "watched X of N".
+  const [partsWatched, setPartsWatched] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!isOpen || !effectiveId) return;
+    let cancelled = false;
+    setSelfWatched(null);
+    api.getWatchedStatus([effectiveId])
+      .then((m) => { if (!cancelled) setSelfWatched(!!m[effectiveId]); })
+      .catch(() => { if (!cancelled) setSelfWatched(null); });
+    return () => { cancelled = true; };
+  }, [isOpen, effectiveId]);
+
+  useEffect(() => {
+    const parts = details?.collection?.parts;
+    if (!isOpen || !parts || parts.length === 0) { setPartsWatched({}); return; }
+    let cancelled = false;
+    api.getWatchedStatus(parts.map((pt) => pt.id))
+      .then((m) => { if (!cancelled) setPartsWatched(m); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen, details?.collection]);
+
+  const toggleSelfWatched = async () => {
+    if (selfWatchedBusy || selfWatched === null) return;
+    setSelfWatchedBusy(true);
+    const next = !selfWatched;
+    setSelfWatched(next); // optimistic, same pattern as watchlist above
+    try {
+      await api.markWatched(effectiveId, next);
+    } catch {
+      setSelfWatched(!next);
+    } finally {
+      setSelfWatchedBusy(false);
+    }
+  };
+
+  // Watching Together (series only) - watch-ahead protection's management
+  // surface. A pact = this show + the members watching it together; once
+  // saved, anyone starting an episode another member hasn't seen triggers
+  // the household alert (server/utils/watchTogether.js). Data loads lazily
+  // on first expand - most modal opens never touch this.
+  const [wtOpen, setWtOpen] = useState(false);
+  const [wtLoaded, setWtLoaded] = useState(false);
+  const [wtUsers, setWtUsers] = useState<Array<{ id: string; username: string }>>([]);
+  const [wtSelected, setWtSelected] = useState<Set<string>>(new Set());
+  const [wtHasPact, setWtHasPact] = useState(false);
+  const [wtFrontier, setWtFrontier] = useState<{ season: number; episode: number } | null>(null);
+  const [wtWaitingOn, setWtWaitingOn] = useState<string[]>([]);
+  const [wtBusy, setWtBusy] = useState(false);
+
+  useEffect(() => {
+    // Reset per title so a "More Like This" drill-down never shows the
+    // previous show's pact.
+    setWtOpen(false); setWtLoaded(false); setWtSelected(new Set());
+    setWtHasPact(false); setWtFrontier(null); setWtWaitingOn([]);
+  }, [effectiveId]);
+
+  const loadWatchTogether = async () => {
+    if (wtLoaded) return;
+    try {
+      const [users, pacts] = await Promise.all([api.getUsers(), api.getWatchTogether()]);
+      setWtUsers(users.map((u) => ({ id: u.id, username: u.username || 'Unnamed' })));
+      const pact = pacts.find((pt) => pt.showId === effectiveId);
+      if (pact) {
+        setWtHasPact(true);
+        setWtSelected(new Set(pact.members.map((m) => m.userId)));
+        setWtFrontier(pact.frontier);
+        setWtWaitingOn(pact.waitingOn);
+      }
+      setWtLoaded(true);
+    } catch { setWtLoaded(true); }
+  };
+
+  const saveWatchTogether = async () => {
+    setWtBusy(true);
+    try {
+      await api.saveWatchTogether(effectiveId, details?.title || effectiveFallbackTitle || effectiveId, Array.from(wtSelected));
+      setWtHasPact(true);
+      toast.success('Watching together - anyone getting ahead now sets off the alarm');
+      // Frontier may exist immediately (members may have history) - refresh.
+      const pacts = await api.getWatchTogether().catch(() => []);
+      const pact = pacts.find((pt) => pt.showId === effectiveId);
+      if (pact) { setWtFrontier(pact.frontier); setWtWaitingOn(pact.waitingOn); }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save');
+    } finally { setWtBusy(false); }
+  };
+
+  const removeWatchTogether = async () => {
+    setWtBusy(true);
+    try {
+      await api.deleteWatchTogether(effectiveId);
+      setWtHasPact(false); setWtSelected(new Set()); setWtFrontier(null); setWtWaitingOn([]);
+      toast.success('No longer watching together - everyone is free to run ahead');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not remove');
+    } finally { setWtBusy(false); }
+  };
 
   useEffect(() => {
     if (!isOpen || !effectiveId || !enableReactions) return;
@@ -938,6 +1046,22 @@ export function MediaDetailModal({
                     {inWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
                   </button>
                 );
+                const watchedBtn = enableWatchedIndicators && selfWatched !== null && (
+                  <button
+                    type="button"
+                    onClick={toggleSelfWatched}
+                    disabled={selfWatchedBusy}
+                    aria-label={selfWatched ? 'Mark as unwatched' : 'Mark as watched'}
+                    title={selfWatched ? 'Marks this title unwatched for the household - the underlying watch history is kept, only the indicator changes' : 'Marks this title watched for the household, e.g. seen on another service'}
+                    className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${selfWatchedBusy ? 'opacity-60 cursor-wait' : ''}`}
+                    style={selfWatched
+                      ? { color: 'var(--color-success)', background: 'color-mix(in srgb, var(--color-success) 15%, transparent)' }
+                      : { color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
+                  >
+                    <CheckCircleIcon className="w-4 h-4" />
+                    {selfWatched ? 'Watched' : 'Unwatched'}
+                  </button>
+                );
                 const stremioBtn = (
                   <a
                     href={buildStremioAppUrl(details.imdb_id, effectiveType)}
@@ -984,6 +1108,9 @@ export function MediaDetailModal({
                       {enableWatchlist && (
                         <TVFocusable onEnterPress={toggleWatchlist}>{watchlistBtn}</TVFocusable>
                       )}
+                      {enableWatchedIndicators && selfWatched !== null && (
+                        <TVFocusable onEnterPress={toggleSelfWatched}>{watchedBtn}</TVFocusable>
+                      )}
                       <TVFocusable onEnterPress={() => { window.location.href = buildStremioAppUrl(details.imdb_id!, effectiveType); }}>
                         {stremioBtn}
                       </TVFocusable>
@@ -1000,6 +1127,7 @@ export function MediaDetailModal({
                   // the original single-row flex-wrap from sm: up.
                   <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                     {watchlistBtn}
+                    {watchedBtn}
                     <div className="flex justify-center sm:contents">
                       <AddToListButton item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
                     </div>
@@ -1026,6 +1154,89 @@ export function MediaDetailModal({
                   <span className="text-muted">Director: </span>
                   <span className="text-default">{details.director.join(', ')}</span>
                 </p>
+              )}
+
+              {effectiveType === 'series' && enableWatchTogether && (
+                <div className="rounded-xl border border-default bg-surface-hover/40">
+                  <button
+                    type="button"
+                    onClick={() => { setWtOpen((v) => !v); if (!wtOpen) loadWatchTogether(); }}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium text-default">Watching together</span>
+                      {wtHasPact && (
+                        <span className="text-xs text-muted truncate">
+                          {wtSelected.size} people
+                          {wtFrontier
+                            ? ` · everyone is at S${wtFrontier.season}E${wtFrontier.episode}${wtWaitingOn.length ? ` (waiting on ${wtWaitingOn.join(', ')})` : ''}`
+                            : ' · not everyone has started yet'}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted shrink-0">{wtOpen ? 'Hide' : wtHasPact ? 'Edit' : 'Set up'}</span>
+                  </button>
+                  {wtOpen && (
+                    <div className="px-3 pb-3">
+                      <p className="text-xs text-muted mb-2">
+                        Pick who is watching this show together. When anyone starts an episode someone else here has not seen, the household gets told - by name.
+                      </p>
+                      {!wtLoaded ? (
+                        <p className="text-xs text-subtle">Loading...</p>
+                      ) : wtUsers.length < 2 ? (
+                        <p className="text-xs text-subtle">Watching together takes at least two users on this instance.</p>
+                      ) : (
+                        <>
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {wtUsers.map((u) => {
+                              const on = wtSelected.has(u.id);
+                              return (
+                                <button
+                                  key={u.id}
+                                  type="button"
+                                  onClick={() => setWtSelected((prev) => { const n = new Set(prev); if (n.has(u.id)) n.delete(u.id); else n.add(u.id); return n; })}
+                                  className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors"
+                                  style={{
+                                    background: on ? 'var(--color-primary)' : 'var(--color-surface)',
+                                    color: on ? 'var(--color-bg)' : 'var(--color-text-muted)',
+                                    border: '1px solid',
+                                    borderColor: on ? 'var(--color-primary)' : 'var(--color-surface-border)',
+                                  }}
+                                >
+                                  {u.username}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={wtBusy || wtSelected.size < 2}
+                              onClick={saveWatchTogether}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity disabled:opacity-40"
+                              style={{ background: 'var(--color-primary)', color: 'var(--color-bg)' }}
+                            >
+                              {wtHasPact ? 'Update' : 'Start watching together'}
+                            </button>
+                            {wtHasPact && (
+                              <button
+                                type="button"
+                                disabled={wtBusy}
+                                onClick={removeWatchTogether}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted hover:text-default transition-colors"
+                              >
+                                Stop
+                              </button>
+                            )}
+                            {wtSelected.size === 1 && (
+                              <span className="text-xs text-subtle">Pick at least one more person</span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
 
               {details.cast && details.cast.length > 0 && (
@@ -1178,7 +1389,21 @@ export function MediaDetailModal({
                       <span className="flex items-center justify-between w-full py-1 text-base text-muted hover:text-default transition-colors">
                         <span className="flex items-center gap-2">
                           Part of the {details.collection.name}
-                          <span className="text-xs text-subtle">({details.collection.parts.length})</span>
+                          {(() => {
+                            // Membership = this title + the other parts; the
+                            // completion count is the collection's entire
+                            // reason to exist as a stat.
+                            const others = details.collection.parts;
+                            const watchedOthers = others.filter((pt) => partsWatched[pt.id]).length;
+                            const watchedTotal = watchedOthers + (selfWatched ? 1 : 0);
+                            const total = others.length + 1;
+                            const done = watchedTotal >= total;
+                            return (
+                              <span className="text-xs" style={{ color: done ? 'var(--color-success)' : undefined }}>
+                                {done ? 'saga complete' : `watched ${watchedTotal} of ${total}`}
+                              </span>
+                            );
+                          })()}
                         </span>
                         <ChevronDownIcon className={`w-4 h-4 transition-transform ${collectionExpanded ? 'rotate-180' : ''}`} />
                       </span>
@@ -1217,7 +1442,12 @@ export function MediaDetailModal({
                             onClick={goToPart}
                             className="shrink-0 w-28 text-left group tap-card"
                           >
-                            <div className="w-28 h-40 rounded-lg overflow-hidden bg-surface-hover">
+                            <div className="w-28 h-40 rounded-lg overflow-hidden bg-surface-hover relative">
+                              {partsWatched[part.id] && (
+                                <span className="absolute top-1.5 right-1.5 z-10 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: 'var(--color-success)' }}>
+                                  <CheckIconMini className="w-3.5 h-3.5 text-white" />
+                                </span>
+                              )}
                               {part.poster ? (
                                 <img
                                   src={part.poster}

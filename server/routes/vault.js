@@ -328,6 +328,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       const accountId = getAccountId(req) || 'default';
       const existing = await prisma.vaultEntry.findFirst({ where: { id: req.params.id, accountId } });
       if (!existing) return res.status(404).json({ error: 'Vault entry not found' });
+      // Into the Trash first (30-day undo, ciphertext archived as-is).
+      await require('../utils/trash').archiveVaultDelete(prisma, accountId, existing.id);
       await prisma.vaultEntry.delete({ where: { id: existing.id } });
       res.json({ success: true });
     } catch (error) {

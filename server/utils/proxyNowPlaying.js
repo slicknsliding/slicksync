@@ -91,10 +91,17 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   // tiebreaker for ambiguous same-email attributions, learned over time
   // instead of a fixed AIOSTREAMS_FALLBACK_USER_IDS order.
   let ipAffinityByIp = new Map()
+  // Device claims: the admin's explicit "this IP is this person" - the
+  // authoritative tier above every learned/guessed resolution below.
+  let claimsByIp = new Map()
   try {
-    const affinityRows = await prisma.proxyUserIpAffinity.findMany({ where: { accountId } })
+    const [affinityRows, claimRows] = await Promise.all([
+      prisma.proxyUserIpAffinity.findMany({ where: { accountId } }),
+      prisma.proxyDeviceClaim.findMany({ where: { accountId } }),
+    ])
     ipAffinityByIp = new Map(affinityRows.map((r) => [r.clientIp, r.userId]))
-  } catch {} // table may not exist yet on a very-first boot before db push runs
+    claimsByIp = new Map(claimRows.map((r) => [r.clientIp, r.userId]))
+  } catch {} // tables may not exist yet on a very-first boot before db push runs
 
   const userByUsername = new Map(
     users.filter((u) => u.username).map((u) => [u.username.toLowerCase(), u])
@@ -176,6 +183,18 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   // permanent wrong answer.
   function disambiguateMatch(candidates, proxyDisplayName, clientIp, confidentIfUnique) {
     if (candidates.length <= 1) return { user: candidates[0] || null, confident: confidentIfUnique }
+
+    // Device claim first: a human said outright whose device this is, which
+    // outranks every inference below - including the title match, whose
+    // whole job is guessing what a human could simply have told us.
+    // Confident, so the affinity row aligns with the claim too.
+    if (clientIp) {
+      const claimedUserId = claimsByIp.get(clientIp)
+      if (claimedUserId) {
+        const claimed = candidates.find((u) => u.id === claimedUserId)
+        if (claimed) return { user: claimed, confident: true }
+      }
+    }
 
     const proxyTitle = normalizeTitle(proxyDisplayName)
     if (proxyTitle) {

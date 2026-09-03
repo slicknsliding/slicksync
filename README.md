@@ -33,7 +33,7 @@ SlickSync manages a private streaming group's accounts from one place: groups, a
 
 ### New here? Start with the Guides
 
-Once SlickSync is running, **`/guides`** is the fastest way to actually learn it — 103 topic pages covering every page and setting, organized by category and searchable, each with step-by-step instructions and the gotchas that actually come up. The same content answers free-text questions straight from the **command palette** (`Ctrl+K` / `Cmd+K`) — no AI key required.
+Once SlickSync is running, **`/guides`** is the fastest way to actually learn it — 107 topic pages covering every page and setting, organized by category and searchable, each with step-by-step instructions and the gotchas that actually come up. The same content answers free-text questions straight from the **command palette** (`Ctrl+K` / `Cmd+K`) — no AI key required.
 
 ## Quick start
 
@@ -109,6 +109,9 @@ Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot
 - Correct-or-nothing posters: provider poster + Cinemeta-by-ID backfill for library items; strict exact-title matching for proxy-detected items, never a guessed poster; optional **RPDB** integration for rating-embedded art.
 - Explicit per-account timezone for correct day-bucketing (Watch Time Today, streaks) — auto-detected from your browser once, then stored so background jobs always know what "today" means.
 - Cross-account library-sync dedup so a shared-login watch never double-counts.
+- **The Graveyard** — bury a title to keep it out of Continue Watching, dig it back up any time, or **wipe** it: the watch history is erased and a tombstone keeps the provider's own library from resurrecting it later.
+- **Watching Together** — mark a show as watched together and get an alert the moment someone starts an episode past the shared frontier. Per-account opt-out for households that don't want the referee.
+- **Device claims** — on a shared provider login, claim a streaming device as yours and its activity is attributed to the right person from then on.
 
 ### 🎞️ Discover & Media Details
 - Click any poster for cast, rating, genres, director, runtime, and awards — plus an inline YouTube trailer.
@@ -120,6 +123,8 @@ Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot
 - **Where to watch** — TMDb watch-provider logos and an **MDBList score** on the detail popup.
 - Deep links use each provider's real format — no guessing, no account-specific data in the link.
 - Continue Watching row on the Dashboard — drag to scroll, right-click/long-press to remove.
+- **Franchise completion** — a saga you're partway through shows "4 of 6 watched" on its detail popup, and a **Finish the Saga** row surfaces the released entries you're missing (never unreleased ones).
+- **Mark unwatched** — the detail popup's watched state is a toggle, so a mis-marked title is one click to fix in either direction.
 - Right-click (desktop) or long-press (mobile) any poster for quick actions — Add to Watchlist, Add to Catalogs, Mark Watched.
 
 ### 📚 Catalogs
@@ -144,7 +149,8 @@ Organize a Nuvio account's own home-screen collections — the folders and catal
 - **Genres template** builds one folder per genre from your account's own installed addons, skipping catalogs that only claim to support genre filtering.
 - **Pin** any collection to the top of the Nuvio home screen.
 - **Layout preview** — see exactly how a collection will lay out before saving.
-- **Copy a whole collection between profiles**, export/import as JSON, or hand the whole layout over as a **share code**.
+- **Copy a whole collection between profiles**, export/import as JSON, or hand the layout over as a **share code** — with a picker to share exactly the collections you choose, not the whole set.
+- **Linked catalogs** — add a SlickSync catalog as a folder source, and the folder on the device follows the catalog from then on: edit the catalog in SlickSync, the Nuvio home screen updates on its own.
 
 ### ✨ SlickTrax
 A built-in Trakt alternative — no external service, no tokens.
@@ -157,7 +163,9 @@ A built-in Trakt alternative — no external service, no tokens.
 - Optional **AI "why this matches"** explanation using your own OpenAI-compatible key — never required.
 - **Not Interested** feedback downweights similar titles, not just the one dismissed.
 - **Trakt-compatible scrobble-in API** (`/api/scrobble`) — point a real Trakt-scrobbling client (Infuse, Kodi's Trakt plugin) at it with a per-user API key and it writes straight into SlickTrax history.
-- **Watch-history import/export** — import a Letterboxd/IMDb CSV or a Trakt export (Trakt's own free Settings → Data download, no API key or VIP needed), or export as a Letterboxd-compatible CSV.
+- **Watch-history import/export** — import a Letterboxd/IMDb CSV, a Trakt export (Trakt's own free Settings → Data download, no API key or VIP needed), or a Netflix / TV Time / Plex / Tautulli / Movary export via built-in presets; export as a Letterboxd-compatible CSV.
+- **The SlickTrax addon** — install SlickTrax on the streaming device itself as a real Stremio-protocol addon: a single mixed **Continue Watching** row (movies and shows together, ordered by last watched), Watchlist, and For You rows, per user, no external service. Grab it from **Addons → Browse**, right at the top.
+- On Nuvio, the Continue Watching row **places itself** — it appears alongside the rest of your home rows under its exact name, no manual reordering, and if you move it later your arrangement wins.
 
 ### 🔐 Vault
 - AES-GCM encrypted at rest.
@@ -169,6 +177,9 @@ A built-in Trakt alternative — no external service, no tokens.
 - **Live Real-Debrid/TorBox usage** on the entry card — active downloads and premium days remaining.
 - **Auto-remove** (opt-in, per entry) clears finished/idle torrents past a day count you choose.
 - **Renewal calendar & spend forecast** — a 90-day forward projection of every cost-tracked entry's billing cycle.
+- **Backup keys with automatic failover** — give any debrid, usenet, or metadata key a backup; when the primary fails a health check the backup takes over, every addon carrying the key is updated in place, and when the original recovers the pair **swaps back on its own**.
+- **The Key Pool** — stack up to ten keys per service and requests rotate across them, skipping keys that go bad. Opt-in extras: **quota-aware weighting** (send traffic to the keys with the most room left) and **auto-retire** for keys that stay dead.
+- **OMDb usage meter** — a live count of today's requests against the free 1,000/day limit, tracked by your own server since OMDb's API won't tell you.
 
 ### 🔔 Notifications
 **Push + the in-app bell are primary; Discord is entirely optional** — every type works with zero Discord setup, and a webhook just adds Discord delivery on top.
@@ -202,7 +213,11 @@ Drag-and-drop reordering, drag-to-protect or drag-to-label with color-coded cust
 - **Addon Templates** — save a user's or group's addon set and deploy it onto anyone later, or hand it over as a share code.
 
 ### ⚙️ Automation
-Rule-based actions that fire on real events, no external workflow tool needed — trigger on a new user, an addon going offline or coming back, or a schedule, and act by sending a notification or calling an outgoing **webhook**. Runs on the same engine that already drives notifications and health checks.
+Rule-based actions that fire on real events, no external workflow tool needed — trigger on a new user, an addon going offline or coming back, a watch starting or finishing, a key failover, or a schedule, and act by sending a notification, calling an outgoing **webhook**, running a backup, checking your keys, or promoting a backup key. Runs on the same engine that already drives notifications and health checks.
+
+- **Recipes** are the front door — common rules pre-built, one click to enable.
+- Every rule reads back as a **plain-English sentence**, so what it does is never a guess.
+- **Draft it** — describe the rule you want in plain English and the built-in drafter pre-fills it for review (uses your own AI key, entirely optional).
 
 ### ⌨️ Command Palette
 **Ctrl+K** / **Cmd+K** from anywhere — jump straight to any page, user, addon, or catalog by typing a few letters, or ask a free-text question and get an answer from the built-in guides. No AI key required.
@@ -234,13 +249,17 @@ One page answering "is everything actually working right now" — sync drift, ad
 - **Addon uptime %** over the last 7/30 days, reconstructed from health-check history.
 - Optional **AI-generated incident summary** on an addon-down alert — off unless you've set a key.
 - **Version card** — what's actually running, and whether a newer stable release exists, without checking GitHub.
+- **Account Guard** — watches every connected account for changes SlickSync didn't make (another logged-in app quietly rewriting addons is the classic case) and raises a banner plus a push alert with one-click **Re-assert** (put it back) or **Accept** (keep the new state).
 
 ### 💾 Backup, Maintenance & Updates
 Scheduled + on-demand config backups, validated for real restorability rather than just valid JSON, plus a separate **Disaster Recovery Kit** — the same export plus every Vault secret, re-encrypted under a passphrase you choose, fully portable to a brand-new instance.
 
 - **Off-site backups** — send every scheduled backup to **S3** (AWS, Backblaze B2, Wasabi, Cloudflare R2, MinIO, anything S3-compatible) or **WebDAV** (Nextcloud, rsync.net). A Test button confirms the destination works before you rely on it, and optional local retention cleans up old copies. A failed upload never fails the backup — the local copy is already written, and a notification tells you rather than it failing quietly. These carry configuration only, never Vault credentials.
 - **Database upkeep**, running quietly in the background: a read-only **integrity check** (on by default, since it can only ever read), plus opt-in compaction and old-log trimming. Compaction refuses to run if the disk lacks the space to do it safely, and nothing here touches watch history, users, catalogs, or the Vault.
-- **Applying updates** from inside the app where the setup allows it — it backs up, downloads, then restarts, in that order, so a failed download leaves the running version untouched. Otherwise the page shows the exact command to run. Updating in place requires the Docker socket, which grants control of the host's Docker, so it is never enabled for you.
+- **Applying updates** from inside the app where the setup allows it — it backs up, downloads, then restarts, in that order, so a failed download leaves the running version untouched, and a failed start **rolls back automatically**. Otherwise the page shows the exact command to run. Updating in place requires the Docker socket, which grants control of the host's Docker, so it is never enabled for you.
+- **Time Machine** — restore configuration to any backed-up point in time with a diff preview first, or scope the restore to a **single user** and put one person back without touching anyone else.
+- **Trash with 30-day undo** for every destructive action — deleted users, addons, catalogs, Vault entries, group memberships, imports, and Graveyard wipes all land in a Recent Changes panel and restore in one click.
+- **One-code instance migration** — pack a whole instance into a single code and stand it up on a brand-new box.
 
 ### 🛡️ Security
 Rate limiting actually enabled (including a separate per-account limit on public-mode API traffic), strict limits on credential/OAuth endpoints, correct `trust proxy` hop count, no hardcoded default key, and a self-generating anti-lockout encryption key with decrypt-only fallback on rotation. Every external API key (RPDB, MDBList, TMDb, OMDb) resolves an account's own Settings key first — a shared instance-wide key in `.env` is only ever a fallback.

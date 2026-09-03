@@ -66,7 +66,33 @@ function pickFromRing(cfg, settingsField, provider, accountId) {
   if (ring.length === 0) return ''
   if (ring.length === 1) return ring[0]
   const healthy = ring.filter((k) => isKeyHealthy(cfg, provider, k))
-  const candidates = healthy.length > 0 ? healthy : [ring[0]]
+  let candidates = healthy.length > 0 ? healthy : [ring[0]]
+
+  // Quota-aware weighting (opt-in, keyPoolQuotaWeighting): instead of blind
+  // alternation, traffic goes to the healthy key(s) with the most remaining
+  // allowance - a key at 80% used rests while one at 20% carries the load.
+  // Selection narrows to a BAND (least-used +5 points) rather than a single
+  // winner, and round-robins inside it, so near-equal keys still alternate
+  // instead of ping-ponging one key to exhaustion. Only providers whose
+  // check reports usage participate (MDBList today); for the rest this is
+  // a no-op and plain round-robin continues - unknown headroom is not a
+  // license to guess.
+  if (cfg?.keyPoolQuotaWeighting === true && candidates.length > 1) {
+    const perKey = cfg?.keyHealth?.[provider]?.pool
+    if (Array.isArray(perKey)) {
+      const usedOf = (k) => {
+        const rec = perKey.find((r) => r && r.tag === keyTag(k))
+        return rec && Number.isFinite(rec.percentUsed) ? rec.percentUsed : null
+      }
+      const known = candidates.filter((k) => usedOf(k) !== null)
+      if (known.length > 0) {
+        const minUsed = Math.min(...known.map(usedOf))
+        const band = known.filter((k) => usedOf(k) <= minUsed + 5)
+        if (band.length > 0) candidates = band
+      }
+    }
+  }
+
   const posKey = `${accountId}:${provider}`
   const pos = ringPositions.get(posKey) || 0
   ringPositions.set(posKey, (pos + 1) % candidates.length)
