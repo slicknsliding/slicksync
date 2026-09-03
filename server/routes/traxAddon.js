@@ -42,10 +42,14 @@ function buildTraxManifest(user, lists) {
     // (each meta carries its own real type, which is what Stremio uses for
     // opening), so declaring both types just rendered two identical-looking
     // "Continue Watching" rows. The declared type is only the protocol's
-    // required anchor - clients append it to the row header, and "Continue
-    // Watching Series" for a mixed row read wrong (user feedback), so it is
-    // declared under 'all' to keep the header clean.
-    { type: 'all', id: 'slicktrax-continue', name: 'Continue Watching' },
+    // required anchor, but clients render the header as name + type - so
+    // 'Continue Watching' under 'series' read "Continue Watching Series",
+    // and under 'all' read "Continue Watching All". Both halves of that
+    // concatenation are OURS (the type string is arbitrary and our route
+    // accepts anything), so the name is 'Continue' and the type 'Watching'
+    // and the client assembles exactly the title wanted. The handler has
+    // ignored the requested type since the rows merged.
+    { type: 'Watching', id: 'slicktrax-continue', name: 'Continue' },
     { type: 'movie', id: 'slicktrax-watchlist', name: 'Watchlist' },
     { type: 'series', id: 'slicktrax-watchlist', name: 'Watchlist' },
   ]
@@ -61,12 +65,12 @@ function buildTraxManifest(user, lists) {
     // Bumped when the catalog layout changes shape - clients refresh
     // manifests from the transport URL on their own, and a changed version
     // makes the refresh stick.
-    version: '1.2.0',
+    version: '1.3.0',
     name: 'SlickTrax',
     description: `SlickTrax for ${user.username || 'this household'} - Continue Watching, Watchlist and Catalogs, live from SlickSync.`,
     logo: 'https://slicksync.vip/android-chrome-192x192.png',
     resources: ['catalog'],
-    types: ['movie', 'series', 'all'],
+    types: ['movie', 'series', 'Watching'],
     idPrefixes: ['tt'],
     catalogs,
     behaviorHints: { configurable: false, configurationRequired: false },
