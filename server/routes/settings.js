@@ -759,8 +759,15 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       const { saveSettings } = require('../utils/dbMaintenance')
       const body = req.body || {}
       const patch = {}
-      for (const key of ['vacuumEnabled', 'integrityCheckEnabled', 'pruneLogsEnabled']) {
+      for (const key of ['vacuumEnabled', 'integrityCheckEnabled', 'pruneLogsEnabled', 'pruneNotificationsEnabled']) {
         if (key in body) patch[key] = !!body[key]
+      }
+      if ('pruneNotificationsDays' in body) {
+        const days = Number(body.pruneNotificationsDays)
+        if (!Number.isFinite(days) || days < 1 || days > 365) {
+          return res.status(400).json({ message: 'pruneNotificationsDays must be between 1 and 365' })
+        }
+        patch.pruneNotificationsDays = Math.round(days)
       }
       return res.json(saveSettings(patch))
     } catch {
@@ -774,12 +781,13 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
   router.post('/db-maintenance/run', async (req, res) => {
     if (INSTANCE_TYPE === 'public') return denyInPublic(res)
     try {
-      const { runVacuum, runIntegrityCheck, pruneLogs } = require('../utils/dbMaintenance')
+      const { runVacuum, runIntegrityCheck, pruneLogs, pruneNotifications } = require('../utils/dbMaintenance')
       const action = String(req.body?.action || '')
       if (action === 'integrity') return res.json(await runIntegrityCheck(prisma))
       if (action === 'vacuum') return res.json(await runVacuum(prisma))
       if (action === 'prune') return res.json(await pruneLogs(prisma))
-      return res.status(400).json({ message: 'action must be integrity, vacuum, or prune' })
+      if (action === 'pruneNotifications') return res.json(await pruneNotifications(prisma))
+      return res.status(400).json({ message: 'action must be integrity, vacuum, prune, or pruneNotifications' })
     } catch (e) {
       return res.status(500).json({ message: e?.message || 'Maintenance action failed' })
     }

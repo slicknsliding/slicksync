@@ -8,6 +8,29 @@
   ],
   "start_url": "/",
   "scope": "/",
+  "shortcuts": [
+    {
+      "name": "Activity",
+      "short_name": "Activity",
+      "description": "Watch history and Now Playing",
+      "url": "/activity",
+      "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Discover",
+      "short_name": "Discover",
+      "description": "Browse and search titles",
+      "url": "/discover",
+      "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "System Health",
+      "short_name": "Health",
+      "description": "Is everything working right now",
+      "url": "/metrics?tab=health",
+      "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
   "display": "standalone",
   "theme_color": "#6d28d9",
   "background_color": "#ffffff"

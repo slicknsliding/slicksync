@@ -11,6 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { api } from '@/lib/api';
 import { searchHelp, HelpEntry } from '@/lib/helpContent';
+import { searchSettings } from '@/lib/settingsIndex';
 
 // Global Ctrl+K/Cmd+K command palette - the trigger key shown adapts to the
 // OS (Mac gets the Cmd glyph, everyone else gets Ctrl), same convention
@@ -158,6 +159,19 @@ export function CommandPalette() {
     const pool = [
       ...NAV_ITEMS.filter((n) => n.label.toLowerCase().includes(q) || n.keywords.includes(q))
         .map((n) => ({ id: `nav-${n.href}`, label: n.label, href: n.href, icon: n.icon, sublabel: undefined })),
+      // Individual settings, between pages and entities: page names are
+      // still the strongest intent signal, but "digest" or "2fa" should
+      // land on the exact toggle, not just the Settings page. These are
+      // pure navigation (the highlight param scrolls to and flashes the
+      // control) - the guides tier below is untouched and still gets its
+      // own reserved section for free-text questions.
+      ...searchSettings(query, 3).map((s) => ({
+        id: `setting-${s.label}`,
+        label: s.label,
+        sublabel: `Setting · ${s.section}`,
+        href: `/settings?highlight=${encodeURIComponent(s.label)}`,
+        icon: Cog6ToothIcon,
+      })),
       ...(entities || []).filter((r) => r.label.toLowerCase().includes(q)),
     ];
     // Capped lower than the old 8 so help matches always have room to show
@@ -180,6 +194,15 @@ export function CommandPalette() {
 
   const handleSelect = (result: Result) => {
     router.push(result.href);
+    // Settings deep-links: if the user is ALREADY on /settings, a
+    // query-only push doesn't remount the page, so its mount-time URL read
+    // never re-fires - the event tells it to scroll/flash right now. Fired
+    // unconditionally; the settings page is the only listener and ignores
+    // it when unmounted.
+    if (result.id.startsWith('setting-')) {
+      const target = new URLSearchParams(result.href.split('?')[1] || '').get('highlight');
+      if (target) window.dispatchEvent(new CustomEvent('slicksync:settings-highlight', { detail: target }));
+    }
     close();
   };
 

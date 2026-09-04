@@ -554,10 +554,14 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       >
         <BellIcon className="w-5 h-5" />
         {unreadCount > 0 && (
-          <span 
-            className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
-            style={{ background: 'var(--color-primary)' }}
-          />
+          // Count badge, not just a presence dot - "something's waiting" and
+          // "eleven things are waiting" are different amounts of urgency.
+          <span
+            className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold leading-none"
+            style={{ background: 'var(--color-primary)', color: '#fff' }}
+          >
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
         )}
       </motion.button>
 

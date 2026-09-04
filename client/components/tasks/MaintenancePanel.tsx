@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Button, Card, ToggleSwitch } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api, BackupTargets, DbMaintenanceSettings, UpdateCapability } from '@/lib/api';
@@ -100,7 +100,7 @@ export function MaintenancePanel() {
     }
   };
 
-  const runAction = async (action: 'integrity' | 'vacuum' | 'prune') => {
+  const runAction = async (action: 'integrity' | 'vacuum' | 'prune' | 'pruneNotifications') => {
     setBusy(action);
     try {
       const result = await api.runDbMaintenance(action);
@@ -111,6 +111,9 @@ export function MaintenancePanel() {
       } else if (action === 'prune') {
         const r = result as { healthHistoryDeleted?: number; automationRunsDeleted?: number };
         toast.success(`Pruned ${(r.healthHistoryDeleted || 0) + (r.automationRunsDeleted || 0)} old log rows`);
+      } else if (action === 'pruneNotifications') {
+        const r = result as { notificationsDeleted?: number; days?: number };
+        toast.success(`Cleared ${r.notificationsDeleted || 0} read notifications older than ${r.days} days`);
       } else {
         toast.success('Database compacted');
       }
@@ -122,9 +125,23 @@ export function MaintenancePanel() {
     }
   };
 
-  const toggleMaint = async (key: 'vacuumEnabled' | 'integrityCheckEnabled' | 'pruneLogsEnabled', value: boolean) => {
+  const toggleMaint = async (key: 'vacuumEnabled' | 'integrityCheckEnabled' | 'pruneLogsEnabled' | 'pruneNotificationsEnabled', value: boolean) => {
     try {
       setMaint(await api.saveDbMaintenance({ [key]: value }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save');
+    }
+  };
+
+  const saveNotifDays = async (raw: string) => {
+    const days = Math.round(Number(raw));
+    if (!Number.isFinite(days) || days < 1 || days > 365) {
+      toast.error('Days must be between 1 and 365');
+      return;
+    }
+    if (days === maint?.pruneNotificationsDays) return;
+    try {
+      setMaint(await api.saveDbMaintenance({ pruneNotificationsDays: days }));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to save');
     }
@@ -324,6 +341,29 @@ export function MaintenancePanel() {
               onRun={() => runAction('prune')}
               running={busy === 'prune'}
             />
+            <MaintRow
+              title="Clear old read notifications"
+              detail={`Bell notifications you've already read are cleared once they're older than the cutoff. Unread ones are never touched, no matter how old. Last run ${relative(maint.lastNotificationsPruneAt)}.`}
+              enabled={maint.pruneNotificationsEnabled}
+              onToggle={(v) => toggleMaint('pruneNotificationsEnabled', v)}
+              onRun={() => runAction('pruneNotifications')}
+              running={busy === 'pruneNotifications'}
+              extra={
+                <label className="flex items-center gap-1.5 text-xs text-muted mt-1.5">
+                  Older than
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    defaultValue={maint.pruneNotificationsDays}
+                    onBlur={(e) => saveNotifDays(e.target.value)}
+                    className="w-14 px-1.5 py-0.5 rounded text-xs text-center"
+                    style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                  />
+                  days
+                </label>
+              }
+            />
           </div>
         )}
       </Card>
@@ -416,7 +456,7 @@ export function MaintenancePanel() {
   );
 }
 
-function MaintRow({ title, detail, enabled, onToggle, onRun, running, status }: {
+function MaintRow({ title, detail, enabled, onToggle, onRun, running, status, extra }: {
   title: string;
   detail: string;
   enabled: boolean;
@@ -424,6 +464,7 @@ function MaintRow({ title, detail, enabled, onToggle, onRun, running, status }: 
   onRun: () => void;
   running: boolean;
   status?: 'good' | 'bad' | null;
+  extra?: ReactNode;
 }) {
   return (
     <div className="flex items-start justify-between gap-3 p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
@@ -434,6 +475,7 @@ function MaintRow({ title, detail, enabled, onToggle, onRun, running, status }: 
           {status === 'bad' && <ExclamationTriangleIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />}
         </p>
         <p className="text-xs text-muted mt-0.5">{detail}</p>
+        {extra}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <Button variant="ghost" size="sm" onClick={onRun} disabled={running}>

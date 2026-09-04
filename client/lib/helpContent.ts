@@ -344,8 +344,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'command-palette',
     title: 'Using the command palette',
     category: 'Getting started',
-    keywords: ['command palette', 'ctrl k', 'cmd k', 'search everything', 'keyboard shortcut'],
-    answer: 'Press Ctrl+K (Cmd+K on Mac) anywhere to jump to a page, user, addon, or catalog by typing part of its name - or type a how-to question like this one for a quick answer, no AI setup required.',
+    keywords: ['command palette', 'ctrl k', 'cmd k', 'search everything', 'keyboard shortcut', 'find a setting', 'settings search'],
+    answer: 'Press Ctrl+K (Cmd+K on Mac) anywhere to jump to a page, user, addon, or catalog by typing part of its name - or type a how-to question like this one for a quick answer, no AI setup required. Individual settings are searchable too: type "digest" or "2fa" and picking the result lands on Settings with that exact control scrolled into view and flashed.',
   },
   {
     id: 'onboarding-wizard',
@@ -1278,7 +1278,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'install-on-phone',
     title: 'Installing SlickSync on your phone',
     category: 'Getting started',
-    keywords: ['install on phone', 'pwa', 'home screen', 'mobile app', 'add to home screen', 'ios android'],
+    keywords: ['install on phone', 'pwa', 'home screen', 'mobile app', 'add to home screen', 'ios android', 'app shortcuts', 'long press icon'],
     answer: 'SlickSync is a PWA - use your browser\'s "Add to Home Screen" (iOS Safari) or "Install app" (Android Chrome). Installing is also what unlocks native push notifications, especially on iPhone.',
     steps: [
       'Open your instance in the phone\'s browser.',
@@ -1289,6 +1289,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     details: [
       'On iOS, push notifications genuinely do not work from a normal Safari tab - the Home Screen install is required. That is an Apple restriction that applies to every web app, not something specific to SlickSync.',
       'Each installed device is managed separately under Settings → Notifications, so you can rename or revoke one without touching the others.',
+      'Once installed, long-press the app icon (or right-click it on desktop) for shortcuts straight to Activity, Discover, or System Health without opening the Dashboard first. If the shortcuts do not appear right away, they show up after the OS re-reads the app manifest - usually the next launch or two.',
     ],
     related: ['notifications-setup', 'tv-mode'],
     href: '/settings',
@@ -1753,13 +1754,14 @@ export const HELP_ENTRIES: HelpEntry[] = [
     steps: [
       'Off-site backups: pick S3 or WebDAV, fill in the destination, then Test target to confirm it works before trusting it.',
       'Set "Keep locally" if you want old backup files cleaned up automatically - 0 keeps every one, which is the default.',
-      'Database upkeep: integrity checks are on by default (they only read). Compaction and log trimming are off until you turn them on.',
+      'Database upkeep: integrity checks are on by default (they only read). Compaction, log trimming, and clearing old read notifications are off until you turn them on.',
       'Updates: if this container can update itself the button says so; otherwise the page shows the exact command to run on the host.',
     ],
     details: [
       'Backups have always been written next to the database they protect, which does not help if the machine itself is gone. An off-site copy is what covers that. S3 here means any S3-compatible service - AWS, Backblaze B2, Wasabi, Cloudflare R2, MinIO - and WebDAV covers Nextcloud, rsync.net and similar.',
       'A failed upload never fails the backup: the local copy is already written and validated first, and an upload problem raises a notification instead of failing silently.',
       'Database upkeep never touches watch history, users, catalogs, or the Vault. Trimming only caps addon health-check history and automation run history - the two tables nothing reads by date. Compaction refuses to run if the disk lacks the free space to do it safely.',
+      'Clearing old notifications only ever removes bell notifications you have already read, once they are older than the day cutoff you set (30 by default). An unread notification is never deleted, no matter how old - it is a message nobody has seen yet.',
       'Updating in place requires the Docker socket mounted into the container, which effectively grants control of the host\'s Docker. That is a deliberate security trade, so it is never enabled for you - without it, everything else here still works and you get the command to run instead.',
       'When it is available, updating always backs up first and downloads the new image before anything restarts, so a failed download leaves the running version untouched.',
       'Off-site backups deliberately carry no Vault secrets - only the Disaster Recovery Kit does, and it is only ever produced when you export it by hand. Automating that would mean continuously copying every credential to a third-party bucket and keeping its passphrase on the server, which is worse than the problem it solves. Instead, Settings has an opt-in "Recovery Kit reminders" toggle that nudges you when your kit is over 60 days old (or was never made) and the Vault actually holds credentials.',

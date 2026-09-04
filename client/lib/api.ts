@@ -1354,7 +1354,7 @@ class ApiClient {
   async saveDbMaintenance(data: Partial<DbMaintenanceSettings>) {
     return this.fetch<DbMaintenanceSettings>('/settings/db-maintenance', { method: 'PUT', body: JSON.stringify(data) });
   }
-  async runDbMaintenance(action: 'integrity' | 'vacuum' | 'prune') {
+  async runDbMaintenance(action: 'integrity' | 'vacuum' | 'prune' | 'pruneNotifications') {
     return this.fetch<Record<string, unknown>>('/settings/db-maintenance/run', { method: 'POST', body: JSON.stringify({ action }) });
   }
   async getUpdateCapability() {
@@ -2985,6 +2985,9 @@ export interface DbMaintenanceSettings {
   lastIntegrityOk: boolean | null;
   pruneLogsEnabled: boolean;
   lastPruneAt: string | null;
+  pruneNotificationsEnabled: boolean;
+  pruneNotificationsDays: number;
+  lastNotificationsPruneAt: string | null;
 }
 
 export interface UpdateCapability {
