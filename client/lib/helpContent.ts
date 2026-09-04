@@ -1770,7 +1770,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
   {
     id: 'following-people-and-shows',
     title: 'Following an actor, director or show for news',
-    category: 'Notifications',
+    category: 'Notifications & Automation',
     keywords: ['follow actor', 'follow director', 'follow show', 'renewed', 'canceled', 'new release alert', 'mute follow', 'unfollow'],
     answer: 'Follow a person and get told when they have something new out; follow a show and get told when it is renewed, canceled, or gets a premiere date. Both alert through push and the bell, and both can be muted individually.',
     details: [
