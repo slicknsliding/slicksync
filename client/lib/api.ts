@@ -603,6 +603,25 @@ class ApiClient {
     });
   }
 
+  /** Followed people and shows, muted ones included. */
+  async getFollows() {
+    return this.fetch<FollowedSubject[]>('/follows');
+  }
+  /** Follow a person (TMDb id) or a show (tt id); following again un-mutes. */
+  async followSubject(kind: 'person' | 'show', subjectId: string, name: string, poster?: string | null) {
+    return this.fetch<FollowedSubject>('/follows', {
+      method: 'POST', body: JSON.stringify({ kind, subjectId, name, poster }),
+    });
+  }
+  async muteFollow(id: string, muted: boolean) {
+    return this.fetch<{ success: boolean; muted: boolean }>(`/follows/${encodeURIComponent(id)}/mute`, {
+      method: 'PUT', body: JSON.stringify({ muted }),
+    });
+  }
+  async unfollowSubject(id: string) {
+    return this.fetch<{ success: boolean }>(`/follows/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
   /** This season's airing anime (AniList, no key required). */
   async getSeasonalAnime() {
     return this.fetch<{ items: SeasonalAnime[] }>('/anime/seasonal');
@@ -3707,6 +3726,17 @@ export interface NuvioCollection {
   title: string;
   folders?: NuvioCollectionFolder[];
   [key: string]: any;
+}
+
+export interface FollowedSubject {
+  id: string;
+  kind: 'person' | 'show';
+  subjectId: string;
+  name: string;
+  poster: string | null;
+  muted: boolean;
+  createdAt: string;
+  lastCheckedAt: string | null;
 }
 
 export interface AnimeEntry {

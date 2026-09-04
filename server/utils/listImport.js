@@ -117,6 +117,12 @@ async function resolveOmdbKeyForAccount(prisma, accountId) {
 }
 const resolveOmdbKey = (prisma, getAccountId, req) => resolveKeyFromSettings(prisma, getAccountId, req, 'omdbApiKey', 'OMDB_API_KEY')
 
+/** TMDb key for a known account id - the no-request counterpart to
+ * resolveTmdbKey, for background sweeps (see utils/followWatch.js). */
+async function resolveTmdbKeyForAccount(prisma, accountId) {
+  return resolveKeyFromSettings(prisma, () => accountId, null, 'tmdbApiKey', 'TMDB_API_KEY')
+}
+
 function detectProvider(url) {
   try {
     const parsed = new URL(url)
@@ -533,4 +539,4 @@ async function refreshListFromSourceForAccount(prisma, accountId, list) {
   return { items: result.items, added, removed, unchanged }
 }
 
-module.exports = { detectProvider, importFromTmdb, importFromMdblist, importFromSlickSync, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, resolveKeyFromSettings, refreshListFromSourceForAccount, suggestTitlesForCatalog, mapLimit, MAX_IMPORT_ITEMS }
+module.exports = { detectProvider, importFromTmdb, importFromMdblist, importFromSlickSync, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, resolveTmdbKeyForAccount, resolveKeyFromSettings, refreshListFromSourceForAccount, suggestTitlesForCatalog, mapLimit, MAX_IMPORT_ITEMS }

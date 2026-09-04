@@ -1066,3 +1066,32 @@ model NuvioHomeLayoutSnapshot {
   @@index([accountId, userId, profileId, createdAt])
   @@map("nuvio_home_layout_snapshots")
 }
+
+// What an account has asked to be told about: a person (actor/director) whose
+// new work should raise an alert, or a show whose status changes (renewed /
+// canceled / a premiere date) should. One table because the lifecycle is
+// identical - follow it, get pushed when it changes, mute it when interest
+// fades - and because "stop telling me about this" has to be first-class:
+// a notification you cannot switch off is a notification people learn to
+// ignore. Muting keeps the row (so the UI can show it as followed-but-quiet
+// and so re-following does not lose the history) rather than deleting it.
+model FollowedSubject {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  // 'person' (TMDb person id) or 'show' (IMDb tt id, matching the rest of the app)
+  kind        String
+  subjectId   String
+  name        String
+  poster      String?
+  // Last state we alerted on, so a change is detectable without re-alerting
+  // the same thing every sweep: for a show this is TMDb's status string, for
+  // a person the newest credit id already announced.
+  lastSeen    String?
+  muted       Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  lastCheckedAt DateTime?
+
+  @@unique([accountId, kind, subjectId])
+  @@index([accountId, kind])
+  @@map("followed_subjects")
+}
