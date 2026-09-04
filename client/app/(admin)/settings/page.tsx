@@ -14,6 +14,7 @@ import { toast, showToast } from '@/components/ui/Toast';
 import { isBeginnerMode, setBeginnerMode as setBeginnerModePref } from '@/lib/beginnerMode';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
+import { isSwDisabled, tearDownServiceWorker, SW_DISABLED_KEY } from '@/components/pwa/ServiceWorkerRegistrar';
 import { invalidatePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { openOnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import {
@@ -162,6 +163,41 @@ function SettingRow({
         <p className="text-xs text-muted">{description}</p>
       </div>
       {children}
+    </div>
+  );
+}
+
+// Troubleshooting row under Phone notifications: per-device kill switch
+// for the service worker. Exists to isolate the iPhone installed-PWA
+// freeze - on iOS the app is smooth in Firefox/DDG browser TABS (which
+// cannot run service workers) and freezes in Safari and installed PWAs
+// (which do), so the worker is the prime suspect. Turning this off
+// unregisters the worker + clears its caches on THIS device only; push
+// notifications on this device stop while it's off. Reload after flipping.
+function SwKillSwitchRow() {
+  const [disabled, setDisabled] = useState(false);
+  useEffect(() => { setDisabled(isSwDisabled()); }, []);
+  const flip = async (off: boolean) => {
+    try { localStorage.setItem(SW_DISABLED_KEY, off ? '1' : '0'); } catch { /* private window */ }
+    setDisabled(off);
+    if (off) {
+      await tearDownServiceWorker();
+      toast.success('Offline shell disabled on this device - reload the app, then test whether the taps are smooth');
+    } else {
+      toast.success('Offline shell re-enabled - reload the app to bring it back (and push with it)');
+    }
+  };
+  return (
+    <div className="mt-3 flex items-center justify-between gap-3 p-3 rounded-lg bg-subtle" data-setting="Offline shell">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-default">Offline shell on this device</p>
+        <p className="text-xs text-muted mt-0.5">
+          Troubleshooting: turn OFF to run without the service worker on this device (instant-open caching and
+          push stop here while off). If an installed app that stutters turns smooth with this off, the worker is
+          the culprit - report that back. Reload after switching.
+        </p>
+      </div>
+      <ToggleSwitch enabled={!disabled} onChange={(v) => flip(!v)} label="Toggle the offline shell on this device" />
     </div>
   );
 }
@@ -1387,6 +1423,7 @@ export default function SettingsPage() {
                   Install SlickSync to your home screen, then enable native new-episode notifications on this device.
                 </p>
                 <PushNotificationToggle />
+                <SwKillSwitchRow />
               </div>
 
               <div className="pt-4 border-t border-default">

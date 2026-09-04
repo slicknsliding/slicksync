@@ -1294,6 +1294,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Each installed device is managed separately under Settings → Notifications, so you can rename or revoke one without touching the others.',
       'Once installed, long-press the app icon (or right-click it on desktop) for shortcuts straight to Activity, Discover, or System Health without opening the Dashboard first. If the shortcuts do not appear right away, they show up after the OS re-reads the app manifest - usually the next launch or two.',
       'On Android and desktop, the installed app is also a share target: share a link or title from any other app (IMDb, TMDb, a trailer someone sent) straight to SlickSync and it opens Discover with that title already searched. iPhones do not support web-app share targets at all - that is an iOS platform limitation, not a SlickSync one, so the option simply will not appear in an iPhone share sheet.',
+      'If the installed app stutters or freezes on taps while a plain browser tab is smooth, try Settings → Notifications → "Offline shell on this device": turn it OFF and reload. That runs the app without its service worker on that one device (instant-open caching and push pause there while off). Smooth with it off means the worker is the culprit - worth reporting.',
     ],
     related: ['notifications-setup', 'tv-mode'],
     href: '/settings',
