@@ -62,8 +62,17 @@ async function readLayoutForEdit(provider, profileId, liveAddons) {
   const arranged = (Array.isArray(source?.blob?.items) ? source.blob.items : []).filter(isValidItem)
 
   // addon id -> { name, catalogs: Map(catalogId+type -> catalog name) }
+  //
+  // Accepts either a bare array or the provider's own collection shape
+  // ({ addons: [...] }) - getUserAddons hands back the latter, and assuming
+  // an array here made EVERY row resolve to no addon, so the editor showed
+  // raw ids and flagged the entire arrangement as orphaned (which is also
+  // what gates the Remove button - not a cosmetic bug).
+  const addonList = Array.isArray(liveAddons)
+    ? liveAddons
+    : (Array.isArray(liveAddons?.addons) ? liveAddons.addons : [])
   const byAddon = new Map()
-  for (const addon of Array.isArray(liveAddons) ? liveAddons : []) {
+  for (const addon of addonList) {
     const manifest = addon?.manifest || addon
     const addonId = manifest?.id
     if (!addonId) continue
