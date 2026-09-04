@@ -1733,6 +1733,26 @@ export default function SettingsPage() {
               </SettingRow>
 
               <SettingRow
+                label="Seasonal anime row"
+                description="Adds an 'Airing this season' row to Discover with each show's next-episode countdown, from AniList - no API key needed. Off unless someone in the household actually watches anime."
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.animeSeasonalRow === true}
+                  onChange={async (v) => {
+                    setSyncSettings((prev) => ({ ...prev, animeSeasonalRow: v }));
+                    try {
+                      await api.updateSyncSettings({ animeSeasonalRow: v });
+                      toast.success(v ? 'Seasonal anime row added to Discover' : 'Seasonal anime row hidden');
+                    } catch {
+                      toast.error('Could not save that setting');
+                      setSyncSettings((prev) => ({ ...prev, animeSeasonalRow: !v }));
+                    }
+                  }}
+                  label="Toggle the seasonal anime row"
+                />
+              </SettingRow>
+
+              <SettingRow
                 label="Poster ratings"
                 description="Show IMDb/Rotten Tomatoes/Metacritic score badges on every poster card in Discover and Catalogs - also the master switch for RPDB's rating-embedded posters below, if you've set a key. Off by default - turn this on if you want scores visible before opening a title."
               >

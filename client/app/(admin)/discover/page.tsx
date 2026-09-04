@@ -6,7 +6,7 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, Badge, PosterCard, PosterCardItem, VirtualPosterGrid, DropdownSelect } from '@/components/ui';
-import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem } from '@/lib/api';
+import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem, SeasonalAnime } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useWatchlistState } from '@/lib/hooks/useWatchlistState';
 import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
@@ -212,6 +212,24 @@ export default function DiscoverPage() {
   useEffect(() => {
     api.getSimklDiscoverRow('trending', type === 'series' ? 'shows' : 'movies').then(setSimklTrending);
   }, [type]);
+
+  // Seasonal anime row (AniList, no key needed) - opt-in per account, so a
+  // household that doesn't watch anime never sees it. These items carry
+  // AniList ids rather than IMDb ones, so they deliberately do NOT pretend
+  // to be PosterCards: clicking one searches Discover for the title, which
+  // hands off to the normal flow where the item has real Cinemeta data and
+  // every action works. Faking an id here would break watchlist/watched.
+  const [seasonalAnime, setSeasonalAnime] = useState<SeasonalAnime[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    api.getSyncSettings()
+      .then((ss) => {
+        if (cancelled || ss.animeSeasonalRow !== true) return;
+        return api.getSeasonalAnime().then((r) => { if (!cancelled) setSeasonalAnime(r.items || []); });
+      })
+      .catch(() => { /* row simply doesn't appear */ });
+    return () => { cancelled = true; };
+  }, []);
   const [recMode, setRecMode] = useState<'personal' | 'shared'>('personal');
   const [recUserId, setRecUserId] = useState<string>('');
   const [recUserId2, setRecUserId2] = useState<string>('');
@@ -690,6 +708,44 @@ export default function DiscoverPage() {
                 </div>
                 )}
               </div>
+            </div>
+          </PageSection>
+        )}
+
+        {source === 'discover' && !debouncedQuery && seasonalAnime.length > 0 && (
+          <PageSection delay={0.05} className="mb-6">
+            <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+              <h3 className="text-base font-semibold font-display text-default">🌸 Airing this season</h3>
+              <span className="text-xs text-muted">Anime currently airing, newest episodes first</span>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+              {seasonalAnime.map((a) => (
+                <button
+                  key={a.anilistId}
+                  type="button"
+                  onClick={() => { setSearchQuery(a.name); setSearchMode('titles'); }}
+                  className="w-32 sm:w-36 shrink-0 text-left group"
+                  title={`Search SlickSync for ${a.name}`}
+                >
+                  <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl">
+                    {a.poster ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={a.poster} alt={a.name} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xs text-subtle">No art</div>
+                    )}
+                    {a.nextEpisode && (
+                      <span className="absolute bottom-1 left-1 right-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-center truncate" style={{ background: 'rgba(0,0,0,0.72)', color: '#fff' }}>
+                        Ep {a.nextEpisode.episode} in {a.nextEpisode.label}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs mt-1.5 truncate text-default">{a.name}</p>
+                  <p className="text-[11px] text-muted truncate">
+                    {a.episodes ? `${a.episodes} eps` : a.format || ''}{a.score ? ` · ${a.score}%` : ''}
+                  </p>
+                </button>
+              ))}
             </div>
           </PageSection>
         )}

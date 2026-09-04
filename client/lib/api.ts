@@ -3387,6 +3387,8 @@ export interface SyncSettings {
   /** Opt-in: background enrichment stands down past the daily quota threshold. */
   quotaAutopilot?: boolean;
   quotaAutopilotPercent?: number;
+  /** Opt-in "Airing this season" anime row in Discover (AniList). */
+  animeSeasonalRow?: boolean;
   /** Key Pool, opt-in: a pool EXTRA failing for 3 straight days is removed
    * from the pool automatically, with one notification. */
   keyPoolAutoRetire?: boolean;
