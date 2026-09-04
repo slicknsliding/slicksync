@@ -94,6 +94,10 @@ self.addEventListener('push', (event) => {
     data: { url: data.url || '/' },
     tag: data.tag || undefined,
   };
+  // App-icon badge, best-effort: the worker doesn't know the real unread
+  // count, so a bare dot marks "something's waiting" - the app corrects it
+  // to the actual number the next time it opens (NotificationsDropdown).
+  try { if (navigator.setAppBadge) navigator.setAppBadge().catch(() => {}); } catch {}
   event.waitUntil(self.registration.showNotification(title, options));
 });
 

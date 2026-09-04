@@ -39,6 +39,29 @@ function metaPreview(id, type, name, poster) {
   return { id, type, name: name || id, poster: poster || undefined }
 }
 
+// Serve catalog posters through this instance's own resize/cache proxy
+// (/api/img, routes/imageCache.js) instead of handing devices raw upstream
+// URLs: rows load resized-to-fit images, repeat views come off this box's
+// disk, and one slow upstream art host can't drag a whole row. The base is
+// the request's own origin - the same self-learning the transport URL does.
+// Fallback behavior is inherited from the proxy itself: anything it can't
+// process 302s to the original URL, so a device never sees a broken poster.
+function proxiedPoster(base, poster) {
+  if (!base || !poster || !/^https?:\/\//i.test(poster)) return poster || undefined
+  try {
+    // Never wrap a URL already served by this instance (e.g. /api/poster's
+    // RPDB redirects) - that would just proxy ourselves.
+    if (new URL(poster).host === new URL(base).host) return poster
+  } catch { return poster }
+  return `${base}/api/img?src=${encodeURIComponent(poster)}&w=342`
+}
+
+function requestBase(req) {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https'
+  const host = req.headers['x-forwarded-host'] || req.headers.host
+  return host ? `${String(proto).split(',')[0]}://${host}` : null
+}
+
 /**
  * The manifest object, exported separately because sync injects the SAME
  * object inline into the account's addon collection - built in one place so
@@ -140,6 +163,7 @@ module.exports = ({ prisma }) => {
       if (!user) return res.status(404).json({ error: 'Not found' })
       const type = req.params.type === 'series' ? 'series' : 'movie'
       const catalogId = req.params.id
+      const base = requestBase(req)
 
       if (catalogId === 'slicktrax-continue') {
         // One MIXED row: movies and shows together, most recent first -
@@ -151,7 +175,7 @@ module.exports = ({ prisma }) => {
         const entries = await getContinueWatching(prisma, user.accountId, 40)
         const metas = entries
           .filter((e) => e.userId === user.id && /^tt\d+$/.test(e.showId || ''))
-          .map((e) => metaPreview(e.showId, e.contentType === 'movie' ? 'movie' : 'series', e.showName, e.poster))
+          .map((e) => metaPreview(e.showId, e.contentType === 'movie' ? 'movie' : 'series', e.showName, proxiedPoster(base, e.poster)))
         return res.json({ metas })
       }
 
@@ -161,7 +185,7 @@ module.exports = ({ prisma }) => {
           orderBy: { addedAt: 'desc' },
           take: 100,
         })
-        return res.json({ metas: items.filter((i) => /^tt\d+$/.test(i.itemId)).map((i) => metaPreview(i.itemId, type, i.name, i.poster)) })
+        return res.json({ metas: items.filter((i) => /^tt\d+$/.test(i.itemId)).map((i) => metaPreview(i.itemId, type, i.name, proxiedPoster(base, i.poster))) })
       }
 
       if (catalogId.startsWith('slicktrax-list-')) {
@@ -175,7 +199,7 @@ module.exports = ({ prisma }) => {
           // the movie half rather than vanishing from both.
           .filter((i) => i && /^tt\d+$/.test(String(i.id || '')) && ((i.type || 'movie') === type))
           .slice(0, 200)
-          .map((i) => metaPreview(String(i.id), type, i.name, i.poster))
+          .map((i) => metaPreview(String(i.id), type, i.name, proxiedPoster(base, i.poster)))
         return res.json({ metas })
       }
 

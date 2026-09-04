@@ -584,6 +584,32 @@ class ApiClient {
     );
   }
 
+  /** Collections Guard: profiles whose Nuvio collections or home-row layout look externally overwritten. */
+  async getCollectionsGuardAlarms() {
+    return this.fetch<{ alarms: Array<{ kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; lastGoodAt: string | null; detectedAt: string }> }>(
+      '/users/collections-guard/alarms'
+    );
+  }
+
+  async restoreCollectionsSnapshot(userId: string, profileId: number, kind: 'collections' | 'layout' = 'collections') {
+    return this.fetch<{ success: boolean; restoredCount?: number; restoredItems?: number; from: string }>('/users/collections-guard/restore', {
+      method: 'POST', body: JSON.stringify({ userId, profileId, kind }),
+    });
+  }
+
+  async acceptCollectionsState(userId: string, profileId: number, kind: 'collections' | 'layout' = 'collections') {
+    return this.fetch<{ success: boolean; acceptedCount?: number; acceptedItems?: number }>('/users/collections-guard/accept', {
+      method: 'POST', body: JSON.stringify({ userId, profileId, kind }),
+    });
+  }
+
+  /** Copy one Nuvio profile's whole home-row arrangement onto another profile (overwrites the target's). */
+  async copyHomeLayout(userId: string, fromProfileId: number, toProfileId: number) {
+    return this.fetch<{ success: boolean; copiedItems: number }>('/users/home-layout/copy', {
+      method: 'POST', body: JSON.stringify({ userId, fromProfileId, toProfileId }),
+    });
+  }
+
   async getNuvioCommunityCovers(userId: string, opts: { sort?: string; orientation?: string; format?: string; page?: number; limit?: number; search?: string } = {}) {
     const params = new URLSearchParams();
     if (opts.sort) params.set('sort', opts.sort);
@@ -1354,7 +1380,7 @@ class ApiClient {
   async saveDbMaintenance(data: Partial<DbMaintenanceSettings>) {
     return this.fetch<DbMaintenanceSettings>('/settings/db-maintenance', { method: 'PUT', body: JSON.stringify(data) });
   }
-  async runDbMaintenance(action: 'integrity' | 'vacuum' | 'prune') {
+  async runDbMaintenance(action: 'integrity' | 'vacuum' | 'prune' | 'pruneNotifications') {
     return this.fetch<Record<string, unknown>>('/settings/db-maintenance/run', { method: 'POST', body: JSON.stringify({ action }) });
   }
   async getUpdateCapability() {
@@ -1664,9 +1690,13 @@ class ApiClient {
     return response.json() as Promise<{ successful: number; failed: number; redundant: number }>;
   }
 
-  async importConfig(file: File) {
+  async importConfig(file: File, passphrase?: string) {
     const formData = new FormData();
     formData.append('file', file);
+    // Only needed for .enc files from a passphrase-protected off-site
+    // target - the server answers code PASSPHRASE_REQUIRED when one is
+    // missing, and the Tasks page prompts and retries.
+    if (passphrase) formData.append('passphrase', passphrase);
     const response = await fetch(`${API_BASE}/public-auth/config-import`, {
       method: 'POST',
       body: formData,
@@ -1675,7 +1705,9 @@ class ApiClient {
     });
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'Import failed' }));
-      throw new Error(error.message || `HTTP ${response.status}`);
+      const err = new Error(error.message || `HTTP ${response.status}`) as Error & { code?: string };
+      err.code = error.code;
+      throw err;
     }
     return response.json() as Promise<ImportConfigResult>;
   }
@@ -2267,9 +2299,9 @@ class ApiClient {
     });
   }
 
-  async wipeBuriedShow(userId: string, showId: string) {
-    return this.fetch<{ success: boolean; episodesDeleted: number; moviesDeleted?: number }>('/users/graveyard/wipe', {
-      method: 'POST', body: JSON.stringify({ userId, showId }),
+  async wipeBuriedShow(userId: string, showId: string, removeFromDevice?: boolean) {
+    return this.fetch<{ success: boolean; episodesDeleted: number; moviesDeleted?: number; deviceRemoved?: boolean }>('/users/graveyard/wipe', {
+      method: 'POST', body: JSON.stringify({ userId, showId, removeFromDevice: !!removeFromDevice }),
     });
   }
 
@@ -2974,6 +3006,8 @@ export interface BackupTargets {
   keepLocal: number;
   s3: { endpoint: string; region: string; bucket: string; prefix: string; accessKeyId: string; secretAccessKey: string };
   webdav: { url: string; username: string; password: string };
+  /** Optional - set to encrypt uploads (.enc); empty uploads plain JSON. Comes back masked. */
+  encryptPassphrase: string;
 }
 
 export interface DbMaintenanceSettings {
@@ -2985,6 +3019,9 @@ export interface DbMaintenanceSettings {
   lastIntegrityOk: boolean | null;
   pruneLogsEnabled: boolean;
   lastPruneAt: string | null;
+  pruneNotificationsEnabled: boolean;
+  pruneNotificationsDays: number;
+  lastNotificationsPruneAt: string | null;
 }
 
 export interface UpdateCapability {

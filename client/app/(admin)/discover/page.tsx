@@ -76,6 +76,40 @@ export default function DiscoverPage() {
   const [genre, setGenre] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  // Web Share Target: sharing a link/text from another app into the
+  // installed PWA lands here as /discover?st_title=&st_text=&st_url= (see
+  // site.webmanifest). Turn whatever was shared into a search: an IMDb
+  // link resolves to its real title by id; a TMDb link carries a slug; any
+  // other share just gets its URLs stripped and the remaining text used.
+  // Read once on mount - same pattern as Metrics' ?tab= (no useSearchParams,
+  // avoiding its Suspense requirement).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shared = [params.get('st_title'), params.get('st_text'), params.get('st_url')]
+      .filter(Boolean).join(' ').trim();
+    if (!shared) return;
+    const imdbId = shared.match(/tt\d{7,10}/)?.[0];
+    const tmdbSlug = shared.match(/themoviedb\.org\/(?:movie|tv)\/\d+-([a-z0-9-]+)/i)?.[1];
+    const plainText = shared.replace(/https?:\/\/\S+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (plainText) {
+      setSearchQuery(plainText);
+    } else if (tmdbSlug) {
+      setSearchQuery(tmdbSlug.replace(/-/g, ' '));
+    } else if (imdbId) {
+      // A bare IMDb link has no words in it - resolve the id to its title
+      // first, since the text search can't match on tt ids.
+      api.getMediaDetails(imdbId, 'movie').then((d: any) => {
+        const name = d?.meta?.name || d?.name;
+        if (name) setSearchQuery(name);
+      }).catch(() => {
+        api.getMediaDetails(imdbId, 'series').then((d: any) => {
+          const name = d?.meta?.name || d?.name;
+          if (name) setSearchQuery(name);
+        }).catch(() => {});
+      });
+    }
+  }, []);
   const [items, setItems] = useState<DiscoverItem[]>([]);
   // Every id ever loaded this session - de-dupes the next page against the
   // full history, since Cinemeta can repeat an item across pages (a real,

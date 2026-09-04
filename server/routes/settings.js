@@ -688,6 +688,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     ...s,
     s3: { ...s.s3, secretAccessKey: s.s3.secretAccessKey ? '********' : '' },
     webdav: { ...s.webdav, password: s.webdav.password ? '********' : '' },
+    encryptPassphrase: s.encryptPassphrase ? '********' : '',
   })
 
   router.get('/backup-targets', async (req, res) => {
@@ -722,6 +723,13 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (body.webdav) {
         patch.webdav = { ...current.webdav, ...body.webdav }
         if (body.webdav.password === '********') patch.webdav.password = current.webdav.password
+      }
+      if (body.encryptPassphrase !== undefined) {
+        // Same masked-secret contract as the credentials above; an explicit
+        // empty string turns encryption off.
+        patch.encryptPassphrase = body.encryptPassphrase === '********'
+          ? current.encryptPassphrase
+          : String(body.encryptPassphrase || '')
       }
       return res.json(redactTargets(saveSettings(patch)))
     } catch {
@@ -759,8 +767,15 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       const { saveSettings } = require('../utils/dbMaintenance')
       const body = req.body || {}
       const patch = {}
-      for (const key of ['vacuumEnabled', 'integrityCheckEnabled', 'pruneLogsEnabled']) {
+      for (const key of ['vacuumEnabled', 'integrityCheckEnabled', 'pruneLogsEnabled', 'pruneNotificationsEnabled']) {
         if (key in body) patch[key] = !!body[key]
+      }
+      if ('pruneNotificationsDays' in body) {
+        const days = Number(body.pruneNotificationsDays)
+        if (!Number.isFinite(days) || days < 1 || days > 365) {
+          return res.status(400).json({ message: 'pruneNotificationsDays must be between 1 and 365' })
+        }
+        patch.pruneNotificationsDays = Math.round(days)
       }
       return res.json(saveSettings(patch))
     } catch {
@@ -774,12 +789,13 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
   router.post('/db-maintenance/run', async (req, res) => {
     if (INSTANCE_TYPE === 'public') return denyInPublic(res)
     try {
-      const { runVacuum, runIntegrityCheck, pruneLogs } = require('../utils/dbMaintenance')
+      const { runVacuum, runIntegrityCheck, pruneLogs, pruneNotifications } = require('../utils/dbMaintenance')
       const action = String(req.body?.action || '')
       if (action === 'integrity') return res.json(await runIntegrityCheck(prisma))
       if (action === 'vacuum') return res.json(await runVacuum(prisma))
       if (action === 'prune') return res.json(await pruneLogs(prisma))
-      return res.status(400).json({ message: 'action must be integrity, vacuum, or prune' })
+      if (action === 'pruneNotifications') return res.json(await pruneNotifications(prisma))
+      return res.status(400).json({ message: 'action must be integrity, vacuum, prune, or pruneNotifications' })
     } catch (e) {
       return res.status(500).json({ message: e?.message || 'Maintenance action failed' })
     }

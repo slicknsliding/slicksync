@@ -1,5 +1,29 @@
 [
   {
+    "version": "1.82.0",
+    "date": "2026-09-04",
+    "title": "1.82.0 — Guards for everything Nuvio holds, a faster app everywhere, and backups that keep secrets",
+    "features": [
+      "Collections Guard: Nuvio's collection sync is last-write-wins, so another logged-in app pushing a stale state can silently erase everything you built. SlickSync now snapshots every account's collections hourly - if they mass-vanish, you get a push alert and a banner with one-click Restore from the last good snapshot (or Accept the new state). Your own edits in SlickSync never trigger it.",
+      "Home-row layout guard: the same hourly guard protects each Nuvio profile's home-screen row arrangement - order, renames, hidden rows - which one bad write from any client can wipe. Same Restore / Accept banner, labeled \"home rows\".",
+      "Copy home rows: clone a finished profile's entire home-screen arrangement onto another profile from the Nuvio Collections toolbar, instead of re-dragging every row by hand.",
+      "Wipes can reach the device: an optional checkbox in the Graveyard makes a wipe also remove the title from the provider account's own library - so it disappears from the device's home screen too, not just from SlickSync.",
+      "Live updates: open pages now refresh the moment something changes - Now Playing appears the instant a stream starts, and bell notifications land without waiting for the next poll. Served by your own instance, with normal polling kept as the fallback.",
+      "Compressed responses: everything the app fetches now travels gzipped - several times smaller on the wire, which phones on cell data feel immediately.",
+      "SlickTrax posters ride your own poster cache: device rows load resized images served from your box, so repeat views are instant and one slow art host can't drag a whole row.",
+      "SlickTrax moved into the addon directory proper: it's now the first entry in Addons - Browse, above everything else - Configure, pick the user, Add.",
+      "The bell shows a real unread count instead of a dot, and mirrors it onto the installed app's icon (Android, desktop, and iOS 16.4+).",
+      "App shortcuts: long-press the installed app's icon (or right-click on desktop) to jump straight to Activity, Discover, or System Health.",
+      "Share into SlickSync (Android/desktop): share a link or title from any other app and Discover opens with it already searched - IMDb links resolve to the real title automatically.",
+      "Encrypted off-site backups: set an optional passphrase and every S3/WebDAV upload becomes an encrypted .enc file - worthwhile because backups carry addon URLs, which often embed API keys. Local backups stay plain so restores are unaffected, and an .enc imports through the normal Import with its passphrase.",
+      "Clear old read notifications: a new opt-in row in Database Upkeep deletes read bell notifications past an age you choose. Unread ones are never touched, no matter how old.",
+      "Settings deep-search: Ctrl+K now finds individual settings - type \"digest\" or \"2fa\" and picking the result lands on Settings with that exact control scrolled into view and flashed."
+    ],
+    "bugFixes": [
+      "The Nuvio Collections tips popup and the SlickTrax guide were updated for the new placement and flows."
+    ]
+  },
+  {
     "version": "1.81.0",
     "date": "2026-09-03",
     "title": "1.81.0 — An account that defends itself, undo for everything, and a Continue Watching row that behaves",

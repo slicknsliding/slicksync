@@ -159,7 +159,11 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     };
     const initialDelay = setTimeout(fetchStored, 200 + Math.random() * 600);
     const interval = setInterval(fetchStored, 30000);
-    return () => { clearTimeout(initialDelay); clearInterval(interval); };
+    // SSE accelerant: a server-side notification refetches the bell right
+    // now instead of on the next tick. Polling above stays as the fallback.
+    const onLive = () => { fetchStored(); };
+    window.addEventListener('slicksync:live-notification', onLive);
+    return () => { clearTimeout(initialDelay); clearInterval(interval); window.removeEventListener('slicksync:live-notification', onLive); };
   }, []);
 
   // Fetch pending + accepted invite requests
@@ -429,6 +433,20 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Mirror the unread count onto the installed app's icon (OS Badging API,
+  // Chromium + iOS 16.4+ installed PWAs). Browsers without it just skip -
+  // the accessor itself can throw on some, hence the try/catch rather than
+  // a plain feature check. The service worker sets a bare dot when a push
+  // arrives while the app is closed; this corrects it to the real number
+  // the moment the app opens.
+  useEffect(() => {
+    try {
+      const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+      if (unreadCount > 0) nav.setAppBadge?.(unreadCount)?.catch(() => {});
+      else nav.clearAppBadge?.()?.catch(() => {});
+    } catch { /* badging unsupported */ }
+  }, [unreadCount]);
+
   // Un-highlights every currently-visible notification without removing it -
   // rows stay in the list (still scrollable/readable), just lose the unread
   // styling and no longer count toward the bell's dot. Distinct from Clear,
@@ -554,10 +572,14 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       >
         <BellIcon className="w-5 h-5" />
         {unreadCount > 0 && (
-          <span 
-            className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
-            style={{ background: 'var(--color-primary)' }}
-          />
+          // Count badge, not just a presence dot - "something's waiting" and
+          // "eleven things are waiting" are different amounts of urgency.
+          <span
+            className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center text-[9px] font-bold leading-none"
+            style={{ background: 'var(--color-primary)', color: '#fff' }}
+          >
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
         )}
       </motion.button>
 

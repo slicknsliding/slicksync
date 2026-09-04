@@ -13,6 +13,7 @@ import { pointerWithin } from "@dnd-kit/core";
 import { VaultDragProvider, useVaultDrag } from "@/components/providers/VaultDragContext";
 import { TVBackButton } from "@/components/tv/TVBackButton";
 import { CommandPalette } from "@/components/ui/CommandPalette";
+import { LiveEventsBridge } from "@/components/ui/LiveEventsBridge";
 import { useIsTV } from "@/lib/hooks/useIsTV";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { setOnboardingAccountScope } from "@/lib/onboardingStorage";
@@ -179,6 +180,7 @@ export default function AdminClientLayout({
         {/* No keyboard on a D-pad-only TV interface - a floating Ctrl+K
             hint/shortcut makes no sense there. */}
         {!isTV && <CommandPalette />}
+        <LiveEventsBridge />
         {!isTV && onboardingScopeReady && <OnboardingWizard />}
         <VaultDragProvider>
           <LayoutDndWrapper>

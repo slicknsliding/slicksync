@@ -1064,6 +1064,111 @@ export default function NuvioCollectionsPage() {
     }
   }, [copyTarget, selectedUserId, profiles]);
 
+  // --- Collections Guard banner ---
+  // Alarms come from the hourly guard pass (server-side): a profile whose
+  // collections mass-vanished since the last good snapshot. Restore pushes
+  // that snapshot back; Accept adopts the new state as the baseline.
+  type GuardAlarm = { kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; detectedAt: string };
+  const [guardAlarms, setGuardAlarms] = useState<GuardAlarm[]>([]);
+  const [guardBusy, setGuardBusy] = useState<string | null>(null);
+  const loadGuardAlarms = useCallback(() => {
+    api.getCollectionsGuardAlarms().then((r) => setGuardAlarms(r.alarms || [])).catch(() => {});
+  }, []);
+  useEffect(() => { loadGuardAlarms(); }, [loadGuardAlarms]);
+
+  const handleGuardRestore = async (alarm: GuardAlarm) => {
+    setGuardBusy(`${alarm.kind}:${alarm.userId}:${alarm.profileId}`);
+    try {
+      const r = await api.restoreCollectionsSnapshot(alarm.userId, alarm.profileId, alarm.kind);
+      const n = alarm.kind === 'layout' ? (r.restoredItems ?? 0) : (r.restoredCount ?? 0);
+      toast.success(alarm.kind === 'layout'
+        ? `Restored the home-row layout (${n} row${n === 1 ? '' : 's'}) from the last good snapshot`
+        : `Restored ${n} collection${n === 1 ? '' : 's'} from the last good snapshot`);
+      loadGuardAlarms();
+      // If the restored profile is on screen, reload it so the grid shows
+      // the recovered collections rather than the overwritten state.
+      if (alarm.userId === selectedUserId && alarm.profileId === selectedProfileIndex) window.location.reload();
+    } catch (e: any) {
+      toast.error(e.message || 'Restore failed');
+    } finally {
+      setGuardBusy(null);
+    }
+  };
+
+  const handleGuardAccept = async (alarm: GuardAlarm) => {
+    setGuardBusy(`${alarm.kind}:${alarm.userId}:${alarm.profileId}`);
+    try {
+      await api.acceptCollectionsState(alarm.userId, alarm.profileId, alarm.kind);
+      toast.success('Current state accepted as the new baseline');
+      loadGuardAlarms();
+    } catch (e: any) {
+      toast.error(e.message || 'Accept failed');
+    } finally {
+      setGuardBusy(null);
+    }
+  };
+
+  const guardBanner = guardAlarms.length > 0 ? (
+    <div className="mb-4 p-4 rounded-xl border" style={{ borderColor: 'var(--color-error)', background: 'var(--color-error-muted, rgba(239,68,68,0.08))' }}>
+      <p className="text-sm font-semibold text-default mb-1">Something on the account may have been overwritten</p>
+      <p className="text-xs text-muted mb-3">
+        Another logged-in Nuvio app pushing a stale state erases collections and home-row layouts exactly like
+        this. Restore puts back the last good snapshot; Accept keeps what&apos;s on the account now.
+      </p>
+      <div className="space-y-2">
+        {guardAlarms.map((a) => {
+          const key = `${a.kind}:${a.userId}:${a.profileId}`;
+          const noun = a.kind === 'layout' ? 'home rows' : 'collections';
+          return (
+            <div key={key} className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-default">
+                <span className="font-medium">{a.username || a.userId}</span> · profile {a.profileId}:{' '}
+                {a.lastGoodCount ?? '?'} {noun} → {a.currentCount}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="primary" size="sm" isLoading={guardBusy === key} onClick={() => handleGuardRestore(a)}>
+                  Restore
+                </Button>
+                <Button variant="ghost" size="sm" disabled={guardBusy === key} onClick={() => handleGuardAccept(a)}>
+                  Accept new state
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
+
+  // --- Home-row layout clone ---
+  // Copies the selected profile's whole home-screen ARRANGEMENT (row order,
+  // renames, hidden rows - the synced home-catalog settings, not the
+  // collections) onto another profile, instead of re-dragging every row by
+  // hand. Two-step arm on the target since it overwrites that profile's
+  // arrangement outright.
+  const [homeRowsMenuOpen, setHomeRowsMenuOpen] = useState(false);
+  const [homeRowsArmed, setHomeRowsArmed] = useState<number | null>(null);
+  const [homeRowsBusy, setHomeRowsBusy] = useState(false);
+  const copyHomeRows = async (targetProfileIndex: number) => {
+    if (homeRowsArmed !== targetProfileIndex) {
+      setHomeRowsArmed(targetProfileIndex);
+      setTimeout(() => setHomeRowsArmed((cur) => (cur === targetProfileIndex ? null : cur)), 5000);
+      return;
+    }
+    setHomeRowsArmed(null);
+    setHomeRowsBusy(true);
+    try {
+      const r = await api.copyHomeLayout(selectedUserId, selectedProfileIndex!, targetProfileIndex);
+      const targetName = profiles.find((p) => p.profile_index === targetProfileIndex)?.name || `Profile ${targetProfileIndex}`;
+      toast.success(`Home-row layout copied to ${targetName} (${r.copiedItems} row${r.copiedItems === 1 ? '' : 's'})`);
+      setHomeRowsMenuOpen(false);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to copy the home-row layout');
+    } finally {
+      setHomeRowsBusy(false);
+    }
+  };
+
   // --- Layout ---
 
   const backButton = (
@@ -1100,6 +1205,8 @@ export default function NuvioCollectionsPage() {
         {layoutMode === 'nebula' && (
           <NebulaPageHeading title="Nuvio Collections" subtitle="Organize a Nuvio account's own home-screen collections" leading={backButton} actions={selectedProfileIndex !== null ? saveAction : undefined} />
         )}
+
+        {guardBanner}
 
         <PageSection>
           {/* Grid of Nuvio-connected users, same card-grid pattern as
@@ -1259,6 +1366,37 @@ export default function NuvioCollectionsPage() {
                     >
                       <QuestionMarkCircleIcon className="w-4 h-4" />
                     </button>
+                    {otherProfiles.length > 0 && (
+                      <div className="relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => { setHomeRowsMenuOpen((v) => !v); setHomeRowsArmed(null); }}
+                          title="Copy this profile's home-screen row arrangement (order, renames, hidden rows) onto another profile"
+                        >
+                          Copy home rows
+                        </Button>
+                        {homeRowsMenuOpen && (
+                          <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border p-1 min-w-[180px]" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-surface-border)' }}>
+                            <p className="px-2 py-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--color-text-muted)' }}>Overwrite which profile?</p>
+                            {otherProfiles.map((p) => (
+                              <button
+                                key={p.profile_index}
+                                type="button"
+                                disabled={homeRowsBusy}
+                                onClick={() => copyHomeRows(p.profile_index)}
+                                className="w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors hover:bg-surface-hover"
+                                style={{ color: homeRowsArmed === p.profile_index ? 'var(--color-error)' : 'var(--color-text)' }}
+                              >
+                                {homeRowsArmed === p.profile_index
+                                  ? `Overwrite ${p.name || `Profile ${p.profile_index}`}'s rows?`
+                                  : (p.name || `Profile ${p.profile_index}`)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setTemplatesOpen(true)}>
                       Use a template
                     </Button>

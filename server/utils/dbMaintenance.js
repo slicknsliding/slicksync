@@ -52,6 +52,12 @@ const DEFAULT_SETTINGS = {
   // it touches are provably read-bounded (see the constants above).
   pruneLogsEnabled: false,
   lastPruneAt: null,
+  // Bell notifications otherwise accumulate forever. Only READ rows past
+  // the age cutoff are ever deleted - an unread notification is a message
+  // nobody has seen yet, and no cleanup job gets to decide it didn't matter.
+  pruneNotificationsEnabled: false,
+  pruneNotificationsDays: 30,
+  lastNotificationsPruneAt: null,
 }
 
 function getDbFilePath() {
@@ -178,6 +184,22 @@ async function pruneLogs(prisma) {
   return result
 }
 
+// Clears READ bell notifications older than the configured age. Unread rows
+// are never touched regardless of age, and the deletion is by createdAt so
+// "30 days" reads as "notifications from more than a month ago", not "read
+// more than a month ago".
+async function pruneNotifications(prisma) {
+  if (!getDbFilePath()) return null
+  const settings = getSettings()
+  const days = Math.min(365, Math.max(1, Number(settings.pruneNotificationsDays) || 30))
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+  const { count } = await prisma.notification.deleteMany({
+    where: { read: true, createdAt: { lt: cutoff } },
+  })
+  saveSettings({ lastNotificationsPruneAt: new Date().toISOString() })
+  return { notificationsDeleted: count, days }
+}
+
 let timer = null
 
 // Each step is independently guarded: one failing (or being disabled) must
@@ -219,7 +241,18 @@ async function checkAndRun(prisma) {
     }
   }
 
-  // VACUUM last: it reclaims the space the prune above just freed, so
+  if (settings.pruneNotificationsEnabled && isDue(settings.lastNotificationsPruneAt, PRUNE_MIN_GAP_MS)) {
+    try {
+      const pruned = await pruneNotifications(prisma)
+      if (pruned?.notificationsDeleted) {
+        console.log(`[DbMaintenance] Cleared ${pruned.notificationsDeleted} read notifications older than ${pruned.days} days`)
+      }
+    } catch (e) {
+      console.warn('[DbMaintenance] Notification trim failed:', e?.message)
+    }
+  }
+
+  // VACUUM last: it reclaims the space the prunes above just freed, so
   // running it after means one pass does the whole job.
   if (settings.vacuumEnabled && isDue(settings.lastVacuumAt, VACUUM_MIN_GAP_MS)) {
     try {
@@ -245,6 +278,6 @@ function clearDbMaintenanceSchedule() {
 }
 
 module.exports = {
-  getSettings, saveSettings, runVacuum, runIntegrityCheck, pruneLogs,
+  getSettings, saveSettings, runVacuum, runIntegrityCheck, pruneLogs, pruneNotifications,
   scheduleDbMaintenance, clearDbMaintenanceSchedule, getDbFilePath,
 }

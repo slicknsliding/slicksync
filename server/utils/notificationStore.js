@@ -38,6 +38,9 @@ const BELL_TYPE_BY_TOGGLE = {
  */
 async function createNotification(prisma, accountId, { type, title, body, poster = null, url = null, data = null, dedupeKey = null }) {
   if (!accountId || !type || !title) return null
+  // Nudge connected clients to refetch the bell right away instead of on
+  // their next 30s tick. Fire-and-forget - see utils/liveEvents.js.
+  try { require('./liveEvents').emitLive(accountId, 'notification') } catch {}
   try {
     if (dedupeKey) {
       // upsert on the (accountId, dedupeKey) unique constraint so the same

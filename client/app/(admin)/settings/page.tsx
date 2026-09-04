@@ -153,7 +153,10 @@ function SettingRow({
   disabled?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between p-4 rounded-lg bg-subtle ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+    // data-setting carries the visible label verbatim so the command
+    // palette's settings deep-search (lib/settingsIndex.ts) can scroll to
+    // and flash this exact row via /settings?highlight=<label>.
+    <div data-setting={label} className={`flex items-center justify-between p-4 rounded-lg bg-subtle ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
       <div>
         <p className="font-medium text-sm text-default">{label}</p>
         <p className="text-xs text-muted">{description}</p>
@@ -161,6 +164,21 @@ function SettingRow({
       {children}
     </div>
   );
+}
+
+// Locates the on-page element for a settings deep-link target: exact
+// data-setting match first (every SettingRow), then a text scan over the
+// labelled blocks and section headers that aren't SettingRows. Returns the
+// enclosing box so the flash outlines something meaningful, not bare text.
+function findSettingElement(target: string): HTMLElement | null {
+  const exact = document.querySelector(`[data-setting="${CSS.escape(target)}"]`);
+  if (exact) return exact as HTMLElement;
+  const t = target.trim().toLowerCase();
+  for (const el of Array.from(document.querySelectorAll('label, h3'))) {
+    const txt = (el.textContent || '').trim().toLowerCase();
+    if (txt === t || txt.startsWith(t)) return (el.closest('div') || el) as HTMLElement;
+  }
+  return null;
 }
 
 // Suggestions for the AI Services ComboBoxes below - never the only valid
@@ -856,6 +874,43 @@ export default function SettingsPage() {
     loadSettings();
     loadPushDevices();
     loadAiServicesStatus();
+  }, []);
+
+  // Deep-link from the command palette: /settings?highlight=<label> scrolls
+  // to that control and flashes its box. Settings load async, so the target
+  // may not exist on first paint - retry briefly instead of racing the
+  // fetches above. The URL is read once on mount (same pattern as Metrics'
+  // ?tab=, avoiding useSearchParams' Suspense requirement); the custom
+  // event covers picking a setting while ALREADY on this page, where a
+  // query-only router.push never remounts anything.
+  useEffect(() => {
+    let cancelled = false;
+    const runHighlight = (target: string) => {
+      let tries = 0;
+      const attempt = () => {
+        if (cancelled) return;
+        const el = findSettingElement(target);
+        if (!el) {
+          if (++tries < 40) setTimeout(attempt, 150); // give up after ~6s
+          return;
+        }
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const prevShadow = el.style.boxShadow;
+        el.style.transition = 'box-shadow 0.3s ease';
+        el.style.boxShadow = '0 0 0 2px var(--color-primary)';
+        if (!el.style.borderRadius && !el.className.includes('rounded')) el.style.borderRadius = '8px';
+        setTimeout(() => { if (!cancelled) el.style.boxShadow = prevShadow; }, 2600);
+      };
+      setTimeout(attempt, 300);
+    };
+    const fromUrl = new URLSearchParams(window.location.search).get('highlight');
+    if (fromUrl) runHighlight(fromUrl);
+    const onEvent = (e: Event) => {
+      const target = (e as CustomEvent<string>).detail;
+      if (typeof target === 'string' && target) runHighlight(target);
+    };
+    window.addEventListener('slicksync:settings-highlight', onEvent);
+    return () => { cancelled = true; window.removeEventListener('slicksync:settings-highlight', onEvent); };
   }, []);
 
   const handleSaveSetting = async (key: keyof SyncSettings, value: any) => {

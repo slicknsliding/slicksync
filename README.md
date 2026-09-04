@@ -109,7 +109,7 @@ Everything is served on `:3000`. `ENCRYPTION_KEY` generates itself on first boot
 - Correct-or-nothing posters: provider poster + Cinemeta-by-ID backfill for library items; strict exact-title matching for proxy-detected items, never a guessed poster; optional **RPDB** integration for rating-embedded art.
 - Explicit per-account timezone for correct day-bucketing (Watch Time Today, streaks) — auto-detected from your browser once, then stored so background jobs always know what "today" means.
 - Cross-account library-sync dedup so a shared-login watch never double-counts.
-- **The Graveyard** — bury a title to keep it out of Continue Watching, dig it back up any time, or **wipe** it: the watch history is erased and a tombstone keeps the provider's own library from resurrecting it later.
+- **The Graveyard** — bury a title to keep it out of Continue Watching, dig it back up any time, or **wipe** it: the watch history is erased and a tombstone keeps the provider's own library from resurrecting it later. An optional checkbox makes a wipe reach the device too — the title is removed from the provider account's own library, so it leaves the device's home screen, not just SlickSync.
 - **Watching Together** — mark a show as watched together and get an alert the moment someone starts an episode past the shared frontier. Per-account opt-out for households that don't want the referee.
 - **Device claims** — on a shared provider login, claim a streaming device as yours and its activity is attributed to the right person from then on.
 
@@ -151,6 +151,8 @@ Organize a Nuvio account's own home-screen collections — the folders and catal
 - **Layout preview** — see exactly how a collection will lay out before saving.
 - **Copy a whole collection between profiles**, export/import as JSON, or hand the layout over as a **share code** — with a picker to share exactly the collections you choose, not the whole set.
 - **Linked catalogs** — add a SlickSync catalog as a folder source, and the folder on the device follows the catalog from then on: edit the catalog in SlickSync, the Nuvio home screen updates on its own.
+- **Collections Guard** — Nuvio's collection sync is last-write-wins, so another logged-in app pushing a stale state can silently erase everything you built. SlickSync snapshots every account's collections hourly; a mass-vanish raises a push alert and a banner with one-click **Restore** from the last good snapshot (or **Accept** the new state). Edits made in SlickSync never trigger it.
+- **Home-row layout guard & clone** — the same hourly guard protects each profile's home-screen row arrangement (order, renames, hidden rows), which one bad write from any client can wipe. And **Copy home rows** clones a finished profile's whole arrangement onto another profile instead of re-dragging every row.
 
 ### ✨ SlickTrax
 A built-in Trakt alternative — no external service, no tokens.
@@ -164,7 +166,7 @@ A built-in Trakt alternative — no external service, no tokens.
 - **Not Interested** feedback downweights similar titles, not just the one dismissed.
 - **Trakt-compatible scrobble-in API** (`/api/scrobble`) — point a real Trakt-scrobbling client (Infuse, Kodi's Trakt plugin) at it with a per-user API key and it writes straight into SlickTrax history.
 - **Watch-history import/export** — import a Letterboxd/IMDb CSV, a Trakt export (Trakt's own free Settings → Data download, no API key or VIP needed), or a Netflix / TV Time / Plex / Tautulli / Movary export via built-in presets; export as a Letterboxd-compatible CSV.
-- **The SlickTrax addon** — install SlickTrax on the streaming device itself as a real Stremio-protocol addon: a single mixed **Continue Watching** row (movies and shows together, ordered by last watched), Watchlist, and For You rows, per user, no external service. Grab it from **Addons → Browse**, right at the top.
+- **The SlickTrax addon** — install SlickTrax on the streaming device itself as a real Stremio-protocol addon: a single mixed **Continue Watching** row (movies and shows together, ordered by last watched), Watchlist, and For You rows, per user, no external service. It sits as the first entry in **Addons → Browse** — Configure, pick the user, Add. Catalog posters are served through your own instance's poster cache, so device rows load fast and repeat views never leave your box.
 - On Nuvio, the Continue Watching row **places itself** — it appears alongside the rest of your home rows under its exact name, no manual reordering, and if you move it later your arrangement wins.
 
 ### 🔐 Vault
@@ -182,7 +184,7 @@ A built-in Trakt alternative — no external service, no tokens.
 - **OMDb usage meter** — a live count of today's requests against the free 1,000/day limit, tracked by your own server since OMDb's API won't tell you.
 
 ### 🔔 Notifications
-**Push + the in-app bell are primary; Discord is entirely optional** — every type works with zero Discord setup, and a webhook just adds Discord delivery on top.
+**Push + the in-app bell are primary; Discord is entirely optional** — every type works with zero Discord setup, and a webhook just adds Discord delivery on top. The bell shows the actual unread count, mirrored onto the installed app's icon.
 
 - Per-type toggles: activity, sync, invites, Vault, addon health, backups, **proxy connectivity**, updates, and monthly recap.
 - Instant "started watching" ping from the live proxy signal.
@@ -199,6 +201,11 @@ A built-in Trakt alternative — no external service, no tokens.
 - Per-device push for every notification type once installed, zero setup — VAPID keys self-generate on first boot.
 - Manage subscribed devices (rename, revoke) from Settings; a revoked device stops getting pushed to immediately.
 - **Opens instantly** — the app shell is cached, so an installed SlickSync starts from disk rather than loading from scratch. API data is never cached, so nothing shown is stale.
+- **App shortcuts** — long-press the installed icon (or right-click on desktop) to jump straight to Activity, Discover, or System Health.
+- **Unread badge on the app icon** — the bell's unread count shows on the installed app's icon itself, and clears as you catch up.
+- **Share into SlickSync** (Android/desktop) — share a link or title from any other app and Discover opens with it already searched, ready to watchlist or catalog.
+- **Compressed API responses** — everything the app fetches travels gzipped, several times smaller on the wire, which phones on cell data feel immediately.
+- **Live updates** — a push channel from your own server tells open pages to refresh the moment something changes: Now Playing appears the instant a stream starts, and bell notifications land without waiting for the next poll. Polling stays as the fallback, so nothing breaks if the channel drops.
 - **Pages you've already visited appear immediately** with what they showed last time, then refresh in place, instead of a loading spinner every visit.
 - **Poster images are served at the size actually displayed**, resized and cached by your own server — far less data on phones and TV, and repeat views never leave your box.
 - **Large grids stay fast at any depth** — Discover mounts only what's near the viewport, so sorting, opening a title and leaving the page cost the same after a thousand items as after ten.
@@ -220,7 +227,7 @@ Rule-based actions that fire on real events, no external workflow tool needed �
 - **Draft it** — describe the rule you want in plain English and the built-in drafter pre-fills it for review (uses your own AI key, entirely optional).
 
 ### ⌨️ Command Palette
-**Ctrl+K** / **Cmd+K** from anywhere — jump straight to any page, user, addon, or catalog by typing a few letters, or ask a free-text question and get an answer from the built-in guides. No AI key required.
+**Ctrl+K** / **Cmd+K** from anywhere — jump straight to any page, user, addon, or catalog by typing a few letters, or ask a free-text question and get an answer from the built-in guides. No AI key required. Individual settings are searchable too: type "digest" or "2fa" and picking the result lands on Settings with that exact control scrolled into view and flashed.
 
 ### 🎨 Themes
 Ten full themes, switchable live, synced across devices. Build your own on top of any base — accent colors, success/error overrides, corner-roundness, text scale, and a choice of 11 display fonts — with a live preview. Two layout modes: the original sidebar, or **Nebula** (top nav + glass panels, default).
@@ -254,8 +261,8 @@ One page answering "is everything actually working right now" — sync drift, ad
 ### 💾 Backup, Maintenance & Updates
 Scheduled + on-demand config backups, validated for real restorability rather than just valid JSON, plus a separate **Disaster Recovery Kit** — the same export plus every Vault secret, re-encrypted under a passphrase you choose, fully portable to a brand-new instance.
 
-- **Off-site backups** — send every scheduled backup to **S3** (AWS, Backblaze B2, Wasabi, Cloudflare R2, MinIO, anything S3-compatible) or **WebDAV** (Nextcloud, rsync.net). A Test button confirms the destination works before you rely on it, and optional local retention cleans up old copies. A failed upload never fails the backup — the local copy is already written, and a notification tells you rather than it failing quietly. These carry configuration only, never Vault credentials.
-- **Database upkeep**, running quietly in the background: a read-only **integrity check** (on by default, since it can only ever read), plus opt-in compaction and old-log trimming. Compaction refuses to run if the disk lacks the space to do it safely, and nothing here touches watch history, users, catalogs, or the Vault.
+- **Off-site backups** — send every scheduled backup to **S3** (AWS, Backblaze B2, Wasabi, Cloudflare R2, MinIO, anything S3-compatible) or **WebDAV** (Nextcloud, rsync.net). A Test button confirms the destination works before you rely on it, and optional local retention cleans up old copies. A failed upload never fails the backup — the local copy is already written, and a notification tells you rather than it failing quietly. These carry configuration only, never Vault credentials — and an optional **encryption passphrase** turns every upload into an encrypted `.enc` file, since backups carry addon URLs that often embed API keys. Local backups stay plain so restores from the box itself are unaffected; an `.enc` imports through the normal Import with its passphrase.
+- **Database upkeep**, running quietly in the background: a read-only **integrity check** (on by default, since it can only ever read), plus opt-in compaction, old-log trimming, and clearing read bell notifications older than a cutoff you choose (unread ones are never touched, no matter how old). Compaction refuses to run if the disk lacks the space to do it safely, and nothing here touches watch history, users, catalogs, or the Vault.
 - **Applying updates** from inside the app where the setup allows it — it backs up, downloads, then restarts, in that order, so a failed download leaves the running version untouched, and a failed start **rolls back automatically**. Otherwise the page shows the exact command to run. Updating in place requires the Docker socket, which grants control of the host's Docker, so it is never enabled for you.
 - **Time Machine** — restore configuration to any backed-up point in time with a diff preview first, or scope the restore to a **single user** and put one person back without touching anyone else.
 - **Trash with 30-day undo** for every destructive action — deleted users, addons, catalogs, Vault entries, group memberships, imports, and Graveyard wipes all land in a Recent Changes panel and restore in one click.

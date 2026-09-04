@@ -12,6 +12,11 @@ import { useEffect } from 'react';
 export function ServiceWorkerRegistrar() {
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    // (A temporary per-device kill switch lived here on 2026-09-04 to test
+    // whether the iPhone installed-app freeze was this worker's doing. It
+    // wasn't: the freeze persisted identically with the worker fully
+    // unregistered and its caches cleared - so the worker is exonerated
+    // and the switch is gone. Don't re-suspect it without new evidence.)
     // After the window load event, so worker installation never competes
     // with the page's own first-load network traffic.
     const register = () => {
