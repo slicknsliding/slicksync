@@ -104,7 +104,7 @@ function hmac(key, data) {
   return crypto.createHmac('sha256', key).update(data).digest()
 }
 
-async function uploadToS3(cfg, filePath, body) {
+async function uploadToS3(cfg, filePath, body, contentType = 'application/json') {
   const { endpoint, region, bucket, prefix, accessKeyId, secretAccessKey } = cfg
   if (!bucket || !accessKeyId || !secretAccessKey) throw new Error('S3 target is missing bucket or credentials')
 
@@ -139,7 +139,7 @@ async function uploadToS3(cfg, filePath, body) {
       'authorization': `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
       'x-amz-content-sha256': payloadHash,
       'x-amz-date': amzDate,
-      'content-type': 'application/json',
+      'content-type': contentType,
     },
     body,
     signal: AbortSignal.timeout(120000),
@@ -148,11 +148,11 @@ async function uploadToS3(cfg, filePath, body) {
   return url
 }
 
-async function uploadToWebdav(cfg, filePath, body) {
+async function uploadToWebdav(cfg, filePath, body, contentType = 'application/json') {
   const { url, username, password } = cfg
   if (!url) throw new Error('WebDAV target is missing its URL')
   const target = `${url.replace(/\/+$/, '')}/${encodeURIComponent(path.basename(filePath))}`
-  const headers = { 'content-type': 'application/json' }
+  const headers = { 'content-type': contentType }
   if (username) headers.authorization = `Basic ${Buffer.from(`${username}:${password || ''}`).toString('base64')}`
   const res = await fetch(target, { method: 'PUT', headers, body, signal: AbortSignal.timeout(120000) })
   if (!res.ok) throw new Error(`WebDAV upload failed (${res.status})`)
@@ -161,16 +161,22 @@ async function uploadToWebdav(cfg, filePath, body) {
 
 /** Ships one already-written backup file to the configured target. Never
  * throws - see the failure policy in this file's header. */
-async function uploadBackup(filePath, prisma) {
+async function uploadBackup(filePath, prisma, opts = {}) {
   const settings = getSettings()
   if (settings.type === 'none') return { skipped: true }
   const QUIET = process.env.QUIET === 'true' || process.env.QUIET === '1'
   try {
-    const raw = fs.readFileSync(filePath)
-    const { remotePath, body } = await prepareUploadBody(settings, filePath, raw)
+    const fileBytes = fs.readFileSync(filePath)
+    // `raw` uploads the bytes untouched - used by full-data snapshots, which
+    // arrive already gzipped and (mandatorily) already encrypted, so the
+    // JSON-envelope path below would only re-wrap them.
+    const { remotePath, body } = opts.raw
+      ? { remotePath: filePath, body: fileBytes }
+      : await prepareUploadBody(settings, filePath, fileBytes)
+    const contentType = opts.contentType || 'application/json'
     const where = settings.type === 's3'
-      ? await uploadToS3(settings.s3, remotePath, body)
-      : await uploadToWebdav(settings.webdav, remotePath, body)
+      ? await uploadToS3(settings.s3, remotePath, body, contentType)
+      : await uploadToWebdav(settings.webdav, remotePath, body, contentType)
     if (!QUIET) console.log(`☁️  Backup uploaded to ${settings.type}: ${where}`)
     return { ok: true, location: where }
   } catch (e) {

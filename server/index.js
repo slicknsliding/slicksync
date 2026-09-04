@@ -644,6 +644,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize DB maintenance scheduler:', err)
     }
 
+    // Schedule full-data backups (opt-in database snapshots - the only
+    // backup lane that carries watch history; see utils/dataBackup.js).
+    try {
+      const { scheduleDataBackups } = require('./utils/dataBackup')
+      scheduleDataBackups(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize data backup scheduler:', err)
+    }
+
     // Schedule the Collections Guard (hourly snapshots of every Nuvio
     // user's home-screen collections + external-overwrite alarms - see
     // utils/collectionsGuard.js). Both instance types: collections belong

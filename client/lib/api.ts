@@ -1374,6 +1374,37 @@ class ApiClient {
   async testBackupTarget() {
     return this.fetch<{ ok: boolean; location?: string; error?: string }>('/settings/backup-targets/test', { method: 'POST' });
   }
+  /** Full-data backups: real database snapshots, the only lane carrying watch history. */
+  async getDataBackup() {
+    return this.fetch<DataBackupSettings>('/settings/data-backup');
+  }
+  async saveDataBackup(data: Partial<Pick<DataBackupSettings, 'enabled' | 'offsite' | 'frequencyDays' | 'keepLocal'>>) {
+    return this.fetch<DataBackupSettings>('/settings/data-backup', { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async runDataBackup() {
+    return this.fetch<{ filename: string; sizeBytes: number; encrypted: boolean; verified: boolean | null; users: number | null; upload?: { skipped?: string; ok?: boolean } }>(
+      '/settings/data-backup/run', { method: 'POST' }
+    );
+  }
+  async deleteDataSnapshot(filename: string) {
+    return this.fetch<{ success: boolean }>(`/settings/data-backup/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  }
+  /** Downloads a snapshot to disk - it is the file scripts/restore-data-snapshot.js takes. */
+  async downloadDataSnapshot(filename: string) {
+    const response = await fetch(`${API_BASE}/settings/data-backup/${encodeURIComponent(filename)}/download`, {
+      credentials: 'include',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async getDbMaintenance() {
     return this.fetch<DbMaintenanceSettings>('/settings/db-maintenance');
   }
@@ -3008,6 +3039,29 @@ export interface BackupTargets {
   webdav: { url: string; username: string; password: string };
   /** Optional - set to encrypt uploads (.enc); empty uploads plain JSON. Comes back masked. */
   encryptPassphrase: string;
+}
+
+export interface DataBackupSnapshot {
+  filename: string;
+  sizeBytes: number;
+  createdAt: string;
+  encrypted: boolean;
+}
+
+export interface DataBackupSettings {
+  available?: boolean;
+  /** True when an off-site passphrase is set - required before snapshots may leave the box. */
+  hasPassphrase?: boolean;
+  enabled: boolean;
+  frequencyDays: number;
+  keepLocal: number;
+  offsite: boolean;
+  lastRunAt: string | null;
+  lastOkAt: string | null;
+  lastError: string | null;
+  lastSizeBytes: number | null;
+  lastVerified: boolean | null;
+  snapshots?: DataBackupSnapshot[];
 }
 
 export interface DbMaintenanceSettings {

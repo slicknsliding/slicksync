@@ -750,6 +750,88 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // --- Full-data backups (utils/dataBackup.js) ---
+  // Private/SQLite only, same boundary as db-maintenance: in public mode the
+  // Postgres database belongs to whoever hosts it.
+  router.get('/data-backup', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { getSettings, listSnapshots, getDbFilePath } = require('../utils/dataBackup')
+      return res.json({
+        ...getSettings(),
+        available: Boolean(getDbFilePath()),
+        // Drives the UI's "off-site copies need a passphrase" notice without
+        // ever handing the passphrase itself back out.
+        hasPassphrase: Boolean(String(require('../utils/backupTargets').getSettings().encryptPassphrase || '').trim()),
+        snapshots: listSnapshots(),
+      })
+    } catch {
+      return res.status(500).json({ message: 'Failed to read data backup settings' })
+    }
+  })
+
+  router.put('/data-backup', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { saveSettings } = require('../utils/dataBackup')
+      const body = req.body || {}
+      const patch = {}
+      for (const key of ['enabled', 'offsite']) {
+        if (key in body) patch[key] = !!body[key]
+      }
+      if ('frequencyDays' in body) {
+        const n = Math.floor(Number(body.frequencyDays))
+        if (!Number.isFinite(n) || n < 1 || n > 30) return res.status(400).json({ message: 'frequencyDays must be between 1 and 30' })
+        patch.frequencyDays = n
+      }
+      if ('keepLocal' in body) {
+        const n = Math.floor(Number(body.keepLocal))
+        if (!Number.isFinite(n) || n < 1 || n > 100) return res.status(400).json({ message: 'keepLocal must be between 1 and 100' })
+        patch.keepLocal = n
+      }
+      return res.json(saveSettings(patch))
+    } catch {
+      return res.status(500).json({ message: 'Failed to save data backup settings' })
+    }
+  })
+
+  router.post('/data-backup/run', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { runDataBackupOnce } = require('../utils/dataBackup')
+      const result = await runDataBackupOnce(prisma)
+      if (!result) return res.status(400).json({ message: 'Not applicable on this instance' })
+      return res.json(result)
+    } catch (e) {
+      return res.status(500).json({ message: e?.message || 'Snapshot failed' })
+    }
+  })
+
+  router.get('/data-backup/:filename/download', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { resolveSnapshotPath } = require('../utils/dataBackup')
+      const full = resolveSnapshotPath(req.params.filename)
+      if (!full) return res.status(404).json({ message: 'Snapshot not found' })
+      return res.download(full)
+    } catch {
+      return res.status(500).json({ message: 'Download failed' })
+    }
+  })
+
+  router.delete('/data-backup/:filename', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { resolveSnapshotPath } = require('../utils/dataBackup')
+      const full = resolveSnapshotPath(req.params.filename)
+      if (!full) return res.status(404).json({ message: 'Snapshot not found' })
+      require('fs').unlinkSync(full)
+      return res.json({ success: true })
+    } catch (e) {
+      return res.status(500).json({ message: e?.message || 'Delete failed' })
+    }
+  })
+
   // --- Database maintenance (utils/dbMaintenance.js) ---
   router.get('/db-maintenance', async (req, res) => {
     if (INSTANCE_TYPE === 'public') return denyInPublic(res)

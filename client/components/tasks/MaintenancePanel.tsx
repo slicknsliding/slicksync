@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Button, Card, ToggleSwitch } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
-import { api, BackupTargets, DbMaintenanceSettings, UpdateCapability } from '@/lib/api';
+import { api, BackupTargets, DataBackupSettings, DbMaintenanceSettings, UpdateCapability } from '@/lib/api';
 import { TrashPanel } from './TrashPanel';
 import { CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
@@ -59,6 +59,7 @@ export function MaintenancePanel() {
   };
 
   const [targets, setTargets] = useState<BackupTargets | null>(null);
+  const [dataBackup, setDataBackup] = useState<DataBackupSettings | null>(null);
   const [maint, setMaint] = useState<DbMaintenanceSettings | null>(null);
   const [capability, setCapability] = useState<UpdateCapability | null>(null);
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(false);
@@ -78,6 +79,7 @@ export function MaintenancePanel() {
   useEffect(() => {
     const id = setTimeout(() => {
       api.getBackupTargets().then(setTargets).catch(() => setTargets(null));
+      api.getDataBackup().then(setDataBackup).catch(() => setDataBackup(null));
       api.getDbMaintenance().then(setMaint).catch(() => setMaint(null));
       api.getUpdateCapability().then(setCapability).catch(() => setCapability(null));
       api.getSyncSettings().then((ss) => {
@@ -97,6 +99,40 @@ export function MaintenancePanel() {
       toast.error(e instanceof Error ? e.message : 'Failed to save');
     } finally {
       setBusy(null);
+    }
+  };
+
+  const saveDataBackup = async (patch: Partial<DataBackupSettings>) => {
+    try {
+      const next = await api.saveDataBackup(patch);
+      setDataBackup((prev) => ({ ...next, snapshots: prev?.snapshots, available: prev?.available, hasPassphrase: prev?.hasPassphrase }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save');
+    }
+  };
+
+  const runDataBackup = async () => {
+    setBusy('dataBackup');
+    try {
+      const r = await api.runDataBackup();
+      const mb = (r.sizeBytes / 1048576).toFixed(1);
+      const verified = r.verified === true ? ', verified readable' : r.verified === false ? ' - WARNING: failed verification' : '';
+      toast.success(`Snapshot written (${mb}MB${r.encrypted ? ', encrypted' : ''}${verified})`);
+      if (r.upload?.skipped) toast.error(`Off-site copy skipped: ${r.upload.skipped}`);
+      setDataBackup(await api.getDataBackup());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Snapshot failed');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const deleteSnapshot = async (filename: string) => {
+    try {
+      await api.deleteDataSnapshot(filename);
+      setDataBackup(await api.getDataBackup());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Delete failed');
     }
   };
 
@@ -325,6 +361,106 @@ export function MaintenancePanel() {
                 </p>
               </>
             )}
+          </div>
+        )}
+      </Card>
+
+      {/* --- Full-data backups --- */}
+      <Card padding="lg">
+        <h3 className="text-base font-semibold text-default mb-1">Full-data backups</h3>
+        <p className="text-xs text-muted mb-4">
+          Config backups above carry your setup - users, groups, addons, catalogs. They deliberately carry no
+          watch history, which means every episode anyone has ever watched lives in exactly one place: the
+          database file. This lane snapshots that database, so a dead disk costs you nothing.
+        </p>
+        {!dataBackup || dataBackup.available === false ? (
+          <p className="text-sm text-muted">Not applicable on this instance.</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3 p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-default flex items-center gap-1.5">
+                  Scheduled snapshots
+                  {dataBackup.lastError
+                    ? <ExclamationTriangleIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
+                    : dataBackup.lastOkAt ? <CheckCircleIcon className="w-4 h-4" style={{ color: 'var(--color-success)' }} /> : null}
+                </p>
+                <p className="text-xs text-muted mt-0.5">
+                  {dataBackup.lastError
+                    ? `Last attempt failed: ${dataBackup.lastError}`
+                    : `Last snapshot ${relative(dataBackup.lastOkAt)}${dataBackup.lastSizeBytes ? ` (${(dataBackup.lastSizeBytes / 1048576).toFixed(1)}MB)` : ''}${dataBackup.lastVerified === true ? ', verified readable' : ''}.`}
+                </p>
+                <div className="flex items-center gap-3 mt-2 flex-wrap">
+                  <label className="flex items-center gap-1.5 text-xs text-muted">
+                    Every
+                    <input
+                      type="number" min={1} max={30}
+                      defaultValue={dataBackup.frequencyDays}
+                      onBlur={(e) => { const n = Number(e.target.value); if (n !== dataBackup.frequencyDays) saveDataBackup({ frequencyDays: n }); }}
+                      className="w-14 px-1.5 py-0.5 rounded text-xs text-center"
+                      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                    />
+                    day(s)
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-muted">
+                    Keep
+                    <input
+                      type="number" min={1} max={100}
+                      defaultValue={dataBackup.keepLocal}
+                      onBlur={(e) => { const n = Number(e.target.value); if (n !== dataBackup.keepLocal) saveDataBackup({ keepLocal: n }); }}
+                      className="w-14 px-1.5 py-0.5 rounded text-xs text-center"
+                      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                    />
+                    locally
+                  </label>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="ghost" size="sm" onClick={runDataBackup} disabled={busy === 'dataBackup'}>
+                  {busy === 'dataBackup' ? 'Working…' : 'Snapshot now'}
+                </Button>
+                <ToggleSwitch checked={dataBackup.enabled} onChange={() => saveDataBackup({ enabled: !dataBackup.enabled })} />
+              </div>
+            </div>
+
+            <div className="flex items-start justify-between gap-3 p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-default">Send snapshots off-site too</p>
+                <p className="text-xs text-muted mt-0.5">
+                  Uses the same S3/WebDAV target as config backups. A snapshot is the whole database, so it only
+                  ever leaves this box encrypted:{' '}
+                  {dataBackup.hasPassphrase
+                    ? 'your encryption passphrase is set, so uploads are allowed.'
+                    : 'set an encryption passphrase above first, or uploads are skipped and only local copies are kept.'}
+                </p>
+              </div>
+              <ToggleSwitch checked={dataBackup.offsite} onChange={() => saveDataBackup({ offsite: !dataBackup.offsite })} />
+            </div>
+
+            {(dataBackup.snapshots?.length ?? 0) > 0 && (
+              <div className="space-y-1.5">
+                {dataBackup.snapshots!.slice(0, 6).map((s) => (
+                  <div key={s.filename} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs" style={{ background: 'var(--color-surface-hover)' }}>
+                    <span className="min-w-0 truncate text-default">
+                      {s.filename}
+                      <span className="text-muted"> · {(s.sizeBytes / 1048576).toFixed(1)}MB{s.encrypted ? ' · encrypted' : ''}</span>
+                    </span>
+                    <span className="flex items-center gap-1 shrink-0">
+                      <Button variant="ghost" size="sm" onClick={() => api.downloadDataSnapshot(s.filename).catch(() => toast.error('Download failed'))}>Download</Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteSnapshot(s.filename)}>Delete</Button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-[11px] text-subtle">
+              Restoring is deliberately not a button here: swapping the database while the app is holding it open
+              is how a restore goes wrong. Download a snapshot, stop the container, and run{' '}
+              <code style={{ color: 'var(--color-text)' }}>node scripts/restore-data-snapshot.js &lt;file&gt;</code>{' '}
+              (add <code style={{ color: 'var(--color-text)' }}>--passphrase</code> for an encrypted one). It moves
+              your current database aside rather than deleting it, so even the restore is reversible.
+            </p>
           </div>
         )}
       </Card>
