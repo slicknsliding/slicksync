@@ -586,7 +586,7 @@ class ApiClient {
 
   /** Collections Guard: profiles whose Nuvio collections or home-row layout look externally overwritten. */
   async getCollectionsGuardAlarms() {
-    return this.fetch<{ alarms: Array<{ kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; lastGoodAt: string | null; detectedAt: string }> }>(
+    return this.fetch<{ alarms: Array<{ kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; lastGoodAt: string | null; detectedAt: string; preview: string[]; previewTotal: number }> }>(
       '/users/collections-guard/alarms'
     );
   }

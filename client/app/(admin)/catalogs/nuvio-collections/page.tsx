@@ -1070,7 +1070,7 @@ export default function NuvioCollectionsPage() {
   // Alarms come from the hourly guard pass (server-side): a profile whose
   // collections mass-vanished since the last good snapshot. Restore pushes
   // that snapshot back; Accept adopts the new state as the baseline.
-  type GuardAlarm = { kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; detectedAt: string };
+  type GuardAlarm = { kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; lastGoodAt: string | null; detectedAt: string; preview: string[]; previewTotal: number };
   const [guardAlarms, setGuardAlarms] = useState<GuardAlarm[]>([]);
   const [guardBusy, setGuardBusy] = useState<string | null>(null);
   const loadGuardAlarms = useCallback(() => {
@@ -1115,7 +1115,12 @@ export default function NuvioCollectionsPage() {
       <p className="text-sm font-semibold text-default mb-1">Something on the account may have been overwritten</p>
       <p className="text-xs text-muted mb-3">
         Another logged-in Nuvio app pushing a stale state erases collections and home-row layouts exactly like
-        this. Restore puts back the last good snapshot; Accept keeps what&apos;s on the account now.
+        this. Restore puts back the last good snapshot; Accept keeps what&apos;s on the account now.{' '}
+        <span className="text-subtle">
+          Nuvio&apos;s backend does not record which app made a change, so SlickSync can tell you what changed and
+          when, but never from which device - if you were rearranging things in the Nuvio app just before the time
+          below, it was probably you.
+        </span>
       </p>
       <div className="space-y-2">
         {guardAlarms.map((a) => {
@@ -1123,10 +1128,20 @@ export default function NuvioCollectionsPage() {
           const noun = a.kind === 'layout' ? 'home rows' : 'collections';
           return (
             <div key={key} className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-default">
-                <span className="font-medium">{a.username || a.userId}</span> · profile {a.profileId}:{' '}
-                {a.lastGoodCount ?? '?'} {noun} → {a.currentCount}
-              </p>
+              <div className="text-xs text-default min-w-0">
+                <p>
+                  <span className="font-medium">{a.username || a.userId}</span> · profile {a.profileId}:{' '}
+                  {a.lastGoodCount ?? '?'} {noun} → {a.currentCount}
+                  <span className="text-muted"> · noticed {new Date(a.detectedAt).toLocaleString()}</span>
+                </p>
+                {a.preview.length > 0 && (
+                  <p className="text-muted mt-0.5 truncate">
+                    Restore brings back: {a.preview.join(', ')}
+                    {a.previewTotal > a.preview.length ? ` and ${a.previewTotal - a.preview.length} more` : ''}
+                    {a.lastGoodAt ? ` (as of ${new Date(a.lastGoodAt).toLocaleString()})` : ''}
+                  </p>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <Button variant="primary" size="sm" isLoading={guardBusy === key} onClick={() => handleGuardRestore(a)}>
                   Restore
