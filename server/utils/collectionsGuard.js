@@ -124,32 +124,174 @@ async function checkUser(prisma, accountId, user, provider) {
     } else {
       await saveSnapshot(prisma, accountId, user.id, profileId, collections, false)
     }
+
+    // Same pass, second guard: the profile's home-row arrangement.
+    if (provider.getHomeCatalogSettings && provider.pushHomeCatalogSettings) {
+      try {
+        await checkUserLayout(prisma, accountId, user, provider, profileId)
+      } catch (e) {
+        console.warn(`[CollectionsGuard] layout check failed for user ${user.id} profile ${profileId}:`, e?.message)
+      }
+    }
   }
+}
+
+// ---- Home-row layout guard (same pattern, second table) ----
+//
+// The home-catalog settings blobs (row order, renames, hidden rows - one
+// blob per platform bucket) are just as losable as collections: ONE
+// malformed write makes the client silently discard an ENTIRE blob, which
+// is exactly what SlickSync's own first placement write did during
+// development. Snapshots ride the same hourly pass and the same
+// Restore/Accept verbs; dataJson holds { [platform]: blob }.
+
+const LAYOUT_PLATFORMS = ['home_catalog_shared', 'mobile', 'desktop']
+
+function parseLayoutBlob(raw) {
+  if (!raw) return null
+  let v = raw
+  if (typeof v === 'string') { try { v = JSON.parse(v) } catch { return null } }
+  return v && typeof v === 'object' ? v : null
+}
+
+function layoutItemCount(data) {
+  return Object.values(data || {}).reduce((n, blob) => n + (Array.isArray(blob?.items) ? blob.items.length : 0), 0)
+}
+
+async function readLayout(provider, profileId) {
+  const data = {}
+  for (const platform of LAYOUT_PLATFORMS) {
+    try {
+      const rows = await provider.getHomeCatalogSettings(profileId, platform)
+      const blob = parseLayoutBlob(rows?.[0]?.settings_json)
+      if (blob) data[platform] = blob
+    } catch { /* bucket unreadable - treated as absent */ }
+  }
+  return data
+}
+
+async function saveLayoutSnapshot(prisma, accountId, userId, profileId, data, alarmed = false) {
+  await prisma.nuvioHomeLayoutSnapshot.create({
+    data: {
+      accountId: accountId || 'default', userId, profileId,
+      itemCount: layoutItemCount(data),
+      dataJson: JSON.stringify(data || {}),
+      alarmed,
+    },
+  })
+  const stale = await prisma.nuvioHomeLayoutSnapshot.findMany({
+    where: { userId, profileId },
+    orderBy: { createdAt: 'desc' },
+    skip: KEEP_GOOD_SNAPSHOTS,
+    select: { id: true },
+  })
+  if (stale.length > 0) {
+    await prisma.nuvioHomeLayoutSnapshot.deleteMany({ where: { id: { in: stale.map((s) => s.id) } } })
+  }
+}
+
+async function latestLayoutSnapshots(prisma, userId, profileId) {
+  const rows = await prisma.nuvioHomeLayoutSnapshot.findMany({
+    where: { userId, profileId },
+    orderBy: { createdAt: 'desc' },
+    take: KEEP_GOOD_SNAPSHOTS,
+  })
+  return { newest: rows[0] || null, newestGood: rows.find((r) => !r.alarmed) || null }
+}
+
+async function checkUserLayout(prisma, accountId, user, provider, profileId) {
+  const data = await readLayout(provider, profileId)
+  const count = layoutItemCount(data)
+  const { newest, newestGood } = await latestLayoutSnapshots(prisma, user.id, profileId)
+  const suspicious = newestGood && newestGood.itemCount > 0 && (count === 0 || count <= newestGood.itemCount / 2)
+  if (suspicious) {
+    if (!newest || !newest.alarmed) {
+      await saveLayoutSnapshot(prisma, accountId, user.id, profileId, data, true)
+    }
+    try {
+      const { createNotification } = require('./notificationStore')
+      await createNotification(prisma, accountId || 'default', {
+        type: 'sync',
+        title: 'Nuvio home-row layout may have been wiped',
+        body: `${user.username || 'A Nuvio user'}'s profile ${profileId} home arrangement went from ${newestGood.itemCount} rows to ${count}. One bad write from any client erases the whole arrangement. Open Nuvio Collections to Restore the last good layout or Accept the new one.`,
+        url: '/catalogs/nuvio-collections',
+        dedupeKey: `layout-guard-${user.id}-${profileId}`,
+      })
+      const { sendPushToAccount } = require('./pushNotifications')
+      await sendPushToAccount(prisma, accountId || 'default', {
+        title: 'Nuvio home rows may have been wiped',
+        body: `${newestGood.itemCount} rows dropped to ${count} on ${user.username || 'a Nuvio account'}. One tap in SlickSync restores the layout.`,
+        url: '/catalogs/nuvio-collections',
+      }).catch(() => {})
+    } catch (e) {
+      console.warn('[CollectionsGuard] layout alert failed:', e?.message)
+    }
+    console.warn(`[CollectionsGuard] suspicious layout drop for user ${user.id} profile ${profileId}: ${newestGood.itemCount} -> ${count}`)
+  } else {
+    await saveLayoutSnapshot(prisma, accountId, user.id, profileId, data, false)
+  }
+}
+
+/** Push every platform blob from the newest good layout snapshot back. */
+async function restoreLayoutSnapshot(prisma, accountId, userId, profileId, provider) {
+  const { newestGood } = await latestLayoutSnapshots(prisma, userId, profileId)
+  if (!newestGood) throw new Error('No good layout snapshot exists to restore from')
+  let data
+  try { data = JSON.parse(newestGood.dataJson) } catch { throw new Error('Stored layout snapshot is unreadable') }
+  for (const [platform, blob] of Object.entries(data || {})) {
+    await provider.pushHomeCatalogSettings(profileId, platform, blob)
+  }
+  await saveLayoutSnapshot(prisma, accountId, userId, profileId, data, false)
+  return { restoredItems: layoutItemCount(data), from: newestGood.createdAt }
+}
+
+/** Adopt the current on-account layout as the new baseline. */
+async function acceptLayoutCurrent(prisma, accountId, userId, profileId, provider) {
+  const data = await readLayout(provider, profileId)
+  await saveLayoutSnapshot(prisma, accountId, userId, profileId, data, false)
+  return { acceptedItems: layoutItemCount(data) }
+}
+
+/** Copy one profile's whole home-row arrangement onto another - reads the
+ * source live and overwrites every platform bucket on the target. Both
+ * profiles get fresh baselines so the guard treats it as our own write. */
+async function copyLayout(prisma, accountId, userId, fromProfileId, toProfileId, provider) {
+  const data = await readLayout(provider, fromProfileId)
+  if (layoutItemCount(data) === 0) throw new Error('The source profile has no synced home-row arrangement to copy')
+  for (const [platform, blob] of Object.entries(data)) {
+    await provider.pushHomeCatalogSettings(toProfileId, platform, blob)
+  }
+  await saveLayoutSnapshot(prisma, accountId, userId, toProfileId, data, false)
+  return { copiedItems: layoutItemCount(data) }
 }
 
 /** Active alarms for the UI banner: the newest snapshot is alarmed. */
 async function getAlarms(prisma, accountId) {
-  const rows = await prisma.nuvioCollectionsSnapshot.findMany({
-    where: { accountId: accountId || 'default' },
-    orderBy: { createdAt: 'desc' },
-  })
-  const seen = new Set()
   const alarms = []
-  for (const row of rows) {
-    const key = `${row.userId}:${row.profileId}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    if (!row.alarmed) continue
-    const good = rows.find((r) => r.userId === row.userId && r.profileId === row.profileId && !r.alarmed)
-    alarms.push({
-      userId: row.userId,
-      profileId: row.profileId,
-      currentCount: row.collectionCount,
-      lastGoodCount: good ? good.collectionCount : null,
-      lastGoodAt: good ? good.createdAt : null,
-      detectedAt: row.createdAt,
-    })
+  const collect = (rows, kind, countOf) => {
+    const seen = new Set()
+    for (const row of rows) {
+      const key = `${row.userId}:${row.profileId}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      if (!row.alarmed) continue
+      const good = rows.find((r) => r.userId === row.userId && r.profileId === row.profileId && !r.alarmed)
+      alarms.push({
+        kind,
+        userId: row.userId,
+        profileId: row.profileId,
+        currentCount: countOf(row),
+        lastGoodCount: good ? countOf(good) : null,
+        lastGoodAt: good ? good.createdAt : null,
+        detectedAt: row.createdAt,
+      })
+    }
   }
+  const where = { accountId: accountId || 'default' }
+  collect(await prisma.nuvioCollectionsSnapshot.findMany({ where, orderBy: { createdAt: 'desc' } }), 'collections', (r) => r.collectionCount)
+  try {
+    collect(await prisma.nuvioHomeLayoutSnapshot.findMany({ where, orderBy: { createdAt: 'desc' } }), 'layout', (r) => r.itemCount)
+  } catch { /* table may not exist yet mid-upgrade */ }
   return alarms
 }
 
@@ -206,4 +348,7 @@ function scheduleCollectionsGuard(prisma, deps) {
   timer = setInterval(() => runGuardPass(prisma, deps).catch(() => {}), GUARD_INTERVAL_MS)
 }
 
-module.exports = { scheduleCollectionsGuard, runGuardPass, recordOwnWrite, getAlarms, restoreSnapshot, acceptCurrent }
+module.exports = {
+  scheduleCollectionsGuard, runGuardPass, recordOwnWrite, getAlarms, restoreSnapshot, acceptCurrent,
+  restoreLayoutSnapshot, acceptLayoutCurrent, copyLayout,
+}

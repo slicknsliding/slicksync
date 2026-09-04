@@ -173,8 +173,6 @@ export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectory
           Public addons from stremio-addons.net. Adding one here brings it into SlickSync - you can then assign it to users or groups like any other addon.
         </p>
 
-        <SlickTraxCard />
-
         <div className="relative">
           <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-subtle" />
           <input
@@ -233,6 +231,13 @@ export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectory
         )}
 
         <div className="max-h-[52vh] overflow-y-auto space-y-2 pr-1">
+          {/* SlickTrax leads the list itself - first row, above Torrentio -
+              rather than a separate banner floating over the browse UI
+              (user feedback: it belongs IN the list). Page 1 only, and it
+              respects the search box like any other entry. */}
+          {page === 1 && (!search.trim() || 'slicktrax continue watching watchlist catalogs'.includes(search.trim().toLowerCase())) && (
+            <SlickTraxRow />
+          )}
           {loading && !result && <p className="text-sm text-muted py-6 text-center">Loading addons...</p>}
           {!loading && result?.addons.length === 0 && (
             <p className="text-sm text-muted py-6 text-center">No addons match that search.</p>
@@ -307,17 +312,23 @@ export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectory
   );
 }
 
-// SlickTrax's front door in the place people actually look for addons.
-// The addon itself is PER-USER (a tokened manifest served by this very
-// SlickSync), so this card is not an entry in the public directory below -
+// SlickTrax's front door in the place people actually look for addons -
+// styled as the FIRST ROW of the directory list (above Torrentio), same
+// shape as every other entry. The addon itself is PER-USER (a tokened
+// manifest served by this very SlickSync), so instead of an Add button
 // it's a picker: choose the person, and either enable-and-sync (the addon
 // installs itself onto their account) or copy their manifest URL for a
 // manual install anywhere. The per-user toggle on the user's own page
 // remains the config home; this is discovery.
-function SlickTraxCard() {
+function SlickTraxRow() {
   const [users, setUsers] = useState<Array<{ id: string; username: string; traxAddonEnabled?: boolean }>>([]);
   const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
+  // Collapsed by default: one button, same as every other row (user
+  // feedback - no picker sitting open in the list). "Configure" expands
+  // the who-is-it-for step inline, because a per-user tokened addon can't
+  // be a bare Add: there is no single manifest to add.
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     api.getUsers().then((us) => {
@@ -358,32 +369,53 @@ function SlickTraxCard() {
   };
 
   return (
-    <div className="rounded-xl border p-4" style={{ borderColor: 'color-mix(in srgb, var(--color-primary) 35%, transparent)', background: 'color-mix(in srgb, var(--color-primary) 7%, transparent)' }}>
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-default">SlickTrax - this server&apos;s own addon</p>
-          <p className="text-xs text-muted mt-0.5">
-            Continue Watching, Watchlist and your Catalogs as rows inside Stremio and Nuvio - served live by this SlickSync, personal to each user. Pick who, and it installs itself on their next sync.
-          </p>
+    // Same row anatomy as the directory entries below (icon / name+badges+
+    // description / action on the right); the faint primary border is the
+    // only tell that this one is the house addon, not a directory listing.
+    <div className="flex items-start gap-3 p-3 rounded-xl border" style={{ background: 'var(--color-surface-hover)', borderColor: 'color-mix(in srgb, var(--color-primary) 35%, transparent)' }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/android-chrome-192x192.png" alt="" width={40} height={40} className="w-10 h-10 rounded-lg object-contain shrink-0 bg-black/20" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-default">SlickTrax</span>
+          <Badge variant="default" size="sm">catalog</Badge>
+          <span className="text-xs" style={{ color: 'var(--color-primary)' }}>this server&apos;s own addon</span>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <select
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            className="input-base px-3 py-2 text-sm appearance-none pr-8"
+        <p className="text-xs text-muted mt-1">
+          Continue Watching, Watchlist and your Catalogs as rows inside Stremio and Nuvio - served live by this SlickSync, personal to each user. Pick who, and it installs itself on their next sync.
+        </p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {!open ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            leftIcon={<ArrowTopRightOnSquareIcon className="w-4 h-4" />}
+            onClick={() => setOpen(true)}
+            title="SlickTrax is personal to each user - pick who it's for, then it installs itself"
           >
-            <option value="">Pick a user...</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>{u.username}{u.traxAddonEnabled ? ' (enabled)' : ''}</option>
-            ))}
-          </select>
-          {selected && !selected.traxAddonEnabled && (
-            <Button variant="primary" size="sm" isLoading={busy} onClick={enableAndSync}>Enable &amp; sync</Button>
-          )}
-          {selected && selected.traxAddonEnabled && (
-            <Button variant="secondary" size="sm" isLoading={busy} onClick={copyUrl}>Copy manifest URL</Button>
-          )}
-        </div>
+            Configure
+          </Button>
+        ) : (
+          <>
+            <select
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              className="input-base px-3 py-2 text-sm appearance-none pr-8"
+            >
+              <option value="">Pick a user...</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.username}{u.traxAddonEnabled ? ' (enabled)' : ''}</option>
+              ))}
+            </select>
+            {selected && !selected.traxAddonEnabled && (
+              <Button variant="primary" size="sm" isLoading={busy} onClick={enableAndSync}>Add</Button>
+            )}
+            {selected && selected.traxAddonEnabled && (
+              <Button variant="secondary" size="sm" isLoading={busy} onClick={copyUrl}>Copy manifest URL</Button>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

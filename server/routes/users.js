@@ -3266,17 +3266,28 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
-  // One-click restore of the newest good snapshot.
+  // Shared resolver for guard actions: scoped Nuvio user + provider.
+  const resolveNuvioForGuard = async (req, userId) => {
+    const user = await prisma.user.findFirst({ where: { id: userId, accountId: getAccountId(req) } })
+    if (!user || user.providerType !== 'nuvio') return { error: 'Nuvio user not found', status: 404 }
+    const provider = createProvider(user, { decrypt, req })
+    if (!provider) return { error: 'User is not connected to Nuvio', status: 400 }
+    return { user, provider }
+  }
+
+  // One-click restore of the newest good snapshot. kind 'collections'
+  // (default) restores the collections themselves; 'layout' restores the
+  // home-row arrangement blobs.
   router.post('/collections-guard/restore', async (req, res) => {
     try {
-      const { userId, profileId } = req.body || {}
+      const { userId, profileId, kind } = req.body || {}
       if (!userId || !Number.isInteger(Number(profileId))) return res.status(400).json({ error: 'userId and profileId are required' })
-      const user = await prisma.user.findFirst({ where: { id: userId, accountId: getAccountId(req) } })
-      if (!user || user.providerType !== 'nuvio') return res.status(404).json({ error: 'Nuvio user not found' })
-      const provider = createProvider(user, { decrypt, req })
-      if (!provider) return res.status(400).json({ error: 'User is not connected to Nuvio' })
-      const { restoreSnapshot } = require('../utils/collectionsGuard')
-      const result = await restoreSnapshot(prisma, getAccountId(req), userId, Number(profileId), provider)
+      const r = await resolveNuvioForGuard(req, userId)
+      if (r.error) return res.status(r.status).json({ error: r.error })
+      const { restoreSnapshot, restoreLayoutSnapshot } = require('../utils/collectionsGuard')
+      const result = kind === 'layout'
+        ? await restoreLayoutSnapshot(prisma, getAccountId(req), userId, Number(profileId), r.provider)
+        : await restoreSnapshot(prisma, getAccountId(req), userId, Number(profileId), r.provider)
       res.json({ success: true, ...result })
     } catch (e) {
       res.status(500).json({ error: e?.message || 'Restore failed' })
@@ -3286,17 +3297,36 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   // Adopt the current on-account state as the new baseline.
   router.post('/collections-guard/accept', async (req, res) => {
     try {
-      const { userId, profileId } = req.body || {}
+      const { userId, profileId, kind } = req.body || {}
       if (!userId || !Number.isInteger(Number(profileId))) return res.status(400).json({ error: 'userId and profileId are required' })
-      const user = await prisma.user.findFirst({ where: { id: userId, accountId: getAccountId(req) } })
-      if (!user || user.providerType !== 'nuvio') return res.status(404).json({ error: 'Nuvio user not found' })
-      const provider = createProvider(user, { decrypt, req })
-      if (!provider) return res.status(400).json({ error: 'User is not connected to Nuvio' })
-      const { acceptCurrent } = require('../utils/collectionsGuard')
-      const result = await acceptCurrent(prisma, getAccountId(req), userId, Number(profileId), provider)
+      const r = await resolveNuvioForGuard(req, userId)
+      if (r.error) return res.status(r.status).json({ error: r.error })
+      const { acceptCurrent, acceptLayoutCurrent } = require('../utils/collectionsGuard')
+      const result = kind === 'layout'
+        ? await acceptLayoutCurrent(prisma, getAccountId(req), userId, Number(profileId), r.provider)
+        : await acceptCurrent(prisma, getAccountId(req), userId, Number(profileId), r.provider)
       res.json({ success: true, ...result })
     } catch (e) {
       res.status(500).json({ error: e?.message || 'Accept failed' })
+    }
+  })
+
+  // Copy one profile's whole home-row arrangement onto another profile -
+  // overwrites the target's arrangement (the UI confirms first).
+  router.post('/home-layout/copy', async (req, res) => {
+    try {
+      const { userId, fromProfileId, toProfileId } = req.body || {}
+      if (!userId || !Number.isInteger(Number(fromProfileId)) || !Number.isInteger(Number(toProfileId))) {
+        return res.status(400).json({ error: 'userId, fromProfileId and toProfileId are required' })
+      }
+      if (Number(fromProfileId) === Number(toProfileId)) return res.status(400).json({ error: 'Source and target are the same profile' })
+      const r = await resolveNuvioForGuard(req, userId)
+      if (r.error) return res.status(r.status).json({ error: r.error })
+      const { copyLayout } = require('../utils/collectionsGuard')
+      const result = await copyLayout(prisma, getAccountId(req), userId, Number(fromProfileId), Number(toProfileId), r.provider)
+      res.json({ success: true, ...result })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Copy failed' })
     }
   })
 

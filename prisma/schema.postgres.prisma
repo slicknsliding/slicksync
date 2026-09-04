@@ -1041,3 +1041,23 @@ model NuvioCollectionsSnapshot {
   @@index([accountId, userId, profileId, createdAt])
   @@map("nuvio_collections_snapshots")
 }
+
+// Rolling snapshots of a Nuvio profile's HOME-ROW ARRANGEMENT (the synced
+// home-catalog settings blobs: row order, renames, hidden rows - one blob
+// per platform bucket). Same guard pattern as NuvioCollectionsSnapshot
+// above, run by the same hourly pass: good rows are restore sources, an
+// alarmed row newer than every good row is the active alarm. dataJson is
+// { [platform]: settingsBlob } for every bucket that existed at read time.
+model NuvioHomeLayoutSnapshot {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  userId    String
+  profileId Int
+  itemCount Int
+  dataJson  String
+  alarmed   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([accountId, userId, profileId, createdAt])
+  @@map("nuvio_home_layout_snapshots")
+}

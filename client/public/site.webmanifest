@@ -8,6 +8,11 @@
   ],
   "start_url": "/",
   "scope": "/",
+  "share_target": {
+    "action": "/discover",
+    "method": "GET",
+    "params": { "title": "st_title", "text": "st_text", "url": "st_url" }
+  },
   "shortcuts": [
     {
       "name": "Activity",

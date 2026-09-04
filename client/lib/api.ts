@@ -584,22 +584,29 @@ class ApiClient {
     );
   }
 
-  /** Collections Guard: profiles whose Nuvio collections look externally overwritten. */
+  /** Collections Guard: profiles whose Nuvio collections or home-row layout look externally overwritten. */
   async getCollectionsGuardAlarms() {
-    return this.fetch<{ alarms: Array<{ userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; lastGoodAt: string | null; detectedAt: string }> }>(
+    return this.fetch<{ alarms: Array<{ kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; lastGoodAt: string | null; detectedAt: string }> }>(
       '/users/collections-guard/alarms'
     );
   }
 
-  async restoreCollectionsSnapshot(userId: string, profileId: number) {
-    return this.fetch<{ success: boolean; restoredCount: number; from: string }>('/users/collections-guard/restore', {
-      method: 'POST', body: JSON.stringify({ userId, profileId }),
+  async restoreCollectionsSnapshot(userId: string, profileId: number, kind: 'collections' | 'layout' = 'collections') {
+    return this.fetch<{ success: boolean; restoredCount?: number; restoredItems?: number; from: string }>('/users/collections-guard/restore', {
+      method: 'POST', body: JSON.stringify({ userId, profileId, kind }),
     });
   }
 
-  async acceptCollectionsState(userId: string, profileId: number) {
-    return this.fetch<{ success: boolean; acceptedCount: number }>('/users/collections-guard/accept', {
-      method: 'POST', body: JSON.stringify({ userId, profileId }),
+  async acceptCollectionsState(userId: string, profileId: number, kind: 'collections' | 'layout' = 'collections') {
+    return this.fetch<{ success: boolean; acceptedCount?: number; acceptedItems?: number }>('/users/collections-guard/accept', {
+      method: 'POST', body: JSON.stringify({ userId, profileId, kind }),
+    });
+  }
+
+  /** Copy one Nuvio profile's whole home-row arrangement onto another profile (overwrites the target's). */
+  async copyHomeLayout(userId: string, fromProfileId: number, toProfileId: number) {
+    return this.fetch<{ success: boolean; copiedItems: number }>('/users/home-layout/copy', {
+      method: 'POST', body: JSON.stringify({ userId, fromProfileId, toProfileId }),
     });
   }
 
