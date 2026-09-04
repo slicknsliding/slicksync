@@ -1223,9 +1223,9 @@ export function MediaDetailModal({
                       )}
                       {enableWatchedIndicators && selfWatched !== null && (
                         <TVFocusable onEnterPress={toggleSelfWatched}>{watchedBtn}</TVFocusable>
-                        {followBtn && (
-                          <TVFocusable onEnterPress={toggleFollow}>{followBtn}</TVFocusable>
-                        )}
+                      )}
+                      {followBtn && (
+                        <TVFocusable onEnterPress={toggleFollow}>{followBtn}</TVFocusable>
                       )}
                       <TVFocusable onEnterPress={() => { window.location.href = buildStremioAppUrl(details.imdb_id!, effectiveType); }}>
                         {stremioBtn}
