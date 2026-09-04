@@ -1751,6 +1751,23 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['system-health-overview', 'maintenance-and-updates'],
   },
   {
+    id: 'smart-catalogs',
+    title: 'Smart Catalogs - a catalog that keeps its own criteria',
+    category: 'Catalogs & Collections',
+    keywords: ['smart catalog', 'rule catalog', 'living catalog', 'auto catalog', 'criteria', 'self updating catalog'],
+    answer: 'Give a catalog a rule ("horror, 2015 onwards, rated 7+, nobody here has seen") instead of a fixed list, and it re-evaluates itself on the same daily tick that refreshes URL-imported catalogs.',
+    details: [
+      'This is a different thing from the three neighbours it sits beside: describing a catalog in plain English interprets your words ONCE and then the list is fixed; auto-refresh re-pulls an imported URL, so the source decides the contents; auto-generated themed catalogs detect clusters from watch history rather than criteria you chose. A Smart Catalog keeps YOUR criteria and re-runs them.',
+      'Rules can filter by type, genres, year range, maximum runtime, keywords, and a minimum rating. "Nobody here has seen it" is applied by SlickSync against the watch history of this household - TMDb cannot answer that.',
+      'If the rule cannot be evaluated (no TMDb key, or TMDb is having a bad day), the catalog is left exactly as it was rather than being emptied. A refresh that cannot ask should never look like a rule that matched nothing.',
+      'Smart Catalogs behave like any other catalog everywhere else - they can be shared as a code, linked into a Nuvio folder, and served as a SlickTrax row on your devices.',
+      'Clearing the rule turns it back into an ordinary hand-built catalog, keeping whatever items it currently holds.',
+    ],
+    related: ['catalog-create', 'catalog-auto-refresh'],
+    href: '/catalogs',
+    linkLabel: 'Open Catalogs',
+  },
+  {
     id: 'describe-it-search',
     title: 'Finding a title you can only half-remember',
     category: 'Watching & Discover',

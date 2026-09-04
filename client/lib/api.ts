@@ -603,6 +603,19 @@ class ApiClient {
     });
   }
 
+  /** Smart Catalogs: store the criteria a catalog keeps re-evaluating (null clears it). */
+  async setSmartRule(listId: string, rule: SmartCatalogRule | null, autoRefresh = true) {
+    return this.fetch<{ success: boolean; rule: SmartCatalogRule | null; description: string }>(
+      `/lists/${encodeURIComponent(listId)}/smart-rule`,
+      { method: 'PUT', body: JSON.stringify({ rule, autoRefresh }) }
+    );
+  }
+  async refreshSmartCatalog(listId: string) {
+    return this.fetch<{ success: boolean; id: string; name: string; count: number }>(
+      `/lists/${encodeURIComponent(listId)}/smart-refresh`, { method: 'POST' }
+    );
+  }
+
   /** The household's own titles (watchlist + recent history), for instant local matches. */
   async getLocalIndex() {
     return this.fetch<{ items: Array<{ id: string; name: string; type: 'movie' | 'series'; poster: string | null }> }>('/discover/local-index');
@@ -3740,6 +3753,19 @@ export interface NuvioCollection {
   title: string;
   folders?: NuvioCollectionFolder[];
   [key: string]: any;
+}
+
+export interface SmartCatalogRule {
+  type: 'movie' | 'series' | null;
+  genres: string[];
+  yearFrom: number | null;
+  yearTo: number | null;
+  maxRuntimeMinutes: number | null;
+  keywords: string[];
+  minRating: number | null;
+  /** Excludes anything anyone in the household has already watched. */
+  unwatchedOnly: boolean;
+  limit: number;
 }
 
 export interface FollowedSubject {

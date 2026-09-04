@@ -1151,17 +1151,22 @@ export default function NuvioCollectionsPage() {
   const [homeRowsEditorOpen, setHomeRowsEditorOpen] = useState(false);
   const [homeRowsMenuOpen, setHomeRowsMenuOpen] = useState(false);
   const [transferMenuOpen, setTransferMenuOpen] = useState(false);
-  // Both toolbar menus close on any outside click, matching how the rest of
-  // this page's popovers behave.
+  const toolbarMenusRef = useRef<HTMLDivElement | null>(null);
+  // Close on an outside click only. The first version listened for ANY
+  // document click, which closed the menu on its own items too - so arming
+  // a copy target ("Overwrite X's rows?") shut the menu before that label
+  // could ever be seen, and the feature looked like it did nothing.
   useEffect(() => {
     if (!homeRowsMenuOpen && !transferMenuOpen) return;
-    const onDown = () => { setHomeRowsMenuOpen(false); setTransferMenuOpen(false); };
-    // Capture phase would swallow the menu's own clicks, so this listens on
-    // the bubble phase and the buttons stopPropagation via their own handler
-    // ordering (React's synthetic click fires before this document listener
-    // only for the toggles themselves, which re-open deliberately).
-    const id = setTimeout(() => document.addEventListener('click', onDown), 0);
-    return () => { clearTimeout(id); document.removeEventListener('click', onDown); };
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (target && toolbarMenusRef.current?.contains(target)) return;
+      setHomeRowsMenuOpen(false);
+      setTransferMenuOpen(false);
+      setHomeRowsArmed(null);
+    };
+    const id = setTimeout(() => document.addEventListener('mousedown', onDown), 0);
+    return () => { clearTimeout(id); document.removeEventListener('mousedown', onDown); };
   }, [homeRowsMenuOpen, transferMenuOpen]);
   const [homeRowsArmed, setHomeRowsArmed] = useState<number | null>(null);
   const [homeRowsBusy, setHomeRowsBusy] = useState(false);
@@ -1372,6 +1377,7 @@ export default function NuvioCollectionsPage() {
                         e.target.value = '';
                       }}
                     />
+                    <div ref={toolbarMenusRef} className="flex items-center gap-2">
                     {/* Nine separate controls had accumulated here (user
                         feedback). The related ones now live behind two
                         menus - everything that moves a layout in or out of
@@ -1383,22 +1389,22 @@ export default function NuvioCollectionsPage() {
                         Transfer
                       </Button>
                       {transferMenuOpen && (
-                        <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border p-1 min-w-[220px]" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-surface-border)' }}>
-                          <p className="px-2 py-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--color-text-muted)' }}>As a file</p>
-                          <button type="button" className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-surface-hover text-default" onClick={() => { setTransferMenuOpen(false); importFileInputRef.current?.click(); }}>
+                        <div className="absolute right-0 top-full mt-2 z-20 rounded-2xl p-1.5 min-w-[240px]" style={{ background: 'linear-gradient(180deg, rgba(12,8,4,0.98), rgba(24,14,4,0.98))', border: '1.5px solid rgba(255,152,0,0.55)', boxShadow: '0 12px 32px -8px rgba(0,0,0,0.8), 0 0 20px -6px rgba(255,152,0,0.45)' }}>
+                          <p className="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(255,152,0,0.75)' }}>As a file</p>
+                          <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); importFileInputRef.current?.click(); }}>
                             Import from JSON…
                           </button>
-                          <button type="button" disabled={collections.length === 0} className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-surface-hover text-default disabled:opacity-40" onClick={() => { setTransferMenuOpen(false); exportCollectionsJson(); }}>
+                          <button type="button" disabled={collections.length === 0} className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 disabled:opacity-40" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); exportCollectionsJson(); }}>
                             Export as JSON
                           </button>
-                          <p className="px-2 py-1 mt-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--color-text-muted)' }}>As a share code</p>
-                          <button type="button" className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-surface-hover text-default" onClick={() => { setTransferMenuOpen(false); setShowPasteCode(true); }}>
+                          <p className="px-3 pt-2 pb-1 mt-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(255,152,0,0.75)' }}>As a share code</p>
+                          <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); setShowPasteCode(true); }}>
                             Paste a code…
                           </button>
-                          <button type="button" disabled={collections.length === 0} className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-surface-hover text-default disabled:opacity-40" onClick={() => { setTransferMenuOpen(false); openShareCode(); }}>
+                          <button type="button" disabled={collections.length === 0} className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 disabled:opacity-40" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); openShareCode(); }}>
                             Create a code…
                           </button>
-                          <button type="button" className="w-full text-left px-2 py-1.5 mt-1 rounded-lg text-xs hover:bg-surface-hover" style={{ color: 'var(--color-secondary)' }} onClick={() => { setTransferMenuOpen(false); setImportExportInfoOpen(true); }}>
+                          <button type="button" className="w-full text-left px-3 py-2 mt-1 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(147,197,253)' }} onClick={() => { setTransferMenuOpen(false); setImportExportInfoOpen(true); }}>
                             Where do I use these?
                           </button>
                         </div>
@@ -1438,31 +1444,36 @@ export default function NuvioCollectionsPage() {
                         </span>
                       </button>
                       {homeRowsMenuOpen && (
-                        <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border p-1 min-w-[220px]" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-surface-border)' }}>
-                          <button type="button" className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-surface-hover text-default" onClick={() => { setHomeRowsMenuOpen(false); setHomeRowsEditorOpen(true); }}>
+                        <div className="absolute right-0 top-full mt-2 z-20 rounded-2xl p-1.5 min-w-[240px]" style={{ background: 'linear-gradient(180deg, rgba(12,8,4,0.98), rgba(24,14,4,0.98))', border: '1.5px solid rgba(255,152,0,0.55)', boxShadow: '0 12px 32px -8px rgba(0,0,0,0.8), 0 0 20px -6px rgba(255,152,0,0.45)' }}>
+                          <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setHomeRowsMenuOpen(false); setHomeRowsEditorOpen(true); }}>
                             Edit this profile&apos;s rows…
                           </button>
                           {otherProfiles.length > 0 && (
                             <>
-                              <p className="px-2 py-1 mt-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--color-text-muted)' }}>Copy rows onto…</p>
+                              <p className="px-3 pt-2 pb-1 mt-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(255,152,0,0.75)' }}>Copy rows onto…</p>
                               {otherProfiles.map((p) => (
                                 <button
                                   key={p.profile_index}
                                   type="button"
                                   disabled={homeRowsBusy}
                                   onClick={() => copyHomeRows(p.profile_index)}
-                                  className="w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors hover:bg-surface-hover"
-                                  style={{ color: homeRowsArmed === p.profile_index ? 'var(--color-error)' : 'var(--color-text)' }}
+                                  className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10"
+                                  style={homeRowsArmed === p.profile_index
+                                    ? { color: '#fff', background: 'rgba(220,38,38,0.75)' }
+                                    : { color: 'rgb(226,232,240)' }}
                                 >
-                                  {homeRowsArmed === p.profile_index
-                                    ? `Overwrite ${p.name || `Profile ${p.profile_index}`}'s rows?`
-                                    : (p.name || `Profile ${p.profile_index}`)}
+                                  {homeRowsBusy && homeRowsArmed === null
+                                    ? 'Copying...'
+                                    : homeRowsArmed === p.profile_index
+                                      ? `Click again to overwrite ${p.name || `Profile ${p.profile_index}`}`
+                                      : (p.name || `Profile ${p.profile_index}`)}
                                 </button>
                               ))}
                             </>
                           )}
                         </div>
                       )}
+                    </div>
                     </div>
                     <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setTemplatesOpen(true)}>
                       Use a template

@@ -17,8 +17,15 @@ const WEEKLY_MIN_GAP_MS = 7 * 24 * 60 * 60 * 1000
 async function runCatalogAutoRefresh(prisma) {
   try {
     const { refreshListFromSourceForAccount } = require('./listImport')
+    // Two kinds of self-updating catalog ride this same tick: URL-imported
+    // ones (re-pull the source) and Smart Catalogs (re-evaluate the stored
+    // rule). Both are opt-in via autoRefresh; which one a list is depends on
+    // whether it carries a source URL or a rule.
     const lists = await prisma.customList.findMany({
-      where: { autoRefresh: true, importSourceUrl: { not: null } },
+      where: {
+        autoRefresh: true,
+        OR: [{ importSourceUrl: { not: null } }, { smartRuleJson: { not: null } }],
+      },
     })
     let ok = 0
     let skipped = 0
@@ -28,6 +35,17 @@ async function runCatalogAutoRefresh(prisma) {
         if (sinceLast < WEEKLY_MIN_GAP_MS) { skipped++; continue }
       }
       try {
+        if (list.smartRuleJson) {
+          const { refreshSmartCatalog } = require('./smartCatalogs')
+          const { resolveTmdbKeyForAccount } = require('./listImport')
+          const tmdbKey = await resolveTmdbKeyForAccount(prisma, list.accountId)
+          const result = await refreshSmartCatalog(prisma, list.accountId, list, tmdbKey)
+          // null = could not evaluate (no key, TMDb down). The catalog keeps
+          // whatever it already had rather than being emptied.
+          if (result) ok++
+          else skipped++
+          continue
+        }
         const { items } = await refreshListFromSourceForAccount(prisma, list.accountId, list)
         await prisma.customList.update({
           where: { id: list.id },

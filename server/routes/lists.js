@@ -193,6 +193,52 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
   // before committing; wholesale replace is destructive to any titles
   // added/removed by hand since the original import, so this is never a
   // silent operation.
+  // --- Smart Catalogs (utils/smartCatalogs.js) ---
+  //
+  // A catalog that keeps its CRITERIA instead of a fixed list, re-evaluated
+  // on the same auto-refresh tick URL-imported catalogs already use.
+  router.put('/:id/smart-rule', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      const list = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } })
+      if (!list) return res.status(404).json({ error: 'Catalog not found' })
+      const { normalizeRule, describeRule } = require('../utils/smartCatalogs')
+      // An explicit null clears the rule and the catalog goes back to being
+      // an ordinary hand-built one, keeping whatever items it has.
+      if (req.body?.rule === null) {
+        await prisma.customList.update({ where: { id: list.id }, data: { smartRuleJson: null } })
+        return res.json({ success: true, rule: null, description: '' })
+      }
+      const rule = normalizeRule(req.body?.rule)
+      await prisma.customList.update({
+        where: { id: list.id },
+        data: { smartRuleJson: JSON.stringify(rule), autoRefresh: req.body?.autoRefresh !== false },
+      })
+      res.json({ success: true, rule, description: describeRule(rule) })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to save the rule' })
+    }
+  })
+
+  // Evaluate now, without waiting for the daily tick.
+  router.post('/:id/smart-refresh', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      const list = await prisma.customList.findFirst({ where: { id: req.params.id, accountId } })
+      if (!list) return res.status(404).json({ error: 'Catalog not found' })
+      if (!list.smartRuleJson) return res.status(400).json({ error: 'This catalog has no rule - set one first' })
+      const { refreshSmartCatalog } = require('../utils/smartCatalogs')
+      const { resolveTmdbKeyForAccount } = require('../utils/listImport')
+      const tmdbKey = await resolveTmdbKeyForAccount(prisma, accountId)
+      if (!tmdbKey) return res.status(400).json({ error: 'A TMDb key is needed to evaluate a rule (Settings -> External API Keys)' })
+      const result = await refreshSmartCatalog(prisma, accountId, list, tmdbKey)
+      if (!result) return res.status(502).json({ error: 'Could not evaluate the rule just now - the catalog was left as it was' })
+      res.json({ success: true, ...result })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Refresh failed' })
+    }
+  })
+
   router.post('/:id/refresh', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';

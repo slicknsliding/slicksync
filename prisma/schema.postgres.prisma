@@ -553,6 +553,14 @@ model CustomList {
   // both. Off by default even for imported catalogs: replacing items
   // unattended is a bigger behavior change than the existing manual
   // "Refresh" button, which always shows a diff before applying.
+  // Smart Catalogs: when set, this catalog is a living QUERY rather than a
+  // fixed list - the stored rule is re-evaluated on the auto-refresh
+  // schedule and the items replaced with whatever now matches. Null for
+  // every ordinary catalog, so existing behaviour is untouched. The shape is
+  // nlCatalog's own normalized query ({ type, genres, yearFrom, yearTo,
+  // maxRuntimeMinutes, keywords }) plus SlickSync-side filters, so the same
+  // TMDb Discover path serves both "describe a catalog" and this.
+  smartRuleJson    String?
   autoRefresh      Boolean  @default(false)
   // 'daily' (default) or 'weekly' - how often the scheduler actually applies
   // a refresh once autoRefresh is on. The scheduler itself still ticks daily
