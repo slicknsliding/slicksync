@@ -603,6 +603,23 @@ class ApiClient {
     });
   }
 
+  /** This season's airing anime (AniList, no key required). */
+  async getSeasonalAnime() {
+    return this.fetch<{ items: SeasonalAnime[] }>('/anime/seasonal');
+  }
+  /** Attaches AniList data (episode count, airing countdown) to a known title. */
+  async lookupAnime(title: string, year?: number) {
+    const params = new URLSearchParams({ title });
+    if (year) params.set('year', String(year));
+    return this.fetch<{ found: boolean; anilistId?: number; malId?: number | null; name?: string; episodes?: number | null; status?: string | null; nextEpisode?: { episode: number; airingAt: string; label: string } | null; siteUrl?: string | null }>(
+      `/anime/lookup?${params.toString()}`
+    );
+  }
+  /** Franchise watch order - main line, side stories and movies kept apart. */
+  async getAnimeWatchOrder(anilistId: number) {
+    return this.fetch<{ mainLine: AnimeEntry[]; sideStories: AnimeEntry[]; movies: AnimeEntry[] }>(`/anime/${anilistId}/watch-order`);
+  }
+
   /** The profile's home-screen row arrangement, labelled with real addon/catalog names. */
   async getNuvioHomeLayout(userId: string, profileId: number) {
     return this.fetch<{ items: NuvioHomeRow[]; unarranged: NuvioHomeRow[]; sourcePlatform: string | null; buckets: string[] }>(
@@ -3690,6 +3707,27 @@ export interface NuvioCollection {
   title: string;
   folders?: NuvioCollectionFolder[];
   [key: string]: any;
+}
+
+export interface AnimeEntry {
+  anilistId: number;
+  name: string;
+  episodes: number | null;
+  year: number | null;
+  format: string | null;
+}
+
+export interface SeasonalAnime {
+  anilistId: number;
+  name: string;
+  poster: string | null;
+  episodes: number | null;
+  format: string | null;
+  status: string | null;
+  score: number | null;
+  genres: string[];
+  nextEpisode: { episode: number; airingAt: string; label: string } | null;
+  siteUrl: string | null;
 }
 
 /** One row of a Nuvio profile's home screen (server/utils/nuvioHomeLayout.js). */

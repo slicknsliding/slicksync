@@ -375,6 +375,9 @@ app.use('/api/poster', postersRouter({ prisma, getAccountId }));
 // route's own header for how it relates to /api/poster above.
 app.use('/api/img', require('./routes/imageCache')());
 app.use('/api/qr', require('./routes/qr')());
+// Anime metadata (AniList) - key-free and strictly additive; see the
+// route's own header for why anime needs a source beyond Cinemeta.
+app.use('/api/anime', require('./routes/anime')({ getAccountId }));
 // Live-update stream (SSE) - tells connected clients "refetch now" the
 // moment something changes, instead of waiting out their poll interval.
 // See utils/liveEvents.js for why it carries types only, never data.
