@@ -3718,34 +3718,46 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       debug.log(`🔄 Starting sync for ${users.length} enabled users`)
 
-      // Sync each user
-      for (const user of users) {
-        try {
-          debug.log(`🔄 Syncing user: ${user.username || user.email}`)
+      // Sync users a few at a time rather than strictly one-by-one. The pool
+      // is deliberately SMALL: each sync talks to a provider backend, and
+      // Nuvio's rides Supabase, which answers 429 under bursts (a real
+      // incident here - see the escalating-backoff fix). Three keeps a large
+      // household meaningfully faster without turning Sync All into a
+      // thundering herd; per-user failures stay isolated exactly as before.
+      const SYNC_CONCURRENCY = 3
+      const queue = [...users]
+      const runWorker = async () => {
+        while (queue.length > 0) {
+          const user = queue.shift()
+          if (!user) return
+          try {
+            debug.log(`🔄 Syncing user: ${user.username || user.email}`)
 
-          // Use the reusable sync function
-          const syncResult = await syncUserAddons(prisma, user.id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields)
+            // Use the reusable sync function
+            const syncResult = await syncUserAddons(prisma, user.id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields)
 
-          if (syncResult.success) {
-            syncedCount++
-            debug.log(`✅ Successfully synced user: ${user.username || user.email}`)
+            if (syncResult.success) {
+              syncedCount++
+              debug.log(`✅ Successfully synced user: ${user.username || user.email}`)
 
-            // Same field-name mismatch as the single-user route above: this
-            // guard required two properties the sync result has never had, so
-            // totalAddons stayed 0 and the "N total addons processed" line -
-            // which is gated on `totalAddons > 0` - never once appeared in the
-            // Sync All summary.
-            if (typeof syncResult.total === 'number') {
-              totalAddons += syncResult.total
+              // Same field-name mismatch as the single-user route above: this
+              // guard required two properties the sync result has never had, so
+              // totalAddons stayed 0 and the "N total addons processed" line -
+              // which is gated on `totalAddons > 0` - never once appeared in the
+              // Sync All summary.
+              if (typeof syncResult.total === 'number') {
+                totalAddons += syncResult.total
+              }
+            } else {
+              errors.push(`${user.username || user.email}: ${syncResult.error}`)
             }
-          } else {
-            errors.push(`${user.username || user.email}: ${syncResult.error}`)
+          } catch (error) {
+            errors.push(`${user.username || user.email}: ${error.message}`)
+            console.error(`❌ Error syncing user ${user.username || user.email}:`, error)
           }
-        } catch (error) {
-          errors.push(`${user.username || user.email}: ${error.message}`)
-          console.error(`❌ Error syncing user ${user.username || user.email}:`, error)
         }
       }
+      await Promise.all(Array.from({ length: Math.min(SYNC_CONCURRENCY, users.length) }, runWorker))
 
       let message = `All users sync completed.\n${syncedCount}/${users.length} users synced`
       if (totalAddons > 0) {
