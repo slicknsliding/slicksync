@@ -603,6 +603,11 @@ class ApiClient {
     });
   }
 
+  /** The household's own titles (watchlist + recent history), for instant local matches. */
+  async getLocalIndex() {
+    return this.fetch<{ items: Array<{ id: string; name: string; type: 'movie' | 'series'; poster: string | null }> }>('/discover/local-index');
+  }
+
   /** Tip-of-the-tongue search: a plot description -> real, TMDb-verified titles. */
   async searchByDescription(description: string) {
     return this.fetch<{ items: DiscoverItem[]; candidates: number }>('/discover/describe', {

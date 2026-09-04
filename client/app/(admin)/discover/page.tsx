@@ -245,6 +245,23 @@ export default function DiscoverPage() {
   // to be PosterCards: clicking one searches Discover for the title, which
   // hands off to the normal flow where the item has real Cinemeta data and
   // every action works. Faking an id here would break watchlist/watched.
+  // Instant search: the household's own titles, fetched once, matched in
+  // memory as you type. Network search still runs exactly as before - these
+  // just appear immediately above it instead of after a round-trip, which is
+  // what makes search feel instant for the things you already know about.
+  const [localIndex, setLocalIndex] = useState<Array<{ id: string; name: string; type: 'movie' | 'series'; poster: string | null }>>([]);
+  useEffect(() => {
+    api.getLocalIndex().then((r) => setLocalIndex(r.items || [])).catch(() => setLocalIndex([]));
+  }, []);
+  const instantMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length < 2 || searchMode !== 'titles') return [];
+    return localIndex
+      .filter((i) => i.type === type && i.name.toLowerCase().includes(q))
+      .slice(0, 12)
+      .map((i) => ({ id: i.id, type: i.type, name: i.name, poster: i.poster, releaseInfo: null } as DiscoverItem));
+  }, [searchQuery, localIndex, type, searchMode]);
+
   const [seasonalAnime, setSeasonalAnime] = useState<SeasonalAnime[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -1172,6 +1189,39 @@ export default function DiscoverPage() {
           </PageSection>
         ) : (
         <PageSection delay={0.1}>
+          {/* Instant matches from your own watchlist/history - rendered
+              while the network search is still loading, and only when it
+              actually has something the results don't already show. */}
+          {source === 'discover' && searchMode === 'titles' && instantMatches.length > 0 && isLoading && (
+            <div className="mb-5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
+                From your library
+              </p>
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                {instantMatches.map((item) => (
+                  <PosterCard
+                    key={'inst:' + item.id}
+                    item={item}
+                    ratings={ratingsById[item.id]}
+                    watched={watchedStatus[item.id]}
+                    inWatchlist={inWatchlistIds.has(item.id)}
+                    showWatchlistMenu={enableWatchlist}
+                    showWatchlistBadge={enableWatchlist}
+                    showWatchedMenu={enableWatchedIndicators}
+                    showWatchedBadge={enableWatchedIndicators}
+                    onOpenDetails={setDetailItem}
+                    onToggleWatchlist={handleToggleWatchlist}
+                    onToggleWatched={handleToggleWatched}
+                    isMenuOpen={openMenuKey === 'inst:' + item.id}
+                    menuKey={'inst:' + item.id}
+                    onMenuOpenChange={handleMenuOpenChange}
+                    focusable={isTV}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {source === 'discover' && searchMode === 'describe' ? (
             // Describe mode: results are TMDb-verified real records, so they
             // render as ordinary PosterCards with every normal action.

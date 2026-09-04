@@ -52,6 +52,30 @@ async function readAllBuckets(provider, profileId) {
   return { buckets, source }
 }
 
+// Addon manifests, fetched from their transport URLs and cached briefly.
+// Same approach routes/users.js already uses when enriching Nuvio addons -
+// the provider's own addon list carries no catalogs at all.
+const manifestCache = new Map()
+const MANIFEST_TTL_MS = 10 * 60 * 1000
+
+async function fetchManifest(transportUrl) {
+  if (!transportUrl) return null
+  const hit = manifestCache.get(transportUrl)
+  if (hit && Date.now() - hit.at < MANIFEST_TTL_MS) return hit.value
+  const url = transportUrl.endsWith('.json') ? transportUrl : `${transportUrl.replace(/\/$/, '')}/manifest.json`
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) })
+    if (!res.ok) return null
+    const json = await res.json()
+    manifestCache.set(transportUrl, { value: json, at: Date.now() })
+    return json
+  } catch {
+    // A slow or dead addon just means that row keeps its raw id - never a
+    // failure of the whole editor.
+    return null
+  }
+}
+
 /**
  * The editor's view: the arranged rows in order, each labelled with the
  * addon and catalog it belongs to, followed by any catalog the account
@@ -61,27 +85,31 @@ async function readLayoutForEdit(provider, profileId, liveAddons) {
   const { buckets, source } = await readAllBuckets(provider, profileId)
   const arranged = (Array.isArray(source?.blob?.items) ? source.blob.items : []).filter(isValidItem)
 
-  // addon id -> { name, catalogs: Map(catalogId+type -> catalog name) }
+  // addon id -> { name, catalogs: Map(type:catalogId -> catalog name) }
   //
-  // Accepts either a bare array or the provider's own collection shape
-  // ({ addons: [...] }) - getUserAddons hands back the latter, and assuming
-  // an array here made EVERY row resolve to no addon, so the editor showed
-  // raw ids and flagged the entire arrangement as orphaned (which is also
-  // what gates the Remove button - not a cosmetic bug).
+  // Built from each addon's REAL manifest, fetched from its transport URL.
+  // That fetch is not optional: Nuvio stores only { url, name } per addon
+  // ("urlOnly" sync), so the provider hands back a stub whose `id` is the
+  // transport URL and whose `catalogs` array is empty - while the layout
+  // blob keys rows by the addon's true manifest id ("aio-metadata"). Those
+  // two can never match, which is why every row previously showed a raw
+  // catalog id and claimed the addon wasn't installed.
   const addonList = Array.isArray(liveAddons)
     ? liveAddons
     : (Array.isArray(liveAddons?.addons) ? liveAddons.addons : [])
+  const manifests = await Promise.all(addonList.map((a) => fetchManifest(a?.transportUrl)))
   const byAddon = new Map()
-  for (const addon of addonList) {
-    const manifest = addon?.manifest || addon
+  addonList.forEach((addon, i) => {
+    // Prefer the fetched manifest; fall back to whatever the provider gave.
+    const manifest = manifests[i] || addon?.manifest || addon
     const addonId = manifest?.id
-    if (!addonId) continue
+    if (!addonId) return
     const catalogs = new Map()
     for (const c of Array.isArray(manifest?.catalogs) ? manifest.catalogs : []) {
       if (c?.id) catalogs.set(`${c.type}:${c.id}`, c.name || c.id)
     }
-    byAddon.set(addonId, { name: manifest?.name || addonId, catalogs })
-  }
+    byAddon.set(addonId, { name: manifest?.name || addon?.transportName || addonId, catalogs })
+  })
 
   const label = (item) => {
     const addon = byAddon.get(item.addon_id)
