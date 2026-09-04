@@ -249,4 +249,4 @@ async function testTarget(settings) {
   }
 }
 
-module.exports = { getSettings, saveSettings, uploadBackup, pruneLocalBackups, testTarget, SETTINGS_FILE }
+module.exports = { getSettings, saveSettings, uploadBackup, pruneLocalBackups, testTarget, prepareUploadBody, SETTINGS_FILE }
