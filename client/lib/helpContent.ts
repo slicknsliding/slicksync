@@ -1751,6 +1751,23 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['system-health-overview', 'maintenance-and-updates'],
   },
   {
+    id: 'describe-it-search',
+    title: 'Finding a title you can only half-remember',
+    category: 'Watching & Discover',
+    keywords: ['describe it', 'tip of the tongue', 'plot search', 'cant remember the name', 'what was that movie', 'ai search'],
+    answer: 'Discover -> Search: Describe it. Type what you remember of the plot ("the one where the guy relives the same day at war") and press Enter. Needs an AI key in Settings; results are verified against TMDb before you see them.',
+    details: [
+      'This is a different job from the Titles search, which matches on names, and from describing a CATALOG, which builds a set from genres and years. A half-remembered plot can only be interpreted by a model.',
+      'The model is only ever asked to NAME candidates - never to describe them. Every name is then looked up on TMDb, and anything TMDb does not recognise is dropped. So a title that was hallucinated simply never appears, rather than showing up with invented details.',
+      'Results come back as ordinary posters, so the watchlist, watched state, catalogs and the detail popup all work on them exactly as anywhere else.',
+      'It only runs when you press Enter, not as you type - each search costs one AI call, and nobody wants a request per keystroke.',
+      'Without an AI key configured this mode says so plainly instead of pretending to search - there is no keyword fallback that could answer a plot memory.',
+    ],
+    related: ['ai-services-setup', 'discover-basics'],
+    href: '/discover',
+    linkLabel: 'Open Discover',
+  },
+  {
     id: 'anime-support',
     title: 'Anime: seasonal row, countdowns and watch order',
     category: 'Watching & Discover',

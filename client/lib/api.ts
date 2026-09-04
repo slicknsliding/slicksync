@@ -603,6 +603,13 @@ class ApiClient {
     });
   }
 
+  /** Tip-of-the-tongue search: a plot description -> real, TMDb-verified titles. */
+  async searchByDescription(description: string) {
+    return this.fetch<{ items: DiscoverItem[]; candidates: number }>('/discover/describe', {
+      method: 'POST', body: JSON.stringify({ description }),
+    });
+  }
+
   /** Followed people and shows, muted ones included. */
   async getFollows() {
     return this.fetch<FollowedSubject[]>('/follows');

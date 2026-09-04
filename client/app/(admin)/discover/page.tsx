@@ -132,7 +132,33 @@ export default function DiscoverPage() {
   // real filmography. Splitting them into an explicit mode means Titles
   // search never touches TMDb at all, and People search never shows a single
   // title-search result that isn't actually a verified credit.
-  const [searchMode, setSearchMode] = useState<'titles' | 'people'>('titles');
+  const [searchMode, setSearchMode] = useState<'titles' | 'people' | 'describe'>('titles');
+  // Describe-a-plot search is its own mode, not a variant of Titles: it costs
+  // an AI round-trip, so it runs only when explicitly asked for and only on
+  // submit (never per keystroke like the other two).
+  const [describeResults, setDescribeResults] = useState<DiscoverItem[] | null>(null);
+  const [describeBusy, setDescribeBusy] = useState(false);
+  const [describeError, setDescribeError] = useState<string | null>(null);
+  const runDescribeSearch = useCallback(async () => {
+    const text = searchQuery.trim();
+    if (!text || describeBusy) return;
+    setDescribeBusy(true);
+    setDescribeError(null);
+    try {
+      const r = await api.searchByDescription(text);
+      setDescribeResults(r.items);
+      if (r.items.length === 0) {
+        setDescribeError(r.candidates > 0
+          ? 'It had guesses, but none of them checked out against TMDb - try adding a detail you are sure about.'
+          : 'No match from that description - try naming something specific you remember.');
+      }
+    } catch (e) {
+      setDescribeError(e instanceof Error ? e.message : 'Search failed');
+      setDescribeResults([]);
+    } finally {
+      setDescribeBusy(false);
+    }
+  }, [searchQuery, describeBusy]);
   // Which poster's right-click menu is open — shared across the whole page
   // (both the main grid and the For You rows) so opening a second card's
   // menu closes whichever one was open before, same as Continue Watching.
@@ -492,7 +518,10 @@ export default function DiscoverPage() {
     onChange: setSearchQuery,
     placeholder: searchMode === 'people'
       ? 'Search for an actor or director...'
-      : `Search ${type === 'movie' ? 'movies' : 'series'}...`,
+      : searchMode === 'describe'
+        ? 'Describe what you remember, then press Enter...'
+        : `Search ${type === 'movie' ? 'movies' : 'series'}...`,
+    onSubmit: searchMode === 'describe' ? runDescribeSearch : undefined,
   };
 
   // TV mode wraps the whole page in the D-pad focus root; PC/mobile get a
@@ -585,6 +614,17 @@ export default function DiscoverPage() {
               >
                 <UserIcon className="w-3.5 h-3.5" />
                 People
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSearchMode('describe'); setDescribeResults(null); setDescribeError(null); }}
+                title="Describe a plot you half-remember - results are verified against TMDb, never invented"
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                  searchMode === 'describe' ? 'bg-primary text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'
+                }`}
+              >
+                <SparklesIcon className="w-3.5 h-3.5" />
+                Describe it
               </button>
             </div>
           )}
@@ -1132,7 +1172,49 @@ export default function DiscoverPage() {
           </PageSection>
         ) : (
         <PageSection delay={0.1}>
-          {source === 'discover' && searchMode === 'people' ? (
+          {source === 'discover' && searchMode === 'describe' ? (
+            // Describe mode: results are TMDb-verified real records, so they
+            // render as ordinary PosterCards with every normal action.
+            <>
+              {describeBusy && <p className="text-sm text-muted py-8 text-center">Working out what that could be...</p>}
+              {!describeBusy && describeError && (
+                <p className="text-sm text-muted py-8 text-center max-w-lg mx-auto">{describeError}</p>
+              )}
+              {!describeBusy && !describeError && !describeResults && (
+                <div className="py-8 text-center max-w-lg mx-auto">
+                  <p className="text-sm text-default mb-1">Describe a film or show you can&apos;t name</p>
+                  <p className="text-xs text-muted">
+                    e.g. &quot;the one where the guy relives the same day at war&quot;. Press Enter to search. Every
+                    result is checked against TMDb first, so nothing invented can show up here.
+                  </p>
+                </div>
+              )}
+              {!describeBusy && describeResults && describeResults.length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                  {describeResults.map((item) => (
+                    <PosterCard
+                      key={item.id}
+                      item={item}
+                      ratings={ratingsById[item.id]}
+                      watched={watchedStatus[item.id]}
+                      inWatchlist={inWatchlistIds.has(item.id)}
+                      showWatchlistMenu={enableWatchlist}
+                      showWatchlistBadge={enableWatchlist}
+                      showWatchedMenu={enableWatchedIndicators}
+                      showWatchedBadge={enableWatchedIndicators}
+                      onOpenDetails={setDetailItem}
+                      onToggleWatchlist={handleToggleWatchlist}
+                      onToggleWatched={handleToggleWatched}
+                      isMenuOpen={openMenuKey === 'desc:' + item.id}
+                      menuKey={'desc:' + item.id}
+                      onMenuOpenChange={handleMenuOpenChange}
+                      focusable={isTV}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          ) : source === 'discover' && searchMode === 'people' ? (
             // People mode: exclusively a person's own verified TMDb credits -
             // never a title-search result mixed in (see the searchMode
             // comment above for why that combination was removed).

@@ -17,6 +17,9 @@ export interface PageToolbarSearchConfig {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  /** Fired on Enter. For searches too expensive to run per keystroke - an
+   *  AI-backed lookup, say - where typing must not fire the request. */
+  onSubmit?: () => void;
 }
 
 export interface PageToolbarFilterConfig {
@@ -193,6 +196,7 @@ export function PageToolbar({
                   value={searchConfig.value}
                   onChange={(e) => searchConfig.onChange(e.target.value)}
                   placeholder={searchConfig.placeholder || 'Search...'}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && searchConfig.onSubmit) { e.preventDefault(); searchConfig.onSubmit(); } }}
                 />
               </div>
             )}
@@ -352,6 +356,7 @@ export function PageToolbarCompact({
             value={searchConfig.value}
             onChange={(e) => searchConfig.onChange(e.target.value)}
             placeholder={searchConfig.placeholder || 'Search...'}
+            onKeyDown={(e) => { if (e.key === 'Enter' && searchConfig.onSubmit) { e.preventDefault(); searchConfig.onSubmit(); } }}
           />
         </div>
       )}

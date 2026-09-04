@@ -365,7 +365,7 @@ if (INSTANCE_TYPE === 'public') {
   })
   app.use('/api/discover', discoverLimiter)
 }
-app.use('/api/discover', discoverRouter({ prisma, getAccountId }));
+app.use('/api/discover', discoverRouter({ prisma, getAccountId, decrypt }));
 app.use('/api/lists', listsRouter({ prisma, getAccountId, decrypt }));
 app.use('/api/federation', require('./routes/federation')({ prisma }));
 app.use('/api/health', healthRouter({ prisma, getAccountId, INSTANCE_TYPE }));

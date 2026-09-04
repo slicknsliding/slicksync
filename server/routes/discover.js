@@ -37,7 +37,7 @@ async function enhanceRealMatchReasons(prisma, accountId, rows) {
 // proxy to Cinemeta; the /recommendations endpoint added below is the one
 // account-scoped read (reads watch history to seed suggestions), so this
 // router now takes prisma + getAccountId.
-module.exports = ({ prisma, getAccountId } = {}) => {
+module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
   const router = express.Router();
 
   // GET /api/discover/browse?type=movie|series&catalog=top|year|imdbRating&genre=X&skip=N
@@ -811,6 +811,23 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     const { resolveKeyFromSettings } = require('../utils/listImport')
     return resolveKeyFromSettings(prisma, getAccountId, req, 'tmdbApiKey', 'TMDB_API_KEY')
   }
+
+  // POST /api/discover/describe - tip-of-the-tongue search. The model only
+  // ever NAMES candidates; every name is then verified against TMDb, so a
+  // hallucinated title fails resolution and never reaches the user rather
+  // than being shown with invented metadata. See utils/describeSearch.js.
+  router.post('/describe', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { searchByDescription } = require('../utils/describeSearch')
+      const tmdbKey = await resolveTmdbKey(req)
+      const result = await searchByDescription(prisma, accountId, decrypt, req.body?.description, tmdbKey)
+      res.json(result)
+    } catch (e) {
+      res.status(400).json({ error: e?.message || 'Could not search by description' })
+    }
+  })
 
   // GET /api/discover/person/:id - a TMDb person's film/TV credits, newest
   // first, deduped, with poster + year + role. tmdbId/mediaType are returned
