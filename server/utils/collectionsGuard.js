@@ -245,6 +245,18 @@ async function restoreLayoutSnapshot(prisma, accountId, userId, profileId, provi
   return { restoredItems: layoutItemCount(data), from: newestGood.createdAt }
 }
 
+/** SlickSync's own layout edits are the new baseline - called after the
+ * home-row editor saves, so a deliberate rearrangement here never reads as a
+ * foreign wipe on the guard's next pass. */
+async function recordOwnLayoutWrite(prisma, accountId, userId, profileId, provider) {
+  try {
+    const data = await readLayout(provider, profileId)
+    await saveLayoutSnapshot(prisma, accountId, userId, profileId, data, false)
+  } catch (e) {
+    console.warn('[CollectionsGuard] own layout-write snapshot failed:', e?.message)
+  }
+}
+
 /** Adopt the current on-account layout as the new baseline. */
 async function acceptLayoutCurrent(prisma, accountId, userId, profileId, provider) {
   const data = await readLayout(provider, profileId)
@@ -350,5 +362,5 @@ function scheduleCollectionsGuard(prisma, deps) {
 
 module.exports = {
   scheduleCollectionsGuard, runGuardPass, recordOwnWrite, getAlarms, restoreSnapshot, acceptCurrent,
-  restoreLayoutSnapshot, acceptLayoutCurrent, copyLayout,
+  restoreLayoutSnapshot, acceptLayoutCurrent, copyLayout, recordOwnLayoutWrite,
 }

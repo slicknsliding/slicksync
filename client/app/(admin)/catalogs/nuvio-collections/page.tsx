@@ -19,6 +19,7 @@ import { useDefaultViewMode } from '@/lib/viewMode';
 import { toast } from '@/components/ui/Toast';
 import { encodeNuvioCollectionsShareCode, decodeShareCode } from '@/lib/shareCodes';
 import { ShareCodeDialog, PasteCodeDialog } from '@/components/ui/ShareCodeDialog';
+import { HomeRowsEditor } from '@/components/nuvio/HomeRowsEditor';
 import {
   api, User, StremioAddon, NuvioProfile, NuvioCollection, NuvioCollectionFolder, NuvioCatalogSource,
 } from '@/lib/api';
@@ -1146,6 +1147,7 @@ export default function NuvioCollectionsPage() {
   // collections) onto another profile, instead of re-dragging every row by
   // hand. Two-step arm on the target since it overwrites that profile's
   // arrangement outright.
+  const [homeRowsEditorOpen, setHomeRowsEditorOpen] = useState(false);
   const [homeRowsMenuOpen, setHomeRowsMenuOpen] = useState(false);
   const [homeRowsArmed, setHomeRowsArmed] = useState<number | null>(null);
   const [homeRowsBusy, setHomeRowsBusy] = useState(false);
@@ -1366,6 +1368,14 @@ export default function NuvioCollectionsPage() {
                     >
                       <QuestionMarkCircleIcon className="w-4 h-4" />
                     </button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setHomeRowsEditorOpen(true)}
+                      title="Reorder, rename or hide this profile's Nuvio home-screen rows"
+                    >
+                      Home rows
+                    </Button>
                     {otherProfiles.length > 0 && (
                       <div className="relative">
                         <Button
@@ -1665,6 +1675,20 @@ export default function NuvioCollectionsPage() {
           </a>
         </div>
       </Modal>
+
+      {/* Home-row arrangement editor - the rows themselves (order, names,
+          hidden), as opposed to the collections this page otherwise edits.
+          Writes straight through to the account on save, with the layout
+          guard's snapshot as the safety net. */}
+      {selectedUserId && selectedProfileIndex !== null && (
+        <HomeRowsEditor
+          isOpen={homeRowsEditorOpen}
+          onClose={() => setHomeRowsEditorOpen(false)}
+          userId={selectedUserId}
+          profileId={selectedProfileIndex}
+          profileName={profiles.find((p) => p.profile_index === selectedProfileIndex)?.name || `Profile ${selectedProfileIndex}`}
+        />
+      )}
 
       {/* Share codes for the whole layout. Import STAGES into the draft
           (same as the JSON file import above) rather than writing straight

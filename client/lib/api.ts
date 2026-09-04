@@ -603,6 +603,21 @@ class ApiClient {
     });
   }
 
+  /** The profile's home-screen row arrangement, labelled with real addon/catalog names. */
+  async getNuvioHomeLayout(userId: string, profileId: number) {
+    return this.fetch<{ items: NuvioHomeRow[]; unarranged: NuvioHomeRow[]; sourcePlatform: string | null; buckets: string[] }>(
+      `/users/${encodeURIComponent(userId)}/home-layout/${profileId}`
+    );
+  }
+
+  /** Writes the arrangement back - array order becomes the on-device row order. */
+  async saveNuvioHomeLayout(userId: string, profileId: number, items: NuvioHomeRow[]) {
+    return this.fetch<{ success: boolean; rows: number; buckets: number }>(
+      `/users/${encodeURIComponent(userId)}/home-layout/${profileId}`,
+      { method: 'PUT', body: JSON.stringify({ items }) }
+    );
+  }
+
   /** Copy one Nuvio profile's whole home-row arrangement onto another profile (overwrites the target's). */
   async copyHomeLayout(userId: string, fromProfileId: number, toProfileId: number) {
     return this.fetch<{ success: boolean; copiedItems: number }>('/users/home-layout/copy', {
@@ -3663,6 +3678,23 @@ export interface NuvioCollection {
   title: string;
   folders?: NuvioCollectionFolder[];
   [key: string]: any;
+}
+
+/** One row of a Nuvio profile's home screen (server/utils/nuvioHomeLayout.js). */
+export interface NuvioHomeRow {
+  addon_id: string;
+  type: string;
+  catalog_id: string;
+  enabled: boolean;
+  custom_title: string;
+  collection_id: string;
+  is_collection: boolean;
+  /** False for catalogs the saved arrangement has never mentioned. */
+  arranged: boolean;
+  addonName: string;
+  catalogName: string;
+  /** True when the row's addon is no longer installed on the account. */
+  orphaned: boolean;
 }
 
 export interface NuvioCommunityCover {

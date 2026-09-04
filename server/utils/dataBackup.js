@@ -73,12 +73,10 @@ const DEFAULT_SETTINGS = {
   lastVerified: null,
 }
 
-function getDbFilePath() {
-  const url = process.env.DATABASE_URL || ''
-  if (!url.startsWith('file:')) return null
-  const p = url.replace(/^file:\/\/\/?/, '/')
-  return p.startsWith('/') ? p : `/${p}`
-}
+// Shared with dbMaintenance rather than re-implemented: both modules gate on
+// "SQLite or nothing", and two copies of that parser is how one of them ends
+// up quietly wrong (it already happened - see its comment there).
+const { getDbFilePath } = require('./dbMaintenance')
 
 function getSettings() {
   try {

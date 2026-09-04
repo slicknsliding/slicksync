@@ -3311,6 +3311,51 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // --- Nuvio home-row editor (utils/nuvioHomeLayout.js) ---
+  //
+  // Reads a profile's home-screen arrangement and labels each row with the
+  // addon and catalog it actually came from, so the editor shows "Torrentio
+  // - Movies" rather than a pair of ids. Rows the arrangement doesn't
+  // mention yet are appended as "not yet arranged" - the client only writes
+  // a preference once a row has been touched, so a fresh profile has
+  // catalogs on screen that the blob has never heard of.
+  router.get('/:id/home-layout/:profileId', async (req, res) => {
+    try {
+      const { id, profileId } = req.params
+      const r = await resolveNuvioForGuard(req, id)
+      if (r.error) return res.status(r.status).json({ error: r.error })
+      const { readLayoutForEdit } = require('../utils/nuvioHomeLayout')
+      const { getUserAddons } = require('../utils/sync')
+      const live = await getUserAddons(r.user, req, { decrypt, StremioAPIClient, createProvider }).catch(() => ({ addons: [] }))
+      const result = await readLayoutForEdit(r.provider, Number(profileId), live?.addons)
+      res.json(result)
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to read the home layout' })
+    }
+  })
+
+  // Writes the edited arrangement back to every platform bucket, so the
+  // change lands whichever bucket that device reads.
+  router.put('/:id/home-layout/:profileId', async (req, res) => {
+    try {
+      const { id, profileId } = req.params
+      const items = req.body?.items
+      if (!Array.isArray(items)) return res.status(400).json({ error: 'items array is required' })
+      const r = await resolveNuvioForGuard(req, id)
+      if (r.error) return res.status(r.status).json({ error: r.error })
+      const { writeLayout } = require('../utils/nuvioHomeLayout')
+      const result = await writeLayout(r.provider, Number(profileId), items)
+      // Our own write is the layout guard's new baseline, exactly like the
+      // collections editor's save.
+      require('../utils/collectionsGuard')
+        .recordOwnLayoutWrite(prisma, getAccountId(req), id, Number(profileId), r.provider)
+        .catch(() => {})
+      res.json({ success: true, ...result })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to save the home layout' })
+    }
+  })
+
   // Copy one profile's whole home-row arrangement onto another profile -
   // overwrites the target's arrangement (the UI confirms first).
   router.post('/home-layout/copy', async (req, res) => {
