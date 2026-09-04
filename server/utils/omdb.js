@@ -70,7 +70,7 @@ function normalizeOmdbApiKey(raw) {
 // back to that env key for callers not yet threading one through (still
 // correct, just not account-isolated) - the cache stores only public
 // rating data, so it's safe to share across whichever key fetched it.
-async function fetchOmdbRatings(imdbId, apiKey) {
+async function fetchOmdbRatings(imdbId, apiKey, opts = {}) {
   const key = normalizeOmdbApiKey(apiKey || ENV_OMDB_API_KEY)
   if (!key || !imdbId || !/^tt\d+$/.test(imdbId)) return null
 
@@ -78,6 +78,16 @@ async function fetchOmdbRatings(imdbId, apiKey) {
   const cached = omdbCache.get(imdbId)
   if (cached && (Date.now() - cached.at) < OMDB_CACHE_TTL_MS) {
     return cached.value
+  }
+
+  // Quota autopilot (opt-in, off by default): once the day's usage crosses
+  // the configured threshold, BACKGROUND enrichment stands down until the
+  // midnight-UTC reset rather than spending the last of the allowance on
+  // work nobody is waiting for. Callers that a person is actively waiting
+  // on never pass background:true, so opening a title still fetches. Cache
+  // hits above are unaffected - a deferral only ever skips a NEW request.
+  if (opts.background && shouldDeferBackground(key, opts)) {
+    return null
   }
 
   try {
@@ -134,4 +144,66 @@ async function fetchOmdbRatings(imdbId, apiKey) {
   }
 }
 
-module.exports = { fetchOmdbRatings, normalizeOmdbApiKey }
+// Remembers the last day a deferral was announced, so the bell gets one
+// row per day rather than one per skipped title.
+let deferredNotifiedOn = null
+
+/**
+ * True when background enrichment should stand down for today. Reads the
+ * meter directly (utils/omdbMeter.js self-counts per key per UTC day, since
+ * OMDb's API reports no quota of its own); the caller passes the account's
+ * autopilot settings, so this stays a pure function of what it is given.
+ */
+function shouldDeferBackground(key, opts) {
+  if (!opts?.autopilot) return false
+  try {
+    const { readOmdbUsage } = require('./omdbMeter')
+    const usage = readOmdbUsage(key)
+    const threshold = Number.isFinite(Number(opts.thresholdPercent)) ? Number(opts.thresholdPercent) : 90
+    if (!usage || !Number.isFinite(usage.percentUsed) || usage.percentUsed < threshold) return false
+
+    // One notification per UTC day, best-effort - a bell row explaining why
+    // some ratings are missing tonight beats them silently not appearing.
+    const today = new Date().toISOString().slice(0, 10)
+    if (opts.prisma && opts.accountId && deferredNotifiedOn !== today) {
+      deferredNotifiedOn = today
+      require('./notificationStore').createNotification(opts.prisma, opts.accountId, {
+        type: 'task',
+        title: 'OMDb enrichment paused for today',
+        body: `Today's OMDb usage reached ${Math.round(usage.percentUsed)}% of the free allowance, so background rating lookups are waiting for the midnight-UTC reset. Anything you open still fetches normally.`,
+        url: '/settings',
+        dedupeKey: `omdb-autopilot-${today}`,
+      }).catch(() => {})
+    }
+    return true
+  } catch {
+    // A meter that can't be read must never block enrichment.
+    return false
+  }
+}
+
+/**
+ * Builds the options a background caller passes to fetchOmdbRatings, from
+ * the account's own autopilot settings. Returns a disabled set on any
+ * failure, so a settings read that goes wrong can never stop enrichment.
+ */
+async function backgroundOmdbOpts(prisma, accountId) {
+  const disabled = { background: true, autopilot: false }
+  try {
+    const account = await prisma.appAccount.findFirst({ where: { id: accountId }, select: { sync: true } })
+    let cfg = account?.sync
+    if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+    if (!cfg || typeof cfg !== 'object') return disabled
+    return {
+      background: true,
+      autopilot: cfg.quotaAutopilot === true,
+      thresholdPercent: Number.isFinite(Number(cfg.quotaAutopilotPercent)) ? Number(cfg.quotaAutopilotPercent) : 90,
+      prisma,
+      accountId,
+    }
+  } catch {
+    return disabled
+  }
+}
+
+module.exports = { fetchOmdbRatings, normalizeOmdbApiKey, shouldDeferBackground, backgroundOmdbOpts }

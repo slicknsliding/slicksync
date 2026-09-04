@@ -3348,6 +3348,9 @@ export interface SyncSettings {
   /** Key Pool, opt-in: spread requests toward the pool key with the most
    * remaining quota (providers that report usage only - MDBList today). */
   keyPoolQuotaWeighting?: boolean;
+  /** Opt-in: background enrichment stands down past the daily quota threshold. */
+  quotaAutopilot?: boolean;
+  quotaAutopilotPercent?: number;
   /** Key Pool, opt-in: a pool EXTRA failing for 3 straight days is removed
    * from the pool automatically, with one notification. */
   keyPoolAutoRetire?: boolean;

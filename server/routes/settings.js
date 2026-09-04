@@ -1016,6 +1016,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           autoUpdateEnabled: (syncCfg && typeof syncCfg === 'object' && syncCfg.autoUpdateEnabled === true),
           autoUpdateHour: (syncCfg && typeof syncCfg === 'object' && Number.isInteger(syncCfg.autoUpdateHour)) ? syncCfg.autoUpdateHour : 4,
           keyPoolQuotaWeighting: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyPoolQuotaWeighting === true),
+          quotaAutopilot: (syncCfg && typeof syncCfg === 'object' && syncCfg.quotaAutopilot === true),
+          quotaAutopilotPercent: Number.isFinite(Number(syncCfg?.quotaAutopilotPercent)) ? Number(syncCfg?.quotaAutopilotPercent) : 90,
           keyPoolAutoRetire: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyPoolAutoRetire === true),
           tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
@@ -1079,6 +1081,8 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           autoUpdateEnabled: syncCfg.autoUpdateEnabled === true,
           autoUpdateHour: Number.isInteger(syncCfg.autoUpdateHour) ? syncCfg.autoUpdateHour : 4,
           keyPoolQuotaWeighting: syncCfg.keyPoolQuotaWeighting === true,
+          quotaAutopilot: syncCfg.quotaAutopilot === true,
+          quotaAutopilotPercent: Number.isFinite(Number(syncCfg?.quotaAutopilotPercent)) ? Number(syncCfg?.quotaAutopilotPercent) : 90,
           keyPoolAutoRetire: syncCfg.keyPoolAutoRetire === true,
           tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
@@ -1227,6 +1231,14 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           autoUpdateHour: Number.isInteger(req.body?.autoUpdateHour) ? Math.min(23, Math.max(0, req.body.autoUpdateHour)) : (Number.isInteger(baseCfg.autoUpdateHour) ? baseCfg.autoUpdateHour : 4),
           keyPoolQuotaWeighting: req.body?.keyPoolQuotaWeighting !== undefined ? req.body.keyPoolQuotaWeighting === true : (baseCfg.keyPoolQuotaWeighting === true),
           keyPoolAutoRetire: req.body?.keyPoolAutoRetire !== undefined ? req.body.keyPoolAutoRetire === true : (baseCfg.keyPoolAutoRetire === true),
+          // Quota autopilot: opt-in, off by default. Defers only BACKGROUND
+          // metadata enrichment once the day's usage crosses the threshold,
+          // so an evening never dies mid-browse with the allowance spent -
+          // anything actively opened still fetches (see utils/omdb.js).
+          quotaAutopilot: req.body?.quotaAutopilot !== undefined ? req.body.quotaAutopilot === true : (baseCfg.quotaAutopilot === true),
+          quotaAutopilotPercent: Number.isFinite(Number(req.body?.quotaAutopilotPercent))
+            ? Math.min(99, Math.max(50, Math.round(Number(req.body.quotaAutopilotPercent))))
+            : (Number.isFinite(Number(baseCfg.quotaAutopilotPercent)) ? Number(baseCfg.quotaAutopilotPercent) : 90),
           keyHealth: (() => {
             const prevHealth = (baseCfg.keyHealth && typeof baseCfg.keyHealth === 'object') ? baseCfg.keyHealth : {}
             const next = { ...prevHealth }

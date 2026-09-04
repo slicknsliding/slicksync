@@ -2128,6 +2128,25 @@ export default function SettingsPage() {
                     />
                   </SettingRow>
                   <SettingRow
+                    label="Pause background lookups near the cap"
+                    description="Once today's OMDb usage passes 90%, background work (decorating notifications) stops fetching ratings until the midnight-UTC reset, so the rest of the allowance stays for what you actually open. Titles you open always fetch. Content-rating checks are never paused."
+                  >
+                    <ToggleSwitch
+                      enabled={syncSettings.quotaAutopilot === true}
+                      onChange={async (v) => {
+                        setSyncSettings((prev) => ({ ...prev, quotaAutopilot: v }));
+                        try {
+                          await api.updateSyncSettings({ quotaAutopilot: v });
+                          toast.success(v ? 'Background lookups will stand down near the daily cap' : 'Background lookups will always run');
+                        } catch {
+                          toast.error('Could not save that setting');
+                          setSyncSettings((prev) => ({ ...prev, quotaAutopilot: !v }));
+                        }
+                      }}
+                      label="Toggle quota autopilot"
+                    />
+                  </SettingRow>
+                  <SettingRow
                     label="Auto-retire failing pool keys"
                     description="A pool key that has been failing for 3 straight days is removed from the pool automatically, with a notification naming it. Your primary and backup keys are never touched."
                   >

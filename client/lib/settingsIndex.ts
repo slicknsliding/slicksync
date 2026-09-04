@@ -63,6 +63,7 @@ export const SETTINGS_INDEX: SettingsIndexEntry[] = [
   S('RPDB API key', 'External API Keys', 'rpdb rating posters art'),
   S('Spread by remaining quota', 'External API Keys', 'key pool weighting quota'),
   S('Auto-retire failing pool keys', 'External API Keys', 'key pool dead remove'),
+  S('Pause background lookups near the cap', 'External API Keys', 'quota autopilot omdb limit defer background'),
   S('SIMKL Client ID', 'External API Keys', 'simkl link trending'),
   S('Nuvio backend URL', 'External API Keys', 'self-hosted server custom'),
   S('AI Services', 'External API Keys', 'openai key model llm draft explanations'),
