@@ -1662,6 +1662,24 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         return responseUtils.badRequest(res, 'No file or jsonData provided');
       }
 
+      // Encrypted off-site backup (.enc envelope from backupTargets'
+      // optional passphrase): decrypt to the real export before anything
+      // else looks at it. Without a passphrase this is a distinct error the
+      // client recognizes and prompts for, not a generic parse failure.
+      if (jsonData && jsonData.slicksyncEncryptedBackup) {
+        const passphrase = String(req.body?.passphrase || '');
+        if (!passphrase) {
+          return res.status(400).json({ message: 'This backup is encrypted - its passphrase is required to import it', code: 'PASSPHRASE_REQUIRED' });
+        }
+        try {
+          const { scryptKey, aesGcmDecrypt } = require('../utils/encryption');
+          const key = await scryptKey(passphrase, jsonData.salt);
+          jsonData = JSON.parse(aesGcmDecrypt(key, jsonData.payload));
+        } catch {
+          return res.status(400).json({ message: 'Wrong passphrase for this encrypted backup' });
+        }
+      }
+
       // Handle both wrapped and direct config formats
       let configData = jsonData.data || jsonData;
       console.log('Config data structure:', Object.keys(configData));

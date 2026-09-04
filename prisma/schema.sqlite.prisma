@@ -1194,3 +1194,26 @@ model TrashItem {
   @@index([accountId, deletedAt])
   @@index([accountId, kind])
 }
+
+// Rolling snapshots of a Nuvio account's home-screen collections, written
+// by the Collections Guard (utils/collectionsGuard.js). Good rows
+// (alarmed=false) are the restore sources; an alarmed=true row records a
+// suspicious read (collections mass-vanishing - the classic external
+// last-write-wins overwrite from another client) and doubles as the active
+// alarm while it is newer than every good row for that user+profile.
+// Restore pushes the newest good row's dataJson back to the account;
+// Accept snapshots the current state as good, which retires the alarm.
+model NuvioCollectionsSnapshot {
+  id              String   @id @default(cuid())
+  accountId       String   @default("default")
+  userId          String
+  profileId       Int
+  collectionCount Int
+  sourceCount     Int
+  dataJson        String
+  alarmed         Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  @@index([accountId, userId, profileId, createdAt])
+  @@map("nuvio_collections_snapshots")
+}

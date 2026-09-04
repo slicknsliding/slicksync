@@ -127,6 +127,20 @@ app.set('trust proxy', 1);
 // Use helper-provided getAccountId (account scoping rules centralized)
 const getAccountId = getAccountIdHelper
 
+// Response compression - JSON payloads (users, history, discover) shrink
+// several-fold over the wire, which is most of what a phone on cell data
+// ever downloads from here. The default filter already skips content types
+// that are compressed by nature (the poster cache's webp/jpeg included);
+// the explicit check skips SSE streams, where buffering a gzip window
+// would hold events hostage instead of delivering them.
+const compression = require('compression');
+app.use(compression({
+  filter: (req, res) => {
+    if ((res.getHeader('Content-Type') || '').toString().includes('text/event-stream')) return false;
+    return compression.filter(req, res);
+  },
+}));
+
 // Parse JSON bodies
 app.use(express.json());
 
@@ -353,6 +367,10 @@ app.use('/api/poster', postersRouter({ prisma, getAccountId }));
 // route's own header for how it relates to /api/poster above.
 app.use('/api/img', require('./routes/imageCache')());
 app.use('/api/qr', require('./routes/qr')());
+// Live-update stream (SSE) - tells connected clients "refetch now" the
+// moment something changes, instead of waiting out their poll interval.
+// See utils/liveEvents.js for why it carries types only, never data.
+app.get('/api/events', (req, res) => require('./utils/liveEvents').handleEventsRequest(req, res, getAccountId));
 // Read-only browse of the public Stremio addon directory - see the route's
 // own header for why this is proxied rather than fetched client-side.
 app.use('/api/addon-directory', require('./routes/addonDirectory')());
@@ -624,6 +642,17 @@ async function bootstrap() {
       scheduleDbMaintenance(prisma)
     } catch (err) {
       console.error('⚠️ Failed to initialize DB maintenance scheduler:', err)
+    }
+
+    // Schedule the Collections Guard (hourly snapshots of every Nuvio
+    // user's home-screen collections + external-overwrite alarms - see
+    // utils/collectionsGuard.js). Both instance types: collections belong
+    // to whoever's Nuvio account is connected, not to the instance.
+    try {
+      const { scheduleCollectionsGuard } = require('./utils/collectionsGuard')
+      scheduleCollectionsGuard(prisma, { createProvider, decrypt })
+    } catch (err) {
+      console.error('⚠️ Failed to initialize Collections Guard:', err)
     }
 
     // Schedule new-episode alerts (Cinemeta episode-list polling for shows

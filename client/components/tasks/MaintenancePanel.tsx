@@ -234,6 +234,29 @@ export function MaintenancePanel() {
             )}
 
             {targets.type !== 'none' && (
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">
+                  Encryption passphrase <span className="text-subtle">(optional)</span>
+                </label>
+                <input
+                  type="password"
+                  defaultValue={targets.encryptPassphrase || ''}
+                  placeholder="Leave empty to upload plain JSON"
+                  onBlur={(e) => { if (e.target.value !== (targets.encryptPassphrase || '')) saveTargets({ encryptPassphrase: e.target.value }); }}
+                  spellCheck={false}
+                  className={inputClass}
+                  style={inputStyle}
+                />
+                <p className="text-[11px] text-subtle mt-1">
+                  With a passphrase set, uploads are encrypted (.enc) so a leaked bucket leaks nothing - backups
+                  carry addon URLs, which often embed API keys. Local backups stay unencrypted, so restores from
+                  this box work exactly as before; an .enc file imports through the normal Import with its
+                  passphrase. If the passphrase is lost, the remote copies cannot be read - keep it somewhere safe.
+                </p>
+              </div>
+            )}
+
+            {targets.type !== 'none' && (
               <div className="flex items-center justify-between gap-3 pt-1">
                 <p className="text-[11px] text-subtle">
                   A failed upload never fails the backup - the local copy is already written, and you get a

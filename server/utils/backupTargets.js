@@ -44,6 +44,31 @@ const DEFAULT_SETTINGS = {
   keepLocal: 0,
   s3: { endpoint: '', region: 'us-east-1', bucket: '', prefix: 'slicksync/', accessKeyId: '', secretAccessKey: '' },
   webdav: { url: '', username: '', password: '' },
+  // OPTIONAL passphrase: when set, uploads are AES-256-GCM encrypted under
+  // a key scrypt-derived from it and land as .enc files; empty (the
+  // default) uploads plain JSON exactly as before. Off-site copies carry
+  // addon install URLs, which often embed API keys - encryption means a
+  // leaked bucket leaks nothing. Local backups are NEVER encrypted (Time
+  // Machine and per-user restore read them directly), so restores from
+  // this box are unaffected; an .enc file is imported via the normal
+  // config-import with its passphrase. Losing the passphrase makes the
+  // remote copies unreadable - that's the deal, stated in the UI.
+  encryptPassphrase: '',
+}
+
+/** Encrypts an upload body when a passphrase is configured; returns the
+ * (possibly renamed) remote filename and (possibly encrypted) body. */
+async function prepareUploadBody(settings, filePath, body) {
+  const passphrase = String(settings.encryptPassphrase || '').trim()
+  if (!passphrase) return { remotePath: filePath, body }
+  const { scryptKey, aesGcmEncrypt } = require('./encryption')
+  const salt = crypto.randomBytes(16).toString('base64')
+  const key = await scryptKey(passphrase, salt)
+  const payload = aesGcmEncrypt(key, body.toString('utf8'))
+  return {
+    remotePath: `${filePath}.enc`,
+    body: Buffer.from(JSON.stringify({ slicksyncEncryptedBackup: 1, kdf: 'scrypt', salt, payload }), 'utf8'),
+  }
 }
 
 function getSettings() {
@@ -141,10 +166,11 @@ async function uploadBackup(filePath, prisma) {
   if (settings.type === 'none') return { skipped: true }
   const QUIET = process.env.QUIET === 'true' || process.env.QUIET === '1'
   try {
-    const body = fs.readFileSync(filePath)
+    const raw = fs.readFileSync(filePath)
+    const { remotePath, body } = await prepareUploadBody(settings, filePath, raw)
     const where = settings.type === 's3'
-      ? await uploadToS3(settings.s3, filePath, body)
-      : await uploadToWebdav(settings.webdav, filePath, body)
+      ? await uploadToS3(settings.s3, remotePath, body)
+      : await uploadToWebdav(settings.webdav, remotePath, body)
     if (!QUIET) console.log(`☁️  Backup uploaded to ${settings.type}: ${where}`)
     return { ok: true, location: where }
   } catch (e) {

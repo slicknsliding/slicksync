@@ -596,7 +596,11 @@ export default function DashboardPage() {
     refreshData();
     // Keeps Now Playing live - see the "Live" badge on its section header.
     const id = setInterval(() => refreshData(true), 30000);
-    return () => clearInterval(id);
+    // SSE accelerant: a stream starting or stopping refetches immediately
+    // instead of waiting out the interval above (which stays as fallback).
+    const onLive = () => refreshData(true);
+    window.addEventListener('slicksync:live-nowplaying', onLive);
+    return () => { clearInterval(id); window.removeEventListener('slicksync:live-nowplaying', onLive); };
   }, [refreshData]);
 
   // Derived stats with fallbacks

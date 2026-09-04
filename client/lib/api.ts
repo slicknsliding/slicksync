@@ -584,6 +584,25 @@ class ApiClient {
     );
   }
 
+  /** Collections Guard: profiles whose Nuvio collections look externally overwritten. */
+  async getCollectionsGuardAlarms() {
+    return this.fetch<{ alarms: Array<{ userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; lastGoodAt: string | null; detectedAt: string }> }>(
+      '/users/collections-guard/alarms'
+    );
+  }
+
+  async restoreCollectionsSnapshot(userId: string, profileId: number) {
+    return this.fetch<{ success: boolean; restoredCount: number; from: string }>('/users/collections-guard/restore', {
+      method: 'POST', body: JSON.stringify({ userId, profileId }),
+    });
+  }
+
+  async acceptCollectionsState(userId: string, profileId: number) {
+    return this.fetch<{ success: boolean; acceptedCount: number }>('/users/collections-guard/accept', {
+      method: 'POST', body: JSON.stringify({ userId, profileId }),
+    });
+  }
+
   async getNuvioCommunityCovers(userId: string, opts: { sort?: string; orientation?: string; format?: string; page?: number; limit?: number; search?: string } = {}) {
     const params = new URLSearchParams();
     if (opts.sort) params.set('sort', opts.sort);
@@ -1664,9 +1683,13 @@ class ApiClient {
     return response.json() as Promise<{ successful: number; failed: number; redundant: number }>;
   }
 
-  async importConfig(file: File) {
+  async importConfig(file: File, passphrase?: string) {
     const formData = new FormData();
     formData.append('file', file);
+    // Only needed for .enc files from a passphrase-protected off-site
+    // target - the server answers code PASSPHRASE_REQUIRED when one is
+    // missing, and the Tasks page prompts and retries.
+    if (passphrase) formData.append('passphrase', passphrase);
     const response = await fetch(`${API_BASE}/public-auth/config-import`, {
       method: 'POST',
       body: formData,
@@ -1675,7 +1698,9 @@ class ApiClient {
     });
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'Import failed' }));
-      throw new Error(error.message || `HTTP ${response.status}`);
+      const err = new Error(error.message || `HTTP ${response.status}`) as Error & { code?: string };
+      err.code = error.code;
+      throw err;
     }
     return response.json() as Promise<ImportConfigResult>;
   }
@@ -2267,9 +2292,9 @@ class ApiClient {
     });
   }
 
-  async wipeBuriedShow(userId: string, showId: string) {
-    return this.fetch<{ success: boolean; episodesDeleted: number; moviesDeleted?: number }>('/users/graveyard/wipe', {
-      method: 'POST', body: JSON.stringify({ userId, showId }),
+  async wipeBuriedShow(userId: string, showId: string, removeFromDevice?: boolean) {
+    return this.fetch<{ success: boolean; episodesDeleted: number; moviesDeleted?: number; deviceRemoved?: boolean }>('/users/graveyard/wipe', {
+      method: 'POST', body: JSON.stringify({ userId, showId, removeFromDevice: !!removeFromDevice }),
     });
   }
 
@@ -2974,6 +2999,8 @@ export interface BackupTargets {
   keepLocal: number;
   s3: { endpoint: string; region: string; bucket: string; prefix: string; accessKeyId: string; secretAccessKey: string };
   webdav: { url: string; username: string; password: string };
+  /** Optional - set to encrypt uploads (.enc); empty uploads plain JSON. Comes back masked. */
+  encryptPassphrase: string;
 }
 
 export interface DbMaintenanceSettings {

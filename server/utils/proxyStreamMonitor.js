@@ -651,6 +651,9 @@ async function pollOnce(prisma, accountId, config) {
       // (runs after the poster lookup so the embed can include it).
       if (notifyActivity && !existingRow) {
         await maybeNotifyStart(prisma, accountId, notifyWebhook, notifyUsers, aiostreamsUser, row.id, displayName)
+        // A brand-new live stream: tell connected dashboards to refetch Now
+        // Playing immediately rather than on their next 30s tick.
+        try { require('./liveEvents').emitLive(accountId, 'nowplaying') } catch {}
       }
     }
 
@@ -685,6 +688,9 @@ async function pollOnce(prisma, accountId, config) {
         where: { id: { in: toClose.map((r) => r.id) } },
         data: { isActive: false, endTime: now },
       })
+      // Streams ended: Now Playing rows should drop without waiting out the
+      // dashboard's poll interval.
+      try { require('./liveEvents').emitLive(accountId, 'nowplaying') } catch {}
       // No "finished watching" notification here - see the comment where
       // maybeNotifyStop used to be defined for why. The native pipeline's
       // own "watched" notification (real title, real poster) already covers

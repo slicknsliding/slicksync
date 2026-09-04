@@ -1157,14 +1157,38 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     try {
       const accountId = getAccountId(req)
       if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
-      const { userId, showId } = req.body || {}
+      const { userId, showId, removeFromDevice } = req.body || {}
       if (!userId || !showId) return res.status(400).json({ error: 'Missing userId or showId' })
       // Even the permanent option gets the 30-day net: the erased rows go
       // to the Trash first, so "forever" still survives a same-week regret.
       await require('../utils/trash').archiveGraveyardWipe(prisma, accountId, userId, showId)
       const { wipeBuriedShow } = require('../utils/continueWatching')
       const result = await wipeBuriedShow(prisma, accountId, userId, showId)
-      res.json({ success: true, ...result })
+      // Optional: also remove the title from the provider account's own
+      // library, so it disappears from the device's home screen too - the
+      // tombstone already stops SlickSync resurrecting it, but without this
+      // the provider still shows it on the device. Best-effort: the wipe
+      // above is already done and correct, a device-removal failure only
+      // gets reported, never rolls anything back.
+      let deviceRemoved = false
+      if (removeFromDevice) {
+        try {
+          const wipeUser = await prisma.user.findFirst({
+            where: { id: userId, accountId },
+            select: { id: true, stremioAuthKey: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true },
+          })
+          const providerInstance = wipeUser && createProvider(wipeUser, { decrypt, req })
+          if (providerInstance && providerInstance.supportsLibraryWrite !== false) {
+            const { markLibraryItemRemoved } = require('../utils/libraryDelete')
+            await markLibraryItemRemoved({ provider: providerInstance, itemId: showId, logPrefix: '[graveyard/wipe]' })
+            require('../utils/libraryCache').clearCache(accountId, userId)
+            deviceRemoved = true
+          }
+        } catch (e) {
+          console.warn('[graveyard/wipe] device-library removal failed:', e?.message)
+        }
+      }
+      res.json({ success: true, ...result, deviceRemoved })
     } catch (e) {
       res.status(500).json({ error: e?.message || 'Failed to wipe' })
     }
@@ -3210,12 +3234,71 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ message: 'User is not connected to Nuvio' })
       }
       await provider.setCollections(Number(profileId), collections)
+      // Our own write is the Collections Guard's new baseline - a deliberate
+      // edit made here (deletions included) must never read as a foreign
+      // overwrite on the guard's next pass.
+      require('../utils/collectionsGuard')
+        .recordOwnWrite(prisma, getAccountId(req), id, Number(profileId), collections)
+        .catch(() => {})
       res.json({ success: true, collections })
     } catch (error) {
       console.error('Error saving Nuvio collections:', error)
       res.status(500).json({ message: 'Failed to save Nuvio collections', error: error.message })
     }
   });
+
+  // --- Collections Guard (utils/collectionsGuard.js) ---
+
+  // Active alarms: profiles whose collections look externally overwritten.
+  router.get('/collections-guard/alarms', async (req, res) => {
+    try {
+      const { getAlarms } = require('../utils/collectionsGuard')
+      const alarms = await getAlarms(prisma, getAccountId(req))
+      // Names make the banner readable without a second lookup.
+      const users = alarms.length > 0 ? await prisma.user.findMany({
+        where: { id: { in: [...new Set(alarms.map((a) => a.userId))] } },
+        select: { id: true, username: true },
+      }) : []
+      const nameById = new Map(users.map((u) => [u.id, u.username]))
+      res.json({ alarms: alarms.map((a) => ({ ...a, username: nameById.get(a.userId) || null })) })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to read guard state' })
+    }
+  })
+
+  // One-click restore of the newest good snapshot.
+  router.post('/collections-guard/restore', async (req, res) => {
+    try {
+      const { userId, profileId } = req.body || {}
+      if (!userId || !Number.isInteger(Number(profileId))) return res.status(400).json({ error: 'userId and profileId are required' })
+      const user = await prisma.user.findFirst({ where: { id: userId, accountId: getAccountId(req) } })
+      if (!user || user.providerType !== 'nuvio') return res.status(404).json({ error: 'Nuvio user not found' })
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) return res.status(400).json({ error: 'User is not connected to Nuvio' })
+      const { restoreSnapshot } = require('../utils/collectionsGuard')
+      const result = await restoreSnapshot(prisma, getAccountId(req), userId, Number(profileId), provider)
+      res.json({ success: true, ...result })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Restore failed' })
+    }
+  })
+
+  // Adopt the current on-account state as the new baseline.
+  router.post('/collections-guard/accept', async (req, res) => {
+    try {
+      const { userId, profileId } = req.body || {}
+      if (!userId || !Number.isInteger(Number(profileId))) return res.status(400).json({ error: 'userId and profileId are required' })
+      const user = await prisma.user.findFirst({ where: { id: userId, accountId: getAccountId(req) } })
+      if (!user || user.providerType !== 'nuvio') return res.status(404).json({ error: 'Nuvio user not found' })
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) return res.status(400).json({ error: 'User is not connected to Nuvio' })
+      const { acceptCurrent } = require('../utils/collectionsGuard')
+      const result = await acceptCurrent(prisma, getAccountId(req), userId, Number(profileId), provider)
+      res.json({ success: true, ...result })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Accept failed' })
+    }
+  })
 
   // Browse nuvio.tv's own public "Community Covers" gallery, for picking a
   // Collection/folder cover directly instead of hunting down a URL

@@ -1064,6 +1064,78 @@ export default function NuvioCollectionsPage() {
     }
   }, [copyTarget, selectedUserId, profiles]);
 
+  // --- Collections Guard banner ---
+  // Alarms come from the hourly guard pass (server-side): a profile whose
+  // collections mass-vanished since the last good snapshot. Restore pushes
+  // that snapshot back; Accept adopts the new state as the baseline.
+  type GuardAlarm = { userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; detectedAt: string };
+  const [guardAlarms, setGuardAlarms] = useState<GuardAlarm[]>([]);
+  const [guardBusy, setGuardBusy] = useState<string | null>(null);
+  const loadGuardAlarms = useCallback(() => {
+    api.getCollectionsGuardAlarms().then((r) => setGuardAlarms(r.alarms || [])).catch(() => {});
+  }, []);
+  useEffect(() => { loadGuardAlarms(); }, [loadGuardAlarms]);
+
+  const handleGuardRestore = async (alarm: GuardAlarm) => {
+    setGuardBusy(`${alarm.userId}:${alarm.profileId}`);
+    try {
+      const r = await api.restoreCollectionsSnapshot(alarm.userId, alarm.profileId);
+      toast.success(`Restored ${r.restoredCount} collection${r.restoredCount === 1 ? '' : 's'} from the last good snapshot`);
+      loadGuardAlarms();
+      // If the restored profile is on screen, reload it so the grid shows
+      // the recovered collections rather than the overwritten state.
+      if (alarm.userId === selectedUserId && alarm.profileId === selectedProfileIndex) window.location.reload();
+    } catch (e: any) {
+      toast.error(e.message || 'Restore failed');
+    } finally {
+      setGuardBusy(null);
+    }
+  };
+
+  const handleGuardAccept = async (alarm: GuardAlarm) => {
+    setGuardBusy(`${alarm.userId}:${alarm.profileId}`);
+    try {
+      await api.acceptCollectionsState(alarm.userId, alarm.profileId);
+      toast.success('Current state accepted as the new baseline');
+      loadGuardAlarms();
+    } catch (e: any) {
+      toast.error(e.message || 'Accept failed');
+    } finally {
+      setGuardBusy(null);
+    }
+  };
+
+  const guardBanner = guardAlarms.length > 0 ? (
+    <div className="mb-4 p-4 rounded-xl border" style={{ borderColor: 'var(--color-error)', background: 'var(--color-error-muted, rgba(239,68,68,0.08))' }}>
+      <p className="text-sm font-semibold text-default mb-1">Collections may have been overwritten</p>
+      <p className="text-xs text-muted mb-3">
+        Another logged-in Nuvio app pushing a stale state erases collections exactly like this. Restore puts back
+        the last good snapshot; Accept keeps what&apos;s on the account now.
+      </p>
+      <div className="space-y-2">
+        {guardAlarms.map((a) => {
+          const key = `${a.userId}:${a.profileId}`;
+          return (
+            <div key={key} className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-default">
+                <span className="font-medium">{a.username || a.userId}</span> · profile {a.profileId}:{' '}
+                {a.lastGoodCount ?? '?'} collections → {a.currentCount}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="primary" size="sm" isLoading={guardBusy === key} onClick={() => handleGuardRestore(a)}>
+                  Restore
+                </Button>
+                <Button variant="ghost" size="sm" disabled={guardBusy === key} onClick={() => handleGuardAccept(a)}>
+                  Accept new state
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  ) : null;
+
   // --- Layout ---
 
   const backButton = (
@@ -1100,6 +1172,8 @@ export default function NuvioCollectionsPage() {
         {layoutMode === 'nebula' && (
           <NebulaPageHeading title="Nuvio Collections" subtitle="Organize a Nuvio account's own home-screen collections" leading={backButton} actions={selectedProfileIndex !== null ? saveAction : undefined} />
         )}
+
+        {guardBanner}
 
         <PageSection>
           {/* Grid of Nuvio-connected users, same card-grid pattern as

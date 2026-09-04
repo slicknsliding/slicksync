@@ -688,6 +688,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     ...s,
     s3: { ...s.s3, secretAccessKey: s.s3.secretAccessKey ? '********' : '' },
     webdav: { ...s.webdav, password: s.webdav.password ? '********' : '' },
+    encryptPassphrase: s.encryptPassphrase ? '********' : '',
   })
 
   router.get('/backup-targets', async (req, res) => {
@@ -722,6 +723,13 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (body.webdav) {
         patch.webdav = { ...current.webdav, ...body.webdav }
         if (body.webdav.password === '********') patch.webdav.password = current.webdav.password
+      }
+      if (body.encryptPassphrase !== undefined) {
+        // Same masked-secret contract as the credentials above; an explicit
+        // empty string turns encryption off.
+        patch.encryptPassphrase = body.encryptPassphrase === '********'
+          ? current.encryptPassphrase
+          : String(body.encryptPassphrase || '')
       }
       return res.json(redactTargets(saveSettings(patch)))
     } catch {

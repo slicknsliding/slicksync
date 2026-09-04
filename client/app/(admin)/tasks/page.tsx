@@ -578,16 +578,24 @@ export default function TasksPage() {
   };
 
   // Configuration actions
-  const handleImportConfig = async (file: File) => {
+  const handleImportConfig = async (file: File, passphrase?: string) => {
     setImportingConfig(true);
     try {
-      const result = await api.importConfig(file);
+      const result = await api.importConfig(file, passphrase);
       const parts = [];
       if (result.users.created > 0) parts.push(`${result.users.created} user${result.users.created !== 1 ? 's' : ''}`);
       if (result.groups.created > 0) parts.push(`${result.groups.created} group${result.groups.created !== 1 ? 's' : ''}`);
       if (result.addons.created > 0) parts.push(`${result.addons.created} addon${result.addons.created !== 1 ? 's' : ''}`);
       toast.success(`Configuration imported${parts.length ? ': ' + parts.join(', ') : ''}`);
     } catch (e: any) {
+      // Encrypted off-site backup (.enc): ask for its passphrase and retry
+      // once - the file itself is fine, it just needs the key.
+      if (e?.code === 'PASSPHRASE_REQUIRED' && !passphrase) {
+        const entered = window.prompt('This backup is encrypted. Enter its passphrase:');
+        setImportingConfig(false);
+        if (entered) return handleImportConfig(file, entered);
+        return;
+      }
       toast.error(e.message || 'Failed to import configuration');
     } finally {
       setImportingConfig(false);

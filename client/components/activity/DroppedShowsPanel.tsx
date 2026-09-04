@@ -109,6 +109,22 @@ export function DroppedShowsPanel() {
   // the destructive click is never the first click and the count of what
   // dies is in the button text. No modal - the row IS the context.
   const [wipeArmed, setWipeArmed] = useState<string | null>(null);
+
+  // Panel-level option applied to every wipe (single and bulk): also drop
+  // the title from the provider account's own library, so it leaves the
+  // device's home screen too - the wipe alone only erases SlickSync's
+  // record while the provider keeps showing it on-device. Persisted per
+  // browser; the server skips it gracefully on providers whose libraries
+  // are read-only (Nuvio), so it's safe to leave on for a mixed household.
+  const [wipeOnDevice, setWipeOnDevice] = useState(false);
+  useEffect(() => {
+    try { setWipeOnDevice(localStorage.getItem('graveyard-wipe-on-device') === '1'); } catch { /* fresh browser */ }
+  }, []);
+  const toggleWipeOnDevice = (v: boolean) => {
+    setWipeOnDevice(v);
+    try { localStorage.setItem('graveyard-wipe-on-device', v ? '1' : '0'); } catch { /* private window */ }
+  };
+
   const wipe = async (item: Buried) => {
     const key = keyOf(item);
     if (wipeArmed !== key) {
@@ -119,13 +135,14 @@ export function DroppedShowsPanel() {
     setWipeArmed(null);
     setWorking(key);
     try {
-      const r = await api.wipeBuriedShow(item.userId, item.showId);
+      const r = await api.wipeBuriedShow(item.userId, item.showId, wipeOnDevice);
       setBuried((prev) => (prev || []).filter((i) => keyOf(i) !== key));
       setSelBuried((prev) => { const n = new Set(prev); n.delete(key); return n; });
       const erased = r.episodesDeleted > 0
         ? `${r.episodesDeleted} episode${r.episodesDeleted === 1 ? '' : 's'} of history erased`
         : 'its watch history erased';
-      toast.success(`${item.showName} wiped - ${erased} (undoable for 30 days in the Trash)`);
+      const device = r.deviceRemoved ? ', removed from the account library' : '';
+      toast.success(`${item.showName} wiped - ${erased}${device} (undoable for 30 days in the Trash)`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not wipe that show');
     } finally {
@@ -182,7 +199,7 @@ export function DroppedShowsPanel() {
     let episodes = 0;
     for (const item of targets) {
       try {
-        const r = await api.wipeBuriedShow(item.userId, item.showId);
+        const r = await api.wipeBuriedShow(item.userId, item.showId, wipeOnDevice);
         episodes += r.episodesDeleted;
         ok++;
       } catch { /* counted below */ }
@@ -297,6 +314,19 @@ export function DroppedShowsPanel() {
           </button>
           {graveOpen && (
             <>
+              <label className="flex items-start gap-2 mt-3 text-xs text-muted cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={wipeOnDevice}
+                  onChange={(e) => toggleWipeOnDevice(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  When wiping, also remove the title from the account&apos;s own library - so it disappears from
+                  the device&apos;s home screen too, not just from SlickSync. Skipped automatically for accounts
+                  whose library can&apos;t be edited.
+                </span>
+              </label>
               {buried.length > 1 && (
                 <div className="flex flex-wrap items-center justify-end gap-2 mt-3">
                   <button
