@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
-import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon, HandThumbUpIcon, HandThumbDownIcon, CheckCircleIcon, CheckIcon as CheckIconMini } from '@heroicons/react/24/outline';
+import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon, HandThumbUpIcon, HandThumbDownIcon, CheckCircleIcon, CheckIcon as CheckIconMini, BellIcon } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { AddToListButton } from './AddToListButton';
@@ -233,6 +233,51 @@ export function MediaDetailModal({
   // (not just itemId) so drilling into a related title via "More Like This"
   // re-checks watchlist status for THAT title, not the originally-opened
   // one. Skipped entirely when the Watchlist personal feature is disabled.
+  // Following a SHOW: alerts when it is renewed, canceled, or gets a
+  // premiere date - the gap the episode calendar doesn't cover, because it
+  // only knows about shows that are already airing. Movies aren't followable
+  // (there is no ongoing status to report), so this only appears for series.
+  const [followRow, setFollowRow] = useState<{ id: string; muted: boolean } | null>(null);
+  const [followBusy, setFollowBusy] = useState(false);
+  useEffect(() => {
+    if (!isOpen || !effectiveId || effectiveType !== 'series') { setFollowRow(null); return; }
+    let cancelled = false;
+    api.getFollows()
+      .then((rows) => {
+        if (cancelled) return;
+        const hit = rows.find((r) => r.kind === 'show' && r.subjectId === effectiveId);
+        setFollowRow(hit ? { id: hit.id, muted: hit.muted } : null);
+      })
+      .catch(() => { /* following is additive - a failure just hides the state */ });
+    return () => { cancelled = true; };
+  }, [isOpen, effectiveId, effectiveType]);
+
+  const toggleFollow = async () => {
+    if (!effectiveId || followBusy) return;
+    setFollowBusy(true);
+    try {
+      if (!followRow) {
+        const row = await api.followSubject('show', effectiveId, details?.title || effectiveFallbackTitle || effectiveId, details?.poster || effectiveFallbackPoster || null);
+        setFollowRow({ id: row.id, muted: row.muted });
+        toast.success('Following - you\'ll hear when it\'s renewed, canceled or dated');
+      } else if (followRow.muted) {
+        await api.muteFollow(followRow.id, false);
+        setFollowRow({ ...followRow, muted: false });
+        toast.success('Alerts for this show turned back on');
+      } else {
+        // Mute rather than unfollow: the row survives, so turning it back on
+        // doesn't replay news already announced.
+        await api.muteFollow(followRow.id, true);
+        setFollowRow({ ...followRow, muted: true });
+        toast.success('Muted - still followed, just quiet');
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not update following');
+    } finally {
+      setFollowBusy(false);
+    }
+  };
+
   const [inWatchlist, setInWatchlist] = useState(false);
   const [watchlistBusy, setWatchlistBusy] = useState(false);
   useEffect(() => {
@@ -1062,6 +1107,24 @@ export function MediaDetailModal({
                     {selfWatched ? 'Watched' : 'Unwatched'}
                   </button>
                 );
+                // Series only: a movie has no ongoing status to report on.
+                const followBtn = effectiveType === 'series' && (
+                  <button
+                    type="button"
+                    onClick={toggleFollow}
+                    disabled={followBusy}
+                    title={!followRow
+                      ? 'Get told when this show is renewed, canceled, or gets a premiere date'
+                      : followRow.muted ? 'Alerts are muted - turn them back on' : 'Mute alerts for this show (it stays followed)'}
+                    className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${followBusy ? 'opacity-60 cursor-wait' : ''}`}
+                    style={followRow && !followRow.muted
+                      ? { color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 15%, transparent)' }
+                      : { color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
+                  >
+                    <BellIcon className="w-4 h-4" />
+                    {!followRow ? 'Follow' : followRow.muted ? 'Muted' : 'Following'}
+                  </button>
+                );
                 const stremioBtn = (
                   <a
                     href={buildStremioAppUrl(details.imdb_id, effectiveType)}
@@ -1110,6 +1173,9 @@ export function MediaDetailModal({
                       )}
                       {enableWatchedIndicators && selfWatched !== null && (
                         <TVFocusable onEnterPress={toggleSelfWatched}>{watchedBtn}</TVFocusable>
+                        {followBtn && (
+                          <TVFocusable onEnterPress={toggleFollow}>{followBtn}</TVFocusable>
+                        )}
                       )}
                       <TVFocusable onEnterPress={() => { window.location.href = buildStremioAppUrl(details.imdb_id!, effectiveType); }}>
                         {stremioBtn}
@@ -1128,6 +1194,7 @@ export function MediaDetailModal({
                   <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                     {watchlistBtn}
                     {watchedBtn}
+                    {followBtn}
                     <div className="flex justify-center sm:contents">
                       <AddToListButton item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
                     </div>
