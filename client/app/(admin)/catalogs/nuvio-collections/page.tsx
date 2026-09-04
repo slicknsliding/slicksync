@@ -1149,6 +1149,19 @@ export default function NuvioCollectionsPage() {
   // arrangement outright.
   const [homeRowsEditorOpen, setHomeRowsEditorOpen] = useState(false);
   const [homeRowsMenuOpen, setHomeRowsMenuOpen] = useState(false);
+  const [transferMenuOpen, setTransferMenuOpen] = useState(false);
+  // Both toolbar menus close on any outside click, matching how the rest of
+  // this page's popovers behave.
+  useEffect(() => {
+    if (!homeRowsMenuOpen && !transferMenuOpen) return;
+    const onDown = () => { setHomeRowsMenuOpen(false); setTransferMenuOpen(false); };
+    // Capture phase would swallow the menu's own clicks, so this listens on
+    // the bubble phase and the buttons stopPropagation via their own handler
+    // ordering (React's synthetic click fires before this document listener
+    // only for the toggles themselves, which re-open deliberately).
+    const id = setTimeout(() => document.addEventListener('click', onDown), 0);
+    return () => { clearTimeout(id); document.removeEventListener('click', onDown); };
+  }, [homeRowsMenuOpen, transferMenuOpen]);
   const [homeRowsArmed, setHomeRowsArmed] = useState<number | null>(null);
   const [homeRowsBusy, setHomeRowsBusy] = useState(false);
   const copyHomeRows = async (targetProfileIndex: number) => {
@@ -1358,69 +1371,69 @@ export default function NuvioCollectionsPage() {
                         e.target.value = '';
                       }}
                     />
-                    <Button variant="ghost" size="sm" leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />} onClick={() => importFileInputRef.current?.click()} title="Import collections from a JSON file - stages them into your draft for review before saving">
-                      Import
-                    </Button>
-                    <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={exportCollectionsJson} disabled={collections.length === 0} title="Download this profile's collections as JSON">
-                      Export
-                    </Button>
-                    {/* Share codes sit beside the JSON file flow, not
-                        instead of it: a file is right for backups, a code
-                        is right for handing a layout to someone in chat. */}
-                    <Button variant="ghost" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setShowPasteCode(true)} title="Paste a collections share code - stages it into your draft for review before saving">
-                      Paste code
-                    </Button>
-                    <Button variant="ghost" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openShareCode} disabled={collections.length === 0} title="Turn collections into a copy-paste share code - pick which ones in the dialog">
-                      Share code
-                    </Button>
-                    <button
-                      type="button"
-                      onClick={() => setImportExportInfoOpen(true)}
-                      className="p-1.5 rounded-lg text-primary hover:text-default hover:bg-surface-hover transition-colors"
-                      style={{ boxShadow: '0 0 0 1px color-mix(in srgb, var(--color-primary) 45%, transparent), 0 0 10px -1px var(--color-primary)' }}
-                      title="Where do I use this JSON?"
-                    >
-                      <QuestionMarkCircleIcon className="w-4 h-4" />
-                    </button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setHomeRowsEditorOpen(true)}
-                      title="Reorder, rename or hide this profile's Nuvio home-screen rows"
-                    >
-                      Home rows
-                    </Button>
-                    {otherProfiles.length > 0 && (
-                      <div className="relative">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => { setHomeRowsMenuOpen((v) => !v); setHomeRowsArmed(null); }}
-                          title="Copy this profile's home-screen row arrangement (order, renames, hidden rows) onto another profile"
-                        >
-                          Copy home rows
-                        </Button>
-                        {homeRowsMenuOpen && (
-                          <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border p-1 min-w-[180px]" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-surface-border)' }}>
-                            <p className="px-2 py-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--color-text-muted)' }}>Overwrite which profile?</p>
-                            {otherProfiles.map((p) => (
-                              <button
-                                key={p.profile_index}
-                                type="button"
-                                disabled={homeRowsBusy}
-                                onClick={() => copyHomeRows(p.profile_index)}
-                                className="w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors hover:bg-surface-hover"
-                                style={{ color: homeRowsArmed === p.profile_index ? 'var(--color-error)' : 'var(--color-text)' }}
-                              >
-                                {homeRowsArmed === p.profile_index
-                                  ? `Overwrite ${p.name || `Profile ${p.profile_index}`}'s rows?`
-                                  : (p.name || `Profile ${p.profile_index}`)}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {/* Nine separate controls had accumulated here (user
+                        feedback). The related ones now live behind two
+                        menus - everything that moves a layout in or out of
+                        this profile under "Transfer", everything about the
+                        home-screen rows under "Home rows" - leaving the two
+                        genuinely primary actions visible. */}
+                    <div className="relative">
+                      <Button variant="ghost" size="sm" leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />} onClick={() => { setTransferMenuOpen((v) => !v); setHomeRowsMenuOpen(false); }}>
+                        Transfer
+                      </Button>
+                      {transferMenuOpen && (
+                        <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border p-1 min-w-[220px]" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-surface-border)' }}>
+                          <p className="px-2 py-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--color-text-muted)' }}>As a file</p>
+                          <button type="button" className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-surface-hover text-default" onClick={() => { setTransferMenuOpen(false); importFileInputRef.current?.click(); }}>
+                            Import from JSON…
+                          </button>
+                          <button type="button" disabled={collections.length === 0} className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-surface-hover text-default disabled:opacity-40" onClick={() => { setTransferMenuOpen(false); exportCollectionsJson(); }}>
+                            Export as JSON
+                          </button>
+                          <p className="px-2 py-1 mt-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--color-text-muted)' }}>As a share code</p>
+                          <button type="button" className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-surface-hover text-default" onClick={() => { setTransferMenuOpen(false); setShowPasteCode(true); }}>
+                            Paste a code…
+                          </button>
+                          <button type="button" disabled={collections.length === 0} className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-surface-hover text-default disabled:opacity-40" onClick={() => { setTransferMenuOpen(false); openShareCode(); }}>
+                            Create a code…
+                          </button>
+                          <button type="button" className="w-full text-left px-2 py-1.5 mt-1 rounded-lg text-xs hover:bg-surface-hover" style={{ color: 'var(--color-secondary)' }} onClick={() => { setTransferMenuOpen(false); setImportExportInfoOpen(true); }}>
+                            Where do I use these?
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <Button variant="ghost" size="sm" onClick={() => { setHomeRowsMenuOpen((v) => !v); setTransferMenuOpen(false); setHomeRowsArmed(null); }}>
+                        Home rows
+                      </Button>
+                      {homeRowsMenuOpen && (
+                        <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border p-1 min-w-[220px]" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-surface-border)' }}>
+                          <button type="button" className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-surface-hover text-default" onClick={() => { setHomeRowsMenuOpen(false); setHomeRowsEditorOpen(true); }}>
+                            Edit this profile&apos;s rows…
+                          </button>
+                          {otherProfiles.length > 0 && (
+                            <>
+                              <p className="px-2 py-1 mt-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--color-text-muted)' }}>Copy rows onto…</p>
+                              {otherProfiles.map((p) => (
+                                <button
+                                  key={p.profile_index}
+                                  type="button"
+                                  disabled={homeRowsBusy}
+                                  onClick={() => copyHomeRows(p.profile_index)}
+                                  className="w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors hover:bg-surface-hover"
+                                  style={{ color: homeRowsArmed === p.profile_index ? 'var(--color-error)' : 'var(--color-text)' }}
+                                >
+                                  {homeRowsArmed === p.profile_index
+                                    ? `Overwrite ${p.name || `Profile ${p.profile_index}`}'s rows?`
+                                    : (p.name || `Profile ${p.profile_index}`)}
+                                </button>
+                              ))}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setTemplatesOpen(true)}>
                       Use a template
                     </Button>

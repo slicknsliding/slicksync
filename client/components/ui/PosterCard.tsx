@@ -7,7 +7,7 @@ import { CatalogPickerMenu } from './AddToListButton';
 import { RatingsBatchEntry } from '@/lib/api';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
-import { posterUrl, isRpdbPoster } from '@/lib/posterUrl';
+import { posterUrl, posterSrcSet, isRpdbPoster } from '@/lib/posterUrl';
 import {
   FilmIcon, TvIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon,
   XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, RectangleStackIcon, TrashIcon,
@@ -149,6 +149,13 @@ export const PosterCard = memo(function PosterCard({
           <>
             <img
               src={posterUrl(item, rpdbEnabled)}
+              // Lets the browser take the 154px file where a card renders
+              // small (most phone grids) instead of always the 342 - fewer
+              // bytes and less decode work per scroll, which is a real part
+              // of scroll cost on phones. `sizes` describes the card's own
+              // rendered width at each breakpoint, matching the grid.
+              srcSet={posterSrcSet(item, rpdbEnabled)}
+              sizes="(max-width: 640px) 33vw, (max-width: 1024px) 22vw, 170px"
               alt={item.name}
               loading="lazy"
               decoding="async"

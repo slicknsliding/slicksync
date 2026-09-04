@@ -20,6 +20,13 @@ export function posterUrl(item: { id?: string | null; poster?: string | null }, 
   return cachedImageUrl(item.poster, 342);
 }
 
+/** posterUrl's srcSet companion - undefined for RPDB art (that route serves
+ * one baked image) and for anything the cache proxy passes through. */
+export function posterSrcSet(item: { id?: string | null; poster?: string | null }, rpdbEnabled: boolean): string | undefined {
+  if (isRpdbPoster(item, rpdbEnabled)) return undefined;
+  return cachedImageSrcSet(item.poster, 342);
+}
+
 /** Routes an external image URL through the server's resize/cache proxy
  * (server/routes/imageCache.js): fetched from the source once, resized to
  * the width actually displayed, then served from the operator's own disk
@@ -37,6 +44,29 @@ export function cachedImageUrl(url: string | null | undefined, width: 154 | 342 
   if (API_BASE && url.startsWith(API_BASE)) return url;
   if (/\.gif(\?|$)/i.test(url)) return url;
   return `${API_BASE}/img?src=${encodeURIComponent(url)}&w=${width}`;
+}
+
+/**
+ * The srcSet companion to cachedImageUrl: offers the browser the same image
+ * at two widths so it can pick by the device's pixel ratio instead of always
+ * downloading the larger file. A phone rendering a card at ~90 CSS px takes
+ * the 154 (a quarter of the bytes of the 342, and less decode work per
+ * scroll - decode time is a real part of scroll jank on phones), while a
+ * desktop at 2x DPR still gets the 342.
+ *
+ * Returns undefined for anything cachedImageUrl passes through unchanged
+ * (local URLs, GIFs, empty values), so callers can spread it safely - an
+ * <img> with srcSet={undefined} is just a normal <img>.
+ */
+export function cachedImageSrcSet(url: string | null | undefined, width: 154 | 342 | 500 | 780 = 342): string | undefined {
+  if (!url) return undefined;
+  if (!/^https?:\/\//i.test(url)) return undefined;
+  if (API_BASE && url.startsWith(API_BASE)) return undefined;
+  if (/\.gif(\?|$)/i.test(url)) return undefined;
+  const smaller: Record<number, 154 | 342 | 500 | 780> = { 342: 154, 500: 342, 780: 500, 154: 154 };
+  const small = smaller[width];
+  if (small === width) return undefined;
+  return `${API_BASE}/img?src=${encodeURIComponent(url)}&w=${small} ${small}w, ${API_BASE}/img?src=${encodeURIComponent(url)}&w=${width} ${width}w`;
 }
 
 // True exactly when posterUrl() above would actually resolve to RPDB's art -

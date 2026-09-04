@@ -838,29 +838,42 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ error: 'itemId and type are required' })
       }
 
-      const { resolveOmdbKey, resolveMdblistKey } = require('../utils/listImport')
-      const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
-      const metadata = await fetchMetadata(itemId, type, videoId || null, omdbApiKey)
-      if (!metadata) {
+      // Movie night makes this endpoint bursty: several people open the same
+      // title within a minute and each open used to mean its own Cinemeta +
+      // TMDb + OMDb round-trips (and its own OMDb quota). Coalescing by
+      // (account, item, type, video) collapses a burst into one upstream
+      // fetch, and holds the result briefly so an open arriving just after
+      // one completes is served from it too. Account-scoped because the
+      // per-account keys below change what comes back.
+      const { coalesce } = require('../utils/singleFlight')
+      const flightKey = `media-details:${accountId}:${itemId}:${type}:${videoId || ''}`
+      const payload = await coalesce(flightKey, 60_000, async () => {
+        const { resolveOmdbKey, resolveMdblistKey } = require('../utils/listImport')
+        const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
+        const metadata = await fetchMetadata(itemId, type, videoId || null, omdbApiKey)
+        if (!metadata) return null
+
+        // allEpisodes (every episode of the whole series - can be hundreds of
+        // entries for long-running shows) only exists for Continue Watching's
+        // "find the next episode" logic. This modal only ever renders the one
+        // current episode (already in `episode`), so shipping the full list
+        // here is pure wasted payload/parse time competing with the modal's
+        // opening animation on mobile. Stripped at the response boundary only -
+        // fetchMetadata's cache entry (shared with Continue Watching) still has it.
+        const { allEpisodes, ...detailsForClient } = metadata
+        const mdblistKey = await resolveMdblistKey(prisma, getAccountId, req)
+        const [backdrop, collection, watchProviders, mdblistScore] = await Promise.all([
+          fetchTmdbBackdrop(itemId, req),
+          fetchTmdbCollection(itemId, type, req),
+          fetchTmdbWatchProviders(itemId, type, req),
+          fetchMdblistScore(itemId, type, mdblistKey),
+        ])
+        return { ...detailsForClient, backdrop, collection, watchProviders, mdblistScore }
+      })
+      if (!payload) {
         return res.status(404).json({ error: 'No metadata found for this item' })
       }
-
-      // allEpisodes (every episode of the whole series - can be hundreds of
-      // entries for long-running shows) only exists for Continue Watching's
-      // "find the next episode" logic. This modal only ever renders the one
-      // current episode (already in `episode`), so shipping the full list
-      // here is pure wasted payload/parse time competing with the modal's
-      // opening animation on mobile. Stripped at the response boundary only -
-      // fetchMetadata's cache entry (shared with Continue Watching) still has it.
-      const { allEpisodes, ...detailsForClient } = metadata
-      const mdblistKey = await resolveMdblistKey(prisma, getAccountId, req)
-      const [backdrop, collection, watchProviders, mdblistScore] = await Promise.all([
-        fetchTmdbBackdrop(itemId, req),
-        fetchTmdbCollection(itemId, type, req),
-        fetchTmdbWatchProviders(itemId, type, req),
-        fetchMdblistScore(itemId, type, mdblistKey),
-      ])
-      res.json({ ...detailsForClient, backdrop, collection, watchProviders, mdblistScore })
+      res.json(payload)
     } catch (error) {
       console.error('Error fetching media details:', error)
       res.status(500).json({ error: 'Failed to fetch media details' })

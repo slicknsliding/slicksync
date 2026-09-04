@@ -127,6 +127,14 @@ app.set('trust proxy', 1);
 // Use helper-provided getAccountId (account scoping rules centralized)
 const getAccountId = getAccountIdHelper
 
+// Conditional GETs: Express already computes a weak ETag for JSON responses,
+// so a repeat fetch of unchanged data can answer 304 with no body at all
+// instead of re-sending (and re-compressing) the same payload. Off by
+// default in Express only for the strong/weak choice - the header itself is
+// on, so this is really about making the freshness contract explicit and
+// keeping it that way if a future default changes.
+app.set('etag', 'weak');
+
 // Response compression - JSON payloads (users, history, discover) shrink
 // several-fold over the wire, which is most of what a phone on cell data
 // ever downloads from here. The default filter already skips content types
