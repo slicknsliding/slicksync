@@ -29,6 +29,7 @@ import {
   DocumentDuplicateIcon, PhotoIcon, ExclamationTriangleIcon, MapPinIcon,
   EllipsisVerticalIcon, PencilSquareIcon, FilmIcon, TvIcon,
   ArrowDownTrayIcon, ArrowUpTrayIcon, QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, LinkIcon,
+  Bars3BottomLeftIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -1404,9 +1405,38 @@ export default function NuvioCollectionsPage() {
                       )}
                     </div>
                     <div className="relative">
-                      <Button variant="ghost" size="sm" onClick={() => { setHomeRowsMenuOpen((v) => !v); setTransferMenuOpen(false); setHomeRowsArmed(null); }}>
-                        Home rows
-                      </Button>
+                      {/* Given the same lockup treatment as the Nuvio
+                          Collections pill on the Catalogs page (icon chip +
+                          wordmark, Nuvio's own two-tone identity rather than
+                          the generic palette): this edits a connected Nuvio
+                          account's real home screen, and as a plain ghost
+                          button it read as an afterthought - same feedback
+                          that pill was built from. */}
+                      <button
+                        type="button"
+                        onClick={() => { setHomeRowsMenuOpen((v) => !v); setTransferMenuOpen(false); setHomeRowsArmed(null); }}
+                        className="flex items-center gap-2 pl-1.5 pr-4 py-1.5 rounded-full transition-transform hover:scale-105"
+                        style={{
+                          background: 'linear-gradient(180deg, rgba(12,8,4,0.92), rgba(24,14,4,0.92))',
+                          border: '1.5px solid rgba(255,152,0,0.55)',
+                          boxShadow: '0 0 20px -4px rgba(255,152,0,0.45)',
+                        }}
+                        title="Reorder, rename or hide this profile's Nuvio home-screen rows"
+                      >
+                        <span
+                          className="flex items-center justify-center rounded-full shrink-0"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            background: 'linear-gradient(135deg, #2E9FE0 0%, #6C5CE7 55%, #C24FE0 100%)',
+                          }}
+                        >
+                          <Bars3BottomLeftIcon className="w-4 h-4 text-white" />
+                        </span>
+                        <span className="font-display font-bold text-sm tracking-tight" style={{ color: 'rgb(147, 197, 253)' }}>
+                          Home rows
+                        </span>
+                      </button>
                       {homeRowsMenuOpen && (
                         <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border p-1 min-w-[220px]" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-surface-border)' }}>
                           <button type="button" className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-surface-hover text-default" onClick={() => { setHomeRowsMenuOpen(false); setHomeRowsEditorOpen(true); }}>
