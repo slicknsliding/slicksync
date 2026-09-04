@@ -2376,6 +2376,13 @@ class ApiClient {
   }
 
   // Personal watchlist — SlickSync's own bookmark list.
+  /** Saves a manual watchlist ranking - array order is the order, first is "up next". */
+  async setWatchlistOrder(itemIds: string[]) {
+    return this.fetch<{ success: boolean; ranked: number }>('/watchlist/order', {
+      method: 'PUT', body: JSON.stringify({ itemIds }),
+    });
+  }
+
   async getWatchlist() {
     return this.fetch<WatchlistItem[]>('/watchlist');
   }
@@ -3437,6 +3444,8 @@ export interface WatchlistItem {
   name: string;
   poster: string | null;
   addedAt: string;
+  /** Manual rank; null when never reordered (falls to the newest-first tail). */
+  sortOrder?: number | null;
 }
 
 export interface CustomListItem {

@@ -1306,7 +1306,21 @@ export default function NuvioCollectionsPage() {
             </Card>
           )}
 
-          {selectedProfileIndex !== null && (
+          {/* Home-row editing is a VIEW on this page, not a dialog - the
+              same account -> profile -> content progression the collections
+              flow already uses, so it inherits the page's header, profile
+              strip and back behaviour instead of stacking a modal over
+              them (user's call). */}
+          {selectedProfileIndex !== null && homeRowsEditorOpen && selectedUserId && (
+            <HomeRowsEditor
+              userId={selectedUserId}
+              profileId={selectedProfileIndex}
+              profileName={profiles.find((p) => p.profile_index === selectedProfileIndex)?.name || `Profile ${selectedProfileIndex}`}
+              onDone={() => setHomeRowsEditorOpen(false)}
+            />
+          )}
+
+          {selectedProfileIndex !== null && !homeRowsEditorOpen && (
             collectionsLoading ? (
               <div className="space-y-3">
                 {[...Array(3)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-surface-hover animate-pulse" />)}
@@ -1675,20 +1689,6 @@ export default function NuvioCollectionsPage() {
           </a>
         </div>
       </Modal>
-
-      {/* Home-row arrangement editor - the rows themselves (order, names,
-          hidden), as opposed to the collections this page otherwise edits.
-          Writes straight through to the account on save, with the layout
-          guard's snapshot as the safety net. */}
-      {selectedUserId && selectedProfileIndex !== null && (
-        <HomeRowsEditor
-          isOpen={homeRowsEditorOpen}
-          onClose={() => setHomeRowsEditorOpen(false)}
-          userId={selectedUserId}
-          profileId={selectedProfileIndex}
-          profileName={profiles.find((p) => p.profile_index === selectedProfileIndex)?.name || `Profile ${selectedProfileIndex}`}
-        />
-      )}
 
       {/* Share codes for the whole layout. Import STAGES into the draft
           (same as the JSON file import above) rather than writing straight

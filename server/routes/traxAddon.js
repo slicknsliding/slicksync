@@ -180,11 +180,18 @@ module.exports = ({ prisma }) => {
       }
 
       if (catalogId === 'slicktrax-watchlist') {
-        const items = await prisma.watchlistItem.findMany({
+        // Honours the manual ranking set in SlickSync (sortOrder ascending,
+        // unranked newest-first behind it), so the row on the device reads
+        // in the order the household actually chose rather than by add date.
+        const all = await prisma.watchlistItem.findMany({
           where: { accountId: user.accountId, itemType: type },
           orderBy: { addedAt: 'desc' },
-          take: 100,
+          take: 200,
         })
+        const items = [
+          ...all.filter((i) => Number.isInteger(i.sortOrder)).sort((a, b) => a.sortOrder - b.sortOrder),
+          ...all.filter((i) => !Number.isInteger(i.sortOrder)),
+        ].slice(0, 100)
         return res.json({ metas: items.filter((i) => /^tt\d+$/.test(i.itemId)).map((i) => metaPreview(i.itemId, type, i.name, proxiedPoster(base, i.poster))) })
       }
 

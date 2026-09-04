@@ -695,6 +695,11 @@ model WatchlistItem {
   name      String
   poster    String?
   addedAt   DateTime @default(now())
+  // Manual ranking. null = never ranked, which keeps every existing row
+  // behaving exactly as before (newest first); ranked rows sort ahead of
+  // unranked ones by this value, and position 1 is what the UI calls
+  // "up next". Additive, so an older database needs no backfill.
+  sortOrder Int?
 
   @@unique([accountId, itemId])
   @@index([accountId, addedAt])

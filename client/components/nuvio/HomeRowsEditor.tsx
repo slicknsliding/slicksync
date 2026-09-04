@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Button, Modal, Badge,
+  Button, Card, Badge,
   DndContext, closestCenter, SortableContext, useSortable, useSortableSensors, CSS,
 } from '@/components/ui';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { restrictToParentElement } from '@dnd-kit/modifiers';
 import type { DragEndEvent } from '@dnd-kit/core';
@@ -26,11 +27,11 @@ import { Bars3Icon, EyeIcon, EyeSlashIcon, PencilIcon } from '@heroicons/react/2
 // touched. Adding one moves it into the arranged list at the end.
 
 interface Props {
-  isOpen: boolean;
-  onClose: () => void;
   userId: string;
   profileId: number;
   profileName: string;
+  /** Returns to the collections view - this is a view on that page, not a dialog. */
+  onDone: () => void;
 }
 
 function SortableRow({
@@ -106,7 +107,7 @@ function SortableRow({
   );
 }
 
-export function HomeRowsEditor({ isOpen, onClose, userId, profileId, profileName }: Props) {
+export function HomeRowsEditor({ userId, profileId, profileName, onDone }: Props) {
   const [rows, setRows] = useState<NuvioHomeRow[]>([]);
   const [unarranged, setUnarranged] = useState<NuvioHomeRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -128,7 +129,7 @@ export function HomeRowsEditor({ isOpen, onClose, userId, profileId, profileName
     }
   }, [userId, profileId]);
 
-  useEffect(() => { if (isOpen) load(); }, [isOpen, load]);
+  useEffect(() => { load(); }, [load]);
 
   const onDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -165,7 +166,7 @@ export function HomeRowsEditor({ isOpen, onClose, userId, profileId, profileName
       const r = await api.saveNuvioHomeLayout(userId, profileId, rows);
       toast.success(`Home layout saved - ${r.rows} row${r.rows === 1 ? '' : 's'} pushed to ${profileName}`);
       setDirty(false);
-      onClose();
+      onDone();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to save the home layout');
     } finally {
@@ -174,19 +175,32 @@ export function HomeRowsEditor({ isOpen, onClose, userId, profileId, profileName
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Home rows - ${profileName}`} size="lg">
+    <Card padding="lg">
       <div className="space-y-4">
-        <p className="text-xs text-muted">
-          Drag to reorder the rows on this profile&apos;s Nuvio home screen, rename any of them, or hide the ones
-          you never use. Saving pushes the whole arrangement to the account; the layout guard snapshots it first,
-          so a bad save is recoverable.
-        </p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" leftIcon={<ArrowLeftIcon className="w-4 h-4" />} onClick={onDone}>
+                Collections
+              </Button>
+              <h3 className="text-base font-semibold text-default">Home rows · {profileName}</h3>
+            </div>
+            <p className="text-xs text-muted mt-1">
+              Drag to reorder the rows on this profile&apos;s Nuvio home screen, rename any of them, or hide the
+              ones you never use. Saving pushes the whole arrangement to the account; the layout guard snapshots
+              it first, so a bad save is recoverable.
+            </p>
+          </div>
+          <Button variant="primary" size="sm" onClick={save} isLoading={saving} disabled={!dirty || rows.length === 0}>
+            Save arrangement
+          </Button>
+        </div>
 
         {loading ? (
           <p className="text-sm text-muted py-6 text-center">Reading the current arrangement…</p>
         ) : (
           <>
-            <div className="max-h-[46vh] overflow-y-auto pr-1">
+            <div className="max-h-[58vh] overflow-y-auto pr-1">
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} modifiers={[restrictToParentElement]}>
                 <SortableContext items={rows.map((r) => `${r.addon_id}:${r.type}:${r.catalog_id}`)} strategy={verticalListSortingStrategy}>
                   <div className="space-y-1.5">
@@ -232,15 +246,20 @@ export function HomeRowsEditor({ isOpen, onClose, userId, profileId, profileName
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-              <Button variant="primary" size="sm" onClick={save} isLoading={saving} disabled={!dirty || rows.length === 0}>
-                Save arrangement
-              </Button>
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <p className="text-[11px] text-subtle">
+                {dirty ? 'Unsaved changes - nothing reaches the device until you save.' : 'No changes yet.'}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={onDone}>{dirty ? 'Discard' : 'Back'}</Button>
+                <Button variant="primary" size="sm" onClick={save} isLoading={saving} disabled={!dirty || rows.length === 0}>
+                  Save arrangement
+                </Button>
+              </div>
             </div>
           </>
         )}
       </div>
-    </Modal>
+    </Card>
   );
 }
