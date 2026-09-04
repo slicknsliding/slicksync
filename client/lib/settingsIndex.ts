@@ -32,7 +32,6 @@ export const SETTINGS_INDEX: SettingsIndexEntry[] = [
   // Notifications
   S('Phone notifications (PWA)', 'Notifications', 'push mobile install app device'),
   S('Devices', 'Notifications', 'push devices rename revoke subscribed'),
-  S('Offline shell', 'Notifications', 'service worker disable troubleshooting freeze stutter cache'),
   S('Webhook URL', 'Notifications', 'discord webhook'),
   S('Activity notifications', 'Notifications', 'started watching ping'),
   S('Sync notifications', 'Notifications', 'drift'),
