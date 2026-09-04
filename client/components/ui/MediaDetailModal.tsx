@@ -278,6 +278,27 @@ export function MediaDetailModal({
     }
   };
 
+  // Anime extras (AniList): only ever attempted for series whose genres say
+  // Animation, so a normal show never pays a lookup for nothing. Everything
+  // here is additive - if AniList has no match, the modal is unchanged.
+  const [anime, setAnime] = useState<{ anilistId: number; nextEpisode: { episode: number; label: string } | null; siteUrl: string | null } | null>(null);
+  const [animeOrder, setAnimeOrder] = useState<{ mainLine: Array<{ anilistId: number; name: string; episodes: number | null; year: number | null }> } | null>(null);
+  useEffect(() => {
+    const looksAnimated = Array.isArray(details?.genres) && details.genres.some((g) => /animation|anime/i.test(String(g)));
+    if (!isOpen || effectiveType !== 'series' || !looksAnimated || !details?.title) { setAnime(null); setAnimeOrder(null); return; }
+    let cancelled = false;
+    // MediaDetails carries releaseInfo ("2023-" / "2023"), not a year field.
+    const yearMatch = String(details.releaseInfo || '').match(/\d{4}/);
+    api.lookupAnime(details.title, yearMatch ? Number(yearMatch[0]) : undefined)
+      .then((r) => {
+        if (cancelled || !r.found || !r.anilistId) return;
+        setAnime({ anilistId: r.anilistId, nextEpisode: r.nextEpisode || null, siteUrl: r.siteUrl || null });
+        return api.getAnimeWatchOrder(r.anilistId).then((o) => { if (!cancelled) setAnimeOrder({ mainLine: o.mainLine }); });
+      })
+      .catch(() => { /* additive only */ });
+    return () => { cancelled = true; };
+  }, [isOpen, effectiveType, details?.title, details?.releaseInfo, details?.genres]);
+
   const [inWatchlist, setInWatchlist] = useState(false);
   const [watchlistBusy, setWatchlistBusy] = useState(false);
   useEffect(() => {
@@ -1031,6 +1052,35 @@ export function MediaDetailModal({
                   comment for why rent/buy is excluded. Links to TMDb's
                   JustWatch attribution page, required by their API terms
                   when this data is displayed. */}
+              {/* Anime extras: the next-episode countdown AniList publishes
+                  exact air times for (better than a vague date), and the
+                  franchise's real watch order - the thing people otherwise
+                  go and google a chart for. Only ever present when AniList
+                  matched an animated series. */}
+              {anime && (anime.nextEpisode || (animeOrder?.mainLine?.length ?? 0) > 1) && (
+                <div className="rounded-xl p-3" style={{ background: 'var(--color-surface-hover)' }}>
+                  {anime.nextEpisode && (
+                    <p className="text-sm text-default">
+                      <span className="font-medium">Episode {anime.nextEpisode.episode}</span>
+                      <span className="text-muted"> airs in {anime.nextEpisode.label}</span>
+                    </p>
+                  )}
+                  {(animeOrder?.mainLine?.length ?? 0) > 1 && (
+                    <div className={anime.nextEpisode ? 'mt-2' : ''}>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>Watch order</p>
+                      <ol className="space-y-0.5">
+                        {animeOrder!.mainLine.map((entry, i) => (
+                          <li key={entry.anilistId} className="text-xs text-muted">
+                            <span className="text-default">{i + 1}. {entry.name}</span>
+                            {entry.episodes ? ` · ${entry.episodes} eps` : ''}{entry.year ? ` · ${entry.year}` : ''}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {enableWatchProviders && details.watchProviders && details.watchProviders.providers.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm text-muted">Also streaming on</span>
