@@ -150,10 +150,10 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
       const url = String(req.body?.url || '').trim();
       if (!url) return res.status(400).json({ error: 'url is required' });
 
-      const { detectProvider, importFromTmdb, importFromMdblist, importFromTrakt, importFromSlickSync, resolveTmdbKey, resolveMdblistKey, resolveKeyFromSettings } = require('../utils/listImport');
+      const { detectProvider, importFromTmdb, importFromMdblist, importFromTrakt, importFromSlickSync, importFromAniList, importFromMyAnimeList, resolveTmdbKey, resolveMdblistKey, resolveKeyFromSettings } = require('../utils/listImport');
       const provider = detectProvider(url);
       if (!provider) {
-        return res.status(400).json({ error: 'Unrecognized list URL - paste a TMDb (themoviedb.org/list/...), MDBList (mdblist.com/lists/...) or Trakt (trakt.tv/users/.../lists/...) list URL, or a SlickSync catalog share link' });
+        return res.status(400).json({ error: 'Unrecognized list URL - paste a TMDb (themoviedb.org/list/...), MDBList (mdblist.com/lists/...), Trakt (trakt.tv/users/.../lists/...), AniList (anilist.co/user/NAME/animelist) or MyAnimeList (myanimelist.net/animelist/NAME) URL, or a SlickSync catalog share link' });
       }
 
       let result;
@@ -166,6 +166,11 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
       } else if (provider === 'tmdb') {
         const key = await resolveTmdbKey(prisma, getAccountId, req);
         result = await importFromTmdb(key, url);
+      } else if (provider === 'anilist' || provider === 'myanimelist') {
+        // Anime lists resolve through TMDb, since neither source carries
+        // IMDb ids and every other part of the app is tt-based.
+        const key = await resolveTmdbKey(prisma, getAccountId, req);
+        result = provider === 'anilist' ? await importFromAniList(url, key) : await importFromMyAnimeList(url, key);
       } else if (provider === 'trakt') {
         // Public lists only, and only a client id - see importFromTrakt.
         const clientId = await resolveKeyFromSettings(prisma, getAccountId, req, 'traktClientId', 'TRAKT_CLIENT_ID', { allowBackup: false });

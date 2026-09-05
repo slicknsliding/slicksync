@@ -138,6 +138,12 @@ function detectProvider(url) {
     // rather than the hostname - unlike TMDb/MDBList there is no fixed host,
     // it is whatever domain that household runs on.
     if (parsed.pathname.startsWith('/api/federation/catalog/')) return 'slicksync'
+    // Anime lists. AniList is public and unauthenticated; MyAnimeList is
+    // read through Jikan, the long-standing public mirror of MAL's data,
+    // for the same reason - MAL's own API wants a client id registered per
+    // household, which is a key to manage for one import.
+    if (host === 'anilist.co') return 'anilist'
+    if (host === 'myanimelist.net') return 'myanimelist'
   } catch {}
   return null
 }
@@ -271,6 +277,160 @@ async function importFromMdblist(apiKey, url) {
   })
 
   return { name: list.name || 'Imported list', items: resolved.filter(Boolean), truncated, totalAvailable: rawItems.length }
+}
+
+/**
+ * Resolves an anime title to the IMDb id the rest of the app speaks.
+ *
+ * Neither AniList nor MAL carries IMDb ids, so every entry is matched
+ * through TMDb - the same verify-then-keep rule the describe search uses:
+ * anything TMDb cannot place is dropped rather than imported as a title
+ * with no working links, no watched state and no deep link.
+ */
+async function resolveAnimeToImdb(entry, tmdbKey) {
+  const path = entry.type === 'movie' ? 'movie' : 'tv'
+  const params = new URLSearchParams({ api_key: tmdbKey, query: entry.title })
+  if (entry.year) params.set(path === 'tv' ? 'first_air_date_year' : 'year', String(entry.year))
+  try {
+    const res = await fetch('https://api.themoviedb.org/3/search/' + path + '?' + params.toString(), { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return null
+    const data = await res.json()
+    const hit = Array.isArray(data && data.results) ? data.results[0] : null
+    if (!hit || !hit.id) return null
+    const ext = await fetch('https://api.themoviedb.org/3/' + path + '/' + hit.id + '/external_ids?api_key=' + encodeURIComponent(tmdbKey), { signal: AbortSignal.timeout(8000) })
+    if (!ext.ok) return null
+    const extData = await ext.json()
+    if (!extData || !extData.imdb_id || !/^tt\d+$/.test(extData.imdb_id)) return null
+    const released = hit.release_date || hit.first_air_date || ''
+    return {
+      id: extData.imdb_id,
+      type: path === 'tv' ? 'series' : 'movie',
+      name: hit.name || hit.title || entry.title,
+      poster: hit.poster_path ? TMDB_IMG + hit.poster_path : null,
+      year: released ? String(released).slice(0, 4) : (entry.year ? String(entry.year) : null),
+    }
+  } catch {
+    return null
+  }
+}
+
+// AniList list sections, named as they appear in the URL of the page you
+// are looking at (anilist.co/user/NAME/animelist/Planning). Pasting a
+// section imports that section; pasting the bare list imports all of it.
+const ANILIST_STATUS = {
+  watching: 'CURRENT',
+  planning: 'PLANNING',
+  completed: 'COMPLETED',
+  paused: 'PAUSED',
+  dropped: 'DROPPED',
+  rewatching: 'REPEATING',
+}
+
+/**
+ * Imports an AniList user's anime list.
+ *
+ * Public and unauthenticated, like the rest of the AniList integration -
+ * nothing to configure and no quota to spend. A private list returns
+ * nothing, which is reported as being private rather than as a failure.
+ */
+async function importFromAniList(url, tmdbKey) {
+  if (!tmdbKey) throw new Error('A TMDb key is needed to match anime to real titles (Settings -> External API Keys)')
+  const parsed = new URL(url)
+  const parts = parsed.pathname.split('/').filter(Boolean) // user/NAME/animelist[/Section]
+  if (parts[0] !== 'user' || !parts[1]) throw new Error('Paste an AniList list URL, e.g. anilist.co/user/NAME/animelist')
+  if (parts[2] === 'mangalist') throw new Error('Manga lists cannot be imported - SlickSync catalogs hold films and series')
+  const userName = decodeURIComponent(parts[1])
+  const section = parts[3] ? String(parts[3]).toLowerCase() : null
+  const status = section ? ANILIST_STATUS[section] : null
+
+  const query = 'query ($userName: String, $status: MediaListStatus) {' +
+    ' MediaListCollection(userName: $userName, type: ANIME, status: $status) {' +
+    ' lists { name entries { media { title { english romaji } format startDate { year } } } } } }'
+  const res = await fetch('https://graphql.anilist.co', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ query, variables: { userName, status: status || undefined } }),
+    signal: AbortSignal.timeout(12000),
+  })
+  if (!res.ok) throw new Error(res.status === 404 ? 'That AniList user was not found' : 'AniList request failed (HTTP ' + res.status + ')')
+  const data = await res.json()
+  if (Array.isArray(data && data.errors) && data.errors.length > 0) {
+    const msg = (data.errors[0] && data.errors[0].message) || 'AniList rejected the request'
+    throw new Error(/not found/i.test(msg) ? 'That AniList user was not found' : msg)
+  }
+  const lists = (data && data.data && data.data.MediaListCollection && data.data.MediaListCollection.lists) || []
+  const entries = lists.flatMap((l) => (l && l.entries) || [])
+  if (entries.length === 0) throw new Error('That AniList list is empty, private, or has nothing in that section')
+
+  const raw = entries.map((e) => {
+    const media = (e && e.media) || {}
+    return {
+      title: (media.title && (media.title.english || media.title.romaji)) || null,
+      year: (media.startDate && media.startDate.year) || null,
+      type: media.format === 'MOVIE' ? 'movie' : 'series',
+    }
+  }).filter((e) => e.title)
+
+  const truncated = raw.length > MAX_IMPORT_ITEMS
+  const capped = raw.slice(0, MAX_IMPORT_ITEMS)
+  const resolved = await mapLimit(capped, 5, (e) => resolveAnimeToImdb(e, tmdbKey))
+  const label = section ? userName + ' - ' + section : userName + ' on AniList'
+  return { name: label, items: resolved.filter(Boolean), truncated, totalAvailable: raw.length }
+}
+
+// Jikan pages MAL lists 25 at a time and asks for no more than roughly
+// three requests a second; this stays well inside that and stops at the
+// import cap either way.
+const JIKAN_PAGE_SIZE = 25
+const JIKAN_GAP_MS = 400
+
+/**
+ * Imports a MyAnimeList user's anime list, through Jikan.
+ *
+ * MAL's own API requires each household to register a client id, which is
+ * a key to manage for a one-off import. Jikan serves the same public data
+ * with no key at all, keeping this in the same "nothing to configure"
+ * bracket as the AniList side. Being rate limited mid-walk imports what
+ * was collected rather than failing the whole thing.
+ */
+async function importFromMyAnimeList(url, tmdbKey) {
+  if (!tmdbKey) throw new Error('A TMDb key is needed to match anime to real titles (Settings -> External API Keys)')
+  const parsed = new URL(url)
+  const parts = parsed.pathname.split('/').filter(Boolean) // animelist/NAME
+  if (parts[0] !== 'animelist' || !parts[1]) throw new Error('Paste a MyAnimeList list URL, e.g. myanimelist.net/animelist/NAME')
+  const userName = decodeURIComponent(parts[1])
+
+  const raw = []
+  const maxPages = Math.ceil(MAX_IMPORT_ITEMS / JIKAN_PAGE_SIZE) + 1
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await fetch('https://api.jikan.moe/v4/users/' + encodeURIComponent(userName) + '/animelist?page=' + page, {
+      signal: AbortSignal.timeout(12000),
+    })
+    if (res.status === 404) throw new Error('That MyAnimeList user was not found')
+    if (!res.ok) break
+    const data = await res.json()
+    const rows = Array.isArray(data && data.data) ? data.data : []
+    for (const row of rows) {
+      const media = (row && (row.entry || row.anime)) || row
+      const title = media && media.title
+      if (title) {
+        raw.push({
+          title,
+          // Jikan's list rows carry no year, so these match on title alone.
+          year: null,
+          type: String((media && media.type) || '').toLowerCase() === 'movie' ? 'movie' : 'series',
+        })
+      }
+    }
+    if (rows.length < JIKAN_PAGE_SIZE || raw.length > MAX_IMPORT_ITEMS) break
+    await new Promise((r) => setTimeout(r, JIKAN_GAP_MS))
+  }
+  if (raw.length === 0) throw new Error('That MyAnimeList list is empty or set to private')
+
+  const truncated = raw.length > MAX_IMPORT_ITEMS
+  const capped = raw.slice(0, MAX_IMPORT_ITEMS)
+  const resolved = await mapLimit(capped, 5, (e) => resolveAnimeToImdb(e, tmdbKey))
+  return { name: userName + ' on MyAnimeList', items: resolved.filter(Boolean), truncated, totalAvailable: raw.length }
 }
 
 // Suggest titles for a catalog by name (e.g. "Halloween", "Christmas
@@ -608,4 +768,4 @@ async function importFromTrakt(url, clientId) {
   return { items, name: name || 'Trakt list', truncated: rows.length >= MAX_IMPORT_ITEMS }
 }
 
-module.exports = { detectProvider, importFromTmdb, importFromMdblist, importFromTrakt, importFromSlickSync, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, resolveTmdbKeyForAccount, resolveKeyFromSettings, refreshListFromSourceForAccount, suggestTitlesForCatalog, mapLimit, MAX_IMPORT_ITEMS }
+module.exports = { detectProvider, importFromTmdb, importFromMdblist, importFromTrakt, importFromSlickSync, importFromAniList, importFromMyAnimeList, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, resolveTmdbKeyForAccount, resolveKeyFromSettings, refreshListFromSourceForAccount, suggestTitlesForCatalog, mapLimit, MAX_IMPORT_ITEMS }

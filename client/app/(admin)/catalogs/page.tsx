@@ -564,13 +564,17 @@ export default function ListsPage() {
               value={importUrl}
               onChange={(e) => setImportUrl(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleImport(); }}
-              placeholder="An MDBList/TMDb list URL, or a SlickSync share link"
+              placeholder="A list URL from MDBList, TMDb, Trakt, AniList or MAL - or a SlickSync share link"
               className="w-full px-3 py-2 rounded-lg bg-surface-hover text-default text-sm border border-transparent focus:border-primary focus:outline-none"
             />
             <p className="text-xs text-subtle mt-1.5">
-              Supports MDBList and TMDb lists (movies only for TMDb), which need an API key in Settings → External API Keys,
-              share links from another household&apos;s SlickSync, and pasted <span className="font-mono">SSC1:</span> share codes — neither of those needs a key.
-              Either way this copies the titles now; turn on Auto-refresh on the catalog afterwards to keep it following its source.
+              Supports MDBList and TMDb lists (movies only for TMDb), public Trakt lists, and anime lists from
+              AniList (anilist.co/user/NAME/animelist - add the section, e.g. /Planning, to import just that one) and
+              MyAnimeList (myanimelist.net/animelist/NAME). Anime lists carry no IMDb ids, so those are matched through
+              TMDb and need that key; anything TMDb cannot place is left out rather than imported broken. Also takes
+              share links from another household&apos;s SlickSync and pasted <span className="font-mono">SSC1:</span> share
+              codes, neither of which needs a key. Either way this copies the titles now; turn on Auto-refresh on the
+              catalog afterwards to keep it following its source.
             </p>
           </div>
 

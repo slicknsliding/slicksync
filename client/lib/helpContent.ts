@@ -1800,6 +1800,23 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['catalog-import', 'smart-catalogs'],
   },
   {
+    id: 'anime-list-import',
+    title: 'Importing an AniList or MyAnimeList list',
+    category: 'Catalogs & Collections',
+    keywords: ['anilist import', 'myanimelist import', 'mal list', 'anime list', 'import anime', 'planning list', 'jikan'],
+    answer: 'Catalogs - Import, then paste anilist.co/user/NAME/animelist or myanimelist.net/animelist/NAME. Neither site needs a key or a login; the TMDb key does the matching.',
+    details: [
+      'Add the section to an AniList URL to import just that part of the list - /Planning, /Watching, /Completed, /Paused, /Dropped. Pasting the bare list imports all of it.',
+      'Anime lists carry no IMDb ids, and every link, watched marker and deep link in SlickSync is IMDb-based - so each title is matched through TMDb, and anything TMDb cannot place is left out rather than imported as an entry that would not work anywhere.',
+      'MyAnimeList is read through Jikan, the long-standing public mirror of MAL data. MAL own API asks each household to register a client id, which is a key to manage for a one-off import; this way there is nothing to set up. If Jikan rate-limits partway through a very long list, what was collected is still imported.',
+      'Both are capped at the same 200 titles as every other import, and the catalog says how many of the total it took.',
+      'Auto-refresh works on these like any other imported catalog, so a Planning list can keep following what you add on AniList.',
+    ],
+    related: ['catalog-import', 'anime-support', 'trakt-list-import'],
+    href: '/catalogs',
+    linkLabel: 'Open Catalogs',
+  },
+  {
     id: 'settings-layout',
     title: 'Finding things in Settings',
     category: 'Getting started',
