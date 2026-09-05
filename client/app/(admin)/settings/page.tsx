@@ -9,7 +9,7 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { useTheme } from '@/lib/theme';
 import { copyToClipboard } from '@/lib/clipboard';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { api, SyncSettings, AccountStats, PushDevice } from '@/lib/api';
+import { api, SyncSettings, AccountStats, PushDevice, PasskeyRow } from '@/lib/api';
 import { toast, showToast } from '@/components/ui/Toast';
 import { isBeginnerMode, setBeginnerMode as setBeginnerModePref } from '@/lib/beginnerMode';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -28,6 +28,7 @@ import {
   ClipboardDocumentIcon,
   GlobeAltIcon,
   ShieldCheckIcon,
+  FingerPrintIcon,
   CogIcon,
   DocumentTextIcon,
   UserCircleIcon,
@@ -760,6 +761,51 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [isGeneratingKey, setIsGeneratingKey] = useState(false);
+
+  // Passkeys. Deliberately additive to the password - there is no "require
+  // passkey" switch, because a self-hosted instance has no way back in if
+  // the only credential is on a device that is gone.
+  const [passkeys, setPasskeys] = useState<PasskeyRow[]>([]);
+  const [passkeyRpId, setPasskeyRpId] = useState<string | null>(null);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  useEffect(() => {
+    setPasskeySupported(typeof window !== 'undefined' && !!window.PublicKeyCredential);
+    api.getPasskeys().then((r) => { setPasskeys(r.passkeys || []); setPasskeyRpId(r.currentRpId); }).catch(() => {});
+  }, []);
+
+  const handleAddPasskey = async () => {
+    setPasskeyBusy(true);
+    try {
+      const { startRegistration } = await import('@simplewebauthn/browser');
+      const optionsJSON = await api.getPasskeyRegistrationOptions();
+      const credential = await startRegistration({ optionsJSON });
+      // Named after the device it lives on where the browser will say, so a
+      // list of three passkeys is not three identical rows.
+      const suggested = typeof navigator !== 'undefined' && /iPhone|iPad|Android|Mac|Windows/i.test(navigator.userAgent)
+        ? (navigator.userAgent.match(/iPhone|iPad|Android|Mac|Windows/i)?.[0] || 'This device')
+        : 'This device';
+      const r = await api.verifyPasskeyRegistration(credential, suggested);
+      setPasskeys(r.passkeys || []);
+      toast.success('Passkey added');
+    } catch (e: any) {
+      // A cancelled prompt is not a failure worth a red toast.
+      if (e?.name === 'NotAllowedError' || /cancel|abort/i.test(e?.message || '')) return;
+      toast.error(e?.message || 'Could not add that passkey');
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
+  const handleRemovePasskey = async (id: string) => {
+    try {
+      const r = await api.deletePasskey(id);
+      setPasskeys(r.passkeys || []);
+      toast.success('Passkey removed');
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not remove that passkey');
+    }
+  };
 
   // 2FA (TOTP) state - see server/utils/twoFactor.js for the backend design.
   const [twoFaEnabled, setTwoFaEnabled] = useState<boolean | null>(null);
@@ -2561,6 +2607,59 @@ export default function SettingsPage() {
                 </p>
               </div>
             </div>
+          </Card>
+        </PageSection>
+        )}
+
+        {/* Passkeys - sign in with the device's own unlock instead of the
+            password. Strictly an addition: the password never goes away, so
+            a lost device cannot lock anyone out of their own instance. */}
+        {activeTab === 'security' && (
+        <PageSection delay={0.205} className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
+                <FingerPrintIcon className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold font-display text-default">Passkeys</h3>
+                <p className="text-xs text-muted">Sign in with Face ID, a fingerprint, a PIN or a security key</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted mb-4">
+              A passkey signs you in without typing the password - useful on a phone, and on a TV where typing anything is
+              a chore. It never replaces the password: that still works, so losing a device can never lock you out of your
+              own instance. A passkey belongs to the exact address you created it on{passkeyRpId ? <> (this one is <span className="font-mono">{passkeyRpId}</span>)</> : null},
+              so add one on each address you actually sign in from.
+            </p>
+
+            {!passkeySupported ? (
+              <p className="text-sm text-muted">This browser doesn&apos;t support passkeys.</p>
+            ) : (
+              <>
+                {passkeys.length > 0 && (
+                  <div className="space-y-2 mb-4">
+                    {passkeys.map((pk) => (
+                      <div key={pk.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-subtle border border-default">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-default truncate">{pk.name}</p>
+                          <p className="text-xs text-muted">
+                            {pk.rpId ? <span className="font-mono">{pk.rpId}</span> : 'unknown address'}
+                            {pk.rpId && passkeyRpId && pk.rpId !== passkeyRpId ? ' - not offered on this address' : ''}
+                            {pk.lastUsedAt ? ` - last used ${new Date(pk.lastUsedAt).toLocaleDateString()}` : ' - never used'}
+                          </p>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => handleRemovePasskey(pk.id)}>Remove</Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <Button variant="secondary" size="sm" onClick={handleAddPasskey} isLoading={passkeyBusy}>
+                  Add a passkey
+                </Button>
+              </>
+            )}
           </Card>
         </PageSection>
         )}

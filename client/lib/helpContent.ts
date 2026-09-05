@@ -1817,6 +1817,23 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Catalogs',
   },
   {
+    id: 'passkeys',
+    title: 'Signing in with a passkey',
+    category: 'Security & account',
+    keywords: ['passkey', 'webauthn', 'face id', 'touch id', 'fingerprint', 'security key', 'yubikey', 'passwordless'],
+    answer: 'Settings - Security - Passkeys - Add a passkey. After that the login page offers "Use a passkey", and your device unlock (Face ID, fingerprint, PIN or a security key) signs you in.',
+    details: [
+      'It never replaces the password. There is deliberately no switch to require a passkey: a self-hosted instance has nobody to call if the only credential is on a phone that is gone, so the password always keeps working.',
+      'A passkey belongs to the exact address you created it on. One made on your public hostname will not be offered on the LAN address, and vice versa - add one on each address you actually sign in from. The list in Settings shows which address each belongs to.',
+      'The login page only shows the passkey button when a passkey exists for the address you are on, so it never offers a prompt that can only fail.',
+      'With 2FA on, a passkey that verified you (Face ID, fingerprint or a PIN) signs you straight in, because that is already two factors. A passkey that only proves the device is present still asks for the code.',
+      'Handy on a TV, where typing a household password with a remote is the worst part of setting one up.',
+    ],
+    related: ['2fa-sso', 'settings-layout'],
+    href: '/settings?tab=security',
+    linkLabel: 'Open Security settings',
+  },
+  {
     id: 'settings-layout',
     title: 'Finding things in Settings',
     category: 'Getting started',

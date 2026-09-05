@@ -889,6 +889,28 @@ class ApiClient {
     return this.fetch(`/groups/${groupId}/users/${userId}`, { method: 'DELETE' });
   }
 
+  // Passkeys (WebAuthn). Registering one always requires an existing
+  // session; signing in with one is in publicAuth on the server side and is
+  // called straight from the login page, not through here.
+  async getPasskeys() {
+    return this.fetch<{ passkeys: PasskeyRow[]; currentRpId: string | null }>('/passkeys');
+  }
+
+  async getPasskeyRegistrationOptions() {
+    return this.fetch<any>('/passkeys/register/options', { method: 'POST', body: JSON.stringify({}) });
+  }
+
+  async verifyPasskeyRegistration(credential: unknown, name: string) {
+    return this.fetch<{ success: boolean; passkeys: PasskeyRow[] }>('/passkeys/register/verify', {
+      method: 'POST',
+      body: JSON.stringify({ credential, name }),
+    });
+  }
+
+  async deletePasskey(id: string) {
+    return this.fetch<{ success: boolean; passkeys: PasskeyRow[] }>(`/passkeys/${id}`, { method: 'DELETE' });
+  }
+
   // Addons
   async getAddons() {
     return this.fetch<Addon[]>('/addons');
@@ -4131,6 +4153,14 @@ export interface RatingsBatchEntry {
   imdbRating: string | null;
   rottenTomatoes: string | null;
   metacritic: string | null;
+}
+
+export interface PasskeyRow {
+  id: string;
+  name: string;
+  rpId: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
 }
 
 export interface MediaDetails {

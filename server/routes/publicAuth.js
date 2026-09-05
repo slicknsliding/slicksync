@@ -426,6 +426,114 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
     }
   });
 
+  // --- Passkey sign-in (see utils/webauthn.js) --------------------------
+  //
+  // Lives here rather than in routes/passkeys.js because this is where
+  // session cookies are issued, and a login request by definition arrives
+  // with no session to authenticate it.
+  //
+  // Passkeys are discoverable, so no username is asked for: the browser
+  // offers whichever passkey belongs to this instance's hostname and the
+  // credential id that comes back identifies the account.
+
+  // POST /passkey/options - challenge for signing in.
+  router.post('/passkey/options', async (req, res) => {
+    try {
+      const { getLib, putChallenge, newChallengeId, rpFromRequest } = require('../utils/webauthn');
+      const rp = rpFromRequest(req);
+      if (!rp) return responseUtils.badRequest(res, 'Could not determine this instance address');
+
+      // Only advertise passkeys when some exist for this hostname - the
+      // login page uses an empty answer to keep its passkey button hidden
+      // rather than offering a prompt that can only fail.
+      const available = await prisma.passkey.count({ where: { rpId: rp.rpID } });
+      if (available === 0) return res.json({ available: false });
+
+      const { generateAuthenticationOptions } = await getLib();
+      const options = await generateAuthenticationOptions({
+        rpID: rp.rpID,
+        userVerification: 'preferred',
+      });
+      // Keyed by a random id the client hands back, since there is no
+      // account to key it by yet.
+      const challengeId = newChallengeId();
+      putChallenge(`auth:${challengeId}`, { challenge: options.challenge, rpID: rp.rpID, origin: rp.origin });
+      return res.json({ available: true, challengeId, options });
+    } catch (error) {
+      console.error('Passkey options error:', error);
+      return responseUtils.internalError(res, String(error && error.message || error));
+    }
+  });
+
+  // POST /passkey/verify - complete a passkey sign-in.
+  router.post('/passkey/verify', async (req, res) => {
+    try {
+      const { getLib, takeChallenge } = require('../utils/webauthn');
+      const { challengeId, credential } = req.body || {};
+      if (!challengeId || !credential) return responseUtils.badRequest(res, 'challengeId and credential are required');
+
+      const pending = takeChallenge(`auth:${challengeId}`);
+      if (!pending) return res.status(401).json({ message: 'That sign-in attempt expired - try again' });
+
+      const stored = await prisma.passkey.findUnique({ where: { credentialId: credential.id } });
+      if (!stored) return res.status(401).json({ message: 'That passkey is not registered here' });
+
+      const { verifyAuthenticationResponse } = await getLib();
+      const verification = await verifyAuthenticationResponse({
+        response: credential,
+        expectedChallenge: pending.challenge,
+        expectedOrigin: pending.origin,
+        expectedRPID: pending.rpID,
+        credential: {
+          id: stored.credentialId,
+          publicKey: new Uint8Array(Buffer.from(stored.publicKey, 'base64url')),
+          counter: stored.counter,
+          transports: (() => { try { return JSON.parse(stored.transports || '[]') } catch { return [] } })(),
+        },
+        requireUserVerification: false,
+      });
+      if (!verification.verified) return res.status(401).json({ message: 'That passkey could not be verified' });
+
+      // A counter that fails to advance on an authenticator that keeps one
+      // is the signature of a cloned credential. Authenticators that do not
+      // keep a counter report 0 forever, which is normal and not a signal.
+      const newCounter = Number(verification.authenticationInfo?.newCounter || 0);
+      if (stored.counter > 0 && newCounter > 0 && newCounter <= stored.counter) {
+        return res.status(401).json({ message: 'That passkey looks cloned and was refused' });
+      }
+
+      const accountId = stored.accountId || DEFAULT_ACCOUNT_ID;
+      const account = await prisma.appAccount.findUnique({ where: { id: accountId } });
+      if (account && account.disabled) return res.status(401).json({ message: 'This account has been disabled' });
+
+      // 2FA still applies unless the authenticator actually verified the
+      // person (PIN, fingerprint, face). A passkey that only proves
+      // possession is one factor, so it does not stand in for a second one;
+      // a user-verified passkey already is two.
+      const userVerified = verification.authenticationInfo?.userVerified === true;
+      if (account && account.twoFactorEnabled && !userVerified) {
+        const twoFactor = require('../utils/twoFactor');
+        const pendingToken = twoFactor.createPendingChallenge(accountId);
+        await prisma.passkey.update({ where: { id: stored.id }, data: { counter: newCounter, lastUsedAt: new Date() } }).catch(() => {});
+        return res.json({ requiresTwoFactor: true, pendingToken });
+      }
+
+      await prisma.passkey.update({ where: { id: stored.id }, data: { counter: newCounter, lastUsedAt: new Date() } }).catch(() => {});
+      if (account) {
+        prisma.appAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } }).catch(() => {});
+      }
+      const at = issueSessionCookies(res, accountId);
+      return res.json({
+        message: 'Login successful',
+        token: at,
+        account: { id: accountId, uuid: (account && account.uuid) || null, email: (account && account.email) || null },
+      });
+    } catch (error) {
+      console.error('Passkey verify error:', error);
+      return responseUtils.internalError(res, String(error && error.message || error));
+    }
+  });
+
   // Finishes a login for an already-resolved account (created/matched by
   // /oidc/callback below) - checks disabled + the same 2FA gate every other
   // login path respects, then either issues a real session or hands back a

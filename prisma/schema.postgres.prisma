@@ -1109,3 +1109,43 @@ model FollowedSubject {
   @@index([accountId, kind])
   @@map("followed_subjects")
 }
+
+
+// A passkey (WebAuthn credential) registered against this account.
+//
+// Strictly an ADDITION to password login, never a replacement: the password
+// path stays exactly as it was, so a lost or unsupported device can never
+// lock anyone out of their own instance. Deliberately DISCOVERABLE
+// credentials (resident keys), which is what lets the login page offer
+// "Use a passkey" without asking who you are first - the authenticator
+// itself knows.
+//
+// A passkey is bound to the domain it was created on (its RP ID), so one
+// created on a LAN address will not work on the public hostname and vice
+// versa - hence the rpId column, which is what makes that visible in the
+// list rather than a mystery.
+model Passkey {
+  id           String   @id @default(cuid())
+  accountId    String   @default("default")
+  // Base64url credential id as the authenticator reports it - the lookup key
+  // at login time, when there is no session to scope the search by.
+  credentialId String   @unique
+  // Base64url COSE public key. Public by definition: it verifies signatures
+  // and cannot produce them, so this is not a secret.
+  publicKey    String
+  // Signature counter, for authenticators that keep one. A counter that goes
+  // backwards means a cloned credential, which is why it is stored.
+  counter      Int      @default(0)
+  // JSON array of transports ("internal", "hybrid", "usb"), used only to
+  // improve the browser prompt.
+  transports   String?
+  // Which domain this passkey belongs to, and a name for the person to
+  // recognise it by ("iPhone", "YubiKey").
+  rpId         String?
+  name         String
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([accountId])
+  @@map("passkeys")
+}

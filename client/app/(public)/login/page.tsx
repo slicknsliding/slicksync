@@ -11,6 +11,7 @@ import {
   UserIcon,
   ShieldCheckIcon,
   ArrowRightIcon,
+  FingerPrintIcon,
 } from '@heroicons/react/24/outline';
 import { userOAuth, userAuth as userAuthApi } from '@/lib/user-api';
 import { copyToClipboard } from '@/lib/clipboard';
@@ -483,6 +484,62 @@ function LoginContent() {
     window.open(oauthLink, '_blank', 'noopener,noreferrer');
   }, [oauthLink]);
 
+  // Passkey sign-in. Only offered once the server confirms a passkey exists
+  // for THIS hostname - a passkey belongs to the address it was made on, so
+  // offering the button everywhere would mean a prompt that can only fail.
+  const [passkeyAvailable, setPasskeyAvailable] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.PublicKeyCredential) return;
+    fetch('/api/public-auth/passkey/options', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.available) setPasskeyAvailable(true); })
+      .catch(() => {});
+  }, []);
+
+  const handlePasskeyLogin = async () => {
+    setPasskeyLoading(true);
+    setAdminError(null);
+    try {
+      const { startAuthentication } = await import('@simplewebauthn/browser');
+      // A fresh challenge for the real attempt - the one fetched above was
+      // only asking whether to show this button, and a challenge is
+      // single-use.
+      const optionsRes = await fetch('/api/public-auth/passkey/options', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      const optionsData = await optionsRes.json();
+      if (!optionsData?.available) {
+        setAdminError('No passkey is registered for this address');
+        return;
+      }
+      const credential = await startAuthentication({ optionsJSON: optionsData.options });
+      const verifyRes = await fetch('/api/public-auth/passkey/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId: optionsData.challengeId, credential }),
+      });
+      const data = await verifyRes.json();
+      if (verifyRes.ok && data.requiresTwoFactor && data.pendingToken) {
+        setTwoFactorPendingToken(data.pendingToken);
+        setTwoFactorCode('');
+        return;
+      }
+      if (verifyRes.ok && (data.token || data.account)) {
+        if (data.token) localStorage.setItem('slicksync-admin-token', data.token);
+        router.push('/');
+        return;
+      }
+      setAdminError(data.message || 'That passkey was not accepted');
+    } catch (e: any) {
+      // Cancelling the browser prompt is a choice, not an error.
+      if (e?.name === 'NotAllowedError' || /cancel|abort/i.test(e?.message || '')) return;
+      setAdminError(e?.message || 'Passkey sign-in failed');
+    } finally {
+      setPasskeyLoading(false);
+    }
+  };
+
   // Admin login
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -887,6 +944,24 @@ function LoginContent() {
                           </>
                         )}
                       </button>
+
+                      {passkeyAvailable && (
+                        <button
+                          type="button"
+                          onClick={handlePasskeyLogin}
+                          disabled={passkeyLoading}
+                          className="w-full py-3.5 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+                          style={{
+                            background: 'transparent',
+                            color: 'var(--color-text)',
+                            border: '1px solid var(--color-surface-border)',
+                            opacity: passkeyLoading ? 0.5 : 1,
+                          }}
+                        >
+                          <FingerPrintIcon className="w-5 h-5" />
+                          {passkeyLoading ? 'Waiting for your device...' : 'Use a passkey'}
+                        </button>
+                      )}
 
                       {oidcConfigured && (
                         <>

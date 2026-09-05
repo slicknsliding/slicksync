@@ -219,6 +219,8 @@ app.use('/api/superadmin/login', authLimiter);
 // per guess, but that's nothing without a hard cap on attempts); same
 // 20-req/15min throttle as the credential checks above.
 app.use('/api/auth/verify-2fa', authLimiter);
+app.use('/api/auth/passkey/verify', authLimiter);
+app.use('/api/public-auth/passkey/verify', authLimiter);
 app.use('/api/public-auth/verify-2fa', authLimiter);
 
 // Higher-frequency limiter for OAuth polling (device-code flow polls every few seconds)
@@ -347,6 +349,9 @@ app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/automation', automationRouter({ prisma, getAccountId }));
 app.use('/api/watch-together', require('./routes/watchTogether')({ prisma, getAccountId }));
 app.use('/api/settings', settingsRouter({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }));
+// Passkeys: managing them needs a session (this router), signing in with one
+// does not and lives in publicAuth.
+app.use('/api/passkeys', require('./routes/passkeys')({ prisma, getAccountId }));
 app.use('/api/push', pushRouter({ prisma, getAccountId }));
 app.use('/api/watchlist', watchlistRouter({ prisma, getAccountId }));
 // Discover proxies to Cinemeta on every single request (browse/search/
