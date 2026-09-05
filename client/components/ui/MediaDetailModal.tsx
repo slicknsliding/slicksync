@@ -153,7 +153,6 @@ export function MediaDetailModal({
     const res = await api.resolveImdbId(credit.tmdbId, credit.mediaType);
     if (res?.imdbId) {
       setOverrideItem({ id: res.imdbId, type: res.type, name: credit.title, poster: credit.poster });
-      setPersonView(null);
     }
   }, [creditsDrag]);
 
@@ -174,6 +173,18 @@ export function MediaDetailModal({
   // starts returning them there) is all a drilled-into item can show.
   const effectiveFallbackRottenTomatoes = overrideItem ? null : fallbackRottenTomatoes;
   const effectiveFallbackMetacritic = overrideItem ? null : fallbackMetacritic;
+
+  // The cast filmography belongs to the title it was opened from, so it has
+  // to go the moment the modal moves to a different one - by ANY route.
+  // Clearing it inside the cast-credit handler alone was not enough: the
+  // other drill-downs (More Like This, a collection part, and Back) left the
+  // previous title's actor row sitting under a new title's cast, which reads
+  // as the popup having lost track of what it is showing. Keyed on
+  // effectiveId, so every navigation path is covered by construction - the
+  // same reset the seasons, More Like This and collection panels already do.
+  useEffect(() => {
+    setPersonView(null);
+  }, [effectiveId]);
 
   const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions, enableWatchProviders, enableWatchedIndicators, enableWatchTogether } = usePersonalFeatures();
   const isTV = useIsTV();

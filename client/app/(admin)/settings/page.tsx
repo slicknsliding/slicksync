@@ -476,6 +476,15 @@ export default function SettingsPage() {
   // Mirrors the localStorage flag so the switch reflects reality after mount
   // (reading it during render would disagree with the server render).
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  // The rail's hover is tracked here instead of in CSS, for two reasons that
+  // both bit this rail. The rows carry inline styles, and an inline
+  // background silently beats any :hover rule that isn't !important - so the
+  // CSS hover never actually painted anything. And a CSS :hover STICKS after
+  // a tap on a touch screen (there is no hover-out event to end it), which is
+  // exactly the "the last one I clicked stays lit" symptom. State can only
+  // hold one key, and only a real mouse can set it, so at most one row is
+  // ever lit and a tap can never leave one behind.
+  const [hoveredTab, setHoveredTab] = useState<SettingsTab | null>(null);
   // Nebula puts the app's own nav across the top, so settings can own the
   // left rail. Original already has a sidebar - a second one beside it is
   // the clutter this avoids.
@@ -1227,22 +1236,29 @@ export default function SettingsPage() {
             width the settings themselves need. */}
         <div className={useSettingsRail ? 'flex gap-6 items-start' : ''}>
           {useSettingsRail && (
-          <nav className="hidden md:block w-56 shrink-0 sticky top-4">
+          <nav
+            className="hidden md:block w-56 shrink-0 sticky top-4"
+            // Safety net for the pointer that leaves the rail fast enough to
+            // skip a row's own leave event (or leaves the window entirely).
+            onPointerLeave={() => setHoveredTab(null)}
+          >
             <div className="rounded-2xl p-2" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
               {SETTINGS_TABS.map((t) => {
                 const active = activeTab === t.key;
+                const hovered = !active && hoveredTab === t.key;
                 const Icon = t.icon;
                 return (
                   <button
                     key={t.key}
                     type="button"
-                    onClick={() => setActiveTab(t.key)}
-                    // Selection is the only thing that paints a background
-                    // here. Hover uses the app's existing nav-item-hover-pill,
-                    // which is gated behind (hover: hover) precisely because a
-                    // plain :hover sticks after a tap on touch devices - the
-                    // same "stays highlighted" bug this rail reproduced.
-                    className={`relative w-full flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-xl text-left mb-0.5 focus:outline-none ${active ? '' : 'rail-item-hover'}`}
+                    // Clearing the hover on click matters as much as setting
+                    // it: after a tap the finger is gone but the pointer
+                    // never "leaves", so without this the row you just
+                    // chose would keep its hover tint on top of everything.
+                    onClick={(e) => { setActiveTab(t.key); setHoveredTab(null); e.currentTarget.blur(); }}
+                    onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHoveredTab(t.key); }}
+                    onPointerLeave={() => setHoveredTab((k) => (k === t.key ? null : k))}
+                    className="relative w-full flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-xl text-left mb-0.5 focus:outline-none rail-item-hover"
                     style={active
                       // Selection: a filled row plus a left accent bar, so it
                       // is unmistakable next to a whisper-quiet hover.
@@ -1251,7 +1267,9 @@ export default function SettingsPage() {
                           color: 'var(--color-text)',
                           boxShadow: 'inset 3px 0 0 0 var(--color-primary)',
                         }
-                      : { color: 'var(--color-text-muted)', background: 'transparent' }}
+                      : hovered
+                        ? { color: 'var(--color-text)', background: 'var(--color-surface-hover)', boxShadow: 'none' }
+                        : { color: 'var(--color-text-muted)', background: 'transparent', boxShadow: 'none' }}
                   >
                     <Icon className="w-4 h-4 shrink-0" style={{ color: active ? 'var(--color-primary)' : 'var(--color-text-muted)' }} />
                     <span className="min-w-0">
