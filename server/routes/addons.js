@@ -983,14 +983,6 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
 
       const lowerUrl = sanitizedUrl.toLowerCase()
 
-      // Check for duplicate addon name instead of URL
-      const existingByName = await prisma.addon.findFirst({
-        where: {
-          name: name.trim(),
-          accountId: getAccountId(req)
-        }
-      })
-
       // Use provided manifest data if available, otherwise fetch it
       let manifestData = providedManifestData
       if (!manifestData) {
@@ -1027,6 +1019,27 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       }
 
       // Note: we build dbData after we compute filtered/resources/catalogs further below
+
+      // The duplicate check is by name, and the request does not always
+      // carry one. The browser pre-fetches the manifest to fill it in, which
+      // it can only do when the addon's own CORS policy allows it - and a
+      // page served over https cannot fetch an http:// manifest at all. Every
+      // one of those arrived here with no name and died on name.trim(),
+      // giving a 500 that reads as "SlickSync will not let me add this
+      // addon" when the URL is fine and the server fetches it perfectly well
+      // (reported live against a SlickTrax manifest URL). So the name is
+      // settled AFTER the fetch, from the manifest the server just read -
+      // which is the more trustworthy source of the two anyway.
+      const effectiveName = (typeof name === 'string' && name.trim())
+        ? name.trim()
+        : (typeof manifestData?.name === 'string' && manifestData.name.trim() ? manifestData.name.trim() : 'Unknown')
+
+      const existingByName = await prisma.addon.findFirst({
+        where: {
+          name: effectiveName,
+          accountId: getAccountId(req)
+        }
+      })
 
       if (existingByName) {
         if (existingByName.isActive) {
@@ -1203,7 +1216,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
 
       const { buildAddonDbData } = require('../utils/stremio')
       const dbData = buildAddonDbData(req, {
-        name: (name && name.trim()) ? name.trim() : (manifestData?.name || 'Unknown'),
+        name: effectiveName,
         description,
         sanitizedUrl,
         manifestObj: manifestData,
