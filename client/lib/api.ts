@@ -3563,6 +3563,8 @@ export interface CustomList {
   importSourceUrl: string | null;
   autoRefresh: boolean;
   autoRefreshFrequency: 'daily' | 'weekly';
+  /** Set when this catalog is a Smart Catalog - the stored criteria it re-evaluates. */
+  smartRuleJson?: string | null;
   lastAutoRefreshAt: string | null;
   pinned: boolean;
   // Owner-set opt-in - visible (read-only) to every other account on this

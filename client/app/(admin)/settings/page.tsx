@@ -14,6 +14,7 @@ import { toast, showToast } from '@/components/ui/Toast';
 import { isBeginnerMode, setBeginnerMode as setBeginnerModePref } from '@/lib/beginnerMode';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
+import { SETTINGS_INDEX } from '@/lib/settingsIndex';
 import { invalidatePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { openOnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import {
@@ -429,6 +430,33 @@ function BackupKeyField({
   );
 }
 
+// Settings had grown to eleven stacked sections and roughly 2,600 lines of
+// page - long enough that finding one toggle meant scrolling past everything
+// else (user feedback). Same settings, grouped, one group on screen at a
+// time. Deep links from the command palette still land on the exact control:
+// SETTINGS_TABS_BY_SECTION maps the palette's own section labels onto these
+// tabs so the page can switch before it scrolls.
+const SETTINGS_TABS = [
+  { key: 'general', label: 'General' },
+  { key: 'sync', label: 'Sync' },
+  { key: 'notifications', label: 'Notifications' },
+  { key: 'features', label: 'Features' },
+  { key: 'integrations', label: 'Integrations' },
+  { key: 'security', label: 'Security' },
+] as const;
+type SettingsTab = typeof SETTINGS_TABS[number]['key'];
+
+const SETTINGS_TABS_BY_SECTION: Record<string, SettingsTab> = {
+  'Privacy & Display': 'general',
+  'Account': 'security',
+  'Sync Mode': 'sync',
+  'Notifications': 'notifications',
+  'SlickTrax': 'features',
+  'External API Keys': 'integrations',
+  'Scrobble API': 'integrations',
+  'Security': 'security',
+};
+
 export default function SettingsPage() {
   // Theme picking + the theme builder now live on their own page (Themes) —
   // only the sensitive-data toggle from useTheme() is still needed here.
@@ -443,6 +471,7 @@ export default function SettingsPage() {
   const [checkingKeys, setCheckingKeys] = useState(false);
   // Mirrors the localStorage flag so the switch reflects reality after mount
   // (reading it during render would disagree with the server render).
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [beginnerMode, setBeginnerModeState] = useState(false);
   useEffect(() => { setBeginnerModeState(isBeginnerMode()); }, []);
 
@@ -903,11 +932,25 @@ export default function SettingsPage() {
       };
       setTimeout(attempt, 300);
     };
+    // Jumping from the command palette must also switch tabs, or the
+    // control it wants is simply not mounted to scroll to.
+    const tabFor = (target: string) => {
+      const entry = SETTINGS_INDEX.find((e) => e.label === target);
+      return entry ? SETTINGS_TABS_BY_SECTION[entry.section] : undefined;
+    };
     const fromUrl = new URLSearchParams(window.location.search).get('highlight');
-    if (fromUrl) runHighlight(fromUrl);
+    if (fromUrl) {
+      const tab = tabFor(fromUrl);
+      if (tab) setActiveTab(tab);
+      runHighlight(fromUrl);
+    }
     const onEvent = (e: Event) => {
       const target = (e as CustomEvent<string>).detail;
-      if (typeof target === 'string' && target) runHighlight(target);
+      if (typeof target === 'string' && target) {
+        const tab = tabFor(target);
+        if (tab) setActiveTab(tab);
+        runHighlight(target);
+      }
     };
     window.addEventListener('slicksync:settings-highlight', onEvent);
     return () => { cancelled = true; window.removeEventListener('slicksync:settings-highlight', onEvent); };
@@ -1164,8 +1207,29 @@ export default function SettingsPage() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading title="Settings" subtitle="Customize your SlickSync experience" />
       )}
+        {/* One group at a time, so a single toggle is never at the bottom of
+            everything. Sticky so the groups stay reachable while scrolling a
+            long one (Notifications and External API Keys are both tall). */}
+        <div className="sticky top-0 z-20 -mx-1 px-1 pt-1 pb-3 mb-4" style={{ background: 'linear-gradient(180deg, var(--color-bg) 70%, transparent)' }}>
+          <div className="flex gap-1.5 flex-wrap">
+            {SETTINGS_TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setActiveTab(t.key)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                  activeTab === t.key ? 'bg-primary text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Profile Picture - shown on the account button (bottom-left in
             Nebula, bottom of sidebar in Original) and its dropdown menu. */}
+        {activeTab === 'general' && (
         <PageSection className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1221,12 +1285,14 @@ export default function SettingsPage() {
             )}
           </Card>
         </PageSection>
+        )}
 
         {/* Welcome tour replay - low-key, one line, no card padding beyond
             the norm here so it doesn't stand out among the settings around
             it. Users kept accidentally clicking past a step with no way
             back (fixed in the wizard itself) and had no way to pull it back
             up afterward either - this is that way back in, not a big CTA. */}
+        {activeTab === 'general' && (
         <PageSection delay={0.05} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center justify-between gap-3">
@@ -1245,8 +1311,10 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* Privacy & Display */}
+        {activeTab === 'general' && (
         <PageSection delay={0.05} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1319,8 +1387,10 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* Sync Mode */}
+        {activeTab === 'sync' && (
         <PageSection delay={0.1} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1363,8 +1433,10 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* Notifications */}
+        {activeTab === 'notifications' && (
         <PageSection delay={0.15} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1659,11 +1731,13 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* SlickTrax — opt-outs for SlickSync's native tracking surfaces
             (Watchlist, Watched indicators, Recommendations). All default ON.
             Turning any off hides its UI + skips its network requests
             immediately (the hook cache invalidates on save). */}
+        {activeTab === 'features' && (
         <PageSection delay={0.18} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1810,6 +1884,7 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* External API Keys — every external service key SlickSync can use, split
             out from SlickTrax so that card stays pure on/off toggles.
@@ -1817,6 +1892,7 @@ export default function SettingsPage() {
             first, falling back to the instance's own env var (if the
             operator configured one) only when this is left blank - never
             a flat shared key silently used across every account. */}
+        {activeTab === 'integrations' && (
         <PageSection delay={0.19} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -2283,8 +2359,10 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* API Key */}
+        {activeTab === 'integrations' && (
         <PageSection delay={0.2} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -2363,10 +2441,12 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* Two-Factor Authentication - opt-in TOTP on top of the account
             login. See server/utils/twoFactor.js for why disable/regenerate
             both require a fresh code rather than just an active session. */}
+        {activeTab === 'security' && (
         <PageSection delay={0.21} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -2480,6 +2560,7 @@ export default function SettingsPage() {
             )}
           </Card>
         </PageSection>
+        )}
 
         {/* Backup codes - shown exactly once, right after enabling 2FA or
             regenerating codes. Closing this modal is the only way past it,
@@ -2512,7 +2593,7 @@ export default function SettingsPage() {
             (per the register page's own warning), and there was previously
             nowhere to look it back up short of the Account dropdown modal.
             Always findable here for troubleshooting/support. */}
-        {isPublicInstance && accountInfo?.uuid && (
+        {activeTab === 'security' && isPublicInstance && accountInfo?.uuid && (
           <PageSection delay={0.22} className="mb-6">
             <Card padding="lg">
               <div className="flex items-center gap-3 mb-5">
@@ -2551,6 +2632,7 @@ export default function SettingsPage() {
         )}
 
         {/* Danger Zone */}
+        {activeTab === 'security' && (
         <PageSection delay={0.25}>
           <Card padding="lg" className="border-error">
             <div className="flex items-center gap-3 mb-5">
@@ -2601,6 +2683,7 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
       </div>
       </div>
 
