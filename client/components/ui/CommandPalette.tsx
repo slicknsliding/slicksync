@@ -37,7 +37,7 @@ const NAV_ITEMS = [
   { label: 'Invitations', href: '/invitations', icon: EnvelopeIcon, keywords: 'invite' },
   { label: 'Tasks', href: '/tasks', icon: QueueListIcon, keywords: 'backup snapshot' },
   { label: 'Settings', href: '/settings', icon: Cog6ToothIcon, keywords: '' },
-  { label: 'Themes', href: '/themes', icon: SwatchIcon, keywords: 'appearance colors' },
+  { label: 'Themes', href: '/settings?tab=themes', icon: SwatchIcon, keywords: 'appearance colors theme custom layout' },
   { label: 'Changelog', href: '/changelog', icon: DocumentTextIcon, keywords: 'whats new updates' },
   // Keywords deliberately include the words people type instead of the
   // page's actual name - "how to", "help", "faq", "docs" all land here.

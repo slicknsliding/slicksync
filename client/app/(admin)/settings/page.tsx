@@ -15,6 +15,7 @@ import { isBeginnerMode, setBeginnerMode as setBeginnerModePref } from '@/lib/be
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
 import { SETTINGS_INDEX } from '@/lib/settingsIndex';
+import { ThemesPanel } from '@/components/settings/ThemesPanel';
 import { invalidatePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { openOnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import {
@@ -32,6 +33,7 @@ import {
   UserCircleIcon,
   SparklesIcon,
   BellIcon,
+  SwatchIcon,
   DevicePhoneMobileIcon,
   ComputerDesktopIcon,
   PencilIcon,
@@ -442,6 +444,7 @@ const SETTINGS_TABS = [
   { key: 'sync', label: 'Sync', icon: ArrowPathIcon, blurb: 'How addons are pushed' },
   { key: 'notifications', label: 'Notifications', icon: BellIcon, blurb: 'Push, bell, Discord, digest' },
   { key: 'features', label: 'Features', icon: SparklesIcon, blurb: 'SlickTrax and Discover' },
+  { key: 'themes', label: 'Themes', icon: SwatchIcon, blurb: 'Colours, layout, custom builds' },
   { key: 'integrations', label: 'Integrations', icon: KeyIcon, blurb: 'API keys and scrobbling' },
   { key: 'security', label: 'Security', icon: ShieldCheckIcon, blurb: '2FA, account, danger zone' },
 ] as const;
@@ -939,6 +942,10 @@ export default function SettingsPage() {
       const entry = SETTINGS_INDEX.find((e) => e.label === target);
       return entry ? SETTINGS_TABS_BY_SECTION[entry.section] : undefined;
     };
+    const requestedTab = new URLSearchParams(window.location.search).get('tab');
+    if (requestedTab && SETTINGS_TABS.some((t) => t.key === requestedTab)) {
+      setActiveTab(requestedTab as SettingsTab);
+    }
     const fromUrl = new URLSearchParams(window.location.search).get('highlight');
     if (fromUrl) {
       const tab = tabFor(fromUrl);
@@ -1259,6 +1266,8 @@ export default function SettingsPage() {
 
           <div className="flex-1 min-w-0">
 
+
+        {activeTab === 'themes' && <ThemesPanel embedded />}
 
         {/* Profile Picture - shown on the account button (bottom-left in
             Nebula, bottom of sidebar in Original) and its dropdown menu. */}
