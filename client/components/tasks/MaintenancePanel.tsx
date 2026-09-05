@@ -229,6 +229,9 @@ export function MaintenancePanel() {
       </Card>
 
 
+      {/* --- Recently deleted --- */}
+      <TrashPanel />
+
       {/* --- Database upkeep --- */}
       <Card padding="lg">
         <h3 className="text-base font-semibold text-default mb-1">Database upkeep</h3>
@@ -608,9 +611,6 @@ export function MaintenancePanel() {
           </div>
         )}
       </Card>
-
-      {/* --- Recently deleted --- */}
-      <TrashPanel />
 
     </div>
   );
