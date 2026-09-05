@@ -543,4 +543,4 @@ async function wipeBuriedShow(prisma, accountId, userId, showId) {
   return { episodesDeleted: episodes.count, moviesDeleted: movies.count }
 }
 
-module.exports = { getContinueWatching, dismissContinueWatching, getAbandonedShows, getBuriedShows, unburyShow, wipeBuriedShow, ABANDONED_AFTER_DAYS }
+module.exports = { getContinueWatching, dismissContinueWatching, getAbandonedShows, getBuriedShows, unburyShow, wipeBuriedShow, ABANDONED_AFTER_DAYS, placeAbsoluteEpisode }
