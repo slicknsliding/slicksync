@@ -455,18 +455,37 @@ body {
   }
 
   /* ----- Vertical rail item (Settings) -----
-     Transition only. The colours themselves are inline on the button and
-     driven by React state, not by :hover - deliberately, and for two
-     reasons. An inline background beats a :hover rule that isn't
-     !important, so a CSS hover here painted nothing at all; and :hover has
-     no way to end on a touch screen, so it stays lit on whatever was last
-     tapped. A state-driven hover can only ever hold one row and only a
-     mouse can set it. The rule stays a class purely so the fade is shared.
-     Deliberately NOT .nav-item-hover-pill either: that paints a bold
+     Every row carries exactly one of these three, chosen from React state,
+     and each one is !important. That is not decoration: rows kept looking
+     lit after the selection moved on, and the ordinary ways to state "this
+     row is off" all lose to something. An inline background loses to any
+     !important rule in the stylesheet; a plain class loses to a stale
+     :hover the browser has no way to release on a touch screen. An
+     !important "off" outranks both, so a row that is not selected cannot be
+     painted by anything, whatever else is in play. Hover is state-driven
+     and mouse-only for the same reason - :hover here was never able to end
+     itself. Deliberately NOT .nav-item-hover-pill: that paints a bold
      primary gradient, which on a vertical rail - where selection is also a
      filled row - makes every row you pass look chosen. */
-  .rail-item-hover {
+  .rail-item {
     transition: background 0.12s ease, color 0.12s ease;
+  }
+  .rail-item-on {
+    background: var(--color-primary) !important;
+    color: #fff !important;
+    box-shadow: 0 6px 18px -10px var(--color-primary) !important;
+  }
+  .rail-item-warm,
+  .rail-item-warm:hover {
+    background: var(--color-surface-hover) !important;
+    color: var(--color-text) !important;
+    box-shadow: none !important;
+  }
+  .rail-item-off,
+  .rail-item-off:hover {
+    background: transparent !important;
+    color: var(--color-text-muted) !important;
+    box-shadow: none !important;
   }
 
   /* ----- Text Colors ----- */

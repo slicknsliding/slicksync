@@ -18,8 +18,14 @@
  * Everything else (API calls, images, external hosts) falls through to the
  * network untouched. */
 
-const STATIC_CACHE = 'slicksync-static-v1';
-const PAGES_CACHE = 'slicksync-pages-v1';
+// Bump these names to force every installed client to drop what it has
+// cached: the activate handler below deletes any cache whose name is not
+// one of these two. Hashed filenames mean a cached asset can never be
+// WRONG, but a navigation served from the pages cache (which only happens
+// when the network is slow) hands back HTML that points at an older build's
+// hashes - and those are cached forever. One bump clears that out.
+const STATIC_CACHE = 'slicksync-static-v2';
+const PAGES_CACHE = 'slicksync-pages-v2';
 const NAV_TIMEOUT_MS = 3000;
 
 self.addEventListener('install', () => {

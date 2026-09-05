@@ -1070,7 +1070,7 @@ export default function NuvioCollectionsPage() {
   // Alarms come from the hourly guard pass (server-side): a profile whose
   // collections mass-vanished since the last good snapshot. Restore pushes
   // that snapshot back; Accept adopts the new state as the baseline.
-  type GuardAlarm = { kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; lastGoodAt: string | null; detectedAt: string; preview: string[]; previewTotal: number };
+  type GuardAlarm = { kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; profileName?: string | null; currentCount: number; lastGoodCount: number | null; lastGoodAt: string | null; detectedAt: string; preview: string[]; previewTotal: number };
   const [guardAlarms, setGuardAlarms] = useState<GuardAlarm[]>([]);
   const [guardBusy, setGuardBusy] = useState<string | null>(null);
   const loadGuardAlarms = useCallback(() => {
@@ -1130,7 +1130,11 @@ export default function NuvioCollectionsPage() {
             <div key={key} className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs text-default min-w-0">
                 <p>
-                  <span className="font-medium">{a.username || a.userId}</span> · profile {a.profileId}:{' '}
+                  {/* The profile's own name, the way the picker below shows
+                      it - the bare index says nothing about which profile
+                      lost collections. Falls back to the index when the
+                      account could not be reached for its profile list. */}
+                  <span className="font-medium">{a.username || a.userId}</span> · {a.profileName || `profile ${a.profileId}`}:{' '}
                   {a.lastGoodCount ?? '?'} {noun} → {a.currentCount}
                   <span className="text-muted"> · noticed {new Date(a.detectedAt).toLocaleString()}</span>
                 </p>

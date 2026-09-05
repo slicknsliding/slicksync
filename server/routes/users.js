@@ -3337,7 +3337,29 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         select: { id: true, username: true },
       }) : []
       const nameById = new Map(users.map((u) => [u.id, u.username]))
-      res.json({ alarms: alarms.map((a) => ({ ...a, username: nameById.get(a.userId) || null })) })
+      // Profile names live on the Nuvio account, not in the snapshot rows,
+      // so they are resolved here - one profile list per alarmed user, and
+      // only when there is an alarm to label. A banner naming the profile
+      // the way the profile picker does ("Kids") is what makes it
+      // actionable; "profile 3" means nothing to whoever reads it. If the
+      // account can't be reached the index is still shown, since a banner
+      // with a duller label beats no banner at all.
+      const profileNameByKey = new Map()
+      for (const userId of new Set(alarms.map((a) => a.userId))) {
+        try {
+          const r = await resolveNuvioForGuard(req, userId)
+          if (r.error) continue
+          const list = await r.provider.getProfiles()
+          for (const p of Array.isArray(list) ? list : []) {
+            if (Number.isInteger(p?.profile_index) && p?.name) profileNameByKey.set(`${userId}:${p.profile_index}`, p.name)
+          }
+        } catch { /* label only - never a reason to hide the alarm */ }
+      }
+      res.json({ alarms: alarms.map((a) => ({
+        ...a,
+        username: nameById.get(a.userId) || null,
+        profileName: profileNameByKey.get(`${a.userId}:${a.profileId}`) || null,
+      })) })
     } catch (e) {
       res.status(500).json({ error: e?.message || 'Failed to read guard state' })
     }

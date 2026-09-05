@@ -1258,22 +1258,14 @@ export default function SettingsPage() {
                     onClick={(e) => { setActiveTab(t.key); setHoveredTab(null); e.currentTarget.blur(); }}
                     onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHoveredTab(t.key); }}
                     onPointerLeave={() => setHoveredTab((k) => (k === t.key ? null : k))}
-                    className="relative w-full flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-xl text-left mb-0.5 focus:outline-none rail-item-hover"
-                    style={active
-                      // Solid fill, white text, one row only. A 20% tint with
-                      // an accent bar was too close to the card underneath to
-                      // read as "this one and none of the others" - the whole
-                      // point of the rail is that a glance tells you where you
-                      // are, so the selected row is now the loudest thing in
-                      // it and every other row is completely flat.
-                      ? {
-                          background: 'var(--color-primary)',
-                          color: '#fff',
-                          boxShadow: '0 6px 18px -10px var(--color-primary)',
-                        }
-                      : hovered
-                        ? { color: 'var(--color-text)', background: 'var(--color-surface-hover)', boxShadow: 'none' }
-                        : { color: 'var(--color-text-muted)', background: 'transparent', boxShadow: 'none' }}
+                    // One of three mutually exclusive classes, never a mix,
+                    // and each is !important (see globals.css) - so a row
+                    // that is not the selected one cannot be painted by a
+                    // leftover :hover, a theme rule, or anything else. The
+                    // selected row is a solid fill rather than the 20% tint
+                    // it used to be: the tint sat too close to the card
+                    // behind it to read as "this one and none of the others".
+                    className={`relative w-full flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-xl text-left mb-0.5 focus:outline-none rail-item ${active ? 'rail-item-on' : hovered ? 'rail-item-warm' : 'rail-item-off'}`}
                   >
                     <Icon className="w-4 h-4 shrink-0" style={{ color: active ? '#fff' : 'var(--color-text-muted)' }} />
                     <span className="min-w-0">
