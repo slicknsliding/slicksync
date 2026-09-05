@@ -179,8 +179,18 @@ module.exports = () => {
     const contentType = wantsWebp ? 'image/webp' : 'image/jpeg';
     res.setHeader('Vary', 'Accept');
 
-    const key = `${crypto.createHash('sha1').update(src).digest('hex')}-w${w}.${ext}`;
+    const hash = crypto.createHash('sha1').update(src).digest('hex');
+    const key = `${hash}-w${w}.${ext}`;
     const cachePath = path.join(CACHE_DIR, key);
+    // The same image in the other format. Because the format is part of the
+    // cache key, the day WebP was switched on turned every already-cached
+    // poster into a miss - each one re-fetched and re-encoded while someone
+    // waited on the grid (measured: 561ms cold against 3ms warm). A format
+    // change should be invisible, so a miss falls back to the copy that does
+    // exist and upgrades quietly in the background.
+    const altExt = wantsWebp ? 'jpg' : 'webp';
+    const altPath = path.join(CACHE_DIR, `${hash}-w${w}.${altExt}`);
+    const altType = wantsWebp ? 'image/jpeg' : 'image/webp';
 
     // Cache hit: serve the file with immutable caching - the key hashes the
     // source URL, so new art means a new URL means a new key.
@@ -194,6 +204,38 @@ module.exports = () => {
     const fallback = () => {
       try { res.redirect(302, src); } catch {}
     };
+
+    // Nothing in the requested format yet, but the other one is already on
+    // disk: serve that immediately and encode the requested format behind
+    // the response, so the next view gets it and nobody waits for the
+    // switch. Only when neither exists does a request pay for a fetch.
+    try {
+      await fs.promises.access(altPath);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('Content-Type', altType);
+      fs.createReadStream(altPath).pipe(res);
+      if (!inFlight.has(key)) {
+        const upgrade = (async () => {
+          try {
+            const upstream = await fetch(src, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+            if (!upstream.ok) return;
+            const buf = Buffer.from(await upstream.arrayBuffer());
+            if (buf.length === 0 || buf.length > MAX_SOURCE_BYTES) return;
+            const img = await encoder.read(buf);
+            if (img.width > w) img.resize({ w });
+            const out = wantsWebp
+              ? await img.getBuffer('image/webp', { quality: 78 })
+              : await img.getBuffer('image/jpeg', { quality: 80 });
+            const tmp = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
+            await fs.promises.writeFile(tmp, out);
+            await fs.promises.rename(tmp, cachePath);
+          } catch { /* the next request will try again the normal way */ }
+          finally { inFlight.delete(key); }
+        })();
+        inFlight.set(key, upgrade);
+      }
+      return;
+    } catch { /* no other format either - carry on and fetch it properly */ }
 
     try {
       await assertSafeUrl(src);

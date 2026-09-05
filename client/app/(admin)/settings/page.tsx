@@ -1280,7 +1280,13 @@ export default function SettingsPage() {
             reads as clutter, so the groups run along the top instead. Narrow
             screens always get the horizontal row - a rail there would eat the
             width the settings themselves need. */}
-        <div className={useSettingsRail ? 'flex gap-6 items-start' : ''}>
+        {/* Row only where the rail actually exists. The rail is hidden below
+            md, but this container stayed a flex row there - so the phone laid
+            the tab strip and the settings out SIDE BY SIDE, the strip took
+            the width, and every setting ended up off-screen to the right of
+            it. Below md this has to be plain block flow: strip on top,
+            settings under it. */}
+        <div className={useSettingsRail ? 'md:flex md:gap-6 md:items-start' : ''}>
           {useSettingsRail && (
           <nav
             className="hidden md:block w-56 shrink-0 sticky top-4"
