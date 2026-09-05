@@ -476,6 +476,10 @@ export default function SettingsPage() {
   // Mirrors the localStorage flag so the switch reflects reality after mount
   // (reading it during render would disagree with the server render).
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  // Nebula puts the app's own nav across the top, so settings can own the
+  // left rail. Original already has a sidebar - a second one beside it is
+  // the clutter this avoids.
+  const useSettingsRail = layoutMode === 'nebula';
   const [beginnerMode, setBeginnerModeState] = useState(false);
   useEffect(() => { setBeginnerModeState(isBeginnerMode()); }, []);
 
@@ -1215,12 +1219,14 @@ export default function SettingsPage() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading title="Settings" subtitle="Customize your SlickSync experience" />
       )}
-        {/* Settings navigation. A left rail on desktop (the layout every
-            settings screen worth using has - groups always visible, content
-            beside them rather than under a filter row), collapsing to a
-            scrollable row on narrow screens where a rail would eat the width
-            the content needs. */}
-        <div className="flex gap-6 items-start">
+        {/* Settings navigation takes the axis the APP's own layout is not
+            using. In Nebula (top nav) that is a left rail; in Original (which
+            already has a sidebar) a second vertical nav beside the first just
+            reads as clutter, so the groups run along the top instead. Narrow
+            screens always get the horizontal row - a rail there would eat the
+            width the settings themselves need. */}
+        <div className={useSettingsRail ? 'flex gap-6 items-start' : ''}>
+          {useSettingsRail && (
           <nav className="hidden md:block w-56 shrink-0 sticky top-4">
             <div className="rounded-2xl p-2" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
               {SETTINGS_TABS.map((t) => {
@@ -1257,8 +1263,9 @@ export default function SettingsPage() {
               })}
             </div>
           </nav>
+          )}
 
-          <div className="md:hidden -mx-1 px-1 pb-3 sticky top-0 z-20" style={{ background: 'linear-gradient(180deg, var(--color-bg) 70%, transparent)' }}>
+          <div className={`${useSettingsRail ? 'md:hidden' : ''} -mx-1 px-1 pb-3 sticky top-0 z-20`} style={{ background: 'linear-gradient(180deg, var(--color-bg) 70%, transparent)' }}>
             <div className="flex gap-1.5 overflow-x-auto">
               {SETTINGS_TABS.map((t) => (
                 <button
@@ -1275,7 +1282,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="flex-1 min-w-0">
+          <div className={useSettingsRail ? 'flex-1 min-w-0' : ''}>
 
 
         {activeTab === 'themes' && <ThemesPanel embedded />}
