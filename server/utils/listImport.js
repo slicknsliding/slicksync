@@ -336,6 +336,23 @@ async function resolveAnimeToImdb(entry, tmdbKey) {
   }
 }
 
+/**
+ * Anime lists count seasons as separate entries; IMDb counts the whole show
+ * as one. Three seasons of the same series therefore resolve to the same
+ * IMDb id, and without this the catalog gets the same title three times.
+ * First occurrence wins, so list order is preserved.
+ */
+function dedupeById(items) {
+  const seen = new Set()
+  const out = []
+  for (const item of items) {
+    if (!item || seen.has(item.id)) continue
+    seen.add(item.id)
+    out.push(item)
+  }
+  return out
+}
+
 // AniList list sections, named as they appear in the URL of the page you
 // are looking at (anilist.co/user/NAME/animelist/Planning). Pasting a
 // section imports that section; pasting the bare list imports all of it.
@@ -403,7 +420,7 @@ async function importFromAniList(url, tmdbKey) {
   const capped = raw.slice(0, MAX_IMPORT_ITEMS)
   const resolved = await mapLimit(capped, 5, (e) => resolveAnimeToImdb(e, tmdbKey))
   const label = section ? userName + ' - ' + section : userName + ' on AniList'
-  return { name: label, items: resolved.filter(Boolean), truncated, totalAvailable: raw.length }
+  return { name: label, items: dedupeById(resolved.filter(Boolean)), truncated, totalAvailable: raw.length }
 }
 
 // MAL's own API pages at 100 and answers a client id alone for PUBLIC
@@ -461,7 +478,7 @@ async function importFromMyAnimeList(url, tmdbKey, clientId) {
   const truncated = raw.length > MAX_IMPORT_ITEMS
   const capped = raw.slice(0, MAX_IMPORT_ITEMS)
   const resolved = await mapLimit(capped, 5, (e) => resolveAnimeToImdb(e, tmdbKey))
-  return { name: userName + ' on MyAnimeList', items: resolved.filter(Boolean), truncated, totalAvailable: raw.length }
+  return { name: userName + ' on MyAnimeList', items: dedupeById(resolved.filter(Boolean)), truncated, totalAvailable: raw.length }
 }
 
 // Suggest titles for a catalog by name (e.g. "Halloween", "Christmas
