@@ -129,6 +129,11 @@ function detectProvider(url) {
     const host = parsed.hostname.replace(/^www\./, '')
     if (host === 'mdblist.com') return 'mdblist'
     if (host === 'themoviedb.org') return 'tmdb'
+    // Trakt PUBLIC lists only - readable with a client id and no OAuth.
+    // (An account bridge is a different thing entirely and deliberately not
+    // built: Trakt allows a free account one connected app, so SlickSync
+    // would evict whatever the person already uses.)
+    if (host === 'trakt.tv') return 'trakt'
     // Another SlickSync instance publishing a catalog. Matched on the path
     // rather than the hostname - unlike TMDb/MDBList there is no fixed host,
     // it is whatever domain that household runs on.
@@ -524,6 +529,9 @@ async function refreshListFromSourceForAccount(prisma, accountId, list) {
   } else if (provider === 'tmdb') {
     const key = await resolveTmdbKey(prisma, noReq, null)
     result = await importFromTmdb(key, list.importSourceUrl)
+  } else if (provider === 'trakt') {
+    const clientId = await resolveKeyFromSettings(prisma, noReq, null, 'traktClientId', 'TRAKT_CLIENT_ID', { allowBackup: false })
+    result = await importFromTrakt(list.importSourceUrl, clientId)
   } else {
     const key = await resolveMdblistKey(prisma, noReq, null)
     result = await importFromMdblist(key, list.importSourceUrl)
@@ -539,4 +547,65 @@ async function refreshListFromSourceForAccount(prisma, accountId, list) {
   return { items: result.items, added, removed, unchanged }
 }
 
-module.exports = { detectProvider, importFromTmdb, importFromMdblist, importFromSlickSync, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, resolveTmdbKeyForAccount, resolveKeyFromSettings, refreshListFromSourceForAccount, suggestTitlesForCatalog, mapLimit, MAX_IMPORT_ITEMS }
+/**
+ * Trakt public list -> catalog items.
+ *
+ * Accepts both URL shapes Trakt itself produces:
+ *   trakt.tv/users/<user>/lists/<slug>
+ *   trakt.tv/lists/<id>
+ * Items already carry IMDb ids in Trakt's response, so unlike TMDb there is
+ * no per-item follow-up call - only posters are backfilled, through the same
+ * Cinemeta helper the MDBList path uses.
+ */
+async function importFromTrakt(url, clientId) {
+  if (!clientId) throw new Error('A Trakt Client ID is needed to read public lists (Settings -> Integrations)')
+  const parsed = new URL(url)
+  const parts = parsed.pathname.split('/').filter(Boolean)
+  let apiPath = null
+  if (parts[0] === 'users' && parts[2] === 'lists' && parts[3]) {
+    apiPath = `/users/${encodeURIComponent(parts[1])}/lists/${encodeURIComponent(parts[3])}/items`
+  } else if (parts[0] === 'lists' && parts[1]) {
+    apiPath = `/lists/${encodeURIComponent(parts[1])}/items`
+  }
+  if (!apiPath) throw new Error('That does not look like a Trakt list URL')
+
+  const res = await fetch(`https://api.trakt.tv${apiPath}?limit=${MAX_IMPORT_ITEMS}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      'trakt-api-version': '2',
+      'trakt-api-key': clientId,
+    },
+    signal: AbortSignal.timeout(15000),
+  })
+  if (res.status === 404) throw new Error('That Trakt list was not found, or it is private')
+  if (!res.ok) throw new Error(`Trakt returned ${res.status}`)
+  const rows = await res.json()
+  if (!Array.isArray(rows)) throw new Error('Unexpected response from Trakt')
+
+  // The items endpoint carries no list name, so ask for the list itself -
+  // one extra call, and the alternative is a catalog called "Imported list".
+  let name = null
+  try {
+    const metaRes = await fetch(`https://api.trakt.tv${apiPath.replace(/\/items$/, '')}`, {
+      headers: { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': clientId },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (metaRes.ok) name = (await metaRes.json())?.name || null
+  } catch { /* a missing name is cosmetic */ }
+
+  const items = []
+  for (const row of rows) {
+    const media = row?.movie || row?.show
+    const type = row?.movie ? 'movie' : row?.show ? 'series' : null
+    const imdb = media?.ids?.imdb
+    if (!type || !imdb || !/^tt\d+$/.test(imdb)) continue // episodes/people entries and anything without an IMDb id
+    items.push({ id: imdb, type, name: media.title || imdb, year: media.year || null, poster: null })
+  }
+
+  await mapLimit(items, 8, async (item) => {
+    item.poster = await resolveSinglePoster(item.id, item.type, null).catch(() => null)
+  })
+  return { items, name: name || 'Trakt list', truncated: rows.length >= MAX_IMPORT_ITEMS }
+}
+
+module.exports = { detectProvider, importFromTmdb, importFromMdblist, importFromTrakt, importFromSlickSync, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, resolveTmdbKeyForAccount, resolveKeyFromSettings, refreshListFromSourceForAccount, suggestTitlesForCatalog, mapLimit, MAX_IMPORT_ITEMS }

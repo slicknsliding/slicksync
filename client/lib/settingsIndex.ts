@@ -66,6 +66,7 @@ export const SETTINGS_INDEX: SettingsIndexEntry[] = [
   S('Auto-retire failing pool keys', 'External API Keys', 'key pool dead remove'),
   S('Pause background lookups near the cap', 'External API Keys', 'quota autopilot omdb limit defer background'),
   S('SIMKL Client ID', 'External API Keys', 'simkl link trending'),
+  S('Trakt Client ID', 'External API Keys', 'trakt list import public list'),
   S('Nuvio backend URL', 'External API Keys', 'self-hosted server custom'),
   S('AI Services', 'External API Keys', 'openai key model llm draft explanations'),
   // Security & account

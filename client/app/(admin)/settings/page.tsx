@@ -1231,14 +1231,19 @@ export default function SettingsPage() {
                     key={t.key}
                     type="button"
                     onClick={() => setActiveTab(t.key)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors mb-0.5"
+                    // Selection is the only thing that paints a background
+                    // here. Hover uses the app's existing nav-item-hover-pill,
+                    // which is gated behind (hover: hover) precisely because a
+                    // plain :hover sticks after a tap on touch devices - the
+                    // same "stays highlighted" bug this rail reproduced.
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left mb-0.5 focus:outline-none ${active ? '' : 'nav-item-hover-pill'}`}
                     style={active
                       ? { background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 28%, transparent), color-mix(in srgb, var(--color-secondary) 22%, transparent))', color: 'var(--color-text)' }
-                      : { color: 'var(--color-text-muted)' }}
+                      : { color: 'var(--color-text-muted)', background: 'transparent' }}
                   >
-                    <Icon className="w-4 h-4 shrink-0" style={{ color: active ? 'var(--color-primary)' : 'var(--color-text-muted)' }} />
+                    <Icon className="nav-item-icon w-4 h-4 shrink-0" style={{ color: active ? 'var(--color-primary)' : 'var(--color-text-muted)' }} />
                     <span className="min-w-0">
-                      <span className={`block text-sm ${active ? 'font-semibold' : 'font-medium'}`}>{t.label}</span>
+                      <span className={`nav-item-label block text-sm ${active ? 'font-semibold' : 'font-medium'}`}>{t.label}</span>
                       <span className="block text-[11px] leading-tight" style={{ color: 'var(--color-text-muted)' }}>{t.blurb}</span>
                     </span>
                   </button>
@@ -1254,8 +1259,8 @@ export default function SettingsPage() {
                   key={t.key}
                   type="button"
                   onClick={() => setActiveTab(t.key)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
-                    activeTab === t.key ? 'bg-primary text-white' : 'bg-surface-hover text-muted'
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap focus:outline-none ${
+                    activeTab === t.key ? 'bg-primary text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'
                   }`}
                 >
                   {t.label}
@@ -2323,6 +2328,29 @@ export default function SettingsPage() {
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, simklClientId: e.target.value }))}
                   onBlur={() => handleSaveSetting('simklClientId' as keyof SyncSettings, syncSettings.simklClientId)}
                   placeholder="SIMKL Client ID"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* Trakt Client ID - public LISTS only, which is all a client id
+                  can read. Deliberately not an account bridge: Trakt limits a
+                  free account to one connected app, so connecting SlickSync
+                  would evict whatever Trakt app someone already uses. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">Trakt Client ID <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Lets you import a public Trakt list by pasting its URL into Catalogs → Import. Get one free at{' '}
+                  <a href="https://trakt.tv/oauth/applications/new" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">trakt.tv/oauth/applications/new</a>
+                  {' '}→ any name, any redirect URI → paste the <strong>Client ID</strong> here. This reads public lists only; it does not connect a Trakt account, and it does not use up the one connected-app slot a free Trakt account gets.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.traktClientId || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, traktClientId: e.target.value }))}
+                  onBlur={() => handleSaveSetting('traktClientId' as keyof SyncSettings, syncSettings.traktClientId)}
+                  placeholder="Trakt Client ID"
                   autoComplete="off"
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"
