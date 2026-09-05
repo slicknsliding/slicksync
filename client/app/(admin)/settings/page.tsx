@@ -441,10 +441,10 @@ function BackupKeyField({
 // tabs so the page can switch before it scrolls.
 const SETTINGS_TABS = [
   { key: 'general', label: 'General', icon: UserCircleIcon, blurb: 'Profile, privacy, timezone' },
+  { key: 'themes', label: 'Themes', icon: SwatchIcon, blurb: 'Colours, layout, custom builds' },
   { key: 'sync', label: 'Sync', icon: ArrowPathIcon, blurb: 'How addons are pushed' },
   { key: 'notifications', label: 'Notifications', icon: BellIcon, blurb: 'Push, bell, Discord, digest' },
   { key: 'features', label: 'Features', icon: SparklesIcon, blurb: 'SlickTrax and Discover' },
-  { key: 'themes', label: 'Themes', icon: SwatchIcon, blurb: 'Colours, layout, custom builds' },
   { key: 'integrations', label: 'Integrations', icon: KeyIcon, blurb: 'API keys and scrobbling' },
   { key: 'security', label: 'Security', icon: ShieldCheckIcon, blurb: '2FA, account, danger zone' },
 ] as const;
@@ -1236,14 +1236,20 @@ export default function SettingsPage() {
                     // which is gated behind (hover: hover) precisely because a
                     // plain :hover sticks after a tap on touch devices - the
                     // same "stays highlighted" bug this rail reproduced.
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left mb-0.5 focus:outline-none ${active ? '' : 'nav-item-hover-pill'}`}
+                    className={`relative w-full flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-xl text-left mb-0.5 focus:outline-none ${active ? '' : 'rail-item-hover'}`}
                     style={active
-                      ? { background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 28%, transparent), color-mix(in srgb, var(--color-secondary) 22%, transparent))', color: 'var(--color-text)' }
+                      // Selection: a filled row plus a left accent bar, so it
+                      // is unmistakable next to a whisper-quiet hover.
+                      ? {
+                          background: 'color-mix(in srgb, var(--color-primary) 20%, transparent)',
+                          color: 'var(--color-text)',
+                          boxShadow: 'inset 3px 0 0 0 var(--color-primary)',
+                        }
                       : { color: 'var(--color-text-muted)', background: 'transparent' }}
                   >
-                    <Icon className="nav-item-icon w-4 h-4 shrink-0" style={{ color: active ? 'var(--color-primary)' : 'var(--color-text-muted)' }} />
+                    <Icon className="w-4 h-4 shrink-0" style={{ color: active ? 'var(--color-primary)' : 'var(--color-text-muted)' }} />
                     <span className="min-w-0">
-                      <span className={`nav-item-label block text-sm ${active ? 'font-semibold' : 'font-medium'}`}>{t.label}</span>
+                      <span className={`block text-sm ${active ? 'font-semibold' : 'font-medium'}`}>{t.label}</span>
                       <span className="block text-[11px] leading-tight" style={{ color: 'var(--color-text-muted)' }}>{t.blurb}</span>
                     </span>
                   </button>

@@ -454,6 +454,25 @@ body {
     }
   }
 
+  /* ----- Vertical rail item hover (Settings) -----
+     Deliberately NOT .nav-item-hover-pill: that paints a bold primary
+     gradient, which reads as "selected". On a horizontal nav that is fine -
+     only one item is ever under the pointer and the real selection lives
+     elsewhere. On a VERTICAL rail where selection is also a filled row, a
+     loud hover makes every row you pass look chosen, and the eye reads the
+     last-hovered item as still selected. So hover here is a whisper and
+     selection is the only strong state. Same (hover: hover) gate, for the
+     same touch-stickiness reason. */
+  @media (hover: hover) {
+    .rail-item-hover {
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+    .rail-item-hover:hover {
+      background: var(--color-surface-hover);
+      color: var(--color-text);
+    }
+  }
+
   /* ----- Text Colors ----- */
   .text-default { color: var(--color-text); }
   .text-muted { color: var(--color-text-muted); }
