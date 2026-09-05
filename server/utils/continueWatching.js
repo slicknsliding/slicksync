@@ -49,7 +49,7 @@ const RESUME_MIN_POSITION_MS = 2 * 60 * 1000
 const RESUME_MAX_RATIO = 0.92
 
 /**
- * Places an episode number that Cinemeta's list doesn't contain.
+ * Places an episode number that the show's episode list doesn't contain.
  *
  * Anime is the reason this exists. Players, addons and release groups very
  * often count anime by ABSOLUTE episode number - episode 137 - while
@@ -59,33 +59,48 @@ const RESUME_MAX_RATIO = 0.92
  * mid-way through a long-running anime just stops seeing it, with nothing
  * to explain why.
  *
- * AniList publishes the per-season episode counts that make the conversion
- * possible (see utils/anilist.js). This is only ever consulted for a pair
- * that genuinely is not in the list, so a normally numbered show never
- * costs an AniList call, and anything unresolvable returns null - the show
- * stays out of the row rather than appearing on a guessed season, which
- * would resume someone on the wrong episode.
+ * The conversion is arithmetic on the show's OWN episode list: absolute
+ * episode N is the Nth episode in broadcast order, which is exactly what
+ * that list is once specials (season 0) are excluded - fetchMetadata
+ * already drops those. AniList was the obvious source here and is wrong for
+ * it: utils/anilist.js can only walk one hop of the prequel/sequel graph
+ * from whichever entry a title search matched, so its chain is partial and
+ * its season NUMBERS are positions in that partial chain - measured live,
+ * absolute 30 of Attack on Titan came back as S3E3 when the honest answer
+ * is S2E5. A wrong season here would resume someone on an episode they
+ * have not reached, which is worse than the show being missing.
+ *
+ * The gate is deliberately narrow, because a pair missing from the list can
+ * also just be bad data on a normal show, and shifting THAT onto some other
+ * episode would be its own bug:
+ *   - the record says season 1, which is how absolute numbering always
+ *     arrives (nothing reports "season 4, episode 137"),
+ *   - the show is animation, per its own genres,
+ *   - it has more than one season, and the number is past the end of the
+ *     first one - below that, absolute and per-season numbering agree and
+ *     there is nothing to convert,
+ *   - the number is within the total episode count.
+ * Anything else returns null and the show stays out of the row.
  */
-async function placeAbsoluteEpisode(metadata, episode) {
+function placeAbsoluteEpisode(metadata, season, episode) {
   const abs = Number(episode)
-  if (!Number.isInteger(abs) || abs < 1) return null
-  try {
-    const { searchAnime, resolveAbsoluteEpisode } = require('./anilist')
-    const year = Number(String(metadata?.year || metadata?.releaseInfo || '').slice(0, 4)) || undefined
-    const anime = await searchAnime(metadata?.title, year)
-    if (!anime?.id) return null
-    const placed = await resolveAbsoluteEpisode(anime.id, abs)
-    if (!placed) return null
-    // AniList's season boundaries and Cinemeta's don't always agree (split
-    // cours get counted differently). Only trust the conversion when the
-    // episode it lands on actually exists in the list this row is built
-    // from - otherwise the deep link would point at nothing.
-    const exists = Array.isArray(metadata?.allEpisodes)
-      && metadata.allEpisodes.some((e) => e.season === placed.season && e.episode === placed.episode)
-    return exists ? { season: placed.season, episode: placed.episode } : null
-  } catch {
-    return null
-  }
+  if (season !== 1 || !Number.isInteger(abs) || abs < 1) return null
+
+  const genres = Array.isArray(metadata?.genres) ? metadata.genres : []
+  if (!genres.some((g) => String(g).toLowerCase() === 'animation')) return null
+
+  const ordered = [...(metadata?.allEpisodes || [])]
+    .filter((e) => Number.isInteger(e?.season) && Number.isInteger(e?.episode) && e.season > 0)
+    .sort((a, b) => (a.season - b.season) || (a.episode - b.episode))
+  if (ordered.length === 0 || abs > ordered.length) return null
+
+  const seasons = new Set(ordered.map((e) => e.season))
+  if (seasons.size < 2) return null
+  const firstSeasonCount = ordered.filter((e) => e.season === ordered[0].season).length
+  if (abs <= firstSeasonCount) return null
+
+  const placed = ordered[abs - 1]
+  return placed ? { season: placed.season, episode: placed.episode } : null
 }
 
 /**
@@ -182,7 +197,7 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
     let watchedEpisode = row.episode
     const inList = metadata.allEpisodes.some((e) => e.season === watchedSeason && e.episode === watchedEpisode)
     if (!inList) {
-      const placed = await placeAbsoluteEpisode(metadata, watchedEpisode)
+      const placed = placeAbsoluteEpisode(metadata, watchedSeason, watchedEpisode)
       if (placed) {
         watchedSeason = placed.season
         watchedEpisode = placed.episode

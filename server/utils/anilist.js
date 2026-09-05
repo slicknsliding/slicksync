@@ -23,6 +23,10 @@ const TIMEOUT_MS = 6000
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000 // titles change slowly; airing data is the volatile part and still refreshes twice a day
 const cache = new Map()
 const MAX_CACHE = 400
+// Formats that can be a "season" of a running show. ONA is included because
+// streaming-first series are routinely typed that way; movies, OVAs and
+// specials are not seasons and must never be counted as ones.
+const LINE_FORMATS = ['TV', 'TV_SHORT', 'ONA']
 
 function cacheGet(key) {
   const hit = cache.get(key)
@@ -134,17 +138,60 @@ async function getSeasonalAnime({ season, seasonYear, perPage = 40 } = {}) {
 async function getWatchOrder(anilistId) {
   const root = await getAnimeById(anilistId)
   if (!root) return null
-  const edges = Array.isArray(root.relations?.edges) ? root.relations.edges : []
-  const pick = (types) => edges
+  const nodesOf = (media, types) => (media?.relations?.edges || [])
     .filter((e) => types.includes(e?.relationType))
     .map((e) => e.node)
     .filter(Boolean)
-    .sort((a, b) => (a?.seasonYear || 0) - (b?.seasonYear || 0))
+
+  // Only broadcast formats can carry a season number. Movies, OVAs and
+  // specials are franchise entries, not seasons, and counting them as ones
+  // is how an absolute episode number lands on the wrong season.
+  const isLine = (n) => LINE_FORMATS.includes(n?.format)
+
+  // Walk the chain to BOTH ends rather than one hop each way. A title
+  // search lands on whichever entry matched - often not the first - and one
+  // hop from there produces a chain that starts mid-franchise, which makes
+  // every season number counted off it wrong. Measured before this: the
+  // 30th episode of Attack on Titan resolved to S3E3, where S2E5 is right.
+  // Each hop is a cached AniList lookup and the walk is bounded, so a
+  // franchise with a relation loop cannot spin here.
+  const MAX_HOPS = 12
+  const before = []
+  let cursor = root
+  for (let i = 0; i < MAX_HOPS; i++) {
+    const prev = nodesOf(cursor, ['PREQUEL']).filter(isLine)[0]
+    if (!prev?.id || before.some((m) => m.id === prev.id) || prev.id === root.id) break
+    const full = await getAnimeById(prev.id)
+    if (!full) break
+    before.unshift(full)
+    cursor = full
+  }
+  const after = []
+  cursor = root
+  for (let i = 0; i < MAX_HOPS; i++) {
+    const next = nodesOf(cursor, ['SEQUEL']).filter(isLine)[0]
+    if (!next?.id || after.some((m) => m.id === next.id) || next.id === root.id) break
+    const full = await getAnimeById(next.id)
+    if (!full) break
+    after.push(full)
+    cursor = full
+  }
+
+  const mainLine = [...before, root, ...after]
+  // Whether the line genuinely starts at the beginning of the franchise.
+  // Anything counting seasons off this chain has to know: an incomplete
+  // line still reads fine as a watch order, but its POSITIONS are not
+  // season numbers.
+  const head = mainLine[0]
+  const complete = nodesOf(head, ['PREQUEL']).filter(isLine).length === 0
+
   return {
     current: root,
-    mainLine: [...pick(['PREQUEL']), root, ...pick(['SEQUEL'])],
-    sideStories: pick(['SIDE_STORY', 'ALTERNATIVE', 'SPIN_OFF']),
-    movies: pick(['SUMMARY', 'PARENT']).filter((n) => n?.format === 'MOVIE'),
+    mainLine,
+    complete,
+    sideStories: nodesOf(root, ['SIDE_STORY', 'ALTERNATIVE', 'SPIN_OFF'])
+      .sort((a, b) => (a?.seasonYear || 0) - (b?.seasonYear || 0)),
+    movies: nodesOf(root, ['SUMMARY', 'PARENT']).filter((n) => n?.format === 'MOVIE'),
   }
 }
 
@@ -182,6 +229,10 @@ async function resolveAbsoluteEpisode(anilistId, absoluteEpisode) {
   if (!Number.isInteger(abs) || abs < 1) return null
   const order = await getWatchOrder(anilistId)
   if (!order || order.mainLine.length === 0) return null
+  // Counting seasons off a chain that does not start at the beginning
+  // produces a confidently wrong answer - the failure this whole function
+  // exists to prevent. No chain, no answer.
+  if (!order.complete) return null
 
   let remaining = abs
   let seasonNumber = 0
