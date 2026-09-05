@@ -2384,6 +2384,31 @@ export default function SettingsPage() {
                 />
               </div>
 
+              {/* MyAnimeList Client ID - public lists only, same shape as
+                  Trakt above. Jikan (the keyless MAL mirror) would have
+                  avoided this key entirely, but MAL removed the endpoint it
+                  read lists from and it now answers list requests with
+                  "MyAnimeList refuses to connect", so a key that works beats
+                  no key that does not. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">MyAnimeList Client ID <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Lets you import a public MyAnimeList anime list by pasting its URL into Catalogs → Import. Get one free at{' '}
+                  <a href="https://myanimelist.net/apiconfig/create" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">myanimelist.net/apiconfig/create</a>
+                  {' '}→ any name, App Type &quot;other&quot;, any redirect URI → paste the <strong>Client ID</strong> here. This reads public lists only and does not connect your MAL account. AniList lists need no key at all.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.malClientId || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, malClientId: e.target.value }))}
+                  onBlur={() => handleSaveSetting('malClientId' as keyof SyncSettings, syncSettings.malClientId)}
+                  placeholder="MyAnimeList Client ID"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
+
 
               {/* Self-hosted Nuvio backend. Account-scoped like everything
                   else here - Nuvio's backend was previously the one

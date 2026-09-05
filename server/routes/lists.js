@@ -170,7 +170,13 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
         // Anime lists resolve through TMDb, since neither source carries
         // IMDb ids and every other part of the app is tt-based.
         const key = await resolveTmdbKey(prisma, getAccountId, req);
-        result = provider === 'anilist' ? await importFromAniList(url, key) : await importFromMyAnimeList(url, key);
+        if (provider === 'anilist') {
+          result = await importFromAniList(url, key);
+        } else {
+          // MAL needs a client id of its own; AniList needs nothing.
+          const malClientId = await resolveKeyFromSettings(prisma, getAccountId, req, 'malClientId', 'MAL_CLIENT_ID', { allowBackup: false });
+          result = await importFromMyAnimeList(url, key, malClientId);
+        }
       } else if (provider === 'trakt') {
         // Public lists only, and only a client id - see importFromTrakt.
         const clientId = await resolveKeyFromSettings(prisma, getAccountId, req, 'traktClientId', 'TRAKT_CLIENT_ID', { allowBackup: false });

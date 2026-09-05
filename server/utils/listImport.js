@@ -352,12 +352,15 @@ async function importFromAniList(url, tmdbKey) {
     body: JSON.stringify({ query, variables: { userName, status: status || undefined } }),
     signal: AbortSignal.timeout(12000),
   })
-  if (!res.ok) throw new Error(res.status === 404 ? 'That AniList user was not found' : 'AniList request failed (HTTP ' + res.status + ')')
-  const data = await res.json()
-  if (Array.isArray(data && data.errors) && data.errors.length > 0) {
-    const msg = (data.errors[0] && data.errors[0].message) || 'AniList rejected the request'
-    throw new Error(/not found/i.test(msg) ? 'That AniList user was not found' : msg)
-  }
+  // AniList answers a missing OR private user with HTTP 404 and a body that
+  // says which - so the body is read either way. Reporting a private list as
+  // "not found" sends someone off checking a username that is spelled fine.
+  const data = await res.json().catch(() => null)
+  const errMsg = (data && Array.isArray(data.errors) && data.errors[0] && data.errors[0].message) || ''
+  if (/private/i.test(errMsg)) throw new Error('That AniList list is set to private - only public lists can be imported')
+  if (/not found|user not found/i.test(errMsg)) throw new Error('That AniList user was not found')
+  if (!res.ok) throw new Error(errMsg || 'AniList request failed (HTTP ' + res.status + ')')
+  if (errMsg) throw new Error(errMsg)
   const lists = (data && data.data && data.data.MediaListCollection && data.data.MediaListCollection.lists) || []
   const entries = lists.flatMap((l) => (l && l.entries) || [])
   if (entries.length === 0) throw new Error('That AniList list is empty, private, or has nothing in that section')
@@ -378,52 +381,54 @@ async function importFromAniList(url, tmdbKey) {
   return { name: label, items: resolved.filter(Boolean), truncated, totalAvailable: raw.length }
 }
 
-// Jikan pages MAL lists 25 at a time and asks for no more than roughly
-// three requests a second; this stays well inside that and stops at the
-// import cap either way.
-const JIKAN_PAGE_SIZE = 25
-const JIKAN_GAP_MS = 400
+// MAL's own API pages at 100 and answers a client id alone for PUBLIC
+// lists - no OAuth, no account connection, nothing to evict.
+const MAL_PAGE_SIZE = 100
 
 /**
- * Imports a MyAnimeList user's anime list, through Jikan.
+ * Imports a MyAnimeList user's anime list.
  *
- * MAL's own API requires each household to register a client id, which is
- * a key to manage for a one-off import. Jikan serves the same public data
- * with no key at all, keeping this in the same "nothing to configure"
- * bracket as the AniList side. Being rate limited mid-walk imports what
- * was collected rather than failing the whole thing.
+ * Uses MAL's official API with a Client ID, the same shape as the Trakt
+ * import: a client id reads public lists and nothing else, so this never
+ * touches anyone's account. Jikan - the keyless public mirror - was the
+ * obvious way to avoid a key here and does not work for this: MAL removed
+ * the endpoint it read lists from, and it now answers list requests with
+ * "MyAnimeList refuses to connect" (measured, HTTP 504). A key that works
+ * beats no key that doesn't.
  */
-async function importFromMyAnimeList(url, tmdbKey) {
+async function importFromMyAnimeList(url, tmdbKey, clientId) {
   if (!tmdbKey) throw new Error('A TMDb key is needed to match anime to real titles (Settings -> External API Keys)')
+  if (!clientId) throw new Error('A MyAnimeList Client ID is needed (Settings -> Integrations). It reads public lists only and does not connect your account.')
   const parsed = new URL(url)
   const parts = parsed.pathname.split('/').filter(Boolean) // animelist/NAME
   if (parts[0] !== 'animelist' || !parts[1]) throw new Error('Paste a MyAnimeList list URL, e.g. myanimelist.net/animelist/NAME')
   const userName = decodeURIComponent(parts[1])
 
   const raw = []
-  const maxPages = Math.ceil(MAX_IMPORT_ITEMS / JIKAN_PAGE_SIZE) + 1
-  for (let page = 1; page <= maxPages; page++) {
-    const res = await fetch('https://api.jikan.moe/v4/users/' + encodeURIComponent(userName) + '/animelist?page=' + page, {
+  let next = 'https://api.myanimelist.net/v2/users/' + encodeURIComponent(userName) +
+    '/animelist?fields=list_status,media_type,start_season&limit=' + MAL_PAGE_SIZE
+  for (let page = 0; page < 4 && next; page++) {
+    const res = await fetch(next, {
+      headers: { 'X-MAL-CLIENT-ID': clientId },
       signal: AbortSignal.timeout(12000),
     })
     if (res.status === 404) throw new Error('That MyAnimeList user was not found')
+    if (res.status === 403) throw new Error('That MyAnimeList list is private - only public lists can be imported')
+    if (res.status === 401) throw new Error('MyAnimeList rejected that Client ID (Settings -> Integrations)')
     if (!res.ok) break
-    const data = await res.json()
+    const data = await res.json().catch(() => null)
     const rows = Array.isArray(data && data.data) ? data.data : []
     for (const row of rows) {
-      const media = (row && (row.entry || row.anime)) || row
-      const title = media && media.title
-      if (title) {
-        raw.push({
-          title,
-          // Jikan's list rows carry no year, so these match on title alone.
-          year: null,
-          type: String((media && media.type) || '').toLowerCase() === 'movie' ? 'movie' : 'series',
-        })
-      }
+      const node = row && row.node
+      if (!node || !node.title) continue
+      raw.push({
+        title: node.title,
+        year: (node.start_season && node.start_season.year) || null,
+        type: String(node.media_type || '').toLowerCase() === 'movie' ? 'movie' : 'series',
+      })
     }
-    if (rows.length < JIKAN_PAGE_SIZE || raw.length > MAX_IMPORT_ITEMS) break
-    await new Promise((r) => setTimeout(r, JIKAN_GAP_MS))
+    next = (data && data.paging && data.paging.next) || null
+    if (raw.length >= MAX_IMPORT_ITEMS) break
   }
   if (raw.length === 0) throw new Error('That MyAnimeList list is empty or set to private')
 
