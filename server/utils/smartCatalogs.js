@@ -15,7 +15,7 @@
 // normalized query, plus the two SlickSync-side filters TMDb cannot express
 // (minimum rating is TMDb-side, but "unwatched by this household" is ours).
 
-const { normalizeQuery, discoverFromQuery } = require('./nlCatalog')
+const { normalizeQuery, discoverFromQuery, resolveToImdbItem, buildWatchedIdSet } = require('./nlCatalog')
 
 const MAX_ITEMS = 100
 
@@ -49,41 +49,47 @@ function parseRule(json) {
  */
 async function evaluateRule(prisma, accountId, rule, tmdbKey) {
   if (!rule || !tmdbKey) return null
-  let items
+
+  // discoverFromQuery hands back RAW TMDb rows ({ mediaType, results }), not
+  // catalog items - resolving each to a real IMDb id is a separate step, and
+  // treating the return value as a finished list silently produced an empty
+  // catalog every time (caught in verification, not in review).
+  let mediaType, results
   try {
-    items = await discoverFromQuery(rule, tmdbKey)
+    ({ mediaType, results } = await discoverFromQuery(rule, tmdbKey))
   } catch {
     return null
   }
-  if (!Array.isArray(items)) return null
+  if (!Array.isArray(results)) return null
+  if (results.length === 0) return []
 
-  let result = items
-
-  // TMDb's own vote_average, when discoverFromQuery carried it through.
+  // TMDb's own rating, applied before the per-item id lookups so a strict
+  // minimum does not cost a round-trip per title it was going to drop.
+  let rows = results
   if (rule.minRating) {
-    result = result.filter((i) => {
-      const r = Number(i?.rating ?? i?.voteAverage ?? i?.imdbRating)
-      return !Number.isFinite(r) || r >= rule.minRating
+    rows = rows.filter((r) => {
+      const v = Number(r?.vote_average)
+      return !Number.isFinite(v) || v >= rule.minRating
     })
   }
 
-  // "Nobody here has seen it" - the one filter TMDb cannot answer, since it
-  // is about this household's own history.
+  const { mapLimit } = require('./listImport')
+  const resolved = await mapLimit(rows, 5, (r) => resolveToImdbItem(r, mediaType, tmdbKey))
+  let items = resolved.filter(Boolean)
+
+  // "Nobody here has seen it" - the one filter TMDb cannot answer, because
+  // it is about this household's own history.
   if (rule.unwatchedOnly) {
     try {
-      const [movies, episodes] = await Promise.all([
-        prisma.movieWatchHistory.findMany({ where: { accountId }, select: { itemId: true } }),
-        prisma.episodeWatchHistory.findMany({ where: { accountId }, select: { showId: true }, distinct: ['showId'] }),
-      ])
-      const seen = new Set([...movies.map((m) => m.itemId), ...episodes.map((e) => e.showId)])
-      result = result.filter((i) => !seen.has(i.id))
+      const watched = await buildWatchedIdSet(prisma, accountId)
+      items = items.filter((i) => !watched.has(i.id))
     } catch {
-      // Can't read history - better to return the unfiltered set than to
-      // fail the whole refresh.
+      // Can't read history - returning the unfiltered set beats failing the
+      // whole refresh.
     }
   }
 
-  return result.slice(0, rule.limit || 40)
+  return items.slice(0, rule.limit || 40)
 }
 
 /** Refreshes one smart catalog in place. Returns a summary, or null if skipped. */
