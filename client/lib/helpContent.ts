@@ -489,6 +489,10 @@ export const HELP_ENTRIES: HelpEntry[] = [
     category: 'Watching & Discover',
     keywords: ['discover', 'browse', 'search movies', 'genre filter', 'because you watched'],
     answer: 'Discover → browse Popular/New/Top Rated, filter by genre, or search titles and people (actors/directors, with a filmography deep-dive). "Because you watched" / "For You" rows use your own household\'s taste once there\'s enough watch history. The Show: All / Unwatched switch on For You rows hides everything the household has already seen.',
+    details: [
+      'The Popular / New / Top Rated lists are the same for everyone and change over hours, not seconds, so they are kept warm in the background and read from memory when you open the page. Searches always go to the source - those are yours, not shared.',
+      'Hovering a poster with a mouse quietly starts loading its details, so clicking it opens on content instead of a spinner. Nothing is prefetched on touch, where scrolling past a title is not interest and the data would be wasted.',
+    ],
     href: '/discover',
     linkLabel: 'Open Discover',
   },
@@ -501,8 +505,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
     details: [
       'Folders can be LINKED to a SlickSync Catalog: when adding a source to a folder, the picker offers "Link a SlickSync Catalog" above the addon list. A linked folder follows the catalog from then on - refresh it, auto-refresh it, edit it, and the folder updates on the device by itself, no re-push needed.',
       'Linking is served through that user\'s SlickTrax Addon (the catalog rides it as a live addon catalog). If the addon is off for the user, linking turns it on and syncs it in the same step. Linked sources show a "linked · auto-updates" tag in the folder\'s source list.',
-      'The Collections Guard watches every Nuvio account\'s collections hourly and keeps rolling snapshots. Collections live only in Nuvio\'s backend, and its sync is last-write-wins - another logged-in Nuvio app pushing a stale state can silently erase everything. If collections suddenly vanish or drop by more than half, a push and bell alert goes out and a banner appears at the top of this page: Restore puts back the last good snapshot in one click, Accept keeps the new state as the baseline. Edits made in SlickSync itself (deletions included) become the baseline immediately and never trigger it.',
-      'The same hourly guard also snapshots each profile\'s HOME-ROW ARRANGEMENT - row order, renamed rows, hidden rows - which is just as losable: one bad write from any client can wipe the whole arrangement. A mass-vanish raises the same banner with the same Restore / Accept choice, labeled "home rows".',
+      'The Collections Guard checks every Nuvio account\'s collections every six hours and keeps rolling snapshots. Collections live only in Nuvio\'s backend, and its sync is last-write-wins - another logged-in Nuvio app pushing a stale state can silently erase everything. If collections suddenly vanish or drop by more than half, a push and bell alert goes out and a banner appears at the top of this page: Restore puts back the last good snapshot in one click, Accept keeps the new state as the baseline. Edits made in SlickSync itself (deletions included) become the baseline immediately and never trigger it.',
+      'The same guard also snapshots each profile\'s HOME-ROW ARRANGEMENT - row order, renamed rows, hidden rows - which is just as losable: one bad write from any client can wipe the whole arrangement. A mass-vanish raises the same banner with the same Restore / Accept choice, labeled "home rows".',
       'Copy home rows (in the toolbar once a profile is open) clones this profile\'s entire home-screen arrangement onto another profile instead of re-dragging every row by hand. It overwrites the target profile\'s arrangement, so the menu asks a second time before doing it.',
     ],
     related: ['catalog-create', 'slicktrax-addon', 'nuvio-collections-covers'],

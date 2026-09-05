@@ -19,6 +19,15 @@ function getCsrfToken(): string | null {
   return find('__Host-sfm_csrf') || find('sfm_csrf') || null;
 }
 
+// Detail lookups for the poster-click modal, kept briefly so a hover can
+// pay for the click that follows (see prefetchMediaDetails). Short on
+// purpose: this is metadata that can change (ratings, episode lists), and
+// the window only has to cover the distance between hovering a poster and
+// opening it.
+const MEDIA_DETAILS_TTL_MS = 90 * 1000;
+const MEDIA_DETAILS_MAX = 60;
+const mediaDetailsCache = new Map<string, { at: number; promise: Promise<MediaDetails | null> }>();
+
 class ApiClient {
   private token: string | null = null;
   // Dedup + short-window cache for GETs. Several unrelated pages/components
@@ -2868,13 +2877,44 @@ class ApiClient {
   // filename titles have no real IMDb ID to look up, and that's an expected,
   // non-error state the UI should just render an empty state for.
   async getMediaDetails(itemId: string, type: string, videoId?: string | null) {
+    const key = `${itemId}|${type}|${videoId || ''}`;
+    const hit = mediaDetailsCache.get(key);
+    if (hit && Date.now() - hit.at < MEDIA_DETAILS_TTL_MS) return hit.promise;
+
     const params = new URLSearchParams({ itemId, type });
     if (videoId) params.set('videoId', videoId);
-    try {
-      return await this.fetch<MediaDetails>(`/users/media-details?${params.toString()}`);
-    } catch {
-      return null;
+    const promise = this.fetch<MediaDetails>(`/users/media-details?${params.toString()}`).catch(() => null);
+    mediaDetailsCache.set(key, { at: Date.now(), promise });
+    // Oldest-first eviction; Map keeps insertion order. A grid can be
+    // hovered across faster than anyone opens things, so this is bounded
+    // rather than left to grow with the session.
+    if (mediaDetailsCache.size > MEDIA_DETAILS_MAX) {
+      for (const k of mediaDetailsCache.keys()) {
+        mediaDetailsCache.delete(k);
+        if (mediaDetailsCache.size <= MEDIA_DETAILS_MAX) break;
+      }
     }
+    return promise;
+  }
+
+  /**
+   * Starts the detail fetch before it is asked for - called when a pointer
+   * settles on a poster, so the request is already in flight (often already
+   * finished) by the time the click opens the modal. The modal's own
+   * getMediaDetails then hits the same entry instead of starting over, so
+   * the popup opens on content rather than a spinner.
+   *
+   * Deliberately fire-and-forget and deliberately silent: a prefetch that
+   * fails changes nothing, because the real call repeats it after the TTL.
+   * Callers must only fire this for a real mouse - prefetching on touch
+   * would spend someone's data on titles they merely scrolled past.
+   */
+  prefetchMediaDetails(itemId: string, type: string, videoId?: string | null) {
+    if (!itemId || !type) return;
+    const key = `${itemId}|${type}|${videoId || ''}`;
+    const hit = mediaDetailsCache.get(key);
+    if (hit && Date.now() - hit.at < MEDIA_DETAILS_TTL_MS) return;
+    void this.getMediaDetails(itemId, type, videoId);
   }
 
   // Cast/crew deep-dive (optional; needs a TMDb key server-side). Returns a

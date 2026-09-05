@@ -535,6 +535,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize activity monitor:', err)
     }
 
+    // Keep Discover's own catalogs warm. Six small requests on a timer, so
+    // opening Discover reads them out of memory instead of waiting on
+    // Cinemeta - see utils/discover.js.
+    try {
+      require('./utils/discover').scheduleDiscoverWarm()
+    } catch (err) {
+      console.error('⚠️ Failed to initialize Discover pre-warm:', err)
+    }
+
     // Schedule proxy stream monitor ("Now Playing" via AIOStreams proxy stats)
     try {
       const { scheduleProxyStreamMonitor } = require('./utils/proxyStreamMonitor')
