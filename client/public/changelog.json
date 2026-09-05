@@ -2,7 +2,7 @@
   {
     "version": "1.83.0",
     "date": "2026-09-05",
-    "title": "1.83.0 - Backups that include your history, anime done properly, and Settings you can find things in",
+    "title": "1.83.0 - Backups that include your history, anime done properly, passkeys, and Settings you can find things in",
     "features": [
       "Full-data backups: config backups protect your setup, but your watch history lived in exactly one place - the database. This new lane snapshots the database on a schedule, verifies each snapshot is readable before keeping it, and can send an encrypted copy off-site. Restoring is a documented script rather than a button, and it moves your current database aside instead of deleting it.",
       "Anime, properly: an optional 'Airing this season' row with next-episode countdowns, plus watch-order chains and correct episode numbering for shows that number episodes absolutely instead of by season. Uses AniList, which needs no API key.",
@@ -17,14 +17,29 @@
       "Import a public Trakt list by pasting its URL (needs a free Trakt Client ID; reads public lists only).",
       "Graveyard wipes can now remove a title from the provider account's own library too, so it leaves the device's home screen rather than only SlickSync.",
       "Quota autopilot (opt-in): once the day's OMDb usage passes your threshold, background lookups wait for the reset instead of spending the last of the allowance. Anything you open still fetches immediately.",
-      "Faster all round: responses now revalidate instead of re-downloading unchanged data, posters are served at the size your screen actually needs, several people opening the same title share one lookup, and Sync All works through users three at a time."
+      "Faster all round: posters are served at the size actually displayed and as WebP where the browser accepts it, Discover's own lists are kept warm so the page opens on content rather than a wait, hovering a poster with a mouse starts loading its details so the click opens on content, and repeat requests reuse work already in flight instead of duplicating it.",
+      "Passkeys: sign in with Face ID, a fingerprint, a PIN or a security key instead of typing the password - useful on a phone, and on a TV where typing anything is a chore. Strictly an addition: the password always keeps working, so a lost device can never lock anyone out. A passkey belongs to the address it was created on, and the list says which.",
+      "Import an anime list from AniList or MyAnimeList by pasting its URL - add a section (Planning, Watching, Completed) to import just that part. Titles are matched to real records first, so anything that cannot be placed is left out rather than imported as an entry that would not work anywhere. AniList needs no key; MyAnimeList takes a free Client ID.",
+      "Continue Watching now places anime that is numbered absolutely. A show recorded as episode 137 used to match nothing in a season-numbered list and quietly disappear from the row; it is now translated to the season and episode that list actually has, and only when the result genuinely exists.",
+      "SlickTrax installs reliably: an instance's public address is now an explicit setting, so a sync always knows the address a phone or TV can reach. Where it is not set, the app says so instead of silently installing nothing.",
+      "\"What was I watching\" from outside the app: the developer API can answer with the show, the exact next episode, and a link that opens it in Stremio or Nuvio - enough for a Home Screen shortcut, a home dashboard, or a bedside button.",
+      "Advanced sync is faster: every addon's manifest is now fetched at once at the start of a sync rather than one after another, so a group with a lot of addons waits for the slowest single addon instead of the sum of them all. What gets pushed is unchanged."
     ],
     "bugFixes": [
       "The Collections Guard could report a profile as wiped when it had simply been rate-limited - a failed read is no longer mistaken for an emptied account, and the guard now asks for less, less often.",
       "The Nuvio home-row editor showed raw catalog ids and claimed every addon was missing; it now resolves real addon and catalog names.",
       "Copying home rows onto another profile appeared to do nothing - the confirmation step was closing the menu before it could be seen.",
       "Selecting a settings group no longer leaves previously hovered groups looking selected.",
-      "Pasting an addon URL into a group's addon picker now explains that the box searches rather than imports, instead of reporting no results."
+      "Pasting an addon URL into a group's addon picker now explains that the box searches rather than imports, instead of reporting no results.",
+      "Adding or removing an addon on a Nuvio user failed with \"User not connected to Stremio\" - an error naming a service they do not use. Both now work for Nuvio.",
+      "A SlickTrax address could end up installed twice on one account: the version segment lives in the address, so each update minted a new one and the old one was left behind. Any older SlickTrax address for that user is now replaced rather than added alongside, which also clears the account showing as permanently unsynced.",
+      "Syncing a group skipped users whose only pending change was SlickTrax, while syncing the same user from their own page worked.",
+      "An addon whose manifest the browser cannot preview - anything the addon's own policy blocks, or an http address opened from an https page - can be added again; the server fetches it and names it.",
+      "The Sync badge no longer blanks to \"Checking\" every time a page opens: it shows the last verdict it has while it re-checks, and only says Checking when it genuinely has nothing yet.",
+      "\"Describe it\" respects the Movies/Series toggle instead of returning films while Series is selected.",
+      "The Collections Guard banner names the profile the way the picker does, rather than showing its index.",
+      "Cast filmography in a title's popup clears when the popup moves to another title, instead of keeping the previous title's actor row.",
+      "Anime features say plainly when AniList itself is unavailable, rather than showing an empty row that looks like nothing is airing."
     ]
   },
   {
