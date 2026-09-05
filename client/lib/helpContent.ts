@@ -1620,17 +1620,17 @@ export const HELP_ENTRIES: HelpEntry[] = [
   },
   {
     id: 'watching-together',
-    title: 'Watching together - the watch-ahead alarm',
+    title: 'Spoiler guard - the watch-ahead alarm',
     category: 'Watching & Discover',
-    keywords: ['watch together', 'watch ahead', 'watching ahead', 'shared show', 'frontier', 'spoiler protection', 'watch pact', 'couple show'],
-    answer: 'Open any series (its detail popup from Discover, Continue Watching, or a catalog) and use the Watching Together section to pick who is watching it as a group. From then on, if any member starts an episode another member has not seen, the household gets a push and bell alert naming exactly who got ahead of whom.',
+    keywords: ['spoiler guard', 'spoilers', 'watching together', 'watch together', 'watch ahead', 'watching ahead', 'shared show', 'frontier', 'spoiler protection', 'watch pact', 'couple show'],
+    answer: 'Open any series (its detail popup from Discover, Continue Watching, or a catalog) and use the Spoiler guard section to pick who is watching it as a group. From then on, if any member starts an episode another member has not seen, the household gets a push and bell alert naming exactly who got ahead of whom.',
     steps: [
-      'Open the show and expand Watching Together.',
-      'Tap the people watching it together (at least two), then Start watching together.',
+      'Open the show and expand Spoiler guard.',
+      'Tap the people watching it together (at least two), then Turn on spoiler guard.',
       'That is it - the alarm arms itself. Stop ends the pact any time.',
     ],
     tips: [
-      'The whole feature has an on/off switch under Settings -> SlickTrax ("Watching Together") - off hides the section and silences every alert, even for shows already set up.',
+      'The whole feature has an on/off switch under Settings -> SlickTrax ("Spoiler guard") - off hides the section and silences every alert, even for shows already set up.',
     ],
     details: [
       'The shared frontier is the furthest episode EVERYONE in the group has seen - shown in the section header, along with who the group is waiting on.',

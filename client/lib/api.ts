@@ -621,6 +621,12 @@ class ApiClient {
     return this.fetch<{ items: Array<{ id: string; name: string; type: 'movie' | 'series'; poster: string | null }> }>('/discover/local-index');
   }
 
+  /** A series' episode list grouped by season, with watched state. Lazy -
+   *  the detail modal only asks when someone expands the season list. */
+  async getMediaEpisodes(itemId: string) {
+    return this.fetch<{ seasons: SeriesSeason[] }>(`/users/media-episodes?itemId=${encodeURIComponent(itemId)}`);
+  }
+
   /** Tip-of-the-tongue search: a plot description -> real, TMDb-verified titles. */
   async searchByDescription(description: string) {
     return this.fetch<{ items: DiscoverItem[]; candidates: number }>('/discover/describe', {
@@ -3767,6 +3773,12 @@ export interface NuvioCollection {
   title: string;
   folders?: NuvioCollectionFolder[];
   [key: string]: any;
+}
+
+export interface SeriesSeason {
+  season: number;
+  watchedCount: number;
+  episodes: Array<{ season: number; episode: number; title: string | null; released: string | null; watched: boolean }>;
 }
 
 export interface SmartCatalogRule {

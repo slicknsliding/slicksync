@@ -49,7 +49,7 @@ export const SETTINGS_INDEX: SettingsIndexEntry[] = [
   S('Watchlist', 'SlickTrax', 'bookmark save later'),
   S('Watched indicators', 'SlickTrax', 'seen checkmarks'),
   S('Seasonal anime row', 'SlickTrax', 'anime anilist airing season countdown'),
-  S('Watching Together', 'SlickTrax', 'watch ahead frontier spoiler pact'),
+  S('Spoiler guard', 'SlickTrax', 'watching together watch ahead frontier spoiler pact'),
   S('Recommendations', 'SlickTrax', 'for you suggested rows'),
   S('Auto-generated catalogs', 'SlickTrax', ''),
   S('Poster ratings', 'SlickTrax', 'rpdb art'),

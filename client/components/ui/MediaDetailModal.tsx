@@ -7,7 +7,7 @@ import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { AddToListButton } from './AddToListButton';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
-import { api, MediaDetails, DiscoverItem } from '@/lib/api';
+import { api, MediaDetails, DiscoverItem, SeriesSeason } from '@/lib/api';
 import { toast } from './Toast';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
@@ -299,6 +299,40 @@ export function MediaDetailModal({
     return () => { cancelled = true; };
   }, [isOpen, effectiveType, details?.title, details?.releaseInfo, details?.genres]);
 
+  // Seasons and episodes (series only). Lazy on purpose: a long-running show
+  // has hundreds of episodes, and the detail popup is opened far more often
+  // to glance at a title than to browse its season list - so this is fetched
+  // when someone actually expands it, not on every open.
+  const [seasons, setSeasons] = useState<SeriesSeason[] | null>(null);
+  const [seasonsOpen, setSeasonsOpen] = useState(false);
+  const [seasonsLoading, setSeasonsLoading] = useState(false);
+  const [activeSeason, setActiveSeason] = useState<number | null>(null);
+  useEffect(() => {
+    // Reset whenever the modal moves to a different title.
+    setSeasons(null); setSeasonsOpen(false); setActiveSeason(null);
+  }, [effectiveId]);
+  const loadSeasons = async () => {
+    setSeasonsOpen((v) => !v);
+    if (seasons || seasonsLoading || !effectiveId) return;
+    setSeasonsLoading(true);
+    try {
+      const r = await api.getMediaEpisodes(effectiveId);
+      setSeasons(r.seasons || []);
+      // Open on the season the current episode belongs to, falling back to
+      // the first - landing on season 1 of a show you are deep into is the
+      // kind of small wrongness that makes a feature feel unfinished.
+      // MediaDetails carries the episode's title but not its numbers; the
+      // season comes from the videoId the modal was opened with
+      // (tt123:2:5), when there is one.
+      const current = Number(String(effectiveVideoId || '').split(':')[1]);
+      setActiveSeason(Number.isFinite(current) && r.seasons.some((x) => x.season === current) ? current : (r.seasons[0]?.season ?? null));
+    } catch {
+      setSeasons([]);
+    } finally {
+      setSeasonsLoading(false);
+    }
+  };
+
   const [inWatchlist, setInWatchlist] = useState(false);
   const [watchlistBusy, setWatchlistBusy] = useState(false);
   useEffect(() => {
@@ -437,7 +471,7 @@ export function MediaDetailModal({
     try {
       await api.saveWatchTogether(effectiveId, details?.title || effectiveFallbackTitle || effectiveId, Array.from(wtSelected));
       setWtHasPact(true);
-      toast.success('Watching together - anyone getting ahead now sets off the alarm');
+      toast.success('Spoiler guard on - anyone getting ahead now sets off the alarm');
       // Frontier may exist immediately (members may have history) - refresh.
       const pacts = await api.getWatchTogether().catch(() => []);
       const pact = pacts.find((pt) => pt.showId === effectiveId);
@@ -452,7 +486,7 @@ export function MediaDetailModal({
     try {
       await api.deleteWatchTogether(effectiveId);
       setWtHasPact(false); setWtSelected(new Set()); setWtFrontier(null); setWtWaitingOn([]);
-      toast.success('No longer watching together - everyone is free to run ahead');
+      toast.success('Spoiler guard off - everyone is free to run ahead');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not remove');
     } finally { setWtBusy(false); }
@@ -1052,6 +1086,75 @@ export function MediaDetailModal({
                   comment for why rent/buy is excluded. Links to TMDb's
                   JustWatch attribution page, required by their API terms
                   when this data is displayed. */}
+              {/* Seasons and episodes. Series only, collapsed by default, and
+                  the list is only fetched on expand - see loadSeasons. */}
+              {effectiveType === 'series' && (
+                <div className="rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
+                  <button
+                    type="button"
+                    onClick={loadSeasons}
+                    className="w-full flex items-center justify-between gap-3 p-3 text-left"
+                  >
+                    <span className="text-sm font-medium text-default">
+                      Seasons &amp; episodes
+                      {seasons && seasons.length > 0 && (
+                        <span className="text-xs text-muted font-normal"> · {seasons.length} season{seasons.length === 1 ? '' : 's'}</span>
+                      )}
+                    </span>
+                    <ChevronDownIcon className={`w-4 h-4 shrink-0 transition-transform ${seasonsOpen ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
+                  </button>
+
+                  {seasonsOpen && (
+                    <div className="px-3 pb-3">
+                      {seasonsLoading && <p className="text-xs text-muted py-2">Loading episodes…</p>}
+                      {!seasonsLoading && seasons && seasons.length === 0 && (
+                        <p className="text-xs text-muted py-2">No episode list is available for this title.</p>
+                      )}
+                      {!seasonsLoading && seasons && seasons.length > 0 && (
+                        <>
+                          <div className="flex gap-1.5 overflow-x-auto pb-2">
+                            {seasons.map((s) => (
+                              <button
+                                key={s.season}
+                                type="button"
+                                onClick={() => setActiveSeason(s.season)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${activeSeason === s.season ? 'bg-primary text-white' : 'text-muted'}`}
+                                style={activeSeason === s.season ? undefined : { background: 'var(--color-surface)' }}
+                              >
+                                Season {s.season}
+                                {s.watchedCount > 0 && (
+                                  <span className={activeSeason === s.season ? 'opacity-80' : 'opacity-60'}> · {s.watchedCount}/{s.episodes.length}</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="max-h-64 overflow-y-auto space-y-0.5">
+                            {seasons.find((s) => s.season === activeSeason)?.episodes.map((ep) => (
+                              <div
+                                key={`${ep.season}-${ep.episode}`}
+                                className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg"
+                                style={{ background: ep.watched ? 'color-mix(in srgb, var(--color-success) 10%, transparent)' : 'transparent' }}
+                              >
+                                <span className="text-xs shrink-0 w-10 tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                                  E{String(ep.episode).padStart(2, '0')}
+                                </span>
+                                <span className="text-xs flex-1 min-w-0 truncate text-default">{ep.title || `Episode ${ep.episode}`}</span>
+                                {ep.released && (
+                                  <span className="text-[11px] shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
+                                    {new Date(ep.released).getFullYear() || ''}
+                                  </span>
+                                )}
+                                {ep.watched && <CheckCircleIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-success)' }} />}
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Anime extras: the next-episode countdown AniList publishes
                   exact air times for (better than a vague date), and the
                   franchise's real watch order - the thing people otherwise
@@ -1281,7 +1384,7 @@ export function MediaDetailModal({
                     className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-medium text-default">Watching together</span>
+                      <span className="text-sm font-medium text-default">Spoiler guard</span>
                       {wtHasPact && (
                         <span className="text-xs text-muted truncate">
                           {wtSelected.size} people
@@ -1301,7 +1404,7 @@ export function MediaDetailModal({
                       {!wtLoaded ? (
                         <p className="text-xs text-subtle">Loading...</p>
                       ) : wtUsers.length < 2 ? (
-                        <p className="text-xs text-subtle">Watching together takes at least two users on this instance.</p>
+                        <p className="text-xs text-subtle">The spoiler guard takes at least two users on this instance.</p>
                       ) : (
                         <>
                           <div className="flex flex-wrap gap-2 mb-3">
@@ -1333,7 +1436,7 @@ export function MediaDetailModal({
                               className="px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity disabled:opacity-40"
                               style={{ background: 'var(--color-primary)', color: 'var(--color-bg)' }}
                             >
-                              {wtHasPact ? 'Update' : 'Start watching together'}
+                              {wtHasPact ? 'Update' : 'Turn on spoiler guard'}
                             </button>
                             {wtHasPact && (
                               <button

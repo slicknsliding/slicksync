@@ -16,7 +16,13 @@
 // title fails resolution and simply never appears, rather than being shown
 // with invented details.
 
-const TIMEOUT_MS = 12000
+// 45s, not the 12s this started with. A tip-of-the-tongue search is a
+// deliberate, one-shot request someone is actively waiting on - unlike the
+// background parsing nlCatalog does - and slower/free-tier models genuinely
+// take 15-30s to answer. The old ceiling turned "the model is thinking" into
+// "The AI provider could not be reached", which reads as broken rather than
+// slow (reported live against a Gemini flash-lite endpoint).
+const TIMEOUT_MS = 45000
 const MAX_CANDIDATES = 6
 
 const PROMPT = `You identify films and TV shows from vague plot descriptions.
@@ -113,7 +119,12 @@ async function searchByDescription(prisma, accountId, decrypt, description, tmdb
   try {
     raw = await callAiText(`${PROMPT}\n\nDescription: ${text}`, creds, { maxTokens: 400, timeoutMs: TIMEOUT_MS })
   } catch (e) {
-    throw new Error(`The AI provider could not be reached: ${e?.message || 'unknown error'}`)
+    // Distinguish "took too long" from "could not be reached" - they lead to
+    // completely different fixes (pick a faster model vs check the key/URL).
+    const aborted = /abort/i.test(e?.message || '')
+    throw new Error(aborted
+      ? 'The AI model took too long to answer. A faster model (a "flash"/"mini" tier) handles this better - set one in Settings -> Integrations -> AI Services.'
+      : `The AI provider could not be reached: ${e?.message || 'unknown error'}`)
   }
 
   const candidates = parseCandidates(raw)

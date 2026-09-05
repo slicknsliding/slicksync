@@ -1834,13 +1834,13 @@ export default function SettingsPage() {
               </SettingRow>
 
               <SettingRow
-                label="Watching Together"
+                label="Spoiler guard"
                 description="The watch-ahead alarm: declare on a show's detail popup who is watching it together, and anyone starting an episode another member hasn't seen triggers a household alert. Off: the section disappears and no alerts fire, even for shows already set up."
               >
                 <ToggleSwitch
                   enabled={syncSettings.enableWatchTogether !== false}
                   onChange={async (v) => { await handleSaveSetting('enableWatchTogether' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
-                  label="Toggle Watching Together"
+                  label="Toggle the spoiler guard"
                 />
               </SettingRow>
 

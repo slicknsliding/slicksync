@@ -830,6 +830,64 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // GET /users/media-episodes - a series' full episode list, grouped by
+  // season, with what the household has already watched marked.
+  //
+  // Deliberately its own endpoint rather than part of /media-details: that
+  // response strips the episode list precisely because it can run to
+  // hundreds of entries for a long-running show, and paying for that on
+  // every poster tap would slow the modal for the majority of opens that
+  // never look at the season list. This is fetched only when someone
+  // expands it.
+  router.get('/media-episodes', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { itemId } = req.query
+      if (!itemId || !/^tt\d+$/.test(String(itemId))) return res.status(400).json({ error: 'A valid itemId is required' })
+
+      const { coalesce } = require('../utils/singleFlight')
+      const metadata = await coalesce(`media-episodes:${itemId}`, 300_000, async () => {
+        const { resolveOmdbKey } = require('../utils/listImport')
+        const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
+        return fetchMetadata(String(itemId), 'series', null, omdbApiKey)
+      })
+      const all = Array.isArray(metadata?.allEpisodes) ? metadata.allEpisodes : []
+      if (all.length === 0) return res.json({ seasons: [] })
+
+      // Which episodes anyone here has already watched - the reason to show
+      // this list at all is usually "where am I up to".
+      const watched = await prisma.episodeWatchHistory.findMany({
+        where: { accountId, showId: String(itemId) },
+        select: { season: true, episode: true },
+      }).catch(() => [])
+      const seen = new Set(watched.map((w) => `${w.season}:${w.episode}`))
+
+      const bySeason = new Map()
+      for (const e of all) {
+        if (!bySeason.has(e.season)) bySeason.set(e.season, [])
+        bySeason.get(e.season).push({
+          season: e.season,
+          episode: e.episode,
+          title: e.title,
+          released: e.released,
+          watched: seen.has(`${e.season}:${e.episode}`),
+        })
+      }
+      const seasons = [...bySeason.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([season, episodes]) => ({
+          season,
+          episodes,
+          watchedCount: episodes.filter((e) => e.watched).length,
+        }))
+      res.json({ seasons })
+    } catch (error) {
+      console.error('Error fetching episodes:', error)
+      res.status(500).json({ error: 'Failed to fetch episodes' })
+    }
+  })
+
   // GET /users/media-details - Cinemeta detail lookup for the Activity page's
   // poster-click modal (cast, rating, genres, etc). Must be before /:id route.
   router.get('/media-details', async (req, res) => {
