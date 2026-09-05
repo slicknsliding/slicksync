@@ -265,6 +265,17 @@ export default function DiscoverPage() {
       .map((i) => ({ id: i.id, type: i.type, name: i.name, poster: i.poster, releaseInfo: null } as DiscoverItem));
   }, [searchQuery, localIndex, type, searchMode]);
 
+  // What the wider search did NOT already return. These used to disappear the
+  // moment results arrived, which is why a title you had put on your own
+  // watchlist could flash up and then vanish - the household's own copy of it
+  // is exactly the match worth keeping on screen. Anything the search also
+  // found is dropped here so the same title never appears twice.
+  const instantOnly = useMemo(() => {
+    if (instantMatches.length === 0) return [];
+    const shown = new Set(items.map((i) => i.id));
+    return instantMatches.filter((i) => !shown.has(i.id));
+  }, [instantMatches, items]);
+
   const [seasonalAnime, setSeasonalAnime] = useState<SeasonalAnime[]>([]);
   // Why the row is empty, when it is empty and the feature is switched on.
   // "AniList is down" and "nothing is airing" look identical otherwise, and
@@ -1213,13 +1224,13 @@ export default function DiscoverPage() {
           {/* Instant matches from your own watchlist/history - rendered
               while the network search is still loading, and only when it
               actually has something the results don't already show. */}
-          {source === 'discover' && searchMode === 'titles' && instantMatches.length > 0 && isLoading && (
+          {source === 'discover' && searchMode === 'titles' && instantOnly.length > 0 && (
             <div className="mb-5">
               <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
                 From your library
               </p>
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-                {instantMatches.map((item) => (
+                {instantOnly.map((item) => (
                   <PosterCard
                     key={'inst:' + item.id}
                     item={item}

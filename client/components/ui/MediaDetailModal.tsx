@@ -124,6 +124,50 @@ export function MediaDetailModal({
     unavailable?: boolean;
   }>(null);
 
+  // Follows for people, keyed by TMDb id. Loaded alongside the show follow
+  // so the cast panel can show its own state without a second round trip.
+  const [personFollows, setPersonFollows] = useState<Record<string, { id: string; muted: boolean }>>({});
+  const [personFollowBusy, setPersonFollowBusy] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    api.getFollows()
+      .then((r) => {
+        const map: Record<string, { id: string; muted: boolean }> = {};
+        for (const f of (Array.isArray(r) ? r : [])) {
+          if (f.kind === 'person') map[String(f.subjectId)] = { id: f.id, muted: f.muted };
+        }
+        setPersonFollows(map);
+      })
+      .catch(() => { /* following is additive - a failure just hides the state */ });
+  }, [isOpen]);
+
+  const togglePersonFollow = useCallback(async (tmdbId: string, name: string) => {
+    if (personFollowBusy) return;
+    setPersonFollowBusy(tmdbId);
+    try {
+      const existing = personFollows[tmdbId];
+      if (!existing) {
+        const row = await api.followSubject('person', tmdbId, name);
+        setPersonFollows((prev) => ({ ...prev, [tmdbId]: { id: row.id, muted: row.muted } }));
+        toast.success(`Following ${name} - you'll hear when they have something new out`);
+      } else if (existing.muted) {
+        await api.muteFollow(existing.id, false);
+        setPersonFollows((prev) => ({ ...prev, [tmdbId]: { ...existing, muted: false } }));
+        toast.success(`Alerts for ${name} turned back on`);
+      } else {
+        // Mute rather than unfollow, same as shows: the row survives, so
+        // turning it back on doesn't replay news already announced.
+        await api.muteFollow(existing.id, true);
+        setPersonFollows((prev) => ({ ...prev, [tmdbId]: { ...existing, muted: true } }));
+        toast.success(`Muted ${name} - still followed, just quiet`);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not update following');
+    } finally {
+      setPersonFollowBusy(null);
+    }
+  }, [personFollows, personFollowBusy]);
+
   const openPerson = useCallback(async (member: { name: string; tmdbId?: number | string | null }) => {
     if (member.tmdbId == null || member.tmdbId === '') return;
     // Clicking the same cast member again closes the filmography row
@@ -1173,9 +1217,13 @@ export function MediaDetailModal({
                 // "open it" actions are the real call to action, so those keep
                 // their labels and everything else becomes a compact toggle
                 // with a tooltip and an obvious on-state.
+                // `label` is optional, and Follow uses it on purpose: an
+                // unlabelled bell in a row of icons is indistinguishable from
+                // a notifications toggle, and the feature may as well not
+                // exist if nobody can tell what it does.
                 const iconBtn = (opts: {
                   onClick: () => void; busy?: boolean; on?: boolean;
-                  tint: string; title: string; icon: React.ReactNode;
+                  tint: string; title: string; icon: React.ReactNode; label?: string;
                 }) => (
                   <button
                     type="button"
@@ -1184,12 +1232,13 @@ export function MediaDetailModal({
                     title={opts.title}
                     aria-label={opts.title}
                     aria-pressed={opts.on}
-                    className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors shrink-0 ${opts.busy ? 'opacity-60 cursor-wait' : ''}`}
+                    className={`flex items-center justify-center gap-1.5 ${opts.label ? 'px-3' : 'w-10'} h-10 rounded-lg transition-colors shrink-0 ${opts.busy ? 'opacity-60 cursor-wait' : ''}`}
                     style={opts.on
                       ? { color: opts.tint, background: `color-mix(in srgb, ${opts.tint} 16%, transparent)` }
                       : { color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
                   >
                     {opts.icon}
+                    {opts.label && <span className="text-sm font-medium">{opts.label}</span>}
                   </button>
                 );
 
@@ -1222,6 +1271,7 @@ export function MediaDetailModal({
                     ? 'Follow - hear when this is renewed, canceled or dated'
                     : followRow.muted ? 'Alerts muted - tap to turn them back on' : 'Following - tap to mute',
                   icon: <BellIcon className="w-5 h-5" />,
+                  label: !followRow ? 'Follow' : (followRow.muted ? 'Muted' : 'Following'),
                 });
 
                 const stremioBtn = (
@@ -1558,13 +1608,38 @@ export function MediaDetailModal({
                           {personView.name}
                           <span className="text-muted font-normal"> — more titles</span>
                         </p>
-                        <button
-                          type="button"
-                          onClick={() => setPersonView(null)}
-                          className="text-xs text-muted hover:text-default transition-colors"
-                        >
-                          Close
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* Following a person had no way in at all before
+                              this: the server accepted it, nothing in the app
+                              asked for it. Here is where someone is already
+                              looking at that person's work. */}
+                          <button
+                            type="button"
+                            onClick={() => togglePersonFollow(String(personView.id), personView.name)}
+                            disabled={personFollowBusy === String(personView.id)}
+                            title={!personFollows[String(personView.id)]
+                              ? `Follow ${personView.name} - hear when they have something new out`
+                              : personFollows[String(personView.id)].muted
+                                ? 'Alerts muted - tap to turn them back on'
+                                : 'Following - tap to mute'}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
+                            style={personFollows[String(personView.id)] && !personFollows[String(personView.id)].muted
+                              ? { color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 16%, transparent)' }
+                              : { color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
+                          >
+                            <BellIcon className="w-3.5 h-3.5" />
+                            {!personFollows[String(personView.id)]
+                              ? 'Follow'
+                              : personFollows[String(personView.id)].muted ? 'Muted' : 'Following'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPersonView(null)}
+                            className="text-xs text-muted hover:text-default transition-colors"
+                          >
+                            Close
+                          </button>
+                        </div>
                       </div>
                       {personView.loading ? (
                         <p className="text-sm text-muted py-4 text-center">Loading filmography…</p>
