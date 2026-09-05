@@ -48,7 +48,8 @@ export const SETTINGS_INDEX: SettingsIndexEntry[] = [
   // SlickTrax
   S('Watchlist', 'SlickTrax', 'bookmark save later'),
   S('Watched indicators', 'SlickTrax', 'seen checkmarks'),
-  S('Watching Together', 'SlickTrax', 'watch ahead frontier spoiler pact'),
+  S('Seasonal anime row', 'SlickTrax', 'anime anilist airing season countdown'),
+  S('Spoiler guard', 'SlickTrax', 'watching together watch ahead frontier spoiler pact'),
   S('Recommendations', 'SlickTrax', 'for you suggested rows'),
   S('Auto-generated catalogs', 'SlickTrax', ''),
   S('Poster ratings', 'SlickTrax', 'rpdb art'),
@@ -63,7 +64,9 @@ export const SETTINGS_INDEX: SettingsIndexEntry[] = [
   S('RPDB API key', 'External API Keys', 'rpdb rating posters art'),
   S('Spread by remaining quota', 'External API Keys', 'key pool weighting quota'),
   S('Auto-retire failing pool keys', 'External API Keys', 'key pool dead remove'),
+  S('Pause background lookups near the cap', 'External API Keys', 'quota autopilot omdb limit defer background'),
   S('SIMKL Client ID', 'External API Keys', 'simkl link trending'),
+  S('Trakt Client ID', 'External API Keys', 'trakt list import public list'),
   S('Nuvio backend URL', 'External API Keys', 'self-hosted server custom'),
   S('AI Services', 'External API Keys', 'openai key model llm draft explanations'),
   // Security & account

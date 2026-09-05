@@ -9,11 +9,13 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { useTheme } from '@/lib/theme';
 import { copyToClipboard } from '@/lib/clipboard';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { api, SyncSettings, AccountStats, PushDevice } from '@/lib/api';
+import { api, SyncSettings, AccountStats, PushDevice, PasskeyRow } from '@/lib/api';
 import { toast, showToast } from '@/components/ui/Toast';
 import { isBeginnerMode, setBeginnerMode as setBeginnerModePref } from '@/lib/beginnerMode';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
+import { SETTINGS_INDEX } from '@/lib/settingsIndex';
+import { ThemesPanel } from '@/components/settings/ThemesPanel';
 import { invalidatePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { openOnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import {
@@ -26,10 +28,13 @@ import {
   ClipboardDocumentIcon,
   GlobeAltIcon,
   ShieldCheckIcon,
+  FingerPrintIcon,
   CogIcon,
   DocumentTextIcon,
   UserCircleIcon,
   SparklesIcon,
+  BellIcon,
+  SwatchIcon,
   DevicePhoneMobileIcon,
   ComputerDesktopIcon,
   PencilIcon,
@@ -429,6 +434,34 @@ function BackupKeyField({
   );
 }
 
+// Settings had grown to eleven stacked sections and roughly 2,600 lines of
+// page - long enough that finding one toggle meant scrolling past everything
+// else (user feedback). Same settings, grouped, one group on screen at a
+// time. Deep links from the command palette still land on the exact control:
+// SETTINGS_TABS_BY_SECTION maps the palette's own section labels onto these
+// tabs so the page can switch before it scrolls.
+const SETTINGS_TABS = [
+  { key: 'general', label: 'General', icon: UserCircleIcon, blurb: 'Profile, privacy, timezone' },
+  { key: 'themes', label: 'Themes', icon: SwatchIcon, blurb: 'Colours, layout, custom builds' },
+  { key: 'sync', label: 'Sync', icon: ArrowPathIcon, blurb: 'How addons are pushed' },
+  { key: 'notifications', label: 'Notifications', icon: BellIcon, blurb: 'Push, bell, Discord, digest' },
+  { key: 'features', label: 'Features', icon: SparklesIcon, blurb: 'SlickTrax and Discover' },
+  { key: 'integrations', label: 'Integrations', icon: KeyIcon, blurb: 'API keys and scrobbling' },
+  { key: 'security', label: 'Security', icon: ShieldCheckIcon, blurb: '2FA, account, danger zone' },
+] as const;
+type SettingsTab = typeof SETTINGS_TABS[number]['key'];
+
+const SETTINGS_TABS_BY_SECTION: Record<string, SettingsTab> = {
+  'Privacy & Display': 'general',
+  'Account': 'security',
+  'Sync Mode': 'sync',
+  'Notifications': 'notifications',
+  'SlickTrax': 'features',
+  'External API Keys': 'integrations',
+  'Scrobble API': 'integrations',
+  'Security': 'security',
+};
+
 export default function SettingsPage() {
   // Theme picking + the theme builder now live on their own page (Themes) —
   // only the sensitive-data toggle from useTheme() is still needed here.
@@ -443,6 +476,20 @@ export default function SettingsPage() {
   const [checkingKeys, setCheckingKeys] = useState(false);
   // Mirrors the localStorage flag so the switch reflects reality after mount
   // (reading it during render would disagree with the server render).
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  // The rail's hover is tracked here instead of in CSS, for two reasons that
+  // both bit this rail. The rows carry inline styles, and an inline
+  // background silently beats any :hover rule that isn't !important - so the
+  // CSS hover never actually painted anything. And a CSS :hover STICKS after
+  // a tap on a touch screen (there is no hover-out event to end it), which is
+  // exactly the "the last one I clicked stays lit" symptom. State can only
+  // hold one key, and only a real mouse can set it, so at most one row is
+  // ever lit and a tap can never leave one behind.
+  const [hoveredTab, setHoveredTab] = useState<SettingsTab | null>(null);
+  // Nebula puts the app's own nav across the top, so settings can own the
+  // left rail. Original already has a sidebar - a second one beside it is
+  // the clutter this avoids.
+  const useSettingsRail = layoutMode === 'nebula';
   const [beginnerMode, setBeginnerModeState] = useState(false);
   useEffect(() => { setBeginnerModeState(isBeginnerMode()); }, []);
 
@@ -715,6 +762,51 @@ export default function SettingsPage() {
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [isGeneratingKey, setIsGeneratingKey] = useState(false);
 
+  // Passkeys. Deliberately additive to the password - there is no "require
+  // passkey" switch, because a self-hosted instance has no way back in if
+  // the only credential is on a device that is gone.
+  const [passkeys, setPasskeys] = useState<PasskeyRow[]>([]);
+  const [passkeyRpId, setPasskeyRpId] = useState<string | null>(null);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeySupported, setPasskeySupported] = useState(false);
+  useEffect(() => {
+    setPasskeySupported(typeof window !== 'undefined' && !!window.PublicKeyCredential);
+    api.getPasskeys().then((r) => { setPasskeys(r.passkeys || []); setPasskeyRpId(r.currentRpId); }).catch(() => {});
+  }, []);
+
+  const handleAddPasskey = async () => {
+    setPasskeyBusy(true);
+    try {
+      const { startRegistration } = await import('@simplewebauthn/browser');
+      const optionsJSON = await api.getPasskeyRegistrationOptions();
+      const credential = await startRegistration({ optionsJSON });
+      // Named after the device it lives on where the browser will say, so a
+      // list of three passkeys is not three identical rows.
+      const suggested = typeof navigator !== 'undefined' && /iPhone|iPad|Android|Mac|Windows/i.test(navigator.userAgent)
+        ? (navigator.userAgent.match(/iPhone|iPad|Android|Mac|Windows/i)?.[0] || 'This device')
+        : 'This device';
+      const r = await api.verifyPasskeyRegistration(credential, suggested);
+      setPasskeys(r.passkeys || []);
+      toast.success('Passkey added');
+    } catch (e: any) {
+      // A cancelled prompt is not a failure worth a red toast.
+      if (e?.name === 'NotAllowedError' || /cancel|abort/i.test(e?.message || '')) return;
+      toast.error(e?.message || 'Could not add that passkey');
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
+  const handleRemovePasskey = async (id: string) => {
+    try {
+      const r = await api.deletePasskey(id);
+      setPasskeys(r.passkeys || []);
+      toast.success('Passkey removed');
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not remove that passkey');
+    }
+  };
+
   // 2FA (TOTP) state - see server/utils/twoFactor.js for the backend design.
   const [twoFaEnabled, setTwoFaEnabled] = useState<boolean | null>(null);
   const [twoFaSetup, setTwoFaSetup] = useState<{ secret: string; otpauthUrl: string; qrCodeDataUrl: string } | null>(null);
@@ -903,11 +995,29 @@ export default function SettingsPage() {
       };
       setTimeout(attempt, 300);
     };
+    // Jumping from the command palette must also switch tabs, or the
+    // control it wants is simply not mounted to scroll to.
+    const tabFor = (target: string) => {
+      const entry = SETTINGS_INDEX.find((e) => e.label === target);
+      return entry ? SETTINGS_TABS_BY_SECTION[entry.section] : undefined;
+    };
+    const requestedTab = new URLSearchParams(window.location.search).get('tab');
+    if (requestedTab && SETTINGS_TABS.some((t) => t.key === requestedTab)) {
+      setActiveTab(requestedTab as SettingsTab);
+    }
     const fromUrl = new URLSearchParams(window.location.search).get('highlight');
-    if (fromUrl) runHighlight(fromUrl);
+    if (fromUrl) {
+      const tab = tabFor(fromUrl);
+      if (tab) setActiveTab(tab);
+      runHighlight(fromUrl);
+    }
     const onEvent = (e: Event) => {
       const target = (e as CustomEvent<string>).detail;
-      if (typeof target === 'string' && target) runHighlight(target);
+      if (typeof target === 'string' && target) {
+        const tab = tabFor(target);
+        if (tab) setActiveTab(tab);
+        runHighlight(target);
+      }
     };
     window.addEventListener('slicksync:settings-highlight', onEvent);
     return () => { cancelled = true; window.removeEventListener('slicksync:settings-highlight', onEvent); };
@@ -1164,8 +1274,82 @@ export default function SettingsPage() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading title="Settings" subtitle="Customize your SlickSync experience" />
       )}
+        {/* Settings navigation takes the axis the APP's own layout is not
+            using. In Nebula (top nav) that is a left rail; in Original (which
+            already has a sidebar) a second vertical nav beside the first just
+            reads as clutter, so the groups run along the top instead. Narrow
+            screens always get the horizontal row - a rail there would eat the
+            width the settings themselves need. */}
+        <div className={useSettingsRail ? 'flex gap-6 items-start' : ''}>
+          {useSettingsRail && (
+          <nav
+            className="hidden md:block w-56 shrink-0 sticky top-4"
+            // Safety net for the pointer that leaves the rail fast enough to
+            // skip a row's own leave event (or leaves the window entirely).
+            onPointerLeave={() => setHoveredTab(null)}
+          >
+            <div className="rounded-2xl p-2" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
+              {SETTINGS_TABS.map((t) => {
+                const active = activeTab === t.key;
+                const hovered = !active && hoveredTab === t.key;
+                const Icon = t.icon;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    // Clearing the hover on click matters as much as setting
+                    // it: after a tap the finger is gone but the pointer
+                    // never "leaves", so without this the row you just
+                    // chose would keep its hover tint on top of everything.
+                    onClick={(e) => { setActiveTab(t.key); setHoveredTab(null); e.currentTarget.blur(); }}
+                    onPointerEnter={(e) => { if (e.pointerType === 'mouse') setHoveredTab(t.key); }}
+                    onPointerLeave={() => setHoveredTab((k) => (k === t.key ? null : k))}
+                    // One of three mutually exclusive classes, never a mix,
+                    // and each is !important (see globals.css) - so a row
+                    // that is not the selected one cannot be painted by a
+                    // leftover :hover, a theme rule, or anything else. The
+                    // selected row is a solid fill rather than the 20% tint
+                    // it used to be: the tint sat too close to the card
+                    // behind it to read as "this one and none of the others".
+                    className={`relative w-full flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-xl text-left mb-0.5 focus:outline-none rail-item ${active ? 'rail-item-on' : hovered ? 'rail-item-warm' : 'rail-item-off'}`}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" style={{ color: active ? '#fff' : 'var(--color-text-muted)' }} />
+                    <span className="min-w-0">
+                      <span className={`block text-sm ${active ? 'font-semibold' : 'font-medium'}`}>{t.label}</span>
+                      <span className="block text-[11px] leading-tight" style={{ color: active ? 'rgba(255,255,255,0.78)' : 'var(--color-text-muted)' }}>{t.blurb}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+          )}
+
+          <div className={`${useSettingsRail ? 'md:hidden' : ''} -mx-1 px-1 pb-3 sticky top-0 z-20`} style={{ background: 'linear-gradient(180deg, var(--color-bg) 70%, transparent)' }}>
+            <div className="flex gap-1.5 overflow-x-auto">
+              {SETTINGS_TABS.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setActiveTab(t.key)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap focus:outline-none ${
+                    activeTab === t.key ? 'bg-primary text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={useSettingsRail ? 'flex-1 min-w-0' : ''}>
+
+
+        {activeTab === 'themes' && <ThemesPanel embedded />}
+
         {/* Profile Picture - shown on the account button (bottom-left in
             Nebula, bottom of sidebar in Original) and its dropdown menu. */}
+        {activeTab === 'general' && (
         <PageSection className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1221,12 +1405,14 @@ export default function SettingsPage() {
             )}
           </Card>
         </PageSection>
+        )}
 
         {/* Welcome tour replay - low-key, one line, no card padding beyond
             the norm here so it doesn't stand out among the settings around
             it. Users kept accidentally clicking past a step with no way
             back (fixed in the wizard itself) and had no way to pull it back
             up afterward either - this is that way back in, not a big CTA. */}
+        {activeTab === 'general' && (
         <PageSection delay={0.05} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center justify-between gap-3">
@@ -1245,8 +1431,10 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* Privacy & Display */}
+        {activeTab === 'general' && (
         <PageSection delay={0.05} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1319,8 +1507,10 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* Sync Mode */}
+        {activeTab === 'sync' && (
         <PageSection delay={0.1} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1363,8 +1553,10 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* Notifications */}
+        {activeTab === 'notifications' && (
         <PageSection delay={0.15} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1659,11 +1851,13 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* SlickTrax — opt-outs for SlickSync's native tracking surfaces
             (Watchlist, Watched indicators, Recommendations). All default ON.
             Turning any off hides its UI + skips its network requests
             immediately (the hook cache invalidates on save). */}
+        {activeTab === 'features' && (
         <PageSection delay={0.18} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -1700,13 +1894,13 @@ export default function SettingsPage() {
               </SettingRow>
 
               <SettingRow
-                label="Watching Together"
+                label="Spoiler guard"
                 description="The watch-ahead alarm: declare on a show's detail popup who is watching it together, and anyone starting an episode another member hasn't seen triggers a household alert. Off: the section disappears and no alerts fire, even for shows already set up."
               >
                 <ToggleSwitch
                   enabled={syncSettings.enableWatchTogether !== false}
                   onChange={async (v) => { await handleSaveSetting('enableWatchTogether' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
-                  label="Toggle Watching Together"
+                  label="Toggle the spoiler guard"
                 />
               </SettingRow>
 
@@ -1729,6 +1923,26 @@ export default function SettingsPage() {
                   enabled={syncSettings.enableAutoThemedCatalogs === true}
                   onChange={async (v) => { await handleSaveSetting('enableAutoThemedCatalogs' as keyof SyncSettings, v); invalidatePersonalFeatures(); }}
                   label="Toggle auto-generated catalogs"
+                />
+              </SettingRow>
+
+              <SettingRow
+                label="Seasonal anime row"
+                description="Adds an 'Airing this season' row to Discover with each show's next-episode countdown, from AniList - no API key needed. Off unless someone in the household actually watches anime."
+              >
+                <ToggleSwitch
+                  enabled={syncSettings.animeSeasonalRow === true}
+                  onChange={async (v) => {
+                    setSyncSettings((prev) => ({ ...prev, animeSeasonalRow: v }));
+                    try {
+                      await api.updateSyncSettings({ animeSeasonalRow: v });
+                      toast.success(v ? 'Seasonal anime row added to Discover' : 'Seasonal anime row hidden');
+                    } catch {
+                      toast.error('Could not save that setting');
+                      setSyncSettings((prev) => ({ ...prev, animeSeasonalRow: !v }));
+                    }
+                  }}
+                  label="Toggle the seasonal anime row"
                 />
               </SettingRow>
 
@@ -1790,6 +2004,7 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* External API Keys — every external service key SlickSync can use, split
             out from SlickTrax so that card stays pure on/off toggles.
@@ -1797,6 +2012,7 @@ export default function SettingsPage() {
             first, falling back to the instance's own env var (if the
             operator configured one) only when this is left blank - never
             a flat shared key silently used across every account. */}
+        {activeTab === 'integrations' && (
         <PageSection delay={0.19} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -2128,6 +2344,25 @@ export default function SettingsPage() {
                     />
                   </SettingRow>
                   <SettingRow
+                    label="Pause background lookups near the cap"
+                    description="Once today's OMDb usage passes 90%, background work (decorating notifications) stops fetching ratings until the midnight-UTC reset, so the rest of the allowance stays for what you actually open. Titles you open always fetch. Content-rating checks are never paused."
+                  >
+                    <ToggleSwitch
+                      enabled={syncSettings.quotaAutopilot === true}
+                      onChange={async (v) => {
+                        setSyncSettings((prev) => ({ ...prev, quotaAutopilot: v }));
+                        try {
+                          await api.updateSyncSettings({ quotaAutopilot: v });
+                          toast.success(v ? 'Background lookups will stand down near the daily cap' : 'Background lookups will always run');
+                        } catch {
+                          toast.error('Could not save that setting');
+                          setSyncSettings((prev) => ({ ...prev, quotaAutopilot: !v }));
+                        }
+                      }}
+                      label="Toggle quota autopilot"
+                    />
+                  </SettingRow>
+                  <SettingRow
                     label="Auto-retire failing pool keys"
                     description="A pool key that has been failing for 3 straight days is removed from the pool automatically, with a notification naming it. Your primary and backup keys are never touched."
                   >
@@ -2166,6 +2401,78 @@ export default function SettingsPage() {
                   onChange={(e) => setSyncSettings(prev => ({ ...prev, simklClientId: e.target.value }))}
                   onBlur={() => handleSaveSetting('simklClientId' as keyof SyncSettings, syncSettings.simklClientId)}
                   placeholder="SIMKL Client ID"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* Public address of this instance. SlickTrax installs itself
+                  through sync, and sync has no incoming request to learn a
+                  hostname from - so without this (or PUBLIC_APP_URL) it
+                  cannot build an address a phone or TV could reach, and
+                  silently installs nothing. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">Public address of this instance <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  The address your devices reach SlickSync on, e.g. <span className="font-mono">https://slicksync.example.com</span>. Only SlickTrax needs it:
+                  it installs itself into Stremio/Nuvio during a sync, and a sync has no browser request to borrow a hostname from. Leave blank if the
+                  PUBLIC_APP_URL environment variable is already set - that wins either way.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.publicBaseUrl || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, publicBaseUrl: e.target.value }))}
+                  onBlur={() => handleSaveSetting('publicBaseUrl' as keyof SyncSettings, syncSettings.publicBaseUrl)}
+                  placeholder="https://slicksync.example.com"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* Trakt Client ID - public LISTS only, which is all a client id
+                  can read. Deliberately not an account bridge: Trakt limits a
+                  free account to one connected app, so connecting SlickSync
+                  would evict whatever Trakt app someone already uses. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">Trakt Client ID <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Lets you import a public Trakt list by pasting its URL into Catalogs → Import. Get one free at{' '}
+                  <a href="https://trakt.tv/oauth/applications/new" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">trakt.tv/oauth/applications/new</a>
+                  {' '}→ any name, any redirect URI → paste the <strong>Client ID</strong> here. This reads public lists only; it does not connect a Trakt account, and it does not use up the one connected-app slot a free Trakt account gets.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.traktClientId || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, traktClientId: e.target.value }))}
+                  onBlur={() => handleSaveSetting('traktClientId' as keyof SyncSettings, syncSettings.traktClientId)}
+                  placeholder="Trakt Client ID"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="input-base w-full px-3 py-2 text-sm"
+                />
+              </div>
+
+              {/* MyAnimeList Client ID - public lists only, same shape as
+                  Trakt above. Jikan (the keyless MAL mirror) would have
+                  avoided this key entirely, but MAL removed the endpoint it
+                  read lists from and it now answers list requests with
+                  "MyAnimeList refuses to connect", so a key that works beats
+                  no key that does not. */}
+              <div className="pt-1">
+                <label className="block text-sm font-medium text-default mb-1.5">MyAnimeList Client ID <span className="text-subtle font-normal">(optional)</span></label>
+                <p className="text-xs text-muted mb-2">
+                  Lets you import a public MyAnimeList anime list by pasting its URL into Catalogs → Import. Get one free at{' '}
+                  <a href="https://myanimelist.net/apiconfig/create" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">myanimelist.net/apiconfig/create</a>
+                  {' '}→ any name, App Type &quot;other&quot;, any redirect URI → paste the <strong>Client ID</strong> here. This reads public lists only and does not connect your MAL account. AniList lists need no key at all.
+                </p>
+                <input
+                  type="text"
+                  value={syncSettings.malClientId || ''}
+                  onChange={(e) => setSyncSettings(prev => ({ ...prev, malClientId: e.target.value }))}
+                  onBlur={() => handleSaveSetting('malClientId' as keyof SyncSettings, syncSettings.malClientId)}
+                  placeholder="MyAnimeList Client ID"
                   autoComplete="off"
                   spellCheck={false}
                   className="input-base w-full px-3 py-2 text-sm"
@@ -2244,8 +2551,10 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
 
         {/* API Key */}
+        {activeTab === 'integrations' && (
         <PageSection delay={0.2} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -2324,10 +2633,65 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
+
+        {/* Passkeys - sign in with the device's own unlock instead of the
+            password. Strictly an addition: the password never goes away, so
+            a lost device cannot lock anyone out of their own instance. */}
+        {activeTab === 'security' && (
+        <PageSection delay={0.205} className="mb-6">
+          <Card padding="lg">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-primary-muted">
+                <FingerPrintIcon className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold font-display text-default">Passkeys</h3>
+                <p className="text-xs text-muted">Sign in with Face ID, a fingerprint, a PIN or a security key</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted mb-4">
+              A passkey signs you in without typing the password - useful on a phone, and on a TV where typing anything is
+              a chore. It never replaces the password: that still works, so losing a device can never lock you out of your
+              own instance. A passkey belongs to the exact address you created it on{passkeyRpId ? <> (this one is <span className="font-mono">{passkeyRpId}</span>)</> : null},
+              so add one on each address you actually sign in from.
+            </p>
+
+            {!passkeySupported ? (
+              <p className="text-sm text-muted">This browser doesn&apos;t support passkeys.</p>
+            ) : (
+              <>
+                {passkeys.length > 0 && (
+                  <div className="space-y-2 mb-4">
+                    {passkeys.map((pk) => (
+                      <div key={pk.id} className="flex items-center justify-between gap-3 p-3 rounded-lg bg-subtle border border-default">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-default truncate">{pk.name}</p>
+                          <p className="text-xs text-muted">
+                            {pk.rpId ? <span className="font-mono">{pk.rpId}</span> : 'unknown address'}
+                            {pk.rpId && passkeyRpId && pk.rpId !== passkeyRpId ? ' - not offered on this address' : ''}
+                            {pk.lastUsedAt ? ` - last used ${new Date(pk.lastUsedAt).toLocaleDateString()}` : ' - never used'}
+                          </p>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => handleRemovePasskey(pk.id)}>Remove</Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <Button variant="secondary" size="sm" onClick={handleAddPasskey} isLoading={passkeyBusy}>
+                  Add a passkey
+                </Button>
+              </>
+            )}
+          </Card>
+        </PageSection>
+        )}
 
         {/* Two-Factor Authentication - opt-in TOTP on top of the account
             login. See server/utils/twoFactor.js for why disable/regenerate
             both require a fresh code rather than just an active session. */}
+        {activeTab === 'security' && (
         <PageSection delay={0.21} className="mb-6">
           <Card padding="lg">
             <div className="flex items-center gap-3 mb-5">
@@ -2441,6 +2805,7 @@ export default function SettingsPage() {
             )}
           </Card>
         </PageSection>
+        )}
 
         {/* Backup codes - shown exactly once, right after enabling 2FA or
             regenerating codes. Closing this modal is the only way past it,
@@ -2473,7 +2838,7 @@ export default function SettingsPage() {
             (per the register page's own warning), and there was previously
             nowhere to look it back up short of the Account dropdown modal.
             Always findable here for troubleshooting/support. */}
-        {isPublicInstance && accountInfo?.uuid && (
+        {activeTab === 'security' && isPublicInstance && accountInfo?.uuid && (
           <PageSection delay={0.22} className="mb-6">
             <Card padding="lg">
               <div className="flex items-center gap-3 mb-5">
@@ -2512,6 +2877,7 @@ export default function SettingsPage() {
         )}
 
         {/* Danger Zone */}
+        {activeTab === 'security' && (
         <PageSection delay={0.25}>
           <Card padding="lg" className="border-error">
             <div className="flex items-center gap-3 mb-5">
@@ -2562,6 +2928,9 @@ export default function SettingsPage() {
             </div>
           </Card>
         </PageSection>
+        )}
+          </div>
+        </div>
       </div>
       </div>
 

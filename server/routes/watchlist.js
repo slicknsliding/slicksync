@@ -15,18 +15,49 @@ const express = require('express');
 module.exports = ({ prisma, getAccountId }) => {
   const router = express.Router();
 
-  // GET /api/watchlist — list, newest-added first.
+  // GET /api/watchlist — manually ranked items first (in their ranked
+  // order), then everything unranked newest-added first. A watchlist nobody
+  // has ever reordered is therefore byte-identical to the old behaviour.
   router.get('/', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';
       const items = await prisma.watchlistItem.findMany({
         where: { accountId },
-        orderBy: { addedAt: 'desc' },
+        orderBy: [{ sortOrder: 'asc' }, { addedAt: 'desc' }],
       });
-      res.json(items);
+      // Prisma puts NULLs first on an ascending sort, which would float
+      // every unranked row above the ranked ones - exactly backwards. The
+      // split is done here rather than in SQL so both engines behave the
+      // same (SQLite and Postgres disagree about NULL ordering).
+      const ranked = items.filter((i) => Number.isInteger(i.sortOrder)).sort((a, b) => a.sortOrder - b.sortOrder);
+      const unranked = items.filter((i) => !Number.isInteger(i.sortOrder));
+      res.json([...ranked, ...unranked]);
     } catch (e) {
       console.error('Error fetching watchlist:', e);
       res.status(500).json({ error: 'Failed to fetch watchlist' });
+    }
+  });
+
+  // PUT /api/watchlist/order — manual ranking. The array's order IS the
+  // ranking (position 1 is "up next"); anything omitted becomes unranked
+  // again and falls back to the newest-first tail.
+  router.put('/order', async (req, res) => {
+    try {
+      const accountId = getAccountId(req) || 'default';
+      const itemIds = Array.isArray(req.body?.itemIds) ? req.body.itemIds : null;
+      if (!itemIds) return res.status(400).json({ error: 'itemIds array is required' });
+      await prisma.watchlistItem.updateMany({ where: { accountId }, data: { sortOrder: null } });
+      let position = 1;
+      for (const itemId of itemIds) {
+        await prisma.watchlistItem.updateMany({
+          where: { accountId, itemId: String(itemId) },
+          data: { sortOrder: position++ },
+        });
+      }
+      res.json({ success: true, ranked: itemIds.length });
+    } catch (e) {
+      console.error('Error ordering watchlist:', e);
+      res.status(500).json({ error: 'Failed to save the watchlist order' });
     }
   });
 

@@ -62,7 +62,6 @@ const navigationSections = [
     items: [
       { name: 'Tasks', href: '/tasks', icon: QueueListIcon },
       { name: 'Settings', href: '/settings', icon: Cog6ToothIcon },
-      { name: 'Themes', href: '/themes', icon: SwatchIcon },
       { name: 'Changelog', href: '/changelog', icon: DocumentTextIcon },
     ],
   },

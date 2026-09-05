@@ -51,6 +51,12 @@ model User {
   // is a bearer credential in the URL (same model as Addon.proxyUuid) -
   // generated on first enable, never derived from anything guessable.
   traxAddonEnabled   Boolean  @default(false)
+  // In-player actions: when on, the SlickTrax addon also serves a `stream`
+  // resource so a title's page inside Stremio/Nuvio shows SlickSync actions
+  // (mark watched, watchlist) alongside its real streams. Opt-in per user -
+  // it puts non-playable rows in a list people open expecting streams, which
+  // is a trade not everyone wants.
+  traxInPlayerActions Boolean @default(false)
   traxToken          String?  @unique
   // Account Guard: JSON state for external-writer detection - per-provider
   // fingerprints of what SlickSync last wrote to this user's addon
@@ -625,6 +631,14 @@ model CustomList {
   // both. Off by default even for imported catalogs: replacing items
   // unattended is a bigger behavior change than the existing manual
   // "Refresh" button, which always shows a diff before applying.
+  // Smart Catalogs: when set, this catalog is a living QUERY rather than a
+  // fixed list - the stored rule is re-evaluated on the auto-refresh
+  // schedule and the items replaced with whatever now matches. Null for
+  // every ordinary catalog, so existing behaviour is untouched. The shape is
+  // nlCatalog's own normalized query ({ type, genres, yearFrom, yearTo,
+  // maxRuntimeMinutes, keywords }) plus SlickSync-side filters, so the same
+  // TMDb Discover path serves both "describe a catalog" and this.
+  smartRuleJson    String?
   autoRefresh      Boolean  @default(false)
   // 'daily' (default) or 'weekly' - how often the scheduler actually applies
   // a refresh once autoRefresh is on. The scheduler itself still ticks daily
@@ -793,6 +807,11 @@ model WatchlistItem {
   name      String
   poster    String?
   addedAt   DateTime @default(now())
+  // Manual ranking. null = never ranked, which keeps every existing row
+  // behaving exactly as before (newest first); ranked rows sort ahead of
+  // unranked ones by this value, and position 1 is what the UI calls
+  // "up next". Additive, so an older database needs no backfill.
+  sortOrder Int?
 
   @@unique([accountId, itemId])
   @@index([accountId, addedAt])
@@ -1236,4 +1255,73 @@ model NuvioHomeLayoutSnapshot {
 
   @@index([accountId, userId, profileId, createdAt])
   @@map("nuvio_home_layout_snapshots")
+}
+
+// What an account has asked to be told about: a person (actor/director) whose
+// new work should raise an alert, or a show whose status changes (renewed /
+// canceled / a premiere date) should. One table because the lifecycle is
+// identical - follow it, get pushed when it changes, mute it when interest
+// fades - and because "stop telling me about this" has to be first-class:
+// a notification you cannot switch off is a notification people learn to
+// ignore. Muting keeps the row (so the UI can show it as followed-but-quiet
+// and so re-following does not lose the history) rather than deleting it.
+model FollowedSubject {
+  id          String   @id @default(cuid())
+  accountId   String   @default("default")
+  // 'person' (TMDb person id) or 'show' (IMDb tt id, matching the rest of the app)
+  kind        String
+  subjectId   String
+  name        String
+  poster      String?
+  // Last state we alerted on, so a change is detectable without re-alerting
+  // the same thing every sweep: for a show this is TMDb's status string, for
+  // a person the newest credit id already announced.
+  lastSeen    String?
+  muted       Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  lastCheckedAt DateTime?
+
+  @@unique([accountId, kind, subjectId])
+  @@index([accountId, kind])
+  @@map("followed_subjects")
+}
+
+
+// A passkey (WebAuthn credential) registered against this account.
+//
+// Strictly an ADDITION to password login, never a replacement: the password
+// path stays exactly as it was, so a lost or unsupported device can never
+// lock anyone out of their own instance. Deliberately DISCOVERABLE
+// credentials (resident keys), which is what lets the login page offer
+// "Use a passkey" without asking who you are first - the authenticator
+// itself knows.
+//
+// A passkey is bound to the domain it was created on (its RP ID), so one
+// created on a LAN address will not work on the public hostname and vice
+// versa - hence the rpId column, which is what makes that visible in the
+// list rather than a mystery.
+model Passkey {
+  id           String   @id @default(cuid())
+  accountId    String   @default("default")
+  // Base64url credential id as the authenticator reports it - the lookup key
+  // at login time, when there is no session to scope the search by.
+  credentialId String   @unique
+  // Base64url COSE public key. Public by definition: it verifies signatures
+  // and cannot produce them, so this is not a secret.
+  publicKey    String
+  // Signature counter, for authenticators that keep one. A counter that goes
+  // backwards means a cloned credential, which is why it is stored.
+  counter      Int      @default(0)
+  // JSON array of transports ("internal", "hybrid", "usb"), used only to
+  // improve the browser prompt.
+  transports   String?
+  // Which domain this passkey belongs to, and a name for the person to
+  // recognise it by ("iPhone", "YubiKey").
+  rpId         String?
+  name         String
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([accountId])
+  @@map("passkeys")
 }

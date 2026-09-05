@@ -742,14 +742,32 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if ((enabled && !traxToken) || rotate) {
         traxToken = require('crypto').randomBytes(24).toString('hex')
       }
-      await prisma.user.update({ where: { id: user.id }, data: { traxAddonEnabled: enabled, traxToken } })
+      const data = { traxAddonEnabled: enabled, traxToken }
+      // In-player actions ride this same endpoint rather than the generic
+      // user PUT (whose field allowlist is deliberately narrow): it is part
+      // of the same addon's configuration, and changing it must also bump
+      // the manifest the next sync installs.
+      if (req.body?.inPlayerActions !== undefined) data.traxInPlayerActions = !!req.body.inPlayerActions
+      await prisma.user.update({ where: { id: user.id }, data })
 
       // The base URL sync will use. Reported honestly rather than guessed
       // from the request: sync itself has no request to borrow a hostname
       // from, so if PUBLIC_APP_URL is unset the auto-install genuinely will
       // not happen and the UI should say so instead of showing a URL that
       // only works from this browser's vantage point.
-      const base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+      let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+      let baseSource = base ? 'env' : null
+      if (!base) {
+        try {
+          const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+          let cfg = acct?.sync
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+          const configured = (cfg && typeof cfg.publicBaseUrl === 'string' ? cfg.publicBaseUrl : '').trim().replace(/\/+$/, '')
+          const observed = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
+          if (configured) { base = configured; baseSource = 'settings' }
+          else if (observed) { base = observed; baseSource = 'observed' }
+        } catch { /* falls through to the request-derived base below */ }
+      }
       // The admin reaching this route just proved a working public URL for
       // this instance - the one in their address bar. Persisted so sync can
       // auto-install without PUBLIC_APP_URL being set; the env var, when
@@ -774,10 +792,16 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           }
         } catch { /* best-effort - manual install still works */ }
       }
+      // baseKnown is the honest bit: with no address configured, sync cannot
+      // install this on anyone's device no matter what the toggle says, and
+      // the url below only works from the browser that asked for it.
+      const effectiveBase = base || (reqBaseUsable ? reqBase : '')
       res.json({
         enabled,
-        manifestUrl: `${base || reqBase}/trax/${traxToken}/v${require('./traxAddon').TRAX_MANIFEST_VERSION}/manifest.json`,
-        autoInstall: true,
+        manifestUrl: effectiveBase ? `${effectiveBase}/trax/${traxToken}/v${require('./traxAddon').TRAX_MANIFEST_VERSION}/manifest.json` : null,
+        autoInstall: !!base,
+        baseKnown: !!base,
+        baseSource: baseSource || (base ? 'observed' : null),
       })
     } catch (error) {
       console.error('Error toggling SlickTrax addon:', error)
@@ -824,6 +848,64 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // GET /users/media-episodes - a series' full episode list, grouped by
+  // season, with what the household has already watched marked.
+  //
+  // Deliberately its own endpoint rather than part of /media-details: that
+  // response strips the episode list precisely because it can run to
+  // hundreds of entries for a long-running show, and paying for that on
+  // every poster tap would slow the modal for the majority of opens that
+  // never look at the season list. This is fetched only when someone
+  // expands it.
+  router.get('/media-episodes', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { itemId } = req.query
+      if (!itemId || !/^tt\d+$/.test(String(itemId))) return res.status(400).json({ error: 'A valid itemId is required' })
+
+      const { coalesce } = require('../utils/singleFlight')
+      const metadata = await coalesce(`media-episodes:${itemId}`, 300_000, async () => {
+        const { resolveOmdbKey } = require('../utils/listImport')
+        const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
+        return fetchMetadata(String(itemId), 'series', null, omdbApiKey)
+      })
+      const all = Array.isArray(metadata?.allEpisodes) ? metadata.allEpisodes : []
+      if (all.length === 0) return res.json({ seasons: [] })
+
+      // Which episodes anyone here has already watched - the reason to show
+      // this list at all is usually "where am I up to".
+      const watched = await prisma.episodeWatchHistory.findMany({
+        where: { accountId, showId: String(itemId) },
+        select: { season: true, episode: true },
+      }).catch(() => [])
+      const seen = new Set(watched.map((w) => `${w.season}:${w.episode}`))
+
+      const bySeason = new Map()
+      for (const e of all) {
+        if (!bySeason.has(e.season)) bySeason.set(e.season, [])
+        bySeason.get(e.season).push({
+          season: e.season,
+          episode: e.episode,
+          title: e.title,
+          released: e.released,
+          watched: seen.has(`${e.season}:${e.episode}`),
+        })
+      }
+      const seasons = [...bySeason.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([season, episodes]) => ({
+          season,
+          episodes,
+          watchedCount: episodes.filter((e) => e.watched).length,
+        }))
+      res.json({ seasons })
+    } catch (error) {
+      console.error('Error fetching episodes:', error)
+      res.status(500).json({ error: 'Failed to fetch episodes' })
+    }
+  })
+
   // GET /users/media-details - Cinemeta detail lookup for the Activity page's
   // poster-click modal (cast, rating, genres, etc). Must be before /:id route.
   router.get('/media-details', async (req, res) => {
@@ -838,29 +920,42 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ error: 'itemId and type are required' })
       }
 
-      const { resolveOmdbKey, resolveMdblistKey } = require('../utils/listImport')
-      const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
-      const metadata = await fetchMetadata(itemId, type, videoId || null, omdbApiKey)
-      if (!metadata) {
+      // Movie night makes this endpoint bursty: several people open the same
+      // title within a minute and each open used to mean its own Cinemeta +
+      // TMDb + OMDb round-trips (and its own OMDb quota). Coalescing by
+      // (account, item, type, video) collapses a burst into one upstream
+      // fetch, and holds the result briefly so an open arriving just after
+      // one completes is served from it too. Account-scoped because the
+      // per-account keys below change what comes back.
+      const { coalesce } = require('../utils/singleFlight')
+      const flightKey = `media-details:${accountId}:${itemId}:${type}:${videoId || ''}`
+      const payload = await coalesce(flightKey, 60_000, async () => {
+        const { resolveOmdbKey, resolveMdblistKey } = require('../utils/listImport')
+        const omdbApiKey = await resolveOmdbKey(prisma, getAccountId, req)
+        const metadata = await fetchMetadata(itemId, type, videoId || null, omdbApiKey)
+        if (!metadata) return null
+
+        // allEpisodes (every episode of the whole series - can be hundreds of
+        // entries for long-running shows) only exists for Continue Watching's
+        // "find the next episode" logic. This modal only ever renders the one
+        // current episode (already in `episode`), so shipping the full list
+        // here is pure wasted payload/parse time competing with the modal's
+        // opening animation on mobile. Stripped at the response boundary only -
+        // fetchMetadata's cache entry (shared with Continue Watching) still has it.
+        const { allEpisodes, ...detailsForClient } = metadata
+        const mdblistKey = await resolveMdblistKey(prisma, getAccountId, req)
+        const [backdrop, collection, watchProviders, mdblistScore] = await Promise.all([
+          fetchTmdbBackdrop(itemId, req),
+          fetchTmdbCollection(itemId, type, req),
+          fetchTmdbWatchProviders(itemId, type, req),
+          fetchMdblistScore(itemId, type, mdblistKey),
+        ])
+        return { ...detailsForClient, backdrop, collection, watchProviders, mdblistScore }
+      })
+      if (!payload) {
         return res.status(404).json({ error: 'No metadata found for this item' })
       }
-
-      // allEpisodes (every episode of the whole series - can be hundreds of
-      // entries for long-running shows) only exists for Continue Watching's
-      // "find the next episode" logic. This modal only ever renders the one
-      // current episode (already in `episode`), so shipping the full list
-      // here is pure wasted payload/parse time competing with the modal's
-      // opening animation on mobile. Stripped at the response boundary only -
-      // fetchMetadata's cache entry (shared with Continue Watching) still has it.
-      const { allEpisodes, ...detailsForClient } = metadata
-      const mdblistKey = await resolveMdblistKey(prisma, getAccountId, req)
-      const [backdrop, collection, watchProviders, mdblistScore] = await Promise.all([
-        fetchTmdbBackdrop(itemId, req),
-        fetchTmdbCollection(itemId, type, req),
-        fetchTmdbWatchProviders(itemId, type, req),
-        fetchMdblistScore(itemId, type, mdblistKey),
-      ])
-      res.json({ ...detailsForClient, backdrop, collection, watchProviders, mdblistScore })
+      res.json(payload)
     } catch (error) {
       console.error('Error fetching media details:', error)
       res.status(500).json({ error: 'Failed to fetch media details' })
@@ -2405,6 +2500,19 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       // Transform for frontend
+      // Same precedence sync itself uses: an explicit env var, then the
+      // address set in Settings, then one an admin request revealed.
+      let traxBase = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+      if (!traxBase) {
+        try {
+          const acct = await prisma.appAccount.findUnique({ where: { id: getAccountId(req) }, select: { sync: true } })
+          let cfg = acct?.sync
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+          traxBase = (cfg && typeof cfg.publicBaseUrl === 'string' ? cfg.publicBaseUrl : '').trim().replace(/\/+$/, '')
+          if (!traxBase) traxBase = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
+        } catch { traxBase = '' }
+      }
+
       const transformedUser = {
         id: user.id,
         email: user.email,
@@ -2439,6 +2547,15 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         // page reload can still display/copy that URL.
         traxAddonEnabled: !!user.traxAddonEnabled,
         traxToken: user.traxToken || null,
+        // Whether SYNC can actually install it, and the url it would use.
+        // The page used to build this url from the browser's own address,
+        // which looks right and proves nothing: with no public address
+        // configured, sync skips SlickTrax entirely while the row still
+        // shows a link. Answering from the server is the only honest way.
+        traxBaseKnown: !!traxBase,
+        traxManifestUrl: (traxBase && user.traxToken)
+          ? traxBase + '/trax/' + user.traxToken + '/v' + require('./traxAddon').TRAX_MANIFEST_VERSION + '/manifest.json'
+          : null,
       }
 
       res.json(transformedUser)
@@ -3260,7 +3377,29 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         select: { id: true, username: true },
       }) : []
       const nameById = new Map(users.map((u) => [u.id, u.username]))
-      res.json({ alarms: alarms.map((a) => ({ ...a, username: nameById.get(a.userId) || null })) })
+      // Profile names live on the Nuvio account, not in the snapshot rows,
+      // so they are resolved here - one profile list per alarmed user, and
+      // only when there is an alarm to label. A banner naming the profile
+      // the way the profile picker does ("Kids") is what makes it
+      // actionable; "profile 3" means nothing to whoever reads it. If the
+      // account can't be reached the index is still shown, since a banner
+      // with a duller label beats no banner at all.
+      const profileNameByKey = new Map()
+      for (const userId of new Set(alarms.map((a) => a.userId))) {
+        try {
+          const r = await resolveNuvioForGuard(req, userId)
+          if (r.error) continue
+          const list = await r.provider.getProfiles()
+          for (const p of Array.isArray(list) ? list : []) {
+            if (Number.isInteger(p?.profile_index) && p?.name) profileNameByKey.set(`${userId}:${p.profile_index}`, p.name)
+          }
+        } catch { /* label only - never a reason to hide the alarm */ }
+      }
+      res.json({ alarms: alarms.map((a) => ({
+        ...a,
+        username: nameById.get(a.userId) || null,
+        profileName: profileNameByKey.get(`${a.userId}:${a.profileId}`) || null,
+      })) })
     } catch (e) {
       res.status(500).json({ error: e?.message || 'Failed to read guard state' })
     }
@@ -3308,6 +3447,51 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       res.json({ success: true, ...result })
     } catch (e) {
       res.status(500).json({ error: e?.message || 'Accept failed' })
+    }
+  })
+
+  // --- Nuvio home-row editor (utils/nuvioHomeLayout.js) ---
+  //
+  // Reads a profile's home-screen arrangement and labels each row with the
+  // addon and catalog it actually came from, so the editor shows "Torrentio
+  // - Movies" rather than a pair of ids. Rows the arrangement doesn't
+  // mention yet are appended as "not yet arranged" - the client only writes
+  // a preference once a row has been touched, so a fresh profile has
+  // catalogs on screen that the blob has never heard of.
+  router.get('/:id/home-layout/:profileId', async (req, res) => {
+    try {
+      const { id, profileId } = req.params
+      const r = await resolveNuvioForGuard(req, id)
+      if (r.error) return res.status(r.status).json({ error: r.error })
+      const { readLayoutForEdit } = require('../utils/nuvioHomeLayout')
+      const { getUserAddons } = require('../utils/sync')
+      const live = await getUserAddons(r.user, req, { decrypt, StremioAPIClient, createProvider }).catch(() => ({ addons: [] }))
+      const result = await readLayoutForEdit(r.provider, Number(profileId), live?.addons)
+      res.json(result)
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to read the home layout' })
+    }
+  })
+
+  // Writes the edited arrangement back to every platform bucket, so the
+  // change lands whichever bucket that device reads.
+  router.put('/:id/home-layout/:profileId', async (req, res) => {
+    try {
+      const { id, profileId } = req.params
+      const items = req.body?.items
+      if (!Array.isArray(items)) return res.status(400).json({ error: 'items array is required' })
+      const r = await resolveNuvioForGuard(req, id)
+      if (r.error) return res.status(r.status).json({ error: r.error })
+      const { writeLayout } = require('../utils/nuvioHomeLayout')
+      const result = await writeLayout(r.provider, Number(profileId), items)
+      // Our own write is the layout guard's new baseline, exactly like the
+      // collections editor's save.
+      require('../utils/collectionsGuard')
+        .recordOwnLayoutWrite(prisma, getAccountId(req), id, Number(profileId), r.provider)
+        .catch(() => {})
+      res.json({ success: true, ...result })
+    } catch (e) {
+      res.status(500).json({ error: e?.message || 'Failed to save the home layout' })
     }
   })
 
@@ -3660,34 +3844,46 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       debug.log(`🔄 Starting sync for ${users.length} enabled users`)
 
-      // Sync each user
-      for (const user of users) {
-        try {
-          debug.log(`🔄 Syncing user: ${user.username || user.email}`)
+      // Sync users a few at a time rather than strictly one-by-one. The pool
+      // is deliberately SMALL: each sync talks to a provider backend, and
+      // Nuvio's rides Supabase, which answers 429 under bursts (a real
+      // incident here - see the escalating-backoff fix). Three keeps a large
+      // household meaningfully faster without turning Sync All into a
+      // thundering herd; per-user failures stay isolated exactly as before.
+      const SYNC_CONCURRENCY = 3
+      const queue = [...users]
+      const runWorker = async () => {
+        while (queue.length > 0) {
+          const user = queue.shift()
+          if (!user) return
+          try {
+            debug.log(`🔄 Syncing user: ${user.username || user.email}`)
 
-          // Use the reusable sync function
-          const syncResult = await syncUserAddons(prisma, user.id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields)
+            // Use the reusable sync function
+            const syncResult = await syncUserAddons(prisma, user.id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields)
 
-          if (syncResult.success) {
-            syncedCount++
-            debug.log(`✅ Successfully synced user: ${user.username || user.email}`)
+            if (syncResult.success) {
+              syncedCount++
+              debug.log(`✅ Successfully synced user: ${user.username || user.email}`)
 
-            // Same field-name mismatch as the single-user route above: this
-            // guard required two properties the sync result has never had, so
-            // totalAddons stayed 0 and the "N total addons processed" line -
-            // which is gated on `totalAddons > 0` - never once appeared in the
-            // Sync All summary.
-            if (typeof syncResult.total === 'number') {
-              totalAddons += syncResult.total
+              // Same field-name mismatch as the single-user route above: this
+              // guard required two properties the sync result has never had, so
+              // totalAddons stayed 0 and the "N total addons processed" line -
+              // which is gated on `totalAddons > 0` - never once appeared in the
+              // Sync All summary.
+              if (typeof syncResult.total === 'number') {
+                totalAddons += syncResult.total
+              }
+            } else {
+              errors.push(`${user.username || user.email}: ${syncResult.error}`)
             }
-          } else {
-            errors.push(`${user.username || user.email}: ${syncResult.error}`)
+          } catch (error) {
+            errors.push(`${user.username || user.email}: ${error.message}`)
+            console.error(`❌ Error syncing user ${user.username || user.email}:`, error)
           }
-        } catch (error) {
-          errors.push(`${user.username || user.email}: ${error.message}`)
-          console.error(`❌ Error syncing user ${user.username || user.email}:`, error)
         }
       }
+      await Promise.all(Array.from({ length: Math.min(SYNC_CONCURRENCY, users.length) }, runWorker))
 
       let message = `All users sync completed.\n${syncedCount}/${users.length} users synced`
       if (totalAddons > 0) {
@@ -3934,14 +4130,16 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ message: 'addonUrls must be a non-empty array' })
       }
 
+      // Full row rather than a Stremio-only select: createProvider needs
+      // whichever provider's credentials this user actually has. Both the
+      // Stremio and Nuvio providers implement addAddon, so there is no
+      // reason for this route to be Stremio-only - it just never got
+      // converted, and told Nuvio users they were "not connected to
+      // Stremio", which is true and useless.
       const user = await prisma.user.findFirst({
         where: {
           id,
           accountId: getAccountId(req)
-        },
-        select: {
-          stremioAuthKey: true,
-          isActive: true
         }
       })
 
@@ -3949,8 +4147,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return responseUtils.notFound(res, 'User')
       }
 
-      if (!user.stremioAuthKey) {
-        return res.status(400).json({ message: 'User not connected to Stremio' })
+      const hasAddCreds = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
+      if (!hasAddCreds) {
+        return res.status(400).json({ message: 'User is not connected to Stremio or Nuvio' })
       }
 
       if (!user.isActive) {
@@ -3958,8 +4157,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       try {
-        const authKeyPlain = decrypt(user.stremioAuthKey, req)
-        const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKeyPlain })
+        const provider = createProvider(user, { decrypt, req })
+        if (!provider) {
+          return res.status(400).json({ message: 'User is not connected to a provider' })
+        }
 
         let addedCount = 0
         const results = []
@@ -3973,11 +4174,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
             }
             const manifest = await manifestResponse.json()
 
-            // Add to Stremio
-            await apiClient.request('addonCollectionAdd', {
-              addonId: addonUrl,
-              manifest: manifest
-            })
+            await provider.addAddon(addonUrl, manifest)
 
             addedCount++
             results.push({
@@ -4002,7 +4199,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           results
         })
       } catch (error) {
-        console.error('Error adding Stremio addons:', error)
+        console.error('Error adding addons:', error)
         res.status(500).json({ message: 'Failed to add addons', error: error?.message })
       }
     } catch (error) {
@@ -5386,10 +5583,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return responseUtils.notFound(res, 'User')
       }
 
-      if (!user.stremioAuthKey) {
-        return res.status(400).json({ message: 'User not connected to Stremio' })
-      }
-
+      // No Stremio-key check here on purpose. Removal runs through
+      // createProvider and works for Nuvio too - the credential check that
+      // matters is hasDeleteCreds further down, which accepts either
+      // provider. This guard rejected every Nuvio user before any of that
+      // ran, with an error naming a service they are not even using, which
+      // is why removing an addon from a Nuvio account failed.
       if (!user.isActive) {
         return res.status(400).json({ message: 'User is disabled' })
       }
@@ -7198,6 +7397,21 @@ async function reloadGroupAddons(prisma, getAccountId, groupId, req, decrypt) {
   try {
     const names = groupAddons.map(a => a.name).filter(Boolean)
     if (names.length > 0) console.log(`🔄 Reloading addons: ${names.join(', ')}`)
+  } catch { }
+
+  // Warm every manifest at once before reloading them one by one - the
+  // fetches are independent, so waiting for them in sequence was pure dead
+  // time in front of an Advanced sync. See prewarmManifests: failures here
+  // change nothing, the reload below still does its own fetch and reports
+  // its own errors.
+  try {
+    const { prewarmManifests } = require('./addons')
+    const urls = groupAddons.map((a) => { try { return getDecryptedManifestUrl(a, req) } catch { return null } }).filter(Boolean)
+    if (urls.length > 1) {
+      const t0 = Date.now()
+      const { warmed, attempted } = await prewarmManifests(urls)
+      if (warmed > 0) console.log(`⚡ Pre-fetched ${warmed}/${attempted} addon manifests in ${Date.now() - t0}ms`)
+    }
   } catch { }
 
 

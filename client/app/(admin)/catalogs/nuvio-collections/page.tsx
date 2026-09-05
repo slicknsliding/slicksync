@@ -19,6 +19,7 @@ import { useDefaultViewMode } from '@/lib/viewMode';
 import { toast } from '@/components/ui/Toast';
 import { encodeNuvioCollectionsShareCode, decodeShareCode } from '@/lib/shareCodes';
 import { ShareCodeDialog, PasteCodeDialog } from '@/components/ui/ShareCodeDialog';
+import { HomeRowsEditor } from '@/components/nuvio/HomeRowsEditor';
 import {
   api, User, StremioAddon, NuvioProfile, NuvioCollection, NuvioCollectionFolder, NuvioCatalogSource,
 } from '@/lib/api';
@@ -28,6 +29,7 @@ import {
   DocumentDuplicateIcon, PhotoIcon, ExclamationTriangleIcon, MapPinIcon,
   EllipsisVerticalIcon, PencilSquareIcon, FilmIcon, TvIcon,
   ArrowDownTrayIcon, ArrowUpTrayIcon, QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon, LinkIcon,
+  Bars3BottomLeftIcon,
 } from '@heroicons/react/24/outline';
 import { MapPinIcon as MapPinIconSolid } from '@heroicons/react/24/solid';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
@@ -1068,7 +1070,7 @@ export default function NuvioCollectionsPage() {
   // Alarms come from the hourly guard pass (server-side): a profile whose
   // collections mass-vanished since the last good snapshot. Restore pushes
   // that snapshot back; Accept adopts the new state as the baseline.
-  type GuardAlarm = { kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; detectedAt: string };
+  type GuardAlarm = { kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; profileName?: string | null; currentCount: number; lastGoodCount: number | null; lastGoodAt: string | null; detectedAt: string; preview: string[]; previewTotal: number };
   const [guardAlarms, setGuardAlarms] = useState<GuardAlarm[]>([]);
   const [guardBusy, setGuardBusy] = useState<string | null>(null);
   const loadGuardAlarms = useCallback(() => {
@@ -1113,7 +1115,12 @@ export default function NuvioCollectionsPage() {
       <p className="text-sm font-semibold text-default mb-1">Something on the account may have been overwritten</p>
       <p className="text-xs text-muted mb-3">
         Another logged-in Nuvio app pushing a stale state erases collections and home-row layouts exactly like
-        this. Restore puts back the last good snapshot; Accept keeps what&apos;s on the account now.
+        this. Restore puts back the last good snapshot; Accept keeps what&apos;s on the account now.{' '}
+        <span className="text-subtle">
+          Nuvio&apos;s backend does not record which app made a change, so SlickSync can tell you what changed and
+          when, but never from which device - if you were rearranging things in the Nuvio app just before the time
+          below, it was probably you.
+        </span>
       </p>
       <div className="space-y-2">
         {guardAlarms.map((a) => {
@@ -1121,10 +1128,24 @@ export default function NuvioCollectionsPage() {
           const noun = a.kind === 'layout' ? 'home rows' : 'collections';
           return (
             <div key={key} className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-default">
-                <span className="font-medium">{a.username || a.userId}</span> · profile {a.profileId}:{' '}
-                {a.lastGoodCount ?? '?'} {noun} → {a.currentCount}
-              </p>
+              <div className="text-xs text-default min-w-0">
+                <p>
+                  {/* The profile's own name, the way the picker below shows
+                      it - the bare index says nothing about which profile
+                      lost collections. Falls back to the index when the
+                      account could not be reached for its profile list. */}
+                  <span className="font-medium">{a.username || a.userId}</span> · {a.profileName || `profile ${a.profileId}`}:{' '}
+                  {a.lastGoodCount ?? '?'} {noun} → {a.currentCount}
+                  <span className="text-muted"> · noticed {new Date(a.detectedAt).toLocaleString()}</span>
+                </p>
+                {a.preview.length > 0 && (
+                  <p className="text-muted mt-0.5 truncate">
+                    Restore brings back: {a.preview.join(', ')}
+                    {a.previewTotal > a.preview.length ? ` and ${a.previewTotal - a.preview.length} more` : ''}
+                    {a.lastGoodAt ? ` (as of ${new Date(a.lastGoodAt).toLocaleString()})` : ''}
+                  </p>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <Button variant="primary" size="sm" isLoading={guardBusy === key} onClick={() => handleGuardRestore(a)}>
                   Restore
@@ -1146,7 +1167,26 @@ export default function NuvioCollectionsPage() {
   // collections) onto another profile, instead of re-dragging every row by
   // hand. Two-step arm on the target since it overwrites that profile's
   // arrangement outright.
+  const [homeRowsEditorOpen, setHomeRowsEditorOpen] = useState(false);
   const [homeRowsMenuOpen, setHomeRowsMenuOpen] = useState(false);
+  const [transferMenuOpen, setTransferMenuOpen] = useState(false);
+  const toolbarMenusRef = useRef<HTMLDivElement | null>(null);
+  // Close on an outside click only. The first version listened for ANY
+  // document click, which closed the menu on its own items too - so arming
+  // a copy target ("Overwrite X's rows?") shut the menu before that label
+  // could ever be seen, and the feature looked like it did nothing.
+  useEffect(() => {
+    if (!homeRowsMenuOpen && !transferMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (target && toolbarMenusRef.current?.contains(target)) return;
+      setHomeRowsMenuOpen(false);
+      setTransferMenuOpen(false);
+      setHomeRowsArmed(null);
+    };
+    const id = setTimeout(() => document.addEventListener('mousedown', onDown), 0);
+    return () => { clearTimeout(id); document.removeEventListener('mousedown', onDown); };
+  }, [homeRowsMenuOpen, transferMenuOpen]);
   const [homeRowsArmed, setHomeRowsArmed] = useState<number | null>(null);
   const [homeRowsBusy, setHomeRowsBusy] = useState(false);
   const copyHomeRows = async (targetProfileIndex: number) => {
@@ -1304,7 +1344,21 @@ export default function NuvioCollectionsPage() {
             </Card>
           )}
 
-          {selectedProfileIndex !== null && (
+          {/* Home-row editing is a VIEW on this page, not a dialog - the
+              same account -> profile -> content progression the collections
+              flow already uses, so it inherits the page's header, profile
+              strip and back behaviour instead of stacking a modal over
+              them (user's call). */}
+          {selectedProfileIndex !== null && homeRowsEditorOpen && selectedUserId && (
+            <HomeRowsEditor
+              userId={selectedUserId}
+              profileId={selectedProfileIndex}
+              profileName={profiles.find((p) => p.profile_index === selectedProfileIndex)?.name || `Profile ${selectedProfileIndex}`}
+              onDone={() => setHomeRowsEditorOpen(false)}
+            />
+          )}
+
+          {selectedProfileIndex !== null && !homeRowsEditorOpen && (
             collectionsLoading ? (
               <div className="space-y-3">
                 {[...Array(3)].map((_, i) => <div key={i} className="h-16 rounded-xl bg-surface-hover animate-pulse" />)}
@@ -1342,61 +1396,104 @@ export default function NuvioCollectionsPage() {
                         e.target.value = '';
                       }}
                     />
-                    <Button variant="ghost" size="sm" leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />} onClick={() => importFileInputRef.current?.click()} title="Import collections from a JSON file - stages them into your draft for review before saving">
-                      Import
-                    </Button>
-                    <Button variant="ghost" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} onClick={exportCollectionsJson} disabled={collections.length === 0} title="Download this profile's collections as JSON">
-                      Export
-                    </Button>
-                    {/* Share codes sit beside the JSON file flow, not
-                        instead of it: a file is right for backups, a code
-                        is right for handing a layout to someone in chat. */}
-                    <Button variant="ghost" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={() => setShowPasteCode(true)} title="Paste a collections share code - stages it into your draft for review before saving">
-                      Paste code
-                    </Button>
-                    <Button variant="ghost" size="sm" leftIcon={<LinkIcon className="w-4 h-4" />} onClick={openShareCode} disabled={collections.length === 0} title="Turn collections into a copy-paste share code - pick which ones in the dialog">
-                      Share code
-                    </Button>
-                    <button
-                      type="button"
-                      onClick={() => setImportExportInfoOpen(true)}
-                      className="p-1.5 rounded-lg text-primary hover:text-default hover:bg-surface-hover transition-colors"
-                      style={{ boxShadow: '0 0 0 1px color-mix(in srgb, var(--color-primary) 45%, transparent), 0 0 10px -1px var(--color-primary)' }}
-                      title="Where do I use this JSON?"
-                    >
-                      <QuestionMarkCircleIcon className="w-4 h-4" />
-                    </button>
-                    {otherProfiles.length > 0 && (
-                      <div className="relative">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => { setHomeRowsMenuOpen((v) => !v); setHomeRowsArmed(null); }}
-                          title="Copy this profile's home-screen row arrangement (order, renames, hidden rows) onto another profile"
+                    <div ref={toolbarMenusRef} className="flex items-center gap-2">
+                    {/* Nine separate controls had accumulated here (user
+                        feedback). The related ones now live behind two
+                        menus - everything that moves a layout in or out of
+                        this profile under "Transfer", everything about the
+                        home-screen rows under "Home rows" - leaving the two
+                        genuinely primary actions visible. */}
+                    <div className="relative">
+                      <Button variant="ghost" size="sm" leftIcon={<ArrowUpTrayIcon className="w-4 h-4" />} onClick={() => { setTransferMenuOpen((v) => !v); setHomeRowsMenuOpen(false); }}>
+                        Transfer
+                      </Button>
+                      {transferMenuOpen && (
+                        <div className="absolute right-0 top-full mt-2 z-20 rounded-2xl p-1.5 min-w-[240px]" style={{ background: 'linear-gradient(180deg, rgba(12,8,4,0.98), rgba(24,14,4,0.98))', border: '1.5px solid rgba(255,152,0,0.55)', boxShadow: '0 12px 32px -8px rgba(0,0,0,0.8), 0 0 20px -6px rgba(255,152,0,0.45)' }}>
+                          <p className="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(255,152,0,0.75)' }}>As a file</p>
+                          <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); importFileInputRef.current?.click(); }}>
+                            Import from JSON…
+                          </button>
+                          <button type="button" disabled={collections.length === 0} className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 disabled:opacity-40" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); exportCollectionsJson(); }}>
+                            Export as JSON
+                          </button>
+                          <p className="px-3 pt-2 pb-1 mt-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(255,152,0,0.75)' }}>As a share code</p>
+                          <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); setShowPasteCode(true); }}>
+                            Paste a code…
+                          </button>
+                          <button type="button" disabled={collections.length === 0} className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10 disabled:opacity-40" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setTransferMenuOpen(false); openShareCode(); }}>
+                            Create a code…
+                          </button>
+                          <button type="button" className="w-full text-left px-3 py-2 mt-1 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(147,197,253)' }} onClick={() => { setTransferMenuOpen(false); setImportExportInfoOpen(true); }}>
+                            Where do I use these?
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="relative">
+                      {/* Given the same lockup treatment as the Nuvio
+                          Collections pill on the Catalogs page (icon chip +
+                          wordmark, Nuvio's own two-tone identity rather than
+                          the generic palette): this edits a connected Nuvio
+                          account's real home screen, and as a plain ghost
+                          button it read as an afterthought - same feedback
+                          that pill was built from. */}
+                      <button
+                        type="button"
+                        onClick={() => { setHomeRowsMenuOpen((v) => !v); setTransferMenuOpen(false); setHomeRowsArmed(null); }}
+                        className="flex items-center gap-2 pl-1.5 pr-4 py-1.5 rounded-full transition-transform hover:scale-105"
+                        style={{
+                          background: 'linear-gradient(180deg, rgba(12,8,4,0.92), rgba(24,14,4,0.92))',
+                          border: '1.5px solid rgba(255,152,0,0.55)',
+                          boxShadow: '0 0 20px -4px rgba(255,152,0,0.45)',
+                        }}
+                        title="Reorder, rename or hide this profile's Nuvio home-screen rows"
+                      >
+                        <span
+                          className="flex items-center justify-center rounded-full shrink-0"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            background: 'linear-gradient(135deg, #2E9FE0 0%, #6C5CE7 55%, #C24FE0 100%)',
+                          }}
                         >
-                          Copy home rows
-                        </Button>
-                        {homeRowsMenuOpen && (
-                          <div className="absolute right-0 top-full mt-1 z-20 rounded-xl border p-1 min-w-[180px]" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-surface-border)' }}>
-                            <p className="px-2 py-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--color-text-muted)' }}>Overwrite which profile?</p>
-                            {otherProfiles.map((p) => (
-                              <button
-                                key={p.profile_index}
-                                type="button"
-                                disabled={homeRowsBusy}
-                                onClick={() => copyHomeRows(p.profile_index)}
-                                className="w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors hover:bg-surface-hover"
-                                style={{ color: homeRowsArmed === p.profile_index ? 'var(--color-error)' : 'var(--color-text)' }}
-                              >
-                                {homeRowsArmed === p.profile_index
-                                  ? `Overwrite ${p.name || `Profile ${p.profile_index}`}'s rows?`
-                                  : (p.name || `Profile ${p.profile_index}`)}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          <Bars3BottomLeftIcon className="w-4 h-4 text-white" />
+                        </span>
+                        <span className="font-display font-bold text-sm tracking-tight" style={{ color: 'rgb(147, 197, 253)' }}>
+                          Home rows
+                        </span>
+                      </button>
+                      {homeRowsMenuOpen && (
+                        <div className="absolute right-0 top-full mt-2 z-20 rounded-2xl p-1.5 min-w-[240px]" style={{ background: 'linear-gradient(180deg, rgba(12,8,4,0.98), rgba(24,14,4,0.98))', border: '1.5px solid rgba(255,152,0,0.55)', boxShadow: '0 12px 32px -8px rgba(0,0,0,0.8), 0 0 20px -6px rgba(255,152,0,0.45)' }}>
+                          <button type="button" className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10" style={{ color: 'rgb(226,232,240)' }} onClick={() => { setHomeRowsMenuOpen(false); setHomeRowsEditorOpen(true); }}>
+                            Edit this profile&apos;s rows…
+                          </button>
+                          {otherProfiles.length > 0 && (
+                            <>
+                              <p className="px-3 pt-2 pb-1 mt-1 text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'rgba(255,152,0,0.75)' }}>Copy rows onto…</p>
+                              {otherProfiles.map((p) => (
+                                <button
+                                  key={p.profile_index}
+                                  type="button"
+                                  disabled={homeRowsBusy}
+                                  onClick={() => copyHomeRows(p.profile_index)}
+                                  className="w-full text-left px-3 py-2 rounded-xl text-xs transition-colors hover:bg-white/10"
+                                  style={homeRowsArmed === p.profile_index
+                                    ? { color: '#fff', background: 'rgba(220,38,38,0.75)' }
+                                    : { color: 'rgb(226,232,240)' }}
+                                >
+                                  {homeRowsBusy && homeRowsArmed === null
+                                    ? 'Copying...'
+                                    : homeRowsArmed === p.profile_index
+                                      ? `Click again to overwrite ${p.name || `Profile ${p.profile_index}`}`
+                                      : (p.name || `Profile ${p.profile_index}`)}
+                                </button>
+                              ))}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    </div>
                     <Button variant="ghost" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={() => setTemplatesOpen(true)}>
                       Use a template
                     </Button>

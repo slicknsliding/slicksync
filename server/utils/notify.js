@@ -51,7 +51,11 @@ async function postDiscord(webhookUrl, content, options = {}) {
 const metadataCache = new Map()
 const METADATA_CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 
-async function fetchMetadata(itemId, itemType, videoId, omdbApiKey) {
+// omdbOpts is forwarded to fetchOmdbRatings: the notification path passes
+// { background: true, ... } so quota autopilot can stand those lookups down
+// near the daily cap, while the foreground media-details endpoint (which
+// also calls this) passes nothing and always fetches.
+async function fetchMetadata(itemId, itemType, videoId, omdbApiKey, omdbOpts) {
   if (!itemId) return null
 
   const cacheKey = `${itemId}|${itemType}|${videoId || ''}`
@@ -294,7 +298,7 @@ async function fetchMetadata(itemId, itemType, videoId, omdbApiKey) {
           result.boxOffice = null
           result.rated = null
           if (result.imdb_id) {
-            const omdbRatings = await fetchOmdbRatings(result.imdb_id, omdbApiKey)
+            const omdbRatings = await fetchOmdbRatings(result.imdb_id, omdbApiKey, omdbOpts)
             if (omdbRatings) {
               result.rottenTomatoes = omdbRatings.rottenTomatoes
               result.metacritic = omdbRatings.metacritic
@@ -326,6 +330,11 @@ async function sendActivityNotification(webhookUrl, activities, prisma, accountI
   try {
     const { resolveOmdbKeyForAccount } = require('./listImport')
     const omdbApiKey = await resolveOmdbKeyForAccount(prisma, accountId)
+    // Decorating a notification is the definition of work nobody is waiting
+    // on, so it is the one OMDb consumer quota autopilot may stand down.
+    // (Content-rating checks deliberately are NOT - deferring those would
+    // let unrated titles past an enforced kid-safe list to save quota.)
+    const autopilotOpts = await require('./omdb').backgroundOmdbOpts(prisma, accountId)
     // Send one embed per activity (one notification per item)
     for (const activity of activities) {
       const user = activity.user
@@ -345,7 +354,7 @@ async function sendActivityNotification(webhookUrl, activities, prisma, accountI
 
       // Fetch metadata from Cinemeta API (description, cast, episode info)
       // Use video_id if available (it already contains season:episode), otherwise use _id with season/episode
-      const metadata = await fetchMetadata(item._id, item.type, item.video_id, omdbApiKey)
+      const metadata = await fetchMetadata(item._id, item.type, item.video_id, omdbApiKey, autopilotOpts)
 
       const fields = []
 

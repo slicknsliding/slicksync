@@ -127,6 +127,14 @@ app.set('trust proxy', 1);
 // Use helper-provided getAccountId (account scoping rules centralized)
 const getAccountId = getAccountIdHelper
 
+// Conditional GETs: Express already computes a weak ETag for JSON responses,
+// so a repeat fetch of unchanged data can answer 304 with no body at all
+// instead of re-sending (and re-compressing) the same payload. Off by
+// default in Express only for the strong/weak choice - the header itself is
+// on, so this is really about making the freshness contract explicit and
+// keeping it that way if a future default changes.
+app.set('etag', 'weak');
+
 // Response compression - JSON payloads (users, history, discover) shrink
 // several-fold over the wire, which is most of what a phone on cell data
 // ever downloads from here. The default filter already skips content types
@@ -211,6 +219,8 @@ app.use('/api/superadmin/login', authLimiter);
 // per guess, but that's nothing without a hard cap on attempts); same
 // 20-req/15min throttle as the credential checks above.
 app.use('/api/auth/verify-2fa', authLimiter);
+app.use('/api/auth/passkey/verify', authLimiter);
+app.use('/api/public-auth/passkey/verify', authLimiter);
 app.use('/api/public-auth/verify-2fa', authLimiter);
 
 // Higher-frequency limiter for OAuth polling (device-code flow polls every few seconds)
@@ -339,6 +349,9 @@ app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));
 app.use('/api/automation', automationRouter({ prisma, getAccountId }));
 app.use('/api/watch-together', require('./routes/watchTogether')({ prisma, getAccountId }));
 app.use('/api/settings', settingsRouter({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUrl, getAccountId }));
+// Passkeys: managing them needs a session (this router), signing in with one
+// does not and lives in publicAuth.
+app.use('/api/passkeys', require('./routes/passkeys')({ prisma, getAccountId }));
 app.use('/api/push', pushRouter({ prisma, getAccountId }));
 app.use('/api/watchlist', watchlistRouter({ prisma, getAccountId }));
 // Discover proxies to Cinemeta on every single request (browse/search/
@@ -357,7 +370,7 @@ if (INSTANCE_TYPE === 'public') {
   })
   app.use('/api/discover', discoverLimiter)
 }
-app.use('/api/discover', discoverRouter({ prisma, getAccountId }));
+app.use('/api/discover', discoverRouter({ prisma, getAccountId, decrypt }));
 app.use('/api/lists', listsRouter({ prisma, getAccountId, decrypt }));
 app.use('/api/federation', require('./routes/federation')({ prisma }));
 app.use('/api/health', healthRouter({ prisma, getAccountId, INSTANCE_TYPE }));
@@ -367,6 +380,12 @@ app.use('/api/poster', postersRouter({ prisma, getAccountId }));
 // route's own header for how it relates to /api/poster above.
 app.use('/api/img', require('./routes/imageCache')());
 app.use('/api/qr', require('./routes/qr')());
+// Anime metadata (AniList) - key-free and strictly additive; see the
+// route's own header for why anime needs a source beyond Cinemeta.
+app.use('/api/anime', require('./routes/anime')({ getAccountId }));
+// Follow a person or a show and be told when there's news - see
+// utils/followWatch.js. Muting is part of the contract, not an extra.
+app.use('/api/follows', require('./routes/follows')({ prisma, getAccountId }));
 // Live-update stream (SSE) - tells connected clients "refetch now" the
 // moment something changes, instead of waiting out their poll interval.
 // See utils/liveEvents.js for why it carries types only, never data.
@@ -521,6 +540,15 @@ async function bootstrap() {
       console.error('⚠️ Failed to initialize activity monitor:', err)
     }
 
+    // Keep Discover's own catalogs warm. Six small requests on a timer, so
+    // opening Discover reads them out of memory instead of waiting on
+    // Cinemeta - see utils/discover.js.
+    try {
+      require('./utils/discover').scheduleDiscoverWarm()
+    } catch (err) {
+      console.error('⚠️ Failed to initialize Discover pre-warm:', err)
+    }
+
     // Schedule proxy stream monitor ("Now Playing" via AIOStreams proxy stats)
     try {
       const { scheduleProxyStreamMonitor } = require('./utils/proxyStreamMonitor')
@@ -642,6 +670,25 @@ async function bootstrap() {
       scheduleDbMaintenance(prisma)
     } catch (err) {
       console.error('⚠️ Failed to initialize DB maintenance scheduler:', err)
+    }
+
+    // Schedule the follow sweep (people's new releases + show renewals),
+    // twice a day - see utils/followWatch.js for why that cadence.
+    try {
+      const { scheduleFollowWatch } = require('./utils/followWatch')
+      const { resolveTmdbKeyForAccount } = require('./utils/listImport')
+      scheduleFollowWatch(prisma, { resolveTmdbKeyForAccount })
+    } catch (err) {
+      console.error('⚠️ Failed to initialize follow watch:', err)
+    }
+
+    // Schedule full-data backups (opt-in database snapshots - the only
+    // backup lane that carries watch history; see utils/dataBackup.js).
+    try {
+      const { scheduleDataBackups } = require('./utils/dataBackup')
+      scheduleDataBackups(prisma)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize data backup scheduler:', err)
     }
 
     // Schedule the Collections Guard (hourly snapshots of every Nuvio

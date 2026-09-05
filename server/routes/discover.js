@@ -37,7 +37,7 @@ async function enhanceRealMatchReasons(prisma, accountId, rows) {
 // proxy to Cinemeta; the /recommendations endpoint added below is the one
 // account-scoped read (reads watch history to seed suggestions), so this
 // router now takes prisma + getAccountId.
-module.exports = ({ prisma, getAccountId } = {}) => {
+module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
   const router = express.Router();
 
   // GET /api/discover/browse?type=movie|series&catalog=top|year|imdbRating&genre=X&skip=N
@@ -811,6 +811,63 @@ module.exports = ({ prisma, getAccountId } = {}) => {
     const { resolveKeyFromSettings } = require('../utils/listImport')
     return resolveKeyFromSettings(prisma, getAccountId, req, 'tmdbApiKey', 'TMDB_API_KEY')
   }
+
+  // GET /api/discover/local-index - the household's OWN titles (watchlist +
+  // recently watched), id/name/type/poster only. Fetched once when Discover
+  // mounts so typing can match your own stuff with no round-trip at all,
+  // while the network search is still in flight.
+  //
+  // Bounded on purpose: a long-lived instance has thousands of history rows,
+  // and shipping all of them to make search feel fast would be its own kind
+  // of slow. Most-recent-first, capped, deduped by id.
+  router.get('/local-index', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const LIMIT = 400
+      const [watchlist, movies, episodes] = await Promise.all([
+        prisma.watchlistItem.findMany({ where: { accountId }, take: LIMIT, orderBy: { addedAt: 'desc' } }),
+        prisma.movieWatchHistory.findMany({
+          where: { accountId }, take: LIMIT, orderBy: { watchedAt: 'desc' },
+          select: { itemId: true, itemName: true, poster: true },
+        }),
+        prisma.episodeWatchHistory.findMany({
+          where: { accountId }, take: LIMIT, orderBy: { watchedAt: 'desc' },
+          select: { showId: true, showName: true, poster: true },
+        }),
+      ])
+      const byId = new Map()
+      const add = (id, name, type, poster) => {
+        if (!id || !name || byId.has(id)) return
+        byId.set(id, { id, name, type, poster: poster || null })
+      }
+      for (const w of watchlist) add(w.itemId, w.name, w.itemType === 'series' ? 'series' : 'movie', w.poster)
+      for (const m of movies) add(m.itemId, m.itemName, 'movie', m.poster)
+      for (const e of episodes) add(e.showId, e.showName, 'series', e.poster)
+      res.json({ items: [...byId.values()].slice(0, 800) })
+    } catch (e) {
+      // Instant matches are an accelerant - failing here just means search
+      // behaves exactly as it always did.
+      res.json({ items: [] })
+    }
+  })
+
+  // POST /api/discover/describe - tip-of-the-tongue search. The model only
+  // ever NAMES candidates; every name is then verified against TMDb, so a
+  // hallucinated title fails resolution and never reaches the user rather
+  // than being shown with invented metadata. See utils/describeSearch.js.
+  router.post('/describe', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const { searchByDescription } = require('../utils/describeSearch')
+      const tmdbKey = await resolveTmdbKey(req)
+      const result = await searchByDescription(prisma, accountId, decrypt, req.body?.description, tmdbKey)
+      res.json(result)
+    } catch (e) {
+      res.status(400).json({ error: e?.message || 'Could not search by description' })
+    }
+  })
 
   // GET /api/discover/person/:id - a TMDb person's film/TV credits, newest
   // first, deduped, with poster + year + role. tmdbId/mediaType are returned

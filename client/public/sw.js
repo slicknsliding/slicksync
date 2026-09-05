@@ -9,18 +9,25 @@
  * - /_next/static/* - cache-first, forever. Next content-hashes these
  *   filenames, so a cached entry can never be wrong, only unused. This is
  *   the bulk of "instant open": megabytes of JS/CSS served from disk.
- * - Navigation documents - network-first with a short timeout, falling
- *   back to the last cached copy of that page's HTML. Normal loads still
- *   always get fresh HTML (which references the newest hashed assets);
- *   the cached copy only ever serves when the network is slow/absent,
- *   where a slightly stale shell beats a white screen.
+ * - Navigation documents - network-first, falling back to the last cached
+ *   copy of that page's HTML ONLY when the network actually fails. It used
+ *   to fall back after a 3-second timeout too, which turned out to be a way
+ *   to break a working app: a cached shell references the hashed asset
+ *   filenames of the build it was cached from, and a deploy replaces those,
+ *   so a merely slow connection could hand back a shell whose scripts now
+ *   404 on the server. Offline gets a stale shell; slow just waits.
  *
  * Everything else (API calls, images, external hosts) falls through to the
  * network untouched. */
 
-const STATIC_CACHE = 'slicksync-static-v1';
-const PAGES_CACHE = 'slicksync-pages-v1';
-const NAV_TIMEOUT_MS = 3000;
+// Bump these names to force every installed client to drop what it has
+// cached: the activate handler below deletes any cache whose name is not
+// one of these two. Hashed filenames mean a cached asset can never be
+// WRONG, but a navigation served from the pages cache (which only happens
+// when the network is slow) hands back HTML that points at an older build's
+// hashes - and those are cached forever. One bump clears that out.
+const STATIC_CACHE = 'slicksync-static-v2';
+const PAGES_CACHE = 'slicksync-pages-v2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -49,6 +56,13 @@ self.addEventListener('fetch', (event) => {
       if (hit) return hit;
       const res = await fetch(req);
       if (res.ok) cache.put(req, res.clone());
+      // A hashed asset that the server no longer has means this page came
+      // from a build that is gone - the one way a cached shell can leave
+      // someone stuck. Drop the cached pages so the next navigation is
+      // fetched fresh instead of rebuilding the same broken combination.
+      if (res.status === 404) {
+        caches.delete(PAGES_CACHE).catch(() => {});
+      }
       return res;
     })());
     return;
@@ -58,10 +72,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith((async () => {
       const cache = await caches.open(PAGES_CACHE);
       try {
-        const res = await Promise.race([
-          fetch(req),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('nav timeout')), NAV_TIMEOUT_MS)),
-        ]);
+        // No timeout race here on purpose - see the note at the top of this
+        // file. Waiting on a slow network is correct; substituting a shell
+        // from an older build is not.
+        const res = await fetch(req);
         if (res.ok) cache.put(req, res.clone());
         return res;
       } catch {

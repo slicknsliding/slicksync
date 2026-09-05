@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, memo } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 import { RatingBadges } from './RatingBadges';
 import { ContextMenu, useContextMenu } from './ContextMenu';
 import { CatalogPickerMenu } from './AddToListButton';
-import { RatingsBatchEntry } from '@/lib/api';
+import { api, RatingsBatchEntry } from '@/lib/api';
 import { useLongPress } from '@/lib/hooks/useLongPress';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
-import { posterUrl, isRpdbPoster } from '@/lib/posterUrl';
+import { posterUrl, posterSrcSet, isRpdbPoster } from '@/lib/posterUrl';
 import {
   FilmIcon, TvIcon, CheckBadgeIcon, BookmarkIcon as BookmarkOutlineIcon,
   XCircleIcon, EyeIcon, EyeSlashIcon, HandThumbDownIcon, RectangleStackIcon, TrashIcon,
@@ -100,6 +100,10 @@ export const PosterCard = memo(function PosterCard({
   focusable = false,
 }: PosterCardProps) {
   const [imageError, setImageError] = useState(false);
+  // Timer for the hover prefetch below; cleared on leave and on unmount so
+  // a grid that re-renders mid-hover cannot leave one running.
+  const prefetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (prefetchTimer.current) clearTimeout(prefetchTimer.current); }, []);
   const { rpdbEnabled, enablePosterRatings } = usePersonalFeatures();
   // Right-click menu's "Add to Catalogs" swaps the menu's own content to the
   // catalog picker in place (single-panel nav with a Back row) rather than
@@ -142,6 +146,20 @@ export const PosterCard = memo(function PosterCard({
         handleContextMenu(e);
         onMenuOpenChange?.(true, menuKey ?? item.id);
       }}
+      // Hovering a poster starts its detail fetch, so the click that
+      // usually follows opens on content instead of a spinner. Mouse only
+      // and after a short pause: sweeping the pointer across a grid on the
+      // way somewhere else is not interest, and on touch there is no hover
+      // at all - firing there would spend someone's data on titles they
+      // only scrolled past.
+      onPointerEnter={(e) => {
+        if (e.pointerType !== 'mouse') return;
+        if (prefetchTimer.current) clearTimeout(prefetchTimer.current);
+        prefetchTimer.current = setTimeout(() => { api.prefetchMediaDetails(item.id, item.type); }, 140);
+      }}
+      onPointerLeave={() => {
+        if (prefetchTimer.current) { clearTimeout(prefetchTimer.current); prefetchTimer.current = null; }
+      }}
       {...longPress}
     >
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl">
@@ -149,6 +167,13 @@ export const PosterCard = memo(function PosterCard({
           <>
             <img
               src={posterUrl(item, rpdbEnabled)}
+              // Lets the browser take the 154px file where a card renders
+              // small (most phone grids) instead of always the 342 - fewer
+              // bytes and less decode work per scroll, which is a real part
+              // of scroll cost on phones. `sizes` describes the card's own
+              // rendered width at each breakpoint, matching the grid.
+              srcSet={posterSrcSet(item, rpdbEnabled)}
+              sizes="(max-width: 640px) 33vw, (max-width: 1024px) 22vw, 170px"
               alt={item.name}
               loading="lazy"
               decoding="async"

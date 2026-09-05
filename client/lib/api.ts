@@ -19,6 +19,15 @@ function getCsrfToken(): string | null {
   return find('__Host-sfm_csrf') || find('sfm_csrf') || null;
 }
 
+// Detail lookups for the poster-click modal, kept briefly so a hover can
+// pay for the click that follows (see prefetchMediaDetails). Short on
+// purpose: this is metadata that can change (ratings, episode lists), and
+// the window only has to cover the distance between hovering a poster and
+// opening it.
+const MEDIA_DETAILS_TTL_MS = 90 * 1000;
+const MEDIA_DETAILS_MAX = 60;
+const mediaDetailsCache = new Map<string, { at: number; promise: Promise<MediaDetails | null> }>();
+
 class ApiClient {
   private token: string | null = null;
   // Dedup + short-window cache for GETs. Several unrelated pages/components
@@ -586,7 +595,7 @@ class ApiClient {
 
   /** Collections Guard: profiles whose Nuvio collections or home-row layout look externally overwritten. */
   async getCollectionsGuardAlarms() {
-    return this.fetch<{ alarms: Array<{ kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; lastGoodAt: string | null; detectedAt: string }> }>(
+    return this.fetch<{ alarms: Array<{ kind: 'collections' | 'layout'; userId: string; username: string | null; profileId: number; currentCount: number; lastGoodCount: number | null; lastGoodAt: string | null; detectedAt: string; preview: string[]; previewTotal: number }> }>(
       '/users/collections-guard/alarms'
     );
   }
@@ -601,6 +610,88 @@ class ApiClient {
     return this.fetch<{ success: boolean; acceptedCount?: number; acceptedItems?: number }>('/users/collections-guard/accept', {
       method: 'POST', body: JSON.stringify({ userId, profileId, kind }),
     });
+  }
+
+  /** Smart Catalogs: store the criteria a catalog keeps re-evaluating (null clears it). */
+  async setSmartRule(listId: string, rule: SmartCatalogRule | null, autoRefresh = true) {
+    return this.fetch<{ success: boolean; rule: SmartCatalogRule | null; description: string }>(
+      `/lists/${encodeURIComponent(listId)}/smart-rule`,
+      { method: 'PUT', body: JSON.stringify({ rule, autoRefresh }) }
+    );
+  }
+  async refreshSmartCatalog(listId: string) {
+    return this.fetch<{ success: boolean; id: string; name: string; count: number }>(
+      `/lists/${encodeURIComponent(listId)}/smart-refresh`, { method: 'POST' }
+    );
+  }
+
+  /** The household's own titles (watchlist + recent history), for instant local matches. */
+  async getLocalIndex() {
+    return this.fetch<{ items: Array<{ id: string; name: string; type: 'movie' | 'series'; poster: string | null }> }>('/discover/local-index');
+  }
+
+  /** A series' episode list grouped by season, with watched state. Lazy -
+   *  the detail modal only asks when someone expands the season list. */
+  async getMediaEpisodes(itemId: string) {
+    return this.fetch<{ seasons: SeriesSeason[] }>(`/users/media-episodes?itemId=${encodeURIComponent(itemId)}`);
+  }
+
+  /** Tip-of-the-tongue search: a plot description -> real, TMDb-verified titles. */
+  async searchByDescription(description: string, type?: 'movie' | 'series') {
+    return this.fetch<{ items: DiscoverItem[]; candidates: number; filteredByType: 'movie' | 'series' | null }>('/discover/describe', {
+      method: 'POST', body: JSON.stringify({ description, type }),
+    });
+  }
+
+  /** Followed people and shows, muted ones included. */
+  async getFollows() {
+    return this.fetch<FollowedSubject[]>('/follows');
+  }
+  /** Follow a person (TMDb id) or a show (tt id); following again un-mutes. */
+  async followSubject(kind: 'person' | 'show', subjectId: string, name: string, poster?: string | null) {
+    return this.fetch<FollowedSubject>('/follows', {
+      method: 'POST', body: JSON.stringify({ kind, subjectId, name, poster }),
+    });
+  }
+  async muteFollow(id: string, muted: boolean) {
+    return this.fetch<{ success: boolean; muted: boolean }>(`/follows/${encodeURIComponent(id)}/mute`, {
+      method: 'PUT', body: JSON.stringify({ muted }),
+    });
+  }
+  async unfollowSubject(id: string) {
+    return this.fetch<{ success: boolean }>(`/follows/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  /** This season's airing anime (AniList, no key required). */
+  async getSeasonalAnime() {
+    return this.fetch<{ items: SeasonalAnime[]; unavailable?: boolean; reason?: string | null }>('/anime/seasonal');
+  }
+  /** Attaches AniList data (episode count, airing countdown) to a known title. */
+  async lookupAnime(title: string, year?: number) {
+    const params = new URLSearchParams({ title });
+    if (year) params.set('year', String(year));
+    return this.fetch<{ found: boolean; anilistId?: number; malId?: number | null; name?: string; episodes?: number | null; status?: string | null; nextEpisode?: { episode: number; airingAt: string; label: string } | null; siteUrl?: string | null }>(
+      `/anime/lookup?${params.toString()}`
+    );
+  }
+  /** Franchise watch order - main line, side stories and movies kept apart. */
+  async getAnimeWatchOrder(anilistId: number) {
+    return this.fetch<{ mainLine: AnimeEntry[]; sideStories: AnimeEntry[]; movies: AnimeEntry[] }>(`/anime/${anilistId}/watch-order`);
+  }
+
+  /** The profile's home-screen row arrangement, labelled with real addon/catalog names. */
+  async getNuvioHomeLayout(userId: string, profileId: number) {
+    return this.fetch<{ items: NuvioHomeRow[]; unarranged: NuvioHomeRow[]; sourcePlatform: string | null; buckets: string[] }>(
+      `/users/${encodeURIComponent(userId)}/home-layout/${profileId}`
+    );
+  }
+
+  /** Writes the arrangement back - array order becomes the on-device row order. */
+  async saveNuvioHomeLayout(userId: string, profileId: number, items: NuvioHomeRow[]) {
+    return this.fetch<{ success: boolean; rows: number; buckets: number }>(
+      `/users/${encodeURIComponent(userId)}/home-layout/${profileId}`,
+      { method: 'PUT', body: JSON.stringify({ items }) }
+    );
   }
 
   /** Copy one Nuvio profile's whole home-row arrangement onto another profile (overwrites the target's). */
@@ -796,6 +887,28 @@ class ApiClient {
 
   async removeUserFromGroup(groupId: string, userId: string) {
     return this.fetch(`/groups/${groupId}/users/${userId}`, { method: 'DELETE' });
+  }
+
+  // Passkeys (WebAuthn). Registering one always requires an existing
+  // session; signing in with one is in publicAuth on the server side and is
+  // called straight from the login page, not through here.
+  async getPasskeys() {
+    return this.fetch<{ passkeys: PasskeyRow[]; currentRpId: string | null }>('/passkeys');
+  }
+
+  async getPasskeyRegistrationOptions() {
+    return this.fetch<any>('/passkeys/register/options', { method: 'POST', body: JSON.stringify({}) });
+  }
+
+  async verifyPasskeyRegistration(credential: unknown, name: string) {
+    return this.fetch<{ success: boolean; passkeys: PasskeyRow[] }>('/passkeys/register/verify', {
+      method: 'POST',
+      body: JSON.stringify({ credential, name }),
+    });
+  }
+
+  async deletePasskey(id: string) {
+    return this.fetch<{ success: boolean; passkeys: PasskeyRow[] }>(`/passkeys/${id}`, { method: 'DELETE' });
   }
 
   // Addons
@@ -1374,6 +1487,37 @@ class ApiClient {
   async testBackupTarget() {
     return this.fetch<{ ok: boolean; location?: string; error?: string }>('/settings/backup-targets/test', { method: 'POST' });
   }
+  /** Full-data backups: real database snapshots, the only lane carrying watch history. */
+  async getDataBackup() {
+    return this.fetch<DataBackupSettings>('/settings/data-backup');
+  }
+  async saveDataBackup(data: Partial<Pick<DataBackupSettings, 'enabled' | 'offsite' | 'frequencyDays' | 'keepLocal'>>) {
+    return this.fetch<DataBackupSettings>('/settings/data-backup', { method: 'PUT', body: JSON.stringify(data) });
+  }
+  async runDataBackup() {
+    return this.fetch<{ filename: string; sizeBytes: number; encrypted: boolean; verified: boolean | null; users: number | null; upload?: { skipped?: string; ok?: boolean } }>(
+      '/settings/data-backup/run', { method: 'POST' }
+    );
+  }
+  async deleteDataSnapshot(filename: string) {
+    return this.fetch<{ success: boolean }>(`/settings/data-backup/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  }
+  /** Downloads a snapshot to disk - it is the file scripts/restore-data-snapshot.js takes. */
+  async downloadDataSnapshot(filename: string) {
+    const response = await fetch(`${API_BASE}/settings/data-backup/${encodeURIComponent(filename)}/download`, {
+      credentials: 'include',
+      headers: this.getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async getDbMaintenance() {
     return this.fetch<DbMaintenanceSettings>('/settings/db-maintenance');
   }
@@ -1719,6 +1863,14 @@ class ApiClient {
     return this.fetch<{ enabled: boolean; manifestUrl: string; autoInstall: boolean }>(
       `/users/${encodeURIComponent(userId)}/trax-addon`,
       { method: 'POST', body: JSON.stringify({ enabled, rotate }) },
+    );
+  }
+
+  /** In-player actions (mark watched / watchlist inside Stremio-Nuvio). */
+  async setTraxInPlayerActions(userId: string, enabled: boolean, inPlayerActions: boolean) {
+    return this.fetch<{ enabled: boolean; manifestUrl: string; autoInstall: boolean }>(
+      `/users/${encodeURIComponent(userId)}/trax-addon`,
+      { method: 'POST', body: JSON.stringify({ enabled, inPlayerActions }) },
     );
   }
 
@@ -2330,6 +2482,13 @@ class ApiClient {
   }
 
   // Personal watchlist — SlickSync's own bookmark list.
+  /** Saves a manual watchlist ranking - array order is the order, first is "up next". */
+  async setWatchlistOrder(itemIds: string[]) {
+    return this.fetch<{ success: boolean; ranked: number }>('/watchlist/order', {
+      method: 'PUT', body: JSON.stringify({ itemIds }),
+    });
+  }
+
   async getWatchlist() {
     return this.fetch<WatchlistItem[]>('/watchlist');
   }
@@ -2740,13 +2899,44 @@ class ApiClient {
   // filename titles have no real IMDb ID to look up, and that's an expected,
   // non-error state the UI should just render an empty state for.
   async getMediaDetails(itemId: string, type: string, videoId?: string | null) {
+    const key = `${itemId}|${type}|${videoId || ''}`;
+    const hit = mediaDetailsCache.get(key);
+    if (hit && Date.now() - hit.at < MEDIA_DETAILS_TTL_MS) return hit.promise;
+
     const params = new URLSearchParams({ itemId, type });
     if (videoId) params.set('videoId', videoId);
-    try {
-      return await this.fetch<MediaDetails>(`/users/media-details?${params.toString()}`);
-    } catch {
-      return null;
+    const promise = this.fetch<MediaDetails>(`/users/media-details?${params.toString()}`).catch(() => null);
+    mediaDetailsCache.set(key, { at: Date.now(), promise });
+    // Oldest-first eviction; Map keeps insertion order. A grid can be
+    // hovered across faster than anyone opens things, so this is bounded
+    // rather than left to grow with the session.
+    if (mediaDetailsCache.size > MEDIA_DETAILS_MAX) {
+      for (const k of mediaDetailsCache.keys()) {
+        mediaDetailsCache.delete(k);
+        if (mediaDetailsCache.size <= MEDIA_DETAILS_MAX) break;
+      }
     }
+    return promise;
+  }
+
+  /**
+   * Starts the detail fetch before it is asked for - called when a pointer
+   * settles on a poster, so the request is already in flight (often already
+   * finished) by the time the click opens the modal. The modal's own
+   * getMediaDetails then hits the same entry instead of starting over, so
+   * the popup opens on content rather than a spinner.
+   *
+   * Deliberately fire-and-forget and deliberately silent: a prefetch that
+   * fails changes nothing, because the real call repeats it after the TTL.
+   * Callers must only fire this for a real mouse - prefetching on touch
+   * would spend someone's data on titles they merely scrolled past.
+   */
+  prefetchMediaDetails(itemId: string, type: string, videoId?: string | null) {
+    if (!itemId || !type) return;
+    const key = `${itemId}|${type}|${videoId || ''}`;
+    const hit = mediaDetailsCache.get(key);
+    if (hit && Date.now() - hit.at < MEDIA_DETAILS_TTL_MS) return;
+    void this.getMediaDetails(itemId, type, videoId);
   }
 
   // Cast/crew deep-dive (optional; needs a TMDb key server-side). Returns a
@@ -2830,6 +3020,8 @@ export interface User {
   providerType?: 'stremio' | 'nuvio';
   /** SlickTrax Addon - per-user Stremio addon toggle + its URL token. */
   traxAddonEnabled?: boolean;
+  /** In-player actions in the SlickTrax addon (opt-in per user). */
+  traxInPlayerActions?: boolean;
   traxToken?: string | null;
   createdAt?: string;
   updatedAt?: string;
@@ -3008,6 +3200,29 @@ export interface BackupTargets {
   webdav: { url: string; username: string; password: string };
   /** Optional - set to encrypt uploads (.enc); empty uploads plain JSON. Comes back masked. */
   encryptPassphrase: string;
+}
+
+export interface DataBackupSnapshot {
+  filename: string;
+  sizeBytes: number;
+  createdAt: string;
+  encrypted: boolean;
+}
+
+export interface DataBackupSettings {
+  available?: boolean;
+  /** True when an off-site passphrase is set - required before snapshots may leave the box. */
+  hasPassphrase?: boolean;
+  enabled: boolean;
+  frequencyDays: number;
+  keepLocal: number;
+  offsite: boolean;
+  lastRunAt: string | null;
+  lastOkAt: string | null;
+  lastError: string | null;
+  lastSizeBytes: number | null;
+  lastVerified: boolean | null;
+  snapshots?: DataBackupSnapshot[];
 }
 
 export interface DbMaintenanceSettings {
@@ -3272,11 +3487,20 @@ export interface SyncSettings {
   /** Key Pool, opt-in: spread requests toward the pool key with the most
    * remaining quota (providers that report usage only - MDBList today). */
   keyPoolQuotaWeighting?: boolean;
+  /** Opt-in: background enrichment stands down past the daily quota threshold. */
+  quotaAutopilot?: boolean;
+  quotaAutopilotPercent?: number;
+  /** Opt-in "Airing this season" anime row in Discover (AniList). */
+  animeSeasonalRow?: boolean;
   /** Key Pool, opt-in: a pool EXTRA failing for 3 straight days is removed
    * from the pool automatically, with one notification. */
   keyPoolAutoRetire?: boolean;
 
   simklClientId?: string;
+  /** Public Trakt list import (client id only - not an account connection). */
+  traktClientId?: string;
+  malClientId?: string;
+  publicBaseUrl?: string;
   /** Self-hosted Nuvio backend URL, e.g. https://backend.example.com. Blank uses api.nuvio.tv. */
   nuvioServerUrl?: string;
   /** Anon key for that backend. Only takes effect alongside nuvioServerUrl. */
@@ -3368,6 +3592,8 @@ export interface WatchlistItem {
   name: string;
   poster: string | null;
   addedAt: string;
+  /** Manual rank; null when never reordered (falls to the newest-first tail). */
+  sortOrder?: number | null;
 }
 
 export interface CustomListItem {
@@ -3419,6 +3645,8 @@ export interface CustomList {
   importSourceUrl: string | null;
   autoRefresh: boolean;
   autoRefreshFrequency: 'daily' | 'weekly';
+  /** Set when this catalog is a Smart Catalog - the stored criteria it re-evaluates. */
+  smartRuleJson?: string | null;
   lastAutoRefreshAt: string | null;
   pinned: boolean;
   // Owner-set opt-in - visible (read-only) to every other account on this
@@ -3609,6 +3837,74 @@ export interface NuvioCollection {
   title: string;
   folders?: NuvioCollectionFolder[];
   [key: string]: any;
+}
+
+export interface SeriesSeason {
+  season: number;
+  watchedCount: number;
+  episodes: Array<{ season: number; episode: number; title: string | null; released: string | null; watched: boolean }>;
+}
+
+export interface SmartCatalogRule {
+  type: 'movie' | 'series' | null;
+  genres: string[];
+  yearFrom: number | null;
+  yearTo: number | null;
+  maxRuntimeMinutes: number | null;
+  keywords: string[];
+  minRating: number | null;
+  /** Excludes anything anyone in the household has already watched. */
+  unwatchedOnly: boolean;
+  limit: number;
+}
+
+export interface FollowedSubject {
+  id: string;
+  kind: 'person' | 'show';
+  subjectId: string;
+  name: string;
+  poster: string | null;
+  muted: boolean;
+  createdAt: string;
+  lastCheckedAt: string | null;
+}
+
+export interface AnimeEntry {
+  anilistId: number;
+  name: string;
+  episodes: number | null;
+  year: number | null;
+  format: string | null;
+}
+
+export interface SeasonalAnime {
+  anilistId: number;
+  name: string;
+  poster: string | null;
+  episodes: number | null;
+  format: string | null;
+  status: string | null;
+  score: number | null;
+  genres: string[];
+  nextEpisode: { episode: number; airingAt: string; label: string } | null;
+  siteUrl: string | null;
+}
+
+/** One row of a Nuvio profile's home screen (server/utils/nuvioHomeLayout.js). */
+export interface NuvioHomeRow {
+  addon_id: string;
+  type: string;
+  catalog_id: string;
+  enabled: boolean;
+  custom_title: string;
+  collection_id: string;
+  is_collection: boolean;
+  /** False for catalogs the saved arrangement has never mentioned. */
+  arranged: boolean;
+  addonName: string;
+  catalogName: string;
+  /** True when the row's addon is no longer installed on the account. */
+  orphaned: boolean;
 }
 
 export interface NuvioCommunityCover {
@@ -3858,6 +4154,14 @@ export interface RatingsBatchEntry {
   imdbRating: string | null;
   rottenTomatoes: string | null;
   metacritic: string | null;
+}
+
+export interface PasskeyRow {
+  id: string;
+  name: string;
+  rpId: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
 }
 
 export interface MediaDetails {

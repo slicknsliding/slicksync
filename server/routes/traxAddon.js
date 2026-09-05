@@ -31,7 +31,7 @@ const express = require('express')
 // never reached the device. A version bump changes the URL, sync sees a
 // different addon (fingerprints canonicalize away query strings but not
 // paths) and replaces it on the account, and the client fetches fresh.
-const TRAX_MANIFEST_VERSION = '1.6.0'
+const TRAX_MANIFEST_VERSION = '1.7.0'
 
 const CACHE_SECONDS = 60 // catalogs recompute cheaply; 60s keeps app scrolling snappy without staleness anyone would notice
 
@@ -100,7 +100,13 @@ function buildTraxManifest(user, lists) {
     name: 'SlickTrax',
     description: `SlickTrax for ${user.username || 'this household'} - Continue Watching, Watchlist and Catalogs, live from SlickSync.`,
     logo: 'https://slicksync.vip/android-chrome-192x192.png',
-    resources: ['catalog'],
+    // The stream resource is opt-in per user: it puts SlickSync ACTIONS
+    // (mark watched / watchlist) in the stream list of a title's page. That
+    // list is where people look for something to play, so filling it with
+    // non-playable rows is a real trade - hence a toggle rather than a
+    // default. Declared only when the user asked for it, so a client never
+    // even requests streams otherwise.
+    resources: user.traxInPlayerActions ? ['catalog', 'stream'] : ['catalog'],
     types: ['movie', 'series'],
     idPrefixes: ['tt'],
     catalogs,
@@ -180,11 +186,18 @@ module.exports = ({ prisma }) => {
       }
 
       if (catalogId === 'slicktrax-watchlist') {
-        const items = await prisma.watchlistItem.findMany({
+        // Honours the manual ranking set in SlickSync (sortOrder ascending,
+        // unranked newest-first behind it), so the row on the device reads
+        // in the order the household actually chose rather than by add date.
+        const all = await prisma.watchlistItem.findMany({
           where: { accountId: user.accountId, itemType: type },
           orderBy: { addedAt: 'desc' },
-          take: 100,
+          take: 200,
         })
+        const items = [
+          ...all.filter((i) => Number.isInteger(i.sortOrder)).sort((a, b) => a.sortOrder - b.sortOrder),
+          ...all.filter((i) => !Number.isInteger(i.sortOrder)),
+        ].slice(0, 100)
         return res.json({ metas: items.filter((i) => /^tt\d+$/.test(i.itemId)).map((i) => metaPreview(i.itemId, type, i.name, proxiedPoster(base, i.poster))) })
       }
 
@@ -207,6 +220,98 @@ module.exports = ({ prisma }) => {
     } catch (e) {
       console.error('[TraxAddon] catalog failed:', e?.message)
       res.status(500).json({ error: 'Internal error' })
+    }
+  })
+
+  // Streams = SlickSync actions on the title page. Stremio renders each with
+  // its name/title and opens externalUrl on tap; that is the only mechanism
+  // the protocol gives an addon for "do a thing" rather than "play a thing",
+  // so the tap lands on a small confirmation page served below.
+  router.get('/:token/stream/:type/:id.json', async (req, res) => {
+    try {
+      const user = await resolveUser(req.params.token)
+      if (!user || !user.traxInPlayerActions) return res.json({ streams: [] })
+      const type = req.params.type === 'series' ? 'series' : 'movie'
+      // Series ids arrive as tt123:1:4 (show:season:episode) - actions apply
+      // to the SHOW, which is what the watchlist and watched state track.
+      const rawId = String(req.params.id || '')
+      const itemId = rawId.split(':')[0]
+      if (!/^tt\d+$/.test(itemId)) return res.json({ streams: [] })
+      const base = requestBase(req)
+      const act = (action) => `${base}/trax/${user.traxToken}/act/${action}/${type}/${itemId}`
+
+      const [watchlisted, watched] = await Promise.all([
+        prisma.watchlistItem.findFirst({ where: { accountId: user.accountId, itemId }, select: { id: true } }),
+        prisma.watchedOverride?.findFirst
+          ? prisma.watchedOverride.findFirst({ where: { accountId: user.accountId, itemId }, select: { id: true } }).catch(() => null)
+          : Promise.resolve(null),
+      ])
+
+      res.json({
+        streams: [
+          {
+            name: 'SlickSync',
+            title: watched ? '✓ Watched - tap to undo' : '✓ Mark as watched',
+            externalUrl: act(watched ? 'unwatch' : 'watch'),
+            behaviorHints: { notWebReady: true },
+          },
+          {
+            name: 'SlickSync',
+            title: watchlisted ? '★ In Watchlist - tap to remove' : '★ Add to Watchlist',
+            externalUrl: act(watchlisted ? 'unwatchlist' : 'watchlist'),
+            behaviorHints: { notWebReady: true },
+          },
+        ],
+      })
+    } catch (e) {
+      console.error('[TraxAddon] stream failed:', e?.message)
+      res.json({ streams: [] })
+    }
+  })
+
+  // Where an in-player action tap lands. Returns a tiny self-explanatory
+  // page rather than JSON, because this opens in the device's browser.
+  router.get('/:token/act/:action/:type/:id', async (req, res) => {
+    const page = (title, detail) => `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#0b0b12;color:#e2e8f0;font:16px system-ui,sans-serif;text-align:center">
+<div style="padding:24px"><div style="font-size:40px;margin-bottom:12px">${title.startsWith('Could') ? '⚠️' : '✅'}</div>
+<div style="font-weight:600;margin-bottom:6px">${title}</div>
+<div style="opacity:.7;font-size:14px">${detail}</div>
+<div style="opacity:.5;font-size:12px;margin-top:18px">You can close this and go back.</div></div></body>`
+
+    try {
+      const user = await resolveUser(req.params.token)
+      if (!user || !user.traxInPlayerActions) return res.status(404).send(page('Could not do that', 'This action link is no longer valid.'))
+      const type = req.params.type === 'series' ? 'series' : 'movie'
+      const itemId = String(req.params.id || '').split(':')[0]
+      if (!/^tt\d+$/.test(itemId)) return res.status(400).send(page('Could not do that', 'That title id was not recognised.'))
+      const action = String(req.params.action)
+
+      if (action === 'watchlist' || action === 'unwatchlist') {
+        if (action === 'unwatchlist') {
+          await prisma.watchlistItem.deleteMany({ where: { accountId: user.accountId, itemId } })
+          return res.send(page('Removed from Watchlist', 'It is no longer on the household watchlist.'))
+        }
+        const { fetchMetadata } = require('../utils/notify')
+        const meta = await fetchMetadata(itemId, type, null, null).catch(() => null)
+        await prisma.watchlistItem.upsert({
+          where: { accountId_itemId: { accountId: user.accountId, itemId } },
+          create: { accountId: user.accountId, itemId, itemType: type, name: meta?.title || itemId, poster: meta?.poster || null },
+          update: {},
+        })
+        return res.send(page('Added to Watchlist', meta?.title || itemId))
+      }
+
+      if (action === 'watch' || action === 'unwatch') {
+        const { setWatchedOverride } = require('../utils/titleFeedback')
+        await setWatchedOverride(prisma, user.accountId, itemId, type, action === 'watch')
+        return res.send(page(action === 'watch' ? 'Marked as watched' : 'Marked as unwatched', 'Watched indicators are updated everywhere.'))
+      }
+
+      return res.status(400).send(page('Could not do that', 'Unknown action.'))
+    } catch (e) {
+      console.error('[TraxAddon] action failed:', e?.message)
+      res.status(500).send(page('Could not do that', e?.message || 'Something went wrong.'))
     }
   })
 

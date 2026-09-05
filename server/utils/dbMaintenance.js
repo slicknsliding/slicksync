@@ -60,11 +60,19 @@ const DEFAULT_SETTINGS = {
   lastNotificationsPruneAt: null,
 }
 
+// Doubles as the "are we on SQLite/private mode" gate (null = Postgres).
+// Handles every file: form Prisma accepts, not just Docker's three-slash one:
+// file:///abs (what scripts/start.sh exports), file:/abs, and the relative
+// file:./data/x that a bare `bun server/index.js` run uses - the old parser
+// mangled the latter two into a path that exists nowhere, which silently
+// disabled the free-space guard below rather than failing loudly.
 function getDbFilePath() {
   const url = process.env.DATABASE_URL || ''
   if (!url.startsWith('file:')) return null
-  const p = url.replace(/^file:\/\/\/?/, '/')
-  return p.startsWith('/') ? p : `/${p}`
+  let p = url.slice('file:'.length).replace(/^\/\/+/, '/')
+  if (!p) return null
+  if (!p.startsWith('/')) p = path.resolve(process.cwd(), p)
+  return p
 }
 
 function getSettings() {

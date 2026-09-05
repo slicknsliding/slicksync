@@ -19,6 +19,52 @@ function setCachedManifest(url, data) {
   _manifestCache.set(url, { data, ts: Date.now() })
 }
 
+const LOCAL_ADDON_URL = 'http://127.0.0.1:11470/local-addon/manifest.json'
+
+/**
+ * Fills the manifest cache for many addons at once, before anything needs
+ * them.
+ *
+ * reloadAddon fetches one manifest at a time, and an Advanced sync reloads
+ * every addon in a group before it pushes anything to anyone - so a group
+ * with 20 addons paid for 20 sequential round trips before the first user
+ * was touched, with the whole sync sitting behind the sum of them. None of
+ * those fetches depend on each other, so this issues them concurrently
+ * first and the sequential reload then finds each manifest already in the
+ * cache it was going to use anyway. Same requests, same 60s TTL, same
+ * data - only the waiting overlaps, so the cost becomes the slowest single
+ * addon rather than the total.
+ *
+ * Nothing here can break a sync: a URL that fails or times out is simply
+ * left uncached, and the reload fetches it properly (and reports its error)
+ * exactly as it does today. Already-cached URLs are skipped, so calling
+ * this twice in quick succession costs nothing.
+ */
+async function prewarmManifests(urls, { concurrency = 6, timeoutMs = 8000 } = {}) {
+  const pending = [...new Set((urls || []).filter((u) => typeof u === 'string' && /^https?:\/\//i.test(u) && u !== LOCAL_ADDON_URL))]
+    .filter((u) => !getCachedManifest(u))
+  if (pending.length === 0) return { warmed: 0, attempted: 0 }
+
+  let warmed = 0
+  let cursor = 0
+  const worker = async () => {
+    while (cursor < pending.length) {
+      const url = pending[cursor++]
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+        if (!res.ok) continue
+        const data = await res.json()
+        if (data && typeof data === 'object') {
+          setCachedManifest(url, data)
+          warmed++
+        }
+      } catch { /* left for the real reload to hit and report */ }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, pending.length) }, worker))
+  return { warmed, attempted: pending.length }
+}
+
 // Shared helper function to reload a single addon
 async function reloadAddon(prisma, getAccountId, addonId, req, { filterManifestByResources, filterManifestByCatalogs, encrypt, decrypt, getDecryptedManifestUrl, manifestHash, silent = false }, autoSelectNewElements = true) {
   // Find the addon (scope to account to avoid cross-account mismatches)
@@ -51,7 +97,7 @@ async function reloadAddon(prisma, getAccountId, addonId, req, { filterManifestB
   }
 
   // Skip reloading for local development addons
-  if (transportUrl === 'http://127.0.0.1:11470/local-addon/manifest.json') {
+  if (transportUrl === LOCAL_ADDON_URL) {
     if (!silent) {
       console.log(`⏭️  Skipping reload for local addon URL: ${transportUrl}`)
     }
@@ -937,13 +983,43 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
 
       const lowerUrl = sanitizedUrl.toLowerCase()
 
-      // Check for duplicate addon name instead of URL
-      const existingByName = await prisma.addon.findFirst({
-        where: {
-          name: name.trim(),
-          accountId: getAccountId(req)
-        }
-      })
+      // A SlickTrax url belongs to ONE user - the token in the path is that
+      // user's feed. Added here it would become a shared addon, and
+      // assigning it to a group would push one person's Continue Watching
+      // and Watchlist onto everyone else's devices. It also would not
+      // survive: sync owns SlickTrax placement per user and drops any trax
+      // url that is not the current one for that user. So this is refused
+      // with the actual way in rather than accepted and then quietly undone
+      // (reported live: "I add it and it never shows up on my user").
+      if (/\/trax\/[a-f0-9]{16,}\//i.test(sanitizedUrl) || /\/trax\/[a-f0-9]{16,}\/manifest\.json$/i.test(sanitizedUrl)) {
+        const traxUser = await prisma.user.findFirst({
+          where: { accountId: getAccountId(req) },
+          select: { id: true, username: true, traxToken: true },
+        }).catch(() => null)
+        return res.status(400).json({
+          message: 'That is a SlickTrax address, which belongs to a single user rather than the shared addon list. Turn it on from that user\'s page (Watch-Tracking Integrations -> SlickTrax Addon -> Enable) and their next sync installs it for them. Adding it here would share one person\'s Continue Watching and Watchlist with everyone in the group.',
+          hint: traxUser?.username ? `Open the user page for ${traxUser.username} and use the SlickTrax Addon row.` : undefined,
+        })
+      }
+
+      // A SlickTrax url belongs to ONE user - the token in the path is that
+      // user's feed. Added here it would become a shared addon, and
+      // assigning it to a group would push one person's Continue Watching
+      // and Watchlist onto everyone else's devices. It also would not
+      // survive: sync owns SlickTrax placement per user and drops any trax
+      // url that is not the current one for that user. So this is refused
+      // with the actual way in rather than accepted and then quietly undone
+      // (reported live: "I add it and it never shows up on my user").
+      if (/\/trax\/[a-f0-9]{16,}\//i.test(sanitizedUrl) || /\/trax\/[a-f0-9]{16,}\/manifest\.json$/i.test(sanitizedUrl)) {
+        const traxUser = await prisma.user.findFirst({
+          where: { accountId: getAccountId(req) },
+          select: { id: true, username: true, traxToken: true },
+        }).catch(() => null)
+        return res.status(400).json({
+          message: 'That is a SlickTrax address, which belongs to a single user rather than the shared addon list. Turn it on from that user\'s page (Watch-Tracking Integrations -> SlickTrax Addon -> Enable) and their next sync installs it for them. Adding it here would share one person\'s Continue Watching and Watchlist with everyone in the group.',
+          hint: traxUser?.username ? `Open the user page for ${traxUser.username} and use the SlickTrax Addon row.` : undefined,
+        })
+      }
 
       // Use provided manifest data if available, otherwise fetch it
       let manifestData = providedManifestData
@@ -981,6 +1057,27 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       }
 
       // Note: we build dbData after we compute filtered/resources/catalogs further below
+
+      // The duplicate check is by name, and the request does not always
+      // carry one. The browser pre-fetches the manifest to fill it in, which
+      // it can only do when the addon's own CORS policy allows it - and a
+      // page served over https cannot fetch an http:// manifest at all. Every
+      // one of those arrived here with no name and died on name.trim(),
+      // giving a 500 that reads as "SlickSync will not let me add this
+      // addon" when the URL is fine and the server fetches it perfectly well
+      // (reported live against a SlickTrax manifest URL). So the name is
+      // settled AFTER the fetch, from the manifest the server just read -
+      // which is the more trustworthy source of the two anyway.
+      const effectiveName = (typeof name === 'string' && name.trim())
+        ? name.trim()
+        : (typeof manifestData?.name === 'string' && manifestData.name.trim() ? manifestData.name.trim() : 'Unknown')
+
+      const existingByName = await prisma.addon.findFirst({
+        where: {
+          name: effectiveName,
+          accountId: getAccountId(req)
+        }
+      })
 
       if (existingByName) {
         if (existingByName.isActive) {
@@ -1157,7 +1254,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
 
       const { buildAddonDbData } = require('../utils/stremio')
       const dbData = buildAddonDbData(req, {
-        name: (name && name.trim()) ? name.trim() : (manifestData?.name || 'Unknown'),
+        name: effectiveName,
         description,
         sanitizedUrl,
         manifestObj: manifestData,
@@ -2629,3 +2726,4 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
 
 // Export the reloadAddon helper function for use by other modules
 module.exports.reloadAddon = reloadAddon;
+module.exports.prewarmManifests = prewarmManifests;

@@ -1709,7 +1709,30 @@ function AddAddonForm({ availableAddons, onAdd, onClose }: AddAddonFormProps) {
         {filteredAddons.length === 0 && (
           <div className="text-center py-8 text-muted">
             <PuzzlePieceIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p>{availableAddons.length === 0 ? 'All addons are already in this group' : 'No addons found'}</p>
+            {/* Pasting a URL here is a natural mistake - the box looks like
+                somewhere a manifest URL should go, but it only filters the
+                addons this account already has. Say so, instead of the
+                misleading "no addons found". */}
+            {/\/trax\//.test(searchQuery) ? (
+              <div className="max-w-sm mx-auto space-y-1">
+                <p className="text-default font-medium">SlickTrax can&apos;t be added to a group</p>
+                <p className="text-xs">
+                  Its manifest URL contains one person&apos;s private token - handing it to a group would give
+                  everyone that user&apos;s watchlist and history, and let them change it. It is enabled per user
+                  instead: Addons → Browse → SlickTrax → Configure, or the toggle on the user&apos;s own page.
+                </p>
+              </div>
+            ) : /^https?:\/\//i.test(searchQuery.trim()) ? (
+              <div className="max-w-sm mx-auto space-y-1">
+                <p className="text-default font-medium">This box searches, it doesn&apos;t import</p>
+                <p className="text-xs">
+                  It only filters addons this account already has. To bring a new addon in from a URL, add it on
+                  the Addons page first - then it appears here to assign.
+                </p>
+              </div>
+            ) : (
+              <p>{availableAddons.length === 0 ? 'All addons are already in this group' : 'No addons found'}</p>
+            )}
           </div>
         )}
       </div>

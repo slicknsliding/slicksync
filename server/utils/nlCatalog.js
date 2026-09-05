@@ -467,4 +467,9 @@ module.exports = {
   // originally prompted adding real verification at all.
   callAi,
   callAiText,
+  // Used by smartCatalogs.js, which needs the same query -> real items
+  // pipeline this module already implements (discover -> IMDb resolution ->
+  // watched filtering) rather than a second copy of it.
+  resolveToImdbItem,
+  buildWatchedIdSet,
 }

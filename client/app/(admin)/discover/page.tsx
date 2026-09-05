@@ -6,7 +6,7 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, Badge, PosterCard, PosterCardItem, VirtualPosterGrid, DropdownSelect } from '@/components/ui';
-import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem } from '@/lib/api';
+import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem, SeasonalAnime } from '@/lib/api';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useWatchlistState } from '@/lib/hooks/useWatchlistState';
 import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
@@ -132,7 +132,36 @@ export default function DiscoverPage() {
   // real filmography. Splitting them into an explicit mode means Titles
   // search never touches TMDb at all, and People search never shows a single
   // title-search result that isn't actually a verified credit.
-  const [searchMode, setSearchMode] = useState<'titles' | 'people'>('titles');
+  const [searchMode, setSearchMode] = useState<'titles' | 'people' | 'describe'>('titles');
+  // Describe-a-plot search is its own mode, not a variant of Titles: it costs
+  // an AI round-trip, so it runs only when explicitly asked for and only on
+  // submit (never per keystroke like the other two).
+  const [describeResults, setDescribeResults] = useState<DiscoverItem[] | null>(null);
+  const [describeBusy, setDescribeBusy] = useState(false);
+  const [describeError, setDescribeError] = useState<string | null>(null);
+  const runDescribeSearch = useCallback(async () => {
+    const text = searchQuery.trim();
+    if (!text || describeBusy) return;
+    setDescribeBusy(true);
+    setDescribeError(null);
+    try {
+      const r = await api.searchByDescription(text, type);
+      setDescribeResults(r.items);
+      if (r.items.length === 0) {
+        setDescribeError(
+          r.filteredByType
+            ? `Those guesses were all ${r.filteredByType === 'series' ? 'films, not series' : 'series, not films'} - try the ${r.filteredByType === 'series' ? 'Movies' : 'Series'} tab.`
+            : r.candidates > 0
+              ? 'It had guesses, but none of them checked out against TMDb - try adding a detail you are sure about.'
+              : 'No match from that description - try naming something specific you remember.');
+      }
+    } catch (e) {
+      setDescribeError(e instanceof Error ? e.message : 'Search failed');
+      setDescribeResults([]);
+    } finally {
+      setDescribeBusy(false);
+    }
+  }, [searchQuery, describeBusy, type]);
   // Which poster's right-click menu is open — shared across the whole page
   // (both the main grid and the For You rows) so opening a second card's
   // menu closes whichever one was open before, same as Continue Watching.
@@ -212,6 +241,50 @@ export default function DiscoverPage() {
   useEffect(() => {
     api.getSimklDiscoverRow('trending', type === 'series' ? 'shows' : 'movies').then(setSimklTrending);
   }, [type]);
+
+  // Seasonal anime row (AniList, no key needed) - opt-in per account, so a
+  // household that doesn't watch anime never sees it. These items carry
+  // AniList ids rather than IMDb ones, so they deliberately do NOT pretend
+  // to be PosterCards: clicking one searches Discover for the title, which
+  // hands off to the normal flow where the item has real Cinemeta data and
+  // every action works. Faking an id here would break watchlist/watched.
+  // Instant search: the household's own titles, fetched once, matched in
+  // memory as you type. Network search still runs exactly as before - these
+  // just appear immediately above it instead of after a round-trip, which is
+  // what makes search feel instant for the things you already know about.
+  const [localIndex, setLocalIndex] = useState<Array<{ id: string; name: string; type: 'movie' | 'series'; poster: string | null }>>([]);
+  useEffect(() => {
+    api.getLocalIndex().then((r) => setLocalIndex(r.items || [])).catch(() => setLocalIndex([]));
+  }, []);
+  const instantMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length < 2 || searchMode !== 'titles') return [];
+    return localIndex
+      .filter((i) => i.type === type && i.name.toLowerCase().includes(q))
+      .slice(0, 12)
+      .map((i) => ({ id: i.id, type: i.type, name: i.name, poster: i.poster, releaseInfo: null } as DiscoverItem));
+  }, [searchQuery, localIndex, type, searchMode]);
+
+  const [seasonalAnime, setSeasonalAnime] = useState<SeasonalAnime[]>([]);
+  // Why the row is empty, when it is empty and the feature is switched on.
+  // "AniList is down" and "nothing is airing" look identical otherwise, and
+  // the first is not something to leave someone guessing about - AniList
+  // disabled their public API outright once already.
+  const [seasonalUnavailable, setSeasonalUnavailable] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api.getSyncSettings()
+      .then((ss) => {
+        if (cancelled || ss.animeSeasonalRow !== true) return;
+        return api.getSeasonalAnime().then((r) => {
+          if (cancelled) return;
+          setSeasonalAnime(r.items || []);
+          setSeasonalUnavailable(r.unavailable ? (r.reason || 'AniList is unavailable right now.') : null);
+        });
+      })
+      .catch(() => { /* row simply doesn't appear */ });
+    return () => { cancelled = true; };
+  }, []);
   const [recMode, setRecMode] = useState<'personal' | 'shared'>('personal');
   const [recUserId, setRecUserId] = useState<string>('');
   const [recUserId2, setRecUserId2] = useState<string>('');
@@ -474,7 +547,10 @@ export default function DiscoverPage() {
     onChange: setSearchQuery,
     placeholder: searchMode === 'people'
       ? 'Search for an actor or director...'
-      : `Search ${type === 'movie' ? 'movies' : 'series'}...`,
+      : searchMode === 'describe'
+        ? 'Describe what you remember, then press Enter...'
+        : `Search ${type === 'movie' ? 'movies' : 'series'}...`,
+    onSubmit: searchMode === 'describe' ? runDescribeSearch : undefined,
   };
 
   // TV mode wraps the whole page in the D-pad focus root; PC/mobile get a
@@ -567,6 +643,17 @@ export default function DiscoverPage() {
               >
                 <UserIcon className="w-3.5 h-3.5" />
                 People
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSearchMode('describe'); setDescribeResults(null); setDescribeError(null); }}
+                title="Describe a plot you half-remember - results are verified against TMDb, never invented"
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                  searchMode === 'describe' ? 'bg-primary text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'
+                }`}
+              >
+                <SparklesIcon className="w-3.5 h-3.5" />
+                Describe it
               </button>
             </div>
           )}
@@ -690,6 +777,53 @@ export default function DiscoverPage() {
                 </div>
                 )}
               </div>
+            </div>
+          </PageSection>
+        )}
+
+        {source === 'discover' && !debouncedQuery && seasonalAnime.length === 0 && seasonalUnavailable && (
+          <PageSection delay={0.05} className="mb-6">
+            <div className="flex items-baseline gap-2 mb-2 flex-wrap">
+              <h3 className="text-base font-semibold font-display text-default">🌸 Airing this season</h3>
+            </div>
+            <p className="text-xs text-muted">{seasonalUnavailable}</p>
+          </PageSection>
+        )}
+
+        {source === 'discover' && !debouncedQuery && seasonalAnime.length > 0 && (
+          <PageSection delay={0.05} className="mb-6">
+            <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+              <h3 className="text-base font-semibold font-display text-default">🌸 Airing this season</h3>
+              <span className="text-xs text-muted">Anime currently airing, newest episodes first</span>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+              {seasonalAnime.map((a) => (
+                <button
+                  key={a.anilistId}
+                  type="button"
+                  onClick={() => { setSearchQuery(a.name); setSearchMode('titles'); }}
+                  className="w-32 sm:w-36 shrink-0 text-left group"
+                  title={`Search SlickSync for ${a.name}`}
+                >
+                  <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl">
+                    {a.poster ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={a.poster} alt={a.name} loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xs text-subtle">No art</div>
+                    )}
+                    {a.nextEpisode && (
+                      <span className="absolute bottom-1 left-1 right-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium text-center truncate" style={{ background: 'rgba(0,0,0,0.72)', color: '#fff' }}>
+                        Ep {a.nextEpisode.episode} in {a.nextEpisode.label}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs mt-1.5 truncate text-default">{a.name}</p>
+                  <p className="text-[11px] text-muted truncate">
+                    {a.episodes ? `${a.episodes} eps` : a.format || ''}{a.score ? ` · ${a.score}%` : ''}
+                  </p>
+                </button>
+              ))}
             </div>
           </PageSection>
         )}
@@ -1076,7 +1210,82 @@ export default function DiscoverPage() {
           </PageSection>
         ) : (
         <PageSection delay={0.1}>
-          {source === 'discover' && searchMode === 'people' ? (
+          {/* Instant matches from your own watchlist/history - rendered
+              while the network search is still loading, and only when it
+              actually has something the results don't already show. */}
+          {source === 'discover' && searchMode === 'titles' && instantMatches.length > 0 && isLoading && (
+            <div className="mb-5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
+                From your library
+              </p>
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                {instantMatches.map((item) => (
+                  <PosterCard
+                    key={'inst:' + item.id}
+                    item={item}
+                    ratings={ratingsById[item.id]}
+                    watched={watchedStatus[item.id]}
+                    inWatchlist={inWatchlistIds.has(item.id)}
+                    showWatchlistMenu={enableWatchlist}
+                    showWatchlistBadge={enableWatchlist}
+                    showWatchedMenu={enableWatchedIndicators}
+                    showWatchedBadge={enableWatchedIndicators}
+                    onOpenDetails={setDetailItem}
+                    onToggleWatchlist={handleToggleWatchlist}
+                    onToggleWatched={handleToggleWatched}
+                    isMenuOpen={openMenuKey === 'inst:' + item.id}
+                    menuKey={'inst:' + item.id}
+                    onMenuOpenChange={handleMenuOpenChange}
+                    focusable={isTV}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {source === 'discover' && searchMode === 'describe' ? (
+            // Describe mode: results are TMDb-verified real records, so they
+            // render as ordinary PosterCards with every normal action.
+            <>
+              {describeBusy && <p className="text-sm text-muted py-8 text-center">Working out what that could be...</p>}
+              {!describeBusy && describeError && (
+                <p className="text-sm text-muted py-8 text-center max-w-lg mx-auto">{describeError}</p>
+              )}
+              {!describeBusy && !describeError && !describeResults && (
+                <div className="py-8 text-center max-w-lg mx-auto">
+                  <p className="text-sm text-default mb-1">Describe a film or show you can&apos;t name</p>
+                  <p className="text-xs text-muted">
+                    e.g. &quot;the one where the guy relives the same day at war&quot;. Press Enter to search. Every
+                    result is checked against TMDb first, so nothing invented can show up here.
+                  </p>
+                </div>
+              )}
+              {!describeBusy && describeResults && describeResults.length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                  {describeResults.map((item) => (
+                    <PosterCard
+                      key={item.id}
+                      item={item}
+                      ratings={ratingsById[item.id]}
+                      watched={watchedStatus[item.id]}
+                      inWatchlist={inWatchlistIds.has(item.id)}
+                      showWatchlistMenu={enableWatchlist}
+                      showWatchlistBadge={enableWatchlist}
+                      showWatchedMenu={enableWatchedIndicators}
+                      showWatchedBadge={enableWatchedIndicators}
+                      onOpenDetails={setDetailItem}
+                      onToggleWatchlist={handleToggleWatchlist}
+                      onToggleWatched={handleToggleWatched}
+                      isMenuOpen={openMenuKey === 'desc:' + item.id}
+                      menuKey={'desc:' + item.id}
+                      onMenuOpenChange={handleMenuOpenChange}
+                      focusable={isTV}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          ) : source === 'discover' && searchMode === 'people' ? (
             // People mode: exclusively a person's own verified TMDb credits -
             // never a title-search result mixed in (see the searchMode
             // comment above for why that combination was removed).

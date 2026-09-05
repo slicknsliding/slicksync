@@ -1,13 +1,13 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
-import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon, HandThumbUpIcon, HandThumbDownIcon, CheckCircleIcon, CheckIcon as CheckIconMini } from '@heroicons/react/24/outline';
+import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as BookmarkSolidIcon, ShieldCheckIcon } from '@heroicons/react/24/solid';
+import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon, HandThumbUpIcon, HandThumbDownIcon, CheckCircleIcon, CheckIcon as CheckIconMini, BellIcon } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
 import { AddToListButton } from './AddToListButton';
 import { metacriticColor as metacriticTextColor } from './RatingBadges';
-import { api, MediaDetails, DiscoverItem } from '@/lib/api';
+import { api, MediaDetails, DiscoverItem, SeriesSeason } from '@/lib/api';
 import { toast } from './Toast';
 import { buildStremioAppUrl, buildNuvioAppUrl } from '@/lib/appLinks';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
@@ -153,7 +153,6 @@ export function MediaDetailModal({
     const res = await api.resolveImdbId(credit.tmdbId, credit.mediaType);
     if (res?.imdbId) {
       setOverrideItem({ id: res.imdbId, type: res.type, name: credit.title, poster: credit.poster });
-      setPersonView(null);
     }
   }, [creditsDrag]);
 
@@ -174,6 +173,18 @@ export function MediaDetailModal({
   // starts returning them there) is all a drilled-into item can show.
   const effectiveFallbackRottenTomatoes = overrideItem ? null : fallbackRottenTomatoes;
   const effectiveFallbackMetacritic = overrideItem ? null : fallbackMetacritic;
+
+  // The cast filmography belongs to the title it was opened from, so it has
+  // to go the moment the modal moves to a different one - by ANY route.
+  // Clearing it inside the cast-credit handler alone was not enough: the
+  // other drill-downs (More Like This, a collection part, and Back) left the
+  // previous title's actor row sitting under a new title's cast, which reads
+  // as the popup having lost track of what it is showing. Keyed on
+  // effectiveId, so every navigation path is covered by construction - the
+  // same reset the seasons, More Like This and collection panels already do.
+  useEffect(() => {
+    setPersonView(null);
+  }, [effectiveId]);
 
   const { enableWatchlist, rpdbEnabled, enableAutoplayTrailer, autoplayTrailerStartMuted, enableReactions, enableWatchProviders, enableWatchedIndicators, enableWatchTogether } = usePersonalFeatures();
   const isTV = useIsTV();
@@ -233,6 +244,106 @@ export function MediaDetailModal({
   // (not just itemId) so drilling into a related title via "More Like This"
   // re-checks watchlist status for THAT title, not the originally-opened
   // one. Skipped entirely when the Watchlist personal feature is disabled.
+  // Following a SHOW: alerts when it is renewed, canceled, or gets a
+  // premiere date - the gap the episode calendar doesn't cover, because it
+  // only knows about shows that are already airing. Movies aren't followable
+  // (there is no ongoing status to report), so this only appears for series.
+  const [followRow, setFollowRow] = useState<{ id: string; muted: boolean } | null>(null);
+  const [followBusy, setFollowBusy] = useState(false);
+  useEffect(() => {
+    if (!isOpen || !effectiveId || effectiveType !== 'series') { setFollowRow(null); return; }
+    let cancelled = false;
+    api.getFollows()
+      .then((rows) => {
+        if (cancelled) return;
+        const hit = rows.find((r) => r.kind === 'show' && r.subjectId === effectiveId);
+        setFollowRow(hit ? { id: hit.id, muted: hit.muted } : null);
+      })
+      .catch(() => { /* following is additive - a failure just hides the state */ });
+    return () => { cancelled = true; };
+  }, [isOpen, effectiveId, effectiveType]);
+
+  const toggleFollow = async () => {
+    if (!effectiveId || followBusy) return;
+    setFollowBusy(true);
+    try {
+      if (!followRow) {
+        const row = await api.followSubject('show', effectiveId, details?.title || effectiveFallbackTitle || effectiveId, details?.poster || effectiveFallbackPoster || null);
+        setFollowRow({ id: row.id, muted: row.muted });
+        toast.success('Following - you\'ll hear when it\'s renewed, canceled or dated');
+      } else if (followRow.muted) {
+        await api.muteFollow(followRow.id, false);
+        setFollowRow({ ...followRow, muted: false });
+        toast.success('Alerts for this show turned back on');
+      } else {
+        // Mute rather than unfollow: the row survives, so turning it back on
+        // doesn't replay news already announced.
+        await api.muteFollow(followRow.id, true);
+        setFollowRow({ ...followRow, muted: true });
+        toast.success('Muted - still followed, just quiet');
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not update following');
+    } finally {
+      setFollowBusy(false);
+    }
+  };
+
+  // Anime extras (AniList): only ever attempted for series whose genres say
+  // Animation, so a normal show never pays a lookup for nothing. Everything
+  // here is additive - if AniList has no match, the modal is unchanged.
+  const [anime, setAnime] = useState<{ anilistId: number; nextEpisode: { episode: number; label: string } | null; siteUrl: string | null } | null>(null);
+  const [animeOrder, setAnimeOrder] = useState<{ mainLine: Array<{ anilistId: number; name: string; episodes: number | null; year: number | null }> } | null>(null);
+  useEffect(() => {
+    const looksAnimated = Array.isArray(details?.genres) && details.genres.some((g) => /animation|anime/i.test(String(g)));
+    if (!isOpen || effectiveType !== 'series' || !looksAnimated || !details?.title) { setAnime(null); setAnimeOrder(null); return; }
+    let cancelled = false;
+    // MediaDetails carries releaseInfo ("2023-" / "2023"), not a year field.
+    const yearMatch = String(details.releaseInfo || '').match(/\d{4}/);
+    api.lookupAnime(details.title, yearMatch ? Number(yearMatch[0]) : undefined)
+      .then((r) => {
+        if (cancelled || !r.found || !r.anilistId) return;
+        setAnime({ anilistId: r.anilistId, nextEpisode: r.nextEpisode || null, siteUrl: r.siteUrl || null });
+        return api.getAnimeWatchOrder(r.anilistId).then((o) => { if (!cancelled) setAnimeOrder({ mainLine: o.mainLine }); });
+      })
+      .catch(() => { /* additive only */ });
+    return () => { cancelled = true; };
+  }, [isOpen, effectiveType, details?.title, details?.releaseInfo, details?.genres]);
+
+  // Seasons and episodes (series only). Lazy on purpose: a long-running show
+  // has hundreds of episodes, and the detail popup is opened far more often
+  // to glance at a title than to browse its season list - so this is fetched
+  // when someone actually expands it, not on every open.
+  const [seasons, setSeasons] = useState<SeriesSeason[] | null>(null);
+  const [seasonsOpen, setSeasonsOpen] = useState(false);
+  const [seasonsLoading, setSeasonsLoading] = useState(false);
+  const [activeSeason, setActiveSeason] = useState<number | null>(null);
+  useEffect(() => {
+    // Reset whenever the modal moves to a different title.
+    setSeasons(null); setSeasonsOpen(false); setActiveSeason(null);
+  }, [effectiveId]);
+  const loadSeasons = async () => {
+    setSeasonsOpen((v) => !v);
+    if (seasons || seasonsLoading || !effectiveId) return;
+    setSeasonsLoading(true);
+    try {
+      const r = await api.getMediaEpisodes(effectiveId);
+      setSeasons(r.seasons || []);
+      // Open on the season the current episode belongs to, falling back to
+      // the first - landing on season 1 of a show you are deep into is the
+      // kind of small wrongness that makes a feature feel unfinished.
+      // MediaDetails carries the episode's title but not its numbers; the
+      // season comes from the videoId the modal was opened with
+      // (tt123:2:5), when there is one.
+      const current = Number(String(effectiveVideoId || '').split(':')[1]);
+      setActiveSeason(Number.isFinite(current) && r.seasons.some((x) => x.season === current) ? current : (r.seasons[0]?.season ?? null));
+    } catch {
+      setSeasons([]);
+    } finally {
+      setSeasonsLoading(false);
+    }
+  };
+
   const [inWatchlist, setInWatchlist] = useState(false);
   const [watchlistBusy, setWatchlistBusy] = useState(false);
   useEffect(() => {
@@ -371,7 +482,7 @@ export function MediaDetailModal({
     try {
       await api.saveWatchTogether(effectiveId, details?.title || effectiveFallbackTitle || effectiveId, Array.from(wtSelected));
       setWtHasPact(true);
-      toast.success('Watching together - anyone getting ahead now sets off the alarm');
+      toast.success('Spoiler guard on - anyone getting ahead now sets off the alarm');
       // Frontier may exist immediately (members may have history) - refresh.
       const pacts = await api.getWatchTogether().catch(() => []);
       const pact = pacts.find((pt) => pt.showId === effectiveId);
@@ -386,7 +497,7 @@ export function MediaDetailModal({
     try {
       await api.deleteWatchTogether(effectiveId);
       setWtHasPact(false); setWtSelected(new Set()); setWtFrontier(null); setWtWaitingOn([]);
-      toast.success('No longer watching together - everyone is free to run ahead');
+      toast.success('Spoiler guard off - everyone is free to run ahead');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not remove');
     } finally { setWtBusy(false); }
@@ -986,6 +1097,36 @@ export function MediaDetailModal({
                   comment for why rent/buy is excluded. Links to TMDb's
                   JustWatch attribution page, required by their API terms
                   when this data is displayed. */}
+
+              {/* Anime extras: the next-episode countdown AniList publishes
+                  exact air times for (better than a vague date), and the
+                  franchise's real watch order - the thing people otherwise
+                  go and google a chart for. Only ever present when AniList
+                  matched an animated series. */}
+              {anime && (anime.nextEpisode || (animeOrder?.mainLine?.length ?? 0) > 1) && (
+                <div className="rounded-xl p-3" style={{ background: 'var(--color-surface-hover)' }}>
+                  {anime.nextEpisode && (
+                    <p className="text-sm text-default">
+                      <span className="font-medium">Episode {anime.nextEpisode.episode}</span>
+                      <span className="text-muted"> airs in {anime.nextEpisode.label}</span>
+                    </p>
+                  )}
+                  {(animeOrder?.mainLine?.length ?? 0) > 1 && (
+                    <div className={anime.nextEpisode ? 'mt-2' : ''}>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>Watch order</p>
+                      <ol className="space-y-0.5">
+                        {animeOrder!.mainLine.map((entry, i) => (
+                          <li key={entry.anilistId} className="text-xs text-muted">
+                            <span className="text-default">{i + 1}. {entry.name}</span>
+                            {entry.episodes ? ` · ${entry.episodes} eps` : ''}{entry.year ? ` · ${entry.year}` : ''}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {enableWatchProviders && details.watchProviders && details.watchProviders.providers.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm text-muted">Also streaming on</span>
@@ -1027,41 +1168,62 @@ export function MediaDetailModal({
                 // left-aligned buttons in narrow cells; sm:contents/w-auto
                 // hands width back to flex-wrap's own auto-sizing at the
                 // desktop breakpoint where the old single-row layout stays.
-                const watchlistBtn = enableWatchlist && (
+                // Secondary actions are icon-only. Six labelled buttons wrapped
+                // onto two rows and read as clutter (user feedback); the two
+                // "open it" actions are the real call to action, so those keep
+                // their labels and everything else becomes a compact toggle
+                // with a tooltip and an obvious on-state.
+                const iconBtn = (opts: {
+                  onClick: () => void; busy?: boolean; on?: boolean;
+                  tint: string; title: string; icon: React.ReactNode;
+                }) => (
                   <button
                     type="button"
-                    onClick={toggleWatchlist}
-                    disabled={watchlistBusy}
-                    aria-label={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
-                    title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
-                    className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${
-                      inWatchlist
-                        ? 'bg-primary text-white'
-                        : 'bg-surface-hover text-default hover:bg-primary/20 hover:text-primary'
-                    } ${watchlistBusy ? 'opacity-60 cursor-wait' : ''}`}
-                  >
-                    {inWatchlist
-                      ? <BookmarkSolidIcon className="w-4 h-4" />
-                      : <BookmarkOutlineIcon className="w-4 h-4" />}
-                    {inWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
-                  </button>
-                );
-                const watchedBtn = enableWatchedIndicators && selfWatched !== null && (
-                  <button
-                    type="button"
-                    onClick={toggleSelfWatched}
-                    disabled={selfWatchedBusy}
-                    aria-label={selfWatched ? 'Mark as unwatched' : 'Mark as watched'}
-                    title={selfWatched ? 'Marks this title unwatched for the household - the underlying watch history is kept, only the indicator changes' : 'Marks this title watched for the household, e.g. seen on another service'}
-                    className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${selfWatchedBusy ? 'opacity-60 cursor-wait' : ''}`}
-                    style={selfWatched
-                      ? { color: 'var(--color-success)', background: 'color-mix(in srgb, var(--color-success) 15%, transparent)' }
+                    onClick={opts.onClick}
+                    disabled={opts.busy}
+                    title={opts.title}
+                    aria-label={opts.title}
+                    aria-pressed={opts.on}
+                    className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors shrink-0 ${opts.busy ? 'opacity-60 cursor-wait' : ''}`}
+                    style={opts.on
+                      ? { color: opts.tint, background: `color-mix(in srgb, ${opts.tint} 16%, transparent)` }
                       : { color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
                   >
-                    <CheckCircleIcon className="w-4 h-4" />
-                    {selfWatched ? 'Watched' : 'Unwatched'}
+                    {opts.icon}
                   </button>
                 );
+
+                const watchlistBtn = enableWatchlist && iconBtn({
+                  onClick: toggleWatchlist,
+                  busy: watchlistBusy,
+                  on: inWatchlist,
+                  tint: 'var(--color-primary)',
+                  title: inWatchlist ? 'In your Watchlist - tap to remove' : 'Add to Watchlist',
+                  icon: inWatchlist ? <BookmarkSolidIcon className="w-5 h-5" /> : <BookmarkOutlineIcon className="w-5 h-5" />,
+                });
+
+                const watchedBtn = enableWatchedIndicators && selfWatched !== null && iconBtn({
+                  onClick: toggleSelfWatched,
+                  busy: selfWatchedBusy,
+                  on: selfWatched,
+                  tint: 'var(--color-success)',
+                  title: selfWatched
+                    ? 'Watched - tap to mark unwatched (the underlying history is kept)'
+                    : 'Mark as watched for the household',
+                  icon: <CheckCircleIcon className="w-5 h-5" />,
+                });
+
+                const followBtn = effectiveType === 'series' && iconBtn({
+                  onClick: toggleFollow,
+                  busy: followBusy,
+                  on: !!followRow && !followRow.muted,
+                  tint: 'var(--color-primary)',
+                  title: !followRow
+                    ? 'Follow - hear when this is renewed, canceled or dated'
+                    : followRow.muted ? 'Alerts muted - tap to turn them back on' : 'Following - tap to mute',
+                  icon: <BellIcon className="w-5 h-5" />,
+                });
+
                 const stremioBtn = (
                   <a
                     href={buildStremioAppUrl(details.imdb_id, effectiveType)}
@@ -1111,6 +1273,9 @@ export function MediaDetailModal({
                       {enableWatchedIndicators && selfWatched !== null && (
                         <TVFocusable onEnterPress={toggleSelfWatched}>{watchedBtn}</TVFocusable>
                       )}
+                      {followBtn && (
+                        <TVFocusable onEnterPress={toggleFollow}>{followBtn}</TVFocusable>
+                      )}
                       <TVFocusable onEnterPress={() => { window.location.href = buildStremioAppUrl(details.imdb_id!, effectiveType); }}>
                         {stremioBtn}
                       </TVFocusable>
@@ -1122,17 +1287,23 @@ export function MediaDetailModal({
                 }
 
                 return (
-                  // 2 columns on mobile (Watchlist+catalog, Stremio+Nuvio -
-                  // 2 rows instead of 4 full-width stacked buttons), back to
-                  // the original single-row flex-wrap from sm: up.
-                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-                    {watchlistBtn}
-                    {watchedBtn}
-                    <div className="flex justify-center sm:contents">
-                      <AddToListButton item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
-                    </div>
+                  // One row: the two "open it" actions carry labels because
+                  // they are what this modal is for, and the rest sit beside
+                  // them as icons. Previously all six were labelled buttons
+                  // that wrapped onto two lines on any normal width.
+                  <div className="flex items-center gap-2 flex-wrap">
                     {stremioBtn}
                     {nuvioBtn}
+                    <span className="hidden sm:block w-px h-6 mx-0.5" style={{ background: 'var(--color-surface-border)' }} />
+                    <div className="flex items-center gap-1.5">
+                      {watchlistBtn}
+                      {watchedBtn}
+                      {followBtn}
+                      <AddToListButton
+                        item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }}
+                        compact
+                      />
+                    </div>
                   </div>
                 );
               })()}
@@ -1156,15 +1327,91 @@ export function MediaDetailModal({
                 </p>
               )}
 
+              {/* Seasons and episodes. Series only, collapsed by default, and
+                  the list is only fetched on expand - see loadSeasons. */}
+              {effectiveType === 'series' && (
+                <div className="rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
+                  <button
+                    type="button"
+                    onClick={loadSeasons}
+                    className="w-full flex items-center justify-between gap-3 p-3 text-left"
+                  >
+                    <span className="text-sm font-medium text-default">
+                      Seasons &amp; episodes
+                      {seasons && seasons.length > 0 && (
+                        <span className="text-xs text-muted font-normal"> · {seasons.length} season{seasons.length === 1 ? '' : 's'}</span>
+                      )}
+                    </span>
+                    <ChevronDownIcon className={`w-4 h-4 shrink-0 transition-transform ${seasonsOpen ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
+                  </button>
+
+                  {seasonsOpen && (
+                    <div className="px-3 pb-3">
+                      {seasonsLoading && <p className="text-xs text-muted py-2">Loading episodes…</p>}
+                      {!seasonsLoading && seasons && seasons.length === 0 && (
+                        <p className="text-xs text-muted py-2">No episode list is available for this title.</p>
+                      )}
+                      {!seasonsLoading && seasons && seasons.length > 0 && (
+                        <>
+                          <div className="flex gap-1.5 overflow-x-auto pb-2">
+                            {seasons.map((s) => (
+                              <button
+                                key={s.season}
+                                type="button"
+                                onClick={() => setActiveSeason(s.season)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${activeSeason === s.season ? 'bg-primary text-white' : 'text-muted'}`}
+                                style={activeSeason === s.season ? undefined : { background: 'var(--color-surface)' }}
+                              >
+                                Season {s.season}
+                                {s.watchedCount > 0 && (
+                                  <span className={activeSeason === s.season ? 'opacity-80' : 'opacity-60'}> · {s.watchedCount}/{s.episodes.length}</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="max-h-56 overflow-y-auto pr-1 space-y-px">
+                            {seasons.find((s) => s.season === activeSeason)?.episodes.map((ep) => (
+                              <div
+                                key={`${ep.season}-${ep.episode}`}
+                                className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-colors hover:bg-surface-hover"
+                                style={{ background: ep.watched ? 'color-mix(in srgb, var(--color-success) 8%, transparent)' : 'transparent' }}
+                              >
+                                <span className="text-xs shrink-0 w-10 tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                                  E{String(ep.episode).padStart(2, '0')}
+                                </span>
+                                <span className="text-xs flex-1 min-w-0 truncate text-default">{ep.title || `Episode ${ep.episode}`}</span>
+                                {ep.released && (
+                                  <span className="text-[11px] shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
+                                    {new Date(ep.released).getFullYear() || ''}
+                                  </span>
+                                )}
+                                {ep.watched && <CheckCircleIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-success)' }} />}
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Spoiler guard. Collapsed it is a single inline control, not
+                  a full-width bar holding two words and a lot of nothing -
+                  it only takes real space once it is actually opened. */}
               {effectiveType === 'series' && enableWatchTogether && (
-                <div className="rounded-xl border border-default bg-surface-hover/40">
+                <div className={wtOpen ? 'rounded-xl border border-default bg-surface-hover/40' : ''}>
                   <button
                     type="button"
                     onClick={() => { setWtOpen((v) => !v); if (!wtOpen) loadWatchTogether(); }}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
+                    className={wtOpen
+                      ? 'w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left'
+                      : 'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-left transition-colors'}
+                    style={wtOpen ? undefined : { background: 'var(--color-surface-hover)' }}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-medium text-default">Watching together</span>
+                      <ShieldCheckIcon className="w-4 h-4 shrink-0" style={{ color: wtHasPact ? 'var(--color-primary)' : 'var(--color-text-muted)' }} />
+                      <span className="text-sm font-medium text-default">Spoiler guard</span>
                       {wtHasPact && (
                         <span className="text-xs text-muted truncate">
                           {wtSelected.size} people
@@ -1184,7 +1431,7 @@ export function MediaDetailModal({
                       {!wtLoaded ? (
                         <p className="text-xs text-subtle">Loading...</p>
                       ) : wtUsers.length < 2 ? (
-                        <p className="text-xs text-subtle">Watching together takes at least two users on this instance.</p>
+                        <p className="text-xs text-subtle">The spoiler guard takes at least two users on this instance.</p>
                       ) : (
                         <>
                           <div className="flex flex-wrap gap-2 mb-3">
@@ -1216,7 +1463,7 @@ export function MediaDetailModal({
                               className="px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity disabled:opacity-40"
                               style={{ background: 'var(--color-primary)', color: 'var(--color-bg)' }}
                             >
-                              {wtHasPact ? 'Update' : 'Start watching together'}
+                              {wtHasPact ? 'Update' : 'Turn on spoiler guard'}
                             </button>
                             {wtHasPact && (
                               <button

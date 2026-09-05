@@ -750,6 +750,88 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
     }
   })
 
+  // --- Full-data backups (utils/dataBackup.js) ---
+  // Private/SQLite only, same boundary as db-maintenance: in public mode the
+  // Postgres database belongs to whoever hosts it.
+  router.get('/data-backup', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { getSettings, listSnapshots, getDbFilePath } = require('../utils/dataBackup')
+      return res.json({
+        ...getSettings(),
+        available: Boolean(getDbFilePath()),
+        // Drives the UI's "off-site copies need a passphrase" notice without
+        // ever handing the passphrase itself back out.
+        hasPassphrase: Boolean(String(require('../utils/backupTargets').getSettings().encryptPassphrase || '').trim()),
+        snapshots: listSnapshots(),
+      })
+    } catch {
+      return res.status(500).json({ message: 'Failed to read data backup settings' })
+    }
+  })
+
+  router.put('/data-backup', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { saveSettings } = require('../utils/dataBackup')
+      const body = req.body || {}
+      const patch = {}
+      for (const key of ['enabled', 'offsite']) {
+        if (key in body) patch[key] = !!body[key]
+      }
+      if ('frequencyDays' in body) {
+        const n = Math.floor(Number(body.frequencyDays))
+        if (!Number.isFinite(n) || n < 1 || n > 30) return res.status(400).json({ message: 'frequencyDays must be between 1 and 30' })
+        patch.frequencyDays = n
+      }
+      if ('keepLocal' in body) {
+        const n = Math.floor(Number(body.keepLocal))
+        if (!Number.isFinite(n) || n < 1 || n > 100) return res.status(400).json({ message: 'keepLocal must be between 1 and 100' })
+        patch.keepLocal = n
+      }
+      return res.json(saveSettings(patch))
+    } catch {
+      return res.status(500).json({ message: 'Failed to save data backup settings' })
+    }
+  })
+
+  router.post('/data-backup/run', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { runDataBackupOnce } = require('../utils/dataBackup')
+      const result = await runDataBackupOnce(prisma)
+      if (!result) return res.status(400).json({ message: 'Not applicable on this instance' })
+      return res.json(result)
+    } catch (e) {
+      return res.status(500).json({ message: e?.message || 'Snapshot failed' })
+    }
+  })
+
+  router.get('/data-backup/:filename/download', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { resolveSnapshotPath } = require('../utils/dataBackup')
+      const full = resolveSnapshotPath(req.params.filename)
+      if (!full) return res.status(404).json({ message: 'Snapshot not found' })
+      return res.download(full)
+    } catch {
+      return res.status(500).json({ message: 'Download failed' })
+    }
+  })
+
+  router.delete('/data-backup/:filename', async (req, res) => {
+    if (INSTANCE_TYPE === 'public') return denyInPublic(res)
+    try {
+      const { resolveSnapshotPath } = require('../utils/dataBackup')
+      const full = resolveSnapshotPath(req.params.filename)
+      if (!full) return res.status(404).json({ message: 'Snapshot not found' })
+      require('fs').unlinkSync(full)
+      return res.json({ success: true })
+    } catch (e) {
+      return res.status(500).json({ message: e?.message || 'Delete failed' })
+    }
+  })
+
   // --- Database maintenance (utils/dbMaintenance.js) ---
   router.get('/db-maintenance', async (req, res) => {
     if (INSTANCE_TYPE === 'public') return denyInPublic(res)
@@ -923,6 +1005,9 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           mdblistApiKeyBackup: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.mdblistApiKeyBackup === 'string') ? syncCfg.mdblistApiKeyBackup : '',
           rpdbApiKeyBackup: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.rpdbApiKeyBackup === 'string') ? syncCfg.rpdbApiKeyBackup : '',
           simklClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.simklClientId === 'string') ? syncCfg.simklClientId : '',
+          traktClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.traktClientId === 'string') ? syncCfg.traktClientId : '',
+          malClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.malClientId === 'string') ? syncCfg.malClientId : '',
+          publicBaseUrl: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.publicBaseUrl === 'string') ? syncCfg.publicBaseUrl : '',
           nuvioServerUrl: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioServerUrl === 'string') ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioAnonKey === 'string') ? syncCfg.nuvioAnonKey : '',
           // Was only in the OTHER branch's response below, so private-mode
@@ -934,6 +1019,9 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           autoUpdateEnabled: (syncCfg && typeof syncCfg === 'object' && syncCfg.autoUpdateEnabled === true),
           autoUpdateHour: (syncCfg && typeof syncCfg === 'object' && Number.isInteger(syncCfg.autoUpdateHour)) ? syncCfg.autoUpdateHour : 4,
           keyPoolQuotaWeighting: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyPoolQuotaWeighting === true),
+          quotaAutopilot: (syncCfg && typeof syncCfg === 'object' && syncCfg.quotaAutopilot === true),
+          animeSeasonalRow: (syncCfg && typeof syncCfg === 'object' && syncCfg.animeSeasonalRow === true),
+          quotaAutopilotPercent: Number.isFinite(Number(syncCfg?.quotaAutopilotPercent)) ? Number(syncCfg?.quotaAutopilotPercent) : 90,
           keyPoolAutoRetire: (syncCfg && typeof syncCfg === 'object' && syncCfg.keyPoolAutoRetire === true),
           tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
@@ -997,12 +1085,18 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           autoUpdateEnabled: syncCfg.autoUpdateEnabled === true,
           autoUpdateHour: Number.isInteger(syncCfg.autoUpdateHour) ? syncCfg.autoUpdateHour : 4,
           keyPoolQuotaWeighting: syncCfg.keyPoolQuotaWeighting === true,
+          quotaAutopilot: syncCfg.quotaAutopilot === true,
+          animeSeasonalRow: syncCfg.animeSeasonalRow === true,
+          quotaAutopilotPercent: Number.isFinite(Number(syncCfg?.quotaAutopilotPercent)) ? Number(syncCfg?.quotaAutopilotPercent) : 90,
           keyPoolAutoRetire: syncCfg.keyPoolAutoRetire === true,
           tmdbApiKeyPool: Array.isArray(syncCfg?.tmdbApiKeyPool) ? syncCfg.tmdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           omdbApiKeyPool: Array.isArray(syncCfg?.omdbApiKeyPool) ? syncCfg.omdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           mdblistApiKeyPool: Array.isArray(syncCfg?.mdblistApiKeyPool) ? syncCfg.mdblistApiKeyPool.filter((k) => typeof k === 'string') : [],
           rpdbApiKeyPool: Array.isArray(syncCfg?.rpdbApiKeyPool) ? syncCfg.rpdbApiKeyPool.filter((k) => typeof k === 'string') : [],
           simklClientId: typeof syncCfg.simklClientId === 'string' ? syncCfg.simklClientId : '',
+          traktClientId: typeof syncCfg.traktClientId === 'string' ? syncCfg.traktClientId : '',
+          malClientId: typeof syncCfg.malClientId === 'string' ? syncCfg.malClientId : '',
+          publicBaseUrl: typeof syncCfg.publicBaseUrl === 'string' ? syncCfg.publicBaseUrl : '',
           nuvioServerUrl: typeof syncCfg.nuvioServerUrl === 'string' ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: typeof syncCfg.nuvioAnonKey === 'string' ? syncCfg.nuvioAnonKey : '',
         }
@@ -1016,7 +1110,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableWatchTogether, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableWatchTogether, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, traktClientId, malClientId, publicBaseUrl, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -1115,6 +1209,14 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           rpdbApiKeyBackup: rpdbApiKeyBackup !== undefined ? (typeof rpdbApiKeyBackup === 'string' ? rpdbApiKeyBackup.trim() : '') : (baseCfg.rpdbApiKeyBackup || ''),
           omdbApiKeyBackup: omdbApiKeyBackup !== undefined ? (typeof omdbApiKeyBackup === 'string' ? omdbApiKeyBackup.trim() : '') : (baseCfg.omdbApiKeyBackup || ''),
           simklClientId: simklClientId !== undefined ? (typeof simklClientId === 'string' ? simklClientId.trim() : '') : (baseCfg.simklClientId || ''),
+          // Trakt Client ID - public LISTS only. Trakt's public list endpoints
+          // need just a client id (no OAuth), which is why importing a list
+          // works while a full account bridge does not: Trakt limits a free
+          // account to ONE connected app, and burning that on SlickSync would
+          // cost someone their existing Trakt app.
+          traktClientId: traktClientId !== undefined ? (typeof traktClientId === 'string' ? traktClientId.trim() : '') : (baseCfg.traktClientId || ''),
+          malClientId: malClientId !== undefined ? (typeof malClientId === 'string' ? malClientId.trim() : '') : (baseCfg.malClientId || ''),
+          publicBaseUrl: publicBaseUrl !== undefined ? (typeof publicBaseUrl === 'string' ? publicBaseUrl.trim().replace(/\/+$/, '') : '') : (baseCfg.publicBaseUrl || ''),
           nuvioServerUrl: nuvioServerUrl !== undefined ? (typeof nuvioServerUrl === 'string' ? nuvioServerUrl.trim().replace(/\/+$/, '') : '') : (baseCfg.nuvioServerUrl || ''),
           nuvioAnonKey: nuvioAnonKey !== undefined ? (typeof nuvioAnonKey === 'string' ? nuvioAnonKey.trim() : '') : (baseCfg.nuvioAnonKey || ''),
           // Drop this provider's stored health-check result the moment ITS
@@ -1145,6 +1247,17 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           autoUpdateHour: Number.isInteger(req.body?.autoUpdateHour) ? Math.min(23, Math.max(0, req.body.autoUpdateHour)) : (Number.isInteger(baseCfg.autoUpdateHour) ? baseCfg.autoUpdateHour : 4),
           keyPoolQuotaWeighting: req.body?.keyPoolQuotaWeighting !== undefined ? req.body.keyPoolQuotaWeighting === true : (baseCfg.keyPoolQuotaWeighting === true),
           keyPoolAutoRetire: req.body?.keyPoolAutoRetire !== undefined ? req.body.keyPoolAutoRetire === true : (baseCfg.keyPoolAutoRetire === true),
+          // Quota autopilot: opt-in, off by default. Defers only BACKGROUND
+          // metadata enrichment once the day's usage crosses the threshold,
+          // so an evening never dies mid-browse with the allowance spent -
+          // anything actively opened still fetches (see utils/omdb.js).
+          quotaAutopilot: req.body?.quotaAutopilot !== undefined ? req.body.quotaAutopilot === true : (baseCfg.quotaAutopilot === true),
+          // Seasonal anime row in Discover (AniList). Off by default: a
+          // household that doesn't watch anime should never see it.
+          animeSeasonalRow: req.body?.animeSeasonalRow !== undefined ? req.body.animeSeasonalRow === true : (baseCfg.animeSeasonalRow === true),
+          quotaAutopilotPercent: Number.isFinite(Number(req.body?.quotaAutopilotPercent))
+            ? Math.min(99, Math.max(50, Math.round(Number(req.body.quotaAutopilotPercent))))
+            : (Number.isFinite(Number(baseCfg.quotaAutopilotPercent)) ? Number(baseCfg.quotaAutopilotPercent) : 90),
           keyHealth: (() => {
             const prevHealth = (baseCfg.keyHealth && typeof baseCfg.keyHealth === 'object') ? baseCfg.keyHealth : {}
             const next = { ...prevHealth }
@@ -1214,6 +1327,9 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (rpdbApiKey !== undefined) partial.rpdbApiKey = typeof rpdbApiKey === 'string' ? rpdbApiKey.trim() : ''
       if (omdbApiKey !== undefined) partial.omdbApiKey = typeof omdbApiKey === 'string' ? normalizeOmdbApiKey(omdbApiKey.trim()) : ''
       if (simklClientId !== undefined) partial.simklClientId = typeof simklClientId === 'string' ? simklClientId.trim() : ''
+      if (traktClientId !== undefined) partial.traktClientId = typeof traktClientId === 'string' ? traktClientId.trim() : ''
+      if (malClientId !== undefined) partial.malClientId = typeof malClientId === 'string' ? malClientId.trim() : ''
+      if (publicBaseUrl !== undefined) partial.publicBaseUrl = typeof publicBaseUrl === 'string' ? publicBaseUrl.trim().replace(/\/+$/, '') : ''
       // Trailing slash stripped on save so it can't produce `//rest/v1/...`
       // downstream regardless of how it was typed.
       if (nuvioServerUrl !== undefined) partial.nuvioServerUrl = typeof nuvioServerUrl === 'string' ? nuvioServerUrl.trim().replace(/\/+$/, '') : ''

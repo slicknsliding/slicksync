@@ -18,7 +18,16 @@
 // HERE (including deleting collections in the manager) becomes the new
 // baseline immediately and never alarms.
 
-const GUARD_INTERVAL_MS = 60 * 60 * 1000 // hourly - vanish detection doesn't need sync's 5-min cadence
+// Every 6h, not hourly. Each pass costs 4 Supabase RPCs PER PROFILE (one
+// collections read + three layout buckets), and Nuvio's backend answers 429
+// under that load - which is not just rude, it actively broke this feature:
+// rate-limited reads used to be mistaken for an emptied account (see
+// readLayout). Vanish detection does not need hourly resolution; four
+// checks a day still catches an overwrite the same day it happens.
+const GUARD_INTERVAL_MS = 6 * 60 * 60 * 1000
+// Small gap between profiles so a multi-profile account is a trickle rather
+// than a burst against the same rate limiter.
+const PROFILE_PACING_MS = 1500
 const BOOT_DELAY_MS = 3 * 60 * 1000 // stagger past boot-time schedulers, same pattern as dbMaintenance
 const KEEP_GOOD_SNAPSHOTS = 12
 
@@ -87,10 +96,16 @@ async function recordOwnWrite(prisma, accountId, userId, profileId, collections)
 async function checkUser(prisma, accountId, user, provider) {
   let profiles = []
   try { profiles = await provider.getProfiles() } catch { return }
+  let first = true
   for (const profile of profiles) {
     const profileId = profile?.profile_index
     if (!Number.isInteger(profileId)) continue
+    if (!first) await new Promise((r) => setTimeout(r, PROFILE_PACING_MS))
+    first = false
     let collections
+    // A failed read here also means the backend is unhappy right now, so the
+    // layout check below is skipped for this profile too rather than piling
+    // three more requests onto a rate limiter that just said no.
     try { collections = await provider.getCollections(profileId) } catch { continue }
     if (!Array.isArray(collections)) continue
 
@@ -160,14 +175,21 @@ function layoutItemCount(data) {
 
 async function readLayout(provider, profileId) {
   const data = {}
+  // CRITICAL: a failed READ must never look like an empty ACCOUNT. The first
+  // version swallowed errors and returned {}, so when Supabase answered 429
+  // for all three buckets the guard "saw" zero rows and raised a wipe alarm
+  // for a profile whose 81 rows were perfectly intact (confirmed live).
+  // Callers must check readOk before drawing any conclusion from the data.
+  let readOk = false
   for (const platform of LAYOUT_PLATFORMS) {
     try {
       const rows = await provider.getHomeCatalogSettings(profileId, platform)
+      readOk = true
       const blob = parseLayoutBlob(rows?.[0]?.settings_json)
       if (blob) data[platform] = blob
-    } catch { /* bucket unreadable - treated as absent */ }
+    } catch { /* this bucket is unreadable right now - see readOk */ }
   }
-  return data
+  return { data, readOk }
 }
 
 async function saveLayoutSnapshot(prisma, accountId, userId, profileId, data, alarmed = false) {
@@ -200,7 +222,10 @@ async function latestLayoutSnapshots(prisma, userId, profileId) {
 }
 
 async function checkUserLayout(prisma, accountId, user, provider, profileId) {
-  const data = await readLayout(provider, profileId)
+  const { data, readOk } = await readLayout(provider, profileId)
+  // Could not ask -> record nothing and alarm about nothing. Snapshotting a
+  // zero here would also poison the baseline for the next pass.
+  if (!readOk) return
   const count = layoutItemCount(data)
   const { newest, newestGood } = await latestLayoutSnapshots(prisma, user.id, profileId)
   const suspicious = newestGood && newestGood.itemCount > 0 && (count === 0 || count <= newestGood.itemCount / 2)
@@ -245,9 +270,23 @@ async function restoreLayoutSnapshot(prisma, accountId, userId, profileId, provi
   return { restoredItems: layoutItemCount(data), from: newestGood.createdAt }
 }
 
+/** SlickSync's own layout edits are the new baseline - called after the
+ * home-row editor saves, so a deliberate rearrangement here never reads as a
+ * foreign wipe on the guard's next pass. */
+async function recordOwnLayoutWrite(prisma, accountId, userId, profileId, provider) {
+  try {
+    const { data, readOk } = await readLayout(provider, profileId)
+    if (!readOk) return
+    await saveLayoutSnapshot(prisma, accountId, userId, profileId, data, false)
+  } catch (e) {
+    console.warn('[CollectionsGuard] own layout-write snapshot failed:', e?.message)
+  }
+}
+
 /** Adopt the current on-account layout as the new baseline. */
 async function acceptLayoutCurrent(prisma, accountId, userId, profileId, provider) {
-  const data = await readLayout(provider, profileId)
+  const { data, readOk } = await readLayout(provider, profileId)
+  if (!readOk) throw new Error('Could not read the current layout just now - try again in a minute')
   await saveLayoutSnapshot(prisma, accountId, userId, profileId, data, false)
   return { acceptedItems: layoutItemCount(data) }
 }
@@ -256,7 +295,8 @@ async function acceptLayoutCurrent(prisma, accountId, userId, profileId, provide
  * source live and overwrites every platform bucket on the target. Both
  * profiles get fresh baselines so the guard treats it as our own write. */
 async function copyLayout(prisma, accountId, userId, fromProfileId, toProfileId, provider) {
-  const data = await readLayout(provider, fromProfileId)
+  const { data, readOk } = await readLayout(provider, fromProfileId)
+  if (!readOk) throw new Error('Could not read the source profile just now - try again in a minute')
   if (layoutItemCount(data) === 0) throw new Error('The source profile has no synced home-row arrangement to copy')
   for (const [platform, blob] of Object.entries(data)) {
     await provider.pushHomeCatalogSettings(toProfileId, platform, blob)
@@ -276,6 +316,23 @@ async function getAlarms(prisma, accountId) {
       seen.add(key)
       if (!row.alarmed) continue
       const good = rows.find((r) => r.userId === row.userId && r.profileId === row.profileId && !r.alarmed)
+      // Preview of what Restore would actually put back, so the choice is
+      // made on contents rather than a bare number. Names only - the full
+      // snapshot can be large and none of it needs to reach the browser.
+      let preview = []
+      try {
+        const parsed = JSON.parse(good?.dataJson || 'null')
+        if (kind === 'collections' && Array.isArray(parsed)) {
+          preview = parsed.map((c) => c?.title).filter(Boolean).slice(0, 8)
+        } else if (parsed && typeof parsed === 'object') {
+          const blob = Object.values(parsed).find((b) => Array.isArray(b?.items))
+          preview = (blob?.items || [])
+            .slice(0, 8)
+            .map((i) => i?.custom_title || i?.catalog_id)
+            .filter(Boolean)
+        }
+      } catch { /* preview is a nicety, never a reason to hide the alarm */ }
+
       alarms.push({
         kind,
         userId: row.userId,
@@ -284,6 +341,8 @@ async function getAlarms(prisma, accountId) {
         lastGoodCount: good ? countOf(good) : null,
         lastGoodAt: good ? good.createdAt : null,
         detectedAt: row.createdAt,
+        preview,
+        previewTotal: good ? countOf(good) : 0,
       })
     }
   }
@@ -350,5 +409,5 @@ function scheduleCollectionsGuard(prisma, deps) {
 
 module.exports = {
   scheduleCollectionsGuard, runGuardPass, recordOwnWrite, getAlarms, restoreSnapshot, acceptCurrent,
-  restoreLayoutSnapshot, acceptLayoutCurrent, copyLayout,
+  restoreLayoutSnapshot, acceptLayoutCurrent, copyLayout, recordOwnLayoutWrite,
 }

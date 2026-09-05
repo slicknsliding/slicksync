@@ -26,19 +26,49 @@ export function SyncBadge({
   size = 'sm',
   className = ''
 }: SyncBadgeProps) {
-  const [status, setStatus] = useState<SyncStatus>('checking');
-  const [isLoading, setIsLoading] = useState(true);
+  // Last verdict this browser saw for this exact badge, so a page load can
+  // show an answer immediately instead of a spinner. The check behind it
+  // costs a live round trip to the provider (~200-700ms measured), which is
+  // what makes it trustworthy - but re-deciding from scratch on every
+  // navigation is why the badge visibly sat on "Checking" every single time.
+  // The cached value is only a starting point: a fresh check always runs and
+  // silently corrects it.
+  const cacheKey = userId ? `ss-syncbadge:u:${userId}` : (groupId ? `ss-syncbadge:g:${groupId}` : '');
+  const CACHE_TTL_MS = 15 * 60 * 1000;
+  const readCached = (): SyncStatus | null => {
+    if (!cacheKey || typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(cacheKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.status || Date.now() - (parsed.at || 0) > CACHE_TTL_MS) return null;
+      return parsed.status as SyncStatus;
+    } catch {
+      return null;
+    }
+  };
+  const writeCached = (s: SyncStatus) => {
+    // Never remember a transient - "checking" and "syncing" describe this
+    // moment, not the account.
+    if (!cacheKey || typeof window === 'undefined' || s === 'checking' || s === 'syncing') return;
+    try { window.localStorage.setItem(cacheKey, JSON.stringify({ status: s, at: Date.now() })); } catch { /* private mode */ }
+  };
+
+  const initial = readCached();
+  const [status, setStatus] = useState<SyncStatus>(initial || 'checking');
+  const [isLoading, setIsLoading] = useState(!initial);
   const prevIsSyncing = useRef(isSyncing);
   // Mirrors `status`/the real per-member error text outside React's state
   // so the click handler below can read the just-refreshed verdict
   // synchronously after awaiting fetchSyncStatus() - `status` itself is
   // stale in that closure until next render.
-  const statusRef = useRef<SyncStatus>('checking');
+  const statusRef = useRef<SyncStatus>(initial || 'checking');
   const lastMessageRef = useRef<string | undefined>(undefined);
   const updateStatus = (s: SyncStatus, message?: string) => {
     statusRef.current = s;
     lastMessageRef.current = message;
     setStatus(s);
+    writeCached(s);
   };
 
   const fetchSyncStatus = useCallback(async () => {
@@ -49,19 +79,16 @@ export function SyncBadge({
     }
 
     try {
-      setIsLoading(true);
+      // Only the FIRST check shows "Checking". Every refresh after that -
+      // polling, or the re-check right after a sync - keeps the verdict
+      // already on screen until the new one arrives, because replacing a
+      // known answer with a spinner is what made this feel slow: the badge
+      // went Synced -> Checking -> Synced for no reason a person could see.
+      if (statusRef.current === 'checking') setIsLoading(true);
       if (userId) {
-        // First check if user has any groups
-        const user = await api.getUser(userId);
-        const userGroups = (user as any)?.groupIds || (user as any)?.groups || [];
-
-        // If user has no groups, they're stale
-        if (!userGroups.length) {
-          updateStatus('stale');
-          setIsLoading(false);
-          return;
-        }
-
+        // No preliminary user fetch: the status endpoint answers "stale" for
+        // a user in no group itself, so this is one round trip instead of
+        // two.
         const syncStatus = await api.getUserSyncStatus(userId);
         const syncStatusValue = (syncStatus as any)?.status;
         const syncMessage = (syncStatus as any)?.message;
@@ -149,7 +176,11 @@ export function SyncBadge({
   const fetchSyncStatusVerified = useCallback(async (retriesLeft = 2) => {
     await fetchSyncStatus();
     if (statusRef.current === 'unsynced' && retriesLeft > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      // 1.2s rather than 2.5s: this covers a provider's read-after-write
+      // lag, which is usually well under a second. Two retries still span a
+      // couple of seconds in total, so anything that used to settle still
+      // does - it just stops looking stuck while it happens.
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       await fetchSyncStatusVerified(retriesLeft - 1);
     }
   }, [fetchSyncStatus]);
@@ -176,7 +207,10 @@ export function SyncBadge({
     prevIsSyncing.current = isSyncing;
   }, [isSyncing, fetchSyncStatusVerified]);
 
-  const finalStatus = isSyncing ? 'syncing' : (isLoading ? 'checking' : status);
+  // While a sync runs, or while the very first check is in flight, the badge
+  // says so. Otherwise it shows the last verdict it actually has, including
+  // during a background refresh.
+  const finalStatus = isSyncing ? 'syncing' : ((isLoading && status === 'checking') ? 'checking' : status);
 
   const getStatusConfig = () => {
     const syncedDot = '#22c55e';

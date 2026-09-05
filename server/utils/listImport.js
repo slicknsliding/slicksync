@@ -117,16 +117,33 @@ async function resolveOmdbKeyForAccount(prisma, accountId) {
 }
 const resolveOmdbKey = (prisma, getAccountId, req) => resolveKeyFromSettings(prisma, getAccountId, req, 'omdbApiKey', 'OMDB_API_KEY')
 
+/** TMDb key for a known account id - the no-request counterpart to
+ * resolveTmdbKey, for background sweeps (see utils/followWatch.js). */
+async function resolveTmdbKeyForAccount(prisma, accountId) {
+  return resolveKeyFromSettings(prisma, () => accountId, null, 'tmdbApiKey', 'TMDB_API_KEY')
+}
+
 function detectProvider(url) {
   try {
     const parsed = new URL(url)
     const host = parsed.hostname.replace(/^www\./, '')
     if (host === 'mdblist.com') return 'mdblist'
     if (host === 'themoviedb.org') return 'tmdb'
+    // Trakt PUBLIC lists only - readable with a client id and no OAuth.
+    // (An account bridge is a different thing entirely and deliberately not
+    // built: Trakt allows a free account one connected app, so SlickSync
+    // would evict whatever the person already uses.)
+    if (host === 'trakt.tv') return 'trakt'
     // Another SlickSync instance publishing a catalog. Matched on the path
     // rather than the hostname - unlike TMDb/MDBList there is no fixed host,
     // it is whatever domain that household runs on.
     if (parsed.pathname.startsWith('/api/federation/catalog/')) return 'slicksync'
+    // Anime lists. AniList is public and unauthenticated; MyAnimeList is
+    // read through Jikan, the long-standing public mirror of MAL's data,
+    // for the same reason - MAL's own API wants a client id registered per
+    // household, which is a key to manage for one import.
+    if (host === 'anilist.co') return 'anilist'
+    if (host === 'myanimelist.net') return 'myanimelist'
   } catch {}
   return null
 }
@@ -260,6 +277,216 @@ async function importFromMdblist(apiKey, url) {
   })
 
   return { name: list.name || 'Imported list', items: resolved.filter(Boolean), truncated, totalAvailable: rawItems.length }
+}
+
+/**
+ * Resolves an anime title to the IMDb id the rest of the app speaks.
+ *
+ * Neither AniList nor MAL carries IMDb ids, so every entry is matched
+ * through TMDb - the same verify-then-keep rule the describe search uses:
+ * anything TMDb cannot place is dropped rather than imported as a title
+ * with no working links, no watched state and no deep link.
+ */
+async function resolveAnimeToImdb(entry, tmdbKey) {
+  const path = entry.type === 'movie' ? 'movie' : 'tv'
+  // Anime is listed under an English title, a romaji one, or both, and TMDb
+  // does not always know the same one AniList leads with. Trying the second
+  // title when the first finds nothing is the difference between a title
+  // being imported and being silently dropped, and costs a request only for
+  // the ones that would have failed anyway.
+  const titles = [entry.title, entry.altTitle].filter((t) => t && String(t).trim())
+  try {
+    let hit = null
+    for (const title of titles) {
+      const params = new URLSearchParams({ api_key: tmdbKey, query: title })
+      if (entry.year) params.set(path === 'tv' ? 'first_air_date_year' : 'year', String(entry.year))
+      const res = await fetch('https://api.themoviedb.org/3/search/' + path + '?' + params.toString(), { signal: AbortSignal.timeout(8000) })
+      if (!res.ok) continue
+      const data = await res.json()
+      const found = Array.isArray(data && data.results) ? data.results[0] : null
+      if (found && found.id) { hit = found; break }
+    }
+    // A year that is one off (AniList dates a season by when it started
+    // airing in Japan) can be the only reason nothing matched, so the last
+    // attempt drops it rather than dropping the title.
+    if (!hit && entry.year) {
+      const params = new URLSearchParams({ api_key: tmdbKey, query: titles[0] })
+      const res = await fetch('https://api.themoviedb.org/3/search/' + path + '?' + params.toString(), { signal: AbortSignal.timeout(8000) })
+      if (res.ok) {
+        const data = await res.json()
+        const found = Array.isArray(data && data.results) ? data.results[0] : null
+        if (found && found.id) hit = found
+      }
+    }
+    if (!hit || !hit.id) return null
+    const ext = await fetch('https://api.themoviedb.org/3/' + path + '/' + hit.id + '/external_ids?api_key=' + encodeURIComponent(tmdbKey), { signal: AbortSignal.timeout(8000) })
+    if (!ext.ok) return null
+    const extData = await ext.json()
+    if (!extData || !extData.imdb_id || !/^tt\d+$/.test(extData.imdb_id)) return null
+    const released = hit.release_date || hit.first_air_date || ''
+    return {
+      id: extData.imdb_id,
+      type: path === 'tv' ? 'series' : 'movie',
+      name: hit.name || hit.title || entry.title,
+      poster: hit.poster_path ? TMDB_IMG + hit.poster_path : null,
+      year: released ? String(released).slice(0, 4) : (entry.year ? String(entry.year) : null),
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Anime lists count seasons as separate entries; IMDb counts the whole show
+ * as one. Three seasons of the same series therefore resolve to the same
+ * IMDb id, and without this the catalog gets the same title three times.
+ * First occurrence wins, so list order is preserved.
+ */
+function dedupeById(items) {
+  const seen = new Set()
+  const out = []
+  for (const item of items) {
+    if (!item || seen.has(item.id)) continue
+    seen.add(item.id)
+    out.push(item)
+  }
+  return out
+}
+
+// AniList list sections, named as they appear in the URL of the page you
+// are looking at (anilist.co/user/NAME/animelist/Planning). Pasting a
+// section imports that section; pasting the bare list imports all of it.
+const ANILIST_STATUS = {
+  watching: 'CURRENT',
+  planning: 'PLANNING',
+  completed: 'COMPLETED',
+  paused: 'PAUSED',
+  dropped: 'DROPPED',
+  rewatching: 'REPEATING',
+}
+
+/**
+ * Imports an AniList user's anime list.
+ *
+ * Public and unauthenticated, like the rest of the AniList integration -
+ * nothing to configure and no quota to spend. A private list returns
+ * nothing, which is reported as being private rather than as a failure.
+ */
+async function importFromAniList(url, tmdbKey) {
+  if (!tmdbKey) throw new Error('A TMDb key is needed to match anime to real titles (Settings -> External API Keys)')
+  const parsed = new URL(url)
+  const parts = parsed.pathname.split('/').filter(Boolean) // user/NAME/animelist[/Section]
+  if (parts[0] !== 'user' || !parts[1]) throw new Error('Paste an AniList list URL, e.g. anilist.co/user/NAME/animelist')
+  if (parts[2] === 'mangalist') throw new Error('Manga lists cannot be imported - SlickSync catalogs hold films and series')
+  const userName = decodeURIComponent(parts[1])
+  const section = parts[3] ? String(parts[3]).toLowerCase() : null
+  const status = section ? ANILIST_STATUS[section] : null
+
+  const query = 'query ($userName: String, $status: MediaListStatus) {' +
+    ' MediaListCollection(userName: $userName, type: ANIME, status: $status) {' +
+    ' lists { name entries { media { title { english romaji } format startDate { year } } } } } }'
+  const res = await fetch('https://graphql.anilist.co', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ query, variables: { userName, status: status || undefined } }),
+    signal: AbortSignal.timeout(12000),
+  })
+  // AniList answers a missing OR private user with HTTP 404 and a body that
+  // says which - so the body is read either way. Reporting a private list as
+  // "not found" sends someone off checking a username that is spelled fine.
+  const data = await res.json().catch(() => null)
+  const errMsg = (data && Array.isArray(data.errors) && data.errors[0] && data.errors[0].message) || ''
+  if (/private/i.test(errMsg)) throw new Error('That AniList list is set to private - only public lists can be imported')
+  if (/not found|user not found/i.test(errMsg)) throw new Error('That AniList user was not found')
+  if (!res.ok) throw new Error(errMsg || 'AniList request failed (HTTP ' + res.status + ')')
+  if (errMsg) throw new Error(errMsg)
+  const lists = (data && data.data && data.data.MediaListCollection && data.data.MediaListCollection.lists) || []
+  const entries = lists.flatMap((l) => (l && l.entries) || [])
+  if (entries.length === 0) {
+    // Distinguish "your list is empty" from "AniList is not answering" -
+    // telling someone their list is empty when the service is down sends
+    // them looking for a problem on their own account.
+    const { getServiceStatus } = require('./anilist')
+    const status = getServiceStatus()
+    if (!status.available) throw new Error(status.reason)
+    throw new Error('That AniList list is empty, private, or has nothing in that section')
+  }
+
+  const raw = entries.map((e) => {
+    const media = (e && e.media) || {}
+    const english = (media.title && media.title.english) || null
+    const romaji = (media.title && media.title.romaji) || null
+    return {
+      title: english || romaji,
+      altTitle: english && romaji && english !== romaji ? romaji : null,
+      year: (media.startDate && media.startDate.year) || null,
+      type: media.format === 'MOVIE' ? 'movie' : 'series',
+    }
+  }).filter((e) => e.title)
+
+  const truncated = raw.length > MAX_IMPORT_ITEMS
+  const capped = raw.slice(0, MAX_IMPORT_ITEMS)
+  const resolved = await mapLimit(capped, 5, (e) => resolveAnimeToImdb(e, tmdbKey))
+  const label = section ? userName + ' - ' + section : userName + ' on AniList'
+  return { name: label, items: dedupeById(resolved.filter(Boolean)), truncated, totalAvailable: raw.length }
+}
+
+// MAL's own API pages at 100 and answers a client id alone for PUBLIC
+// lists - no OAuth, no account connection, nothing to evict.
+const MAL_PAGE_SIZE = 100
+
+/**
+ * Imports a MyAnimeList user's anime list.
+ *
+ * Uses MAL's official API with a Client ID, the same shape as the Trakt
+ * import: a client id reads public lists and nothing else, so this never
+ * touches anyone's account. Jikan - the keyless public mirror - was the
+ * obvious way to avoid a key here and does not work for this: MAL removed
+ * the endpoint it read lists from, and it now answers list requests with
+ * "MyAnimeList refuses to connect" (measured, HTTP 504). A key that works
+ * beats no key that doesn't.
+ */
+async function importFromMyAnimeList(url, tmdbKey, clientId) {
+  if (!tmdbKey) throw new Error('A TMDb key is needed to match anime to real titles (Settings -> External API Keys)')
+  if (!clientId) throw new Error('A MyAnimeList Client ID is needed (Settings -> Integrations). It reads public lists only and does not connect your account.')
+  const parsed = new URL(url)
+  const parts = parsed.pathname.split('/').filter(Boolean) // animelist/NAME
+  if (parts[0] !== 'animelist' || !parts[1]) throw new Error('Paste a MyAnimeList list URL, e.g. myanimelist.net/animelist/NAME')
+  const userName = decodeURIComponent(parts[1])
+
+  const raw = []
+  let next = 'https://api.myanimelist.net/v2/users/' + encodeURIComponent(userName) +
+    '/animelist?fields=list_status,media_type,start_season,alternative_titles&limit=' + MAL_PAGE_SIZE
+  for (let page = 0; page < 4 && next; page++) {
+    const res = await fetch(next, {
+      headers: { 'X-MAL-CLIENT-ID': clientId },
+      signal: AbortSignal.timeout(12000),
+    })
+    if (res.status === 404) throw new Error('That MyAnimeList user was not found')
+    if (res.status === 403) throw new Error('That MyAnimeList list is private - only public lists can be imported')
+    if (res.status === 401) throw new Error('MyAnimeList rejected that Client ID (Settings -> Integrations)')
+    if (!res.ok) break
+    const data = await res.json().catch(() => null)
+    const rows = Array.isArray(data && data.data) ? data.data : []
+    for (const row of rows) {
+      const node = row && row.node
+      if (!node || !node.title) continue
+      raw.push({
+        title: node.title,
+        altTitle: (node.alternative_titles && (node.alternative_titles.en || (Array.isArray(node.alternative_titles.synonyms) && node.alternative_titles.synonyms[0]))) || null,
+        year: (node.start_season && node.start_season.year) || null,
+        type: String(node.media_type || '').toLowerCase() === 'movie' ? 'movie' : 'series',
+      })
+    }
+    next = (data && data.paging && data.paging.next) || null
+    if (raw.length >= MAX_IMPORT_ITEMS) break
+  }
+  if (raw.length === 0) throw new Error('That MyAnimeList list is empty or set to private')
+
+  const truncated = raw.length > MAX_IMPORT_ITEMS
+  const capped = raw.slice(0, MAX_IMPORT_ITEMS)
+  const resolved = await mapLimit(capped, 5, (e) => resolveAnimeToImdb(e, tmdbKey))
+  return { name: userName + ' on MyAnimeList', items: dedupeById(resolved.filter(Boolean)), truncated, totalAvailable: raw.length }
 }
 
 // Suggest titles for a catalog by name (e.g. "Halloween", "Christmas
@@ -518,6 +745,9 @@ async function refreshListFromSourceForAccount(prisma, accountId, list) {
   } else if (provider === 'tmdb') {
     const key = await resolveTmdbKey(prisma, noReq, null)
     result = await importFromTmdb(key, list.importSourceUrl)
+  } else if (provider === 'trakt') {
+    const clientId = await resolveKeyFromSettings(prisma, noReq, null, 'traktClientId', 'TRAKT_CLIENT_ID', { allowBackup: false })
+    result = await importFromTrakt(list.importSourceUrl, clientId)
   } else {
     const key = await resolveMdblistKey(prisma, noReq, null)
     result = await importFromMdblist(key, list.importSourceUrl)
@@ -533,4 +763,65 @@ async function refreshListFromSourceForAccount(prisma, accountId, list) {
   return { items: result.items, added, removed, unchanged }
 }
 
-module.exports = { detectProvider, importFromTmdb, importFromMdblist, importFromSlickSync, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, resolveKeyFromSettings, refreshListFromSourceForAccount, suggestTitlesForCatalog, mapLimit, MAX_IMPORT_ITEMS }
+/**
+ * Trakt public list -> catalog items.
+ *
+ * Accepts both URL shapes Trakt itself produces:
+ *   trakt.tv/users/<user>/lists/<slug>
+ *   trakt.tv/lists/<id>
+ * Items already carry IMDb ids in Trakt's response, so unlike TMDb there is
+ * no per-item follow-up call - only posters are backfilled, through the same
+ * Cinemeta helper the MDBList path uses.
+ */
+async function importFromTrakt(url, clientId) {
+  if (!clientId) throw new Error('A Trakt Client ID is needed to read public lists (Settings -> Integrations)')
+  const parsed = new URL(url)
+  const parts = parsed.pathname.split('/').filter(Boolean)
+  let apiPath = null
+  if (parts[0] === 'users' && parts[2] === 'lists' && parts[3]) {
+    apiPath = `/users/${encodeURIComponent(parts[1])}/lists/${encodeURIComponent(parts[3])}/items`
+  } else if (parts[0] === 'lists' && parts[1]) {
+    apiPath = `/lists/${encodeURIComponent(parts[1])}/items`
+  }
+  if (!apiPath) throw new Error('That does not look like a Trakt list URL')
+
+  const res = await fetch(`https://api.trakt.tv${apiPath}?limit=${MAX_IMPORT_ITEMS}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      'trakt-api-version': '2',
+      'trakt-api-key': clientId,
+    },
+    signal: AbortSignal.timeout(15000),
+  })
+  if (res.status === 404) throw new Error('That Trakt list was not found, or it is private')
+  if (!res.ok) throw new Error(`Trakt returned ${res.status}`)
+  const rows = await res.json()
+  if (!Array.isArray(rows)) throw new Error('Unexpected response from Trakt')
+
+  // The items endpoint carries no list name, so ask for the list itself -
+  // one extra call, and the alternative is a catalog called "Imported list".
+  let name = null
+  try {
+    const metaRes = await fetch(`https://api.trakt.tv${apiPath.replace(/\/items$/, '')}`, {
+      headers: { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': clientId },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (metaRes.ok) name = (await metaRes.json())?.name || null
+  } catch { /* a missing name is cosmetic */ }
+
+  const items = []
+  for (const row of rows) {
+    const media = row?.movie || row?.show
+    const type = row?.movie ? 'movie' : row?.show ? 'series' : null
+    const imdb = media?.ids?.imdb
+    if (!type || !imdb || !/^tt\d+$/.test(imdb)) continue // episodes/people entries and anything without an IMDb id
+    items.push({ id: imdb, type, name: media.title || imdb, year: media.year || null, poster: null })
+  }
+
+  await mapLimit(items, 8, async (item) => {
+    item.poster = await resolveSinglePoster(item.id, item.type, null).catch(() => null)
+  })
+  return { items, name: name || 'Trakt list', truncated: rows.length >= MAX_IMPORT_ITEMS }
+}
+
+module.exports = { detectProvider, importFromTmdb, importFromMdblist, importFromTrakt, importFromSlickSync, importFromAniList, importFromMyAnimeList, exportListToMdblist, resolveTmdbKey, resolveMdblistKey, resolveOmdbKey, resolveOmdbKeyForAccount, resolveTmdbKeyForAccount, resolveKeyFromSettings, refreshListFromSourceForAccount, suggestTitlesForCatalog, mapLimit, MAX_IMPORT_ITEMS }

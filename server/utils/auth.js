@@ -35,6 +35,13 @@ function pathIsAllowlisted(path) {
     '/api/auth/nuvio-login',
     '/api/public-auth/private-login', // Private instance username/password login
     '/api/auth/private-login', // Private instance username/password login (alt path)
+    // Passkey sign-in: the whole point is that no session exists yet. Only
+    // these two - registering a passkey stays behind a session, so nobody
+    // can add one without already being signed in.
+    '/api/public-auth/passkey/options',
+    '/api/public-auth/passkey/verify',
+    '/api/auth/passkey/options',
+    '/api/auth/passkey/verify',
     '/api/public-auth/verify-2fa', // Completes a login paused by the 2FA gate - no session cookie exists yet at this point
     '/api/auth/verify-2fa',
     '/api/public-auth/oidc/config', // Tells the login page whether to show a "Continue with SSO" button - no auth required to ask

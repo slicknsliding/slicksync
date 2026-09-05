@@ -18,7 +18,7 @@ import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui/Toast';
-import { api, CustomList, CustomListItem, CatalogSuggestion, RatingsBatchEntry } from '@/lib/api';
+import { api, CustomList, CustomListItem, CatalogSuggestion, RatingsBatchEntry, SmartCatalogRule } from '@/lib/api';
 import { encodeCatalogShareCode } from '@/lib/shareCodes';
 import { ShareCodeDialog } from '@/components/ui/ShareCodeDialog';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
@@ -28,7 +28,7 @@ import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import {
   RectangleStackIcon, PencilSquareIcon, TrashIcon, XMarkIcon, ArrowLeftIcon, SparklesIcon, PhotoIcon,
   CheckCircleIcon, XCircleIcon, ArrowUpTrayIcon, ArrowPathIcon, ShareIcon, ShieldExclamationIcon,
-  EllipsisVerticalIcon, GlobeAltIcon,
+  EllipsisVerticalIcon, GlobeAltIcon, FunnelIcon,
 } from '@heroicons/react/24/outline';
 
 // Matches AvatarPickerModal's own color-swatch formula exactly (also used by
@@ -333,6 +333,41 @@ export default function ListDetailPage() {
       document.removeEventListener('keydown', onKeyDown, true);
     };
   }, [showMoreMenu]);
+
+  // --- Smart rule (utils/smartCatalogs.js) ---
+  const [smartOpen, setSmartOpen] = useState(false);
+  const [smartSaving, setSmartSaving] = useState(false);
+  const [smartDraft, setSmartDraft] = useState<Partial<SmartCatalogRule>>({});
+  useEffect(() => {
+    if (!smartOpen) return;
+    try {
+      setSmartDraft(list?.smartRuleJson ? JSON.parse(list.smartRuleJson) : { type: null, genres: [], unwatchedOnly: false, limit: 40 });
+    } catch {
+      setSmartDraft({ type: null, genres: [], unwatchedOnly: false, limit: 40 });
+    }
+  }, [smartOpen, list?.smartRuleJson]);
+
+  const saveSmartRule = async (clear = false) => {
+    if (!list) return;
+    setSmartSaving(true);
+    try {
+      await api.setSmartRule(list.id, clear ? null : (smartDraft as SmartCatalogRule));
+      if (clear) {
+        toast.success('Rule cleared - this is an ordinary catalog again, and keeps the titles it has');
+      } else {
+        // Evaluate straight away: a rule you cannot see the result of is
+        // just a promise. Failure here leaves the catalog untouched.
+        const r = await api.refreshSmartCatalog(list.id);
+        toast.success(`Rule saved - ${r.count} title${r.count === 1 ? '' : 's'} match right now`);
+      }
+      setSmartOpen(false);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save the rule');
+    } finally {
+      setSmartSaving(false);
+    }
+  };
 
   const handleRename = async () => {
     if (!list) return;
@@ -813,6 +848,17 @@ export default function ListDetailPage() {
       </Button>
       <Button variant="secondary" size="sm" leftIcon={<SparklesIcon className="w-4 h-4" />} onClick={handleOpenSuggest}>
         Suggest titles
+      </Button>
+      {/* Smart rule: criteria the catalog keeps re-evaluating, as opposed to
+          Suggest titles (a one-off) or Refresh (re-pulls an imported URL). */}
+      <Button
+        variant={list.smartRuleJson ? 'primary' : 'secondary'}
+        size="sm"
+        leftIcon={<FunnelIcon className="w-4 h-4" />}
+        onClick={() => setSmartOpen(true)}
+        title="Give this catalog criteria it keeps re-evaluating, instead of a fixed list"
+      >
+        {list.smartRuleJson ? 'Smart rule on' : 'Smart rule'}
       </Button>
       {list.importSourceUrl && (
         <Button variant="secondary" size="sm" leftIcon={<ArrowPathIcon className="w-4 h-4" />} onClick={handleOpenRefresh} isLoading={loadingRefreshDiff}>
@@ -1475,6 +1521,81 @@ export default function ListDetailPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal isOpen={smartOpen} onClose={() => setSmartOpen(false)} title="Smart rule" size="sm">
+        <div className="space-y-4">
+          <p className="text-xs text-muted">
+            A Smart Catalog keeps its criteria instead of a fixed list, and re-evaluates them daily. Leave a field
+            blank to not filter on it.
+          </p>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">Type</label>
+              <select
+                value={smartDraft.type || ''}
+                onChange={(e) => setSmartDraft((d) => ({ ...d, type: (e.target.value || null) as 'movie' | 'series' | null }))}
+                className="input-base w-full px-3 py-2 text-sm"
+              >
+                <option value="">Movies and series</option>
+                <option value="movie">Movies only</option>
+                <option value="series">Series only</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">Genres <span className="text-subtle">(comma separated)</span></label>
+              <input
+                type="text"
+                defaultValue={(smartDraft.genres || []).join(', ')}
+                onBlur={(e) => setSmartDraft((d) => ({ ...d, genres: e.target.value.split(',').map((g) => g.trim()).filter(Boolean) }))}
+                placeholder="Horror, Thriller"
+                className="input-base w-full px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">From year</label>
+              <input type="number" defaultValue={smartDraft.yearFrom ?? ''} onBlur={(e) => setSmartDraft((d) => ({ ...d, yearFrom: e.target.value ? Number(e.target.value) : null }))} className="input-base w-full px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">To year</label>
+              <input type="number" defaultValue={smartDraft.yearTo ?? ''} onBlur={(e) => setSmartDraft((d) => ({ ...d, yearTo: e.target.value ? Number(e.target.value) : null }))} className="input-base w-full px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">Minimum rating</label>
+              <input type="number" step="0.5" min="0" max="10" defaultValue={smartDraft.minRating ?? ''} onBlur={(e) => setSmartDraft((d) => ({ ...d, minRating: e.target.value ? Number(e.target.value) : null }))} className="input-base w-full px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1">How many titles</label>
+              <input type="number" min="5" max="100" defaultValue={smartDraft.limit ?? 40} onBlur={(e) => setSmartDraft((d) => ({ ...d, limit: Number(e.target.value) || 40 }))} className="input-base w-full px-3 py-2 text-sm" />
+            </div>
+          </div>
+
+          <label className="flex items-start gap-2 text-xs text-muted cursor-pointer">
+            <input
+              type="checkbox"
+              checked={smartDraft.unwatchedOnly === true}
+              onChange={(e) => setSmartDraft((d) => ({ ...d, unwatchedOnly: e.target.checked }))}
+              className="mt-0.5"
+            />
+            <span>Only titles nobody in the household has watched. This one is applied by SlickSync against your own history - TMDb cannot answer it.</span>
+          </label>
+
+          <p className="text-[11px] text-subtle">
+            Needs a TMDb key. If the rule ever cannot be evaluated, the catalog keeps the titles it already has
+            rather than being emptied.
+          </p>
+
+          <div className="flex justify-between gap-2 pt-1">
+            {list?.smartRuleJson
+              ? <Button variant="ghost" size="sm" onClick={() => saveSmartRule(true)} disabled={smartSaving}>Clear rule</Button>
+              : <span />}
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setSmartOpen(false)}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={() => saveSmartRule(false)} isLoading={smartSaving}>Save and run</Button>
+            </div>
+          </div>
+        </div>
       </Modal>
 
       <Modal isOpen={renaming} onClose={() => setRenaming(false)} title="Rename list" size="sm">

@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Button, Card, ToggleSwitch } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
-import { api, BackupTargets, DbMaintenanceSettings, UpdateCapability } from '@/lib/api';
+import { api, BackupTargets, DataBackupSettings, DbMaintenanceSettings, UpdateCapability } from '@/lib/api';
 import { TrashPanel } from './TrashPanel';
 import { CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
@@ -59,6 +59,7 @@ export function MaintenancePanel() {
   };
 
   const [targets, setTargets] = useState<BackupTargets | null>(null);
+  const [dataBackup, setDataBackup] = useState<DataBackupSettings | null>(null);
   const [maint, setMaint] = useState<DbMaintenanceSettings | null>(null);
   const [capability, setCapability] = useState<UpdateCapability | null>(null);
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(false);
@@ -78,6 +79,7 @@ export function MaintenancePanel() {
   useEffect(() => {
     const id = setTimeout(() => {
       api.getBackupTargets().then(setTargets).catch(() => setTargets(null));
+      api.getDataBackup().then(setDataBackup).catch(() => setDataBackup(null));
       api.getDbMaintenance().then(setMaint).catch(() => setMaint(null));
       api.getUpdateCapability().then(setCapability).catch(() => setCapability(null));
       api.getSyncSettings().then((ss) => {
@@ -97,6 +99,40 @@ export function MaintenancePanel() {
       toast.error(e instanceof Error ? e.message : 'Failed to save');
     } finally {
       setBusy(null);
+    }
+  };
+
+  const saveDataBackup = async (patch: Partial<DataBackupSettings>) => {
+    try {
+      const next = await api.saveDataBackup(patch);
+      setDataBackup((prev) => ({ ...next, snapshots: prev?.snapshots, available: prev?.available, hasPassphrase: prev?.hasPassphrase }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save');
+    }
+  };
+
+  const runDataBackup = async () => {
+    setBusy('dataBackup');
+    try {
+      const r = await api.runDataBackup();
+      const mb = (r.sizeBytes / 1048576).toFixed(1);
+      const verified = r.verified === true ? ', verified readable' : r.verified === false ? ' - WARNING: failed verification' : '';
+      toast.success(`Snapshot written (${mb}MB${r.encrypted ? ', encrypted' : ''}${verified})`);
+      if (r.upload?.skipped) toast.error(`Off-site copy skipped: ${r.upload.skipped}`);
+      setDataBackup(await api.getDataBackup());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Snapshot failed');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const deleteSnapshot = async (filename: string) => {
+    try {
+      await api.deleteDataSnapshot(filename);
+      setDataBackup(await api.getDataBackup());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Delete failed');
     }
   };
 
@@ -149,143 +185,6 @@ export function MaintenancePanel() {
 
   return (
     <div className="space-y-5">
-      {/* --- Off-site backups --- */}
-      <Card padding="lg">
-        <h3 className="text-base font-semibold text-default mb-1">Off-site backups</h3>
-        <p className="text-xs text-muted mb-4">
-          Scheduled backups are written next to the database they protect. Sending a copy somewhere else is what
-          covers losing the whole machine.
-        </p>
-        {!targets ? (
-          <p className="text-sm text-muted">Not available on this instance.</p>
-        ) : (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Destination</label>
-                <select
-                  value={targets.type}
-                  onChange={(e) => saveTargets({ type: e.target.value as BackupTargets['type'] })}
-                  className={inputClass}
-                  style={inputStyle}
-                >
-                  <option value="none">Local only</option>
-                  <option value="s3">S3 (AWS, B2, R2, MinIO…)</option>
-                  <option value="webdav">WebDAV (Nextcloud, rsync.net…)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">
-                  Keep locally <span className="text-subtle">(0 = keep all)</span>
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={1000}
-                  defaultValue={targets.keepLocal}
-                  onBlur={(e) => {
-                    const n = Number(e.target.value);
-                    if (n !== targets.keepLocal) saveTargets({ keepLocal: n });
-                  }}
-                  className={inputClass}
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-
-            {targets.type === 's3' && (
-              <div className="grid grid-cols-2 gap-3">
-                {([
-                  ['bucket', 'Bucket'], ['region', 'Region'],
-                  ['endpoint', 'Endpoint (blank for AWS)'], ['prefix', 'Path prefix'],
-                  ['accessKeyId', 'Access key ID'], ['secretAccessKey', 'Secret access key'],
-                ] as Array<[keyof BackupTargets['s3'], string]>).map(([key, label]) => (
-                  <div key={key}>
-                    <label className="block text-xs font-medium text-muted mb-1">{label}</label>
-                    <input
-                      type={key === 'secretAccessKey' ? 'password' : 'text'}
-                      defaultValue={targets.s3[key]}
-                      onBlur={(e) => { if (e.target.value !== targets.s3[key]) saveTargets({ s3: { ...targets.s3, [key]: e.target.value } }); }}
-                      spellCheck={false}
-                      className={inputClass}
-                      style={inputStyle}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {targets.type === 'webdav' && (
-              <div className="grid grid-cols-2 gap-3">
-                {([['url', 'Folder URL'], ['username', 'Username'], ['password', 'Password']] as Array<[keyof BackupTargets['webdav'], string]>).map(([key, label]) => (
-                  <div key={key}>
-                    <label className="block text-xs font-medium text-muted mb-1">{label}</label>
-                    <input
-                      type={key === 'password' ? 'password' : 'text'}
-                      defaultValue={targets.webdav[key]}
-                      onBlur={(e) => { if (e.target.value !== targets.webdav[key]) saveTargets({ webdav: { ...targets.webdav, [key]: e.target.value } }); }}
-                      spellCheck={false}
-                      className={inputClass}
-                      style={inputStyle}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {targets.type !== 'none' && (
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">
-                  Encryption passphrase <span className="text-subtle">(optional)</span>
-                </label>
-                <input
-                  type="password"
-                  defaultValue={targets.encryptPassphrase || ''}
-                  placeholder="Leave empty to upload plain JSON"
-                  onBlur={(e) => { if (e.target.value !== (targets.encryptPassphrase || '')) saveTargets({ encryptPassphrase: e.target.value }); }}
-                  spellCheck={false}
-                  className={inputClass}
-                  style={inputStyle}
-                />
-                <p className="text-[11px] text-subtle mt-1">
-                  With a passphrase set, uploads are encrypted (.enc) so a leaked bucket leaks nothing - backups
-                  carry addon URLs, which often embed API keys. Local backups stay unencrypted, so restores from
-                  this box work exactly as before; an .enc file imports through the normal Import with its
-                  passphrase. If the passphrase is lost, the remote copies cannot be read - keep it somewhere safe.
-                </p>
-              </div>
-            )}
-
-            {targets.type !== 'none' && (
-              <div className="flex items-center justify-between gap-3 pt-1">
-                <p className="text-[11px] text-subtle">
-                  A failed upload never fails the backup - the local copy is already written, and you get a
-                  notification rather than silence.
-                </p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={busy === 'test'}
-                  onClick={async () => {
-                    setBusy('test');
-                    try {
-                      const r = await api.testBackupTarget();
-                      if (r.ok) toast.success('Target reachable - test file uploaded');
-                      else toast.error(r.error || 'Target test failed');
-                    } finally { setBusy(null); }
-                  }}
-                >
-                  {busy === 'test' ? 'Testing…' : 'Test target'}
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-      </Card>
-
-      {/* --- Recently deleted --- */}
-      <TrashPanel />
-
       {/* --- History Doctor --- */}
       <Card padding="lg">
         <h3 className="text-base font-semibold text-default mb-1">Watch history check</h3>
@@ -328,6 +227,10 @@ export function MaintenancePanel() {
           </div>
         )}
       </Card>
+
+
+      {/* --- Recently deleted --- */}
+      <TrashPanel />
 
       {/* --- Database upkeep --- */}
       <Card padding="lg">
@@ -475,6 +378,240 @@ export function MaintenancePanel() {
           </div>
         )}
       </Card>
+      {/* --- Off-site backups --- */}
+      <Card padding="lg">
+        <h3 className="text-base font-semibold text-default mb-1">Off-site backups</h3>
+        <p className="text-xs text-muted mb-4">
+          Scheduled backups are written next to the database they protect. Sending a copy somewhere else is what
+          covers losing the whole machine.
+        </p>
+        {!targets ? (
+          <p className="text-sm text-muted">Not available on this instance.</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">Destination</label>
+                <select
+                  value={targets.type}
+                  onChange={(e) => saveTargets({ type: e.target.value as BackupTargets['type'] })}
+                  className={inputClass}
+                  style={inputStyle}
+                >
+                  <option value="none">Local only</option>
+                  <option value="s3">S3 (AWS, B2, R2, MinIO…)</option>
+                  <option value="webdav">WebDAV (Nextcloud, rsync.net…)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">
+                  Keep locally <span className="text-subtle">(0 = keep all)</span>
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={1000}
+                  defaultValue={targets.keepLocal}
+                  onBlur={(e) => {
+                    const n = Number(e.target.value);
+                    if (n !== targets.keepLocal) saveTargets({ keepLocal: n });
+                  }}
+                  className={inputClass}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            {targets.type === 's3' && (
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  ['bucket', 'Bucket'], ['region', 'Region'],
+                  ['endpoint', 'Endpoint (blank for AWS)'], ['prefix', 'Path prefix'],
+                  ['accessKeyId', 'Access key ID'], ['secretAccessKey', 'Secret access key'],
+                ] as Array<[keyof BackupTargets['s3'], string]>).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="block text-xs font-medium text-muted mb-1">{label}</label>
+                    <input
+                      type={key === 'secretAccessKey' ? 'password' : 'text'}
+                      defaultValue={targets.s3[key]}
+                      onBlur={(e) => { if (e.target.value !== targets.s3[key]) saveTargets({ s3: { ...targets.s3, [key]: e.target.value } }); }}
+                      spellCheck={false}
+                      className={inputClass}
+                      style={inputStyle}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {targets.type === 'webdav' && (
+              <div className="grid grid-cols-2 gap-3">
+                {([['url', 'Folder URL'], ['username', 'Username'], ['password', 'Password']] as Array<[keyof BackupTargets['webdav'], string]>).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="block text-xs font-medium text-muted mb-1">{label}</label>
+                    <input
+                      type={key === 'password' ? 'password' : 'text'}
+                      defaultValue={targets.webdav[key]}
+                      onBlur={(e) => { if (e.target.value !== targets.webdav[key]) saveTargets({ webdav: { ...targets.webdav, [key]: e.target.value } }); }}
+                      spellCheck={false}
+                      className={inputClass}
+                      style={inputStyle}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {targets.type !== 'none' && (
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">
+                  Encryption passphrase <span className="text-subtle">(optional)</span>
+                </label>
+                <input
+                  type="password"
+                  defaultValue={targets.encryptPassphrase || ''}
+                  placeholder="Leave empty to upload plain JSON"
+                  onBlur={(e) => { if (e.target.value !== (targets.encryptPassphrase || '')) saveTargets({ encryptPassphrase: e.target.value }); }}
+                  spellCheck={false}
+                  className={inputClass}
+                  style={inputStyle}
+                />
+                <p className="text-[11px] text-subtle mt-1">
+                  With a passphrase set, uploads are encrypted (.enc) so a leaked bucket leaks nothing - backups
+                  carry addon URLs, which often embed API keys. Local backups stay unencrypted, so restores from
+                  this box work exactly as before; an .enc file imports through the normal Import with its
+                  passphrase. If the passphrase is lost, the remote copies cannot be read - keep it somewhere safe.
+                </p>
+              </div>
+            )}
+
+            {targets.type !== 'none' && (
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <p className="text-[11px] text-subtle">
+                  A failed upload never fails the backup - the local copy is already written, and you get a
+                  notification rather than silence.
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={busy === 'test'}
+                  onClick={async () => {
+                    setBusy('test');
+                    try {
+                      const r = await api.testBackupTarget();
+                      if (r.ok) toast.success('Target reachable - test file uploaded');
+                      else toast.error(r.error || 'Target test failed');
+                    } finally { setBusy(null); }
+                  }}
+                >
+                  {busy === 'test' ? 'Testing…' : 'Test target'}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* --- Full-data backups --- */}
+      <Card padding="lg">
+        <h3 className="text-base font-semibold text-default mb-1">Backups: your data (watch history)</h3>
+        <p className="text-xs text-muted mb-4">
+          The config backups above deliberately carry no watch history - so every episode anyone has ever watched
+          lives in exactly one place: the database file. This lane snapshots that database. Same destination as
+          above, different contents: config restores your setup, this restores what everyone actually watched.
+        </p>
+        {!dataBackup || dataBackup.available === false ? (
+          <p className="text-sm text-muted">Not applicable on this instance.</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3 p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-default flex items-center gap-1.5">
+                  Scheduled snapshots
+                  {dataBackup.lastError
+                    ? <ExclamationTriangleIcon className="w-4 h-4" style={{ color: 'var(--color-error)' }} />
+                    : dataBackup.lastOkAt ? <CheckCircleIcon className="w-4 h-4" style={{ color: 'var(--color-success)' }} /> : null}
+                </p>
+                <p className="text-xs text-muted mt-0.5">
+                  {dataBackup.lastError
+                    ? `Last attempt failed: ${dataBackup.lastError}`
+                    : `Last snapshot ${relative(dataBackup.lastOkAt)}${dataBackup.lastSizeBytes ? ` (${(dataBackup.lastSizeBytes / 1048576).toFixed(1)}MB)` : ''}${dataBackup.lastVerified === true ? ', verified readable' : ''}.`}
+                </p>
+                <div className="flex items-center gap-3 mt-2 flex-wrap">
+                  <label className="flex items-center gap-1.5 text-xs text-muted">
+                    Every
+                    <input
+                      type="number" min={1} max={30}
+                      defaultValue={dataBackup.frequencyDays}
+                      onBlur={(e) => { const n = Number(e.target.value); if (n !== dataBackup.frequencyDays) saveDataBackup({ frequencyDays: n }); }}
+                      className="w-14 px-1.5 py-0.5 rounded text-xs text-center"
+                      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                    />
+                    day(s)
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-muted">
+                    Keep
+                    <input
+                      type="number" min={1} max={100}
+                      defaultValue={dataBackup.keepLocal}
+                      onBlur={(e) => { const n = Number(e.target.value); if (n !== dataBackup.keepLocal) saveDataBackup({ keepLocal: n }); }}
+                      className="w-14 px-1.5 py-0.5 rounded text-xs text-center"
+                      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)', color: 'var(--color-text)' }}
+                    />
+                    locally
+                  </label>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="ghost" size="sm" onClick={runDataBackup} disabled={busy === 'dataBackup'}>
+                  {busy === 'dataBackup' ? 'Working…' : 'Snapshot now'}
+                </Button>
+                <ToggleSwitch checked={dataBackup.enabled} onChange={() => saveDataBackup({ enabled: !dataBackup.enabled })} />
+              </div>
+            </div>
+
+            <div className="flex items-start justify-between gap-3 p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-default">Send snapshots off-site too</p>
+                <p className="text-xs text-muted mt-0.5">
+                  Uses the same S3/WebDAV target as config backups. A snapshot is the whole database, so it only
+                  ever leaves this box encrypted:{' '}
+                  {dataBackup.hasPassphrase
+                    ? 'your encryption passphrase is set, so uploads are allowed.'
+                    : 'set an encryption passphrase above first, or uploads are skipped and only local copies are kept.'}
+                </p>
+              </div>
+              <ToggleSwitch checked={dataBackup.offsite} onChange={() => saveDataBackup({ offsite: !dataBackup.offsite })} />
+            </div>
+
+            {(dataBackup.snapshots?.length ?? 0) > 0 && (
+              <div className="space-y-1.5">
+                {dataBackup.snapshots!.slice(0, 6).map((s) => (
+                  <div key={s.filename} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs" style={{ background: 'var(--color-surface-hover)' }}>
+                    <span className="min-w-0 truncate text-default">
+                      {s.filename}
+                      <span className="text-muted"> · {(s.sizeBytes / 1048576).toFixed(1)}MB{s.encrypted ? ' · encrypted' : ''}</span>
+                    </span>
+                    <span className="flex items-center gap-1 shrink-0">
+                      <Button variant="ghost" size="sm" onClick={() => api.downloadDataSnapshot(s.filename).catch(() => toast.error('Download failed'))}>Download</Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteSnapshot(s.filename)}>Delete</Button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-[11px] text-subtle">
+              Restoring is deliberately not a button here: swapping the database while the app is holding it open
+              is how a restore goes wrong. Download a snapshot, stop the container, and run{' '}
+              <code style={{ color: 'var(--color-text)' }}>node scripts/restore-data-snapshot.js &lt;file&gt;</code>{' '}
+              (add <code style={{ color: 'var(--color-text)' }}>--passphrase</code> for an encrypted one). It moves
+              your current database aside rather than deleting it, so even the restore is reversible.
+            </p>
+          </div>
+        )}
+      </Card>
+
     </div>
   );
 }

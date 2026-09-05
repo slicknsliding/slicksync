@@ -104,6 +104,61 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
 
   /**
    * @openapi
+   * /continue-watching:
+   *   get:
+   *     summary: What the household is partway through
+   *     description: The same rows the dashboard's Continue Watching shows - who is watching what, which episode is next, and a link that opens it in Stremio or Nuvio. Read-only.
+   *     parameters:
+   *       - in: query
+   *         name: limit
+   *         schema: { type: integer, default: 5, maximum: 20 }
+   *     responses:
+   *       200:
+   *         description: Rows, newest activity first
+   *       401:
+   *         description: Missing or invalid API key
+   */
+  // GET /ext/continue-watching - the "what was I watching" question, answerable
+  // from outside the app. This is the one thing an automation (an iOS
+  // Shortcut, a home dashboard, a bedside button) actually wants to ask, and
+  // until now the only way to see it was to open the web app.
+  router.get('/continue-watching', async (req, res) => {
+    try {
+      const limit = Math.min(20, Math.max(1, Number(req.query.limit) || 5))
+      const { getContinueWatching } = require('../utils/continueWatching')
+      const rows = await getContinueWatching(prisma, req.appAccountId, limit)
+      return res.json({
+        items: rows.map((r) => ({
+          user: r.username,
+          provider: r.providerType,
+          show: r.showName,
+          showId: r.showId,
+          season: r.nextEpisode?.season ?? null,
+          episode: r.nextEpisode?.episode ?? null,
+          episodeTitle: r.nextEpisode?.title || null,
+          // resume=true means the card points at the episode still in
+          // progress rather than the next one - worth exposing, since
+          // "carry on with" and "start" are different sentences.
+          resume: !!r.resume,
+          progressPercent: r.progressPercent ?? null,
+          poster: r.poster || null,
+          lastWatchedAt: r.lastWatchedAt,
+          // appUrl opens the provider app itself (stremio:// or nuvio://),
+          // webUrl is the browser-reachable fallback - a Shortcut wants the
+          // first, a dashboard usually wants the second.
+          appUrl: r.appUrl || null,
+          webUrl: r.webUrl || null,
+          contentType: r.contentType || 'series',
+        })),
+      })
+    } catch (e) {
+      console.error('[ext/continue-watching] Error:', e.message)
+      return res.status(500).json({ message: 'Failed to read Continue Watching' })
+    }
+  })
+
+  /**
+   * @openapi
    * /metrics.json:
    *   get:
    *     summary: Get full dashboard metrics

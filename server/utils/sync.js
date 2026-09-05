@@ -141,22 +141,53 @@ async function appendTraxAddon(user, addons, prisma) {
     // authenticated browser session observed when enabling the addon (stored
     // by the toggle route). Only with neither does injection skip - and the
     // toggle UI hands over the URL for manual install in that case.
+    // Three sources, in order of how much they can be trusted: the env var
+    // an operator set deliberately, the address they typed into Settings,
+    // and finally the one an authenticated admin request revealed. Sync has
+    // no request of its own to borrow a hostname from, so without one of
+    // these it genuinely cannot build an installable url.
     let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
     if (!base) {
       const acct = await prisma.appAccount.findUnique({ where: { id: user.accountId }, select: { sync: true } })
       let cfg = acct?.sync
       if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
-      base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
+      base = (cfg && typeof cfg.publicBaseUrl === 'string' ? cfg.publicBaseUrl : '').trim().replace(/\/+$/, '')
+      if (!base) base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
     }
-    if (!base) return addons
+    if (!base) {
+      // Loud on purpose. This is the one failure mode where SlickTrax looks
+      // switched on in the UI and simply never appears on the device, with
+      // nothing anywhere saying why - reported exactly that way.
+      console.warn(`[SlickTrax] ${user.username || user.id}: enabled, but this instance has no public address configured, so it cannot be installed. Set it in Settings -> Sync (or the PUBLIC_APP_URL env var).`)
+      return addons
+    }
     const { buildTraxManifest, getListsForAccount } = require('../routes/traxAddon')
     const lists = await getListsForAccount(prisma, user.accountId)
     const manifest = buildTraxManifest(user, lists)
     // Version segment in the path = cache bust: Nuvio never refetches a
     // manifest while the URL is unchanged (see TRAX_MANIFEST_VERSION).
     const transportUrl = `${base}/trax/${user.traxToken}/v${manifest.version}/manifest.json`
-    if (addons.some((a) => (a?.transportUrl || a?.manifestUrl || a?.url || '') === transportUrl)) return addons
-    return [...addons, { transportUrl, transportName: 'SlickTrax', manifest }]
+
+    // Every OTHER url carrying this user's trax token is a previous version
+    // of this same addon and has to go. The version segment is part of the
+    // path, so each bump produces a new url - and matching only the exact
+    // current one meant the old entry stayed on the account forever. Seen
+    // live: an account holding both /trax/<token>/manifest.json and
+    // /trax/<token>/v1.7.0/manifest.json, listed twice as "SlickTrax", which
+    // also left the user permanently "unsynced" because the account held an
+    // addon the desired list did not.
+    //
+    // Matched on the token rather than the name: an addon's NAME is
+    // whatever its manifest says and a user can rename it, while the token
+    // is this instance's own identifier for this user's feed and cannot
+    // collide with anyone else's addon.
+    const tokenMarker = `/trax/${user.traxToken}/`
+    const withoutStale = addons.filter((a) => {
+      const url = a?.transportUrl || a?.manifestUrl || a?.url || ''
+      return !(url.includes(tokenMarker) && url !== transportUrl)
+    })
+    if (withoutStale.some((a) => (a?.transportUrl || a?.manifestUrl || a?.url || '') === transportUrl)) return withoutStale
+    return [...withoutStale, { transportUrl, transportName: 'SlickTrax', manifest }]
   } catch {
     return addons
   }
@@ -373,6 +404,18 @@ function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds,
     if (!user) return { status: 'error', isSynced: false, message: 'User not found' }
     const hasCredentials = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
     if (!hasCredentials) return { isSynced: false, status: 'connect', message: 'User not connected to a provider' }
+
+    // A user in no group has nothing to be synced against. The badge used to
+    // work this out by fetching the entire user record first and counting
+    // groups, which meant every badge cost two round trips before it could
+    // show anything. Answering it here makes that second request
+    // unnecessary.
+    try {
+      const groupCount = await prisma.group.count({
+        where: { accountId: getAccountId(req), userIds: { contains: user.id } },
+      })
+      if (groupCount === 0) return { isSynced: false, status: 'stale', message: 'User is not in a group' }
+    } catch { /* fall through and compute normally */ }
 
     // Derive unsafe and useCustomFields from DB-backed account sync (single source of truth)
     let useCustomFields = true
