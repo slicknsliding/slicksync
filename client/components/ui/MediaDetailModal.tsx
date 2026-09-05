@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as BookmarkSolidIcon } from '@heroicons/react/24/solid';
+import { StarIcon, ClockIcon, FilmIcon, PlayIcon, XMarkIcon, BookmarkIcon as BookmarkSolidIcon, ShieldCheckIcon } from '@heroicons/react/24/solid';
 import { BookmarkIcon as BookmarkOutlineIcon, ChevronLeftIcon, ChevronDownIcon, HandThumbUpIcon, HandThumbDownIcon, CheckCircleIcon, CheckIcon as CheckIconMini, BellIcon } from '@heroicons/react/24/outline';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
@@ -1086,74 +1086,6 @@ export function MediaDetailModal({
                   comment for why rent/buy is excluded. Links to TMDb's
                   JustWatch attribution page, required by their API terms
                   when this data is displayed. */}
-              {/* Seasons and episodes. Series only, collapsed by default, and
-                  the list is only fetched on expand - see loadSeasons. */}
-              {effectiveType === 'series' && (
-                <div className="rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
-                  <button
-                    type="button"
-                    onClick={loadSeasons}
-                    className="w-full flex items-center justify-between gap-3 p-3 text-left"
-                  >
-                    <span className="text-sm font-medium text-default">
-                      Seasons &amp; episodes
-                      {seasons && seasons.length > 0 && (
-                        <span className="text-xs text-muted font-normal"> · {seasons.length} season{seasons.length === 1 ? '' : 's'}</span>
-                      )}
-                    </span>
-                    <ChevronDownIcon className={`w-4 h-4 shrink-0 transition-transform ${seasonsOpen ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
-                  </button>
-
-                  {seasonsOpen && (
-                    <div className="px-3 pb-3">
-                      {seasonsLoading && <p className="text-xs text-muted py-2">Loading episodes…</p>}
-                      {!seasonsLoading && seasons && seasons.length === 0 && (
-                        <p className="text-xs text-muted py-2">No episode list is available for this title.</p>
-                      )}
-                      {!seasonsLoading && seasons && seasons.length > 0 && (
-                        <>
-                          <div className="flex gap-1.5 overflow-x-auto pb-2">
-                            {seasons.map((s) => (
-                              <button
-                                key={s.season}
-                                type="button"
-                                onClick={() => setActiveSeason(s.season)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${activeSeason === s.season ? 'bg-primary text-white' : 'text-muted'}`}
-                                style={activeSeason === s.season ? undefined : { background: 'var(--color-surface)' }}
-                              >
-                                Season {s.season}
-                                {s.watchedCount > 0 && (
-                                  <span className={activeSeason === s.season ? 'opacity-80' : 'opacity-60'}> · {s.watchedCount}/{s.episodes.length}</span>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="max-h-64 overflow-y-auto space-y-0.5">
-                            {seasons.find((s) => s.season === activeSeason)?.episodes.map((ep) => (
-                              <div
-                                key={`${ep.season}-${ep.episode}`}
-                                className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg"
-                                style={{ background: ep.watched ? 'color-mix(in srgb, var(--color-success) 10%, transparent)' : 'transparent' }}
-                              >
-                                <span className="text-xs shrink-0 w-10 tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
-                                  E{String(ep.episode).padStart(2, '0')}
-                                </span>
-                                <span className="text-xs flex-1 min-w-0 truncate text-default">{ep.title || `Episode ${ep.episode}`}</span>
-                                {ep.released && (
-                                  <span className="text-[11px] shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
-                                    {new Date(ep.released).getFullYear() || ''}
-                                  </span>
-                                )}
-                                {ep.watched && <CheckCircleIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-success)' }} />}
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Anime extras: the next-episode countdown AniList publishes
                   exact air times for (better than a vague date), and the
@@ -1225,59 +1157,62 @@ export function MediaDetailModal({
                 // left-aligned buttons in narrow cells; sm:contents/w-auto
                 // hands width back to flex-wrap's own auto-sizing at the
                 // desktop breakpoint where the old single-row layout stays.
-                const watchlistBtn = enableWatchlist && (
+                // Secondary actions are icon-only. Six labelled buttons wrapped
+                // onto two rows and read as clutter (user feedback); the two
+                // "open it" actions are the real call to action, so those keep
+                // their labels and everything else becomes a compact toggle
+                // with a tooltip and an obvious on-state.
+                const iconBtn = (opts: {
+                  onClick: () => void; busy?: boolean; on?: boolean;
+                  tint: string; title: string; icon: React.ReactNode;
+                }) => (
                   <button
                     type="button"
-                    onClick={toggleWatchlist}
-                    disabled={watchlistBusy}
-                    aria-label={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
-                    title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
-                    className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${
-                      inWatchlist
-                        ? 'bg-primary text-white'
-                        : 'bg-surface-hover text-default hover:bg-primary/20 hover:text-primary'
-                    } ${watchlistBusy ? 'opacity-60 cursor-wait' : ''}`}
-                  >
-                    {inWatchlist
-                      ? <BookmarkSolidIcon className="w-4 h-4" />
-                      : <BookmarkOutlineIcon className="w-4 h-4" />}
-                    {inWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
-                  </button>
-                );
-                const watchedBtn = enableWatchedIndicators && selfWatched !== null && (
-                  <button
-                    type="button"
-                    onClick={toggleSelfWatched}
-                    disabled={selfWatchedBusy}
-                    aria-label={selfWatched ? 'Mark as unwatched' : 'Mark as watched'}
-                    title={selfWatched ? 'Marks this title unwatched for the household - the underlying watch history is kept, only the indicator changes' : 'Marks this title watched for the household, e.g. seen on another service'}
-                    className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${selfWatchedBusy ? 'opacity-60 cursor-wait' : ''}`}
-                    style={selfWatched
-                      ? { color: 'var(--color-success)', background: 'color-mix(in srgb, var(--color-success) 15%, transparent)' }
+                    onClick={opts.onClick}
+                    disabled={opts.busy}
+                    title={opts.title}
+                    aria-label={opts.title}
+                    aria-pressed={opts.on}
+                    className={`flex items-center justify-center w-10 h-10 rounded-lg transition-colors shrink-0 ${opts.busy ? 'opacity-60 cursor-wait' : ''}`}
+                    style={opts.on
+                      ? { color: opts.tint, background: `color-mix(in srgb, ${opts.tint} 16%, transparent)` }
                       : { color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
                   >
-                    <CheckCircleIcon className="w-4 h-4" />
-                    {selfWatched ? 'Watched' : 'Unwatched'}
+                    {opts.icon}
                   </button>
                 );
-                // Series only: a movie has no ongoing status to report on.
-                const followBtn = effectiveType === 'series' && (
-                  <button
-                    type="button"
-                    onClick={toggleFollow}
-                    disabled={followBusy}
-                    title={!followRow
-                      ? 'Get told when this show is renewed, canceled, or gets a premiere date'
-                      : followRow.muted ? 'Alerts are muted - turn them back on' : 'Mute alerts for this show (it stays followed)'}
-                    className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto ${followBusy ? 'opacity-60 cursor-wait' : ''}`}
-                    style={followRow && !followRow.muted
-                      ? { color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 15%, transparent)' }
-                      : { color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
-                  >
-                    <BellIcon className="w-4 h-4" />
-                    {!followRow ? 'Follow' : followRow.muted ? 'Muted' : 'Following'}
-                  </button>
-                );
+
+                const watchlistBtn = enableWatchlist && iconBtn({
+                  onClick: toggleWatchlist,
+                  busy: watchlistBusy,
+                  on: inWatchlist,
+                  tint: 'var(--color-primary)',
+                  title: inWatchlist ? 'In your Watchlist - tap to remove' : 'Add to Watchlist',
+                  icon: inWatchlist ? <BookmarkSolidIcon className="w-5 h-5" /> : <BookmarkOutlineIcon className="w-5 h-5" />,
+                });
+
+                const watchedBtn = enableWatchedIndicators && selfWatched !== null && iconBtn({
+                  onClick: toggleSelfWatched,
+                  busy: selfWatchedBusy,
+                  on: selfWatched,
+                  tint: 'var(--color-success)',
+                  title: selfWatched
+                    ? 'Watched - tap to mark unwatched (the underlying history is kept)'
+                    : 'Mark as watched for the household',
+                  icon: <CheckCircleIcon className="w-5 h-5" />,
+                });
+
+                const followBtn = effectiveType === 'series' && iconBtn({
+                  onClick: toggleFollow,
+                  busy: followBusy,
+                  on: !!followRow && !followRow.muted,
+                  tint: 'var(--color-primary)',
+                  title: !followRow
+                    ? 'Follow - hear when this is renewed, canceled or dated'
+                    : followRow.muted ? 'Alerts muted - tap to turn them back on' : 'Following - tap to mute',
+                  icon: <BellIcon className="w-5 h-5" />,
+                });
+
                 const stremioBtn = (
                   <a
                     href={buildStremioAppUrl(details.imdb_id, effectiveType)}
@@ -1341,18 +1276,23 @@ export function MediaDetailModal({
                 }
 
                 return (
-                  // 2 columns on mobile (Watchlist+catalog, Stremio+Nuvio -
-                  // 2 rows instead of 4 full-width stacked buttons), back to
-                  // the original single-row flex-wrap from sm: up.
-                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-                    {watchlistBtn}
-                    {watchedBtn}
-                    {followBtn}
-                    <div className="flex justify-center sm:contents">
-                      <AddToListButton item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }} />
-                    </div>
+                  // One row: the two "open it" actions carry labels because
+                  // they are what this modal is for, and the rest sit beside
+                  // them as icons. Previously all six were labelled buttons
+                  // that wrapped onto two lines on any normal width.
+                  <div className="flex items-center gap-2 flex-wrap">
                     {stremioBtn}
                     {nuvioBtn}
+                    <span className="hidden sm:block w-px h-6 mx-0.5" style={{ background: 'var(--color-surface-border)' }} />
+                    <div className="flex items-center gap-1.5">
+                      {watchlistBtn}
+                      {watchedBtn}
+                      {followBtn}
+                      <AddToListButton
+                        item={{ id: effectiveId, type: effectiveType, name: effectiveFallbackTitle, poster: effectiveFallbackPoster || null }}
+                        compact
+                      />
+                    </div>
                   </div>
                 );
               })()}
@@ -1376,14 +1316,90 @@ export function MediaDetailModal({
                 </p>
               )}
 
+              {/* Seasons and episodes. Series only, collapsed by default, and
+                  the list is only fetched on expand - see loadSeasons. */}
+              {effectiveType === 'series' && (
+                <div className="rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
+                  <button
+                    type="button"
+                    onClick={loadSeasons}
+                    className="w-full flex items-center justify-between gap-3 p-3 text-left"
+                  >
+                    <span className="text-sm font-medium text-default">
+                      Seasons &amp; episodes
+                      {seasons && seasons.length > 0 && (
+                        <span className="text-xs text-muted font-normal"> · {seasons.length} season{seasons.length === 1 ? '' : 's'}</span>
+                      )}
+                    </span>
+                    <ChevronDownIcon className={`w-4 h-4 shrink-0 transition-transform ${seasonsOpen ? 'rotate-180' : ''}`} style={{ color: 'var(--color-text-muted)' }} />
+                  </button>
+
+                  {seasonsOpen && (
+                    <div className="px-3 pb-3">
+                      {seasonsLoading && <p className="text-xs text-muted py-2">Loading episodes…</p>}
+                      {!seasonsLoading && seasons && seasons.length === 0 && (
+                        <p className="text-xs text-muted py-2">No episode list is available for this title.</p>
+                      )}
+                      {!seasonsLoading && seasons && seasons.length > 0 && (
+                        <>
+                          <div className="flex gap-1.5 overflow-x-auto pb-2">
+                            {seasons.map((s) => (
+                              <button
+                                key={s.season}
+                                type="button"
+                                onClick={() => setActiveSeason(s.season)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${activeSeason === s.season ? 'bg-primary text-white' : 'text-muted'}`}
+                                style={activeSeason === s.season ? undefined : { background: 'var(--color-surface)' }}
+                              >
+                                Season {s.season}
+                                {s.watchedCount > 0 && (
+                                  <span className={activeSeason === s.season ? 'opacity-80' : 'opacity-60'}> · {s.watchedCount}/{s.episodes.length}</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="max-h-56 overflow-y-auto pr-1 space-y-px">
+                            {seasons.find((s) => s.season === activeSeason)?.episodes.map((ep) => (
+                              <div
+                                key={`${ep.season}-${ep.episode}`}
+                                className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-colors hover:bg-surface-hover"
+                                style={{ background: ep.watched ? 'color-mix(in srgb, var(--color-success) 8%, transparent)' : 'transparent' }}
+                              >
+                                <span className="text-xs shrink-0 w-10 tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                                  E{String(ep.episode).padStart(2, '0')}
+                                </span>
+                                <span className="text-xs flex-1 min-w-0 truncate text-default">{ep.title || `Episode ${ep.episode}`}</span>
+                                {ep.released && (
+                                  <span className="text-[11px] shrink-0" style={{ color: 'var(--color-text-subtle)' }}>
+                                    {new Date(ep.released).getFullYear() || ''}
+                                  </span>
+                                )}
+                                {ep.watched && <CheckCircleIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-success)' }} />}
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Spoiler guard. Collapsed it is a single inline control, not
+                  a full-width bar holding two words and a lot of nothing -
+                  it only takes real space once it is actually opened. */}
               {effectiveType === 'series' && enableWatchTogether && (
-                <div className="rounded-xl border border-default bg-surface-hover/40">
+                <div className={wtOpen ? 'rounded-xl border border-default bg-surface-hover/40' : ''}>
                   <button
                     type="button"
                     onClick={() => { setWtOpen((v) => !v); if (!wtOpen) loadWatchTogether(); }}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
+                    className={wtOpen
+                      ? 'w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left'
+                      : 'inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-left transition-colors'}
+                    style={wtOpen ? undefined : { background: 'var(--color-surface-hover)' }}
                   >
                     <div className="flex items-center gap-2 min-w-0">
+                      <ShieldCheckIcon className="w-4 h-4 shrink-0" style={{ color: wtHasPact ? 'var(--color-primary)' : 'var(--color-text-muted)' }} />
                       <span className="text-sm font-medium text-default">Spoiler guard</span>
                       {wtHasPact && (
                         <span className="text-xs text-muted truncate">

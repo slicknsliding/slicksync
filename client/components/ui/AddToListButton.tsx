@@ -142,7 +142,9 @@ export function CatalogPickerMenu({
 
 // "Add to catalog" control for the media detail modal (roadmap #7). Thin
 // trigger + popover wrapper around CatalogPickerMenu above.
-export function AddToListButton({ item }: { item: CatalogItem }) {
+/** `compact` renders an icon-only trigger, for action rows where a labelled
+ *  button would be the sixth in a line and push the row onto two. */
+export function AddToListButton({ item, compact = false }: { item: CatalogItem; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const toggleOpen = useCallback(() => setOpen((v) => !v), []);
 
@@ -151,10 +153,14 @@ export function AddToListButton({ item }: { item: CatalogItem }) {
       <button
         type="button"
         onClick={toggleOpen}
-        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-surface-hover text-default hover:bg-primary/20 hover:text-primary transition-colors"
+        title={compact ? 'Add to a catalog' : undefined}
+        aria-label={compact ? 'Add to a catalog' : undefined}
+        className={compact
+          ? 'flex items-center justify-center w-10 h-10 rounded-lg bg-surface-hover text-muted hover:bg-primary/20 hover:text-primary transition-colors shrink-0'
+          : 'flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-surface-hover text-default hover:bg-primary/20 hover:text-primary transition-colors'}
       >
-        <RectangleStackIcon className="w-4 h-4" />
-        Add to catalog
+        <RectangleStackIcon className={compact ? 'w-5 h-5' : 'w-4 h-4'} />
+        {!compact && 'Add to catalog'}
       </button>
 
       {open && (
