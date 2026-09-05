@@ -145,12 +145,15 @@ export default function DiscoverPage() {
     setDescribeBusy(true);
     setDescribeError(null);
     try {
-      const r = await api.searchByDescription(text);
+      const r = await api.searchByDescription(text, type);
       setDescribeResults(r.items);
       if (r.items.length === 0) {
-        setDescribeError(r.candidates > 0
-          ? 'It had guesses, but none of them checked out against TMDb - try adding a detail you are sure about.'
-          : 'No match from that description - try naming something specific you remember.');
+        setDescribeError(
+          r.filteredByType
+            ? `Those guesses were all ${r.filteredByType === 'series' ? 'films, not series' : 'series, not films'} - try the ${r.filteredByType === 'series' ? 'Movies' : 'Series'} tab.`
+            : r.candidates > 0
+              ? 'It had guesses, but none of them checked out against TMDb - try adding a detail you are sure about.'
+              : 'No match from that description - try naming something specific you remember.');
       }
     } catch (e) {
       setDescribeError(e instanceof Error ? e.message : 'Search failed');
@@ -158,7 +161,7 @@ export default function DiscoverPage() {
     } finally {
       setDescribeBusy(false);
     }
-  }, [searchQuery, describeBusy]);
+  }, [searchQuery, describeBusy, type]);
   // Which poster's right-click menu is open — shared across the whole page
   // (both the main grid and the For You rows) so opening a second card's
   // menu closes whichever one was open before, same as Continue Watching.

@@ -628,9 +628,9 @@ class ApiClient {
   }
 
   /** Tip-of-the-tongue search: a plot description -> real, TMDb-verified titles. */
-  async searchByDescription(description: string) {
-    return this.fetch<{ items: DiscoverItem[]; candidates: number }>('/discover/describe', {
-      method: 'POST', body: JSON.stringify({ description }),
+  async searchByDescription(description: string, type?: 'movie' | 'series') {
+    return this.fetch<{ items: DiscoverItem[]; candidates: number; filteredByType: 'movie' | 'series' | null }>('/discover/describe', {
+      method: 'POST', body: JSON.stringify({ description, type }),
     });
   }
 

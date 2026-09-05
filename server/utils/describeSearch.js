@@ -25,6 +25,18 @@
 const TIMEOUT_MS = 45000
 const MAX_CANDIDATES = 6
 
+function buildPrompt(wantType) {
+  // The Movies/Series toggle is a real constraint, not a hint: someone on
+  // the Series tab describing a plot wants series. Told to the model AND
+  // enforced after (models cheerfully return a film when asked for a show).
+  const only = wantType === 'series'
+    ? '\n- Only TV series. Do NOT return films, even if a film matches the description better.'
+    : wantType === 'movie'
+      ? '\n- Only films. Do NOT return TV series, even if a series matches the description better.'
+      : ''
+  return PROMPT + only
+}
+
 const PROMPT = `You identify films and TV shows from vague plot descriptions.
 Reply with ONLY a JSON array of up to ${MAX_CANDIDATES} objects, best guess first, like:
 [{"title":"Edge of Tomorrow","year":2014,"type":"movie"}]
@@ -101,8 +113,9 @@ async function verifyCandidate(candidate, tmdbKey) {
  * rather than an error, since "I couldn't place it" is a legitimate answer
  * to a vague description.
  */
-async function searchByDescription(prisma, accountId, decrypt, description, tmdbKey) {
+async function searchByDescription(prisma, accountId, decrypt, description, tmdbKey, wantType) {
   const text = String(description || '').trim()
+  const only = wantType === 'series' || wantType === 'movie' ? wantType : null
   if (!text) throw new Error('Describe what you remember about it first')
   if (!tmdbKey) throw new Error('A TMDb key is needed to verify results (Settings -> External API Keys)')
 
@@ -135,8 +148,11 @@ async function searchByDescription(prisma, accountId, decrypt, description, tmdb
     throw new Error(`The AI provider could not be reached after ${waited}s: ${e?.message || 'unknown error'}`)
   }
 
-  const candidates = parseCandidates(raw)
-  if (candidates.length === 0) return { items: [], candidates: 0 }
+  let candidates = parseCandidates(raw)
+  const suggested = candidates.length
+  // Enforce the toggle rather than trusting the model to have obeyed it.
+  if (only) candidates = candidates.filter((c) => c.type === only)
+  if (candidates.length === 0) return { items: [], candidates: suggested, filteredByType: suggested > 0 ? only : null }
 
   const verified = []
   const seen = new Set()
@@ -147,7 +163,7 @@ async function searchByDescription(prisma, accountId, decrypt, description, tmdb
       verified.push(item)
     }
   }
-  return { items: verified, candidates: candidates.length }
+  return { items: verified, candidates: suggested, filteredByType: null }
 }
 
 module.exports = { searchByDescription, parseCandidates, verifyCandidate }
