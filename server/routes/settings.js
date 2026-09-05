@@ -1007,6 +1007,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           simklClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.simklClientId === 'string') ? syncCfg.simklClientId : '',
           traktClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.traktClientId === 'string') ? syncCfg.traktClientId : '',
           malClientId: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.malClientId === 'string') ? syncCfg.malClientId : '',
+          publicBaseUrl: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.publicBaseUrl === 'string') ? syncCfg.publicBaseUrl : '',
           nuvioServerUrl: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioServerUrl === 'string') ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: (syncCfg && typeof syncCfg === 'object' && typeof syncCfg.nuvioAnonKey === 'string') ? syncCfg.nuvioAnonKey : '',
           // Was only in the OTHER branch's response below, so private-mode
@@ -1095,6 +1096,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           simklClientId: typeof syncCfg.simklClientId === 'string' ? syncCfg.simklClientId : '',
           traktClientId: typeof syncCfg.traktClientId === 'string' ? syncCfg.traktClientId : '',
           malClientId: typeof syncCfg.malClientId === 'string' ? syncCfg.malClientId : '',
+          publicBaseUrl: typeof syncCfg.publicBaseUrl === 'string' ? syncCfg.publicBaseUrl : '',
           nuvioServerUrl: typeof syncCfg.nuvioServerUrl === 'string' ? syncCfg.nuvioServerUrl : '',
           nuvioAnonKey: typeof syncCfg.nuvioAnonKey === 'string' ? syncCfg.nuvioAnonKey : '',
         }
@@ -1108,7 +1110,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
 
   router.put('/account-sync', async (req, res) => {
     try {
-      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableWatchTogether, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, traktClientId, malClientId, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
+      const { enabled, frequency, mode, unsafe, safe, webhookUrl, useCustomFields, useCustomNames, notifyOnActivity, notifyOnSync, notifyOnInvite, notifyOnVault, notifyOnAddonHealth, notifyOnBackup, notifyOnProxyHealth, notifyOnUpdateAvailable, notifyOnRecoveryKitStale, notifyOnMosaic, notifyOnAutomation, notifyDigestEnabled, notifyDigestFrequency, accountTimezone, vaultCurrency, enableWatchlist, enableWatchedIndicators, enableWatchTogether, enableRecommendations, enableAutoplayTrailer, autoplayTrailerStartMuted, enablePosterRatings, enableReactions, enableWatchProviders, enableAutoThemedCatalogs, tmdbApiKey, mdblistApiKey, rpdbApiKey, omdbApiKey, simklClientId, traktClientId, malClientId, publicBaseUrl, tmdbApiKeyBackup, mdblistApiKeyBackup, rpdbApiKeyBackup, omdbApiKeyBackup, nuvioServerUrl, nuvioAnonKey } = req.body || {}
       // Support both useCustomFields (new) and useCustomNames (old) for backward compatibility
       const useCustomFieldsValue = useCustomFields !== undefined ? useCustomFields : useCustomNames
       if (INSTANCE_TYPE !== 'public') {
@@ -1214,6 +1216,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
           // cost someone their existing Trakt app.
           traktClientId: traktClientId !== undefined ? (typeof traktClientId === 'string' ? traktClientId.trim() : '') : (baseCfg.traktClientId || ''),
           malClientId: malClientId !== undefined ? (typeof malClientId === 'string' ? malClientId.trim() : '') : (baseCfg.malClientId || ''),
+          publicBaseUrl: publicBaseUrl !== undefined ? (typeof publicBaseUrl === 'string' ? publicBaseUrl.trim().replace(/\/+$/, '') : '') : (baseCfg.publicBaseUrl || ''),
           nuvioServerUrl: nuvioServerUrl !== undefined ? (typeof nuvioServerUrl === 'string' ? nuvioServerUrl.trim().replace(/\/+$/, '') : '') : (baseCfg.nuvioServerUrl || ''),
           nuvioAnonKey: nuvioAnonKey !== undefined ? (typeof nuvioAnonKey === 'string' ? nuvioAnonKey.trim() : '') : (baseCfg.nuvioAnonKey || ''),
           // Drop this provider's stored health-check result the moment ITS
@@ -1326,6 +1329,7 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
       if (simklClientId !== undefined) partial.simklClientId = typeof simklClientId === 'string' ? simklClientId.trim() : ''
       if (traktClientId !== undefined) partial.traktClientId = typeof traktClientId === 'string' ? traktClientId.trim() : ''
       if (malClientId !== undefined) partial.malClientId = typeof malClientId === 'string' ? malClientId.trim() : ''
+      if (publicBaseUrl !== undefined) partial.publicBaseUrl = typeof publicBaseUrl === 'string' ? publicBaseUrl.trim().replace(/\/+$/, '') : ''
       // Trailing slash stripped on save so it can't produce `//rest/v1/...`
       // downstream regardless of how it was typed.
       if (nuvioServerUrl !== undefined) partial.nuvioServerUrl = typeof nuvioServerUrl === 'string' ? nuvioServerUrl.trim().replace(/\/+$/, '') : ''

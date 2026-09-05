@@ -3500,6 +3500,7 @@ export interface SyncSettings {
   /** Public Trakt list import (client id only - not an account connection). */
   traktClientId?: string;
   malClientId?: string;
+  publicBaseUrl?: string;
   /** Self-hosted Nuvio backend URL, e.g. https://backend.example.com. Blank uses api.nuvio.tv. */
   nuvioServerUrl?: string;
   /** Anon key for that backend. Only takes effect alongside nuvioServerUrl. */

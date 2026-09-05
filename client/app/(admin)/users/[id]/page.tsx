@@ -463,8 +463,13 @@ export default function UserDetailPage() {
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    if (user?.traxAddonEnabled && user?.traxToken && !traxManifestUrl) {
-      setTraxManifestUrl(`${window.location.origin}/trax/${user.traxToken}/manifest.json`);
+    if (user?.traxAddonEnabled && !traxManifestUrl) {
+      // Deliberately NOT built from window.location any more. That produced
+      // a url that works in this browser and proves nothing about whether
+      // the SERVER can install it - and when the server had no public
+      // address configured, sync skipped SlickTrax entirely while this row
+      // happily showed a link. The server is the only thing that knows.
+      setTraxManifestUrl(user.traxManifestUrl || null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.traxAddonEnabled, user?.traxToken]);
@@ -480,7 +485,7 @@ export default function UserDetailPage() {
       if (r.enabled) {
         toast.success(r.autoInstall
           ? 'SlickTrax Addon enabled - it installs on the next sync'
-          : 'Enabled. Set PUBLIC_APP_URL on the server for auto-install, or install the URL below manually.');
+          : 'Enabled, but this instance has no public address set, so sync cannot install it. Settings -> Sync -> Public address.');
       } else {
         toast.success('SlickTrax Addon disabled - the next sync removes it');
       }

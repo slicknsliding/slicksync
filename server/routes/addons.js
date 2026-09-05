@@ -983,6 +983,44 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
 
       const lowerUrl = sanitizedUrl.toLowerCase()
 
+      // A SlickTrax url belongs to ONE user - the token in the path is that
+      // user's feed. Added here it would become a shared addon, and
+      // assigning it to a group would push one person's Continue Watching
+      // and Watchlist onto everyone else's devices. It also would not
+      // survive: sync owns SlickTrax placement per user and drops any trax
+      // url that is not the current one for that user. So this is refused
+      // with the actual way in rather than accepted and then quietly undone
+      // (reported live: "I add it and it never shows up on my user").
+      if (/\/trax\/[a-f0-9]{16,}\//i.test(sanitizedUrl) || /\/trax\/[a-f0-9]{16,}\/manifest\.json$/i.test(sanitizedUrl)) {
+        const traxUser = await prisma.user.findFirst({
+          where: { accountId: getAccountId(req) },
+          select: { id: true, username: true, traxToken: true },
+        }).catch(() => null)
+        return res.status(400).json({
+          message: 'That is a SlickTrax address, which belongs to a single user rather than the shared addon list. Turn it on from that user\'s page (Watch-Tracking Integrations -> SlickTrax Addon -> Enable) and their next sync installs it for them. Adding it here would share one person\'s Continue Watching and Watchlist with everyone in the group.',
+          hint: traxUser?.username ? `Open the user page for ${traxUser.username} and use the SlickTrax Addon row.` : undefined,
+        })
+      }
+
+      // A SlickTrax url belongs to ONE user - the token in the path is that
+      // user's feed. Added here it would become a shared addon, and
+      // assigning it to a group would push one person's Continue Watching
+      // and Watchlist onto everyone else's devices. It also would not
+      // survive: sync owns SlickTrax placement per user and drops any trax
+      // url that is not the current one for that user. So this is refused
+      // with the actual way in rather than accepted and then quietly undone
+      // (reported live: "I add it and it never shows up on my user").
+      if (/\/trax\/[a-f0-9]{16,}\//i.test(sanitizedUrl) || /\/trax\/[a-f0-9]{16,}\/manifest\.json$/i.test(sanitizedUrl)) {
+        const traxUser = await prisma.user.findFirst({
+          where: { accountId: getAccountId(req) },
+          select: { id: true, username: true, traxToken: true },
+        }).catch(() => null)
+        return res.status(400).json({
+          message: 'That is a SlickTrax address, which belongs to a single user rather than the shared addon list. Turn it on from that user\'s page (Watch-Tracking Integrations -> SlickTrax Addon -> Enable) and their next sync installs it for them. Adding it here would share one person\'s Continue Watching and Watchlist with everyone in the group.',
+          hint: traxUser?.username ? `Open the user page for ${traxUser.username} and use the SlickTrax Addon row.` : undefined,
+        })
+      }
+
       // Use provided manifest data if available, otherwise fetch it
       let manifestData = providedManifestData
       if (!manifestData) {

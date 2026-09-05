@@ -141,14 +141,26 @@ async function appendTraxAddon(user, addons, prisma) {
     // authenticated browser session observed when enabling the addon (stored
     // by the toggle route). Only with neither does injection skip - and the
     // toggle UI hands over the URL for manual install in that case.
+    // Three sources, in order of how much they can be trusted: the env var
+    // an operator set deliberately, the address they typed into Settings,
+    // and finally the one an authenticated admin request revealed. Sync has
+    // no request of its own to borrow a hostname from, so without one of
+    // these it genuinely cannot build an installable url.
     let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
     if (!base) {
       const acct = await prisma.appAccount.findUnique({ where: { id: user.accountId }, select: { sync: true } })
       let cfg = acct?.sync
       if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
-      base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
+      base = (cfg && typeof cfg.publicBaseUrl === 'string' ? cfg.publicBaseUrl : '').trim().replace(/\/+$/, '')
+      if (!base) base = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
     }
-    if (!base) return addons
+    if (!base) {
+      // Loud on purpose. This is the one failure mode where SlickTrax looks
+      // switched on in the UI and simply never appears on the device, with
+      // nothing anywhere saying why - reported exactly that way.
+      console.warn(`[SlickTrax] ${user.username || user.id}: enabled, but this instance has no public address configured, so it cannot be installed. Set it in Settings -> Sync (or the PUBLIC_APP_URL env var).`)
+      return addons
+    }
     const { buildTraxManifest, getListsForAccount } = require('../routes/traxAddon')
     const lists = await getListsForAccount(prisma, user.accountId)
     const manifest = buildTraxManifest(user, lists)

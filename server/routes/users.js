@@ -755,7 +755,19 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // from, so if PUBLIC_APP_URL is unset the auto-install genuinely will
       // not happen and the UI should say so instead of showing a URL that
       // only works from this browser's vantage point.
-      const base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+      let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+      let baseSource = base ? 'env' : null
+      if (!base) {
+        try {
+          const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+          let cfg = acct?.sync
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+          const configured = (cfg && typeof cfg.publicBaseUrl === 'string' ? cfg.publicBaseUrl : '').trim().replace(/\/+$/, '')
+          const observed = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
+          if (configured) { base = configured; baseSource = 'settings' }
+          else if (observed) { base = observed; baseSource = 'observed' }
+        } catch { /* falls through to the request-derived base below */ }
+      }
       // The admin reaching this route just proved a working public URL for
       // this instance - the one in their address bar. Persisted so sync can
       // auto-install without PUBLIC_APP_URL being set; the env var, when
@@ -780,10 +792,16 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           }
         } catch { /* best-effort - manual install still works */ }
       }
+      // baseKnown is the honest bit: with no address configured, sync cannot
+      // install this on anyone's device no matter what the toggle says, and
+      // the url below only works from the browser that asked for it.
+      const effectiveBase = base || (reqBaseUsable ? reqBase : '')
       res.json({
         enabled,
-        manifestUrl: `${base || reqBase}/trax/${traxToken}/v${require('./traxAddon').TRAX_MANIFEST_VERSION}/manifest.json`,
-        autoInstall: true,
+        manifestUrl: effectiveBase ? `${effectiveBase}/trax/${traxToken}/v${require('./traxAddon').TRAX_MANIFEST_VERSION}/manifest.json` : null,
+        autoInstall: !!base,
+        baseKnown: !!base,
+        baseSource: baseSource || (base ? 'observed' : null),
       })
     } catch (error) {
       console.error('Error toggling SlickTrax addon:', error)
@@ -2482,6 +2500,19 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       // Transform for frontend
+      // Same precedence sync itself uses: an explicit env var, then the
+      // address set in Settings, then one an admin request revealed.
+      let traxBase = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+      if (!traxBase) {
+        try {
+          const acct = await prisma.appAccount.findUnique({ where: { id: getAccountId(req) }, select: { sync: true } })
+          let cfg = acct?.sync
+          if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+          traxBase = (cfg && typeof cfg.publicBaseUrl === 'string' ? cfg.publicBaseUrl : '').trim().replace(/\/+$/, '')
+          if (!traxBase) traxBase = (cfg && typeof cfg.observedBaseUrl === 'string' ? cfg.observedBaseUrl : '').trim().replace(/\/+$/, '')
+        } catch { traxBase = '' }
+      }
+
       const transformedUser = {
         id: user.id,
         email: user.email,
@@ -2516,6 +2547,15 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         // page reload can still display/copy that URL.
         traxAddonEnabled: !!user.traxAddonEnabled,
         traxToken: user.traxToken || null,
+        // Whether SYNC can actually install it, and the url it would use.
+        // The page used to build this url from the browser's own address,
+        // which looks right and proves nothing: with no public address
+        // configured, sync skips SlickTrax entirely while the row still
+        // shows a link. Answering from the server is the only honest way.
+        traxBaseKnown: !!traxBase,
+        traxManifestUrl: (traxBase && user.traxToken)
+          ? traxBase + '/trax/' + user.traxToken + '/v' + require('./traxAddon').TRAX_MANIFEST_VERSION + '/manifest.json'
+          : null,
       }
 
       res.json(transformedUser)
