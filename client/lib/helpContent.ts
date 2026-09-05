@@ -1911,7 +1911,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'Watch order: anime franchises split into prequels, sequels, side stories and movies, which is why people go looking for charts. SlickSync reads AniList\'s own relation graph and keeps the main line separate from side stories rather than interleaving them on a guess.',
       'Clicking a title in the seasonal row searches SlickSync for it, so from there it behaves like any other title - watchlist, catalogs, watched state and the detail popup all work normally.',
       'AniList is public and unauthenticated for everything used here, so unlike TMDb/OMDb/MDBList there is no key to add and nothing to run out of.',
-      'If AniList itself is unavailable - they disabled their public API outright in September 2026 while they worked on stability - the seasonal row says so rather than showing an empty shelf, and everything else in SlickSync carries on unaffected. Continue Watching does not depend on AniList: absolute episode numbers are converted using the show's own episode list.',
+      'If AniList itself is unavailable - they disabled their public API outright in September 2026 while they worked on stability - the seasonal row says so rather than showing an empty shelf, and everything else in SlickSync carries on unaffected. Continue Watching does not depend on AniList: absolute episode numbers are converted using the show\'s own episode list.',
     ],
     related: ['discover-basics', 'now-playing-continue-watching'],
     href: '/settings',
