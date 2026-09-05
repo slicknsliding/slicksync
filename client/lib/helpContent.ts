@@ -1838,10 +1838,10 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'Driving SlickSync from iOS Shortcuts (or any automation)',
     category: 'Sharing & integrations',
     keywords: ['ios shortcuts', 'shortcuts app', 'siri', 'automation', 'api key', 'home screen button', 'webhook out'],
-    answer: 'Settings - Security - API key, then point a Shortcut at this instance with an x-api-key header. Three that are worth building: sync everything, reload addons, and ask what you were watching.',
+    answer: 'Settings - API Key, then point a Shortcut at this instance with an Authorization header. Three that are worth building: sync everything, reload addons, and ask what you were watching.',
     details: [
-      'Every call needs the header x-api-key with the account API key from Settings, and the URL is your own instance - https://your-instance/api/ext/... - so nothing leaves your network unless you point it outside.',
-      'Sync everything: Get Contents of URL, Method POST, URL /api/ext/groups/sync, Header x-api-key. Put that Shortcut on the Home Screen and syncing the household is one tap. Add it to a Personal Automation (e.g. when you get home) and it never needs a tap at all.',
+      'Every call needs the header Authorization set to Bearer followed by the account API key from Settings, and the URL is your own instance - https://your-instance/api/ext/... - so nothing leaves your network unless you point it outside.',
+      'Sync everything: Get Contents of URL, Method POST, URL /api/ext/groups/sync, Header Authorization: Bearer <your key>. Put that Shortcut on the Home Screen and syncing the household is one tap. Add it to a Personal Automation (e.g. when you get home) and it never needs a tap at all.',
       'Reload addons: same shape, POST to /api/ext/addons/reload with { "stremioAddonId": "..." } as the body, for pulling one addon a new manifest without opening the app.',
       'What was I watching: GET /api/ext/continue-watching?limit=5. Each row carries the show, the exact next episode, and appUrl - a stremio:// or nuvio:// link. Feed appUrl into an Open URLs action and the Shortcut takes you straight into the episode. This is the one that makes a good Siri phrase ("what am I watching") or a bedside button.',
       'Read-only rows are safe to hand to a widget or a home dashboard; the sync ones change real state, so treat that API key like a password - anyone holding it can sync your household.',
