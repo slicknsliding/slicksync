@@ -127,7 +127,15 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         // Pre-compute current/desired and alreadySynced using the same comparator as the badge
         const userRec = await prisma.user.findFirst({
           where: { id: uid, accountId: getAccountId(req) },
-          select: { id: true, stremioAuthKey: true, excludedAddons: true, protectedAddons: true, isActive: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true }
+          // accountId, traxAddonEnabled and traxToken are NOT optional here,
+          // however unused they look: computeUserSyncPlan feeds this row to
+          // syncTraxAddon, which reads all three. Without them SlickTrax is
+          // silently absent from the desired list, so a user whose only
+          // pending change is SlickTrax compares as already synced and this
+          // loop skips them - syncing the group did nothing while syncing
+          // the same user from their own page worked, which is exactly how
+          // it was reported.
+          select: { id: true, stremioAuthKey: true, excludedAddons: true, protectedAddons: true, isActive: true, providerType: true, nuvioRefreshToken: true, nuvioUserId: true, accountId: true, username: true, traxAddonEnabled: true, traxToken: true }
         })
         if (!userRec || userRec.isActive === false) { failed++; continue }
 
