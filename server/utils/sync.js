@@ -155,8 +155,27 @@ async function appendTraxAddon(user, addons, prisma) {
     // Version segment in the path = cache bust: Nuvio never refetches a
     // manifest while the URL is unchanged (see TRAX_MANIFEST_VERSION).
     const transportUrl = `${base}/trax/${user.traxToken}/v${manifest.version}/manifest.json`
-    if (addons.some((a) => (a?.transportUrl || a?.manifestUrl || a?.url || '') === transportUrl)) return addons
-    return [...addons, { transportUrl, transportName: 'SlickTrax', manifest }]
+
+    // Every OTHER url carrying this user's trax token is a previous version
+    // of this same addon and has to go. The version segment is part of the
+    // path, so each bump produces a new url - and matching only the exact
+    // current one meant the old entry stayed on the account forever. Seen
+    // live: an account holding both /trax/<token>/manifest.json and
+    // /trax/<token>/v1.7.0/manifest.json, listed twice as "SlickTrax", which
+    // also left the user permanently "unsynced" because the account held an
+    // addon the desired list did not.
+    //
+    // Matched on the token rather than the name: an addon's NAME is
+    // whatever its manifest says and a user can rename it, while the token
+    // is this instance's own identifier for this user's feed and cannot
+    // collide with anyone else's addon.
+    const tokenMarker = `/trax/${user.traxToken}/`
+    const withoutStale = addons.filter((a) => {
+      const url = a?.transportUrl || a?.manifestUrl || a?.url || ''
+      return !(url.includes(tokenMarker) && url !== transportUrl)
+    })
+    if (withoutStale.some((a) => (a?.transportUrl || a?.manifestUrl || a?.url || '') === transportUrl)) return withoutStale
+    return [...withoutStale, { transportUrl, transportName: 'SlickTrax', manifest }]
   } catch {
     return addons
   }

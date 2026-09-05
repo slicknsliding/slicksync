@@ -4090,14 +4090,16 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ message: 'addonUrls must be a non-empty array' })
       }
 
+      // Full row rather than a Stremio-only select: createProvider needs
+      // whichever provider's credentials this user actually has. Both the
+      // Stremio and Nuvio providers implement addAddon, so there is no
+      // reason for this route to be Stremio-only - it just never got
+      // converted, and told Nuvio users they were "not connected to
+      // Stremio", which is true and useless.
       const user = await prisma.user.findFirst({
         where: {
           id,
           accountId: getAccountId(req)
-        },
-        select: {
-          stremioAuthKey: true,
-          isActive: true
         }
       })
 
@@ -4105,8 +4107,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return responseUtils.notFound(res, 'User')
       }
 
-      if (!user.stremioAuthKey) {
-        return res.status(400).json({ message: 'User not connected to Stremio' })
+      const hasAddCreds = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
+      if (!hasAddCreds) {
+        return res.status(400).json({ message: 'User is not connected to Stremio or Nuvio' })
       }
 
       if (!user.isActive) {
@@ -4114,8 +4117,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       }
 
       try {
-        const authKeyPlain = decrypt(user.stremioAuthKey, req)
-        const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKeyPlain })
+        const provider = createProvider(user, { decrypt, req })
+        if (!provider) {
+          return res.status(400).json({ message: 'User is not connected to a provider' })
+        }
 
         let addedCount = 0
         const results = []
@@ -4129,11 +4134,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
             }
             const manifest = await manifestResponse.json()
 
-            // Add to Stremio
-            await apiClient.request('addonCollectionAdd', {
-              addonId: addonUrl,
-              manifest: manifest
-            })
+            await provider.addAddon(addonUrl, manifest)
 
             addedCount++
             results.push({
@@ -4158,7 +4159,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           results
         })
       } catch (error) {
-        console.error('Error adding Stremio addons:', error)
+        console.error('Error adding addons:', error)
         res.status(500).json({ message: 'Failed to add addons', error: error?.message })
       }
     } catch (error) {
@@ -5542,10 +5543,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return responseUtils.notFound(res, 'User')
       }
 
-      if (!user.stremioAuthKey) {
-        return res.status(400).json({ message: 'User not connected to Stremio' })
-      }
-
+      // No Stremio-key check here on purpose. Removal runs through
+      // createProvider and works for Nuvio too - the credential check that
+      // matters is hasDeleteCreds further down, which accepts either
+      // provider. This guard rejected every Nuvio user before any of that
+      // ran, with an error naming a service they are not even using, which
+      // is why removing an addon from a Nuvio account failed.
       if (!user.isActive) {
         return res.status(400).json({ message: 'User is disabled' })
       }
