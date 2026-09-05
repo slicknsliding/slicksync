@@ -289,13 +289,35 @@ async function importFromMdblist(apiKey, url) {
  */
 async function resolveAnimeToImdb(entry, tmdbKey) {
   const path = entry.type === 'movie' ? 'movie' : 'tv'
-  const params = new URLSearchParams({ api_key: tmdbKey, query: entry.title })
-  if (entry.year) params.set(path === 'tv' ? 'first_air_date_year' : 'year', String(entry.year))
+  // Anime is listed under an English title, a romaji one, or both, and TMDb
+  // does not always know the same one AniList leads with. Trying the second
+  // title when the first finds nothing is the difference between a title
+  // being imported and being silently dropped, and costs a request only for
+  // the ones that would have failed anyway.
+  const titles = [entry.title, entry.altTitle].filter((t) => t && String(t).trim())
   try {
-    const res = await fetch('https://api.themoviedb.org/3/search/' + path + '?' + params.toString(), { signal: AbortSignal.timeout(8000) })
-    if (!res.ok) return null
-    const data = await res.json()
-    const hit = Array.isArray(data && data.results) ? data.results[0] : null
+    let hit = null
+    for (const title of titles) {
+      const params = new URLSearchParams({ api_key: tmdbKey, query: title })
+      if (entry.year) params.set(path === 'tv' ? 'first_air_date_year' : 'year', String(entry.year))
+      const res = await fetch('https://api.themoviedb.org/3/search/' + path + '?' + params.toString(), { signal: AbortSignal.timeout(8000) })
+      if (!res.ok) continue
+      const data = await res.json()
+      const found = Array.isArray(data && data.results) ? data.results[0] : null
+      if (found && found.id) { hit = found; break }
+    }
+    // A year that is one off (AniList dates a season by when it started
+    // airing in Japan) can be the only reason nothing matched, so the last
+    // attempt drops it rather than dropping the title.
+    if (!hit && entry.year) {
+      const params = new URLSearchParams({ api_key: tmdbKey, query: titles[0] })
+      const res = await fetch('https://api.themoviedb.org/3/search/' + path + '?' + params.toString(), { signal: AbortSignal.timeout(8000) })
+      if (res.ok) {
+        const data = await res.json()
+        const found = Array.isArray(data && data.results) ? data.results[0] : null
+        if (found && found.id) hit = found
+      }
+    }
     if (!hit || !hit.id) return null
     const ext = await fetch('https://api.themoviedb.org/3/' + path + '/' + hit.id + '/external_ids?api_key=' + encodeURIComponent(tmdbKey), { signal: AbortSignal.timeout(8000) })
     if (!ext.ok) return null
@@ -367,8 +389,11 @@ async function importFromAniList(url, tmdbKey) {
 
   const raw = entries.map((e) => {
     const media = (e && e.media) || {}
+    const english = (media.title && media.title.english) || null
+    const romaji = (media.title && media.title.romaji) || null
     return {
-      title: (media.title && (media.title.english || media.title.romaji)) || null,
+      title: english || romaji,
+      altTitle: english && romaji && english !== romaji ? romaji : null,
       year: (media.startDate && media.startDate.year) || null,
       type: media.format === 'MOVIE' ? 'movie' : 'series',
     }
@@ -406,7 +431,7 @@ async function importFromMyAnimeList(url, tmdbKey, clientId) {
 
   const raw = []
   let next = 'https://api.myanimelist.net/v2/users/' + encodeURIComponent(userName) +
-    '/animelist?fields=list_status,media_type,start_season&limit=' + MAL_PAGE_SIZE
+    '/animelist?fields=list_status,media_type,start_season,alternative_titles&limit=' + MAL_PAGE_SIZE
   for (let page = 0; page < 4 && next; page++) {
     const res = await fetch(next, {
       headers: { 'X-MAL-CLIENT-ID': clientId },
@@ -423,6 +448,7 @@ async function importFromMyAnimeList(url, tmdbKey, clientId) {
       if (!node || !node.title) continue
       raw.push({
         title: node.title,
+        altTitle: (node.alternative_titles && (node.alternative_titles.en || (Array.isArray(node.alternative_titles.synonyms) && node.alternative_titles.synonyms[0]))) || null,
         year: (node.start_season && node.start_season.year) || null,
         type: String(node.media_type || '').toLowerCase() === 'movie' ? 'movie' : 'series',
       })
