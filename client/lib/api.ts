@@ -889,6 +889,23 @@ class ApiClient {
     return this.fetch(`/groups/${groupId}/users/${userId}`, { method: 'DELETE' });
   }
 
+  // Cinemeta patching - the account's own default metadata addon, with parts
+  // of its manifest removed. See server/utils/cinemetaPatch.js.
+  async getCinemetaState(userId: string) {
+    return this.fetch<{ installed: boolean; removeSearch: boolean; removeCatalogs: boolean; removeMeta: boolean; canReset: boolean }>(`/users/${userId}/cinemeta`);
+  }
+
+  async patchCinemeta(userId: string, patch: { removeSearch: boolean; removeCatalogs: boolean; removeMeta: boolean }) {
+    return this.fetch<{ success: boolean; summary: string }>(`/users/${userId}/cinemeta`, {
+      method: 'POST',
+      body: JSON.stringify(patch),
+    });
+  }
+
+  async resetCinemeta(userId: string) {
+    return this.fetch<{ success: boolean }>(`/users/${userId}/cinemeta`, { method: 'DELETE' });
+  }
+
   // Passkeys (WebAuthn). Registering one always requires an existing
   // session; signing in with one is in publicAuth on the server side and is
   // called straight from the login page, not through here.
