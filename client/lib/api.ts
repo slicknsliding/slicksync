@@ -664,7 +664,7 @@ class ApiClient {
 
   /** This season's airing anime (AniList, no key required). */
   async getSeasonalAnime() {
-    return this.fetch<{ items: SeasonalAnime[] }>('/anime/seasonal');
+    return this.fetch<{ items: SeasonalAnime[]; unavailable?: boolean; reason?: string | null }>('/anime/seasonal');
   }
   /** Attaches AniList data (episode count, airing countdown) to a known title. */
   async lookupAnime(title: string, year?: number) {

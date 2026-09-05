@@ -45,6 +45,38 @@ function cacheSet(key, value) {
   }
 }
 
+// Why the service is not answering, when it is not answering. Every call
+// here already degrades to null so anime data can only ever ADD to what
+// Cinemeta provides - but a row that silently renders empty is
+// indistinguishable from "there is no anime airing", and that is a lie.
+// AniList disabled their public API outright on 2026-09-05 ("temporarily
+// disabled due to severe stability issues", HTTP 403 to everyone), which is
+// exactly the case worth telling someone about rather than showing them an
+// empty shelf.
+let lastFailure = null
+
+function noteFailure(status, message) {
+  lastFailure = { status: status || 0, message: message || 'AniList could not be reached', at: Date.now() }
+}
+
+/**
+ * What to tell a caller when AniList returned nothing. Only meaningful
+ * alongside an empty result - a successful call clears it.
+ */
+function getServiceStatus() {
+  if (!lastFailure) return { available: true, reason: null }
+  // Stale failures are not worth reporting: the next successful call clears
+  // this, so anything older than a few minutes is probably long fixed.
+  if (Date.now() - lastFailure.at > 5 * 60 * 1000) return { available: true, reason: null }
+  const disabled = lastFailure.status === 403 && /disabled/i.test(lastFailure.message)
+  return {
+    available: false,
+    reason: disabled
+      ? 'AniList has temporarily disabled their public API, so anime data is unavailable until they re-enable it. Nothing on this instance is broken.'
+      : `AniList is not responding right now (${lastFailure.status || 'network error'}). Anime data will come back on its own.`,
+  }
+}
+
 async function query(gql, variables) {
   const key = `${gql}:${JSON.stringify(variables)}`
   const cached = cacheGet(key)
@@ -59,12 +91,24 @@ async function query(gql, variables) {
       signal: controller.signal,
     })
     clearTimeout(timer)
-    if (!res.ok) return null
+    if (!res.ok) {
+      // Read the body for AniList's own explanation - they put a plain
+      // sentence in errors[0].message, which beats any wording invented here.
+      let message = ''
+      try {
+        const body = await res.json()
+        message = body?.errors?.[0]?.message || ''
+      } catch { /* body is not JSON - the status alone will do */ }
+      noteFailure(res.status, message)
+      return null
+    }
     const json = await res.json()
     const data = json?.data ?? null
+    lastFailure = null
     cacheSet(key, data)
     return data
-  } catch {
+  } catch (e) {
+    noteFailure(0, e?.message || '')
     return null
   }
 }
@@ -249,6 +293,7 @@ async function resolveAbsoluteEpisode(anilistId, absoluteEpisode) {
 }
 
 module.exports = {
+  getServiceStatus,
   searchAnime,
   getAnimeById,
   getSeasonalAnime,

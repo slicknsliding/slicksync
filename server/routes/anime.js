@@ -14,13 +14,18 @@ module.exports = ({ getAccountId }) => {
   // This season's airing anime - the seasonal chart row.
   router.get('/seasonal', async (req, res) => {
     try {
-      const { getSeasonalAnime, nextEpisodeCountdown } = require('../utils/anilist')
+      const { getSeasonalAnime, nextEpisodeCountdown, getServiceStatus } = require('../utils/anilist')
       const media = await getSeasonalAnime({
         season: typeof req.query.season === 'string' ? req.query.season.toUpperCase() : undefined,
         seasonYear: Number.isFinite(Number(req.query.year)) ? Number(req.query.year) : undefined,
         perPage: 40,
       })
+      // An empty row plus the reason, rather than an empty row on its own -
+      // "AniList is down" and "nothing is airing" look identical otherwise.
+      const status = media.length === 0 ? getServiceStatus() : { available: true, reason: null }
       res.json({
+        unavailable: !status.available,
+        reason: status.reason,
         items: media.map((m) => ({
           anilistId: m.id,
           name: m.title?.english || m.title?.romaji || m.title?.native,
@@ -35,7 +40,9 @@ module.exports = ({ getAccountId }) => {
         })),
       })
     } catch (e) {
-      res.json({ items: [] })
+      const { getServiceStatus } = require('../utils/anilist')
+      const status = getServiceStatus()
+      res.json({ items: [], unavailable: !status.available, reason: status.reason })
     }
   })
 

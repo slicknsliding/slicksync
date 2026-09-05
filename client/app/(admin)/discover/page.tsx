@@ -266,12 +266,21 @@ export default function DiscoverPage() {
   }, [searchQuery, localIndex, type, searchMode]);
 
   const [seasonalAnime, setSeasonalAnime] = useState<SeasonalAnime[]>([]);
+  // Why the row is empty, when it is empty and the feature is switched on.
+  // "AniList is down" and "nothing is airing" look identical otherwise, and
+  // the first is not something to leave someone guessing about - AniList
+  // disabled their public API outright once already.
+  const [seasonalUnavailable, setSeasonalUnavailable] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     api.getSyncSettings()
       .then((ss) => {
         if (cancelled || ss.animeSeasonalRow !== true) return;
-        return api.getSeasonalAnime().then((r) => { if (!cancelled) setSeasonalAnime(r.items || []); });
+        return api.getSeasonalAnime().then((r) => {
+          if (cancelled) return;
+          setSeasonalAnime(r.items || []);
+          setSeasonalUnavailable(r.unavailable ? (r.reason || 'AniList is unavailable right now.') : null);
+        });
       })
       .catch(() => { /* row simply doesn't appear */ });
     return () => { cancelled = true; };
@@ -769,6 +778,15 @@ export default function DiscoverPage() {
                 )}
               </div>
             </div>
+          </PageSection>
+        )}
+
+        {source === 'discover' && !debouncedQuery && seasonalAnime.length === 0 && seasonalUnavailable && (
+          <PageSection delay={0.05} className="mb-6">
+            <div className="flex items-baseline gap-2 mb-2 flex-wrap">
+              <h3 className="text-base font-semibold font-display text-default">🌸 Airing this season</h3>
+            </div>
+            <p className="text-xs text-muted">{seasonalUnavailable}</p>
           </PageSection>
         )}
 

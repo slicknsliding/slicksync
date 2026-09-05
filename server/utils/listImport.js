@@ -402,7 +402,15 @@ async function importFromAniList(url, tmdbKey) {
   if (errMsg) throw new Error(errMsg)
   const lists = (data && data.data && data.data.MediaListCollection && data.data.MediaListCollection.lists) || []
   const entries = lists.flatMap((l) => (l && l.entries) || [])
-  if (entries.length === 0) throw new Error('That AniList list is empty, private, or has nothing in that section')
+  if (entries.length === 0) {
+    // Distinguish "your list is empty" from "AniList is not answering" -
+    // telling someone their list is empty when the service is down sends
+    // them looking for a problem on their own account.
+    const { getServiceStatus } = require('./anilist')
+    const status = getServiceStatus()
+    if (!status.available) throw new Error(status.reason)
+    throw new Error('That AniList list is empty, private, or has nothing in that section')
+  }
 
   const raw = entries.map((e) => {
     const media = (e && e.media) || {}
