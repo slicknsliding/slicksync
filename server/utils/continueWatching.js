@@ -49,6 +49,46 @@ const RESUME_MIN_POSITION_MS = 2 * 60 * 1000
 const RESUME_MAX_RATIO = 0.92
 
 /**
+ * Places an episode number that Cinemeta's list doesn't contain.
+ *
+ * Anime is the reason this exists. Players, addons and release groups very
+ * often count anime by ABSOLUTE episode number - episode 137 - while
+ * Cinemeta lists the same show in seasons, where that episode is S7E12. The
+ * watched pair then matches nothing in allEpisodes, findNextEpisode gives
+ * up, and the show silently disappears out of Continue Watching. Someone
+ * mid-way through a long-running anime just stops seeing it, with nothing
+ * to explain why.
+ *
+ * AniList publishes the per-season episode counts that make the conversion
+ * possible (see utils/anilist.js). This is only ever consulted for a pair
+ * that genuinely is not in the list, so a normally numbered show never
+ * costs an AniList call, and anything unresolvable returns null - the show
+ * stays out of the row rather than appearing on a guessed season, which
+ * would resume someone on the wrong episode.
+ */
+async function placeAbsoluteEpisode(metadata, episode) {
+  const abs = Number(episode)
+  if (!Number.isInteger(abs) || abs < 1) return null
+  try {
+    const { searchAnime, resolveAbsoluteEpisode } = require('./anilist')
+    const year = Number(String(metadata?.year || metadata?.releaseInfo || '').slice(0, 4)) || undefined
+    const anime = await searchAnime(metadata?.title, year)
+    if (!anime?.id) return null
+    const placed = await resolveAbsoluteEpisode(anime.id, abs)
+    if (!placed) return null
+    // AniList's season boundaries and Cinemeta's don't always agree (split
+    // cours get counted differently). Only trust the conversion when the
+    // episode it lands on actually exists in the list this row is built
+    // from - otherwise the deep link would point at nothing.
+    const exists = Array.isArray(metadata?.allEpisodes)
+      && metadata.allEpisodes.some((e) => e.season === placed.season && e.episode === placed.episode)
+    return exists ? { season: placed.season, episode: placed.episode } : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Reads how far through an item's most recent viewing the user got, from
  * that item's WatchSession row. Returns { inProgress, progressPercent } -
  * inProgress false when there's no session, no usable position data, or the
@@ -135,19 +175,33 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
     // position data to judge by) does the card advance to the next episode.
     const resumeState = await getResumeState(prisma, accountIdValue, row.userId, row.showId, row.videoId)
 
+    // Everything below works from the watched episode as CINEMETA numbers
+    // it, which is not always how it was recorded - see
+    // placeAbsoluteEpisode.
+    let watchedSeason = row.season
+    let watchedEpisode = row.episode
+    const inList = metadata.allEpisodes.some((e) => e.season === watchedSeason && e.episode === watchedEpisode)
+    if (!inList) {
+      const placed = await placeAbsoluteEpisode(metadata, watchedEpisode)
+      if (placed) {
+        watchedSeason = placed.season
+        watchedEpisode = placed.episode
+      }
+    }
+
     let target
     let isResume = false
-    if (resumeState.inProgress && row.season != null && row.episode != null) {
-      const current = metadata.allEpisodes.find((e) => e.season === row.season && e.episode === row.episode)
+    if (resumeState.inProgress && watchedSeason != null && watchedEpisode != null) {
+      const current = metadata.allEpisodes.find((e) => e.season === watchedSeason && e.episode === watchedEpisode)
       target = {
-        season: row.season,
-        episode: row.episode,
+        season: watchedSeason,
+        episode: watchedEpisode,
         title: current?.title ?? null,
         thumbnail: current?.thumbnail ?? null
       }
       isResume = true
     } else {
-      const next = findNextEpisode(metadata.allEpisodes, row.season, row.episode)
+      const next = findNextEpisode(metadata.allEpisodes, watchedSeason, watchedEpisode)
       if (!next) continue
       target = {
         season: next.season,
@@ -169,7 +223,7 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
       // it cleanly. The portrait `poster` only gets used as a last resort,
       // where it has to crop hard (the "zoomed in" look).
       background: metadata.background || null,
-      lastWatched: { season: row.season, episode: row.episode },
+      lastWatched: { season: watchedSeason, episode: watchedEpisode },
       // Field name kept for client compatibility - when resume=true this is
       // the in-progress episode itself, not actually the "next" one.
       nextEpisode: target,

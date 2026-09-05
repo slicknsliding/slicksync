@@ -7356,6 +7356,21 @@ async function reloadGroupAddons(prisma, getAccountId, groupId, req, decrypt) {
     if (names.length > 0) console.log(`🔄 Reloading addons: ${names.join(', ')}`)
   } catch { }
 
+  // Warm every manifest at once before reloading them one by one - the
+  // fetches are independent, so waiting for them in sequence was pure dead
+  // time in front of an Advanced sync. See prewarmManifests: failures here
+  // change nothing, the reload below still does its own fetch and reports
+  // its own errors.
+  try {
+    const { prewarmManifests } = require('./addons')
+    const urls = groupAddons.map((a) => { try { return getDecryptedManifestUrl(a, req) } catch { return null } }).filter(Boolean)
+    if (urls.length > 1) {
+      const t0 = Date.now()
+      const { warmed, attempted } = await prewarmManifests(urls)
+      if (warmed > 0) console.log(`⚡ Pre-fetched ${warmed}/${attempted} addon manifests in ${Date.now() - t0}ms`)
+    }
+  } catch { }
+
 
   for (const addon of groupAddons) {
     try {

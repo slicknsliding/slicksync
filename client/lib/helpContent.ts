@@ -362,6 +362,10 @@ export const HELP_ENTRIES: HelpEntry[] = [
     category: 'Getting started',
     keywords: ['advanced sync', 'sync mode', 'sync settings'],
     answer: 'Settings → Sync Mode → Advanced Sync. Normal sync pushes your stored addon list to users as-is. Advanced sync re-fetches each addon\'s live manifest from its source first, so upstream changes (new catalogs, updated resources) get pushed too - slower per sync since it hits the network for every addon.',
+    details: [
+      'Those manifest fetches now happen all at once at the start of a sync rather than one after another, so a group with a lot of addons waits for the slowest single addon instead of the sum of all of them. Nothing about what gets pushed changes - the manifests are still fetched fresh for that sync.',
+      'An addon that is slow or unreachable is still reported exactly as before; pre-fetching only overlaps the waiting, it never substitutes an older copy for a live one.',
+    ],
     href: '/settings',
     linkLabel: 'Open Settings',
   },
@@ -1846,7 +1850,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
     answer: 'Settings → SlickTrax → Seasonal anime row adds an "Airing this season" row to Discover, with each show\'s next-episode countdown. It uses AniList, which needs no API key and spends no quota.',
     details: [
       'Anime is the one thing Cinemeta consistently gets wrong here: long-running shows are often numbered absolutely (episode 37) while releases are labelled by season (S2E13). SlickSync can now translate between the two using AniList\'s real season structure, so progress lands on the right episode instead of a plausible-looking wrong one.',
-      'When the chain\'s episode counts are not known, the translation returns nothing rather than guessing - a wrong episode number is worse than no answer, because it silently moves someone\'s progress.',
+      'Where this shows up first is Continue Watching: an anime recorded as episode 137 matches nothing in a season-numbered episode list, so the show used to vanish out of the row with nothing to explain why. It is now translated to the season and episode that list actually has, and the card resumes on the right one.',
+      'When the chain\'s episode counts are not known, the translation returns nothing rather than guessing, and the same goes for a translated episode that does not exist in the show\'s own episode list - a wrong episode number is worse than no answer, because it silently moves someone\'s progress.',
       'Watch order: anime franchises split into prequels, sequels, side stories and movies, which is why people go looking for charts. SlickSync reads AniList\'s own relation graph and keeps the main line separate from side stories rather than interleaving them on a guess.',
       'Clicking a title in the seasonal row searches SlickSync for it, so from there it behaves like any other title - watchlist, catalogs, watched state and the detail popup all work normally.',
       'AniList is public and unauthenticated for everything used here, so unlike TMDb/OMDb/MDBList there is no key to add and nothing to run out of.',

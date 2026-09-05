@@ -19,6 +19,52 @@ function setCachedManifest(url, data) {
   _manifestCache.set(url, { data, ts: Date.now() })
 }
 
+const LOCAL_ADDON_URL = 'http://127.0.0.1:11470/local-addon/manifest.json'
+
+/**
+ * Fills the manifest cache for many addons at once, before anything needs
+ * them.
+ *
+ * reloadAddon fetches one manifest at a time, and an Advanced sync reloads
+ * every addon in a group before it pushes anything to anyone - so a group
+ * with 20 addons paid for 20 sequential round trips before the first user
+ * was touched, with the whole sync sitting behind the sum of them. None of
+ * those fetches depend on each other, so this issues them concurrently
+ * first and the sequential reload then finds each manifest already in the
+ * cache it was going to use anyway. Same requests, same 60s TTL, same
+ * data - only the waiting overlaps, so the cost becomes the slowest single
+ * addon rather than the total.
+ *
+ * Nothing here can break a sync: a URL that fails or times out is simply
+ * left uncached, and the reload fetches it properly (and reports its error)
+ * exactly as it does today. Already-cached URLs are skipped, so calling
+ * this twice in quick succession costs nothing.
+ */
+async function prewarmManifests(urls, { concurrency = 6, timeoutMs = 8000 } = {}) {
+  const pending = [...new Set((urls || []).filter((u) => typeof u === 'string' && /^https?:\/\//i.test(u) && u !== LOCAL_ADDON_URL))]
+    .filter((u) => !getCachedManifest(u))
+  if (pending.length === 0) return { warmed: 0, attempted: 0 }
+
+  let warmed = 0
+  let cursor = 0
+  const worker = async () => {
+    while (cursor < pending.length) {
+      const url = pending[cursor++]
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+        if (!res.ok) continue
+        const data = await res.json()
+        if (data && typeof data === 'object') {
+          setCachedManifest(url, data)
+          warmed++
+        }
+      } catch { /* left for the real reload to hit and report */ }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, pending.length) }, worker))
+  return { warmed, attempted: pending.length }
+}
+
 // Shared helper function to reload a single addon
 async function reloadAddon(prisma, getAccountId, addonId, req, { filterManifestByResources, filterManifestByCatalogs, encrypt, decrypt, getDecryptedManifestUrl, manifestHash, silent = false }, autoSelectNewElements = true) {
   // Find the addon (scope to account to avoid cross-account mismatches)
@@ -51,7 +97,7 @@ async function reloadAddon(prisma, getAccountId, addonId, req, { filterManifestB
   }
 
   // Skip reloading for local development addons
-  if (transportUrl === 'http://127.0.0.1:11470/local-addon/manifest.json') {
+  if (transportUrl === LOCAL_ADDON_URL) {
     if (!silent) {
       console.log(`⏭️  Skipping reload for local addon URL: ${transportUrl}`)
     }
@@ -2629,3 +2675,4 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
 
 // Export the reloadAddon helper function for use by other modules
 module.exports.reloadAddon = reloadAddon;
+module.exports.prewarmManifests = prewarmManifests;
