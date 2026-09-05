@@ -1260,21 +1260,25 @@ export default function SettingsPage() {
                     onPointerLeave={() => setHoveredTab((k) => (k === t.key ? null : k))}
                     className="relative w-full flex items-center gap-3 pl-4 pr-3 py-2.5 rounded-xl text-left mb-0.5 focus:outline-none rail-item-hover"
                     style={active
-                      // Selection: a filled row plus a left accent bar, so it
-                      // is unmistakable next to a whisper-quiet hover.
+                      // Solid fill, white text, one row only. A 20% tint with
+                      // an accent bar was too close to the card underneath to
+                      // read as "this one and none of the others" - the whole
+                      // point of the rail is that a glance tells you where you
+                      // are, so the selected row is now the loudest thing in
+                      // it and every other row is completely flat.
                       ? {
-                          background: 'color-mix(in srgb, var(--color-primary) 20%, transparent)',
-                          color: 'var(--color-text)',
-                          boxShadow: 'inset 3px 0 0 0 var(--color-primary)',
+                          background: 'var(--color-primary)',
+                          color: '#fff',
+                          boxShadow: '0 6px 18px -10px var(--color-primary)',
                         }
                       : hovered
                         ? { color: 'var(--color-text)', background: 'var(--color-surface-hover)', boxShadow: 'none' }
                         : { color: 'var(--color-text-muted)', background: 'transparent', boxShadow: 'none' }}
                   >
-                    <Icon className="w-4 h-4 shrink-0" style={{ color: active ? 'var(--color-primary)' : 'var(--color-text-muted)' }} />
+                    <Icon className="w-4 h-4 shrink-0" style={{ color: active ? '#fff' : 'var(--color-text-muted)' }} />
                     <span className="min-w-0">
                       <span className={`block text-sm ${active ? 'font-semibold' : 'font-medium'}`}>{t.label}</span>
-                      <span className="block text-[11px] leading-tight" style={{ color: 'var(--color-text-muted)' }}>{t.blurb}</span>
+                      <span className="block text-[11px] leading-tight" style={{ color: active ? 'rgba(255,255,255,0.78)' : 'var(--color-text-muted)' }}>{t.blurb}</span>
                     </span>
                   </button>
                 );
