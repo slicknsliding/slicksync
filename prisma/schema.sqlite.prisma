@@ -63,6 +63,11 @@ model User {
   // collection, plus any standing "changed outside SlickSync" alarm with its
   // diff. Written by server/utils/accountGuard.js only.
   guardStateJson     String?
+  // Cinemeta patching: the ORIGINAL manifest as it was before any patch,
+  // plus which toggles are applied. Kept so Reset restores exactly what the
+  // account had rather than a reconstruction of what it probably had - the
+  // default addon's manifest is not ours to guess at.
+  cinemetaPatchJson  String?
   activityVisibility String    @default("private") // "public" or "private" - when public, group members can see this user's library/history
   // A genuinely public, unauthenticated share link (unlike activityVisibility
   // above, which only ever exposes data to other members of THIS account) -

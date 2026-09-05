@@ -3364,6 +3364,113 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   });
 
+  // --- Cinemeta patching (utils/cinemetaPatch.js) ---
+  //
+  // Reads and writes the account's OWN Cinemeta entry rather than anything in
+  // SlickSync's addon list. Sync leaves it alone in safe mode (Cinemeta is a
+  // protected default), so a patch written here stays put.
+
+  // GET /users/:id/cinemeta - is it installed, and what has been removed.
+  router.get('/:id/cinemeta', async (req, res) => {
+    try {
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) return res.status(400).json({ message: 'User is not connected to a provider' })
+
+      const { findCinemeta } = require('../utils/cinemetaPatch')
+      const current = await provider.getAddons()
+      const { addon } = findCinemeta(current)
+      let state = null
+      try { state = user.cinemetaPatchJson ? JSON.parse(user.cinemetaPatchJson) : null } catch { state = null }
+
+      return res.json({
+        installed: !!addon,
+        // Read from the manifest actually on the account, so the answer
+        // reflects reality even if something else edited it.
+        removeSearch: !!(addon && Array.isArray(addon.manifest?.catalogs) && addon.manifest.catalogs.length > 0
+          && !addon.manifest.catalogs.some((c) => (c?.extra || []).some((e) => (e?.name || e) === 'search'))),
+        removeCatalogs: !!(addon && Array.isArray(addon.manifest?.catalogs) && addon.manifest.catalogs.length === 0),
+        removeMeta: !!(addon && Array.isArray(addon.manifest?.resources)
+          && !addon.manifest.resources.some((r) => (typeof r === 'string' ? r : (r?.name || r?.type)) === 'meta')),
+        canReset: !!(state && state.original),
+      })
+    } catch (e) {
+      res.status(500).json({ message: e?.message || 'Failed to read Cinemeta state' })
+    }
+  })
+
+  // POST /users/:id/cinemeta - apply (or update) the patch.
+  router.post('/:id/cinemeta', async (req, res) => {
+    try {
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+      if (!user.isActive) return res.status(400).json({ message: 'User is disabled' })
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) return res.status(400).json({ message: 'User is not connected to a provider' })
+
+      const { findCinemeta, applyPatch, describePatch } = require('../utils/cinemetaPatch')
+      const currentRaw = await provider.getAddons()
+      const { list, index, addon } = findCinemeta(currentRaw)
+      if (!addon) return res.status(404).json({ message: 'Cinemeta is not installed on this account' })
+
+      const patch = {
+        removeSearch: !!req.body?.removeSearch,
+        removeCatalogs: !!req.body?.removeCatalogs,
+        removeMeta: !!req.body?.removeMeta,
+      }
+
+      // Keep the original exactly once. Patching an already-patched manifest
+      // would bake each removal in permanently and make Reset a lie.
+      let state = null
+      try { state = user.cinemetaPatchJson ? JSON.parse(user.cinemetaPatchJson) : null } catch { state = null }
+      const original = (state && state.original) ? state.original : JSON.parse(JSON.stringify(addon.manifest || {}))
+
+      const patched = applyPatch(original, patch)
+      const next = [...list]
+      next[index] = { ...addon, manifest: patched }
+      await provider.setAddons(next)
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { cinemetaPatchJson: JSON.stringify({ original, patch, at: new Date().toISOString() }) },
+      })
+
+      return res.json({ success: true, applied: patch, summary: describePatch(patch) })
+    } catch (e) {
+      console.error('Cinemeta patch failed:', e)
+      res.status(500).json({ message: e?.message || 'Failed to patch Cinemeta' })
+    }
+  })
+
+  // DELETE /users/:id/cinemeta - put the original manifest back.
+  router.delete('/:id/cinemeta', async (req, res) => {
+    try {
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) return res.status(400).json({ message: 'User is not connected to a provider' })
+
+      let state = null
+      try { state = user.cinemetaPatchJson ? JSON.parse(user.cinemetaPatchJson) : null } catch { state = null }
+      if (!state || !state.original) return res.status(400).json({ message: 'Nothing to reset - Cinemeta has not been patched from here' })
+
+      const { findCinemeta } = require('../utils/cinemetaPatch')
+      const currentRaw = await provider.getAddons()
+      const { list, index, addon } = findCinemeta(currentRaw)
+      if (!addon) return res.status(404).json({ message: 'Cinemeta is not installed on this account' })
+
+      const next = [...list]
+      next[index] = { ...addon, manifest: state.original }
+      await provider.setAddons(next)
+      await prisma.user.update({ where: { id: user.id }, data: { cinemetaPatchJson: null } })
+      return res.json({ success: true })
+    } catch (e) {
+      console.error('Cinemeta reset failed:', e)
+      res.status(500).json({ message: e?.message || 'Failed to reset Cinemeta' })
+    }
+  })
+
   // --- Collections Guard (utils/collectionsGuard.js) ---
 
   // Active alarms: profiles whose collections look externally overwritten.
