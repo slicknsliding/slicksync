@@ -31,6 +31,7 @@ import {
   DocumentTextIcon,
   UserCircleIcon,
   SparklesIcon,
+  BellIcon,
   DevicePhoneMobileIcon,
   ComputerDesktopIcon,
   PencilIcon,
@@ -437,12 +438,12 @@ function BackupKeyField({
 // SETTINGS_TABS_BY_SECTION maps the palette's own section labels onto these
 // tabs so the page can switch before it scrolls.
 const SETTINGS_TABS = [
-  { key: 'general', label: 'General' },
-  { key: 'sync', label: 'Sync' },
-  { key: 'notifications', label: 'Notifications' },
-  { key: 'features', label: 'Features' },
-  { key: 'integrations', label: 'Integrations' },
-  { key: 'security', label: 'Security' },
+  { key: 'general', label: 'General', icon: UserCircleIcon, blurb: 'Profile, privacy, timezone' },
+  { key: 'sync', label: 'Sync', icon: ArrowPathIcon, blurb: 'How addons are pushed' },
+  { key: 'notifications', label: 'Notifications', icon: BellIcon, blurb: 'Push, bell, Discord, digest' },
+  { key: 'features', label: 'Features', icon: SparklesIcon, blurb: 'SlickTrax and Discover' },
+  { key: 'integrations', label: 'Integrations', icon: KeyIcon, blurb: 'API keys and scrobbling' },
+  { key: 'security', label: 'Security', icon: ShieldCheckIcon, blurb: '2FA, account, danger zone' },
 ] as const;
 type SettingsTab = typeof SETTINGS_TABS[number]['key'];
 
@@ -1207,25 +1208,57 @@ export default function SettingsPage() {
       {layoutMode === 'nebula' && (
         <NebulaPageHeading title="Settings" subtitle="Customize your SlickSync experience" />
       )}
-        {/* One group at a time, so a single toggle is never at the bottom of
-            everything. Sticky so the groups stay reachable while scrolling a
-            long one (Notifications and External API Keys are both tall). */}
-        <div className="sticky top-0 z-20 -mx-1 px-1 pt-1 pb-3 mb-4" style={{ background: 'linear-gradient(180deg, var(--color-bg) 70%, transparent)' }}>
-          <div className="flex gap-1.5 flex-wrap">
-            {SETTINGS_TABS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setActiveTab(t.key)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
-                  activeTab === t.key ? 'bg-primary text-white' : 'bg-surface-hover text-muted nav-item-hover-pill'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+        {/* Settings navigation. A left rail on desktop (the layout every
+            settings screen worth using has - groups always visible, content
+            beside them rather than under a filter row), collapsing to a
+            scrollable row on narrow screens where a rail would eat the width
+            the content needs. */}
+        <div className="flex gap-6 items-start">
+          <nav className="hidden md:block w-56 shrink-0 sticky top-4">
+            <div className="rounded-2xl p-2" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-surface-border)' }}>
+              {SETTINGS_TABS.map((t) => {
+                const active = activeTab === t.key;
+                const Icon = t.icon;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setActiveTab(t.key)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors mb-0.5"
+                    style={active
+                      ? { background: 'linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 28%, transparent), color-mix(in srgb, var(--color-secondary) 22%, transparent))', color: 'var(--color-text)' }
+                      : { color: 'var(--color-text-muted)' }}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" style={{ color: active ? 'var(--color-primary)' : 'var(--color-text-muted)' }} />
+                    <span className="min-w-0">
+                      <span className={`block text-sm ${active ? 'font-semibold' : 'font-medium'}`}>{t.label}</span>
+                      <span className="block text-[11px] leading-tight" style={{ color: 'var(--color-text-muted)' }}>{t.blurb}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+
+          <div className="md:hidden -mx-1 px-1 pb-3 sticky top-0 z-20" style={{ background: 'linear-gradient(180deg, var(--color-bg) 70%, transparent)' }}>
+            <div className="flex gap-1.5 overflow-x-auto">
+              {SETTINGS_TABS.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setActiveTab(t.key)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
+                    activeTab === t.key ? 'bg-primary text-white' : 'bg-surface-hover text-muted'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+
+          <div className="flex-1 min-w-0">
+
 
         {/* Profile Picture - shown on the account button (bottom-left in
             Nebula, bottom of sidebar in Original) and its dropdown menu. */}
@@ -2684,6 +2717,8 @@ export default function SettingsPage() {
           </Card>
         </PageSection>
         )}
+          </div>
+        </div>
       </div>
       </div>
 

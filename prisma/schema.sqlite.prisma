@@ -51,6 +51,12 @@ model User {
   // is a bearer credential in the URL (same model as Addon.proxyUuid) -
   // generated on first enable, never derived from anything guessable.
   traxAddonEnabled   Boolean  @default(false)
+  // In-player actions: when on, the SlickTrax addon also serves a `stream`
+  // resource so a title's page inside Stremio/Nuvio shows SlickSync actions
+  // (mark watched, watchlist) alongside its real streams. Opt-in per user -
+  // it puts non-playable rows in a list people open expecting streams, which
+  // is a trade not everyone wants.
+  traxInPlayerActions Boolean @default(false)
   traxToken          String?  @unique
   // Account Guard: JSON state for external-writer detection - per-provider
   // fingerprints of what SlickSync last wrote to this user's addon
