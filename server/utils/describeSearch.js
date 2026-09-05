@@ -116,15 +116,23 @@ async function searchByDescription(prisma, accountId, decrypt, description, tmdb
   }
 
   let raw
+  const startedAt = Date.now()
   try {
     raw = await callAiText(`${PROMPT}\n\nDescription: ${text}`, creds, { maxTokens: 400, timeoutMs: TIMEOUT_MS })
   } catch (e) {
     // Distinguish "took too long" from "could not be reached" - they lead to
     // completely different fixes (pick a faster model vs check the key/URL).
+    const waited = Math.round((Date.now() - startedAt) / 1000)
     const aborted = /abort/i.test(e?.message || '')
-    throw new Error(aborted
-      ? 'The AI model took too long to answer. A faster model (a "flash"/"mini" tier) handles this better - set one in Settings -> Integrations -> AI Services.'
-      : `The AI provider could not be reached: ${e?.message || 'unknown error'}`)
+    // Elapsed time and model name are in the message on purpose: a timeout
+    // that only says "aborted" is unfalsifiable after the fact. Knowing it
+    // waited the full ceiling - rather than failing instantly - is the
+    // difference between "pick a faster model" and "something else broke".
+    if (aborted) {
+      console.warn(`[DescribeSearch] ${creds.model} did not answer within ${waited}s`)
+      throw new Error(`The AI model (${creds.model}) did not answer within ${waited}s. It is normally far faster, so try again - if it keeps happening, a "flash"/"mini" tier model in Settings -> Integrations -> AI Services is more reliable.`)
+    }
+    throw new Error(`The AI provider could not be reached after ${waited}s: ${e?.message || 'unknown error'}`)
   }
 
   const candidates = parseCandidates(raw)
