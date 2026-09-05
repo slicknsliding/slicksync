@@ -742,7 +742,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if ((enabled && !traxToken) || rotate) {
         traxToken = require('crypto').randomBytes(24).toString('hex')
       }
-      await prisma.user.update({ where: { id: user.id }, data: { traxAddonEnabled: enabled, traxToken } })
+      const data = { traxAddonEnabled: enabled, traxToken }
+      // In-player actions ride this same endpoint rather than the generic
+      // user PUT (whose field allowlist is deliberately narrow): it is part
+      // of the same addon's configuration, and changing it must also bump
+      // the manifest the next sync installs.
+      if (req.body?.inPlayerActions !== undefined) data.traxInPlayerActions = !!req.body.inPlayerActions
+      await prisma.user.update({ where: { id: user.id }, data })
 
       // The base URL sync will use. Reported honestly rather than guessed
       // from the request: sync itself has no request to borrow a hostname

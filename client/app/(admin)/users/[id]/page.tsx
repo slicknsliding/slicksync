@@ -1390,6 +1390,37 @@ export default function UserDetailPage() {
                       {user.traxAddonEnabled ? 'Disable' : 'Enable'}
                     </Button>
                   </div>
+
+                  {/* In-player actions - only meaningful once the addon is
+                      on, and off by default: it puts non-playable rows in
+                      the stream list, which is where people look for
+                      something to play. */}
+                  {user.traxAddonEnabled && (
+                    <label className="flex items-start justify-between gap-4 mt-3 pt-3 border-t border-default cursor-pointer">
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-default">Actions inside the player</span>
+                        <span className="block text-xs text-muted mt-0.5">
+                          Adds &quot;Mark as watched&quot; and &quot;Add to Watchlist&quot; to a title&apos;s page in
+                          Stremio/Nuvio, alongside its real streams. Off by default because those rows sit in the
+                          list you open looking for something to play. Takes effect on the next sync.
+                        </span>
+                      </span>
+                      <ToggleSwitch
+                        checked={user.traxInPlayerActions === true}
+                        onChange={async () => {
+                          const next = !user.traxInPlayerActions;
+                          setUser((prev: any) => prev ? { ...prev, traxInPlayerActions: next } : prev);
+                          try {
+                            await api.setTraxInPlayerActions(params.id as string, true, next);
+                            toast.success(next ? 'In-player actions on - they appear after the next sync' : 'In-player actions off');
+                          } catch (e: any) {
+                            setUser((prev: any) => prev ? { ...prev, traxInPlayerActions: !next } : prev);
+                            toast.error(e?.message || 'Could not save that');
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
                 </div>
 
               </Card>
