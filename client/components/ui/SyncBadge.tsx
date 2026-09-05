@@ -49,19 +49,16 @@ export function SyncBadge({
     }
 
     try {
-      setIsLoading(true);
+      // Only the FIRST check shows "Checking". Every refresh after that -
+      // polling, or the re-check right after a sync - keeps the verdict
+      // already on screen until the new one arrives, because replacing a
+      // known answer with a spinner is what made this feel slow: the badge
+      // went Synced -> Checking -> Synced for no reason a person could see.
+      if (statusRef.current === 'checking') setIsLoading(true);
       if (userId) {
-        // First check if user has any groups
-        const user = await api.getUser(userId);
-        const userGroups = (user as any)?.groupIds || (user as any)?.groups || [];
-
-        // If user has no groups, they're stale
-        if (!userGroups.length) {
-          updateStatus('stale');
-          setIsLoading(false);
-          return;
-        }
-
+        // No preliminary user fetch: the status endpoint answers "stale" for
+        // a user in no group itself, so this is one round trip instead of
+        // two.
         const syncStatus = await api.getUserSyncStatus(userId);
         const syncStatusValue = (syncStatus as any)?.status;
         const syncMessage = (syncStatus as any)?.message;
@@ -149,7 +146,11 @@ export function SyncBadge({
   const fetchSyncStatusVerified = useCallback(async (retriesLeft = 2) => {
     await fetchSyncStatus();
     if (statusRef.current === 'unsynced' && retriesLeft > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      // 1.2s rather than 2.5s: this covers a provider's read-after-write
+      // lag, which is usually well under a second. Two retries still span a
+      // couple of seconds in total, so anything that used to settle still
+      // does - it just stops looking stuck while it happens.
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       await fetchSyncStatusVerified(retriesLeft - 1);
     }
   }, [fetchSyncStatus]);
@@ -176,7 +177,10 @@ export function SyncBadge({
     prevIsSyncing.current = isSyncing;
   }, [isSyncing, fetchSyncStatusVerified]);
 
-  const finalStatus = isSyncing ? 'syncing' : (isLoading ? 'checking' : status);
+  // While a sync runs, or while the very first check is in flight, the badge
+  // says so. Otherwise it shows the last verdict it actually has, including
+  // during a background refresh.
+  const finalStatus = isSyncing ? 'syncing' : ((isLoading && status === 'checking') ? 'checking' : status);
 
   const getStatusConfig = () => {
     const syncedDot = '#22c55e';

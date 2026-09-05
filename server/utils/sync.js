@@ -405,6 +405,18 @@ function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds,
     const hasCredentials = user.stremioAuthKey || (user.nuvioRefreshToken && user.nuvioUserId)
     if (!hasCredentials) return { isSynced: false, status: 'connect', message: 'User not connected to a provider' }
 
+    // A user in no group has nothing to be synced against. The badge used to
+    // work this out by fetching the entire user record first and counting
+    // groups, which meant every badge cost two round trips before it could
+    // show anything. Answering it here makes that second request
+    // unnecessary.
+    try {
+      const groupCount = await prisma.group.count({
+        where: { accountId: getAccountId(req), userIds: { contains: user.id } },
+      })
+      if (groupCount === 0) return { isSynced: false, status: 'stale', message: 'User is not in a group' }
+    } catch { /* fall through and compute normally */ }
+
     // Derive unsafe and useCustomFields from DB-backed account sync (single source of truth)
     let useCustomFields = true
     try {
