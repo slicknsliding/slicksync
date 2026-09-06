@@ -257,7 +257,11 @@ function produce(src, { w, wantsWebp, localFile = null }) {
 
 // Encode a second format behind a response that has already been served.
 function scheduleEncode(outPath, buf, opts) {
-  if (inFlight.has(outPath)) return
+  // Its own key: the request that scheduled this is itself registered under
+  // outPath while it runs, so keying the job the same way would make it
+  // look already-in-flight and never start.
+  const key = `${outPath}:background`
+  if (inFlight.has(key)) return
   const job = (async () => {
     try {
       if (await exists(outPath)) return
@@ -267,8 +271,8 @@ function scheduleEncode(outPath, buf, opts) {
       await writeAtomic(outPath, out)
     } catch { /* the next request will try again the normal way */ }
   })()
-  inFlight.set(outPath, job)
-  job.finally(() => inFlight.delete(outPath)).catch(() => {})
+  inFlight.set(key, job)
+  job.finally(() => inFlight.delete(key)).catch(() => {})
 }
 
 /**
