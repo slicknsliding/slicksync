@@ -2107,7 +2107,7 @@ export default function NuvioCollectionsPage() {
                       ) : (
                         <div className="space-y-1.5 mb-2">
                           {(activeFolder.catalogSources || []).map((source, sIndex) => {
-                            const { addonName, catalogName, found } = describeSource(source);
+                            const { addonName, catalogName, found, linked } = describeSource(source);
                             const genreSuffix = source.genre && source.genre !== 'none' ? ` — ${source.genre}` : '';
                             return (
                               <div key={sIndex} className="flex items-center gap-3 text-sm px-3 py-2.5 rounded-xl bg-surface-hover">
@@ -2129,6 +2129,13 @@ export default function NuvioCollectionsPage() {
                                 <span className="flex-1 truncate text-default">
                                   {found ? (
                                     <>{catalogName}{genreSuffix} <span className="text-subtle text-xs">· {addonName} ({source.type})</span></>
+                                  ) : linked ? (
+                                    // A linked catalog rides the SlickTrax
+                                    // addon, so until that is installed the
+                                    // source genuinely does not resolve -
+                                    // but "addon removed" is the wrong story
+                                    // for something that is mid-install.
+                                    <span className="text-warning">Linked catalog <span className="text-subtle text-xs">· SlickTrax is still installing on the account - press Sync on the user, then this resolves itself</span></span>
                                   ) : (
                                     <span className="text-warning">Source not found <span className="text-subtle text-xs">· addon removed or catalog no longer exists</span></span>
                                   )}

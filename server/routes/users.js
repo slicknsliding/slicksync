@@ -3126,8 +3126,30 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(500).json({ message: 'Failed to fetch Stremio addons', error: result.error })
       }
 
-      // Removed verbose raw addons log to reduce noise
-      res.json(result.addons)
+      // Nuvio stores only {url, name} per addon, so the manifest that comes
+      // back with each entry is a stub: no catalogs, no resources. Anything
+      // that has to answer "does this addon still serve this catalog" - the
+      // Nuvio Collections editor validating a folder's sources, most
+      // obviously - reads those empty arrays and concludes every source is
+      // broken, which is exactly how a perfectly good linked catalog ends up
+      // labelled "addon removed or catalog no longer exists". Fetching each
+      // addon's own manifest (cached, best-effort, shared with the home-row
+      // editor) is what makes those checks mean anything on Nuvio.
+      let addonsOut = result.addons
+      if (user.providerType === 'nuvio') {
+        try {
+          const { fetchManifest } = require('../utils/nuvioHomeLayout')
+          const list = Array.isArray(addonsOut) ? addonsOut : (addonsOut?.addons || [])
+          const enriched = await Promise.all(list.map(async (a) => {
+            const real = await fetchManifest(a?.transportUrl)
+            // The stub's own fields stay as a floor: a dead addon keeps its
+            // name rather than becoming nameless.
+            return real ? { ...a, manifest: { ...(a?.manifest || {}), ...real } } : a
+          }))
+          addonsOut = Array.isArray(addonsOut) ? enriched : { ...addonsOut, addons: enriched }
+        } catch { /* stubs are still better than an error */ }
+      }
+      res.json(addonsOut)
     } catch (error) {
       console.error('❌ Error fetching raw Stremio addons:', error)
       res.status(500).json({ message: 'Failed to fetch raw Stremio addons', error: error?.message })

@@ -203,4 +203,4 @@ async function writeLayout(provider, profileId, items) {
   return { rows: clean.length, buckets: written }
 }
 
-module.exports = { readLayoutForEdit, writeLayout, readAllBuckets }
+module.exports = { readLayoutForEdit, writeLayout, readAllBuckets, fetchManifest }
