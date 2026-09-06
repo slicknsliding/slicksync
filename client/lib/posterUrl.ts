@@ -92,18 +92,21 @@ export function isRpdbPoster(item: { id?: string | null }, rpdbEnabled: boolean)
 
 /**
  * A profile picture at the size it is actually drawn. Uploaded avatars are
- * stored at whatever was uploaded - a 220px animated GIF is common - and the
- * same file is drawn at 24-40px in every history row, member list and
- * watcher cluster. Fifty copies of an animating GIF is fifty decoders on
- * the main thread for motion nobody can see; on a phone that is the
- * difference between a page that scrolls and one that stutters. Small sizes
- * go through the image cache and come back as one static, resized frame;
- * the large sizes (the profile view itself) keep the original, animation
- * included. External URLs and Gravatar are already small and left alone.
+ * stored at whatever was uploaded and the same file is drawn at 24-40px in
+ * every history row, member list and watcher cluster, so still images go
+ * through the image cache and come back resized (a 64px copy of a 500px
+ * upload is a few KB). Animated GIFs are left exactly as uploaded: they
+ * were chosen to move, so they move. External URLs and Gravatar are already
+ * small and left alone.
  */
 export function avatarThumbUrl(src: string | null | undefined, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl'): string | undefined {
   if (!src) return undefined;
   if (!src.startsWith('/uploads/avatars/')) return src;
+  // An animated avatar stays animated, at every size - that is the point
+  // of choosing one. The cost of the moving copies is contained elsewhere:
+  // rows that are off-screen are not painted at all (content-visibility on
+  // the history feed), so only the handful in view are ever decoding.
+  if (/\.gif(\?|$)/i.test(src)) return src;
   if (size === '2xl') return src;
   const w = size === 'lg' || size === 'xl' ? 154 : 64;
   return `${API_BASE}/img?src=${encodeURIComponent(src)}&w=${w}`;
