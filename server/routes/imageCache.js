@@ -73,7 +73,7 @@ function getEncoder() {
 // being cached at unbounded arbitrary sizes (cache-bombing) and matches
 // what the UI actually renders: 342 covers poster cards up to ~170 CSS px
 // at 2x DPR; 780 covers the detail modal's backdrop art.
-const ALLOWED_WIDTHS = [64, 154, 342, 500, 780];
+const ALLOWED_WIDTHS = [64, 154, 185, 342, 500, 780];
 
 const CACHE_DIR = path.join(process.cwd(), 'data', 'poster-cache');
 // Profile pictures live here (see the express.static mount in index.js).
