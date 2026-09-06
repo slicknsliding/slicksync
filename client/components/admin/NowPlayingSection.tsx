@@ -34,9 +34,16 @@ interface NowPlayingItem {
 
 interface NowPlayingSectionProps {
   items: NowPlayingItem[];
+  /** Current time and when `items` was fetched - the elapsed counter shown
+   *  per row is the server's figure plus the time since, so it keeps moving
+   *  between polls without a fetch. Both optional; without them the
+   *  server's figure is shown as-is. */
+  now?: number;
+  fetchedAt?: number;
 }
 
-export function NowPlayingSection({ items }: NowPlayingSectionProps) {
+export function NowPlayingSection({ items, now, fetchedAt }: NowPlayingSectionProps) {
+  const sinceFetch = now && fetchedAt ? Math.max(0, (now - fetchedAt) / 1000) : 0;
   if (items.length === 0) {
     return (
       <div className="text-center py-8 text-sm text-muted">
@@ -126,7 +133,7 @@ export function NowPlayingSection({ items }: NowPlayingSectionProps) {
             <div className="flex items-center gap-1 text-sm text-muted">
               <PlayIcon className="w-4 h-4 text-success" />
               {item.source === 'aiostreams-proxy' && typeof item.elapsedSeconds === 'number'
-                ? formatElapsed(item.elapsedSeconds)
+                ? formatElapsed(item.elapsedSeconds + sinceFetch)
                 : item.watchedAtTimestamp
                   ? formatTimeAgo(item.watchedAtTimestamp)
                   : 'Active'}

@@ -447,12 +447,6 @@ export default function UserDetailPage() {
     }
   };
 
-  // Update ticker every second
-  useEffect(() => {
-    const id = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
   // Time boundaries for grouping (Local Time)
   const dateBoundaries = useMemo(() => {
     const now = new Date();
@@ -654,6 +648,19 @@ export default function UserDetailPage() {
       .sort((a: any, b: any) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
       .slice(0, 5);
   }, [userSessions]);
+
+  // The counters below are whole minutes, so the tick that advances them
+  // runs every fifteen seconds, only while this user has a session open,
+  // and never while the tab is hidden. It used to run once a second for
+  // the life of the page, re-rendering everything on it each time.
+  const hasLiveSession = (metricsData?.nowPlaying?.length ?? 0) > 0 || userSessions.some((s: any) => !s.endTime);
+  useEffect(() => {
+    if (!hasLiveSession) return;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') setNowTick(Date.now());
+    }, 15000);
+    return () => clearInterval(id);
+  }, [hasLiveSession]);
 
   const liveTodayMinutes = useMemo(() => {
     let totalSeconds = 0;
