@@ -892,7 +892,7 @@ class ApiClient {
   // Cinemeta patching - the account's own default metadata addon, with parts
   // of its manifest removed. See server/utils/cinemetaPatch.js.
   async getCinemetaState(userId: string) {
-    return this.fetch<{ installed: boolean; removeSearch: boolean; removeCatalogs: boolean; removeMeta: boolean; canReset: boolean }>(`/users/${userId}/cinemeta`);
+    return this.fetch<{ supported?: boolean; installed: boolean; removeSearch: boolean; removeCatalogs: boolean; removeMeta: boolean; canReset: boolean }>(`/users/${userId}/cinemeta`);
   }
 
   async patchCinemeta(userId: string, patch: { removeSearch: boolean; removeCatalogs: boolean; removeMeta: boolean }) {

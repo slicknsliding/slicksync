@@ -488,7 +488,7 @@ export default function UserDetailPage() {
   // Cinemeta patching. The state is read back from the manifest actually on
   // the account rather than from what we last wrote, so an edit made
   // anywhere else still shows up here.
-  const [cinemetaState, setCinemetaState] = useState<{ installed: boolean; removeSearch: boolean; removeCatalogs: boolean; removeMeta: boolean; canReset: boolean } | null>(null);
+  const [cinemetaState, setCinemetaState] = useState<{ supported?: boolean; installed: boolean; removeSearch: boolean; removeCatalogs: boolean; removeMeta: boolean; canReset: boolean } | null>(null);
   const [cinemetaOpen, setCinemetaOpen] = useState(false);
   const [cinemetaBusy, setCinemetaBusy] = useState(false);
   const [cinemetaDraft, setCinemetaDraft] = useState({ removeSearch: false, removeCatalogs: false, removeMeta: false });
@@ -2118,7 +2118,7 @@ export default function UserDetailPage() {
                                   {/cinemeta/i.test(addon.transportUrl || '') && cinemetaPatched && (
                                     <Badge variant="warning" size="sm">Patched</Badge>
                                   )}
-                                  {/cinemeta/i.test(addon.transportUrl || '') && cinemetaState?.installed && (
+                                  {/cinemeta/i.test(addon.transportUrl || '') && cinemetaState?.installed && cinemetaState?.supported !== false && (
                                     <button
                                       type="button"
                                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCinemetaOpen(true); }}

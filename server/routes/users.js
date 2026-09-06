@@ -3399,6 +3399,17 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const provider = createProvider(user, { decrypt, req })
       if (!provider) return res.status(400).json({ message: 'User is not connected to a provider' })
 
+      // Stremio only, and not as a policy choice: Nuvio stores just {url,
+      // name} per addon and fetches each manifest from the addon's own
+      // address at read time, so a manifest edited here is never read. Worse,
+      // the stub Nuvio returns - empty catalogs, empty resources - is
+      // indistinguishable from a Cinemeta with its catalogs and metadata
+      // removed, so answering from it would badge every Nuvio account as
+      // patched when nothing has been touched.
+      if ((user.providerType || 'stremio') !== 'stremio') {
+        return res.json({ supported: false, installed: false, removeSearch: false, removeCatalogs: false, removeMeta: false, canReset: false })
+      }
+
       const { findCinemeta } = require('../utils/cinemetaPatch')
       const current = await provider.getAddons()
       const { addon } = findCinemeta(current)
@@ -3406,6 +3417,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       try { state = user.cinemetaPatchJson ? JSON.parse(user.cinemetaPatchJson) : null } catch { state = null }
 
       return res.json({
+        supported: true,
         installed: !!addon,
         // Read from the manifest actually on the account, so the answer
         // reflects reality even if something else edited it.
@@ -3429,6 +3441,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!user.isActive) return res.status(400).json({ message: 'User is disabled' })
       const provider = createProvider(user, { decrypt, req })
       if (!provider) return res.status(400).json({ message: 'User is not connected to a provider' })
+
+      if ((user.providerType || 'stremio') !== 'stremio') {
+        return res.status(400).json({ message: 'Patching Cinemeta works on Stremio accounts. Nuvio reads each addon manifest from the addon itself, so an edit stored on the account would never reach the app.' })
+      }
 
       const { findCinemeta, applyPatch, describePatch } = require('../utils/cinemetaPatch')
       const currentRaw = await provider.getAddons()
@@ -3471,6 +3487,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!user) return responseUtils.notFound(res, 'User')
       const provider = createProvider(user, { decrypt, req })
       if (!provider) return res.status(400).json({ message: 'User is not connected to a provider' })
+
+      if ((user.providerType || 'stremio') !== 'stremio') {
+        return res.status(400).json({ message: 'Patching Cinemeta works on Stremio accounts.' })
+      }
 
       let state = null
       try { state = user.cinemetaPatchJson ? JSON.parse(user.cinemetaPatchJson) : null } catch { state = null }

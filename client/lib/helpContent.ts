@@ -1847,7 +1847,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'The original manifest is kept the first time you patch, so Restore original puts back exactly what was there rather than a reconstruction of what it probably looked like.',
       'Removing catalogs also drops the catalog resource, since a manifest that lists no catalogs while still claiming to serve them is handled inconsistently by clients.',
       'The row shows a Patched badge whenever anything is removed, so it is never a mystery why a home screen looks different from an unpatched account.',
-      'Stremio only, for now. Nuvio stores just the addon address and fetches the manifest from Cinemeta itself, so a patched manifest never reaches the device - the dialog says so rather than pretending. To get Cinemeta catalogs off a Nuvio home screen, hide those rows in the home-row editor.',
+      'Stremio only, for now, which is why the Patch button does not appear on a Nuvio user. Nuvio stores just the addon address and fetches the manifest from Cinemeta itself, so a patched manifest would never reach the device. To get Cinemeta catalogs off a Nuvio home screen, hide those rows in the home-row editor instead.',
     ],
     related: ['addon-management', 'nuvio-collections-manager'],
     href: '/users',
