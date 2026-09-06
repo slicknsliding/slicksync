@@ -646,8 +646,18 @@ export default function NuvioCollectionsPage() {
     const addon = addons.find((a) => a.manifest?.id === source.addonId);
     const catalog = addon?.manifest?.catalogs?.find((c) => c.id === source.catalogId && c.type === source.type);
     const linked = typeof source.addonId === 'string' && source.addonId.startsWith('vip.slicksync.trax.');
+    // A SlickTrax addon id carries the id of the SlickSync user it belongs
+    // to, so a linked source says which instance created it. One made on a
+    // DIFFERENT instance (a test box sharing the same Nuvio account, an old
+    // install, a user since deleted) can never resolve here no matter how
+    // many times sync runs - the lists it points at live in another
+    // database. Worth telling apart, because the advice is the opposite:
+    // one is "wait", the other is "link it again here".
+    const linkedUserId = linked ? source.addonId.slice('vip.slicksync.trax.'.length) : null;
+    const linkedHere = !!linkedUserId && users.some((u) => u.id === linkedUserId);
     return {
       linked,
+      linkedHere,
       addonName: addon?.name || addon?.manifest?.name || source.addonId,
       catalogName: catalog?.name || source.catalogId,
       // False when the addon was removed, or is still installed but no
@@ -659,7 +669,7 @@ export default function NuvioCollectionsPage() {
       // rather than flashing a false "broken" state before data arrives.
       found: addonsLoading || !!catalog,
     };
-  }, [addons, addonsLoading]);
+  }, [addons, addonsLoading, users]);
 
   // A folder is broken if ANY of its sources no longer resolve - checked
   // once per folder (not per source) since that's the granularity the grid
@@ -1614,7 +1624,7 @@ export default function NuvioCollectionsPage() {
                                 {expanded[folder.id] && (
                                   <div className="mt-2 pl-6 space-y-1.5">
                                     {(folder.catalogSources || []).map((source, sIndex) => {
-                                      const { addonName, catalogName, found, linked } = describeSource(source);
+                                      const { addonName, catalogName, found, linked, linkedHere } = describeSource(source);
                                       const genreSuffix = source.genre && source.genre !== 'none' ? ` — ${source.genre}` : '';
                                       return (
                                         <div key={sIndex} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-md bg-surface-hover">
@@ -1622,8 +1632,10 @@ export default function NuvioCollectionsPage() {
                                           <span className="flex-1 truncate text-default">
                                             {found ? (
                                               <>{catalogName}{genreSuffix} <span className="text-subtle">· {addonName} ({source.type})</span>{linked && <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'var(--color-primary-muted)', color: 'var(--color-primary)' }}>linked · auto-updates</span>}</>
-                                            ) : linked ? (
+                                            ) : linked && linkedHere ? (
                                               <span className="text-warning">Linked catalog - SlickTrax Addon not on the account <span className="text-subtle">· press Sync on the user to install it, then this resolves by itself</span></span>
+                                            ) : linked ? (
+                                              <span className="text-warning">Linked on another instance <span className="text-subtle">· created by a different SlickSync, so this catalog does not exist here - remove it and link the catalog again</span></span>
                                             ) : (
                                               <span className="text-warning">Source not found <span className="text-subtle">· addon removed or catalog no longer exists</span></span>
                                             )}
@@ -2107,7 +2119,7 @@ export default function NuvioCollectionsPage() {
                       ) : (
                         <div className="space-y-1.5 mb-2">
                           {(activeFolder.catalogSources || []).map((source, sIndex) => {
-                            const { addonName, catalogName, found, linked } = describeSource(source);
+                            const { addonName, catalogName, found, linked, linkedHere } = describeSource(source);
                             const genreSuffix = source.genre && source.genre !== 'none' ? ` — ${source.genre}` : '';
                             return (
                               <div key={sIndex} className="flex items-center gap-3 text-sm px-3 py-2.5 rounded-xl bg-surface-hover">
@@ -2129,13 +2141,15 @@ export default function NuvioCollectionsPage() {
                                 <span className="flex-1 truncate text-default">
                                   {found ? (
                                     <>{catalogName}{genreSuffix} <span className="text-subtle text-xs">· {addonName} ({source.type})</span></>
-                                  ) : linked ? (
+                                  ) : linked && linkedHere ? (
                                     // A linked catalog rides the SlickTrax
                                     // addon, so until that is installed the
                                     // source genuinely does not resolve -
                                     // but "addon removed" is the wrong story
                                     // for something that is mid-install.
                                     <span className="text-warning">Linked catalog <span className="text-subtle text-xs">· SlickTrax is still installing on the account - press Sync on the user, then this resolves itself</span></span>
+                                  ) : linked ? (
+                                    <span className="text-warning">Linked on another instance <span className="text-subtle text-xs">· this source was created by a different SlickSync, so its catalog does not exist here - remove it and link the catalog again</span></span>
                                   ) : (
                                     <span className="text-warning">Source not found <span className="text-subtle text-xs">· addon removed or catalog no longer exists</span></span>
                                   )}

@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.84.1",
+    "date": "2026-09-06",
+    "title": "1.84.1 - SlickTrax rows and linked collections behind a login gate",
+    "features": [],
+    "bugFixes": [
+      "SlickTrax rows arrived with no artwork on any instance that sits behind a login gate - Authelia, basic auth, anything applied to the whole hostname. A phone or TV cannot sign in, so every poster came back as a login page and each tile rendered empty. Artwork is now served from the addon's own address, guarded by the same private token as the rows, so exempting that one path is all such a setup needs.",
+      "A folder in Nuvio Collections could report its SlickTrax source as missing, or as an addon permanently mid-install, while that addon was installed and working. SlickSync no longer asks the network for a manifest it produces itself, so a linked catalog resolves whatever sits in front of the instance - and its preview fills with real titles and posters instead of empty tiles.",
+      "A collection source created on a different SlickSync now says so, rather than claiming the addon is still installing and asking for a sync that can never resolve it."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.84.0",
     "date": "2026-09-05",
     "title": "1.84.0 - Cinemeta patching, a Settings page that fits a phone, and a rebuilt Metrics",

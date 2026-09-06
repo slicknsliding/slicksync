@@ -3139,9 +3139,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (user.providerType === 'nuvio') {
         try {
           const { fetchManifest } = require('../utils/nuvioHomeLayout')
+          const { localTraxManifest } = require('../utils/localTraxManifest')
           const list = Array.isArray(addonsOut) ? addonsOut : (addonsOut?.addons || [])
           const enriched = await Promise.all(list.map(async (a) => {
-            const real = await fetchManifest(a?.transportUrl)
+            // Our own SlickTrax manifest is built here rather than fetched:
+            // see utils/localTraxManifest.js. It is authoritative, instant,
+            // and works on instances whose hostname sits behind a login.
+            const real = (await localTraxManifest(prisma, a?.transportUrl))
+              || (await fetchManifest(a?.transportUrl))
             // The stub's own fields stay as a floor: a dead addon keeps its
             // name rather than becoming nameless.
             return real ? { ...a, manifest: { ...(a?.manifest || {}), ...real } } : a
@@ -3210,8 +3215,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
             }
           }
 
+          const { localTraxManifest } = require('../utils/localTraxManifest')
           const enriched = await Promise.all(rawAddons.map(async (a) => {
-            const fetched = await fetchManifest(a?.transportUrl)
+            const fetched = (await localTraxManifest(prisma, a?.transportUrl))
+              || (await fetchManifest(a?.transportUrl))
             return { ...a, manifest: { ...(a?.manifest || {}), ...(fetched || {}) } }
           }))
 
@@ -3384,6 +3391,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       res.status(500).json({ message: 'Failed to save Nuvio collections', error: error.message })
     }
   });
+
+  const { loopbackTraxUrl } = require('../utils/localTraxManifest')
 
   // --- Cinemeta patching (utils/cinemetaPatch.js) ---
   //
@@ -3614,7 +3623,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const { readLayoutForEdit } = require('../utils/nuvioHomeLayout')
       const { getUserAddons } = require('../utils/sync')
       const live = await getUserAddons(r.user, req, { decrypt, StremioAPIClient, createProvider }).catch(() => ({ addons: [] }))
-      const result = await readLayoutForEdit(r.provider, Number(profileId), live?.addons)
+      const result = await readLayoutForEdit(r.provider, Number(profileId), live?.addons, { prisma })
       res.json(result)
     } catch (e) {
       res.status(500).json({ error: e?.message || 'Failed to read the home layout' })
@@ -3708,7 +3717,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!addonUrl || !type || !catalogId) {
         return res.status(400).json({ message: 'addonUrl, type, and catalogId are required' })
       }
-      const base = String(addonUrl).replace(/\/manifest\.json$/, '').replace(/\/$/, '')
+      // Our own SlickTrax catalogs are read over loopback rather than via the
+      // public hostname: an instance behind an auth gate answers its own
+      // request with a login page, which is why a preview of a linked
+      // SlickTrax catalog came back empty. See utils/localTraxManifest.js.
+      const loopback = await loopbackTraxUrl(prisma, addonUrl)
+      const base = String(loopback || addonUrl).replace(/\/manifest\.json$/, '').replace(/\/$/, '')
       // Stremio addon protocol: extra properties (genre, skip, ...) go in
       // their own URL segment as key=value, e.g. .../genre=Family.json - NOT
       // a query string. Without this, a genre-filtered catalog source (the
@@ -3729,9 +3743,19 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         clearTimeout(timeout)
       }
       const metas = Array.isArray(data?.metas) ? data.metas : []
+      // SlickTrax builds its poster URLs from the address the request arrived
+      // on, and this one arrived on loopback - so they come back pointing at
+      // 127.0.0.1, which is this container, not the viewer's machine. The
+      // browser rendering this preview is on our own origin, so dropping the
+      // origin and leaving the path is both correct and portable: it works on
+      // a public hostname, a LAN address, and behind any proxy.
+      const loopbackOrigin = loopback ? (() => { try { return new URL(loopback).origin } catch { return null } })() : null
+      const viewable = (u) => (loopbackOrigin && typeof u === 'string' && u.startsWith(loopbackOrigin))
+        ? u.slice(loopbackOrigin.length)
+        : (u || null)
       res.json({
         items: metas.slice(0, 25).map((m) => ({
-          id: m.id, type: m.type, name: m.name, poster: m.poster || null
+          id: m.id, type: m.type, name: m.name, poster: viewable(m.poster)
         }))
       })
     } catch (error) {
