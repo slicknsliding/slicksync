@@ -656,7 +656,7 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             <img
               src={posterUrl({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
               srcSet={posterSrcSet({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
-              sizes="(max-width: 640px) 33vw, (max-width: 1024px) 22vw, 170px"
+              sizes="(max-width: 640px) 22vw, (max-width: 1024px) 18vw, 170px"
               alt={activity.contentName}
               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
               loading="lazy"
