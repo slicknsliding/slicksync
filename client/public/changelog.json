@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.85.1",
+    "date": "2026-09-06",
+    "title": "1.85.1 - Fewer calls, faster opens, and a quiet idle",
+    "features": [
+      "Continue Watching answers instantly on repeat opens. It used to be recomputed from scratch on every dashboard visit; the answer is now kept for thirty seconds and dropped the moment a stream starts or stops, or a show is dismissed, unburied or wiped - so it is never stale in a way you could notice.",
+      "Pages that refresh on a timer now know when they are not needed. While live updates are connected they poll every three minutes instead of every thirty seconds (a change is pushed the moment it happens; the poll is a safety net), they stop entirely while the tab is hidden, and they refetch once when you come back. An idle dashboard used to make twenty calls a minute.",
+      "The command palette - and the full guides text it searches - now loads after first paint instead of with every page. The dashboard's first-load script is a third smaller than it was before 1.85.0.",
+      "iOS Shortcuts recipes live in Settings -> Integrations, under your API Key, with your own address and key already filled in and one-tap copy for each part. New among them: Send to SlickSync, a share-sheet Shortcut that opens Discover already searched - the one route Apple leaves web apps for sharing.",
+      "The Activity feed's posters are prepared the moment the feed's data is served, the same way Discover and Continue Watching already were.",
+      "SQLite runs in WAL mode with the standard server settings (a busy timeout, a larger page cache). Readers no longer wait on writers and each write costs one sync instead of two. Backups and restores already handle the sidecar files.",
+      "Profile pictures are cached for a week, and the installed app starts a page's network request while its worker is still waking up."
+    ],
+    "bugFixes": [
+      "The metrics cache was rebuilt for every time period, for every account, on every one-minute pass - while its own comment said every five minutes. On a public instance with several accounts that was a twelve-second burst of full CPU every minute with nobody using the app. It now runs every five minutes per account; nothing waits on it.",
+      "The iOS Shortcuts guide pointed at the Security settings; the API key it needs lives under Integrations."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.85.0",
     "date": "2026-09-06",
     "title": "1.85.0 - Faster on phones: posters, launch, and the installed app",
