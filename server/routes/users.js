@@ -747,7 +747,6 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // user PUT (whose field allowlist is deliberately narrow): it is part
       // of the same addon's configuration, and changing it must also bump
       // the manifest the next sync installs.
-      if (req.body?.inPlayerActions !== undefined) data.traxInPlayerActions = !!req.body.inPlayerActions
       await prisma.user.update({ where: { id: user.id }, data })
 
       // The base URL sync will use. Reported honestly rather than guessed

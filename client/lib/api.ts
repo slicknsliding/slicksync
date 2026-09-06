@@ -1883,14 +1883,6 @@ class ApiClient {
     );
   }
 
-  /** In-player actions (mark watched / watchlist inside Stremio-Nuvio). */
-  async setTraxInPlayerActions(userId: string, enabled: boolean, inPlayerActions: boolean) {
-    return this.fetch<{ enabled: boolean; manifestUrl: string; autoInstall: boolean }>(
-      `/users/${encodeURIComponent(userId)}/trax-addon`,
-      { method: 'POST', body: JSON.stringify({ enabled, inPlayerActions }) },
-    );
-  }
-
   // Watch-history CSV import (IMDb/Letterboxd/loose-Trakt-export compatible -
   // see server/utils/csvHistoryImport.js) for one household member.
   /** Vault-inject an addon: its embedded secrets become {{vault:id}}
@@ -3038,7 +3030,6 @@ export interface User {
   /** SlickTrax Addon - per-user Stremio addon toggle + its URL token. */
   traxAddonEnabled?: boolean;
   /** In-player actions in the SlickTrax addon (opt-in per user). */
-  traxInPlayerActions?: boolean;
   traxToken?: string | null;
   createdAt?: string;
   updatedAt?: string;

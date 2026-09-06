@@ -1759,21 +1759,6 @@ export const HELP_ENTRIES: HelpEntry[] = [
     related: ['system-health-overview', 'maintenance-and-updates'],
   },
   {
-    id: 'in-player-actions',
-    title: 'SlickSync actions inside Stremio and Nuvio',
-    category: 'Watching & Discover',
-    keywords: ['in player actions', 'mark watched from stremio', 'watchlist from nuvio', 'stream list actions', 'slicktrax stream'],
-    answer: 'Optional, per user: with it on, a title page inside Stremio/Nuvio shows "Mark as watched" and "Add to Watchlist" alongside its real streams. Turn it on under the user - SlickTrax Addon - Actions inside the player.',
-    details: [
-      'Off by default on purpose. Those rows sit in the list you open looking for something to PLAY, so adding non-playable entries there is a real trade - worth it for some households, annoying for others.',
-      'Tapping one opens a small confirmation page in the device browser. That is the only mechanism the addon protocol offers for "do a thing" rather than "play a thing", so it is a deliberate design, not a workaround gone wrong.',
-      'The buttons flip to "tap to undo" and "tap to remove" when a title is already watched or already on the watchlist, so the same row works both ways.',
-      'For an episode, the action applies to the SHOW - that is what the watchlist and watched state actually track.',
-      'It takes effect on the next sync, because turning it on changes what the installed addon advertises.',
-    ],
-    related: ['slicktrax-addon'],
-  },
-  {
     id: 'watchlist-order',
     title: 'Putting the Watchlist in your own order',
     category: 'Watching & Discover',
