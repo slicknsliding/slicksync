@@ -177,7 +177,7 @@ export const PosterCard = memo(function PosterCard({
               alt={item.name}
               loading="lazy"
               decoding="async"
-              className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
               onError={() => setImageError(true)}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 to-transparent opacity-40 group-hover:opacity-60 transition-opacity" />

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/Toast";
 import { ThemeProvider } from "@/lib/theme";
@@ -26,11 +26,21 @@ export const metadata: Metadata = {
       { url: '/logo-black.png', media: '(prefers-color-scheme: light)' },
       { url: '/logo-white.png', media: '(prefers-color-scheme: dark)' },
     ],
-    apple: [
-      { url: '/logo-black.png', media: '(prefers-color-scheme: light)' },
-      { url: '/logo-white.png', media: '(prefers-color-scheme: dark)' },
-    ],
+    // iOS reads exactly one apple-touch-icon and ignores media queries on
+    // it, so this is the purpose-made 180px icon rather than the wordmark.
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
   },
+};
+
+// viewport-fit=cover is what lets the page extend under the notch and the
+// home indicator on an iPhone; the safe-area padding in globals.css is what
+// keeps the actual UI out from under them. Without the first, a Home Screen
+// install with a translucent status bar drew the top bar behind the clock.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#050308',
 };
 
 export default function RootLayout({
@@ -44,13 +54,11 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* Space Grotesk (headings) + Outfit (body) power the default UI
-            type - the only two families every single page actually needs,
-            so this one stays a normal render-blocking stylesheet (small,
-            fast, and avoids FOUT on the default theme everyone sees). */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Outfit:wght@300..700&display=swap"
-          rel="stylesheet"
-        />
+            type. They are self-hosted under /fonts and declared in
+            globals.css - see the note there - so no request leaves this
+            origin before first paint. */}
+        <link rel="preload" href="/fonts/outfit-latin-v15.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/space-grotesk-latin-v22.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         {/* The other 10 families are Build-your-own-theme choices (Settings
             -> Themes) - deliberately picked to span very different
             aesthetics (classic serif, elegant serif, monospace, poster

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import CryptoJS from 'crypto-js';
 import { UserAvatar } from './UserAvatar';
+import { avatarThumbUrl } from '@/lib/posterUrl';
 
 interface AvatarProps {
   name: string;
@@ -129,7 +130,8 @@ export function Avatar({ name, src, email, size = 'md', showRing = false, status
     setGravatarSrc(url || undefined);
   }, [email]);
 
-  const finalSrc = src || gravatarSrc;
+  // Small sizes render a static, resized copy - see avatarThumbUrl.
+  const finalSrc = src ? avatarThumbUrl(src, size) : gravatarSrc;
 
   useEffect(() => {
     setImageError(false);
@@ -158,6 +160,8 @@ export function Avatar({ name, src, email, size = 'md', showRing = false, status
             src={finalSrc} 
             alt={name} 
             className={clsx("w-full h-full object-cover", imgClassName)}
+            loading="lazy"
+            decoding="async"
             role="img"
             onError={() => {
               console.warn(`[Avatar] Failed to load image, falling back to initials: ${finalSrc}`);

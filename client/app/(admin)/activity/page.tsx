@@ -19,7 +19,7 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { api, MetricsData, Invitation } from '@/lib/api';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
-import { posterUrl } from '@/lib/posterUrl';
+import { posterUrl, posterSrcSet } from '@/lib/posterUrl';
 import {
   ClockIcon,
   FilmIcon,
@@ -476,7 +476,7 @@ const ActivityCard = memo(function ActivityCard({
   const rowElement = (
     <motion.div
       whileHover={{ x: 4 }}
-      className="flex items-start gap-4 p-4 rounded-xl bg-surface border border-default hover:border-primary/50 transition-colors"
+      className="flex items-start gap-4 p-4 rounded-xl bg-surface border border-default hover:border-primary/50 transition-colors cv-row"
     >
       {/* Activity type icon or poster (clickable for show/movie history) */}
       {activity.type === 'complete' && activity.poster && !imageError ? (
@@ -487,8 +487,12 @@ const ActivityCard = memo(function ActivityCard({
         >
           <img
             src={posterUrl({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
+            srcSet={posterSrcSet({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
+            sizes="48px"
             alt={activity.contentName}
             className="w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
             onError={() => setImageError(true)}
           />
         </button>
@@ -644,15 +648,19 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
 
       {/* Poster Card */}
       <div
-        className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl tap-card"
+        className="relative aspect-[2/3] rounded-xl overflow-hidden bg-slate-800 shadow-xl tap-card cv-poster"
         onClick={() => onOpenDetails?.(activity)}
       >
         {activity.poster && !imageError ? (
           <>
             <img
               src={posterUrl({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
+              srcSet={posterSrcSet({ id: activity.contentId, poster: activity.poster }, rpdbEnabled)}
+              sizes="(max-width: 640px) 22vw, (max-width: 1024px) 18vw, 170px"
               alt={activity.contentName}
-              className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110"
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              loading="lazy"
+              decoding="async"
               onError={() => setImageError(true)}
             />
             {/* Gradient overlay - subtle since no text on poster */}
@@ -759,7 +767,12 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             since the always-visible text badge cluttered the poster art. */}
         {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
           <div className="absolute top-2 left-2">
-            <div className={`px-2 py-1 rounded-md text-xs font-medium shadow-lg ${getActivityColor(activity.type)}`}>
+            {/* Always a dark pill with white text, whatever the poster
+                behind it. The tinted translucent style the list view uses
+                disappeared against bright artwork (unreadable on a red
+                poster) - a badge over an image cannot borrow its colour
+                from the type, it has to carry its own contrast. */}
+            <div className="px-2 py-1 rounded-md text-xs font-semibold tabular-nums text-white bg-black/75 ring-1 ring-white/15 shadow-lg backdrop-blur-sm">
               {formatDuration(activity.durationSeconds)}
             </div>
           </div>
@@ -1265,8 +1278,11 @@ function NowPlayingItemBody({
         <div className="w-10 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-hover">
           <img
             src={posterUrl(np.item, rpdbEnabled)}
+            srcSet={posterSrcSet(np.item, rpdbEnabled)}
+            sizes="40px"
             alt={np.item.name}
             className="w-full h-full object-cover"
+            decoding="async"
           />
         </div>
       ) : (

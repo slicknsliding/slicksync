@@ -1,3 +1,4 @@
+import dynamic from 'next/dynamic';
 export * from './Button';
 export * from './CommandPalette';
 export * from './Card';
@@ -11,7 +12,13 @@ export * from './ColorPicker';
 export * from './DateTimePicker';
 export * from './InlineEdit';
 export * from './Modal';
-export * from './MediaDetailModal';
+// The title popup is ~1,900 lines that open on a click. Loading it after
+// first paint instead of with it takes a real chunk out of every page's
+// first load - it is by far the largest single thing in the shared bundle.
+export const MediaDetailModal = dynamic(
+  () => import('./MediaDetailModal').then((m) => m.MediaDetailModal),
+  { ssr: false }
+);
 export * from './YearInReviewCard';
 export * from './ListPosterThumb';
 export * from './Input';
