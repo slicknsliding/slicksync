@@ -38,7 +38,7 @@ export function posterSrcSet(item: { id?: string | null; poster?: string | null 
  * (including /api/poster RPDB links, which handle themselves), and GIFs -
  * the server would freeze an animated cover to its first frame, and
  * Community Covers explicitly supports animated GIF art. */
-export function cachedImageUrl(url: string | null | undefined, width: 154 | 342 | 500 | 780 = 342): string | undefined {
+export function cachedImageUrl(url: string | null | undefined, width: 64 | 154 | 342 | 500 | 780 = 342): string | undefined {
   if (!url) return undefined;
   if (!/^https?:\/\//i.test(url)) return url;
   if (API_BASE && url.startsWith(API_BASE)) return url;
@@ -58,12 +58,12 @@ export function cachedImageUrl(url: string | null | undefined, width: 154 | 342 
  * (local URLs, GIFs, empty values), so callers can spread it safely - an
  * <img> with srcSet={undefined} is just a normal <img>.
  */
-export function cachedImageSrcSet(url: string | null | undefined, width: 154 | 342 | 500 | 780 = 342): string | undefined {
+export function cachedImageSrcSet(url: string | null | undefined, width: 64 | 154 | 342 | 500 | 780 = 342): string | undefined {
   if (!url) return undefined;
   if (!/^https?:\/\//i.test(url)) return undefined;
   if (API_BASE && url.startsWith(API_BASE)) return undefined;
   if (/\.gif(\?|$)/i.test(url)) return undefined;
-  const smaller: Record<number, 154 | 342 | 500 | 780> = { 342: 154, 500: 342, 780: 500, 154: 154 };
+  const smaller: Record<number, 64 | 154 | 342 | 500 | 780> = { 342: 154, 500: 342, 780: 500, 154: 64, 64: 64 };
   const small = smaller[width];
   if (small === width) return undefined;
   return `${API_BASE}/img?src=${encodeURIComponent(url)}&w=${small} ${small}w, ${API_BASE}/img?src=${encodeURIComponent(url)}&w=${width} ${width}w`;
@@ -81,4 +81,23 @@ export function cachedImageSrcSet(url: string | null | undefined, width: 154 | 3
 // baked-in ratings), where our row is the only rating info there is.
 export function isRpdbPoster(item: { id?: string | null }, rpdbEnabled: boolean): boolean {
   return !!(rpdbEnabled && item.id && /^tt\d+$/.test(item.id));
+}
+
+/**
+ * A profile picture at the size it is actually drawn. Uploaded avatars are
+ * stored at whatever was uploaded - a 220px animated GIF is common - and the
+ * same file is drawn at 24-40px in every history row, member list and
+ * watcher cluster. Fifty copies of an animating GIF is fifty decoders on
+ * the main thread for motion nobody can see; on a phone that is the
+ * difference between a page that scrolls and one that stutters. Small sizes
+ * go through the image cache and come back as one static, resized frame;
+ * the large sizes (the profile view itself) keep the original, animation
+ * included. External URLs and Gravatar are already small and left alone.
+ */
+export function avatarThumbUrl(src: string | null | undefined, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl'): string | undefined {
+  if (!src) return undefined;
+  if (!src.startsWith('/uploads/avatars/')) return src;
+  if (size === '2xl') return src;
+  const w = size === 'lg' || size === 'xl' ? 154 : 64;
+  return `${API_BASE}/img?src=${encodeURIComponent(src)}&w=${w}`;
 }

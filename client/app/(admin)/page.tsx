@@ -33,62 +33,18 @@ import {
   XCircleIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
+import dynamic from 'next/dynamic';
+import type { SyncStatusData } from '@/components/admin/SyncActivityChart';
 
-// Sync status data type
-interface SyncStatusData {
-  time: string;
-  syncs: number;
-}
-
-// Hoisted tooltip style for charts
-const CHART_TOOLTIP_STYLE = {
-  backgroundColor: 'var(--color-surface)',
-  border: '1px solid var(--color-surface-border)',
-  borderRadius: '10px',
-  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-} as const;
-
-const CHART_LABEL_STYLE = { color: 'var(--color-text)' } as const;
+// The chart's library (recharts) is loaded on demand - see the component
+// file for why it is not in the dashboard's first-load bundle.
+const SyncActivityChart = dynamic(
+  () => import('@/components/admin/SyncActivityChart').then((m) => m.SyncActivityChart),
+  { ssr: false, loading: () => null }
+);
 
 // Fixed height for activity items (5 items)
 const ACTIVITY_CARD_HEIGHT = 'h-[420px]';
-
-// Memoized chart component
-const SyncActivityChart = memo(function SyncActivityChart({ data }: { data: SyncStatusData[] }) {
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={data}>
-        <defs>
-          <linearGradient id="colorSyncs" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.3} />
-            <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-border)" />
-        <XAxis dataKey="time" stroke="var(--color-text-subtle)" fontSize={11} />
-        <YAxis stroke="var(--color-text-subtle)" fontSize={11} />
-        <Tooltip contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_LABEL_STYLE} />
-        <Area
-          type="monotone"
-          dataKey="syncs"
-          stroke="var(--color-primary)"
-          strokeWidth={2}
-          fillOpacity={1}
-          fill="url(#colorSyncs)"
-        />
-      </AreaChart>
-    </ResponsiveContainer>
-  );
-});
 
 // Recent Addon Item component with error handling
 const RecentAddonItem = memo(function RecentAddonItem({ 

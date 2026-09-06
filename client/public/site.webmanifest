@@ -1,7 +1,8 @@
 {
+  "id": "/",
   "name": "SlickSync",
   "short_name": "SlickSync",
-  "description": "SlickSync - Stremio Group Manager",
+  "description": "One dashboard for every Stremio and Nuvio account in the house",
   "icons": [
     { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png" }
@@ -38,5 +39,5 @@
   ],
   "display": "standalone",
   "theme_color": "#6d28d9",
-  "background_color": "#ffffff"
+  "background_color": "#050308"
 }

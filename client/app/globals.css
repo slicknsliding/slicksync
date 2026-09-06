@@ -1005,3 +1005,36 @@ html {
      rest. */
   overflow-anchor: none;
 }
+
+/* ===== Phones: notch, status bar, home indicator =====
+   viewport-fit=cover (layout.tsx) lets the page run edge to edge, which a
+   Home Screen install with a translucent status bar needs. env() is 0 on
+   every device without an inset, so this costs nothing anywhere else. The
+   sticky bars keep their own top: 0 by default and would slide under the
+   status bar as soon as the page scrolled - so they stick below the inset. */
+body {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.sticky.top-0 {
+  top: env(safe-area-inset-top, 0px);
+}
+.fixed.bottom-4 {
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* ===== Long lists: don't lay out or paint what is off-screen =====
+   The history feed and the poster grids are unbounded by choice (infinite
+   scroll keeps accumulating), so the browser is asked to skip the rows and
+   poster boxes that are not in view. The intrinsic sizes keep the scrollbar
+   honest before a row has been rendered once. Only applied to boxes whose
+   contents are already clipped to them - containment also clips, and would
+   cut off a popover or menu that escapes its card. */
+.cv-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 104px;
+}
+.cv-poster {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 150px 225px;
+}

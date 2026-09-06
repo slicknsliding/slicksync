@@ -73,9 +73,14 @@ function getEncoder() {
 // being cached at unbounded arbitrary sizes (cache-bombing) and matches
 // what the UI actually renders: 342 covers poster cards up to ~170 CSS px
 // at 2x DPR; 780 covers the detail modal's backdrop art.
-const ALLOWED_WIDTHS = [154, 342, 500, 780];
+const ALLOWED_WIDTHS = [64, 154, 342, 500, 780];
 
 const CACHE_DIR = path.join(process.cwd(), 'data', 'poster-cache');
+// Profile pictures live here (see the express.static mount in index.js).
+// The proxy reads them straight off the disk rather than fetching itself
+// over HTTP - which would need a public address, a session, and a trip
+// through whatever proxy sits in front of the instance.
+const AVATAR_DIR = path.join(process.cwd(), 'data', 'avatars');
 const MAX_SOURCE_BYTES = 10 * 1024 * 1024; // refuse to buffer anything bigger
 const FETCH_TIMEOUT_MS = 10000;
 // Prune target: posters are ~10-25KB each at these widths, so this is
@@ -161,6 +166,22 @@ module.exports = () => {
     const src = String(req.query.src || '');
     const requestedW = parseInt(String(req.query.w || ''), 10);
     if (!src) return res.status(400).json({ error: 'src required' });
+
+    // A profile picture from this instance's own uploads. These are the
+    // most-repeated images in the whole app - every history row, every
+    // member list, every "who watched" cluster - and they can be animated
+    // GIFs: a 220px looping GIF drawn at 32px, fifty times down one page,
+    // is fifty decoders running for artwork nobody can see move. Served
+    // through here it becomes a static, resized frame like any poster,
+    // and only the big profile view keeps the animation.
+    let localFile = null;
+    const avatarMatch = /^\/uploads\/avatars\/([^/\\]+)$/.exec(src);
+    if (avatarMatch) {
+      const candidate = path.join(AVATAR_DIR, path.basename(avatarMatch[1]));
+      if (!candidate.startsWith(AVATAR_DIR + path.sep)) return res.status(400).json({ error: 'invalid source' });
+      try { await fs.promises.access(candidate); } catch { return res.status(404).json({ error: 'not found' }); }
+      localFile = candidate;
+    }
     // Snap to the nearest allowed width rather than 400ing - callers pass a
     // constant from the client helper anyway, this just keeps the contract
     // forgiving.
@@ -205,6 +226,15 @@ module.exports = () => {
       try { res.redirect(302, src); } catch {}
     };
 
+    // Source bytes, wherever they live. Used by the background format
+    // upgrade below; the main miss path has its own retrying fetch.
+    const readSourceBytes = async () => {
+      if (localFile) return fs.promises.readFile(localFile);
+      const upstream = await fetch(src, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
+      return Buffer.from(await upstream.arrayBuffer());
+    };
+
     // Nothing in the requested format yet, but the other one is already on
     // disk: serve that immediately and encode the requested format behind
     // the response, so the next view gets it and nobody waits for the
@@ -217,9 +247,7 @@ module.exports = () => {
       if (!inFlight.has(key)) {
         const upgrade = (async () => {
           try {
-            const upstream = await fetch(src, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-            if (!upstream.ok) return;
-            const buf = Buffer.from(await upstream.arrayBuffer());
+            const buf = await readSourceBytes();
             if (buf.length === 0 || buf.length > MAX_SOURCE_BYTES) return;
             const img = await encoder.read(buf);
             if (img.width > w) img.resize({ w });
@@ -237,15 +265,18 @@ module.exports = () => {
       return;
     } catch { /* no other format either - carry on and fetch it properly */ }
 
-    try {
-      await assertSafeUrl(src);
-    } catch {
-      // Not a fetchable/safe URL - don't even redirect to it.
-      return res.status(400).json({ error: 'invalid source url' });
+    if (!localFile) {
+      try {
+        await assertSafeUrl(src);
+      } catch {
+        // Not a fetchable/safe URL - don't even redirect to it.
+        return res.status(400).json({ error: 'invalid source url' });
+      }
     }
 
-    // Animated/vector formats pass straight through untouched.
-    if (/\.(gif|svg)(\?|$)/i.test(src)) return fallback();
+    // Animated/vector formats pass straight through untouched - except a
+    // local avatar, where freezing the GIF to one frame is the entire point.
+    if (!localFile && /\.(gif|svg)(\?|$)/i.test(src)) return fallback();
 
     if (inFlight.has(key)) {
       try {
@@ -299,10 +330,15 @@ module.exports = () => {
     };
 
     const work = (async () => {
-      const upstream = await fetchOriginWithRetry();
-      const type = (upstream.headers.get('content-type') || '').toLowerCase();
-      if (type.includes('gif') || type.includes('svg')) throw new Error('passthrough type');
-      const buf = Buffer.from(await upstream.arrayBuffer());
+      let buf;
+      if (localFile) {
+        buf = await fs.promises.readFile(localFile);
+      } else {
+        const upstream = await fetchOriginWithRetry();
+        const type = (upstream.headers.get('content-type') || '').toLowerCase();
+        if (type.includes('gif') || type.includes('svg')) throw new Error('passthrough type');
+        buf = Buffer.from(await upstream.arrayBuffer());
+      }
       if (buf.length === 0 || buf.length > MAX_SOURCE_BYTES) throw new Error('bad size');
 
       const img = await encoder.read(buf);
