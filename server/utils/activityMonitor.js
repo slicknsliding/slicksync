@@ -188,8 +188,17 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       const canUseLegacyCache = (user) => !!user?.email && emailCounts.get(user.email) === 1
 
       // Helper function to get library for a user via their provider
-      // (Stremio or Nuvio); falls back to cache if no credentials or on error
-      const getLibraryForUser = async (user) => {
+      // (Stremio or Nuvio); falls back to cache if no credentials or on error.
+      // Fetched ONCE per pass: the metrics step and the sessions step both
+      // ask for it within the same second, and each used to fetch, parse and
+      // re-cache the whole library on its own - twice the network and twice
+      // the CPU for an identical answer. The memo lives for this pass only.
+      const libraryOnce = new Map()
+      const getLibraryForUser = (user) => {
+        if (!libraryOnce.has(user.id)) libraryOnce.set(user.id, fetchLibraryForUser(user))
+        return libraryOnce.get(user.id)
+      }
+      const fetchLibraryForUser = async (user) => {
         try {
           const mockReq = { appAccountId: accountId }
           const provider = createProvider(user, { decrypt: (t) => decrypt(t, mockReq), req: mockReq })
@@ -451,11 +460,15 @@ async function checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
       const accounts = await prisma.appAccount.findMany({
         select: { id: true }
       })
-      for (let i = 0; i < accounts.length; i += ACCOUNT_BATCH_SIZE) {
-        const batch = accounts.slice(i, i + ACCOUNT_BATCH_SIZE)
-        await Promise.all(batch.map((account) =>
-          checkActivityForAccount(prisma, account.id, decrypt, getAccountId)
-        ))
+      // Spread the accounts across the minute rather than starting them all
+      // together. Every account still runs once a minute at its own offset;
+      // what changes is the shape: a dozen-second spike of full CPU at the
+      // top of each minute (on a two-core allowance, every request in that
+      // window waited behind it) becomes short, spaced-out pieces of work.
+      const gapMs = accounts.length > 1 ? Math.min(12000, Math.floor(45000 / accounts.length)) : 0
+      for (let i = 0; i < accounts.length; i++) {
+        if (i > 0 && gapMs > 0) await new Promise((resolve) => setTimeout(resolve, gapMs))
+        await checkActivityForAccount(prisma, accounts[i].id, decrypt, getAccountId)
       }
       heartbeat('checkAllAccounts:done', { INSTANCE_TYPE, accountCount: accounts.length, durationMs: Date.now() - startedAt })
     } else {
