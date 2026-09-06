@@ -137,7 +137,31 @@ async function getResumeState(prisma, accountId, userId, itemId, videoId) {
  * a computable next episode, most-recently-watched shows first, capped to
  * `limit`.
  */
+// The dashboard asks for this on every open and it costs a few hundred
+// milliseconds each time: each candidate show's episode list is fetched and
+// the next episode recomputed, even when nothing has been watched since the
+// last call a minute ago. Answers are kept for thirty seconds per account,
+// and dropped the moment anything that changes them happens - a stream
+// starting or stopping (via the live-events bus), a dismissal, an unbury,
+// a wipe - so the row is never stale in a way anyone could notice.
+const CW_MEMO_TTL_MS = 30 * 1000
+const cwMemo = new Map()
+
+function invalidateContinueWatching(accountId) {
+  const prefix = `${accountId || 'default'}:`
+  for (const key of cwMemo.keys()) if (key.startsWith(prefix)) cwMemo.delete(key)
+}
+
 async function getContinueWatching(prisma, accountId, limit = 8) {
+  const key = `${accountId || 'default'}:${limit}`
+  const hit = cwMemo.get(key)
+  if (hit && Date.now() - hit.at < CW_MEMO_TTL_MS) return hit.value
+  const value = await computeContinueWatching(prisma, accountId, limit)
+  cwMemo.set(key, { at: Date.now(), value })
+  return value
+}
+
+async function computeContinueWatching(prisma, accountId, limit = 8) {
   const accountIdValue = accountId || 'default'
   const { resolveOmdbKeyForAccount } = require('./listImport')
   const omdbApiKey = await resolveOmdbKeyForAccount(prisma, accountIdValue)
@@ -356,6 +380,7 @@ async function getContinueWatching(prisma, accountId, limit = 8) {
  * device stays dismissed everywhere.
  */
 async function dismissContinueWatching(prisma, accountId, userId, showId) {
+  invalidateContinueWatching(accountId)
   const accountIdValue = accountId || 'default'
   await prisma.dismissedContinueWatching.upsert({
     where: { accountId_userId_showId: { accountId: accountIdValue, userId, showId } },
@@ -512,6 +537,7 @@ async function getBuriedShows(prisma, accountId) {
 /** Dig a show back up: the dismissal is removed, so it reappears in
  * Continue Watching (if recent) or the abandoned list (if not). */
 async function unburyShow(prisma, accountId, userId, showId) {
+  invalidateContinueWatching(accountId)
   await prisma.dismissedContinueWatching.deleteMany({
     where: { accountId: accountId || 'default', userId, showId },
   })
@@ -528,6 +554,7 @@ async function unburyShow(prisma, accountId, userId, showId) {
  * within minutes (confirmed live 2026-09-03, twice).
  */
 async function wipeBuriedShow(prisma, accountId, userId, showId) {
+  invalidateContinueWatching(accountId)
   const accountIdValue = accountId || 'default'
   const [episodes, movies] = await prisma.$transaction([
     prisma.episodeWatchHistory.deleteMany({ where: { accountId: accountIdValue, userId, showId } }),
@@ -543,4 +570,4 @@ async function wipeBuriedShow(prisma, accountId, userId, showId) {
   return { episodesDeleted: episodes.count, moviesDeleted: movies.count }
 }
 
-module.exports = { getContinueWatching, dismissContinueWatching, getAbandonedShows, getBuriedShows, unburyShow, wipeBuriedShow, ABANDONED_AFTER_DAYS, placeAbsoluteEpisode }
+module.exports = { getContinueWatching, invalidateContinueWatching, dismissContinueWatching, getAbandonedShows, getBuriedShows, unburyShow, wipeBuriedShow, ABANDONED_AFTER_DAYS, placeAbsoluteEpisode }

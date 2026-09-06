@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { API_BASE } from '@/lib/api';
+import { setLiveConnected } from '@/lib/liveState';
 
 // Bridges the server's SSE live-update stream (/api/events) to window
 // events any component can listen for. One connection per tab, mounted once
@@ -22,6 +23,9 @@ export function LiveEventsBridge() {
     let source: EventSource | null = null;
     try {
       source = new EventSource(`${API_BASE}/events`, { withCredentials: true });
+      // Pollers stretch their interval while this is up (lib/adaptivePoll).
+      source.onopen = () => setLiveConnected(true);
+      source.onerror = () => setLiveConnected(false);
       source.onmessage = (e) => {
         try {
           const { type } = JSON.parse(e.data || '{}');
@@ -32,7 +36,7 @@ export function LiveEventsBridge() {
       // polling covers any gap - surfacing transient reconnects would just
       // be noise.
     } catch { /* EventSource unsupported - polling alone, as before */ }
-    return () => { try { source?.close(); } catch { /* already closed */ } };
+    return () => { setLiveConnected(false); try { source?.close(); } catch { /* already closed */ } };
   }, []);
 
   return null;

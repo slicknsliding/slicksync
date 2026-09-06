@@ -47,6 +47,10 @@ self.addEventListener('activate', (event) => {
     // caching starts without waiting for the next full reload.
     const names = await caches.keys();
     await Promise.all(names.filter((n) => n !== STATIC_CACHE && n !== PAGES_CACHE && n !== IMAGE_CACHE).map((n) => caches.delete(n)));
+    // Let the browser start a navigation's network request while this worker
+    // is still waking up, instead of after. The navigate handler below picks
+    // the preloaded response up when there is one.
+    try { if (self.registration.navigationPreload) await self.registration.navigationPreload.enable(); } catch {}
     await self.clients.claim();
   })());
 });
@@ -108,7 +112,8 @@ self.addEventListener('fetch', (event) => {
         // No timeout race here on purpose - see the note at the top of this
         // file. Waiting on a slow network is correct; substituting a shell
         // from an older build is not.
-        const res = await fetch(req);
+        const preloaded = await (event.preloadResponse || Promise.resolve(null)).catch(() => null);
+        const res = preloaded || await fetch(req);
         if (res.ok) cache.put(req, res.clone());
         return res;
       } catch {

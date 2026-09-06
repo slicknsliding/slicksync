@@ -26,6 +26,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { startAdaptivePoll } from '@/lib/adaptivePoll';
 
 // Helper to format duration in a human-readable way
 function formatDuration(seconds: number): string {
@@ -561,9 +562,8 @@ export default function UserActivityPage() {
 
     fetchData(false);
 
-    // Poll every 30 seconds
-    const interval = setInterval(() => fetchData(true), 30000);
-    return () => clearInterval(interval);
+    // Every 30 seconds while the tab is on screen; not at all while hidden.
+    return startAdaptivePoll(() => fetchData(true), 30000, 120000);
   }, [userId, authKey, isReady]);
 
   // Tick every second for live now-playing duration

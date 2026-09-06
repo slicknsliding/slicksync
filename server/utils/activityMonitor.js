@@ -254,9 +254,16 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
         console.warn(`[ActivityMonitor] Error checking watch-sync mismatch:`, mismatchError.message)
       }
 
-      // Precompute and cache metrics for all periods (runs every 5 minutes)
-      // This ensures fresh data is available for both /users/metrics and /ext/metrics.json
-      try {
+      // Precompute and cache metrics for all periods - every five minutes,
+      // not every pass. This block ran on the one-minute tick for years while
+      // its own comment said five: nine full metrics builds per account per
+      // minute, which on a public instance with a handful of accounts was a
+      // twelve-second burst of full CPU every sixty seconds with nobody
+      // using the app. Nothing waits on this cache: /users/metrics builds on
+      // demand when it misses, and live events refresh open pages.
+      const lastPrecompute = metricsPrecomputeAt.get(accountId) || 0
+      if (Date.now() - lastPrecompute >= METRICS_PRECOMPUTE_INTERVAL_MS) try {
+        metricsPrecomputeAt.set(accountId, Date.now())
         const { setCachedMetrics } = require('./metricsCache')
         const { buildMetricsForAccount } = require('./metricsBuilder')
         const periods = ['1h', '12h', '1d', '3d', '7d', '30d', '90d', '1y', 'all']
@@ -466,6 +473,11 @@ async function checkAllAccounts(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
     isAccountsPassRunning = false
   }
 }
+
+// Per-account timestamp of the last metrics-cache precompute (see the
+// block in checkActivityForAccount).
+const metricsPrecomputeAt = new Map()
+const METRICS_PRECOMPUTE_INTERVAL_MS = 5 * 60 * 1000
 
 function scheduleActivityMonitor(prisma, decrypt, getAccountId, INSTANCE_TYPE) {
   heartbeat('scheduleActivityMonitor:init', { INSTANCE_TYPE })
