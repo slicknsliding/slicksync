@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.85.3",
+    "date": "2026-09-06",
+    "title": "1.85.3 - Lighter on every device",
+    "features": [
+      "The pages with live counters - the dashboard, Activity, a user's page and the portal - no longer redraw themselves once a second while something is playing. The counters read in whole minutes; they now advance every fifteen seconds, only while the page is on screen, and Now Playing keeps counting between refreshes. On a phone this is the difference between a page that is idle and one that is quietly working the whole time it is open.",
+      "The two drifting shapes behind every page hold still on phones, tablets and TVs. Blurred motion of that size is free on a desktop and a constant cost on a small GPU; the look is the same, only the drift is gone.",
+      "The once-a-minute library check no longer re-examines items that have not changed since the last pass. On a real library that was several thousand database queries a minute with nothing playing; now it is a handful. Every item is still fully re-checked at least every fifteen minutes and at the start of each day."
+    ],
+    "bugFixes": [
+      "The Activity page refreshed every thirty seconds even in a hidden tab. It now follows the dashboard's rules: slower while live updates are connected, an immediate refresh when a stream starts or stops, and none at all while hidden."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.85.2",
     "date": "2026-09-06",
     "title": "1.85.2 - Posters for more streams, and a lighter once-a-minute check",
