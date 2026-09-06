@@ -319,7 +319,27 @@ async function attemptPosterLookup(prisma, rowId, displayName) {
       await prisma.proxyStreamSession.update({ where: { id: rowId }, data: { metadataMatchedAt: new Date() } })
       return
     }
-    const result = await searchCinemetaPosterByTitle(parsed.searchTitle, parsed.year, parsed.type)
+    // The movie/series guess comes from an episode marker in the stream's
+    // title, and plenty of series streams carry none - "Tales of the City
+    // (2019)" is a series that looked like a film. A miss under the guessed
+    // type is retried under the other, so a wrong guess costs one extra
+    // lookup rather than the poster and the id.
+    // Stream titles from localized sources carry a subtitle after a dash -
+    // "Toy Story - Il mondo dei giocattoli" - that Cinemeta's English name
+    // never matches. The candidates are tried longest first: the full title,
+    // then the part before the first dash or colon; each under the guessed
+    // type, then the other. Every attempt still demands an exact title and
+    // year, so a shorter candidate cannot land on the wrong film.
+    const candidates = [parsed.searchTitle]
+    const cut = parsed.searchTitle.split(/\s+[-–—:]\s+/)[0].trim()
+    if (cut && cut !== parsed.searchTitle && cut.length >= 3) candidates.push(cut)
+    const otherType = parsed.type === 'series' ? 'movie' : 'series'
+    let result = null
+    for (const candidate of candidates) {
+      result = await searchCinemetaPosterByTitle(candidate, parsed.year, parsed.type)
+        || await searchCinemetaPosterByTitle(candidate, parsed.year, otherType)
+      if (result) break
+    }
     const updatedRow = await prisma.proxyStreamSession.update({
       where: { id: rowId },
       data: {
@@ -345,8 +365,23 @@ async function attemptPosterLookup(prisma, rowId, displayName) {
 // Safety net for rows that never got a lookup attempt (e.g. the connection
 // ended mid-lookup). Capped per cycle so a backlog doesn't hammer Cinemeta.
 async function retryMissingPosters(prisma, accountId) {
+  // Two kinds of row: never attempted (a lookup interrupted mid-stream), and
+  // attempted but unresolved - retried at most every six hours for a week,
+  // so a title the lookup has since learned to resolve (a wrong movie/series
+  // guess, a source that was briefly down) gets its poster after all,
+  // without a permanently unknowable title being asked about every cycle.
   const stuck = await prisma.proxyStreamSession.findMany({
-    where: { accountId, metadataMatchedAt: null },
+    where: {
+      accountId,
+      OR: [
+        { metadataMatchedAt: null },
+        {
+          metadataItemId: null,
+          metadataMatchedAt: { lt: new Date(Date.now() - 6 * 60 * 60 * 1000) },
+          createdAt: { gt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        },
+      ],
+    },
     select: { id: true, displayName: true },
     take: 5,
     orderBy: { createdAt: 'asc' },
