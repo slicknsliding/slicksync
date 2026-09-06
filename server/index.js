@@ -112,6 +112,11 @@ if (QUIET || !DEBUG_ENABLED) {
 const app = express();
 // PORT is now imported from utils/config
 const prisma = new PrismaClient();
+// SQLite runtime settings (WAL, busy timeout, page cache) - see the file.
+// Postgres instances get null back and skip this.
+require('./utils/sqlitePragmas').applySqlitePragmas(prisma)
+  .then((applied) => { if (applied) console.log('[SQLite] runtime settings:', JSON.stringify(applied)) })
+  .catch((e) => console.warn('[SQLite] could not apply runtime settings:', e?.message));
 console.log('Prisma client initialized:', !!prisma);
 
 // Provider factory: routes addon operations to Stremio or Nuvio based on user.providerType
@@ -248,7 +253,10 @@ const upload = standardUpload;
 
 // Serve uploaded avatar images. data/avatars is the same bind-mounted volume
 // as the rest of persistent data, so uploads survive container recreation.
-app.use('/uploads/avatars', express.static(path.join(process.cwd(), 'data', 'avatars')));
+// Avatar filenames are per-upload UUIDs (routes/avatars.js), so a file never
+// changes under its name - it can be cached hard. With max-age 0 every page
+// re-validated every avatar it showed, a round trip per face for a 304.
+app.use('/uploads/avatars', express.static(path.join(process.cwd(), 'data', 'avatars'), { maxAge: '7d', immutable: true }));
 
 // Encryption helpers
 const { getServerKey, aesGcmEncrypt, aesGcmDecrypt, getAccountDek } = require('./utils/encryption')

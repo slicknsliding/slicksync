@@ -4,6 +4,7 @@ import { useState, useCallback, memo, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import { api, Addon, StremioAddon, MergeCandidate, MergePreview, MergeInfo, User } from '@/lib/api';
+import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { copyToClipboard } from '@/lib/clipboard';
 import { useTheme } from '@/lib/theme';
 import Link from 'next/link';
@@ -604,11 +605,9 @@ export default function UserDetailPage() {
     }
   }, [params.id]);
 
-  // Poll group addons every 30s so backup/primary state stays fresh
-  useEffect(() => {
-    const interval = setInterval(() => refreshGroupAddons(false), 30000);
-    return () => clearInterval(interval);
-  }, [refreshGroupAddons]);
+  // Poll group addons so backup/primary state stays fresh - every 30s, or
+  // every 3 minutes while live updates are connected, never while hidden.
+  useEffect(() => startAdaptivePoll(() => refreshGroupAddons(false), 30000, 180000), [refreshGroupAddons]);
 
   // Derive user-specific sessions from metricsData
   const userSessions = useMemo(() => {

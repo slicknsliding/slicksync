@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BellIcon, XMarkIcon, CheckCircleIcon, EnvelopeIcon, UsersIcon, PuzzlePieceIcon, ClockIcon, UserPlusIcon, CheckIcon, SparklesIcon, ArrowPathIcon, LockClosedIcon, ExclamationTriangleIcon, ArrowUpCircleIcon, MegaphoneIcon, DevicePhoneMobileIcon } from '@heroicons/react/24/outline';
 import { Badge, Button, Avatar } from '@/components/ui';
+import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 
@@ -158,12 +159,12 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
       }
     };
     const initialDelay = setTimeout(fetchStored, 200 + Math.random() * 600);
-    const interval = setInterval(fetchStored, 30000);
+    const stopPoll = startAdaptivePoll(fetchStored, 30000, 180000);
     // SSE accelerant: a server-side notification refetches the bell right
     // now instead of on the next tick. Polling above stays as the fallback.
     const onLive = () => { fetchStored(); };
     window.addEventListener('slicksync:live-notification', onLive);
-    return () => { clearTimeout(initialDelay); clearInterval(interval); window.removeEventListener('slicksync:live-notification', onLive); };
+    return () => { clearTimeout(initialDelay); stopPoll(); window.removeEventListener('slicksync:live-notification', onLive); };
   }, []);
 
   // Fetch pending + accepted invite requests
@@ -210,8 +211,8 @@ export function NotificationsDropdown({ activities = [], inviteHistory = [], tas
     // endpoints, but a fresh page load fires plenty of genuinely different
     // endpoints too, which that cache can't help with.
     const initialDelay = setTimeout(fetchRequests, 200 + Math.random() * 600);
-    const interval = setInterval(fetchRequests, 30000);
-    return () => { clearTimeout(initialDelay); clearInterval(interval); };
+    const stopPoll = startAdaptivePoll(fetchRequests, 30000, 180000);
+    return () => { clearTimeout(initialDelay); stopPoll(); };
   }, []);
 
   // (Watch activity is no longer re-derived from the metrics snapshot here -

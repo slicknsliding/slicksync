@@ -18,6 +18,7 @@ import { SetupChecklist } from '@/components/dashboard/SetupChecklist';
 import { api, AccountStats, MetricsData, Addon, ContinueWatchingItem } from '@/lib/api';
 import { toast } from '@/components/ui/Toast';
 import { useLayoutMode } from '@/lib/layout-mode';
+import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import {
   UsersIcon,
   UserGroupIcon,
@@ -551,12 +552,15 @@ export default function DashboardPage() {
   useEffect(() => {
     refreshData();
     // Keeps Now Playing live - see the "Live" badge on its section header.
-    const id = setInterval(() => refreshData(true), 30000);
+    // Every 30s on its own; every 3 minutes while the live stream is
+    // connected (a change is pushed the moment it happens, below); never
+    // while the tab is hidden.
+    const stopPoll = startAdaptivePoll(() => refreshData(true), 30000, 180000);
     // SSE accelerant: a stream starting or stopping refetches immediately
     // instead of waiting out the interval above (which stays as fallback).
     const onLive = () => refreshData(true);
     window.addEventListener('slicksync:live-nowplaying', onLive);
-    return () => { clearInterval(id); window.removeEventListener('slicksync:live-nowplaying', onLive); };
+    return () => { stopPoll(); window.removeEventListener('slicksync:live-nowplaying', onLive); };
   }, [refreshData]);
 
   // Derived stats with fallbacks

@@ -26,6 +26,10 @@ const HEARTBEAT_MS = 25 * 1000 // keeps idle connections alive through proxies (
 /** Fire an event at every connected client of one account. Fire-and-forget
  * by design - callers never await or depend on delivery. */
 function emitLive(accountId, type) {
+  // A stream starting or stopping is exactly what changes Continue Watching.
+  if (type === 'nowplaying') {
+    try { require('./continueWatching').invalidateContinueWatching(accountId) } catch { /* optional */ }
+  }
   try {
     bus.emit('live', { accountId: accountId || 'default', type })
   } catch { /* a listener throwing must never break the caller */ }
