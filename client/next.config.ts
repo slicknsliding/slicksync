@@ -44,6 +44,15 @@ try {
 } catch {}
 
 const nextConfig: NextConfig = {
+  // Requests to the backend go through Next's rewrite proxy, whose default
+  // patience is 30 seconds. Describe-it search waits up to 45 seconds for a
+  // model to answer (slower and free-tier models genuinely take that long),
+  // so a slow answer used to be cut off by the proxy first and surface as a
+  // bare "HTTP 500" with no message. The proxy now outlasts the slowest
+  // backend request rather than the other way round.
+  experimental: {
+    proxyTimeout: 60_000,
+  },
   env: {
     NEXT_PUBLIC_INSTANCE_TYPE: process.env.INSTANCE || 'private',
     NEXT_PUBLIC_APP_VERSION: APP_VERSION,
