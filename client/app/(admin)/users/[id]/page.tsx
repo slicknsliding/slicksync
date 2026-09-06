@@ -42,6 +42,7 @@ import {
   FolderIcon,
   LinkIcon,
   MagnifyingGlassIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 import { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
@@ -473,6 +474,27 @@ export default function UserDetailPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.traxAddonEnabled, user?.traxToken]);
+
+  // Two of the biggest blocks on this page are things you set up once and
+  // then rarely touch, so they collapse - and the choice is remembered,
+  // because re-collapsing the same section on every visit is its own small
+  // annoyance. Default closed: the page is long enough that the parts you
+  // came for (addons, sync, activity) should not start below two walls of
+  // setup text.
+  const [openSections, setOpenSections] = useState<{ tracking: boolean; history: boolean }>({ tracking: false, history: false });
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('slicksync-user-sections');
+      if (raw) setOpenSections((prev) => ({ ...prev, ...JSON.parse(raw) }));
+    } catch { /* a missing preference just means the defaults */ }
+  }, []);
+  const toggleSection = (key: 'tracking' | 'history') => {
+    setOpenSections((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try { localStorage.setItem('slicksync-user-sections', JSON.stringify(next)); } catch { /* private mode */ }
+      return next;
+    });
+  };
 
   // Cinemeta patching. The state is read back from the manifest actually on
   // the account rather than from what we last wrote, so an edit made
@@ -1353,8 +1375,27 @@ export default function UserDetailPage() {
                 Trakt's own free export and needs no app and no VIP. */}
             <PageSection className="mb-6">
               <Card padding="lg">
-                <h3 className="text-lg font-semibold text-default mb-1">Watch-Tracking Integrations</h3>
-                <p className="text-sm text-muted mb-4">Link this user's history to an external tracker</p>
+                <button
+                  type="button"
+                  onClick={() => toggleSection('tracking')}
+                  className="w-full flex items-center justify-between gap-3 text-left"
+                  aria-expanded={openSections.tracking}
+                >
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold text-default mb-1">Watch-Tracking Integrations</h3>
+                    <p className="text-sm text-muted">
+                      {openSections.tracking
+                        ? "Link this user's history to an external tracker"
+                        : `${user.simklConnected ? 'SIMKL linked' : 'SIMKL not linked'} · SlickTrax ${user.traxAddonEnabled ? 'on' : 'off'}`}
+                    </p>
+                  </div>
+                  <ChevronDownIcon
+                    className="w-5 h-5 text-muted shrink-0 transition-transform"
+                    style={{ transform: openSections.tracking ? 'rotate(180deg)' : 'none' }}
+                  />
+                </button>
+
+                {openSections.tracking && (<div className="mt-4">
 
                 <div className="flex items-center justify-between gap-4 flex-wrap py-3">
                   <div className="flex items-center gap-3">
@@ -1476,6 +1517,7 @@ export default function UserDetailPage() {
                     </label>
                   )}
                 </div>
+                </div>)}
 
               </Card>
             </PageSection>
@@ -1530,9 +1572,27 @@ export default function UserDetailPage() {
                 and needs no API app, which the removed OAuth route did. */}
             <PageSection className="mb-6">
               <Card padding="lg">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('history')}
+                  className="w-full flex items-center justify-between gap-3 text-left"
+                  aria-expanded={openSections.history}
+                >
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold text-default">Watch History Import/Export</h3>
+                    {!openSections.history && (
+                      <p className="text-sm text-muted mt-0.5">Bring in an IMDb, Letterboxd, Trakt, Netflix, TV Time, Plex or Movary export, or take a copy out</p>
+                    )}
+                  </div>
+                  <ChevronDownIcon
+                    className="w-5 h-5 text-muted shrink-0 transition-transform"
+                    style={{ transform: openSections.history ? 'rotate(180deg)' : 'none' }}
+                  />
+                </button>
+
+                {openSections.history && (<div className="mt-4">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-lg font-semibold text-default">Watch History Import/Export</h3>
                     {/* Each service is linked straight to its own export
                         page. Telling someone to "go to Settings -> Data"
                         still leaves them hunting through a site they may
@@ -1601,6 +1661,7 @@ export default function UserDetailPage() {
                     )}
                   </div>
                 )}
+                </div>)}
               </Card>
             </PageSection>
 
