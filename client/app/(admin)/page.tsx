@@ -363,6 +363,9 @@ export default function DashboardPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [nowTick, setNowTick] = useState(Date.now());
+  // When the metrics payload was fetched - Now Playing adds the time since
+  // to each row's elapsed counter so it keeps moving between polls.
+  const [metricsAt, setMetricsAt] = useState(Date.now());
   const [reloadingAddons, setReloadingAddons] = useState<Set<string>>(new Set());
   const [continueWatching, setContinueWatching] = useState<ContinueWatchingItem[]>([]);
   const [detailModalItem, setDetailModalItem] = useState<ContinueWatchingItem | null>(null);
@@ -482,10 +485,16 @@ export default function DashboardPage() {
   // page, to advance a counter that has nothing to advance whenever Now
   // Playing is empty - which is most of the time. That constant work is felt
   // on a phone as taps and modal closes responding a beat late.
+  // Everything this tick feeds is shown in whole minutes, so once a second
+  // was sixty renders of the entire dashboard for every change anyone could
+  // see. Every fifteen seconds keeps the counters within a quarter-minute;
+  // a hidden tab gets no ticks at all.
   const hasLivePlayback = (metricsData?.nowPlaying?.length ?? 0) > 0;
   useEffect(() => {
     if (!hasLivePlayback) return;
-    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') setNowTick(Date.now());
+    }, 15000);
     return () => clearInterval(id);
   }, [hasLivePlayback]);
 
@@ -540,6 +549,8 @@ export default function DashboardPage() {
 
       setAccountStats(stats);
       setMetricsData(metrics);
+      setMetricsAt(Date.now());
+      setNowTick(Date.now());
       setRecentAddons(addons.slice(0, 3));
     } catch (err) {
       console.error('Dashboard data fetch failed:', err);
@@ -845,7 +856,7 @@ export default function DashboardPage() {
                     <span>Live</span>
                   </div>
                 </div>
-                <NowPlayingSection items={metricsData.nowPlaying} />
+                <NowPlayingSection items={metricsData.nowPlaying} now={nowTick} fetchedAt={metricsAt} />
               </div>
             )}
 
@@ -1169,7 +1180,7 @@ export default function DashboardPage() {
                   <span>Live</span>
                 </div>
               </div>
-              <NowPlayingSection items={metricsData.nowPlaying} />
+              <NowPlayingSection items={metricsData.nowPlaying} now={nowTick} fetchedAt={metricsAt} />
             </Card>
           </PageSection>
         )}

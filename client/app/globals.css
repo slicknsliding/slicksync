@@ -907,6 +907,18 @@ body {
   }
 }
 
+/* The two background blobs are 500px+ of heavy blur drifting a few pixels
+   over eighteen seconds. On a desktop that is free; on a phone or a TV it
+   is the GPU re-compositing a large blurred layer every frame, forever,
+   for motion nobody is looking at. Devices without a hover-capable pointer
+   get the blobs without the drift. */
+@media (hover: none) {
+  .animate-float-slow,
+  .animate-float-slow-reverse {
+    animation: none;
+  }
+}
+
 /* Animation delays */
 .delay-100 { animation-delay: 100ms; }
 .delay-200 { animation-delay: 200ms; }

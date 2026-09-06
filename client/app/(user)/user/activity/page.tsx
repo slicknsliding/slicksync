@@ -566,12 +566,6 @@ export default function UserActivityPage() {
     return startAdaptivePoll(() => fetchData(true), 30000, 120000);
   }, [userId, authKey, isReady]);
 
-  // Tick every second for live now-playing duration
-  useEffect(() => {
-    const id = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
   // Filter sessions by search
   const filteredSessions = useMemo(() => {
     if (!activityData?.sessions) return [];
@@ -627,6 +621,19 @@ export default function UserActivityPage() {
   const stats = activityData?.stats;
   const chartData = activityData?.watchTimeByDay || [];
   const nowPlaying = activityData?.nowPlaying || [];
+
+  // Advances the "Watching for" counters and the live watch-time total.
+  // Every fifteen seconds, only while something is playing, never while the
+  // tab is hidden - it used to be once a second for the life of the page,
+  // and each tick re-rendered the whole activity list.
+  const hasLivePlayback = nowPlaying.length > 0;
+  useEffect(() => {
+    if (!hasLivePlayback) return;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') setNowTick(Date.now());
+    }, 15000);
+    return () => clearInterval(id);
+  }, [hasLivePlayback]);
 
   // Live total watch time: completed sessions + elapsed now-playing time
   const liveTotalWatchTimeHours = useMemo(() => {

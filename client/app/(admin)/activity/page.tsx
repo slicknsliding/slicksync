@@ -17,6 +17,7 @@ import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/
 import { NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, MetricsData, Invitation } from '@/lib/api';
+import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
 import { posterUrl, posterSrcSet } from '@/lib/posterUrl';
@@ -1668,12 +1669,13 @@ function ActivityPageContent() {
   useEffect(() => {
     fetchData();
 
-    // Auto-refresh every 30 seconds to keep Now Playing updated
-    const interval = setInterval(() => {
-      fetchData(false); // Don't show loading spinner for auto-refresh
-    }, 30000);
-
-    return () => clearInterval(interval);
+    // Keeps Now Playing current: every 30s on its own, every 3 minutes
+    // while the live stream is connected (a stream starting or stopping is
+    // pushed and refetches right away, below), never while the tab is hidden.
+    const stopPoll = startAdaptivePoll(() => fetchData(false), 30000, 180000);
+    const onLive = () => fetchData(false);
+    window.addEventListener('slicksync:live-nowplaying', onLive);
+    return () => { stopPoll(); window.removeEventListener('slicksync:live-nowplaying', onLive); };
   }, []);
 
   // Tick "now" once a second so Now Playing durations count up - but ONLY
@@ -1686,12 +1688,15 @@ function ActivityPageContent() {
   // forever, for a counter that is almost always showing nothing: Now Playing
   // is empty most of the time. It kept the main thread busy enough that
   // ordinary taps - closing a modal especially - felt delayed.
+  //
+  // And every fifteen seconds rather than every second: the counters read
+  // in whole minutes past the first one, and a hidden tab gets no ticks.
   const hasLivePlayback = (metricsData?.nowPlaying?.length ?? 0) > 0;
   useEffect(() => {
     if (!hasLivePlayback) return;
     const id = setInterval(() => {
-      setNowTick(Date.now());
-    }, 1000);
+      if (document.visibilityState === 'visible') setNowTick(Date.now());
+    }, 15000);
     return () => clearInterval(id);
   }, [hasLivePlayback]);
 

@@ -1008,6 +1008,39 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
   }
 }
 
+// Unchanged items are not re-processed every minute.
+//
+// processLibraryItem is a function of the library item and of database rows
+// that only it writes, so feeding it the same item again yields the same
+// result - at the cost of four or five database round trips per item. On
+// a real library that was several thousand queries a minute, every minute,
+// with nothing playing: the single largest consumer of CPU on an idle
+// instance. Each (user, item) remembers the item exactly as it was last
+// processed, and is skipped while the provider keeps returning the same
+// thing.
+//
+// Two deliberate limits keep this from ever being wrong for long:
+// - an item is re-processed in full at least every UNCHANGED_RECHECK_MS,
+//   so anything that reads state written elsewhere (proxy confirmation of
+//   a short watch, a restored backup) catches up within that window;
+// - the day, in the account's timezone, is part of the fingerprint, so the
+//   first pass of a new day processes everything.
+// The memo is per process: a restart processes everything once.
+//
+// Nuvio stamps _mtime/_ctime with the fetch time, so those two fields are
+// left out of the comparison; they never decide anything on their own (the
+// snapshot copies _mtime, but only when the watch state itself moved).
+const UNCHANGED_RECHECK_MS = 15 * 60 * 1000
+const lastProcessed = new Map() // `${accountId}:${userId}` -> Map(itemId -> { fp, at })
+
+function itemFingerprint(item, todayDate) {
+  try {
+    return todayDate + '|' + JSON.stringify(item, (key, value) => (key === '_mtime' || key === '_ctime') ? undefined : value)
+  } catch {
+    return null
+  }
+}
+
 /**
  * Process all library items for a user
  */
@@ -1018,24 +1051,44 @@ async function processUserLibrary(prisma, accountId, userId, library, today = ne
   }
 
   let processed = 0
+  let skipped = 0
   let errors = 0
   let snapshotsCreated = 0
   let activitiesCreated = 0
 
+  const accountIdValue = accountId || 'default'
+  let todayDate = ''
+  try { todayDate = getAccountDateString(today, await resolveAccountTimezone(prisma, accountIdValue)) } catch { /* fingerprint without the day */ }
+  const memoKey = `${accountIdValue}:${userId}`
+  const before = lastProcessed.get(memoKey) || new Map()
+  const after = new Map()
+  const now = Date.now()
+
   for (const item of library) {
+    const itemId = item?._id || item?.id
+    const fp = itemId ? itemFingerprint(item, todayDate) : null
+    const prev = fp ? before.get(itemId) : null
+    if (prev && prev.fp === fp && now - prev.at < UNCHANGED_RECHECK_MS) {
+      after.set(itemId, prev)
+      skipped++
+      continue
+    }
     try {
       const result = await processLibraryItem(prisma, accountId, userId, item, today, users)
       processed++
       if (result?.snapshotCreated) snapshotsCreated++
       if (result?.activityCreated) activitiesCreated++
+      if (fp) after.set(itemId, { fp, at: now })
     } catch (error) {
       errors++
       console.warn(`[MetricsProcessor] Error processing item ${item._id || item.id} for user ${userId}:`, error.message)
     }
   }
+  // Items no longer in the library fall out of the memo here.
+  lastProcessed.set(memoKey, after)
 
-  if (processed > 0 || errors > 0) {
-    console.log(`[MetricsProcessor] User ${userId}: Processed ${processed} items, ${snapshotsCreated} snapshots, ${activitiesCreated} activities (${errors} errors)`)
+  if (processed > 0 || errors > 0 || skipped > 0) {
+    console.log(`[MetricsProcessor] User ${userId}: Processed ${processed} items (${skipped} unchanged, skipped), ${snapshotsCreated} snapshots, ${activitiesCreated} activities (${errors} errors)`)
   }
 
   return { snapshotsCreated, activitiesCreated }
