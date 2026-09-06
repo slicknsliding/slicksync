@@ -141,7 +141,12 @@ async function warmDiscoverCatalogs() {
   for (const [type, catalog] of combos) {
     try {
       const items = await fetchCatalogRaw(type, catalog, [])
-      if (items.length > 0) { writeCache(cacheKey(type, catalog, []), items); warmed++ }
+      if (items.length > 0) {
+        writeCache(cacheKey(type, catalog, []), items)
+        warmed++
+        // The rows are about to be asked for their posters; have them ready.
+        try { require('./posterWarm').warmPosters(items) } catch { /* optimisation only */ }
+      }
     } catch { /* optimisation only */ }
   }
   return warmed

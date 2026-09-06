@@ -767,7 +767,12 @@ const ActivityCardGrid = memo(function ActivityCardGrid({
             since the always-visible text badge cluttered the poster art. */}
         {!activity.isSynthetic && activity.durationSeconds !== undefined && activity.durationSeconds > 0 && (
           <div className="absolute top-2 left-2">
-            <div className={`px-2 py-1 rounded-md text-xs font-medium shadow-lg ${getActivityColor(activity.type)}`}>
+            {/* Always a dark pill with white text, whatever the poster
+                behind it. The tinted translucent style the list view uses
+                disappeared against bright artwork (unreadable on a red
+                poster) - a badge over an image cannot borrow its colour
+                from the type, it has to carry its own contrast. */}
+            <div className="px-2 py-1 rounded-md text-xs font-semibold tabular-nums text-white bg-black/75 ring-1 ring-white/15 shadow-lg backdrop-blur-sm">
               {formatDuration(activity.durationSeconds)}
             </div>
           </div>

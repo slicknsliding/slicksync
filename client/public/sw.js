@@ -28,6 +28,14 @@
 // hashes - and those are cached forever. One bump clears that out.
 const STATIC_CACHE = 'slicksync-static-v2';
 const PAGES_CACHE = 'slicksync-pages-v2';
+// Resized posters and avatars from this instance's own image cache. Their
+// URLs are stable and the responses immutable, so cache-first is safe; the
+// cap keeps the store from growing without bound (oldest entries go first).
+// This is what makes posters instant on a phone's installed app, whose own
+// HTTP cache is small and evicted aggressively.
+const IMAGE_CACHE = 'slicksync-images-v1';
+const IMAGE_CACHE_MAX = 900;
+let imagePutsSinceTrim = 0;
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -38,7 +46,7 @@ self.addEventListener('activate', (event) => {
     // Drop caches from older worker versions, then take over open tabs so
     // caching starts without waiting for the next full reload.
     const names = await caches.keys();
-    await Promise.all(names.filter((n) => n !== STATIC_CACHE && n !== PAGES_CACHE).map((n) => caches.delete(n)));
+    await Promise.all(names.filter((n) => n !== STATIC_CACHE && n !== PAGES_CACHE && n !== IMAGE_CACHE).map((n) => caches.delete(n)));
     await self.clients.claim();
   })());
 });
@@ -64,6 +72,29 @@ self.addEventListener('fetch', (event) => {
       // fetched fresh instead of rebuilding the same broken combination.
       if (res.status === 404) {
         caches.delete(PAGES_CACHE).catch(() => {});
+      }
+      return res;
+    })());
+    return;
+  }
+
+  if (url.pathname === '/api/img') {
+    event.respondWith((async () => {
+      const cache = await caches.open(IMAGE_CACHE);
+      const hit = await cache.match(req);
+      if (hit) return hit;
+      const res = await fetch(req);
+      if (res.ok && (res.headers.get('content-type') || '').startsWith('image/')) {
+        cache.put(req, res.clone()).then(() => {
+          imagePutsSinceTrim += 1;
+          if (imagePutsSinceTrim < 25) return;
+          imagePutsSinceTrim = 0;
+          return cache.keys().then((keys) => {
+            if (keys.length <= IMAGE_CACHE_MAX) return;
+            // Cache keys come back in insertion order: drop the oldest.
+            return Promise.all(keys.slice(0, keys.length - IMAGE_CACHE_MAX + 100).map((k) => cache.delete(k)));
+          });
+        }).catch(() => {});
       }
       return res;
     })());
