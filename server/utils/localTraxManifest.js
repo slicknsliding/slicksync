@@ -43,4 +43,31 @@ async function localTraxManifest(prisma, transportUrl) {
   }
 }
 
-module.exports = { localTraxManifest }
+/**
+ * The same URL, pointed straight at this process instead of at the public
+ * hostname - for the places that genuinely need to READ a trax response
+ * (a catalog's items, say) rather than just its manifest.
+ *
+ * The public address round-trips through whatever sits in front of this
+ * instance, which is how a catalog preview of our OWN addon ended up
+ * fetching a login page. Loopback skips all of it: no reverse proxy, no
+ * auth gate, no TLS, no DNS. Null for anything that is not a trax URL
+ * belonging to a user on THIS instance, so a foreign trax address is still
+ * fetched normally rather than being answered with our own data.
+ */
+async function loopbackTraxUrl(prisma, rawUrl) {
+  if (!prisma || !rawUrl) return null
+  const match = TRAX_URL.exec(String(rawUrl))
+  if (!match) return null
+  try {
+    const owner = await prisma.user.findFirst({ where: { traxToken: match[1] }, select: { id: true } })
+    if (!owner) return null
+    const parsed = new URL(String(rawUrl))
+    const port = process.env.PORT || 4000
+    return `http://127.0.0.1:${port}${parsed.pathname}${parsed.search || ''}`
+  } catch {
+    return null
+  }
+}
+
+module.exports = { localTraxManifest, loopbackTraxUrl }

@@ -3392,6 +3392,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   });
 
+  const { loopbackTraxUrl } = require('../utils/localTraxManifest')
+
   // --- Cinemeta patching (utils/cinemetaPatch.js) ---
   //
   // Reads and writes the account's OWN Cinemeta entry rather than anything in
@@ -3715,7 +3717,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!addonUrl || !type || !catalogId) {
         return res.status(400).json({ message: 'addonUrl, type, and catalogId are required' })
       }
-      const base = String(addonUrl).replace(/\/manifest\.json$/, '').replace(/\/$/, '')
+      // Our own SlickTrax catalogs are read over loopback rather than via the
+      // public hostname: an instance behind an auth gate answers its own
+      // request with a login page, which is why a preview of a linked
+      // SlickTrax catalog came back empty. See utils/localTraxManifest.js.
+      const loopback = await loopbackTraxUrl(prisma, addonUrl)
+      const base = String(loopback || addonUrl).replace(/\/manifest\.json$/, '').replace(/\/$/, '')
       // Stremio addon protocol: extra properties (genre, skip, ...) go in
       // their own URL segment as key=value, e.g. .../genre=Family.json - NOT
       // a query string. Without this, a genre-filtered catalog source (the
