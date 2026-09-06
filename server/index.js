@@ -436,9 +436,6 @@ app.use('/proxy', proxyRouter({ prisma, decrypt, getAccountId, getServerKey }));
 // SlickTrax Addon - SlickSync serving the Stremio addon protocol itself
 // (per-user token in the URL is the credential; allowlisted like /proxy)
 app.use('/trax', require('./routes/traxAddon')({ prisma }));
-// Per-user patched-Cinemeta mirror. Public like /trax and /proxy: the token
-// in the path is the credential, and a streaming device has no session.
-app.use('/cinemeta', require('./routes/cinemetaProxy')({ prisma }));
 
 // One-code instance migration - /bundle is token-gated and allowlisted (the
 // caller is the receiving server, sessionless); offer/receive live under

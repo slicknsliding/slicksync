@@ -63,7 +63,6 @@ const AUTH_ALLOWLIST = [
   '/api/public-auth/private-login', // Private instance username/password login
   '/invite', // Public invitation endpoints (request submission, status check, OAuth completion)
   '/proxy', // Addon proxy routes (UUID serves as bearer token)
-  '/cinemeta', // Per-user patched-Cinemeta mirror (token in the path is the credential, and a TV has no session)
   // Stremio endpoints require auth now (no allowlist)
 ];
 
