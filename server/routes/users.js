@@ -3139,9 +3139,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (user.providerType === 'nuvio') {
         try {
           const { fetchManifest } = require('../utils/nuvioHomeLayout')
+          const { localTraxManifest } = require('../utils/localTraxManifest')
           const list = Array.isArray(addonsOut) ? addonsOut : (addonsOut?.addons || [])
           const enriched = await Promise.all(list.map(async (a) => {
-            const real = await fetchManifest(a?.transportUrl)
+            // Our own SlickTrax manifest is built here rather than fetched:
+            // see utils/localTraxManifest.js. It is authoritative, instant,
+            // and works on instances whose hostname sits behind a login.
+            const real = (await localTraxManifest(prisma, a?.transportUrl))
+              || (await fetchManifest(a?.transportUrl))
             // The stub's own fields stay as a floor: a dead addon keeps its
             // name rather than becoming nameless.
             return real ? { ...a, manifest: { ...(a?.manifest || {}), ...real } } : a
@@ -3210,8 +3215,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
             }
           }
 
+          const { localTraxManifest } = require('../utils/localTraxManifest')
           const enriched = await Promise.all(rawAddons.map(async (a) => {
-            const fetched = await fetchManifest(a?.transportUrl)
+            const fetched = (await localTraxManifest(prisma, a?.transportUrl))
+              || (await fetchManifest(a?.transportUrl))
             return { ...a, manifest: { ...(a?.manifest || {}), ...(fetched || {}) } }
           }))
 
@@ -3614,7 +3621,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const { readLayoutForEdit } = require('../utils/nuvioHomeLayout')
       const { getUserAddons } = require('../utils/sync')
       const live = await getUserAddons(r.user, req, { decrypt, StremioAPIClient, createProvider }).catch(() => ({ addons: [] }))
-      const result = await readLayoutForEdit(r.provider, Number(profileId), live?.addons)
+      const result = await readLayoutForEdit(r.provider, Number(profileId), live?.addons, { prisma })
       res.json(result)
     } catch (e) {
       res.status(500).json({ error: e?.message || 'Failed to read the home layout' })

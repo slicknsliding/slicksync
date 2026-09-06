@@ -100,12 +100,10 @@ function buildTraxManifest(user, lists) {
     name: 'SlickTrax',
     description: `SlickTrax for ${user.username || 'this household'} - Continue Watching, Watchlist and Catalogs, live from SlickSync.`,
     logo: 'https://slicksync.vip/android-chrome-192x192.png',
-    // The stream resource is opt-in per user: it puts SlickSync ACTIONS
-    // (mark watched / watchlist) in the stream list of a title's page. That
-    // list is where people look for something to play, so filling it with
-    // non-playable rows is a real trade - hence a toggle rather than a
-    // default. Declared only when the user asked for it, so a client never
-    // even requests streams otherwise.
+    // Catalogs only. SlickTrax once also declared a stream resource, which
+    // put mark-watched / watchlist actions into the stream list of a title's
+    // page - the list people open to find something to play. It was removed
+    // rather than left as a toggle.
     resources: ['catalog'],
     types: ['movie', 'series'],
     idPrefixes: ['tt'],

@@ -58,8 +58,17 @@ async function readAllBuckets(provider, profileId) {
 const manifestCache = new Map()
 const MANIFEST_TTL_MS = 10 * 60 * 1000
 
-async function fetchManifest(transportUrl) {
+async function fetchManifest(transportUrl, opts) {
   if (!transportUrl) return null
+  // SlickTrax is served by this instance, so its manifest is built rather
+  // than fetched - see utils/localTraxManifest.js. Deliberately ahead of the
+  // cache: it is cheap, always current, and never blocked by whatever sits
+  // in front of this instance's hostname.
+  if (opts?.prisma) {
+    const { localTraxManifest } = require('./localTraxManifest')
+    const local = await localTraxManifest(opts.prisma, transportUrl)
+    if (local) return local
+  }
   const hit = manifestCache.get(transportUrl)
   if (hit && Date.now() - hit.at < MANIFEST_TTL_MS) return hit.value
   const url = transportUrl.endsWith('.json') ? transportUrl : `${transportUrl.replace(/\/$/, '')}/manifest.json`
@@ -81,7 +90,7 @@ async function fetchManifest(transportUrl) {
  * addon and catalog it belongs to, followed by any catalog the account
  * currently installs that the arrangement has never mentioned.
  */
-async function readLayoutForEdit(provider, profileId, liveAddons) {
+async function readLayoutForEdit(provider, profileId, liveAddons, opts) {
   const { buckets, source } = await readAllBuckets(provider, profileId)
   const arranged = (Array.isArray(source?.blob?.items) ? source.blob.items : []).filter(isValidItem)
 
@@ -97,7 +106,7 @@ async function readLayoutForEdit(provider, profileId, liveAddons) {
   const addonList = Array.isArray(liveAddons)
     ? liveAddons
     : (Array.isArray(liveAddons?.addons) ? liveAddons.addons : [])
-  const manifests = await Promise.all(addonList.map((a) => fetchManifest(a?.transportUrl)))
+  const manifests = await Promise.all(addonList.map((a) => fetchManifest(a?.transportUrl, opts)))
   const byAddon = new Map()
   addonList.forEach((addon, i) => {
     // Prefer the fetched manifest; fall back to whatever the provider gave.
