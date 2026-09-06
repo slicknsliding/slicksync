@@ -54,13 +54,11 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* Space Grotesk (headings) + Outfit (body) power the default UI
-            type - the only two families every single page actually needs,
-            so this one stays a normal render-blocking stylesheet (small,
-            fast, and avoids FOUT on the default theme everyone sees). */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Outfit:wght@300..700&display=swap"
-          rel="stylesheet"
-        />
+            type. They are self-hosted under /fonts and declared in
+            globals.css - see the note there - so no request leaves this
+            origin before first paint. */}
+        <link rel="preload" href="/fonts/outfit-latin-v15.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/space-grotesk-latin-v22.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         {/* The other 10 families are Build-your-own-theme choices (Settings
             -> Themes) - deliberately picked to span very different
             aesthetics (classic serif, elegant serif, monospace, poster

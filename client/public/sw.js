@@ -49,7 +49,9 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  if (url.pathname.startsWith('/_next/static/')) {
+  // The self-hosted default fonts are versioned in their filenames, so
+  // they get the same cache-first-forever treatment as hashed assets.
+  if (url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/fonts/')) {
     event.respondWith((async () => {
       const cache = await caches.open(STATIC_CACHE);
       const hit = await cache.match(req);
