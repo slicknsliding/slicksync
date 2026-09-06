@@ -61,6 +61,10 @@ model User {
   // account had rather than a reconstruction of what it probably had - the
   // default addon's manifest is not ours to guess at.
   cinemetaPatchJson  String?
+  // Token for this user's patched-Cinemeta mirror (Nuvio only - see
+  // routes/cinemetaProxy.js). Nuvio stores just the addon address, so the
+  // only way to change what the device sees is to change the address.
+  cinemetaToken      String?   @unique
   activityVisibility String    @default("private") // "public" or "private" - when public, group members can see this user's library/history
   // See schema.sqlite.prisma's comment - a genuinely public, unauthenticated
   // share link, distinct from activityVisibility above.

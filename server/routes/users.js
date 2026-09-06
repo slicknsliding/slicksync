@@ -3384,6 +3384,22 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       let state = null
       try { state = user.cinemetaPatchJson ? JSON.parse(user.cinemetaPatchJson) : null } catch { state = null }
 
+      // On Nuvio the stored manifest is a stub, so the account tells us
+      // nothing - what the device sees is decided by the ADDRESS, and the
+      // recorded patch is the honest answer.
+      if (user.providerType === 'nuvio') {
+        const onMirror = !!(addon && /\/cinemeta\/[a-f0-9]{16,}\//i.test(addon.transportUrl || ''))
+        const p = (state && state.patch) || {}
+        return res.json({
+          installed: !!addon,
+          removeSearch: onMirror && !!p.removeSearch,
+          removeCatalogs: onMirror && !!p.removeCatalogs,
+          removeMeta: onMirror && !!p.removeMeta,
+          canReset: !!(state && state.original) && onMirror,
+          viaMirror: onMirror,
+        })
+      }
+
       return res.json({
         installed: !!addon,
         // Read from the manifest actually on the account, so the answer
@@ -3426,17 +3442,47 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       try { state = user.cinemetaPatchJson ? JSON.parse(user.cinemetaPatchJson) : null } catch { state = null }
       const original = (state && state.original) ? state.original : JSON.parse(JSON.stringify(addon.manifest || {}))
 
-      const patched = applyPatch(original, patch)
       const next = [...list]
-      next[index] = { ...addon, manifest: patched }
-      await provider.setAddons(next)
+      let mirrorUrl = null
 
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { cinemetaPatchJson: JSON.stringify({ original, patch, at: new Date().toISOString() }) },
-      })
+      if (user.providerType === 'nuvio') {
+        // Nuvio keeps only the address and fetches the manifest itself, so
+        // a patched manifest written here would never reach the device -
+        // measured on a live account. Point it at a mirror of Cinemeta
+        // instead, served by this instance with the removals applied.
+        const crypto = require('crypto')
+        let token = user.cinemetaToken
+        if (!token) token = crypto.randomBytes(20).toString('hex')
 
-      return res.json({ success: true, applied: patch, summary: describePatch(patch) })
+        const { resolvePublicBaseUrl } = require('../utils/publicBaseUrl')
+        const base = await resolvePublicBaseUrl(prisma, getAccountId(req), req)
+        if (!base) {
+          return res.status(400).json({ message: 'This instance has no public address set, so a Nuvio device could not reach the patched Cinemeta. Set it in Settings -> Sync first.' })
+        }
+        // The version segment changes with the patch: a Nuvio client will
+        // not re-fetch a manifest whose address has not changed.
+        const version = [patch.removeSearch ? 's' : '', patch.removeCatalogs ? 'c' : '', patch.removeMeta ? 'm' : ''].join('') || 'none'
+        mirrorUrl = `${base}/cinemeta/${token}/v${version}/manifest.json`
+        next[index] = { ...addon, transportUrl: mirrorUrl, manifest: { ...(addon.manifest || {}), name: 'Cinemeta' } }
+        await provider.setAddons(next)
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            cinemetaToken: token,
+            cinemetaPatchJson: JSON.stringify({ original, originalUrl: state?.originalUrl || addon.transportUrl, patch, mirrorUrl, at: new Date().toISOString() }),
+          },
+        })
+      } else {
+        const patched = applyPatch(original, patch)
+        next[index] = { ...addon, manifest: patched }
+        await provider.setAddons(next)
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { cinemetaPatchJson: JSON.stringify({ original, originalUrl: state?.originalUrl || addon.transportUrl, patch, at: new Date().toISOString() }) },
+        })
+      }
+
+      return res.json({ success: true, applied: patch, summary: describePatch(patch), mirrorUrl })
     } catch (e) {
       console.error('Cinemeta patch failed:', e)
       res.status(500).json({ message: e?.message || 'Failed to patch Cinemeta' })
@@ -3461,7 +3507,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       if (!addon) return res.status(404).json({ message: 'Cinemeta is not installed on this account' })
 
       const next = [...list]
-      next[index] = { ...addon, manifest: state.original }
+      // Both halves go back: the manifest for Stremio, and the address for
+      // Nuvio, so the device stops coming through this instance entirely.
+      next[index] = {
+        ...addon,
+        transportUrl: state.originalUrl || addon.transportUrl,
+        manifest: state.original,
+      }
       await provider.setAddons(next)
       await prisma.user.update({ where: { id: user.id }, data: { cinemetaPatchJson: null } })
       return res.json({ success: true })

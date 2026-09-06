@@ -2298,9 +2298,9 @@ export default function UserDetailPage() {
 
           {user?.providerType === 'nuvio' && (
             <div className="p-3 rounded-lg text-xs" style={{ background: 'var(--color-warning-muted)', color: 'var(--color-text)' }}>
-              <strong>Nuvio stores only the addon&apos;s address, not its manifest</strong> - the app fetches Cinemeta&apos;s own manifest
-              directly, so a patch written here will not change what the device shows. To get Cinemeta&apos;s catalogs off a Nuvio home
-              screen, hide those rows in the home-row editor instead. This works today on Stremio accounts.
+              <strong>On Nuvio this works by address.</strong> Nuvio stores only an addon&apos;s address and fetches the manifest itself,
+              so patching swaps Cinemeta for a copy served by this instance with those parts removed. While it is patched, metadata
+              lookups travel through this instance - if it is down, they fail. Restore original puts Cinemeta&apos;s own address back.
             </div>
           )}
 
