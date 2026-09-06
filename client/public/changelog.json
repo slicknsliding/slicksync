@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.85.2",
+    "date": "2026-09-06",
+    "title": "1.85.2 - Posters for more streams, and a lighter once-a-minute check",
+    "features": [
+      "A stream whose title does not match on the first lookup now gets more chances. A series that read as a film (no episode marker in the title) is retried as a series, and the reverse; a title carrying a subtitle after a dash or colon - a localized name, say - is retried as the part before it; and anything still unresolved is retried on its own later. Every attempt still has to match the exact title and year, so a shorter guess can never land on the wrong film. Now Playing gets its poster and its link for far more of what the proxy sees."
+    ],
+    "bugFixes": [
+      "The once-a-minute check that feeds Now Playing and watch history fetched every user's library twice per pass, for the same answer. Once now.",
+      "On a public instance every account's check started at the same instant - a burst of full CPU at the top of every minute with every request waiting behind it. Accounts now run one after another within the minute, each still once a minute."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.85.1",
     "date": "2026-09-06",
     "title": "1.85.1 - Fewer calls, faster opens, and a quiet idle",
