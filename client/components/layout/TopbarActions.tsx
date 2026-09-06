@@ -7,7 +7,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import { NotificationsDropdown } from '@/components/ui/NotificationsDropdown';
 import { WizardBooksIcon } from '@/components/ui/icons/WizardBooksIcon';
 import { ResumeTourIcon } from '@/components/ui/icons/ResumeTourIcon';
-import { openCommandPalette } from '@/components/ui/CommandPalette';
+import { openCommandPalette } from '@/lib/commandPaletteBus';
 import {
   isOnboardingUnfinished,
   completeOnboarding,

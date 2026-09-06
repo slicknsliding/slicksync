@@ -1496,6 +1496,17 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
   })
 
   // GET /users/metrics - Get metrics data for dashboard (must be before /:id route)
+  // The Activity feed asks for the posters of the newest sessions the moment
+  // this response lands; have them ready. Newest-first, capped - the feed
+  // shows the first screenful, not the whole period.
+  const warmActivityPosters = (metrics) => {
+    try {
+      const sessions = Array.isArray(metrics?.watchSessions) ? metrics.watchSessions.slice(0, 60) : []
+      const playing = Array.isArray(metrics?.nowPlaying) ? metrics.nowPlaying : []
+      require('../utils/posterWarm').warmPosters([...sessions, ...playing])
+    } catch { /* optimisation only */ }
+  }
+
   router.get('/metrics', async (req, res) => {
     try {
       const accountId = getAccountId(req)
@@ -1515,7 +1526,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const cached = nocache ? null : getCachedMetrics(accountId, period)
       if (cached) {
         console.log(`[API] Returning cached metrics for ${period}`)
-        return res.json(cached)
+        res.json(cached)
+        warmActivityPosters(cached)
+        return
       }
 
       console.log(`[API] Building metrics for ${period}...`)
@@ -1530,7 +1543,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       console.log(`[API] Metrics built. Sessions: ${metrics.watchSessions?.length}, Episodes: ${metrics.recentEpisodes?.length}`)
 
       setCachedMetrics(accountId, period, metrics)
-      return res.json(metrics)
+      res.json(metrics)
+      warmActivityPosters(metrics)
     } catch (error) {
       console.error('Error fetching metrics:', error)
       res.status(500).json({ error: 'Failed to fetch metrics' })

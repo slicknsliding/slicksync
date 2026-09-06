@@ -11,6 +11,7 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats, PushDevice, PasskeyRow } from '@/lib/api';
 import { toast, showToast } from '@/components/ui/Toast';
+import { ShortcutRecipes } from '@/components/settings/ShortcutRecipes';
 import { isBeginnerMode, setBeginnerMode as setBeginnerModePref } from '@/lib/beginnerMode';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
@@ -2638,6 +2639,9 @@ export default function SettingsPage() {
               </div>
             </div>
           </Card>
+          <div className="mt-6">
+            <ShortcutRecipes baseUrl={syncSettings.publicBaseUrl} apiKey={apiKey} />
+          </div>
         </PageSection>
         )}
 

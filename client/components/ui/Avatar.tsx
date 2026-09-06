@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import CryptoJS from 'crypto-js';
+// Only MD5 is needed (Gravatar addresses); importing the whole library put
+// every cipher it ships in the shared bundle.
+import md5 from 'crypto-js/md5';
 import { UserAvatar } from './UserAvatar';
 import { avatarThumbUrl } from '@/lib/posterUrl';
 
@@ -104,7 +106,7 @@ function getGravatarUrl(email: string | null | undefined, size: number = 128): s
   const normalizedEmail = email.trim().toLowerCase();
   
   // Generate MD5 hash using crypto-js
-  const hash = CryptoJS.MD5(normalizedEmail).toString();
+  const hash = md5(normalizedEmail).toString();
   
   // Construct Gravatar URL
   // Using d=404 means Gravatar will return 404 error if no image exists, triggering fallback

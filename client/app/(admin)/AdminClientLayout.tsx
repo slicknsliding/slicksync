@@ -12,7 +12,17 @@ import { useSortableSensors } from "@/components/ui/DragSortable";
 import { pointerWithin } from "@dnd-kit/core";
 import { VaultDragProvider, useVaultDrag } from "@/components/providers/VaultDragContext";
 import { TVBackButton } from "@/components/tv/TVBackButton";
-import { CommandPalette } from "@/components/ui/CommandPalette";
+import dynamic from "next/dynamic";
+
+// Loaded after first paint, not with it. The palette carries the full guides
+// text and the settings index for its search; as a static import in the shell
+// that rode along in every page's first-load bundle. Its keyboard shortcut
+// still works: the listener lives inside the component, which mounts a beat
+// after the page does.
+const CommandPalette = dynamic(
+  () => import("@/components/ui/CommandPalette").then((m) => m.CommandPalette),
+  { ssr: false }
+);
 import { LiveEventsBridge } from "@/components/ui/LiveEventsBridge";
 import { useIsTV } from "@/lib/hooks/useIsTV";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
