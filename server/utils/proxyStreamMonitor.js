@@ -319,7 +319,16 @@ async function attemptPosterLookup(prisma, rowId, displayName) {
       await prisma.proxyStreamSession.update({ where: { id: rowId }, data: { metadataMatchedAt: new Date() } })
       return
     }
-    const result = await searchCinemetaPosterByTitle(parsed.searchTitle, parsed.year, parsed.type)
+    // The movie/series guess comes from an episode marker in the stream's
+    // title, and plenty of series streams carry none - "Tales of the City
+    // (2019)" is a series that looked like a film. A miss under the guessed
+    // type is retried under the other, so a wrong guess costs one extra
+    // lookup rather than the poster and the id.
+    let result = await searchCinemetaPosterByTitle(parsed.searchTitle, parsed.year, parsed.type)
+    if (!result) {
+      const otherType = parsed.type === 'series' ? 'movie' : 'series'
+      result = await searchCinemetaPosterByTitle(parsed.searchTitle, parsed.year, otherType)
+    }
     const updatedRow = await prisma.proxyStreamSession.update({
       where: { id: rowId },
       data: {
@@ -345,8 +354,23 @@ async function attemptPosterLookup(prisma, rowId, displayName) {
 // Safety net for rows that never got a lookup attempt (e.g. the connection
 // ended mid-lookup). Capped per cycle so a backlog doesn't hammer Cinemeta.
 async function retryMissingPosters(prisma, accountId) {
+  // Two kinds of row: never attempted (a lookup interrupted mid-stream), and
+  // attempted but unresolved - retried at most every six hours for a week,
+  // so a title the lookup has since learned to resolve (a wrong movie/series
+  // guess, a source that was briefly down) gets its poster after all,
+  // without a permanently unknowable title being asked about every cycle.
   const stuck = await prisma.proxyStreamSession.findMany({
-    where: { accountId, metadataMatchedAt: null },
+    where: {
+      accountId,
+      OR: [
+        { metadataMatchedAt: null },
+        {
+          metadataItemId: null,
+          metadataMatchedAt: { lt: new Date(Date.now() - 6 * 60 * 60 * 1000) },
+          createdAt: { gt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        },
+      ],
+    },
     select: { id: true, displayName: true },
     take: 5,
     orderBy: { createdAt: 'asc' },
