@@ -476,24 +476,13 @@ export default function UserDetailPage() {
   }, [user?.traxAddonEnabled, user?.traxToken]);
 
   // Two of the biggest blocks on this page are things you set up once and
-  // then rarely touch, so they collapse - and the choice is remembered,
-  // because re-collapsing the same section on every visit is its own small
-  // annoyance. Default closed: the page is long enough that the parts you
-  // came for (addons, sync, activity) should not start below two walls of
-  // setup text.
+  // then rarely touch, so they collapse. Deliberately NOT remembered: the
+  // point is that the page always opens on the parts you came back for, so
+  // leaving and returning starts closed again rather than restoring whatever
+  // was open last time.
   const [openSections, setOpenSections] = useState<{ tracking: boolean; history: boolean }>({ tracking: false, history: false });
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('slicksync-user-sections');
-      if (raw) setOpenSections((prev) => ({ ...prev, ...JSON.parse(raw) }));
-    } catch { /* a missing preference just means the defaults */ }
-  }, []);
   const toggleSection = (key: 'tracking' | 'history') => {
-    setOpenSections((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      try { localStorage.setItem('slicksync-user-sections', JSON.stringify(next)); } catch { /* private mode */ }
-      return next;
-    });
+    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   // Cinemeta patching. The state is read back from the manifest actually on
