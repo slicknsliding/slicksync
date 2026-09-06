@@ -1,5 +1,25 @@
 [
   {
+    "version": "1.84.0",
+    "date": "2026-09-05",
+    "title": "1.84.0 - Cinemeta patching, a Settings page that fits a phone, and a rebuilt Metrics",
+    "features": [
+      "Patch Cinemeta from SlickSync: remove its search, its catalogs, its metadata, or any combination of the three, without uninstalling it and without a separate tool. Open a user, find Cinemeta under Account Addons and press Patch. The row then carries a Patched badge naming what is gone, and Restore original puts back the exact manifest that was there before the first patch rather than a reconstruction of it. Stremio accounts: Nuvio fetches every manifest from the addon itself, so the button is not offered there - hide the rows in the home-row editor instead.",
+      "Follow a person, from the app. Following an actor or director was something only the API could do; the cast deep-dive in a title's popup now has its own follow control. The follow button on a title also says Follow, Following or Muted instead of being an unlabelled bell in a row of icons.",
+      "Metrics, Users tab: rebuilt around a household rather than a company. The period's total watch time, its trend and the chart now share one card, the leaderboard and the streaks panel are one Members list instead of two half-empty ones, and Year in Review sits behind a line you open when you want it.",
+      "Watch-Tracking Integrations and Watch History Import/Export collapse on a user's page. Both are set up once and rarely touched, so the page opens on the addons, sync and activity you came back for - closed again on every visit, not left however it was."
+    ],
+    "bugFixes": [
+      "Settings was unusable on a phone: the group rail sat beside the settings at every width, pushing the actual controls off the side of the screen. Below tablet width it now stacks above them as a normal column.",
+      "Posters were slow to load after the move to WebP - every image already cached had been stored under the old format and was being fetched from scratch again. A cached image in another format is now served immediately and re-encoded to WebP quietly in the background.",
+      "Instant matches from your own library vanished the moment the wider search returned, so a title already on your watchlist could flash up and disappear. They now stay on screen, minus anything the search itself found, so the same title never appears twice.",
+      "Nuvio Collections reported folder sources as \"addon removed or catalog no longer exists\" while those addons were installed and working: the list they were checked against carried no catalogs to match against. A linked catalog whose SlickTrax addon is still installing now says exactly that, rather than claiming the addon is gone."
+    ],
+    "miscChores": [
+      "SlickTrax actions inside the player have been removed - the option is gone from a user's SlickTrax settings and the addon no longer declares a stream resource. Watch history, the Watchlist row and everything else SlickTrax does are unaffected."
+    ]
+  },
+  {
     "version": "1.83.0",
     "date": "2026-09-05",
     "title": "1.83.0 - Backups that include your history, anime done properly, passkeys, and Settings you can find things in",

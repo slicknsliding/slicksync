@@ -747,7 +747,6 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // user PUT (whose field allowlist is deliberately narrow): it is part
       // of the same addon's configuration, and changing it must also bump
       // the manifest the next sync installs.
-      if (req.body?.inPlayerActions !== undefined) data.traxInPlayerActions = !!req.body.inPlayerActions
       await prisma.user.update({ where: { id: user.id }, data })
 
       // The base URL sync will use. Reported honestly rather than guessed
@@ -3127,8 +3126,30 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(500).json({ message: 'Failed to fetch Stremio addons', error: result.error })
       }
 
-      // Removed verbose raw addons log to reduce noise
-      res.json(result.addons)
+      // Nuvio stores only {url, name} per addon, so the manifest that comes
+      // back with each entry is a stub: no catalogs, no resources. Anything
+      // that has to answer "does this addon still serve this catalog" - the
+      // Nuvio Collections editor validating a folder's sources, most
+      // obviously - reads those empty arrays and concludes every source is
+      // broken, which is exactly how a perfectly good linked catalog ends up
+      // labelled "addon removed or catalog no longer exists". Fetching each
+      // addon's own manifest (cached, best-effort, shared with the home-row
+      // editor) is what makes those checks mean anything on Nuvio.
+      let addonsOut = result.addons
+      if (user.providerType === 'nuvio') {
+        try {
+          const { fetchManifest } = require('../utils/nuvioHomeLayout')
+          const list = Array.isArray(addonsOut) ? addonsOut : (addonsOut?.addons || [])
+          const enriched = await Promise.all(list.map(async (a) => {
+            const real = await fetchManifest(a?.transportUrl)
+            // The stub's own fields stay as a floor: a dead addon keeps its
+            // name rather than becoming nameless.
+            return real ? { ...a, manifest: { ...(a?.manifest || {}), ...real } } : a
+          }))
+          addonsOut = Array.isArray(addonsOut) ? enriched : { ...addonsOut, addons: enriched }
+        } catch { /* stubs are still better than an error */ }
+      }
+      res.json(addonsOut)
     } catch (error) {
       console.error('❌ Error fetching raw Stremio addons:', error)
       res.status(500).json({ message: 'Failed to fetch raw Stremio addons', error: error?.message })
@@ -3363,6 +3384,133 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       res.status(500).json({ message: 'Failed to save Nuvio collections', error: error.message })
     }
   });
+
+  // --- Cinemeta patching (utils/cinemetaPatch.js) ---
+  //
+  // Reads and writes the account's OWN Cinemeta entry rather than anything in
+  // SlickSync's addon list. Sync leaves it alone in safe mode (Cinemeta is a
+  // protected default), so a patch written here stays put.
+
+  // GET /users/:id/cinemeta - is it installed, and what has been removed.
+  router.get('/:id/cinemeta', async (req, res) => {
+    try {
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) return res.status(400).json({ message: 'User is not connected to a provider' })
+
+      // Stremio only, and not as a policy choice: Nuvio stores just {url,
+      // name} per addon and fetches each manifest from the addon's own
+      // address at read time, so a manifest edited here is never read. Worse,
+      // the stub Nuvio returns - empty catalogs, empty resources - is
+      // indistinguishable from a Cinemeta with its catalogs and metadata
+      // removed, so answering from it would badge every Nuvio account as
+      // patched when nothing has been touched.
+      if ((user.providerType || 'stremio') !== 'stremio') {
+        return res.json({ supported: false, installed: false, removeSearch: false, removeCatalogs: false, removeMeta: false, canReset: false })
+      }
+
+      const { findCinemeta } = require('../utils/cinemetaPatch')
+      const current = await provider.getAddons()
+      const { addon } = findCinemeta(current)
+      let state = null
+      try { state = user.cinemetaPatchJson ? JSON.parse(user.cinemetaPatchJson) : null } catch { state = null }
+
+      return res.json({
+        supported: true,
+        installed: !!addon,
+        // Read from the manifest actually on the account, so the answer
+        // reflects reality even if something else edited it.
+        removeSearch: !!(addon && Array.isArray(addon.manifest?.catalogs) && addon.manifest.catalogs.length > 0
+          && !addon.manifest.catalogs.some((c) => (c?.extra || []).some((e) => (e?.name || e) === 'search'))),
+        removeCatalogs: !!(addon && Array.isArray(addon.manifest?.catalogs) && addon.manifest.catalogs.length === 0),
+        removeMeta: !!(addon && Array.isArray(addon.manifest?.resources)
+          && !addon.manifest.resources.some((r) => (typeof r === 'string' ? r : (r?.name || r?.type)) === 'meta')),
+        canReset: !!(state && state.original),
+      })
+    } catch (e) {
+      res.status(500).json({ message: e?.message || 'Failed to read Cinemeta state' })
+    }
+  })
+
+  // POST /users/:id/cinemeta - apply (or update) the patch.
+  router.post('/:id/cinemeta', async (req, res) => {
+    try {
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+      if (!user.isActive) return res.status(400).json({ message: 'User is disabled' })
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) return res.status(400).json({ message: 'User is not connected to a provider' })
+
+      if ((user.providerType || 'stremio') !== 'stremio') {
+        return res.status(400).json({ message: 'Patching Cinemeta works on Stremio accounts. Nuvio reads each addon manifest from the addon itself, so an edit stored on the account would never reach the app.' })
+      }
+
+      const { findCinemeta, applyPatch, describePatch } = require('../utils/cinemetaPatch')
+      const currentRaw = await provider.getAddons()
+      const { list, index, addon } = findCinemeta(currentRaw)
+      if (!addon) return res.status(404).json({ message: 'Cinemeta is not installed on this account' })
+
+      const patch = {
+        removeSearch: !!req.body?.removeSearch,
+        removeCatalogs: !!req.body?.removeCatalogs,
+        removeMeta: !!req.body?.removeMeta,
+      }
+
+      // Keep the original exactly once. Patching an already-patched manifest
+      // would bake each removal in permanently and make Reset a lie.
+      let state = null
+      try { state = user.cinemetaPatchJson ? JSON.parse(user.cinemetaPatchJson) : null } catch { state = null }
+      const original = (state && state.original) ? state.original : JSON.parse(JSON.stringify(addon.manifest || {}))
+
+      const patched = applyPatch(original, patch)
+      const next = [...list]
+      next[index] = { ...addon, manifest: patched }
+      await provider.setAddons(next)
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { cinemetaPatchJson: JSON.stringify({ original, patch, at: new Date().toISOString() }) },
+      })
+
+      return res.json({ success: true, applied: patch, summary: describePatch(patch) })
+    } catch (e) {
+      console.error('Cinemeta patch failed:', e)
+      res.status(500).json({ message: e?.message || 'Failed to patch Cinemeta' })
+    }
+  })
+
+  // DELETE /users/:id/cinemeta - put the original manifest back.
+  router.delete('/:id/cinemeta', async (req, res) => {
+    try {
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId: getAccountId(req) } })
+      if (!user) return responseUtils.notFound(res, 'User')
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) return res.status(400).json({ message: 'User is not connected to a provider' })
+
+      if ((user.providerType || 'stremio') !== 'stremio') {
+        return res.status(400).json({ message: 'Patching Cinemeta works on Stremio accounts.' })
+      }
+
+      let state = null
+      try { state = user.cinemetaPatchJson ? JSON.parse(user.cinemetaPatchJson) : null } catch { state = null }
+      if (!state || !state.original) return res.status(400).json({ message: 'Nothing to reset - Cinemeta has not been patched from here' })
+
+      const { findCinemeta } = require('../utils/cinemetaPatch')
+      const currentRaw = await provider.getAddons()
+      const { list, index, addon } = findCinemeta(currentRaw)
+      if (!addon) return res.status(404).json({ message: 'Cinemeta is not installed on this account' })
+
+      const next = [...list]
+      next[index] = { ...addon, manifest: state.original }
+      await provider.setAddons(next)
+      await prisma.user.update({ where: { id: user.id }, data: { cinemetaPatchJson: null } })
+      return res.json({ success: true })
+    } catch (e) {
+      console.error('Cinemeta reset failed:', e)
+      res.status(500).json({ message: e?.message || 'Failed to reset Cinemeta' })
+    }
+  })
 
   // --- Collections Guard (utils/collectionsGuard.js) ---
 

@@ -45,6 +45,7 @@ import {
   EyeSlashIcon,
   EyeIcon,
   ChevronDownIcon,
+  SparklesIcon,
   TagIcon,
 } from '@heroicons/react/24/outline';
 import {
@@ -310,6 +311,9 @@ export default function MetricsPage() {
   const isTV = useIsTV();
   const Wrapper = isTV ? TVPageProvider : Fragment;
   const [period, setPeriod] = useState('30d');
+  // The yearly recap opens on request. It is a once-a-year read, and it
+  // used to occupy the top of a page opened weekly.
+  const [yearInReviewOpen, setYearInReviewOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'users' | 'content' | 'admin' | 'health'>('users');
   // Deep-link support (?tab=health) so a notification tap can land directly
   // on this tab instead of always the default - read once on mount via
@@ -508,193 +512,166 @@ export default function MetricsPage() {
           />
         </PageSection>
 
-        {/* Year in Review (roadmap #8) - a Wrapped-style yearly summary. Only
-            on the Users tab - it's a personal viewing-habits recap, out of
-            place above Content/Admin/Health's more operational content. */}
-        {viewMode === 'users' && (
-          <PageSection className="mb-6">
-            <YearInReviewCard />
-          </PageSection>
-        )}
-
-        {/* Users Tab - User Leaderboard + Streaks + Watch Time Trend */}
+        {/* Users tab.
+            Rebuilt around what the page is actually for: how much the
+            household watched, and who. It used to open with a full-height
+            Year in Review - a once-a-year artefact at the top of a page
+            people open weekly - then four cards holding one number each,
+            then a leaderboard and a streaks panel side by side, each
+            half-empty with a single member in it. At real household size
+            (one to five people) that is mostly whitespace, and no amount of
+            styling fixes a layout whose shape assumes data it will never
+            have. So: one hero that carries the headline number AND the
+            chart, one dense members block that merges the leaderboard with
+            streaks, and the recap demoted to a line you can open. */}
         {viewMode === 'users' && (
           <div className="space-y-6">
-            {/* Stats Grid for Users Tab */}
+            {/* Hero: the period's total, its trend, and the shape of it. */}
             <PageSection className="mb-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard
-                  label="Active Users"
-                  value={isLoading ? '...' : liveActiveUsersCount}
-                  icon={<UsersIcon className="w-6 h-6" />}
-                  delay={0}
-                />
-                <StatCard
-                  label="Avg Watch Time/User"
-                  value={isLoading ? '...' : formatMinutes(Math.round(metricsData?.admin?.interestingMetrics?.avgWatchTimePerUser || 0))}
-                  icon={<ClockIcon className="w-6 h-6" />}
-                  delay={0.05}
-                />
-                <StatCard
-                  label="At-Risk Users"
-                  value={isLoading ? '...' : ((metricsData?.admin?.userLifecycle?.criticalRisk?.length || 0) + (metricsData?.admin?.userLifecycle?.atRisk?.length || 0))}
-                  icon={<ExclamationTriangleIcon className="w-6 h-6" />}
-                  delay={0.1}
-                />
-                <StatCard
-                  label="Top Streaker"
-                  value={isLoading ? '...' : (topUsersData.length > 0 ? `${topUsersData.reduce((max, u) => Math.max(max, u.streak), 0)} days` : '0 days')}
-                  icon={<FireIcon className="w-6 h-6" />}
-                  delay={0.15}
-                />
-              </div>
-            </PageSection>
-
-            {/* Top Row: Leaderboard + Streaks side by side */}
-            <PageSection delay={0.25}>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* User Leaderboard */}
-                <Card padding="lg">
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                      <TrophyIcon className="w-6 h-6" />
-                      <h3 className="text-lg font-semibold font-display text-default">User Leaderboard</h3>
-                    </div>
-                    <Badge variant="primary">Top 5</Badge>
-                  </div>
-
-                  <StaggerContainer className="space-y-3">
-                    {topUsersData.length === 0 ? (
-                      <div className="text-center py-8 text-sm text-muted">
-                        {isLoading ? 'Loading...' : 'No user data available'}
-                      </div>
-                    ) : (
-                      topUsersData.map((user, index) => (
-                      <StaggerItem key={user.id}>
-                        <motion.div
-                          whileHover={{ x: 4 }}
-                          className="flex items-center gap-4 p-4 rounded-xl transition-colors bg-surface-hover overflow-hidden"
-                        >
-                          {/* Rank */}
-                          <div
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0"
-                            style={{
-                              background: index === 0
-                                ? 'var(--color-warning-muted)'
-                                : index === 1
-                                ? 'rgba(148, 163, 184, 0.2)'
-                                : index === 2
-                                ? 'rgba(180, 83, 9, 0.2)'
-                                : 'var(--color-surface-hover)',
-                              color: index === 0
-                                ? 'var(--color-warning)'
-                                : index === 1
-                                ? '#94a3b8'
-                                : index === 2
-                                ? '#b45309'
-                                : 'var(--color-text-muted)'
-                            }}
-                          >
-                            {index + 1}
-                          </div>
-
-                          {/* Avatar & Name */}
-                          <UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} size="md" className="shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-default truncate">{user.name}</p>
-                            <div className="flex items-center gap-4 text-sm text-muted">
-                              <span className="flex items-center gap-1 shrink-0">
-                                <FilmIcon className="w-4 h-4" />
-                                {user.movies}
-                              </span>
-                              <span className="flex items-center gap-1 shrink-0">
-                                <TvIcon className="w-4 h-4" />
-                                {user.series}
-                              </span>
-                              <span className="flex items-center gap-1 shrink-0">
-                                <FireIcon className="w-4 h-4" />
-                                {user.streak} {user.streak === 1 ? 'day' : 'days'}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Watch Time */}
-                          <div className="text-right shrink-0">
-                            <p className="text-lg font-bold text-default">{formatMinutes(user.watchTime)}</p>
-                            <div className="flex items-center justify-end gap-1 text-sm">
-                              {user.trend === 'up' ? (
-                                <>
-                                  <ArrowTrendingUpIcon className="w-4 h-4 text-primary" />
-                                  <span className="text-primary">Rising</span>
-                                </>
-                              ) : (
-                                <>
-                                  <ArrowTrendingDownIcon className="w-4 h-4" />
-                                  <span>Falling</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </motion.div>
-                      </StaggerItem>
-                      ))
-                    )}
-                  </StaggerContainer>
-                </Card>
-
-                {/* User Watch Streaks */}
-                <Card padding="lg">
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                      <FireIcon className="w-6 h-6" />
-                      <h3 className="text-lg font-semibold font-display text-default">Watch Streaks</h3>
-                    </div>
-                  </div>
-                  {topUsersData.length > 0 && (
-                    <UserStreaksList 
-                      users={topUsersData.map(u => ({ id: u.id, name: u.name, email: u.email, avatarUrl: u.avatarUrl, useGravatar: u.useGravatar }))} 
-                    />
-                  )}
-                </Card>
-              </div>
-            </PageSection>
-
-            {/* Watch Time Trend - Full width */}
-            <PageSection delay={0.3}>
               <Card padding="lg">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="text-lg font-semibold font-display text-default">Watch Time Trend</h3>
-                    <p className="text-sm text-muted">Daily watch time over the period</p>
-                  </div>
-                  {metricsData?.watchTime?.trend && metricsData.watchTime.trend.percentage > 0 && (
-                    <Badge variant="primary">
-                      {metricsData.watchTime.trend.direction === 'up' ? (
-                        <ArrowTrendingUpIcon className="w-4 h-4 mr-1" />
-                      ) : (
-                        <ArrowTrendingDownIcon className="w-4 h-4 mr-1" />
+                <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+                  <div className="min-w-0">
+                    <p className="text-xs uppercase tracking-wider text-muted mb-1">Watch time · last {period === '7d' ? '7 days' : period === '30d' ? '30 days' : period === '90d' ? '90 days' : 'all time'}</p>
+                    <div className="flex items-end gap-3 flex-wrap">
+                      <p className="text-3xl md:text-4xl font-bold text-default leading-none">
+                        {isLoading ? '…' : formatMinutes(Math.round(watchTimeChartData.reduce((sum, d) => sum + (d.hours || 0), 0) * 60))}
+                      </p>
+                      {metricsData?.watchTime?.trend && metricsData.watchTime.trend.percentage > 0 && (
+                        <Badge variant="primary">
+                          {metricsData.watchTime.trend.direction === 'up' ? (
+                            <ArrowTrendingUpIcon className="w-4 h-4 mr-1" />
+                          ) : (
+                            <ArrowTrendingDownIcon className="w-4 h-4 mr-1" />
+                          )}
+                          {metricsData.watchTime.trend.direction === 'up' ? '+' : '-'}{metricsData.watchTime.trend.percentage}%
+                        </Badge>
                       )}
-                      {metricsData.watchTime.trend.direction === 'up' ? '+' : '-'}{metricsData.watchTime.trend.percentage}%
-                    </Badge>
-                  )}
+                    </div>
+                  </div>
+
+                  {/* The old four stat cards, as one strip. Same numbers,
+                      a quarter of the vertical space, and they read as a
+                      sentence about the household rather than four
+                      unrelated tiles. */}
+                  <div className="flex items-center gap-5 text-sm">
+                    {[
+                      { label: 'Watching', value: isLoading ? '…' : String(liveActiveUsersCount) },
+                      { label: 'Avg each', value: isLoading ? '…' : formatMinutes(Math.round(metricsData?.admin?.interestingMetrics?.avgWatchTimePerUser || 0)) },
+                      { label: 'Best streak', value: isLoading ? '…' : `${topUsersData.reduce((max, u) => Math.max(max, u.streak), 0)}d` },
+                    ].map((stat) => (
+                      <div key={stat.label} className="text-right">
+                        <p className="text-xs text-muted whitespace-nowrap">{stat.label}</p>
+                        <p className="text-lg font-semibold text-default leading-tight">{stat.value}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="h-40 md:h-64">
+
+                <div className="h-40 md:h-56">
                   {isLoading ? (
                     <div className="flex items-center justify-center h-full">
                       <div className="flex items-center gap-2 text-sm text-muted">
                         <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        <span>Loading...</span>
+                        <span>Loading…</span>
                       </div>
                     </div>
                   ) : watchTimeChartData.length === 0 ? (
                     <div className="flex items-center justify-center h-full text-sm text-muted">
-                      No data available
+                      Nothing watched in this period yet
                     </div>
                   ) : (
                     <WatchTimeChart data={watchTimeChartData} />
                   )}
                 </div>
               </Card>
+            </PageSection>
+
+            {/* Members: the leaderboard and the streaks panel, merged. Both
+                were per-member lists of the same people; two cards to say
+                that was the whole problem. */}
+            <PageSection delay={0.15}>
+              <Card padding="lg">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold font-display text-default">Members</h3>
+                  <span className="text-xs text-muted">{topUsersData.length} {topUsersData.length === 1 ? 'member' : 'members'}</span>
+                </div>
+
+                {isLoading ? (
+                  <p className="text-sm text-muted py-6 text-center">Loading…</p>
+                ) : topUsersData.length === 0 ? (
+                  <p className="text-sm text-muted py-6 text-center">No watch activity in this period.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {topUsersData.map((user, index) => (
+                      <div
+                        key={user.id}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-surface-hover"
+                      >
+                        {/* Rank only carries meaning with more than one
+                            person in the list. */}
+                        {topUsersData.length > 1 && (
+                          <span
+                            className="w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold shrink-0"
+                            style={{
+                              background: index === 0 ? 'var(--color-warning-muted)' : 'var(--color-surface)',
+                              color: index === 0 ? 'var(--color-warning)' : 'var(--color-text-muted)',
+                            }}
+                          >
+                            {index + 1}
+                          </span>
+                        )}
+                        <UserAvatar userId={user.id} name={user.name} email={user.email} src={user.useGravatar ? undefined : (user.avatarUrl ?? undefined)} size="sm" className="shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-default truncate leading-tight">{user.name}</p>
+                          <div className="flex items-center gap-3 text-xs text-muted mt-0.5">
+                            <span className="flex items-center gap-1"><FilmIcon className="w-3.5 h-3.5" />{user.movies}</span>
+                            <span className="flex items-center gap-1"><TvIcon className="w-3.5 h-3.5" />{user.series}</span>
+                            <span className="flex items-center gap-1"><FireIcon className="w-3.5 h-3.5" />{user.streak}d</span>
+                            <span className="flex items-center gap-1">
+                              {user.trend === 'up' ? (
+                                <ArrowTrendingUpIcon className="w-3.5 h-3.5 text-primary" />
+                              ) : (
+                                <ArrowTrendingDownIcon className="w-3.5 h-3.5" />
+                              )}
+                              {user.trend === 'up' ? 'rising' : 'falling'}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-base font-bold text-default shrink-0">{formatMinutes(user.watchTime)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </PageSection>
+
+            {/* The recap, out of the way until it is wanted. */}
+            <PageSection delay={0.2}>
+              {yearInReviewOpen ? (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setYearInReviewOpen(false)}
+                    className="text-xs text-muted hover:text-default transition-colors mb-2"
+                  >
+                    ← Hide year in review
+                  </button>
+                  <YearInReviewCard />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setYearInReviewOpen(true)}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-surface-hover hover:bg-surface transition-colors text-left"
+                >
+                  <span className="flex items-center gap-2 min-w-0">
+                    <SparklesIcon className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-sm font-medium text-default">Year in Review</span>
+                    <span className="text-xs text-muted truncate">everything this household watched this year</span>
+                  </span>
+                  <ChevronDownIcon className="w-4 h-4 text-muted shrink-0" />
+                </button>
+              )}
             </PageSection>
 
             {/* Taste profiles - per-user profile built from real watch data

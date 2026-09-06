@@ -42,6 +42,7 @@ import {
   FolderIcon,
   LinkIcon,
   MagnifyingGlassIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 import { DragEndEvent } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
@@ -473,6 +474,65 @@ export default function UserDetailPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.traxAddonEnabled, user?.traxToken]);
+
+  // Two of the biggest blocks on this page are things you set up once and
+  // then rarely touch, so they collapse. Deliberately NOT remembered: the
+  // point is that the page always opens on the parts you came back for, so
+  // leaving and returning starts closed again rather than restoring whatever
+  // was open last time.
+  const [openSections, setOpenSections] = useState<{ tracking: boolean; history: boolean }>({ tracking: false, history: false });
+  const toggleSection = (key: 'tracking' | 'history') => {
+    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Cinemeta patching. The state is read back from the manifest actually on
+  // the account rather than from what we last wrote, so an edit made
+  // anywhere else still shows up here.
+  const [cinemetaState, setCinemetaState] = useState<{ supported?: boolean; installed: boolean; removeSearch: boolean; removeCatalogs: boolean; removeMeta: boolean; canReset: boolean } | null>(null);
+  const [cinemetaOpen, setCinemetaOpen] = useState(false);
+  const [cinemetaBusy, setCinemetaBusy] = useState(false);
+  const [cinemetaDraft, setCinemetaDraft] = useState({ removeSearch: false, removeCatalogs: false, removeMeta: false });
+  const loadCinemeta = useCallback(async () => {
+    if (!params.id) return;
+    try {
+      const r = await api.getCinemetaState(params.id as string);
+      setCinemetaState(r);
+      setCinemetaDraft({ removeSearch: r.removeSearch, removeCatalogs: r.removeCatalogs, removeMeta: r.removeMeta });
+    } catch { setCinemetaState(null); }
+  }, [params.id]);
+  useEffect(() => { loadCinemeta(); }, [loadCinemeta]);
+
+  const cinemetaPatched = !!cinemetaState && (cinemetaState.removeSearch || cinemetaState.removeCatalogs || cinemetaState.removeMeta);
+
+  const handleSaveCinemeta = async () => {
+    if (!params.id) return;
+    setCinemetaBusy(true);
+    try {
+      const r = await api.patchCinemeta(params.id as string, cinemetaDraft);
+      toast.success(`Cinemeta patched - ${r.summary}`);
+      setCinemetaOpen(false);
+      await loadCinemeta();
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not patch Cinemeta');
+    } finally {
+      setCinemetaBusy(false);
+    }
+  };
+
+  const handleResetCinemeta = async () => {
+    if (!params.id) return;
+    setCinemetaBusy(true);
+    try {
+      await api.resetCinemeta(params.id as string);
+      toast.success('Cinemeta restored to its original state');
+      setCinemetaOpen(false);
+      await loadCinemeta();
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not restore Cinemeta');
+    } finally {
+      setCinemetaBusy(false);
+    }
+  };
 
   const handleToggleTraxAddon = async () => {
     if (!params.id || !user) return;
@@ -1304,8 +1364,27 @@ export default function UserDetailPage() {
                 Trakt's own free export and needs no app and no VIP. */}
             <PageSection className="mb-6">
               <Card padding="lg">
-                <h3 className="text-lg font-semibold text-default mb-1">Watch-Tracking Integrations</h3>
-                <p className="text-sm text-muted mb-4">Link this user's history to an external tracker</p>
+                <button
+                  type="button"
+                  onClick={() => toggleSection('tracking')}
+                  className="w-full flex items-center justify-between gap-3 text-left"
+                  aria-expanded={openSections.tracking}
+                >
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold text-default mb-1">Watch-Tracking Integrations</h3>
+                    <p className="text-sm text-muted">
+                      {openSections.tracking
+                        ? "Link this user's history to an external tracker"
+                        : `${user.simklConnected ? 'SIMKL linked' : 'SIMKL not linked'} · SlickTrax ${user.traxAddonEnabled ? 'on' : 'off'}`}
+                    </p>
+                  </div>
+                  <ChevronDownIcon
+                    className="w-5 h-5 text-muted shrink-0 transition-transform"
+                    style={{ transform: openSections.tracking ? 'rotate(180deg)' : 'none' }}
+                  />
+                </button>
+
+                {openSections.tracking && (<div className="mt-4">
 
                 <div className="flex items-center justify-between gap-4 flex-wrap py-3">
                   <div className="flex items-center gap-3">
@@ -1396,37 +1475,8 @@ export default function UserDetailPage() {
                     </Button>
                   </div>
 
-                  {/* In-player actions - only meaningful once the addon is
-                      on, and off by default: it puts non-playable rows in
-                      the stream list, which is where people look for
-                      something to play. */}
-                  {user.traxAddonEnabled && (
-                    <label className="flex items-start justify-between gap-4 mt-3 pt-3 border-t border-default cursor-pointer">
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium text-default">Actions inside the player</span>
-                        <span className="block text-xs text-muted mt-0.5">
-                          Adds &quot;Mark as watched&quot; and &quot;Add to Watchlist&quot; to a title&apos;s page in
-                          Stremio/Nuvio, alongside its real streams. Off by default because those rows sit in the
-                          list you open looking for something to play. Takes effect on the next sync.
-                        </span>
-                      </span>
-                      <ToggleSwitch
-                        checked={user.traxInPlayerActions === true}
-                        onChange={async () => {
-                          const next = !user.traxInPlayerActions;
-                          setUser((prev: any) => prev ? { ...prev, traxInPlayerActions: next } : prev);
-                          try {
-                            await api.setTraxInPlayerActions(params.id as string, true, next);
-                            toast.success(next ? 'In-player actions on - they appear after the next sync' : 'In-player actions off');
-                          } catch (e: any) {
-                            setUser((prev: any) => prev ? { ...prev, traxInPlayerActions: !next } : prev);
-                            toast.error(e?.message || 'Could not save that');
-                          }
-                        }}
-                      />
-                    </label>
-                  )}
                 </div>
+                </div>)}
 
               </Card>
             </PageSection>
@@ -1481,9 +1531,27 @@ export default function UserDetailPage() {
                 and needs no API app, which the removed OAuth route did. */}
             <PageSection className="mb-6">
               <Card padding="lg">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('history')}
+                  className="w-full flex items-center justify-between gap-3 text-left"
+                  aria-expanded={openSections.history}
+                >
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold text-default">Watch History Import/Export</h3>
+                    {!openSections.history && (
+                      <p className="text-sm text-muted mt-0.5">Bring in an IMDb, Letterboxd, Trakt, Netflix, TV Time, Plex or Movary export, or take a copy out</p>
+                    )}
+                  </div>
+                  <ChevronDownIcon
+                    className="w-5 h-5 text-muted shrink-0 transition-transform"
+                    style={{ transform: openSections.history ? 'rotate(180deg)' : 'none' }}
+                  />
+                </button>
+
+                {openSections.history && (<div className="mt-4">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-lg font-semibold text-default">Watch History Import/Export</h3>
                     {/* Each service is linked straight to its own export
                         page. Telling someone to "go to Settings -> Data"
                         still leaves them hunting through a site they may
@@ -1552,6 +1620,7 @@ export default function UserDetailPage() {
                     )}
                   </div>
                 )}
+                </div>)}
               </Card>
             </PageSection>
 
@@ -2038,6 +2107,27 @@ export default function UserDetailPage() {
                                       Protected
                                     </Badge>
                                   )}
+                                  {/* Cinemeta is the one addon on every
+                                      account whose parts are worth removing
+                                      individually - its catalogs sit at the
+                                      top of the home screen and its metadata
+                                      overrides addons installed to replace
+                                      it. The row says when it has been
+                                      patched, and the button leads to
+                                      putting it back. */}
+                                  {/cinemeta/i.test(addon.transportUrl || '') && cinemetaPatched && (
+                                    <Badge variant="warning" size="sm">Patched</Badge>
+                                  )}
+                                  {/cinemeta/i.test(addon.transportUrl || '') && cinemetaState?.installed && cinemetaState?.supported !== false && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCinemetaOpen(true); }}
+                                      className="text-xs px-2 py-0.5 rounded-md transition-colors shrink-0"
+                                      style={{ color: 'var(--color-text-muted)', background: 'var(--color-surface-hover)' }}
+                                    >
+                                      {cinemetaPatched ? 'Edit patch' : 'Patch'}
+                                    </button>
+                                  )}
                                 </div>
                                 {description && <p className="text-xs text-muted truncate mb-1">{description}</p>}
                                 {addon.manifest?.resources && addon.manifest.resources.length > 0 && (
@@ -2212,6 +2302,63 @@ export default function UserDetailPage() {
       {/* Merge confirmation - shows real counts before committing, and flags
           if the two accounts are in different Groups (merge deliberately
           doesn't auto-combine group membership - see userMerge.js). */}
+      {/* Cinemeta patch. Three removals, each independent, plus putting the
+          original back exactly as it was. */}
+      <Modal
+        isOpen={cinemetaOpen}
+        onClose={() => setCinemetaOpen(false)}
+        title="Patch Cinemeta"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted">
+            Cinemeta is the default metadata addon every account ships with. Remove the parts of it you don&apos;t want without
+            uninstalling it - its catalogs sit at the top of the home screen, and its metadata overrides addons installed to replace it.
+          </p>
+
+          {user?.providerType === 'nuvio' && (
+            <div className="p-3 rounded-lg text-xs" style={{ background: 'var(--color-warning-muted)', color: 'var(--color-text)' }}>
+              <strong>Nuvio stores only the addon&apos;s address, not its manifest</strong> - the app fetches Cinemeta&apos;s own manifest
+              directly, so a patch written here will not change what the device shows. To get Cinemeta&apos;s catalogs off a Nuvio home
+              screen, hide those rows in the home-row editor instead. This works today on Stremio accounts.
+            </div>
+          )}
+
+          {[
+            { key: 'removeSearch' as const, label: 'Remove Cinemeta search', hint: 'Stops Cinemeta results appearing when you search.' },
+            { key: 'removeCatalogs' as const, label: 'Remove Cinemeta catalogs', hint: 'Removes Popular, New and Featured from the home screen.' },
+            { key: 'removeMeta' as const, label: 'Remove Cinemeta metadata', hint: 'Stops Cinemeta providing metadata for films and series.' },
+          ].map((row) => (
+            <div key={row.key} className="flex items-start justify-between gap-3 p-3 rounded-lg bg-surface-hover">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-default">{row.label}</p>
+                <p className="text-xs text-muted">{row.hint}</p>
+              </div>
+              <ToggleSwitch
+                checked={cinemetaDraft[row.key]}
+                onChange={() => setCinemetaDraft((prev) => ({ ...prev, [row.key]: !prev[row.key] }))}
+              />
+            </div>
+          ))}
+
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleResetCinemeta}
+              disabled={cinemetaBusy || !cinemetaState?.canReset}
+              title={cinemetaState?.canReset ? 'Put back the manifest exactly as it was before the first patch' : 'Nothing to restore - Cinemeta has not been patched from here'}
+            >
+              Restore original
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setCinemetaOpen(false)}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={handleSaveCinemeta} isLoading={cinemetaBusy}>Save</Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
       <Modal
         isOpen={isMergeModalOpen}
         onClose={() => setIsMergeModalOpen(false)}
