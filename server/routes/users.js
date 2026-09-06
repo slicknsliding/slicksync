@@ -3743,9 +3743,19 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         clearTimeout(timeout)
       }
       const metas = Array.isArray(data?.metas) ? data.metas : []
+      // SlickTrax builds its poster URLs from the address the request arrived
+      // on, and this one arrived on loopback - so they come back pointing at
+      // 127.0.0.1, which is this container, not the viewer's machine. The
+      // browser rendering this preview is on our own origin, so dropping the
+      // origin and leaving the path is both correct and portable: it works on
+      // a public hostname, a LAN address, and behind any proxy.
+      const loopbackOrigin = loopback ? (() => { try { return new URL(loopback).origin } catch { return null } })() : null
+      const viewable = (u) => (loopbackOrigin && typeof u === 'string' && u.startsWith(loopbackOrigin))
+        ? u.slice(loopbackOrigin.length)
+        : (u || null)
       res.json({
         items: metas.slice(0, 25).map((m) => ({
-          id: m.id, type: m.type, name: m.name, poster: m.poster || null
+          id: m.id, type: m.type, name: m.name, poster: viewable(m.poster)
         }))
       })
     } catch (error) {
