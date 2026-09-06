@@ -324,10 +324,21 @@ async function attemptPosterLookup(prisma, rowId, displayName) {
     // (2019)" is a series that looked like a film. A miss under the guessed
     // type is retried under the other, so a wrong guess costs one extra
     // lookup rather than the poster and the id.
-    let result = await searchCinemetaPosterByTitle(parsed.searchTitle, parsed.year, parsed.type)
-    if (!result) {
-      const otherType = parsed.type === 'series' ? 'movie' : 'series'
-      result = await searchCinemetaPosterByTitle(parsed.searchTitle, parsed.year, otherType)
+    // Stream titles from localized sources carry a subtitle after a dash -
+    // "Toy Story - Il mondo dei giocattoli" - that Cinemeta's English name
+    // never matches. The candidates are tried longest first: the full title,
+    // then the part before the first dash or colon; each under the guessed
+    // type, then the other. Every attempt still demands an exact title and
+    // year, so a shorter candidate cannot land on the wrong film.
+    const candidates = [parsed.searchTitle]
+    const cut = parsed.searchTitle.split(/\s+[-–—:]\s+/)[0].trim()
+    if (cut && cut !== parsed.searchTitle && cut.length >= 3) candidates.push(cut)
+    const otherType = parsed.type === 'series' ? 'movie' : 'series'
+    let result = null
+    for (const candidate of candidates) {
+      result = await searchCinemetaPosterByTitle(candidate, parsed.year, parsed.type)
+        || await searchCinemetaPosterByTitle(candidate, parsed.year, otherType)
+      if (result) break
     }
     const updatedRow = await prisma.proxyStreamSession.update({
       where: { id: rowId },
