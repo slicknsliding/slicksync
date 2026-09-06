@@ -1,5 +1,22 @@
 [
   {
+    "version": "1.85.0",
+    "date": "2026-09-06",
+    "title": "1.85.0 - Faster on phones: posters, launch, and the installed app",
+    "features": [
+      "Posters arrive in a fraction of the time on a freshly opened page. A poster that is already the right size is served exactly as it came instead of being decoded and re-encoded; anything that does need resizing is prepared in parallel rather than one after another; and the posters a page is about to show are prepared the moment that page's list is known, so the browser's requests find them ready. On a small self-hosted box, a grid of twenty new posters that took nearly two seconds now completes in well under one.",
+      "The installed app keeps resized posters and avatars in its own cache on the device, so a grid you have seen before is instant on the next launch - a phone's ordinary browser cache is small and cleared early, which is why repeat views used to reload everything.",
+      "Faster launch: the default fonts are served from your own instance rather than fetched from a third party before anything can paint; the dashboard's charting library loads only when a chart is actually on screen; and the title popup loads after first paint instead of with it.",
+      "Installed on an iPhone, the app no longer draws its top bar under the status bar and notch, the launch screen matches the app's colour instead of flashing white, and the Home Screen icon is the proper one. Re-add the icon to pick up the last two.",
+      "The Activity feed only lays out and paints the rows that are on screen, its thumbnails are requested at the size they are drawn, and still profile pictures are served resized for lists. Animated profile pictures are untouched."
+    ],
+    "bugFixes": [
+      "Describe-it search could fail with a bare \"HTTP 500\" when a model took longer than half a minute to answer. Slower and free-tier models genuinely do; the request now waits for them.",
+      "The duration badge on Activity poster cards was unreadable over bright artwork. It is a dark pill with white text on every poster now."
+    ],
+    "miscChores": []
+  },
+  {
     "version": "1.84.1",
     "date": "2026-09-06",
     "title": "1.84.1 - SlickTrax rows and linked collections behind a login gate",
