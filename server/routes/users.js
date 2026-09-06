@@ -1503,7 +1503,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     try {
       const sessions = Array.isArray(metrics?.watchSessions) ? metrics.watchSessions.slice(0, 60) : []
       const playing = Array.isArray(metrics?.nowPlaying) ? metrics.nowPlaying : []
-      require('../utils/posterWarm').warmPosters([...sessions, ...playing])
+      // A session carries its title as `item`; the poster is on that.
+      const posters = [...sessions, ...playing].map((x) => x?.item?.poster || x?.poster).filter(Boolean)
+      require('../utils/posterWarm').warmPosters(posters)
     } catch { /* optimisation only */ }
   }
 
