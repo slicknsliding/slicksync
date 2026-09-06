@@ -46,14 +46,21 @@ function metaPreview(id, type, name, poster) {
 // the request's own origin - the same self-learning the transport URL does.
 // Fallback behavior is inherited from the proxy itself: anything it can't
 // process 302s to the original URL, so a device never sees a broken poster.
-function proxiedPoster(base, poster) {
+function proxiedPoster(base, token, poster) {
   if (!base || !poster || !/^https?:\/\//i.test(poster)) return poster || undefined
   try {
     // Never wrap a URL already served by this instance (e.g. /api/poster's
     // RPDB redirects) - that would just proxy ourselves.
     if (new URL(poster).host === new URL(base).host) return poster
   } catch { return poster }
-  return `${base}/api/img?src=${encodeURIComponent(poster)}&w=342`
+  // Served from under the addon's own token path rather than /api/img. A
+  // device fetching these has no session and cannot get one, so the poster
+  // has to live somewhere an addon URL is already guaranteed to reach: an
+  // instance behind a login gate exempts /trax/ and everything the rows need
+  // comes with it, instead of the artwork silently 302ing to a login page
+  // and every tile rendering empty. The token guards it exactly as it guards
+  // the catalogs themselves.
+  return `${base}/trax/${token}/img?src=${encodeURIComponent(poster)}&w=342`
 }
 
 function requestBase(req) {
@@ -149,6 +156,20 @@ module.exports = ({ prisma }) => {
     return user || null
   }
 
+  // The poster proxy, reachable wherever the addon itself is. Same image
+  // cache as /api/img - this is a second doorway to it, not a second copy -
+  // with the token checked first so it is not an open proxy.
+  const imageProxy = require('./imageCache')()
+  router.use('/:token/img', async (req, res, next) => {
+    try {
+      const user = await resolveUser(req.params.token)
+      if (!user) return res.status(404).json({ error: 'Not found' })
+      next()
+    } catch {
+      res.status(500).json({ error: 'Internal error' })
+    }
+  }, imageProxy)
+
   router.get('/:token/manifest.json', async (req, res) => {
     try {
       const user = await resolveUser(req.params.token)
@@ -179,7 +200,7 @@ module.exports = ({ prisma }) => {
         const entries = await getContinueWatching(prisma, user.accountId, 40)
         const metas = entries
           .filter((e) => e.userId === user.id && /^tt\d+$/.test(e.showId || ''))
-          .map((e) => metaPreview(e.showId, e.contentType === 'movie' ? 'movie' : 'series', e.showName, proxiedPoster(base, e.poster)))
+          .map((e) => metaPreview(e.showId, e.contentType === 'movie' ? 'movie' : 'series', e.showName, proxiedPoster(base, req.params.token, e.poster)))
         return res.json({ metas })
       }
 
@@ -196,7 +217,7 @@ module.exports = ({ prisma }) => {
           ...all.filter((i) => Number.isInteger(i.sortOrder)).sort((a, b) => a.sortOrder - b.sortOrder),
           ...all.filter((i) => !Number.isInteger(i.sortOrder)),
         ].slice(0, 100)
-        return res.json({ metas: items.filter((i) => /^tt\d+$/.test(i.itemId)).map((i) => metaPreview(i.itemId, type, i.name, proxiedPoster(base, i.poster))) })
+        return res.json({ metas: items.filter((i) => /^tt\d+$/.test(i.itemId)).map((i) => metaPreview(i.itemId, type, i.name, proxiedPoster(base, req.params.token, i.poster))) })
       }
 
       if (catalogId.startsWith('slicktrax-list-')) {
@@ -210,7 +231,7 @@ module.exports = ({ prisma }) => {
           // the movie half rather than vanishing from both.
           .filter((i) => i && /^tt\d+$/.test(String(i.id || '')) && ((i.type || 'movie') === type))
           .slice(0, 200)
-          .map((i) => metaPreview(String(i.id), type, i.name, proxiedPoster(base, i.poster)))
+          .map((i) => metaPreview(String(i.id), type, i.name, proxiedPoster(base, req.params.token, i.poster)))
         return res.json({ metas })
       }
 
