@@ -1425,6 +1425,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'The addon is catalog-only by design. It adds rows; it never touches streams or playback - those stay with the user\'s own addons.',
       'The URL contains a private token, so it works without a login - treat it like a password. Disabling the addon makes the next sync remove it, and re-enabling keeps the same URL so already-installed copies resume working.',
       'Auto-install needs PUBLIC_APP_URL set on the server so sync knows the address other devices can reach. Without it, the toggle still gives you the manifest URL to install by hand.',
+      'If your instance sits behind a login gate - Authelia, basic auth, Cloudflare Access, anything applied to the whole hostname - the /trax/ path has to be exempt from it. A phone or TV cannot log in, so it receives the login page instead of the rows and the addon looks installed but empty. Only /trax/ needs opening; the dashboard and the API can stay protected, and the addon URL is already guarded by its own private token.',
     ],
     related: ['share-codes', 'watch-tracking-integrations'],
   },
