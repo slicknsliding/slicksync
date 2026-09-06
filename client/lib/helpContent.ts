@@ -1824,7 +1824,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'Driving SlickSync from iOS Shortcuts (or any automation)',
     category: 'Sharing & integrations',
     keywords: ['ios shortcuts', 'shortcuts app', 'siri', 'automation', 'api key', 'home screen button', 'webhook out', 'share sheet', 'send to slicksync', 'iphone share'],
-    answer: 'Settings -> Security -> iOS Shortcuts lists the recipes with your own address and key filled in, with one-tap copy for each part. Four worth building: send a link to SlickSync from the share sheet, ask what you were watching, sync everything, reload an addon.',
+    answer: 'Settings -> Integrations -> iOS Shortcuts (right under your API Key) lists the recipes with your own address and key filled in, with one-tap copy for each part. Four worth building: send a link to SlickSync from the share sheet, ask what you were watching, sync everything, reload an addon.',
     details: [
       'Send to SlickSync is the iOS answer to sharing into the app, which Apple does not allow web apps to do directly: a Shortcut that shows in the share sheet, URL-encodes whatever was shared, and opens https://your-instance/discover?st_text=<encoded> - Discover opens already searched, and an IMDb link resolves straight to the title. Android and desktop get the same thing natively (see Share into SlickSync).',
       'Every API call needs the header Authorization set to Bearer followed by the account API key from Settings, and the URL is your own instance - https://your-instance/api/ext/... - so nothing leaves your network unless you point it outside.',
@@ -1835,8 +1835,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
       'None of this is iOS-specific. The same three calls work from Android Tasker, a shell script, Home Assistant, or a cron job - Shortcuts is just the version most people already have installed.',
     ],
     related: ['api-docs', 'slicktrax-addon'],
-    href: '/settings?tab=security',
-    linkLabel: 'Open Security settings',
+    href: '/settings?tab=integrations',
+    linkLabel: 'Open Integrations settings',
   },
   {
     id: 'cinemeta-patch',
