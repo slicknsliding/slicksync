@@ -14,13 +14,13 @@ kept in sync across every profile — on **Nuvio** and **Stremio** alike.
 [![Bun](https://img.shields.io/badge/bun-1%2B-000000?logo=bun&logoColor=white&style=flat-square)](https://bun.sh)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white&style=flat-square)](https://nextjs.org) [![Fork of Syncio](https://img.shields.io/badge/fork%20of-Syncio-blueviolet?style=flat-square)](https://github.com/iamneur0/syncio)
 
-[**Nuvio**](#-built-for-nuvio) &nbsp;·&nbsp; [**Stremio**](#-stremio-too) &nbsp;·&nbsp; [**Install**](#-installation) &nbsp;·&nbsp; [**Everything else**](#-everything-else) &nbsp;·&nbsp; [**Try it live**](https://slicksync.vip)
+[**Nuvio**](#-built-for-nuvio) &nbsp;·&nbsp; [**Stremio**](#-stremio-whats-new-since-syncio) &nbsp;·&nbsp; [**Install**](#-installation) &nbsp;·&nbsp; [**Everything else**](#-everything-else) &nbsp;·&nbsp; [**Try it live**](https://slicksync.vip)
 
 </div>
 
 ---
 
-Nuvio gives you the apps. SlickSync gives you the control panel behind them: what each profile's home screen looks like, which addons everyone has, who is watching what right now, and a full watch history that outlives any one device — from one page, for the whole household. Stremio is fully supported alongside it: the same sync, groups, shared credentials and watch tracking work for Stremio accounts, and one household can mix both.
+Nuvio gives you the apps. SlickSync gives you the control panel behind them: what each profile's home screen looks like, which addons everyone has, who is watching what right now, and a full watch history that outlives any one device — from one page, for the whole household. Stremio, where this started, keeps everything Syncio did and gains the additions below; one household can mix both.
 
 > **Private, single-instance fork.** Built and run for one household's streaming group, not a general-purpose multi-tenant product.
 >
@@ -95,16 +95,20 @@ A built-in Trakt alternative that installs into Nuvio as a real addon — no ext
 
 ---
 
-# 📺 Stremio, too
+# 📺 Stremio: what's new since Syncio
 
-Nuvio leads, but nothing here was taken away from Stremio. A Stremio account is a first-class user with the same sync engine underneath.
+Syncio already synced addons to a group of Stremio accounts. Everything below is what SlickSync added on top of that for a Stremio account.
 
-- **Connect** by real login or by device-code/QR; the auth key is encrypted at rest.
-- **Addon sync** per group with per-user exclusions and protected addons, reordering, one-click sync, and Account Guard watching for changes SlickSync did not make.
-- **Patch Cinemeta** per user — remove its search, catalogs or metadata without uninstalling it, and restore the original exactly. Stremio only, by design: Nuvio fetches manifests from the addon itself.
-- **SlickTrax installs into Stremio** as a normal addon, with the same Continue Watching, Watchlist and For You rows.
-- **Watch history** comes from the Stremio library's own progress, so it is complete for every source; the proxy adds live presence on top.
-- **Mixed households**: one person with both a Stremio and a Nuvio identity can be merged into one user, with a preview first and a full undo.
+- **Watch tracking without Trakt** — a live Now Playing for the whole group, and a complete history built from each Stremio library's own progress: durations, what was finished versus dropped, rewatches, and resume-on-another-device links straight into Stremio.
+- **SlickTrax inside Stremio** — Continue Watching, Watchlist and For You rows installed as a normal addon by the next sync, fed by that history. No external service, no tokens.
+- **Patch Cinemeta per user** — remove its search, its catalogs or its metadata without uninstalling it, and restore the original exactly.
+- **Credentials that follow the addons** — the Vault holds debrid and other keys once; rotate one and every addon config on every Stremio account is rewritten to match, with health checks and backup keys that take over on failure.
+- **Account Guard** — addon changes made outside SlickSync are detected within minutes, with Re-assert or Accept.
+- **Sign-in by device code or QR** — connect a Stremio account without typing a password into SlickSync; the key is encrypted at rest.
+- **Discover, Catalogs and share codes** — browse Cinemeta's real catalogs, build catalogs by hand, by URL or by criteria, and open any title directly in Stremio.
+- **Two identities, one person** — a Stremio and a Nuvio account can be merged into one user, with a preview first and a full undo.
+
+Everything under *Everything else* applies to Stremio accounts as much as to Nuvio.
 
 ---
 
