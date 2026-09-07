@@ -5,6 +5,8 @@ import { Dialog, DialogPanel, DialogTitle, Transition, TransitionChild } from '@
 import { motion, AnimatePresence } from 'framer-motion';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
+import { useCoarsePointer } from '@/lib/hooks/useCoarsePointer';
+import { cachedImageUrl } from '@/lib/posterUrl';
 
 interface ModalProps {
   isOpen: boolean;
@@ -46,6 +48,12 @@ const sizeMaxWidthPx = {
 };
 
 export function Modal({ isOpen, onClose, title, description, size = 'md', children, hideCloseButton = false, backdropImage }: ModalProps) {
+  // On a phone or tablet the close is a plain fade. The default close also
+  // shrinks and slides the panel, and a transform on a panel whose backdrop
+  // art is a large blurred image makes WebKit re-rasterize that image on
+  // every frame of the exit; a fade alone composites for free. The open
+  // keeps its motion - the content has to be painted then regardless.
+  const coarse = useCoarsePointer();
   // The close fade is unconditional again. A previous diagnostic skipped
   // the leave transition on mobile while chasing a reported "closing any
   // modal freezes the page" bug - that investigation concluded the freeze
@@ -86,8 +94,8 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
             enterFrom="opacity-0 scale-95 translate-y-4"
             enterTo="opacity-100 scale-100 translate-y-0"
             leave="ease-in duration-150"
-            leaveFrom="opacity-100 scale-100 translate-y-0"
-            leaveTo="opacity-0 scale-95 translate-y-4"
+            leaveFrom={coarse ? 'opacity-100' : 'opacity-100 scale-100 translate-y-0'}
+            leaveTo={coarse ? 'opacity-0' : 'opacity-0 scale-95 translate-y-4'}
           >
             <DialogPanel
               className={clsx(
@@ -111,13 +119,29 @@ export function Modal({ isOpen, onClose, title, description, size = 'md', childr
                   regardless of how long the content is. */}
               {backdropImage && (
                 <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden="true">
-                  <img
-                    src={backdropImage}
-                    alt=""
-                    decoding="async"
-                    className="absolute inset-0 w-full h-full object-cover scale-110"
-                    style={{ filter: 'blur(20px) brightness(0.55)' }}
-                  />
+                  {/* Phones and tablets get the 64px copy of the art from the
+                      poster cache, stretched to fill: an image scaled up that
+                      far is a blur already, with no filter for the GPU to
+                      recompute whenever the panel repaints. The dimming is an
+                      opacity over the panel's own surface, which composites
+                      for free as well. Desktops keep the real blur. */}
+                  {coarse ? (
+                    <img
+                      src={cachedImageUrl(backdropImage, 64) || backdropImage}
+                      alt=""
+                      decoding="async"
+                      className="absolute inset-0 w-full h-full object-cover scale-110"
+                      style={{ opacity: 0.45 }}
+                    />
+                  ) : (
+                    <img
+                      src={backdropImage}
+                      alt=""
+                      decoding="async"
+                      className="absolute inset-0 w-full h-full object-cover scale-110"
+                      style={{ filter: 'blur(20px) brightness(0.55)' }}
+                    />
+                  )}
                   <div
                     className="absolute inset-0"
                     style={{ background: 'linear-gradient(180deg, transparent 0%, var(--color-surface) 65%)' }}

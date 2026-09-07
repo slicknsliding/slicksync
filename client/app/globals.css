@@ -1042,6 +1042,20 @@ body {
   -webkit-backdrop-filter: none !important;
 }
 
+/* The same for every device without a hover-capable pointer - a phone or
+   tablet in a normal browser tab, not just the Home Screen app. A backdrop
+   blur is re-sampled on every frame that anything behind it changes: the
+   nav bar, the watched and watchlist badges on every poster and the
+   Activity duration badges all did so on every frame of a modal's overlay
+   fade. The elements keep their own tinted backgrounds, so this reads the
+   same way it already does in the installed app. */
+@media (hover: none) {
+  * {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
 /* Always reserve the scrollbar gutter. Without this, the vertical scrollbar
    appearing/disappearing changes the content width by ~15px, and with a
    virtualized grid that is a closed feedback loop: grid grows past the
