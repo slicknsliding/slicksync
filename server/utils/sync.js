@@ -379,6 +379,22 @@ async function getDesiredAddons(user, req, { prisma, getAccountId, decrypt, pars
   }
 }
 
+// Sync status is asked for constantly - every badge on the Users, Groups and
+// Addons pages, the guardian's pass, the re-check after a sync - and each
+// answer is a live fetch of the user's addons from their provider. The
+// answer is kept for a short while per user, and dropped the moment
+// anything that changes it happens: a sync finishing, an exclusion or a
+// protection edited (utils/liveEvents.js's 'sync' event calls
+// invalidateSyncStatus). The guardian's own fresh reads go through here too
+// and refresh the entry, so a badge opened just after a pass answers from
+// memory.
+const SYNC_STATUS_MEMO_MS = 20 * 1000
+const syncStatusMemo = new Map()
+function invalidateSyncStatus(accountId, userId) {
+  const prefix = `${accountId || 'default'}:${userId ? `${userId}:` : ''}`
+  for (const key of syncStatusMemo.keys()) if (key.startsWith(prefix)) syncStatusMemo.delete(key)
+}
+
 function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds, parseProtectedAddons, getDecryptedManifestUrl, canonicalizeManifestUrl, StremioAPIClient, createProvider }) {
   const normalizeUrl = (u) => {
     try {
@@ -391,7 +407,7 @@ function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds,
   // _prefetchedUserAddons: the Sync Guardian + Account Guard loop fetches the
   // live collection once per user per pass - passing it here avoids this
   // function immediately re-fetching the identical list from the provider.
-  return async function getUserSyncStatus(userId, { groupId = undefined, unsafe = false, _prefetchedUserAddons = null } = {}, req) {
+  const computeUserSyncStatus = async function (userId, { groupId = undefined, unsafe = false, _prefetchedUserAddons = null } = {}, req) {
     const user = await prisma.user.findFirst({
       where: { id: userId, accountId: getAccountId(req) },
       // traxAddonEnabled/traxToken MUST ride along: appendTraxAddon reads
@@ -510,6 +526,21 @@ function createGetUserSyncStatus({ prisma, getAccountId, decrypt, parseAddonIds,
       protectedAddons: parseProtectedAddons(user.protectedAddons, req),
     }
   }
+
+  // Remembered for a short while per user - see syncStatusMemo above. A
+  // caller that brings the user's addons with it (the guardian) always
+  // computes, and its fresh answer refreshes the entry.
+  return async function getUserSyncStatus(userId, options = {}, req) {
+    const accountId = getAccountId(req) || 'default'
+    const key = `${accountId}:${userId}:${options.groupId || ''}:${options.unsafe ? 1 : 0}`
+    if (!options._prefetchedUserAddons) {
+      const hit = syncStatusMemo.get(key)
+      if (hit && Date.now() - hit.at < SYNC_STATUS_MEMO_MS) return hit.value
+    }
+    const value = await computeUserSyncStatus(userId, options, req)
+    if (value && value.status !== 'error') syncStatusMemo.set(key, { at: Date.now(), value })
+    return value
+  }
 }
 
 function createGetGroupSyncStatus(deps) {
@@ -619,6 +650,7 @@ function createManifestFingerprint(canonicalizeManifestUrl, { urlOnly = false } 
 }
 
 module.exports = {
+  invalidateSyncStatus,
   appendTraxAddon,
   getUserAddons,
   getDesiredAddons,

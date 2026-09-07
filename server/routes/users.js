@@ -3894,6 +3894,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         where: { id, accountId: getAccountId(req) },
         data: { excludedAddons: JSON.stringify(excludedAddons || []) }
       })
+      // What this user should have just changed - status badges re-check.
+      try { require('../utils/liveEvents').emitLive(getAccountId(req), 'sync') } catch { /* optional */ }
 
       res.json({
         message: 'Excluded addons updated successfully',
@@ -3923,6 +3925,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         where: { id, accountId: getAccountId(req) },
         data: { protectedAddons: JSON.stringify(protectedAddons || []) }
       })
+      try { require('../utils/liveEvents').emitLive(getAccountId(req), 'sync') } catch { /* optional */ }
 
       res.json({
         message: 'Protected addons updated successfully',
@@ -7771,7 +7774,24 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
   }
 }
 
-async function syncUserAddons(prismaClient, userId, excludedManifestUrls = [], unsafeMode = false, req, decrypt, getAccountIdParam, useCustomFields = true) {
+// Every sync, whoever started it - a person, the scheduler, a group edit -
+// ends by telling connected pages a sync happened, so every status badge
+// refreshes at once instead of on its next poll, and the remembered status
+// for the account is dropped (utils/liveEvents.js -> utils/sync.js).
+async function syncUserAddons(...args) {
+  try {
+    return await syncUserAddonsCore(...args)
+  } finally {
+    try {
+      const req = args[4]
+      const getAcct = args[6]
+      const accountId = (typeof getAcct === 'function' && req ? getAcct(req) : null) || req?.appAccountId || 'default'
+      require('../utils/liveEvents').emitLive(accountId, 'sync')
+    } catch { /* never disturbs the sync result */ }
+  }
+}
+
+async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [], unsafeMode = false, req, decrypt, getAccountIdParam, useCustomFields = true) {
   try {
     // Ensure req has appAccountId for account scoping
     if (!req.appAccountId) {

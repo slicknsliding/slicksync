@@ -86,6 +86,15 @@ export default function DiscoverPage() {
   // avoiding its Suspense requirement).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // From the command palette: a title picked there lands here with the
+    // search box filled and the matching type selected.
+    const q = params.get('q');
+    if (q) {
+      const t = params.get('t');
+      if (t === 'movie' || t === 'series') setType(t);
+      setSearchQuery(q);
+      return;
+    }
     const shared = [params.get('st_title'), params.get('st_text'), params.get('st_url')]
       .filter(Boolean).join(' ').trim();
     if (!shared) return;
