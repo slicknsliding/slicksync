@@ -15,13 +15,13 @@ kept in sync across every profile — on **Nuvio** and **Stremio** alike.
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white&style=flat-square)](https://nextjs.org)
 [![Fork of Syncio](https://img.shields.io/badge/fork%20of-Syncio-blueviolet?style=flat-square)](https://github.com/iamneur0/syncio)
 
-[**Nuvio**](#-built-for-nuvio) &nbsp;·&nbsp; [**Install**](#-installation) &nbsp;·&nbsp; [**Everything else**](#-everything-else) &nbsp;·&nbsp; [**Try it live**](https://slicksync.vip)
+[**Nuvio**](#-built-for-nuvio) &nbsp;·&nbsp; [**Stremio**](#-stremio-too) &nbsp;·&nbsp; [**Install**](#-installation) &nbsp;·&nbsp; [**Everything else**](#-everything-else) &nbsp;·&nbsp; [**Try it live**](https://slicksync.vip)
 
 </div>
 
 ---
 
-Nuvio gives you the apps. SlickSync gives you the control panel behind them: what each profile's home screen looks like, which addons everyone has, who is watching what right now, and a full watch history that outlives any one device — from one page, for the whole household.
+Nuvio gives you the apps. SlickSync gives you the control panel behind them: what each profile's home screen looks like, which addons everyone has, who is watching what right now, and a full watch history that outlives any one device — from one page, for the whole household. Stremio is fully supported alongside it: the same sync, groups, shared credentials and watch tracking work for Stremio accounts, and one household can mix both.
 
 > **Private, single-instance fork.** Built and run for one household's streaming group, not a general-purpose multi-tenant product.
 >
@@ -93,6 +93,19 @@ A built-in Trakt alternative that installs into Nuvio as a real addon — no ext
 - An optional **Airing this season** row with next-episode countdowns, plus **watch-order chains** for franchises that split into prequels, sequels and side stories.
 - Shows numbered **absolutely** (episode 137) are translated to the season and episode a library actually lists, so Continue Watching resumes on the right one instead of dropping the show.
 - **Import an anime list** from AniList or MyAnimeList by pasting its URL — a whole list or just one section.
+
+---
+
+# 📺 Stremio, too
+
+Nuvio leads, but nothing here was taken away from Stremio. A Stremio account is a first-class user with the same sync engine underneath.
+
+- **Connect** by real login or by device-code/QR; the auth key is encrypted at rest.
+- **Addon sync** per group with per-user exclusions and protected addons, reordering, one-click sync, and Account Guard watching for changes SlickSync did not make.
+- **Patch Cinemeta** per user — remove its search, catalogs or metadata without uninstalling it, and restore the original exactly. Stremio only, by design: Nuvio fetches manifests from the addon itself.
+- **SlickTrax installs into Stremio** as a normal addon, with the same Continue Watching, Watchlist and For You rows.
+- **Watch history** comes from the Stremio library's own progress, so it is complete for every source; the proxy adds live presence on top.
+- **Mixed households**: one person with both a Stremio and a Nuvio identity can be merged into one user, with a preview first and a full undo.
 
 ---
 
