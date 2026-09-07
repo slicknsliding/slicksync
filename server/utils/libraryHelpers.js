@@ -154,7 +154,7 @@ function normalizeTitleForMatch(s) {
  * @param {string|null} year  e.g. "2026" or null
  * @param {'movie'|'series'} type
  * @param {{requestTimeout?: number}} [options]
- * @returns {Promise<{poster: string|null, id: string|null, type: string}|null>}
+ * @returns {Promise<{poster: string|null, id: string|null, type: string, name: string|null}|null>}
  */
 async function searchCinemetaPosterByTitle(title, year, type, options = {}) {
   const { requestTimeout = 2500 } = options
@@ -176,7 +176,7 @@ async function searchCinemetaPosterByTitle(title, year, type, options = {}) {
         const metaYear = String(m.releaseInfo || m.year || '').slice(0, 4)
         if (metaYear !== String(year)) continue // includes the no-year-on-candidate case
       }
-      return { poster: m.poster || null, id: m.id || null, type: searchType }
+      return { poster: m.poster || null, id: m.id || null, type: searchType, name: m.name || null }
     }
     return null
   } catch {
