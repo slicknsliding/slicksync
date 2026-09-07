@@ -14,6 +14,7 @@ import { PageSection } from '@/components/layout/PageContainer';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { api, User, Group, AddonSnapshot, BackupFile, DisasterRecoveryKit } from '@/lib/api';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { toast } from '@/components/ui/Toast';
 import {
   ArrowPathIcon,
@@ -150,6 +151,7 @@ export default function TasksPage() {
   const [selectedHistoryUserId, setSelectedHistoryUserId] = useState('all');
 
   // Fetch users for the library/history export selectors (was never being loaded)
+  useLastKnown<User[]>('/users', (cached) => setUsers(cached));
   useEffect(() => {
     api.getUsers()
       .then(setUsers)
@@ -168,6 +170,9 @@ export default function TasksPage() {
   const hasHandledOpenParam = useRef(false);
   const [snapshots, setSnapshots] = useState<AddonSnapshot[]>([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+  // Instant navigation: last-known templates shown at once while
+  // fetchSnapshots below refreshes them - see useLastKnown's comment.
+  useLastKnown<AddonSnapshot[]>('/snapshots', (cached) => setSnapshots(cached));
   const [isCreateSnapshotOpen, setIsCreateSnapshotOpen] = useState(false);
   const [newSnapshotName, setNewSnapshotName] = useState('');
   const [newSnapshotDescription, setNewSnapshotDescription] = useState('');
@@ -196,6 +201,7 @@ export default function TasksPage() {
   // Off-site backups, database upkeep, and applying updates.
   const [isMaintenanceOpen, setIsMaintenanceOpen] = useState(false);
 
+  useLastKnown<Group[]>('/groups', (cached) => setGroups(cached));
   useEffect(() => {
     api.getGroups().then(setGroups).catch(() => {});
   }, []);
@@ -230,6 +236,7 @@ export default function TasksPage() {
   // trigger and a frequency picker existed.
   const [backups, setBackups] = useState<BackupFile[]>([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
+  useLastKnown<BackupFile[]>('/settings/backups', (cached) => setBackups(cached));
   const [restoringBackup, setRestoringBackup] = useState<string | null>(null);
   const [deletingBackup, setDeletingBackup] = useState<string | null>(null);
 

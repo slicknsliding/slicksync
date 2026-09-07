@@ -16,7 +16,8 @@ import { DroppedShowsPanel } from '@/components/activity/DroppedShowsPanel';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
-import { api, MetricsData, Invitation } from '@/lib/api';
+import { api, MetricsData, Invitation, Group } from '@/lib/api';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { usePersonalFeatures } from '@/lib/hooks/usePersonalFeatures';
@@ -1615,6 +1616,12 @@ function ActivityPageContent() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Instant navigation: last-known feed, invitations and groups shown at
+  // once while fetchData below refreshes them - see useLastKnown's comment.
+  useLastKnown<MetricsData>('/users/metrics?period=all', (cached) => { setMetricsData(cached); setIsLoading(false); });
+  useLastKnown<Invitation[]>('/invitations', (cached) => setInvitations(cached));
+  useLastKnown<Group[]>('/groups', (cached) => setGroups(cached));
   const [error, setError] = useState<Error | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 

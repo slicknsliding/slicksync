@@ -12,6 +12,7 @@ import { NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGla
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
 import { api, Group, User } from '@/lib/api';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import { useIsTV } from '@/lib/hooks/useIsTV';
 import { useLongPress } from '@/lib/hooks/useLongPress';
@@ -73,6 +74,11 @@ export default function GroupsPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Instant navigation: last-known groups and users shown at once while
+  // the fetch below refreshes them - see useLastKnown's comment.
+  useLastKnown<Group[]>('/groups', (cached) => { setGroups(cached); setIsLoading(false); });
+  useLastKnown<User[]>('/users', (cached) => setUsers(cached));
   const [error, setError] = useState<Error | null>(null);
 
   // Multi-select state - NO isSelectMode, just selectedIds

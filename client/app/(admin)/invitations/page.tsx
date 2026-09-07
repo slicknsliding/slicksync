@@ -17,6 +17,7 @@ import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import { api, Invitation, Group } from '@/lib/api';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useDefaultViewMode } from '@/lib/viewMode';
 import {
   PlusIcon,
@@ -82,6 +83,11 @@ export default function InvitationsPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Instant navigation: last-known invitations and groups shown at once
+  // while the fetch below refreshes them - see useLastKnown's comment.
+  useLastKnown<Invitation[]>('/invitations', (cached) => { setInvitations(cached); setIsLoading(false); });
+  useLastKnown<Group[]>('/groups', (cached) => setGroups(cached));
   const [error, setError] = useState<Error | null>(null);
 
   // Multi-select state - NO isSelectMode, just selectedIds

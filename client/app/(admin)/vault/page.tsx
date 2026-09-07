@@ -19,6 +19,7 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { Button, Card, Badge, Modal, Input, FilterTabsResponsive, ToggleSwitch, ContextMenu, useContextMenu } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api, VaultEntry, VaultCategory, VaultTestType } from '@/lib/api';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import {
   PlusIcon,
   ShieldCheckIcon,
@@ -437,6 +438,15 @@ function VaultPageContent() {
   const [total, setTotal] = useState(0);
   const [activeCategory, setActiveCategory] = useState('debrid'); // 'all' tab removed - defaults to first real category
   const [isLoading, setIsLoading] = useState(true);
+
+  // Instant navigation: the last-known entries of the category this page
+  // opens on, shown at once while load() below refreshes them.
+  useLastKnown<{ entries: VaultEntry[]; categories: Record<string, number>; total: number }>('/vault?category=debrid', (cached) => {
+    setEntries(cached.entries);
+    setCategoryCounts(cached.categories);
+    setTotal(cached.total);
+    setIsLoading(false);
+  });
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const [testingId, setTestingId] = useState<string | null>(null);
   const [movingToAddonsId, setMovingToAddonsId] = useState<string | null>(null);
