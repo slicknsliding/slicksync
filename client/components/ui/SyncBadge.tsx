@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
+import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { Badge } from './Badge';
 import { toast } from './Toast';
 
@@ -195,8 +196,24 @@ export function SyncBadge({
     // only needs to catch drift, not be near-real-time. Plain fetchSyncStatus
     // here (no retry) - this is routine background polling, not immediately
     // following a known write, so there's no propagation-lag window to guard.
-    const interval = setInterval(fetchSyncStatus, 120000);
-    return () => clearInterval(interval);
+    // Every two minutes on its own, every five while live updates are
+    // connected (a sync anywhere is pushed the moment it finishes, below),
+    // never while the tab is hidden.
+    const stopPoll = startAdaptivePoll(fetchSyncStatus, 120000, 300000);
+    // A sync finishing anywhere - the scheduler, another admin, a group
+    // edit - refreshes this badge right away. Several can finish within a
+    // second (a group sync is one per member), so the refetch is coalesced.
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const onLiveSync = () => {
+      if (pending) clearTimeout(pending);
+      pending = setTimeout(() => { pending = null; fetchSyncStatus(); }, 800);
+    };
+    window.addEventListener('slicksync:live-sync', onLiveSync);
+    return () => {
+      stopPoll();
+      if (pending) clearTimeout(pending);
+      window.removeEventListener('slicksync:live-sync', onLiveSync);
+    };
   }, [fetchSyncStatusVerified, fetchSyncStatus]);
 
   // When sync completes, refetch the actual status instead of assuming success

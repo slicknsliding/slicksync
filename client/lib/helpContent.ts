@@ -344,8 +344,8 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'command-palette',
     title: 'Using the command palette',
     category: 'Getting started',
-    keywords: ['command palette', 'ctrl k', 'cmd k', 'search everything', 'keyboard shortcut', 'find a setting', 'settings search'],
-    answer: 'Press Ctrl+K (Cmd+K on Mac) anywhere to jump to a page, user, addon, or catalog by typing part of its name - or type a how-to question like this one for a quick answer, no AI setup required. Individual settings are searchable too: type "digest" or "2fa" and picking the result lands on Settings with that exact control scrolled into view and flashed.',
+    keywords: ['command palette', 'ctrl k', 'cmd k', 'search everything', 'keyboard shortcut', 'find a setting', 'settings search', 'find a movie', 'find a show'],
+    answer: 'Press Ctrl+K (Cmd+K on Mac) anywhere to jump to a page, user, addon, or catalog by typing part of its name - or to a movie or series from your household\'s watchlist and history, which opens in Discover with its poster ready - or type a how-to question like this one for a quick answer, no AI setup required. Individual settings are searchable too: type "digest" or "2fa" and picking the result lands on Settings with that exact control scrolled into view and flashed.',
   },
   {
     id: 'onboarding-wizard',
@@ -490,7 +490,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     keywords: ['discover', 'browse', 'search movies', 'genre filter', 'because you watched'],
     answer: 'Discover → browse Popular/New/Top Rated, filter by genre, or search titles and people (actors/directors, with a filmography deep-dive). "Because you watched" / "For You" rows use your own household\'s taste once there\'s enough watch history. The Show: All / Unwatched switch on For You rows hides everything the household has already seen.',
     details: [
-      'The Popular / New / Top Rated lists are the same for everyone and change over hours, not seconds, so they are kept warm in the background and read from memory when you open the page. Searches always go to the source - those are yours, not shared.',
+      'The Popular / New / Top Rated lists are the same for everyone and change over hours, not seconds, so they are kept warm in the background and read from memory when you open the page. Searches go to the source, and recent ones are kept for a few minutes, so the same title asked for twice answers at once. Titles from your own watchlist and history appear the moment you type, before the search even returns.',
       'Hovering a poster with a mouse quietly starts loading its details, so clicking it opens on content instead of a spinner. Nothing is prefetched on touch, where scrolling past a title is not interest and the data would be wasted.',
     ],
     href: '/discover',

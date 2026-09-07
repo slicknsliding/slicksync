@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.85.4",
+    "date": "2026-09-07",
+    "title": "1.85.4 - Reloaded addons reach the accounts, and everything opens at once",
+    "features": [
+      "The command palette now finds movies and series from your household's watchlist and history, shown with their poster; picking one opens it in Discover with the search filled in. Recent title searches are kept for a few minutes, so the same title asked for twice answers immediately.",
+      "Every page opens on its last-known content and refreshes quietly: Activity, Groups, Metrics, Discover, Vault, Invitations, Tasks, a group's page and a catalog's page join the Dashboard, Users, Addons and Catalogs pages that already did.",
+      "Sync status answers from memory for a short while instead of asking the provider for every badge, and a sync finishing anywhere refreshes every badge on screen at once. Badge polling pauses in a hidden tab."
+    ],
+    "bugFixes": [
+      "Reloading an addon did not reach the accounts: sync treated an account with the right set of addons as already synced and skipped the push, so a new version stayed on the group and never on the account. An installed addon whose version or name differs from the group's copy is now pushed, and a reload that changed an addon syncs every group carrying it straight away.",
+      "Removing an addon under a user's Account Addons did nothing: the page sends the addon's address, removal matched only names, and the reply still said removed. It now matches the address exactly and says so when the addon is not on the account.",
+      "SlickTrax posters were refused by browsers on any other origin - Stremio Web, or a Nuvio Collections preview on another instance - leaving blank tiles where the catalog itself had loaded. They are now viewable from anywhere.",
+      "A stream from a release named in another language appeared in Now Playing under that name, next to a second row for the same film from a differently named file. Streams are shown under the title they matched, one row per film, and notifications and automation rules use the same name."
+    ],
+    "miscChores": [
+      "README: a section on what a Stremio account gains over Syncio, and publishing a catalog to another household."
+    ]
+  },
+  {
     "version": "1.85.3",
     "date": "2026-09-06",
     "title": "1.85.3 - Lighter on every device",

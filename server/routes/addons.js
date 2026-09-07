@@ -333,6 +333,7 @@ async function reloadAddon(prisma, getAccountId, addonId, req, { filterManifestB
 
   // Update the addon using the same logic as the update endpoint
   // Note: customLogo is preserved in DB and applied at runtime in sync.js
+  const previousManifestHash = addon.manifestHash || null
   const updatedAddon = await prisma.addon.update({
     where: {
       id: addonId,
@@ -359,6 +360,9 @@ async function reloadAddon(prisma, getAccountId, addonId, req, { filterManifestB
 
   return {
     success: true,
+    // Whether the manifest now stored differs from the one stored before -
+    // what the groups carrying this addon need to know.
+    changed: previousManifestHash !== (updatedAddon.manifestHash || null),
     addon: {
       id: updatedAddon.id,
       name: updatedAddon.name,
@@ -1336,6 +1340,27 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
   });
 
   // Reload addon manifest and update content
+  // A reload that changed an addon is followed by a sync of every group
+  // carrying it, so the accounts get the new manifest now rather than at
+  // the next scheduled pass. Runs after the reply, one sync per group,
+  // best-effort: a group that fails to sync is logged, the others still
+  // run, and the reload itself already succeeded.
+  async function syncGroupsCarrying(addonIds, req) {
+    try {
+      const rows = await prisma.groupAddon.findMany({ where: { addonId: { in: addonIds } }, select: { groupId: true } })
+      const groupIds = [...new Set(rows.map((r) => r.groupId))]
+      if (groupIds.length === 0) return
+      const { syncGroupUsers } = require('./groups')
+      if (typeof syncGroupUsers !== 'function') return
+      for (const groupId of groupIds) {
+        try { await syncGroupUsers(prisma, getAccountId, scopedWhere, decrypt, groupId, req) }
+        catch (e) { console.warn(`Post-reload sync of group ${groupId} failed:`, e?.message) }
+      }
+    } catch (e) {
+      console.warn('Post-reload group sync skipped:', e?.message)
+    }
+  }
+
   router.post('/:id/reload', async (req, res) => {
     try {
       const { id } = req.params;
@@ -1352,9 +1377,11 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       }, autoSelectNewElements);
 
       res.json({
-        message: 'Addon reloaded successfully',
+        message: result?.changed ? 'Addon reloaded - its groups are syncing' : 'Addon reloaded successfully',
+        changed: !!result?.changed,
         addon: result.addon
       });
+      if (result?.changed) syncGroupsCarrying([id], req);
     } catch (error) {
       console.error('Error reloading addon:', error);
 
@@ -2402,10 +2429,11 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
 
       let reloadedCount = 0;
       let failedCount = 0;
+      const changedIds = [];
 
       for (const addon of addons) {
         try {
-          await reloadAddon(prisma, getAccountId, addon.id, req, {
+          const result = await reloadAddon(prisma, getAccountId, addon.id, req, {
             filterManifestByResources,
             filterManifestByCatalogs,
             encrypt,
@@ -2414,6 +2442,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
             manifestHash,
             silent: true
           });
+          if (result?.changed) changedIds.push(addon.id);
           reloadedCount++;
         } catch (error) {
           console.error(`Failed to reload addon ${addon.id}:`, error);
@@ -2421,6 +2450,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
         }
       }
 
+      if (changedIds.length > 0) syncGroupsCarrying(changedIds, req);
       res.json({
         message: `Reloaded ${reloadedCount} addons successfully, ${failedCount} failed`,
         reloaded: reloadedCount,

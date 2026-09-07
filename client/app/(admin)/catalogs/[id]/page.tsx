@@ -19,6 +19,7 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui/Toast';
 import { api, CustomList, CustomListItem, CatalogSuggestion, RatingsBatchEntry, SmartCatalogRule } from '@/lib/api';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { encodeCatalogShareCode } from '@/lib/shareCodes';
 import { ShareCodeDialog } from '@/components/ui/ShareCodeDialog';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
@@ -226,6 +227,16 @@ export default function ListDetailPage() {
   useEffect(() => { listRef.current = list; }, [list]);
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+
+  // Instant navigation: this catalog as it was last seen in the catalog
+  // list, shown at once while load() below refreshes it. A catalog that is
+  // no longer in the cached list simply waits for the fetch, as before.
+  useLastKnown<CustomList[]>('/lists', (cached) => {
+    const found = cached.find((l) => l.id === listId);
+    if (!found) return;
+    setList(found);
+    setIsLoading(false);
+  });
   const [detail, setDetail] = useState<CustomListItem | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');

@@ -146,6 +146,15 @@ module.exports = ({ prisma }) => {
   router.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Headers', '*')
+    // The security middleware stamps every response with
+    // Cross-Origin-Resource-Policy: same-origin, which tells a browser to
+    // refuse the bytes when the page asking is on another origin - the
+    // right default for the dashboard, and exactly wrong here: posters at
+    // /<token>/img are shown by Stremio Web, by a Nuvio Collections preview
+    // on another SlickSync instance, by anything on any origin. Those
+    // <img> loads were being blocked at the browser with the image already
+    // downloaded, a blank tile where the catalog itself had loaded fine.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
     res.setHeader('Cache-Control', `public, max-age=${CACHE_SECONDS}`)
     next()
   })

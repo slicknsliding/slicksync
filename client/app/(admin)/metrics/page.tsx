@@ -10,6 +10,7 @@ import { TVPageProvider } from '@/components/tv/TVPageProvider';
 import { Card, StatCard, Badge, Button, UserAvatar, PageToolbar, YearInReviewCard } from '@/components/ui';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { api, MetricsData, AtRiskUser, TasteOverlapPair, TasteProfile, HealthStatus } from '@/lib/api';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import {
   UserLifecycleCard,
   HourlyHeatmap,
@@ -333,6 +334,12 @@ export default function MetricsPage() {
   const [tasteProfiles, setTasteProfiles] = useState<TasteProfile[]>([]);
   const [healthData, setHealthData] = useState<HealthStatus | null>(null);
   const [healthLoading, setHealthLoading] = useState(true);
+
+  // Instant navigation: the last-known metrics for the period this page
+  // opens on, and the last health report, shown at once while the fetches
+  // below refresh them - see useLastKnown's comment.
+  useLastKnown<MetricsData>(`/users/metrics?period=${period}`, (cached) => { setMetricsData(cached); setIsLoading(false); });
+  useLastKnown<HealthStatus>('/health', (cached) => { setHealthData(cached); setHealthLoading(false); });
   const [healthRefreshing, setHealthRefreshing] = useState(false);
 
   const loadHealth = useCallback((silent = false) => {

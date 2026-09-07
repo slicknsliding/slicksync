@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, User, Group, Addon } from '@/lib/api';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { formatLastSync } from '@/lib/relativeTime';
 import { Header, Breadcrumbs } from '@/components/layout/Header';
 import { NebulaPageHeading } from '@/components/layout/NebulaTopbar';
@@ -394,6 +395,23 @@ export default function GroupDetailPage() {
   const [addons, setAddons] = useState<Addon[]>([]);
   const [allAddons, setAllAddons] = useState<Addon[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Instant navigation: the group and its members as last seen, shown at
+  // once while fetchData below refreshes everything - see useLastKnown's
+  // comment. Membership is derived here the same way fetchData derives it.
+  useLastKnown<Group>(`/groups/${params.id}`, (cached) => setGroup(cached as Group & { color?: string; colorIndex?: number }));
+  useLastKnown<User[]>('/users', (cached) => {
+    setUsers(cached);
+    const cachedGroup = api.peekGet<Group>(`/groups/${params.id}`);
+    if (!cachedGroup) return;
+    let ids: string[] = [];
+    try {
+      const raw = (cachedGroup as { userIds?: string | string[] }).userIds;
+      ids = typeof raw === 'string' ? JSON.parse(raw) : Array.isArray(raw) ? raw : [];
+    } catch { ids = []; }
+    setGroupUsers(cached.filter((u) => ids.includes(u.id)));
+    setIsLoading(false);
+  });
   const [error, setError] = useState<Error | null>(null);
 
   // Watch time data state

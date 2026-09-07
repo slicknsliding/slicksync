@@ -7,6 +7,7 @@ import { NebulaPageHeading, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStr
 import { useLayoutMode } from '@/lib/layout-mode';
 import { PageToolbar, MediaDetailModal, PageToolbarProps, Badge, PosterCard, PosterCardItem, VirtualPosterGrid, DropdownSelect } from '@/components/ui';
 import { api, DiscoverItem, RecommendationRow, User, SimklDiscoverItem, SeasonalAnime } from '@/lib/api';
+import { useLastKnown } from '@/lib/hooks/useLastKnown';
 import { useRatingsBatch } from '@/lib/hooks/useRatingsBatch';
 import { useWatchlistState } from '@/lib/hooks/useWatchlistState';
 import { useWatchedStatusBatch } from '@/lib/hooks/useWatchedStatusBatch';
@@ -86,6 +87,15 @@ export default function DiscoverPage() {
   // avoiding its Suspense requirement).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // From the command palette: a title picked there lands here with the
+    // search box filled and the matching type selected.
+    const q = params.get('q');
+    if (q) {
+      const t = params.get('t');
+      if (t === 'movie' || t === 'series') setType(t);
+      setSearchQuery(q);
+      return;
+    }
     const shared = [params.get('st_title'), params.get('st_text'), params.get('st_url')]
       .filter(Boolean).join(' ').trim();
     if (!shared) return;
@@ -116,6 +126,18 @@ export default function DiscoverPage() {
   // documented occurrence) and duplicate ids would collide as React keys.
   const seenIdsRef = useRef<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
+
+  // Instant navigation: the last-known Popular grid shown at once while the
+  // first fetch below refreshes it - see useLastKnown's comment. Not when
+  // the page was opened with a search already in the address (the command
+  // palette, the share target): the search is what should appear first.
+  useLastKnown<DiscoverItem[]>('/discover/browse?type=movie&catalog=top', (cached) => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('q') || params.has('st_title') || params.has('st_text') || params.has('st_url')) return;
+    setItems(cached);
+    seenIdsRef.current = new Set(cached.map((r) => r.id));
+    setIsLoading(false);
+  });
   // Narrowed to PosterCardItem, not the full DiscoverItem - this is the only
   // shape MediaDetailModal's fallback* props below actually read, and it's
   // also what PosterCard's onOpenDetails hands back (see its own comment on

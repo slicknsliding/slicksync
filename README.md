@@ -149,6 +149,7 @@ Everything under *Everything else* applies to Stremio accounts as much as to Nuv
 - **Smart Catalogs** — give a catalog criteria instead of a fixed list and it re-evaluates itself.
 - **Content Rating allowlist** turns a catalog into an enforced, genuinely kid-safe list.
 - **Auto-refresh** keeps a URL-sourced catalog following its source; **export** to MDBList, SIMKL or a share code.
+- **Publish to another household** — a published catalog gets a link; pasted into another SlickSync's Import, it arrives as a normal catalog that plays through *their* addons and debrid. Only titles travel — no credentials, addons, users or watch history — and if they turn on Auto-refresh it keeps following yours. Unpublishing stops future pulls without reaching into what they already have.
 </details>
 
 <details>

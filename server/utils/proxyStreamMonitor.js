@@ -32,6 +32,7 @@ const { searchCinemetaPosterByTitle } = require('./libraryHelpers')
 const { sendSessionStartNotification } = require('./sessionTracker')
 const { notifyPushForType } = require('./pushNotifications')
 
+const { proxyDisplayTitle } = require('./proxyTitle')
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
 // Overlap guard. pollOnce is async and this runs on a fixed 30s timer, so
@@ -346,6 +347,7 @@ async function attemptPosterLookup(prisma, rowId, displayName) {
         posterUrl: result?.poster ?? null,
         metadataItemId: result?.id ?? null,
         metadataItemType: result?.type ?? null,
+        metadataName: result?.name ?? null,
         metadataMatchedAt: new Date(),
       },
     })
@@ -380,6 +382,10 @@ async function retryMissingPosters(prisma, accountId) {
           metadataMatchedAt: { lt: new Date(Date.now() - 6 * 60 * 60 * 1000) },
           createdAt: { gt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
         },
+        // Matched before the name was recorded alongside the id (an older
+        // build): a still-playing stream gets its proper title now rather
+        // than at its next start.
+        { isActive: true, metadataItemId: { not: null }, metadataName: null },
       ],
     },
     select: { id: true, displayName: true },
@@ -462,8 +468,10 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
 
     const fresh = await prisma.proxyStreamSession.findUnique({
       where: { id: rowId },
-      select: { posterUrl: true, metadataItemId: true, metadataItemType: true, startTime: true },
+      select: { posterUrl: true, metadataItemId: true, metadataItemType: true, metadataName: true, startTime: true },
     })
+    // The matched title's own name where there is one - see proxyTitle.js.
+    const shownName = proxyDisplayTitle({ ...(fresh || {}), displayName }) || displayName
     // A user's own personal webhook (set in their self-service Settings)
     // takes over from the shared account webhook for their own activity —
     // lets each household member route their own pings to their own
@@ -471,7 +479,7 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
     const targetWebhookUrl = user.discordWebhookUrl || webhookUrl
     if (targetWebhookUrl) {
       await sendSessionStartNotification(targetWebhookUrl, {
-        itemName: displayName,
+        itemName: shownName,
         itemType: fresh?.metadataItemType === 'series' ? 'series' : 'movie',
         itemId: fresh?.metadataItemId || null,
         videoId: null,
@@ -491,7 +499,7 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
       await emitAutomationEvent(prisma, accountId, 'watch.started', {
         username: user.username || '',
         userId: user.id,
-        itemName: displayName,
+        itemName: shownName,
         itemId: fresh?.metadataItemId || '',
         contentType: fresh?.metadataItemType === 'series' ? 'series' : 'movie',
       })

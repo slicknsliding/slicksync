@@ -30,6 +30,11 @@ function emitLive(accountId, type) {
   if (type === 'nowplaying') {
     try { require('./continueWatching').invalidateContinueWatching(accountId) } catch { /* optional */ }
   }
+  // A sync finishing, or a change to what a user should have, is exactly
+  // what changes a sync status.
+  if (type === 'sync') {
+    try { require('./sync').invalidateSyncStatus(accountId) } catch { /* optional */ }
+  }
   try {
     bus.emit('live', { accountId: accountId || 'default', type })
   } catch { /* a listener throwing must never break the caller */ }

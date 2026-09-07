@@ -8,10 +8,13 @@ import {
   PuzzlePieceIcon, ShieldCheckIcon, EnvelopeIcon, QueueListIcon, Cog6ToothIcon, SwatchIcon,
   DocumentTextIcon, RectangleStackIcon, SparklesIcon, ArrowUpRightIcon,
   LifebuoyIcon, BookOpenIcon,
+  FilmIcon,
+  TvIcon,
 } from '@heroicons/react/24/outline';
 import { api } from '@/lib/api';
 import { searchHelp, HelpEntry } from '@/lib/helpContent';
 import { searchSettings } from '@/lib/settingsIndex';
+import { cachedImageUrl } from '@/lib/posterUrl';
 
 // Global Ctrl+K/Cmd+K command palette - the trigger key shown adapts to the
 // OS (Mac gets the Cmd glyph, everyone else gets Ctrl), same convention
@@ -66,7 +69,9 @@ interface Result {
   label: string;
   sublabel?: string;
   href: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  /** A title result shows its poster in place of the icon. */
+  poster?: string | null;
 }
 
 export function CommandPalette() {
@@ -86,15 +91,27 @@ export function CommandPalette() {
     if (entities || loadingEntities) return;
     setLoadingEntities(true);
     try {
-      const [users, addons, lists] = await Promise.all([
+      const [users, addons, lists, titles] = await Promise.all([
         api.getUsers().catch(() => []),
         api.getAddons().catch(() => []),
         api.getLists().catch(() => []),
+        // The household's own titles (watchlist + recently watched) - the
+        // same index Discover matches against as you type, so a film you
+        // have here is one keystroke away from anywhere.
+        api.getLocalIndex().catch(() => ({ items: [] })),
       ]);
       const results: Result[] = [
         ...users.map((u) => ({ id: `user-${u.id}`, label: u.username, sublabel: 'User', href: `/users/${u.id}`, icon: UsersIcon })),
         ...addons.map((a) => ({ id: `addon-${a.id}`, label: a.name, sublabel: 'Addon', href: `/addons/${a.id}`, icon: PuzzlePieceIcon })),
         ...lists.map((l) => ({ id: `list-${l.id}`, label: l.name, sublabel: 'Catalog', href: `/catalogs/${l.id}`, icon: RectangleStackIcon })),
+        ...(titles.items || []).map((t) => ({
+          id: `title-${t.id}`,
+          label: t.name,
+          sublabel: t.type === 'series' ? 'Series' : 'Movie',
+          href: `/discover?q=${encodeURIComponent(t.name)}&t=${t.type}`,
+          icon: t.type === 'series' ? TvIcon : FilmIcon,
+          poster: t.poster ? cachedImageUrl(t.poster, 64) : null,
+        })),
       ];
       setEntities(results);
     } finally {
@@ -156,7 +173,7 @@ export function CommandPalette() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return navResults.slice(0, 8);
-    const pool = [
+    const pool: Result[] = [
       ...NAV_ITEMS.filter((n) => n.label.toLowerCase().includes(q) || n.keywords.includes(q))
         .map((n) => ({ id: `nav-${n.href}`, label: n.label, href: n.href, icon: n.icon, sublabel: undefined })),
       // Individual settings, between pages and entities: page names are
@@ -323,7 +340,11 @@ export function CommandPalette() {
                             className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors"
                             style={{ background: i === activeIndex ? 'var(--color-surface-hover)' : 'transparent' }}
                           >
-                            <Icon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
+                            {r.poster ? (
+                              <img src={r.poster} alt="" className="w-5 h-7 rounded-sm object-cover shrink-0" loading="lazy" decoding="async" />
+                            ) : (
+                              <Icon className="w-4 h-4 shrink-0" style={{ color: 'var(--color-text-muted)' }} />
+                            )}
                             <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>{r.label}</span>
                             {r.sublabel && <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{r.sublabel}</span>}
                             <ArrowUpRightIcon className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--color-text-muted)', opacity: i === activeIndex ? 1 : 0 }} />

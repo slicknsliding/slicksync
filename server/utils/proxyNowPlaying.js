@@ -29,6 +29,7 @@
 // native session lingers as "active" after the provider's final checkpoint.
 // Kept at the same ~5min margin above that window as before (was 20 vs 15).
 const RECENTLY_CLOSED_MS = 23 * 60 * 1000
+const { proxyDisplayTitle } = require('./proxyTitle')
 
 // AIOStreams only bumps a connection's `lastSeen` when a new byte-range
 // request actually comes in - it does NOT expire/close the connection just
@@ -243,9 +244,13 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   // real viewing session could get disambiguated to two DIFFERENT
   // profiles independently, showing as a split/duplicate entry. Grouping
   // ensures every row for one title gets the same single attribution.
+  // Rows that matched the same real title are one group whatever their
+  // filenames said - a viewer who switched from one release of a film to
+  // another mid-way, an Italian-named release next to an English one, is
+  // one person watching one thing.
   const groupedByTitle = new Map()
   for (const proxy of proxySessions) {
-    const key = normalizeTitle(proxy.displayName) || proxy.url
+    const key = proxy.metadataItemId || normalizeTitle(proxyDisplayTitle(proxy)) || proxy.url
     if (!groupedByTitle.has(key)) groupedByTitle.set(key, [])
     groupedByTitle.get(key).push(proxy)
   }
@@ -304,7 +309,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
 
     if (candidates.length === 0) continue // no direct match and no usable fallback - skip rather than guess
 
-    const { user, confident } = disambiguateMatch(candidates, representative.displayName, representative.clientIp, candidatesAreRealMatch)
+    const { user, confident } = disambiguateMatch(candidates, proxyDisplayTitle(representative), representative.clientIp, candidatesAreRealMatch)
     if (!user) continue
 
     // Learn from this resolution for next time - only when it's real
@@ -329,6 +334,8 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     }
 
     if (!coveredTitlesByUser.has(user.id)) coveredTitlesByUser.set(user.id, new Set())
+    // Both names cover: the native pipeline knows the title by its real name.
+    coveredTitlesByUser.get(user.id).add(normalizeTitle(proxyDisplayTitle(representative)))
     coveredTitlesByUser.get(user.id).add(normalizeTitle(representative.displayName))
     const existing = watchSessionByUserId.get(user.id)
     // Only borrow the existing WatchSession's item/videoId if it's actually
@@ -337,8 +344,9 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     // still-active session) must not be shown as if it were the proxied
     // content. User identity (avatar/username/email) is unaffected by this
     // check - that's about the person, not the content.
-    const existingTitleMatches = existing &&
-      titlesMatch(normalizeTitle(existing.item?.name), normalizeTitle(representative.displayName))
+    const existingTitleMatches = existing && (
+      titlesMatch(normalizeTitle(existing.item?.name), normalizeTitle(proxyDisplayTitle(representative))) ||
+      titlesMatch(normalizeTitle(existing.item?.name), normalizeTitle(representative.displayName)))
 
     result.push({
       user: existing?.user ?? {
@@ -350,10 +358,11 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
         useGravatar: user.useGravatar ?? false,
       },
       item: existingTitleMatches ? existing.item : {
-        id: null,
-        name: representative.displayName || representative.filename || 'Unknown',
-        type: null,
-        year: null,
+        // The matched title's id, type and name where the lookup found one.
+        id: representative.metadataItemId || null,
+        name: proxyDisplayTitle(representative) || 'Unknown',
+        type: representative.metadataItemType || null,
+        year: ((representative.displayName || '').match(/\((\d{4})\)\s*$/) || [])[1] || null,
         poster: representative.posterUrl || null,
         season: null,
         episode: null,
@@ -451,6 +460,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
     for (const candidate of candidates) {
       if (!recentlyClosedTitlesByUser.has(candidate.id)) recentlyClosedTitlesByUser.set(candidate.id, new Set())
       recentlyClosedTitlesByUser.get(candidate.id).add(normalizeTitle(closed.displayName))
+      recentlyClosedTitlesByUser.get(candidate.id).add(normalizeTitle(proxyDisplayTitle(closed)))
     }
   }
 

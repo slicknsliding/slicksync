@@ -22,11 +22,17 @@ const FETCH_TIMEOUT_MS = 5000
 // "Popular" actually moves, and a warm entry turns the first paint into a
 // local read.
 //
-// Search is deliberately NOT cached: those keys are unbounded (one per
-// query anyone ever types) and a search is typed once and read once.
+// Searches are kept too, in their own bounded store. A query is typed once
+// but read several times - the pause after each keystroke, the back button,
+// two people in one household looking for the same film - and the source's
+// answer for a title does not change within a few minutes. The store holds
+// the most recent few hundred queries and drops the oldest, so what anyone
+// ever typed can never grow it.
 const CATALOG_TTL_MS = 10 * 60 * 1000
 const catalogCache = new Map()
 const MAX_CATALOG_ENTRIES = 120
+const searchCache = new Map()
+const MAX_SEARCH_ENTRIES = 300
 
 function cacheKey(type, catalog, extraParts) {
   return `${type}|${catalog}|${extraParts.join('&')}`
@@ -87,16 +93,32 @@ async function fetchCatalog(type, { catalog = 'top', genre, skip, search } = {})
   if (genre) extraParts.push(`genre=${encodeURIComponent(genre)}`)
   if (skip) extraParts.push(`skip=${encodeURIComponent(skip)}`)
 
-  // Search results are read straight from the source; everything else is a
-  // shared, slow-moving list worth keeping for a few minutes.
-  const key = search ? null : cacheKey(type, catalog, extraParts)
-  if (key) {
-    const hit = readCache(key)
-    if (hit) return hit
+  if (search) {
+    const skey = cacheKey(type, catalog, extraParts)
+    const hit = searchCache.get(skey)
+    if (hit && Date.now() - hit.at <= CATALOG_TTL_MS) {
+      // Re-inserting keeps the store ordered oldest-first for the trim below.
+      searchCache.delete(skey)
+      searchCache.set(skey, hit)
+      return hit.items
+    }
+    const items = await fetchCatalogRaw(type, catalog, extraParts)
+    // Never an empty answer: an upstream blip must not pin "no results".
+    if (items.length > 0) {
+      searchCache.set(skey, { at: Date.now(), items })
+      while (searchCache.size > MAX_SEARCH_ENTRIES) searchCache.delete(searchCache.keys().next().value)
+    }
+    return items
   }
 
+  // Everything else is a shared, slow-moving list worth keeping for a few
+  // minutes.
+  const key = cacheKey(type, catalog, extraParts)
+  const hit = readCache(key)
+  if (hit) return hit
+
   const primary = await fetchCatalogRaw(type, catalog, extraParts)
-  if (key && primary.length > 0) writeCache(key, primary)
+  if (primary.length > 0) writeCache(key, primary)
 
   // Cinemeta's manifest lists genre extras for every catalog but a couple
   // of specific combos always return empty. Confirmed by probing:
