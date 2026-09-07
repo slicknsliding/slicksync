@@ -992,10 +992,11 @@ export default function UserDetailPage() {
   }, [params.id, protectedAddonNames]);
 
   // Handle removing Stremio addon
-  const handleRemoveStremioAddon = useCallback(async (addonName: string) => {
+  // Called with the addon's address (exact) from the Account Addons list.
+  const handleRemoveStremioAddon = useCallback(async (addonRef: string) => {
     try {
-      await api.removeUserStremioAddon(params.id as string, addonName);
-      setStremioAddons(prev => prev.filter(a => a.manifest?.name !== addonName));
+      await api.removeUserStremioAddon(params.id as string, addonRef);
+      setStremioAddons(prev => prev.filter(a => a.transportUrl !== addonRef && a.manifest?.name !== addonRef));
       toast.success('Addon removed from account');
     } catch (err: any) {
       toast.error(err.message || 'Failed to remove addon');

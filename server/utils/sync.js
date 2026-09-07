@@ -595,8 +595,36 @@ async function computeUserSyncPlan(user, req, { prisma, getAccountId, decrypt, p
   // alreadySynced verdict can disagree with the badge's.
   const sortedA = [...aKeys].sort()
   const sortedB = [...bKeys].sort()
-  const alreadySynced = sortedA.length === sortedB.length && sortedA.every((k, i) => k === sortedB[i])
-  return { success: true, alreadySynced, current, desired }
+  const sameSet = sortedA.length === sortedB.length && sortedA.every((k, i) => k === sortedB[i])
+  // The same set of addons can still be behind: a Stremio account keeps a
+  // copy of each manifest, so after Reload picked up a new version (or an
+  // addon was renamed here) the account holds the old one until it is
+  // pushed again. Deciding "already synced" on the set alone skipped that
+  // push forever - a resync did nothing and the version stayed old.
+  const staleManifests = urlOnly ? [] : staleManifestKeys(current, safeDesired, fingerprint)
+  const alreadySynced = sameSet && staleManifests.length === 0
+  return { success: true, alreadySynced, current, desired, staleManifests }
+}
+
+// Fingerprints of desired addons whose installed copy differs in version or
+// name from what the group holds. Only these two fields: they are exactly
+// what a reload or a rename changes, and the provider hands them back as
+// given, so nothing here can flip on its own between two syncs.
+function staleManifestKeys(current, desired, fingerprint) {
+  const installed = new Map()
+  for (const a of current || []) installed.set(fingerprint(a), a)
+  const stale = []
+  for (const d of desired || []) {
+    const key = fingerprint(d)
+    const c = installed.get(key)
+    if (!c) continue
+    const wantVersion = String(d?.manifest?.version ?? '')
+    const haveVersion = String(c?.manifest?.version ?? '')
+    const wantName = String(d?.manifest?.name ?? '')
+    const haveName = String(c?.manifest?.name ?? '')
+    if ((wantVersion && wantVersion !== haveVersion) || (wantName && wantName !== haveName)) stale.push(key)
+  }
+  return stale
 }
 
 // Build a stable fingerprint (identity) for an addon entry, used to compare
@@ -651,6 +679,7 @@ function createManifestFingerprint(canonicalizeManifestUrl, { urlOnly = false } 
 
 module.exports = {
   invalidateSyncStatus,
+  staleManifestKeys,
   appendTraxAddon,
   getUserAddons,
   getDesiredAddons,

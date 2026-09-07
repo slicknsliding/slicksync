@@ -5838,17 +5838,42 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         ? currentAddonsRaw
         : (currentAddonsRaw && typeof currentAddonsRaw === 'object' ? Object.values(currentAddonsRaw) : [])
 
-      // Filter out the target addon by matching name (normalized)
+      // The page identifies an account addon by its address, which is
+      // exact; a name is accepted too (the clear-all path sends names).
+      // Matching only the stored manifest's name was why removal silently
+      // did nothing for an addon known here under a custom name, or when
+      // the address arrived instead of a name - the filter matched nothing,
+      // the account was rewritten unchanged, and the reply still said
+      // "removed".
+      const { canonicalizeManifestUrl: canonicalUrl } = require('../utils/validation')
+      const looksLikeUrl = /^https?:\/\//i.test(String(addonName || ''))
+      const canon = (u) => { try { return canonicalUrl(u) } catch { return String(u || '').trim().toLowerCase() } }
+      const targetUrl = looksLikeUrl ? canon(addonName) : null
+      const matchesTarget = (a) => {
+        if (targetUrl) return canon(a?.transportUrl || a?.manifestUrl || a?.url || '') === targetUrl
+        return [a?.manifest?.name, a?.transportName, a?.name].some((n) => n && normalizeName(n) === targetNameNormalized)
+      }
+      const targets = currentAddons.filter(matchesTarget)
+      if (targets.length === 0) {
+        return res.status(404).json({ message: 'That addon is not on the account' })
+      }
+      // An addon addressed by URL still gets the protected-name check.
+      if (targetUrl) {
+        const protectedHit = targets.some((a) => {
+          const n = normalizeName(a?.manifest?.name || a?.transportName || a?.name)
+          return n && allProtectedNameSet.has(n) && (unsafe !== 'true' || userProtectedNameSet.has(n))
+        })
+        if (protectedHit) return res.status(403).json({ message: 'This addon is protected and cannot be deleted' })
+      }
+
       let filteredAddons = currentAddons
       try {
-        filteredAddons = currentAddons.filter((a) => {
-          const addonName = a?.manifest?.name || a?.transportName || a?.name || ''
-          return normalizeName(addonName) !== targetNameNormalized
-        })
+        filteredAddons = currentAddons.filter((a) => !matchesTarget(a))
 
         // Set the filtered addons using the proper format
         await provider.setAddons(filteredAddons)
         await require('../utils/accountGuard').recordAssertedState(prisma, id, user.providerType, filteredAddons)
+        try { require('../utils/liveEvents').emitLive(getAccountId(req), 'sync') } catch { /* optional */ }
       } catch (e) {
         console.error(`❌ Failed to remove addon:`, e.message)
         throw e
