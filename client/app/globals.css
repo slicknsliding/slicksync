@@ -1113,6 +1113,15 @@ body {
    honest before a row has been rendered once. Only applied to boxes whose
    contents are already clipped to them - containment also clips, and would
    cut off a popover or menu that escapes its card. */
+/* A card that repaints in full whenever the page does - the dashboard's
+   chart is an SVG, and SVG repaints are slow on phones - gets its own
+   compositor layer and paint containment, so a repaint of the page around
+   it (a modal closing, say) reuses the layer instead of redrawing it. */
+.paint-isolated {
+  contain: paint;
+  will-change: transform;
+}
+
 .cv-row {
   content-visibility: auto;
   contain-intrinsic-size: auto 104px;

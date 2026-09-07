@@ -871,7 +871,7 @@ export default function DashboardPage() {
                   onPointerMove={handleRowPointerMove}
                   onPointerUp={handleRowPointerUp}
                   onPointerLeave={handleRowPointerUp}
-                  className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar"
+                  className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated"
                 >
                   {continueWatching.map((item) => {
                     const card = (
@@ -1198,7 +1198,7 @@ export default function DashboardPage() {
                 onPointerMove={handleRowPointerMove}
                 onPointerUp={handleRowPointerUp}
                 onPointerLeave={handleRowPointerUp}
-                className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar"
+                className="flex gap-3 overflow-x-auto pb-1 cursor-grab active:cursor-grabbing no-scrollbar paint-isolated"
               >
                 {continueWatching.map((item) => (
                   <ContinueWatchingCard
@@ -1238,7 +1238,7 @@ export default function DashboardPage() {
                   Last 24h
                 </Badge>
               </div>
-              <div className="h-[calc(100%-80px)]">
+              <div className="h-[calc(100%-80px)] paint-isolated">
                 <SyncActivityChart data={syncStatusData} />
               </div>
             </Card>

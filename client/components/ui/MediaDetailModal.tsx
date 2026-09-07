@@ -889,7 +889,7 @@ export function MediaDetailModal({
   }, [onClose]);
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size="full" hideCloseButton={isTrailerPlaying} backdropImage={!isTrailerPlaying ? (heroImage || undefined) : undefined}>
+    <Modal isOpen={isOpen} onClose={handleClose} size="full" lightweight hideCloseButton={isTrailerPlaying} backdropImage={!isTrailerPlaying ? (heroImage || undefined) : undefined}>
       <TVScope {...(tvScopeProps as any)}>
       <div className="-mx-6 -mt-6" ref={isTV ? modalRef : undefined}>
         {isTrailerPlaying && trailerId && trailerSrc ? (
