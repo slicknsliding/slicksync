@@ -163,7 +163,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
         }
 
         // Otherwise perform sync (reload already handled above if advanced)
-        const result = await syncUserAddons(prisma, uid, [], unsafeMode, req, decrypt, getAccountId, useCustomFields)
+        // The force reaches the push itself - see syncCredentialsAddons.
+        const result = await syncUserAddons(prisma, uid, [], unsafeMode, req, decrypt, getAccountId, useCustomFields, { force: forcePush })
         if (result?.success) {
           synced++
           console.log('✅ User now synced')

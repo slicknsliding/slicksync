@@ -7689,7 +7689,7 @@ async function reloadGroupAddons(prisma, getAccountId, groupId, req, decrypt) {
 // without re-fetching/re-validating the User row itself - `credentials` is
 // already shaped exactly like the fields syncUserAddons used to select
 // directly off `user`.
-async function syncCredentialsAddons(prismaClient, credentials, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields) {
+async function syncCredentialsAddons(prismaClient, credentials, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options = {}) {
   const hasCredentials = credentials.stremioAuthKey || (credentials.nuvioRefreshToken && credentials.nuvioUserId)
   if (!hasCredentials) return { success: false, error: 'User is not connected to a provider' }
 
@@ -7760,7 +7760,12 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
       console.log(`🎯 Desired addons (${desiredNames.length}):`, desiredNames.join(', '))
     } catch { }
 
-    if (plan.alreadySynced) {
+    // `force` pushes even when the set already matches. The comparison is
+    // order-insensitive on purpose (a person's own reorder inside their app
+    // must not be undone by every scheduled sync), so a reorder made HERE,
+    // at the group, looked like a no-op and was skipped - the group-level
+    // caller asked to force it, but the request never reached this far.
+    if (plan.alreadySynced && !options.force) {
       console.log(`✅ User already synced`)
       // Account Guard: already-synced still CONFIRMS the account state, so
       // refresh the asserted baseline (and clear any stale alarm).
@@ -7816,7 +7821,7 @@ async function syncUserAddons(...args) {
   }
 }
 
-async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [], unsafeMode = false, req, decrypt, getAccountIdParam, useCustomFields = true) {
+async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [], unsafeMode = false, req, decrypt, getAccountIdParam, useCustomFields = true, options = {}) {
   try {
     // Ensure req has appAccountId for account scoping
     if (!req.appAccountId) {
@@ -7853,7 +7858,7 @@ async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [
     if (!user) return { success: false, error: 'User not found' }
     if (!user.isActive) return { success: false, error: 'User is disabled' }
 
-    const result = await syncCredentialsAddons(prismaClient, user, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields)
+    const result = await syncCredentialsAddons(prismaClient, user, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options)
 
     // Merged users (see server/utils/userMerge.js) absorb a second provider's
     // credentials into a UserProviderCredential row rather than a second
@@ -7896,7 +7901,7 @@ async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [
                 })
               }
             : undefined,
-        }, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields)
+        }, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options)
         if (secondaryResult.success) {
           console.log(`✅ Secondary provider (${secondaryCredential.providerType}) also synced for ${userName}`)
         } else {

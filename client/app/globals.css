@@ -1037,9 +1037,28 @@ body {
    deliberately covers both the Tailwind backdrop-blur-* utility classes
    and every inline usage in one rule instead of hunting down each of the
    two dozen call sites individually. */
+/* Only the unprefixed property is written here and in the touch rule
+   below, on purpose. The production minifier collapses a prefixed and
+   unprefixed backdrop-filter pair into the prefixed line alone, and
+   Chromium has never understood -webkit-backdrop-filter - so the pair
+   used to reach browsers as the -webkit- line only, which WebKit honours
+   (it aliases the two) and Chromium ignores. From the unprefixed line
+   alone the minifier emits both forms itself. */
 :root[data-standalone="true"] * {
   backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+}
+
+/* The same for every device without a hover-capable pointer - a phone or
+   tablet in a normal browser tab, not just the Home Screen app. A backdrop
+   blur is re-sampled on every frame that anything behind it changes: the
+   nav bar, the watched and watchlist badges on every poster and the
+   Activity duration badges all did so on every frame of a modal's overlay
+   fade. The elements keep their own tinted backgrounds, so this reads the
+   same way it already does in the installed app. */
+@media (hover: none) {
+  * {
+    backdrop-filter: none !important;
+  }
 }
 
 /* Always reserve the scrollbar gutter. Without this, the vertical scrollbar
@@ -1094,6 +1113,15 @@ body {
    honest before a row has been rendered once. Only applied to boxes whose
    contents are already clipped to them - containment also clips, and would
    cut off a popover or menu that escapes its card. */
+/* A card that repaints in full whenever the page does - the dashboard's
+   chart is an SVG, and SVG repaints are slow on phones - gets its own
+   compositor layer and paint containment, so a repaint of the page around
+   it (a modal closing, say) reuses the layer instead of redrawing it. */
+.paint-isolated {
+  contain: paint;
+  will-change: transform;
+}
+
 .cv-row {
   content-visibility: auto;
   contain-intrinsic-size: auto 104px;

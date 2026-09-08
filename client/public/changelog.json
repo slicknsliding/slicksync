@@ -1,5 +1,21 @@
 [
   {
+    "version": "1.85.5",
+    "date": "2026-09-08",
+    "title": "1.85.5 - Group reorders reach the accounts, and a lighter phone",
+    "features": [
+      "On phones and tablets, nothing blurs what is behind it any more - the nav bar and the badges on posters keep their own tint, as the installed app already did - and the art behind the detail modal is a small pre-blurred copy instead of a live blur filter. Each was work the phone redid on every repaint.",
+      "The detail modal no longer touches the page around it when it opens or closes: nothing is marked inert, the page's scrolling is left alone, and there is no scroll jump on close. Backdrop tap, Escape and the X still close it, and focus is handed back to where you were.",
+      "The dashboard's activity chart and the Continue Watching rows repaint on their own layers, so a modal closing over them no longer redraws them."
+    ],
+    "bugFixes": [
+      "Reordering a group's addons never reached the accounts. The reorder asked for a forced sync, but the push itself still decided the account was already synced, because that comparison ignores order on purpose so that a reorder you make inside your app is not undone by every scheduled sync. The force now reaches the push: a reorder made at the group lands on every member, with protected addons keeping their position and everything else following the group's order."
+    ],
+    "miscChores": [
+      "The 1.85.4 notes now say which provider each addon fix applies to: the reload fix is Stremio-specific, removal and ordering apply to both."
+    ]
+  },
+  {
     "version": "1.85.4",
     "date": "2026-09-07",
     "title": "1.85.4 - Reloaded addons reach the accounts, and everything opens at once",
@@ -9,8 +25,8 @@
       "Sync status answers from memory for a short while instead of asking the provider for every badge, and a sync finishing anywhere refreshes every badge on screen at once. Badge polling pauses in a hidden tab."
     ],
     "bugFixes": [
-      "Reloading an addon did not reach the accounts: sync treated an account with the right set of addons as already synced and skipped the push, so a new version stayed on the group and never on the account. An installed addon whose version or name differs from the group's copy is now pushed, and a reload that changed an addon syncs every group carrying it straight away.",
-      "Removing an addon under a user's Account Addons did nothing: the page sends the addon's address, removal matched only names, and the reply still said removed. It now matches the address exactly and says so when the addon is not on the account.",
+      "Reloading an addon did not reach the accounts: sync treated an account with the right set of addons as already synced and skipped the push, so a new version stayed on the group and never on the account. An installed addon whose version or name differs from the group's copy is now pushed, and a reload that changed an addon syncs every group carrying it straight away. This part is Stremio-specific: a Nuvio account stores only each addon's address and the app reads the live manifest, so there is never a stale copy to push.",
+      "Removing an addon under a user's Account Addons did nothing: the page sends the addon's address, removal matched only names, and the reply still said removed. It now matches the address exactly and says so when the addon is not on the account. Applies to Stremio and Nuvio accounts alike.",
       "SlickTrax posters were refused by browsers on any other origin - Stremio Web, or a Nuvio Collections preview on another instance - leaving blank tiles where the catalog itself had loaded. They are now viewable from anywhere.",
       "A stream from a release named in another language appeared in Now Playing under that name, next to a second row for the same film from a differently named file. Streams are shown under the title they matched, one row per film, and notifications and automation rules use the same name."
     ],
