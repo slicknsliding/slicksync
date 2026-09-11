@@ -547,7 +547,14 @@ function createGetGroupSyncStatus(deps) {
   const getUserSyncStatus = createGetUserSyncStatus(deps)
   const { prisma, getAccountId } = deps
   return async function getGroupSyncStatus(groupId, req) {
-    const group = await prisma.group.findFirst({ where: { id: groupId, accountId: getAccountId(req) } })
+    // The member and addon counts ride along. A badge needs them to say
+    // "nothing to sync yet", and without them here it had to fetch the
+    // whole group separately first - two round trips per badge, on every
+    // page that shows one per group.
+    const group = await prisma.group.findFirst({
+      where: { id: groupId, accountId: getAccountId(req) },
+      include: { _count: { select: { addons: true } } },
+    })
     if (!group) return { error: 'Group not found' }
     let userIds = []
     try { userIds = Array.isArray(group.userIds) ? group.userIds : JSON.parse(group.userIds || '[]') } catch {}
@@ -561,7 +568,7 @@ function createGetGroupSyncStatus(deps) {
       }
     }
     const groupStatus = userStatuses.every(s => s.status === 'synced') ? 'synced' : 'unsynced'
-    return { groupStatus, userStatuses }
+    return { groupStatus, userStatuses, memberCount: userIds.length, addonCount: group?._count?.addons ?? 0 }
   }
 }
 
