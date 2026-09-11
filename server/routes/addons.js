@@ -1583,7 +1583,10 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       const { id } = req.params;
 
       const addon = await prisma.addon.findFirst({
-        where: { id },
+        // Scoped to the account: on a shared instance the id in the URL is
+        // the only thing identifying this row, so without it one account
+        // could read or change another's by id.
+        where: { id, accountId: getAccountId(req) },
         include: {
           groupAddons: {
             include: {
@@ -1747,7 +1750,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
 
       // Check if addon exists
       const addon = await prisma.addon.findFirst({
-        where: { id },
+        where: { id, accountId: getAccountId(req) },
         select: { id: true, name: true }
       });
 
@@ -1800,7 +1803,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
   router.get('/:id/health-summary', async (req, res) => {
     try {
       const { id } = req.params;
-      const addon = await prisma.addon.findFirst({ where: { id }, select: { id: true, name: true, accountId: true } });
+      const addon = await prisma.addon.findFirst({ where: { id, accountId: getAccountId(req) }, select: { id: true, name: true, accountId: true } });
       if (!addon) return res.status(404).json({ error: 'Addon not found' });
 
       const history = await prisma.addonHealthHistory.findMany({
@@ -1848,7 +1851,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       const { id } = req.params;
 
       const addon = await prisma.addon.findFirst({
-        where: { id },
+        where: { id, accountId: getAccountId(req) },
         select: {
           id: true,
           name: true,
@@ -1897,7 +1900,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
 
       // Get primary addon
       const primaryAddon = await prisma.addon.findFirst({
-        where: { id },
+        where: { id, accountId: getAccountId(req) },
       });
 
       if (!primaryAddon) {
@@ -1909,7 +1912,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
         if (depth > 10) return false; // Safety limit
 
         const addon = await prisma.addon.findFirst({
-          where: { id: startId },
+          where: { id: startId, accountId: getAccountId(req) },
           select: { backupAddonId: true }
         });
 
@@ -1973,7 +1976,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       const { id } = req.params;
 
       const primaryAddon = await prisma.addon.findFirst({
-        where: { id }
+        where: { id, accountId: getAccountId(req) }
       });
 
       if (!primaryAddon) {
@@ -2004,7 +2007,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
 
       // Fetch the addon with its backup chain
       const addon = await prisma.addon.findFirst({
-        where: { id },
+        where: { id, accountId: getAccountId(req) },
         select: {
           id: true,
           name: true,
@@ -2109,7 +2112,8 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       // Check if addon exists
       const existingAddon = await prisma.addon.findFirst({
         where: {
-          id
+          id,
+          accountId: getAccountId(req)
         },
         include: { groupAddons: true }
       });
@@ -2356,7 +2360,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
       if (catalogs !== undefined && filtered && !manifestData) {
         // Read catalogs from database to get the correct search state
         const updatedAddonWithCatalogs = await prisma.addon.findFirst({
-          where: { id },
+          where: { id, accountId: getAccountId(req) },
           select: { catalogs: true }
         })
 

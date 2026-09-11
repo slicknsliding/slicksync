@@ -2770,7 +2770,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       // Fetch updated user for response
       const userWithGroups = await prisma.user.findFirst({
-        where: { id }
+        // Scoped to the account - see the note in routes/addons.js. Without
+        // it, an id from another account resolves and is then written to.
+        where: { id, accountId: getAccountId(req) }
       })
 
       // Find groups that contain this user using userIds JSON array
@@ -6479,7 +6481,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       // Use the middleware-protected user (ensures account isolation)
       const existingUser = await prisma.user.findFirst({
-        where: { id }
+        where: { id, accountId: getAccountId(req) }
       });
 
       if (!existingUser) {
@@ -6524,7 +6526,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       // Use the middleware-protected user (ensures account isolation)
       const existingUser = await prisma.user.findFirst({
-        where: { id }
+        where: { id, accountId: getAccountId(req) }
       });
 
       if (!existingUser) {
