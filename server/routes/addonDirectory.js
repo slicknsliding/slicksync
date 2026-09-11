@@ -1,4 +1,6 @@
 const express = require('express')
+const fs = require('fs')
+const path = require('path')
 
 // Browse the public Stremio addon directory (stremio-addons.net) from inside
 // SlickSync, so adding an addon is "search, pick, install" rather than "go
@@ -32,12 +34,45 @@ const UPSTREAM_PAGE_SIZE = 100 // the upstream's own cap; asking for more is sil
 const MAX_UPSTREAM_PAGES = 15 // hard stop so an upstream change can't spin this forever
 const FETCH_TIMEOUT_MS = 12000
 const CACHE_TTL_MS = 30 * 60 * 1000
+// Where the sorted copy is kept between restarts. Without this the first
+// person to open the directory after any restart - or after any half-hour
+// gap - paid for the whole sweep (six upstream pages, about a megabyte and
+// a half) while looking at an empty modal, which is nearly every time
+// anyone opens it.
+const DISK_PATH = path.join(process.cwd(), 'data', 'addon-directory.json')
+// A copy older than this is not served even as a stopgap - by then enough
+// of the listing could have changed that showing it would mislead.
+const DISK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 module.exports = () => {
   const router = express.Router()
 
   let cache = null // { at, addons: [] }
   let inFlight = null // shared promise so concurrent first-loads fetch once
+  let diskRead = false
+
+  const readDisk = () => {
+    diskRead = true
+    try {
+      const raw = JSON.parse(fs.readFileSync(DISK_PATH, 'utf8'))
+      const at = Number(raw?.at) || 0
+      const addons = Array.isArray(raw?.addons) ? raw.addons : []
+      if (!addons.length || Date.now() - at > DISK_MAX_AGE_MS) return null
+      return { at, addons }
+    } catch {
+      return null // no copy yet, or an unreadable one - fetch instead
+    }
+  }
+
+  const writeDisk = (entry) => {
+    try {
+      fs.mkdirSync(path.dirname(DISK_PATH), { recursive: true })
+      fs.writeFileSync(DISK_PATH, JSON.stringify(entry))
+    } catch {
+      // A read-only or full data directory must not break browsing - it
+      // only costs the between-restarts head start.
+    }
+  }
 
   const fetchPage = async (page) => {
     const controller = new AbortController()
@@ -104,16 +139,38 @@ module.exports = () => {
     return addons
   }
 
-  const getAddons = async () => {
-    if (cache && Date.now() - cache.at < CACHE_TTL_MS) return { addons: cache.addons, cached: true }
-    // Collapse concurrent cold loads into one upstream sweep.
+  // Collapse concurrent sweeps into one, and keep whatever it returns.
+  const refresh = () => {
     if (!inFlight) {
       inFlight = loadAll()
-        .then((addons) => { cache = { at: Date.now(), addons }; return addons })
+        .then((addons) => {
+          cache = { at: Date.now(), addons }
+          writeDisk(cache)
+          return addons
+        })
         .finally(() => { inFlight = null })
     }
-    return { addons: await inFlight, cached: false }
+    return inFlight
   }
+
+  const getAddons = async () => {
+    if (!cache && !diskRead) cache = readDisk()
+    if (cache && cache.addons.length) {
+      // A stale copy is served immediately and replaced in the background.
+      // The listing changes on the order of days, so nobody needs to wait
+      // on a sweep to see it - only the very first load on a new instance
+      // has nothing to show, and that one still waits.
+      if (Date.now() - cache.at >= CACHE_TTL_MS) refresh().catch(() => {})
+      return { addons: cache.addons, cached: true }
+    }
+    return { addons: await refresh(), cached: false }
+  }
+
+  // Have it ready before anyone asks. Deliberately after a delay and
+  // unref'd: it must not slow boot down, hold the process open, or race the
+  // rest of startup for the network.
+  const warmTimer = setTimeout(() => { getAddons().catch(() => {}) }, 8000)
+  if (typeof warmTimer.unref === 'function') warmTimer.unref()
 
   // GET /api/addon-directory?page=&limit=&search=&category=
   router.get('/', async (req, res) => {

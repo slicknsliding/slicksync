@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { cachedImageUrl } from '@/lib/posterUrl';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -36,6 +37,39 @@ interface AddonDirectoryModalProps {
 // often someone is looking for them. Kept short deliberately - the full list
 // runs to dozens and turns the filter row into a wall.
 const QUICK_CATEGORIES = ['movies', 'tv shows', 'anime', 'torrents', 'debrid support', 'live tv', 'subtitles'];
+
+// A directory page shows two dozen logos, each from whichever host that
+// addon happens to use - seventeen different hosts on a typical page, most
+// of them serving a 512px or 1024px image to fill a 40px box. Every one is
+// a fresh DNS lookup and TLS handshake on a phone.
+//
+// So they come through this instance's own image cache instead: one host
+// already connected, resized once and reused by everyone afterwards.
+//
+// With one exception that has to be handled rather than assumed away: a
+// good number of addon hosts refuse datacenter addresses while answering a
+// home connection perfectly (the same fact the Add button below already
+// works around). When the proxy cannot fetch one, the original URL is used
+// directly, which is exactly what happened before this existed.
+function AddonLogo({ src }: { src: string }) {
+  const proxied = cachedImageUrl(src, 64) || src;
+  const [current, setCurrent] = useState(proxied);
+  // A different addon in the same slot must not keep the previous src.
+  useEffect(() => { setCurrent(cachedImageUrl(src, 64) || src); }, [src]);
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={current}
+      alt=""
+      width={40}
+      height={40}
+      loading="lazy"
+      decoding="async"
+      onError={() => { if (current !== src) setCurrent(src); }}
+      className="w-10 h-10 rounded-lg object-contain shrink-0 bg-black/20"
+    />
+  );
+}
 
 export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectoryModalProps) {
   const [search, setSearch] = useState('');
@@ -248,7 +282,7 @@ export function AddonDirectoryModal({ isOpen, onClose, onAdded }: AddonDirectory
             <div key={a.manifestUrl} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: 'var(--color-surface-hover)' }}>
               {a.logo ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={a.logo} alt="" width={40} height={40} className="w-10 h-10 rounded-lg object-contain shrink-0 bg-black/20" />
+                <AddonLogo src={a.logo} />
               ) : (
                 <div className="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center text-xs text-subtle" style={{ background: 'var(--color-bg-subtle)' }}>?</div>
               )}
