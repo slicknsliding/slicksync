@@ -485,30 +485,32 @@ process.on('uncaughtException', (err) => {
 // every update severed in-flight requests and every live-update stream at
 // once, so an update looked like an error to anyone mid-action rather than
 // a short wait.
+// Deliberately a fixed, short grace rather than waiting for the server to
+// report every connection closed: this runtime exposes closeAllConnections
+// but a live-update stream still keeps close() from ever completing
+// (measured), so waiting on it means the container is force-killed at the
+// ten-second mark instead of stopping cleanly. A second and a half covers
+// an ordinary request; anything still open after it is cut.
+const SHUTDOWN_GRACE_MS = 1500;
 let shuttingDown = false;
 const shutdown = async (signal) => {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`🛑 ${signal} received - finishing in-flight requests...`);
-  const finish = async () => {
-    try { await prisma.$disconnect(); } catch { /* going away regardless */ }
-    process.exit(0);
-  };
-  // Last resort, so an update can never hang on a connection that refuses
-  // to end.
-  const hard = setTimeout(() => { console.warn('🛑 Forcing shutdown'); finish(); }, 8000);
-  if (typeof hard.unref === 'function') hard.unref();
-  if (!httpServer) { clearTimeout(hard); return finish(); }
-  httpServer.close(() => { clearTimeout(hard); finish(); });
-  // Keep-alive connections sitting idle would otherwise hold that close
-  // open for their full idle timeout.
-  if (typeof httpServer.closeIdleConnections === 'function') httpServer.closeIdleConnections();
-  // Live-update streams are open by design and never end on their own, so
-  // give real requests a moment and then close everything.
-  const cut = setTimeout(() => {
-    if (typeof httpServer.closeAllConnections === 'function') httpServer.closeAllConnections();
-  }, 3000);
-  if (typeof cut.unref === 'function') cut.unref();
+  try {
+    if (httpServer) {
+      // Stop taking new connections, and let go of idle keep-alive sockets
+      // straight away so only real in-flight work is left.
+      httpServer.close();
+      if (typeof httpServer.closeIdleConnections === 'function') httpServer.closeIdleConnections();
+      await new Promise((resolve) => setTimeout(resolve, SHUTDOWN_GRACE_MS));
+      if (typeof httpServer.closeAllConnections === 'function') httpServer.closeAllConnections();
+    }
+  } catch (e) {
+    console.warn('Shutdown could not close the server cleanly:', e?.message);
+  }
+  try { await prisma.$disconnect(); } catch { /* going away regardless */ }
+  process.exit(0);
 };
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
