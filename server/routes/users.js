@@ -7765,6 +7765,13 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
     // must not be undone by every scheduled sync), so a reorder made HERE,
     // at the group, looked like a no-op and was skipped - the group-level
     // caller asked to force it, but the request never reached this far.
+    // A user in no group is left exactly as they are. Without this the
+    // branch below read an empty desired list as "remove everything".
+    if (plan.noGroup) {
+      console.log('✅ User is in no group - nothing to sync')
+      return { success: true, total: 0, alreadySynced: true, noGroup: true }
+    }
+
     if (plan.alreadySynced && !options.force) {
       console.log(`✅ User already synced`)
       // Account Guard: already-synced still CONFIRMS the account state, so
