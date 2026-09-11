@@ -198,22 +198,35 @@ async function computeContinueWatching(prisma, accountId, limit = 8) {
     .sort((a, b) => b.watchedAt.getTime() - a.watchedAt.getTime())
     .slice(0, limit * 2) // fetch extra since some won't have a computable next episode
 
+  // Each candidate needs two lookups, and neither depends on any other
+  // candidate: the show's metadata (a network call with a five-second
+  // deadline of its own) and where this person left off (a local read).
+  // Done one candidate at a time, a household with a dozen shows on the go
+  // paid those deadlines end to end - measured at 14 seconds on an instance
+  // with two years of history, where several shows no longer resolve and
+  // each one waited out its full timeout before the next even started.
+  // Together, the whole row costs one deadline rather than a dozen.
+  const prepared = await Promise.all(candidates.map(async (row) => {
+    const [metadata, resumeState] = await Promise.all([
+      fetchMetadata(row.showId, 'series', row.videoId, omdbApiKey).catch(() => null),
+      getResumeState(prisma, accountIdValue, row.userId, row.showId, row.videoId).catch(() => ({ inProgress: false })),
+    ])
+    return { row, metadata, resumeState }
+  }))
+
   const results = []
-  for (const row of candidates) {
+  for (const { row, metadata, resumeState } of prepared) {
     if (results.length >= limit) break
 
     const user = userMap.get(row.userId)
     if (!user) continue
 
-    const metadata = await fetchMetadata(row.showId, 'series', row.videoId, omdbApiKey)
     if (!metadata || !metadata.allEpisodes) continue
 
     // If the last-watched episode itself is still partway through, resume
     // THAT episode - jumping to the next one mid-episode was the reported
     // bug this exists to fix. Only when it's finished (or there's no
     // position data to judge by) does the card advance to the next episode.
-    const resumeState = await getResumeState(prisma, accountIdValue, row.userId, row.showId, row.videoId)
-
     // Everything below works from the watched episode as CINEMETA numbers
     // it, which is not always how it was recorded - see
     // placeAbsoluteEpisode.
@@ -320,18 +333,27 @@ async function computeContinueWatching(prisma, accountId, limit = 8) {
   })
   for (const u of movieUsers) userMap.set(u.id, u)
 
+  // Same shape as the shows above: the cheap local check still decides which
+  // movies qualify, and only those pay for metadata - but both rounds happen
+  // together rather than one film at a time.
+  const movieCandidates = [...latestPerMovie.values()].filter((row) =>
+    !dismissedKeys.has(`${row.userId}:${row.itemId}`) && userMap.has(row.userId)
+  )
+  const movieResume = await Promise.all(movieCandidates.map((row) =>
+    getResumeState(prisma, accountIdValue, row.userId, row.itemId, null).catch(() => ({ inProgress: false }))
+  ))
+  const inProgressMovies = movieCandidates
+    .map((row, i) => ({ row, resumeState: movieResume[i] }))
+    .filter((m) => m.resumeState.inProgress)
+  const movieMeta = await Promise.all(inProgressMovies.map((m) =>
+    fetchMetadata(m.row.itemId, 'movie', null, omdbApiKey).catch(() => null)
+  ))
+
   const movieEntries = []
-  for (const row of latestPerMovie.values()) {
-    // Dismissals reuse the showId column with the movie's own id.
-    if (dismissedKeys.has(`${row.userId}:${row.itemId}`)) continue
-
+  for (let mi = 0; mi < inProgressMovies.length; mi++) {
+    const { row, resumeState } = inProgressMovies[mi]
+    const metadata = movieMeta[mi]
     const user = userMap.get(row.userId)
-    if (!user) continue
-
-    const resumeState = await getResumeState(prisma, accountIdValue, row.userId, row.itemId, null)
-    if (!resumeState.inProgress) continue
-
-    const metadata = await fetchMetadata(row.itemId, 'movie', null, omdbApiKey)
 
     const entry = {
       userId: user.id,
