@@ -1081,22 +1081,25 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
       // one heavy viewer.
       const TOP_TITLES_PER_USER = 6
       const genreUsers = new Map() // genre -> Set<userId>
+      // Six titles per person, each a metadata lookup. One at a time that is
+      // six round trips per household member before this row can be built,
+      // and every one of them can wait out its own timeout. All of them go
+      // at once instead, six at a time.
+      const { mapLimit } = require('../utils/mapLimit')
+      const wanted = []
       for (const [userId, vec] of vectors.entries()) {
         const top = [...vec.entries()].sort((a, b) => b[1] - a[1]).slice(0, TOP_TITLES_PER_USER)
-        const userGenres = new Set()
         for (const [key] of top) {
-          const id = key.slice(key.indexOf(':') + 1)
-          const t = key.startsWith('series:') ? 'series' : 'movie'
-          try {
-            const meta = await fetchMetadata(id, t, null, omdbApiKey)
-            for (const g of (Array.isArray(meta?.genres) ? meta.genres : [])) userGenres.add(g)
-          } catch {}
-        }
-        for (const g of userGenres) {
-          if (!genreUsers.has(g)) genreUsers.set(g, new Set())
-          genreUsers.get(g).add(userId)
+          wanted.push({ userId, id: key.slice(key.indexOf(':') + 1), t: key.startsWith('series:') ? 'series' : 'movie' })
         }
       }
+      const metas = await mapLimit(wanted, 6, (w) => fetchMetadata(w.id, w.t, null, omdbApiKey).catch(() => null))
+      wanted.forEach((w, i) => {
+        for (const g of (Array.isArray(metas[i]?.genres) ? metas[i].genres : [])) {
+          if (!genreUsers.has(g)) genreUsers.set(g, new Set())
+          genreUsers.get(g).add(w.userId)
+        }
+      })
       if (genreUsers.size === 0) return res.json({ items: [], genres: [], memberCount: vectors.size })
 
       // Prefer genres shared by 2+ members; if a single-user household (or no

@@ -1109,8 +1109,17 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       const seenCollections = new Set()
       const sagas = []
-      for (const imdbId of ordered.slice(0, SAGA_CANDIDATES)) {
-        const coll = await fetchTmdbCollection(imdbId, 'movie', req)
+      // Forty lookups, each its own call to TMDb. Asked for one at a time
+      // they ran end to end - measured at four seconds even when every one
+      // of them missed. Eight at a time is quick without being a burst the
+      // upstream would object to. Dedupe still happens in the original
+      // order below, so the result is unchanged.
+      const { mapLimit } = require('../utils/mapLimit')
+      const collections = await mapLimit(
+        ordered.slice(0, SAGA_CANDIDATES), 8,
+        (imdbId) => fetchTmdbCollection(imdbId, 'movie', req).catch(() => null)
+      )
+      for (const coll of collections) {
         if (!coll || seenCollections.has(coll.id)) continue
         seenCollections.add(coll.id)
         // fetchTmdbCollection's parts exclude the seed - membership is
