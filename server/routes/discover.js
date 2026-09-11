@@ -37,6 +37,23 @@ async function enhanceRealMatchReasons(prisma, accountId, rows) {
 // proxy to Cinemeta; the /recommendations endpoint added below is the one
 // account-scoped read (reads watch history to seed suggestions), so this
 // router now takes prisma + getAccountId.
+
+// Every call out of this file goes through here. Without a deadline, one
+// unresponsive upstream held a Discover request open until the proxy in
+// front gave up a minute later, so the page sat spinning instead of
+// saying it could not load. Ten seconds is well past a healthy response
+// and well short of anyone's patience.
+const OUTBOUND_TIMEOUT_MS = 10000
+async function fetchOut(url, options = {}) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), OUTBOUND_TIMEOUT_MS)
+  try {
+    return await fetchOut(url, { ...options, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
   const router = express.Router();
 
@@ -554,19 +571,19 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
       try {
         const tmdbKey = await resolveTmdbKey(req)
         if (tmdbKey) {
-          const findRsp = await fetch(`https://api.themoviedb.org/3/find/${id}?api_key=${encodeURIComponent(tmdbKey)}&external_source=imdb_id`)
+          const findRsp = await fetchOut(`https://api.themoviedb.org/3/find/${id}?api_key=${encodeURIComponent(tmdbKey)}&external_source=imdb_id`)
           if (findRsp.ok) {
             const findData = await findRsp.json()
             const hit = type === 'movie' ? (findData.movie_results || [])[0] : (findData.tv_results || [])[0]
             if (hit?.id) {
               const tmdbType = type === 'movie' ? 'movie' : 'tv'
-              const recRsp = await fetch(`https://api.themoviedb.org/3/${tmdbType}/${hit.id}/recommendations?api_key=${encodeURIComponent(tmdbKey)}`)
+              const recRsp = await fetchOut(`https://api.themoviedb.org/3/${tmdbType}/${hit.id}/recommendations?api_key=${encodeURIComponent(tmdbKey)}`)
               if (recRsp.ok) {
                 const recData = await recRsp.json()
                 const candidates = (recData.results || []).slice(0, 10)
                 const resolved = await Promise.all(candidates.map(async (c) => {
                   try {
-                    const extRsp = await fetch(`https://api.themoviedb.org/3/${tmdbType}/${c.id}/external_ids?api_key=${encodeURIComponent(tmdbKey)}`)
+                    const extRsp = await fetchOut(`https://api.themoviedb.org/3/${tmdbType}/${c.id}/external_ids?api_key=${encodeURIComponent(tmdbKey)}`)
                     if (!extRsp.ok) return null
                     const extData = await extRsp.json()
                     if (!extData.imdb_id) return null
@@ -881,7 +898,7 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
       if (!personId) return res.status(400).json({ error: 'Invalid person id' })
 
       const url = `https://api.themoviedb.org/3/person/${personId}/combined_credits?api_key=${encodeURIComponent(key)}`
-      const rsp = await fetch(url)
+      const rsp = await fetchOut(url)
       if (!rsp.ok) return res.status(502).json({ error: 'TMDb request failed' })
       const data = await rsp.json()
 
@@ -931,7 +948,7 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
       const tmdbId = String(req.query.tmdbId || '').replace(/[^0-9]/g, '')
       const type = req.query.type === 'tv' ? 'tv' : 'movie'
       if (!tmdbId) return res.status(400).json({ error: 'Invalid tmdbId' })
-      const rsp = await fetch(`https://api.themoviedb.org/3/${type}/${tmdbId}/external_ids?api_key=${encodeURIComponent(key)}`)
+      const rsp = await fetchOut(`https://api.themoviedb.org/3/${type}/${tmdbId}/external_ids?api_key=${encodeURIComponent(key)}`)
       if (!rsp.ok) return res.status(502).json({ error: 'TMDb request failed' })
       const data = await rsp.json()
       res.json({ imdbId: data.imdb_id || null, type: type === 'tv' ? 'series' : 'movie' })
@@ -1138,7 +1155,7 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
       const wantTv = req.query.type === 'series'
       if (!query) return res.json({ person: null, results: [] })
 
-      const sr = await fetch(`https://api.themoviedb.org/3/search/person?api_key=${encodeURIComponent(key)}&query=${encodeURIComponent(query)}`)
+      const sr = await fetchOut(`https://api.themoviedb.org/3/search/person?api_key=${encodeURIComponent(key)}&query=${encodeURIComponent(query)}`)
       if (!sr.ok) return res.status(502).json({ error: 'TMDb request failed' })
       const sd = await sr.json()
       // Highest-billed match (TMDb sorts by popularity); require a real name
@@ -1146,7 +1163,7 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
       const person = (sd.results || [])[0]
       if (!person) return res.json({ person: null, results: [] })
 
-      const cr = await fetch(`https://api.themoviedb.org/3/person/${person.id}/combined_credits?api_key=${encodeURIComponent(key)}`)
+      const cr = await fetchOut(`https://api.themoviedb.org/3/person/${person.id}/combined_credits?api_key=${encodeURIComponent(key)}`)
       if (!cr.ok) return res.status(502).json({ error: 'TMDb request failed' })
       const cd = await cr.json()
 

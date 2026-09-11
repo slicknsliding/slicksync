@@ -459,9 +459,59 @@ app.use((error, req, res, next) => {
   res.status(500).json({ message: 'Internal server error', error: error.message });
 });
 
-// Shutdown
-process.on('SIGINT', async () => { console.log('🛑 Shutting down gracefully...'); await prisma.$disconnect(); process.exit(0); });
-process.on('SIGTERM', async () => { console.log('🛑 Shutting down gracefully...'); await prisma.$disconnect(); process.exit(0); });
+// The listening server, captured so the shutdown below can close it.
+let httpServer = null;
+
+// A stray promise rejection used to end the whole instance: the runtime
+// stops the process on an unhandled rejection, so one missing .catch() in
+// any of the two dozen background jobs - a metadata lookup, a webhook, an
+// addon health check - took down sync, the activity monitor and every open
+// page with it, until the container restarted itself.
+//
+// Both of these are logged loudly and the server keeps serving. A
+// background job that failed is a background job that failed; it is not a
+// reason to drop everything else. A process that is genuinely broken still
+// gets caught by the container's own health check and restarted.
+process.on('unhandledRejection', (reason) => {
+  const detail = reason instanceof Error ? (reason.stack || reason.message) : reason;
+  console.error('[Unhandled rejection] a background task failed without handling its own error:', detail);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[Uncaught exception]', err?.stack || err?.message || err);
+});
+
+// Shutdown: stop taking new work, let what is already in flight finish, and
+// only then let go of the database. Before this, the signal that arrives on
+// every update severed in-flight requests and every live-update stream at
+// once, so an update looked like an error to anyone mid-action rather than
+// a short wait.
+let shuttingDown = false;
+const shutdown = async (signal) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`🛑 ${signal} received - finishing in-flight requests...`);
+  const finish = async () => {
+    try { await prisma.$disconnect(); } catch { /* going away regardless */ }
+    process.exit(0);
+  };
+  // Last resort, so an update can never hang on a connection that refuses
+  // to end.
+  const hard = setTimeout(() => { console.warn('🛑 Forcing shutdown'); finish(); }, 8000);
+  if (typeof hard.unref === 'function') hard.unref();
+  if (!httpServer) { clearTimeout(hard); return finish(); }
+  httpServer.close(() => { clearTimeout(hard); finish(); });
+  // Keep-alive connections sitting idle would otherwise hold that close
+  // open for their full idle timeout.
+  if (typeof httpServer.closeIdleConnections === 'function') httpServer.closeIdleConnections();
+  // Live-update streams are open by design and never end on their own, so
+  // give real requests a moment and then close everything.
+  const cut = setTimeout(() => {
+    if (typeof httpServer.closeAllConnections === 'function') httpServer.closeAllConnections();
+  }, 3000);
+  if (typeof cut.unref === 'function') cut.unref();
+};
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 // Initialize sync schedule on startup (works in all modes)
 const { reloadGroupAddons } = require('./routes/users');
@@ -866,7 +916,7 @@ async function bootstrap() {
 
   const storageLabel = process.env.PRISMA_PROVIDER === 'sqlite' ? 'SQLite with Prisma' : 'PostgreSQL with Prisma'
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer = app.listen(PORT, '0.0.0.0', () => {
     console.log('🚀 SlickSync (Database) running on port', PORT)
     console.log('📊 Health check: http://127.0.0.1:' + PORT + '/health')
     console.log('🔌 API endpoints: http://127.0.0.1:' + PORT + '/api/')
