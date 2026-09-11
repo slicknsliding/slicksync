@@ -1161,6 +1161,15 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       const activityRaw = await prisma.watchActivity.findMany({
         where: { accountId: accountIdValue, date: { gte: startDate } },
         select: { userId: true, itemId: true, videoId: true, date: true, watchTimeSeconds: true },
+        // Bounded like the two history reads above it, which this one was
+        // not: on all-time it read every row ever recorded, and the feed it
+        // builds is sent whole to the browser. Measured on two years of
+        // history for one person: 7,860 entries, 4.2MB, which a phone then
+        // has to receive and parse before the page appears. Newest first, so
+        // what a cap would ever drop is the oldest end of a feed nobody
+        // scrolls to.
+        orderBy: { date: 'desc' },
+        take: 5000,
       })
 
       // Same shared-email dedupe the History path above applies, and for the
