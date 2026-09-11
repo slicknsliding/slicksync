@@ -43,7 +43,29 @@ const BASELINE_SECONDS = 600
  * weighted per the BASELINE_SECONDS + WatchActivity scheme above.
  * @returns {Promise<{ vectors: Map<string, Map<string, number>>, itemMeta: Map<string, {name: string, poster: string|null, type: 'movie'|'series'}> }>}
  */
+// Every call reads three whole tables, and six different endpoints in
+// discover.js ask for it - several of them while building one page, so the
+// same history was read from disk over and over within a second or two.
+// Watch history moves once a minute at the very fastest, so an answer is
+// held briefly and shared. Concurrent callers wait on the same build rather
+// than starting their own.
+const VECTOR_MEMO_MS = 60 * 1000
+const vectorMemo = new Map() // accountId -> { at, value } | { building: Promise }
+
 async function buildUserVectors(prisma, accountId) {
+  const key = accountId || 'default'
+  const hit = vectorMemo.get(key)
+  if (hit?.value && Date.now() - hit.at < VECTOR_MEMO_MS) return hit.value
+  if (hit?.building) return hit.building
+
+  const building = computeUserVectors(prisma, accountId)
+    .then((value) => { vectorMemo.set(key, { at: Date.now(), value }); return value })
+    .catch((e) => { vectorMemo.delete(key); throw e })
+  vectorMemo.set(key, { building })
+  return building
+}
+
+async function computeUserVectors(prisma, accountId) {
   const [movies, episodes, activity] = await Promise.all([
     prisma.movieWatchHistory.findMany({
       where: { accountId },
