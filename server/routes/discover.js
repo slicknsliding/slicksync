@@ -930,6 +930,10 @@ module.exports = ({ prisma, getAccountId, decrypt } = {}) => {
         // filmography never showed up here at all).
         .map(({ _sort, popularity, ...rest }) => rest)
 
+      // combined_credits carries no `name` of its own, so this is always
+      // null in practice. Left in rather than fetched separately because the
+      // caller already knows the name it clicked - the cast panel falls back
+      // to it. Don't remove that fallback expecting a name from here.
       res.json({ person: { id: Number(personId), name: data.name || null }, credits })
     } catch (error) {
       console.error('Error fetching person credits:', error)

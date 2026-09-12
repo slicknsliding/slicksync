@@ -20,8 +20,15 @@ async function mapLimit(items, limit, fn) {
       results[i] = await fn(list[i], i)
     }
   }
+  // Every worker is allowed to finish before a failure is raised. With a
+  // plain Promise.all the first rejection returns immediately and leaves the
+  // other workers running against a result nobody will read - in-flight
+  // requests nothing is waiting for. Both of today's callers hand in a
+  // function that cannot throw, so this only matters for the next one.
   const workers = Math.max(1, Math.min(limit, list.length))
-  await Promise.all(Array.from({ length: workers }, worker))
+  const settled = await Promise.allSettled(Array.from({ length: workers }, worker))
+  const failed = settled.find((s) => s.status === 'rejected')
+  if (failed) throw failed.reason
   return results
 }
 
