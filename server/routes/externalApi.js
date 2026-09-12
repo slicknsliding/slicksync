@@ -1,5 +1,19 @@
 const express = require('express')
 const { parsePresentedKey } = require('../utils/apiKey')
+// Constant-time comparison, the same way routes/federation.js checks its own
+// token. A plain === returns as soon as two characters differ, so how long
+// the answer takes depends on how much of the key was right. Not a practical
+// attack across a network, but the codebase already does this properly one
+// file over and there is no reason for the key that unlocks an account to be
+// the exception.
+function keysMatch(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false
+  const ab = Buffer.from(a)
+  const bb = Buffer.from(b)
+  if (ab.length !== bb.length) return false
+  return crypto.timingSafeEqual(ab, bb)
+}
+
 const crypto = require('crypto')
 const { getServerKey, aesGcmDecrypt } = require('../utils/encryption')
 const { sendSyncNotification } = require('../utils/notify')
@@ -24,7 +38,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
           // Derive account-specific key and decrypt
           const accountKey = crypto.createHash('sha256').update(Buffer.concat([Buffer.from(acct.id || ''), serverKey])).digest()
           const decrypted = aesGcmDecrypt(accountKey, acct.apiKeyHash)
-          if (decrypted === presented) {
+          if (keysMatch(decrypted, presented)) {
             req.appAccountId = acct.id
             return next()
           }
