@@ -798,6 +798,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     tips: [
       "Metrics totals were always correct - this only changed what the Activity list shows you.",
       "Activity is cached for about five minutes, so a watch you just finished may take a moment to appear.",
+      "The list covers your most recent history rather than every day ever recorded. On an instance with years behind it the oldest days fall off the end, which keeps the page from having to load all of it at once. Metrics totals still count every day.",
     ],
     related: ['rewatch-completion', 'account-timezone'],
     href: '/activity',
