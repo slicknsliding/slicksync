@@ -157,6 +157,27 @@ app.use(compression({
 // Parse JSON bodies
 app.use(express.json());
 
+// A body that is not valid JSON, or is literally `null`, is a mistake in the
+// request - it should say so rather than reading as a server failure. The
+// parser above throws for both, and without this that throw travelled to the
+// generic handler at the bottom of this file and came back as 500 Internal
+// server error, which is the wrong thing to tell someone whose script sent a
+// stray comma.
+app.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError) && 'body' in err) {
+    return res.status(400).json({ message: 'Request body is not valid JSON' });
+  }
+  return next(err);
+});
+
+// Express passes a literal `null` body straight through, and routes that
+// destructure it throw on the spot. An absent body is an empty object
+// everywhere else, so make that one consistent too.
+app.use((req, res, next) => {
+  if (req.body === null || req.body === undefined) req.body = {};
+  next();
+});
+
 // Security middleware
 app.use(helmet({
   crossOriginEmbedderPolicy: false,
