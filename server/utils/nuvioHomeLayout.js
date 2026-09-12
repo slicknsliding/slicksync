@@ -76,6 +76,17 @@ async function fetchManifest(transportUrl, opts) {
     const res = await fetch(url, { signal: AbortSignal.timeout(6000) })
     if (!res.ok) return null
     const json = await res.json()
+    // Bounded: one entry per addon address ever seen, and these were never
+    // removed. Ten minutes old or past the cap, the oldest goes.
+    if (manifestCache.size >= 200) {
+      const now = Date.now()
+      for (const [k, v] of manifestCache) if (now - v.at > MANIFEST_TTL_MS) manifestCache.delete(k)
+      while (manifestCache.size >= 200) {
+        const oldest = manifestCache.keys().next().value
+        if (oldest === undefined) break
+        manifestCache.delete(oldest)
+      }
+    }
     manifestCache.set(transportUrl, { value: json, at: Date.now() })
     return json
   } catch {

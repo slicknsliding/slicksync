@@ -50,6 +50,26 @@ async function postDiscord(webhookUrl, content, options = {}) {
 // a real concern at this scale.
 const metadataCache = new Map()
 const METADATA_CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+// Entries were only ever added. Each one holds a full metadata record -
+// cast, artwork, descriptions - so on an instance left running for weeks
+// this grew for the lifetime of the process, holding memory for titles
+// nobody had looked at since. Expired entries are dropped on write, and
+// the whole store is capped; oldest goes first once it is full.
+const METADATA_CACHE_MAX = 500
+function rememberMetadata(key, value) {
+  const now = Date.now()
+  metadataCache.set(key, { value, at: now })
+  if (metadataCache.size <= METADATA_CACHE_MAX) return
+  for (const [k, v] of metadataCache) {
+    if (now - v.at > METADATA_CACHE_TTL_MS) metadataCache.delete(k)
+  }
+  // Still over after dropping the stale ones: shed the oldest inserted.
+  while (metadataCache.size > METADATA_CACHE_MAX) {
+    const oldest = metadataCache.keys().next().value
+    if (oldest === undefined) break
+    metadataCache.delete(oldest)
+  }
+}
 
 // omdbOpts is forwarded to fetchOmdbRatings: the notification path passes
 // { background: true, ... } so quota autopilot can stand those lookups down
@@ -307,7 +327,7 @@ async function fetchMetadata(itemId, itemType, videoId, omdbApiKey, omdbOpts) {
             }
           }
 
-          metadataCache.set(cacheKey, { value: result, at: Date.now() })
+          rememberMetadata(cacheKey, result)
           return result
         }
       }

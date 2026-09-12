@@ -508,35 +508,32 @@ export default function AddonDetailPage() {
 
       const groupsData = await api.getGroups();
 
-      // Filter groups to find which ones contain this addon
-      const groupsWithAddon = [];
+      // Which groups carry this addon, and how many people that adds up to.
+      //
+      // This used to walk the groups one at a time, waiting for each before
+      // starting the next, and then fetch each matching group AGAIN for its
+      // member list - which the list above already carries. On a household
+      // with ten groups that was twenty-one round trips in a row before the
+      // page could render. Now: one request per group, all at once, and no
+      // second fetch at all.
+      const groupAddonLists = await Promise.all(
+        groupsData.map((g) => api.getGroupAddons(g.id).catch(() => [] as any[]))
+      );
+      const groupsWithAddon: Group[] = [];
       let userCount = 0;
-      for (const group of groupsData) {
+      groupsData.forEach((group, i) => {
+        if (!groupAddonLists[i].some((ga: any) => ga.id === params.id)) return;
+        groupsWithAddon.push(group);
+        let userIds: string[] = [];
         try {
-          const groupAddons = await api.getGroupAddons(group.id);
-          const hasAddon = groupAddons.some((ga: any) => ga.id === params.id);
-          if (hasAddon) {
-            groupsWithAddon.push(group);
-            // Get user count for this group
-            const groupData = await api.getGroup(group.id);
-            let userIds: string[] = [];
-            if (groupData?.userIds) {
-              try {
-                if (typeof groupData.userIds === 'string') {
-                  userIds = JSON.parse(groupData.userIds);
-                } else if (Array.isArray(groupData.userIds)) {
-                  userIds = groupData.userIds;
-                }
-              } catch (e) {
-                console.error('Error parsing group userIds:', e);
-              }
-            }
-            userCount += userIds.length;
-          }
+          const raw = (group as any)?.userIds;
+          if (typeof raw === 'string') userIds = JSON.parse(raw);
+          else if (Array.isArray(raw)) userIds = raw;
         } catch (e) {
-          // Skip groups we can't access
+          console.error('Error parsing group userIds:', e);
         }
-      }
+        userCount += userIds.length;
+      });
 
       setAddon({
         ...addonData,

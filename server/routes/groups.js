@@ -258,7 +258,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
     try {
       const { name, description, colorIndex } = req.body;
       
-      if (!name || !name.trim()) {
+      // typeof first: a non-string (a number, an array) is truthy, so the
+      // trim below used to throw and come back as a server error rather
+      // than "that is not a name".
+      if (typeof name !== 'string' || !name.trim()) {
         return res.status(400).json({ message: 'Group name is required' });
       }
 
@@ -406,7 +409,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
     try {
       const { name } = req.body;
       
-      if (!name || !name.trim()) {
+      // typeof first: a non-string (a number, an array) is truthy, so the
+      // trim below used to throw and come back as a server error rather
+      // than "that is not a name".
+      if (typeof name !== 'string' || !name.trim()) {
         return res.status(400).json({ message: 'Group name is required' });
       }
 
@@ -1098,6 +1104,16 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
   router.post('/:groupId/users/:userId', async (req, res) => {
     try {
       const { groupId, userId } = req.params
+
+      // Naming an id that is not on this account is a request problem, not
+      // a server one: it used to reach assignUserToGroup, throw there, and
+      // come back as 500 Internal server error for what is simply a wrong id.
+      const [groupRow, userRow] = await Promise.all([
+        prisma.group.findFirst({ where: { id: groupId, accountId: getAccountId(req) }, select: { id: true } }),
+        prisma.user.findFirst({ where: { id: userId, accountId: getAccountId(req) }, select: { id: true } }),
+      ])
+      if (!groupRow) return responseUtils.notFound(res, 'Group')
+      if (!userRow) return responseUtils.notFound(res, 'User')
       
       // Use the assignUserToGroup function to handle the assignment
       await assignUserToGroup(prisma, userId, groupId, req)

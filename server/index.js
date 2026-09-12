@@ -157,6 +157,27 @@ app.use(compression({
 // Parse JSON bodies
 app.use(express.json());
 
+// A body that is not valid JSON, or is literally `null`, is a mistake in the
+// request - it should say so rather than reading as a server failure. The
+// parser above throws for both, and without this that throw travelled to the
+// generic handler at the bottom of this file and came back as 500 Internal
+// server error, which is the wrong thing to tell someone whose script sent a
+// stray comma.
+app.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError) && 'body' in err) {
+    return res.status(400).json({ message: 'Request body is not valid JSON' });
+  }
+  return next(err);
+});
+
+// Express passes a literal `null` body straight through, and routes that
+// destructure it throw on the spot. An absent body is an empty object
+// everywhere else, so make that one consistent too.
+app.use((req, res, next) => {
+  if (req.body === null || req.body === undefined) req.body = {};
+  next();
+});
+
 // Security middleware
 app.use(helmet({
   crossOriginEmbedderPolicy: false,
@@ -459,9 +480,61 @@ app.use((error, req, res, next) => {
   res.status(500).json({ message: 'Internal server error', error: error.message });
 });
 
-// Shutdown
-process.on('SIGINT', async () => { console.log('🛑 Shutting down gracefully...'); await prisma.$disconnect(); process.exit(0); });
-process.on('SIGTERM', async () => { console.log('🛑 Shutting down gracefully...'); await prisma.$disconnect(); process.exit(0); });
+// The listening server, captured so the shutdown below can close it.
+let httpServer = null;
+
+// A stray promise rejection used to end the whole instance: the runtime
+// stops the process on an unhandled rejection, so one missing .catch() in
+// any of the two dozen background jobs - a metadata lookup, a webhook, an
+// addon health check - took down sync, the activity monitor and every open
+// page with it, until the container restarted itself.
+//
+// Both of these are logged loudly and the server keeps serving. A
+// background job that failed is a background job that failed; it is not a
+// reason to drop everything else. A process that is genuinely broken still
+// gets caught by the container's own health check and restarted.
+process.on('unhandledRejection', (reason) => {
+  const detail = reason instanceof Error ? (reason.stack || reason.message) : reason;
+  console.error('[Unhandled rejection] a background task failed without handling its own error:', detail);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[Uncaught exception]', err?.stack || err?.message || err);
+});
+
+// Shutdown: stop taking new work, let what is already in flight finish, and
+// only then let go of the database. Before this, the signal that arrives on
+// every update severed in-flight requests and every live-update stream at
+// once, so an update looked like an error to anyone mid-action rather than
+// a short wait.
+// Deliberately a fixed, short grace rather than waiting for the server to
+// report every connection closed: this runtime exposes closeAllConnections
+// but a live-update stream still keeps close() from ever completing
+// (measured), so waiting on it means the container is force-killed at the
+// ten-second mark instead of stopping cleanly. A second and a half covers
+// an ordinary request; anything still open after it is cut.
+const SHUTDOWN_GRACE_MS = 1500;
+let shuttingDown = false;
+const shutdown = async (signal) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`🛑 ${signal} received - finishing in-flight requests...`);
+  try {
+    if (httpServer) {
+      // Stop taking new connections, and let go of idle keep-alive sockets
+      // straight away so only real in-flight work is left.
+      httpServer.close();
+      if (typeof httpServer.closeIdleConnections === 'function') httpServer.closeIdleConnections();
+      await new Promise((resolve) => setTimeout(resolve, SHUTDOWN_GRACE_MS));
+      if (typeof httpServer.closeAllConnections === 'function') httpServer.closeAllConnections();
+    }
+  } catch (e) {
+    console.warn('Shutdown could not close the server cleanly:', e?.message);
+  }
+  try { await prisma.$disconnect(); } catch { /* going away regardless */ }
+  process.exit(0);
+};
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 // Initialize sync schedule on startup (works in all modes)
 const { reloadGroupAddons } = require('./routes/users');
@@ -866,7 +939,7 @@ async function bootstrap() {
 
   const storageLabel = process.env.PRISMA_PROVIDER === 'sqlite' ? 'SQLite with Prisma' : 'PostgreSQL with Prisma'
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer = app.listen(PORT, '0.0.0.0', () => {
     console.log('🚀 SlickSync (Database) running on port', PORT)
     console.log('📊 Health check: http://127.0.0.1:' + PORT + '/health')
     console.log('🔌 API endpoints: http://127.0.0.1:' + PORT + '/api/')

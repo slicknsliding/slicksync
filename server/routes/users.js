@@ -1109,8 +1109,17 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       const seenCollections = new Set()
       const sagas = []
-      for (const imdbId of ordered.slice(0, SAGA_CANDIDATES)) {
-        const coll = await fetchTmdbCollection(imdbId, 'movie', req)
+      // Forty lookups, each its own call to TMDb. Asked for one at a time
+      // they ran end to end - measured at four seconds even when every one
+      // of them missed. Eight at a time is quick without being a burst the
+      // upstream would object to. Dedupe still happens in the original
+      // order below, so the result is unchanged.
+      const { mapLimit } = require('../utils/mapLimit')
+      const collections = await mapLimit(
+        ordered.slice(0, SAGA_CANDIDATES), 8,
+        (imdbId) => fetchTmdbCollection(imdbId, 'movie', req).catch(() => null)
+      )
+      for (const coll of collections) {
         if (!coll || seenCollections.has(coll.id)) continue
         seenCollections.add(coll.id)
         // fetchTmdbCollection's parts exclude the seed - membership is
@@ -2761,7 +2770,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       // Fetch updated user for response
       const userWithGroups = await prisma.user.findFirst({
-        where: { id }
+        // Scoped to the account - see the note in routes/addons.js. Without
+        // it, an id from another account resolves and is then written to.
+        where: { id, accountId: getAccountId(req) }
       })
 
       // Find groups that contain this user using userIds JSON array
@@ -6470,7 +6481,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       // Use the middleware-protected user (ensures account isolation)
       const existingUser = await prisma.user.findFirst({
-        where: { id }
+        where: { id, accountId: getAccountId(req) }
       });
 
       if (!existingUser) {
@@ -6515,7 +6526,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
 
       // Use the middleware-protected user (ensures account isolation)
       const existingUser = await prisma.user.findFirst({
-        where: { id }
+        where: { id, accountId: getAccountId(req) }
       });
 
       if (!existingUser) {
@@ -7765,6 +7776,13 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
     // must not be undone by every scheduled sync), so a reorder made HERE,
     // at the group, looked like a no-op and was skipped - the group-level
     // caller asked to force it, but the request never reached this far.
+    // A user in no group is left exactly as they are. Without this the
+    // branch below read an empty desired list as "remove everything".
+    if (plan.noGroup) {
+      console.log('✅ User is in no group - nothing to sync')
+      return { success: true, total: 0, alreadySynced: true, noGroup: true }
+    }
+
     if (plan.alreadySynced && !options.force) {
       console.log(`✅ User already synced`)
       // Account Guard: already-synced still CONFIRMS the account state, so

@@ -1,5 +1,27 @@
 [
   {
+    "version": "1.86.0",
+    "date": "2026-09-12",
+    "title": "1.86.0 - Safer syncs, faster rows, and updates that finish",
+    "features": [
+      "Browse Addon Directory opens from a copy the instance already holds and refreshes itself in the background, so the list is on screen immediately instead of after a wait while every source is contacted. Directory logos now come through the same image cache as the rest of the app.",
+      "Continue Watching, Finish the Saga, the For You genre row and Related Titles now look up everything they need together rather than one title after another. Each lookup carries its own time limit, so a row that included titles no longer resolving upstream used to wait out every one of those limits in turn before it could be drawn. The rows now appear quickly even when some titles cannot be found.",
+      "Pages that show recommendations build the household's taste picture once and share it briefly, rather than re-reading the full watch history for every row on the same screen.",
+      "A group's sync badge asks for its state once instead of twice, so group pages settle faster.",
+      "The background metrics pass keeps warm only the periods actually being looked at, rather than rebuilding every period on a timer. An instance sitting idle now does close to nothing between visits, and a period nobody has opened in a while is built when it is asked for.",
+      "Your Activity list covers recent history rather than every day ever recorded. The full record is still kept and still counted in Metrics; the list itself is bounded so it stays quick to load on an instance with years of history behind it."
+    ],
+    "bugFixes": [
+      "Syncing a user who belonged to no group cleared every addon from their real Stremio or Nuvio account. With no group to draw from, the set of addons to install came out empty, and an empty set reads as an instruction to remove everything. A user in no group is now left untouched, and is reported as having nothing to sync. A user in an empty group is still cleared, because an empty group is a real instruction.",
+      "Opening a cast member's other titles reported that a TMDb API key was needed whenever the list failed to load, including on instances where a key was set and working. That message now appears only when no key is configured. Any other failure says the list could not be loaded and can be retried by tapping the name again.",
+      "Stopping or updating the instance used to wait out the full force-stop timeout whenever a page was open, because a page holding a live connection kept the server from closing. Restarts and updates now finish promptly and shut down cleanly.",
+      "A background task failing in an unexpected way could stop the whole instance. Failures are now contained where they happen. A page that hits an unexpected error also shows a recovery screen with a way back instead of going blank.",
+      "Requests carrying malformed input answered with a server error rather than saying what was wrong. Broken or empty request bodies, values of the wrong shape, and out-of-range page numbers now come back with a clear message and the right status.",
+      "On instances hosting more than one account, admin pages reached by a direct link could load a record belonging to another account. Addon detail, health history, backup pages and the matching user pages now resolve only within your own account, and anything else is reported as not found.",
+      "The external API key is now compared in a way that takes the same time regardless of how much of it is correct, matching how the federation token was already handled."
+    ]
+  },
+  {
     "version": "1.85.5",
     "date": "2026-09-08",
     "title": "1.85.5 - Group reorders reach the accounts, and a lighter phone",

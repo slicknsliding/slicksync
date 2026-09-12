@@ -120,27 +120,18 @@ export function SyncBadge({
         // fan-out, repeated by every group's badge every 30s, was enough on
         // its own to exhaust the API rate limit for households with several
         // groups/users and take down unrelated pages.
-        const group = await api.getGroup(groupId);
-        let userIds: string[] = [];
-        try {
-          if (typeof (group as any)?.userIds === 'string') {
-            userIds = JSON.parse((group as any).userIds);
-          } else if (Array.isArray((group as any)?.userIds)) {
-            userIds = (group as any).userIds;
-          }
-        } catch (e) {
-          console.error('Error parsing group userIds:', e);
-          userIds = [];
-        }
-        const addonCount = (group as any)?.addons ?? 0;
+        const aggregated = await api.getGroupSyncStatus(groupId);
+        // Both counts come back with the status now. This used to fetch the
+        // whole group first just to read them, so every badge cost two
+        // round trips and a page listing ten groups made twenty requests
+        // before it could show a single verdict.
+        const memberCount = aggregated?.memberCount ?? (aggregated?.userStatuses?.length ?? 0);
+        const addonCount = aggregated?.addonCount ?? 0;
 
-        // If group has no addons, it's stale
-        if (addonCount === 0) {
-          updateStatus('stale');
-        } else if (userIds.length === 0) {
+        // Nothing to sync yet: no addons on the group, or nobody in it.
+        if (addonCount === 0 || memberCount === 0) {
           updateStatus('stale');
         } else {
-          const aggregated = await api.getGroupSyncStatus(groupId);
           const userStatuses = aggregated?.userStatuses || [];
           const syncResults = userStatuses.map(s => s.status);
           const allSynced = syncResults.length > 0 && syncResults.every(s => s === 'synced');

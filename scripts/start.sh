@@ -129,7 +129,23 @@ cleanup() {
   echo "🛑 Shutting down services..."
   kill $BACKEND_PID 2>/dev/null || true
   kill $FRONTEND_PID 2>/dev/null || true
-  wait
+  # Then wait - but never forever. Every open page holds a live-update
+  # stream, and the frontend will not finish draining while one is open, so
+  # this wait used to sit here until Docker gave up at its ten-second limit
+  # and killed the whole container. Measured: a stop with one page open took
+  # 10.4s and ended in a kill; with none, 1.8s and a clean exit. So a
+  # watchdog ends the stragglers, and the wait below is scoped to the two
+  # services rather than every background job this script ever started.
+  # Every kill here needs its own "|| true": this script runs under set -e,
+  # and the backend has usually already exited by the time the watchdog
+  # fires, so without it the first kill fails, the subshell aborts on the
+  # spot, and the frontend - the one actually holding things open - is never
+  # ended at all. Measured that exact mistake: the container sat for 33
+  # seconds with the frontend still running.
+  ( sleep 3
+    kill -9 $BACKEND_PID 2>/dev/null || true
+    kill -9 $FRONTEND_PID 2>/dev/null || true ) &
+  wait $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
   exit 0
 }
 

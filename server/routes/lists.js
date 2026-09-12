@@ -84,7 +84,11 @@ module.exports = ({ prisma, getAccountId, decrypt }) => {
   router.post('/', async (req, res) => {
     try {
       const accountId = getAccountId(req) || 'default';
-      const name = (req.body?.name || '').trim();
+      // A non-string name (an array, a number) is truthy, so this used to
+      // call trim on it and fail as a server error rather than saying what
+      // was wrong. Same reasoning as the guard in routes/groups.js.
+      const rawName = req.body?.name;
+      const name = typeof rawName === 'string' ? rawName.trim() : '';
       if (!name) return res.status(400).json({ error: 'name is required' });
       const list = await prisma.customList.create({
         data: { accountId, name, description: (req.body?.description || '').trim() || null, itemsJson: '[]' },

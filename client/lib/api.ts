@@ -3,6 +3,16 @@
 // Otherwise use the explicit URL (useful for production or different ports)
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+// One entry in a cast member's filmography, as /api/discover/person returns it.
+export interface PersonCredit {
+  tmdbId: number;
+  mediaType: 'movie' | 'tv';
+  title: string;
+  year: string | null;
+  poster: string | null;
+  role: string | null;
+}
+
 interface FetchOptions extends RequestInit {
   token?: string;
 }
@@ -552,7 +562,7 @@ class ApiClient {
     // server/routes/groups.js `/:id/sync-status`) - avoids the N+1 of
     // fetching each member's own sync-status individually, which is what
     // used to blow through the API rate limit on groups with several users.
-    return this.fetch<{ groupStatus: 'synced' | 'unsynced'; userStatuses: Array<{ userId: string; status?: string; isSynced?: boolean; message?: string }> }>(`/groups/${id}/sync-status`);
+    return this.fetch<{ groupStatus: 'synced' | 'unsynced'; userStatuses: Array<{ userId: string; status?: string; isSynced?: boolean; message?: string }>; memberCount?: number; addonCount?: number }>(`/groups/${id}/sync-status`);
   }
 
   async getUserStremioAddons(id: string) {
@@ -2951,11 +2961,20 @@ class ApiClient {
   // Cast/crew deep-dive (optional; needs a TMDb key server-side). Returns a
   // person's filmography, or null when no key is configured (503) so the UI
   // hides the feature gracefully.
-  async getPersonCredits(personId: number | string) {
+  // Two different failures used to come back as the same bare null, so the
+  // panel told everyone to add a TMDb API key - including people whose key
+  // was already set and working, when the real problem was the request
+  // failing. Only the route's 503 means the key is actually missing.
+  async getPersonCredits(personId: number | string): Promise<
+    | { ok: true; person: { id: number; name: string | null }; credits: PersonCredit[] }
+    | { ok: false; reason: 'nokey' | 'failed' }
+  > {
     try {
-      return await this.fetch<{ person: { id: number; name: string | null }; credits: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }> }>(`/discover/person/${personId}`);
-    } catch {
-      return null;
+      const data = await this.fetch<{ person: { id: number; name: string | null }; credits: PersonCredit[] }>(`/discover/person/${personId}`);
+      return { ok: true, ...data };
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      return { ok: false, reason: status === 503 ? 'nokey' : 'failed' };
     }
   }
 

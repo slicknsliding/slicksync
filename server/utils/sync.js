@@ -213,8 +213,20 @@ async function getDesiredAddons(user, req, { prisma, getAccountId, decrypt, pars
     })
 
     const { getGroupAddons } = require('../utils/helpers')
+    // A user who belongs to NO group has expressed no desired state at all,
+    // which is not the same as "their desired state is nothing". The
+    // difference matters because the caller clears the account when the
+    // desired list comes back empty: syncing a user before putting them in
+    // a group would have removed every addon from their real Stremio or
+    // Nuvio account, and Sync All would have done it to all of them at
+    // once. Sync status already treats this case as "not in a group"
+    // rather than as out of sync; this makes the sync itself agree.
+    // An empty GROUP is left alone - that is a real instruction.
+    if (groups.length === 0) {
+      return { success: true, addons: [], noGroup: true, error: null }
+    }
     // groupAddons are returned in collection shape: { transportUrl, transportName, manifest }
-    const groupAddons = groups.length > 0 ? await getGroupAddons(prisma, groups[0].id, req) : []
+    const groupAddons = await getGroupAddons(prisma, groups[0].id, req)
 
     // Use prefetched user addons if provided, otherwise fetch from Stremio
     // This avoids making duplicate API calls which can return inconsistent results
@@ -547,7 +559,14 @@ function createGetGroupSyncStatus(deps) {
   const getUserSyncStatus = createGetUserSyncStatus(deps)
   const { prisma, getAccountId } = deps
   return async function getGroupSyncStatus(groupId, req) {
-    const group = await prisma.group.findFirst({ where: { id: groupId, accountId: getAccountId(req) } })
+    // The member and addon counts ride along. A badge needs them to say
+    // "nothing to sync yet", and without them here it had to fetch the
+    // whole group separately first - two round trips per badge, on every
+    // page that shows one per group.
+    const group = await prisma.group.findFirst({
+      where: { id: groupId, accountId: getAccountId(req) },
+      include: { _count: { select: { addons: true } } },
+    })
     if (!group) return { error: 'Group not found' }
     let userIds = []
     try { userIds = Array.isArray(group.userIds) ? group.userIds : JSON.parse(group.userIds || '[]') } catch {}
@@ -561,7 +580,7 @@ function createGetGroupSyncStatus(deps) {
       }
     }
     const groupStatus = userStatuses.every(s => s.status === 'synced') ? 'synced' : 'unsynced'
-    return { groupStatus, userStatuses }
+    return { groupStatus, userStatuses, memberCount: userIds.length, addonCount: group?._count?.addons ?? 0 }
   }
 }
 
@@ -580,6 +599,9 @@ async function computeUserSyncPlan(user, req, { prisma, getAccountId, decrypt, p
   // 2) Desired - pass prefetched current addons to avoid duplicate provider API calls
   const desiredRes = await getDesiredAddons(user, req, { prisma, getAccountId, decrypt, parseAddonIds, parseProtectedAddons, canonicalizeManifestUrl, StremioAPIClient, createProvider, unsafeMode, useCustomFields: useCustomFieldsValue, _prefetchedUserAddons: current })
   if (!desiredRes.success) return { success: false, error: desiredRes.error, alreadySynced: false, current, desired: [] }
+  // Carried through so the caller can tell "nothing is wanted" apart from
+  // "nothing was ever asked for" - see getDesiredAddons.
+  if (desiredRes.noGroup) return { success: true, noGroup: true, alreadySynced: true, current, desired: [] }
   const desired = desiredRes.addons || []
   
   // Ensure desired is always an array, never null

@@ -43,6 +43,14 @@ function saveOmdbCacheSoon() {
   cacheSaveTimer = setTimeout(() => {
     cacheSaveTimer = null
     try {
+      // Drop what has expired before writing, so neither the file nor the
+      // memory copy keeps growing with answers no lookup can use any more.
+      // Loading already filters by age; without this the entries simply
+      // accumulated in both places for the life of the instance.
+      const cutoff = Date.now() - OMDB_CACHE_TTL_MS
+      for (const [k, v] of omdbCache) {
+        if (!v || !(v.at > cutoff)) omdbCache.delete(k)
+      }
       require('fs').writeFileSync(OMDB_CACHE_FILE, JSON.stringify(Object.fromEntries(omdbCache)))
     } catch { /* cache persistence is best-effort */ }
   }, 10000)

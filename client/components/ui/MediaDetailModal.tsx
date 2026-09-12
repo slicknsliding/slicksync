@@ -114,14 +114,16 @@ export function MediaDetailModal({
   } | null>(null);
   // Cast/crew deep-dive: when a cast member with a TMDb id is clicked, load
   // their filmography into this panel (optional feature - see discover.js's
-  // /person route; null credits + unavailable=true means no TMDb key is set,
-  // which the render below treats as "feature off" rather than an error).
+  // /person route). `unavailable` carries WHY it is empty: 'nokey' is the
+  // feature being off, 'failed' is the request not going through. They read
+  // identically to the user otherwise, and conflating them once had someone
+  // checking a TMDb key that was set and fine.
   const [personView, setPersonView] = useState<null | {
     id: number | string;
     name: string;
     loading: boolean;
     credits: Array<{ tmdbId: number; mediaType: 'movie' | 'tv'; title: string; year: string | null; poster: string | null; role: string | null }>;
-    unavailable?: boolean;
+    unavailable?: 'nokey' | 'failed';
   }>(null);
 
   // Follows for people, keyed by TMDb id. Loaded alongside the show follow
@@ -179,8 +181,8 @@ export function MediaDetailModal({
     }
     setPersonView({ id: member.tmdbId, name: member.name, loading: true, credits: [] });
     const res = await api.getPersonCredits(member.tmdbId);
-    if (!res) {
-      setPersonView({ id: member.tmdbId, name: member.name, loading: false, credits: [], unavailable: true });
+    if (!res.ok) {
+      setPersonView({ id: member.tmdbId, name: member.name, loading: false, credits: [], unavailable: res.reason });
       return;
     }
     setPersonView({ id: member.tmdbId, name: res.person?.name || member.name, loading: false, credits: res.credits });
@@ -1645,7 +1647,9 @@ export function MediaDetailModal({
                         <p className="text-sm text-muted py-4 text-center">Loading filmography…</p>
                       ) : personView.unavailable ? (
                         <p className="text-xs text-subtle py-3">
-                          Cast deep-dive needs a TMDb API key (Settings → add one, or set TMDB_API_KEY).
+                          {personView.unavailable === 'nokey'
+                            ? 'Cast deep-dive needs a TMDb API key (Settings → add one, or set TMDB_API_KEY).'
+                            : 'Could not load this filmography just now. Tap the name again to retry.'}
                         </p>
                       ) : personView.credits.length === 0 ? (
                         <p className="text-sm text-muted py-3">No other titles found.</p>
