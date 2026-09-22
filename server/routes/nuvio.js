@@ -1,5 +1,7 @@
 const express = require('express');
 const { validateNuvioCredentials, refreshNuvioToken, parseJwtPayload, startNuvioTvLogin, pollNuvioTvLogin, exchangeNuvioTvLogin } = require('../providers/nuvioAuth');
+const { createNuvioProvider } = require('../providers/nuvio');
+const { resolveServerConfigForAccount } = require('../providers/supabase');
 
 const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -124,6 +126,11 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
   router.post('/connect-authkey', async (req, res) => {
     try {
       const { email, password, username, groupName, colorIndex, create, refreshToken: oauthRefreshToken } = req.body;
+      // Which of the account's profiles this user will manage. Nuvio numbers
+      // them from 1, and 1 is the primary - the only one that existed here
+      // before, so anything missing or unusable means the primary.
+      const requestedProfile = Number(req.body.nuvioProfileId)
+      const profileIndex = Number.isInteger(requestedProfile) && requestedProfile > 0 ? requestedProfile : 1
       const oauthNuvioUserId = req.body.providerUserId;
 
       let nuvioUserId;
@@ -164,11 +171,45 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
       const normalizedEmail = nuvioEmail?.toLowerCase?.() || email.toLowerCase();
 
       // Check if user already exists (scoped to provider type)
+      // The same Nuvio account can be added once per profile, so identity is
+      // the account plus the profile rather than the account alone.
       const existingUser = await prisma.user.findFirst({
-        where: { accountId, email: normalizedEmail, providerType: 'nuvio' }
+        where: { accountId, email: normalizedEmail, providerType: 'nuvio', nuvioProfileId: profileIndex }
       });
       if (existingUser) {
-        return res.status(409).json({ message: 'User already exists' });
+        return res.status(409).json({
+          message: profileIndex === 1
+            ? 'User already exists'
+            : `That profile has already been added as ${existingUser.username}`
+        });
+      }
+
+      // A profile marked as using the primary's addons has no list of its own
+      // to manage - whatever the primary syncs is what it shows. Adding it as
+      // its own user would present a second addon list that silently does
+      // nothing, so it is refused with an explanation instead.
+      if (profileIndex !== 1) {
+        let profiles = []
+        try {
+          const probe = createNuvioProvider({
+            refreshToken,
+            userId: nuvioUserId,
+            profileId: profileIndex,
+            resolveServerConfig: prisma ? () => resolveServerConfigForAccount(prisma, accountId || 'default') : undefined
+          })
+          profiles = await probe.getProfiles()
+        } catch (e) {
+          return res.status(502).json({ error: `Could not read this account's profiles: ${e?.message || 'unknown error'}` })
+        }
+        const match = (profiles || []).find((pr) => Number(pr.profile_index ?? pr.profileIndex) === profileIndex)
+        if (!match) {
+          return res.status(400).json({ error: 'That profile no longer exists on this Nuvio account' })
+        }
+        if (match.uses_primary_addons === true) {
+          return res.status(400).json({
+            error: `"${match.name || `Profile ${profileIndex}`}" is set to use the primary profile's addons, so it has no list of its own. Turn that off in Nuvio first, or manage it through the primary profile.`
+          })
+        }
       }
 
       // Determine username
@@ -202,6 +243,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
           providerType: 'nuvio',
           nuvioRefreshToken: encryptedRefreshToken,
           nuvioUserId,
+          nuvioProfileId: profileIndex,
           isActive: true,
           colorIndex: colorIndex || 0,
         }
@@ -221,7 +263,8 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
         success: true,
         user: { id: newUser.id, username: finalUsername, email: normalizedEmail },
         providerType: 'nuvio',
-        providerUserId: nuvioUserId
+        providerUserId: nuvioUserId,
+        nuvioProfileId: profileIndex
       });
     } catch (error) {
       console.error('Nuvio connect-authkey error:', error.message);

@@ -590,6 +590,16 @@ class ApiClient {
     return this.fetch<{ profiles: NuvioProfile[] }>(`/users/${encodeURIComponent(userId)}/nuvio-profiles`);
   }
 
+  // Promote one of the account's other profiles to its own user, so its addon
+  // list can be managed and synced like anyone else's. Reuses the credential
+  // already stored against `userId`, so no password is asked for again.
+  async addNuvioProfileAsUser(userId: string, profileIndex: number) {
+    return this.fetch<{ user: { id: string; username: string; nuvioProfileId: number }; message: string }>(
+      `/users/${encodeURIComponent(userId)}/nuvio-profiles/${profileIndex}/add-user`,
+      { method: 'POST', body: JSON.stringify({}) }
+    );
+  }
+
   async getNuvioCollections(userId: string, profileId: number) {
     return this.fetch<{ collections: NuvioCollection[] }>(
       `/users/${encodeURIComponent(userId)}/nuvio-collections/${profileId}`
@@ -2145,6 +2155,7 @@ class ApiClient {
     username: string;
     groupName?: string;
     colorIndex?: number;
+    nuvioProfileId?: number;
   }) {
     const result = await this.fetch<any>('/nuvio/connect-authkey', {
       method: 'POST',
@@ -2183,6 +2194,7 @@ class ApiClient {
     email?: string;
     groupName?: string;
     colorIndex?: number;
+    nuvioProfileId?: number;
   }) {
     const result = await this.fetch<any>('/nuvio/connect-authkey', {
       method: 'POST',
@@ -3046,6 +3058,8 @@ export interface User {
   name?: string; // Legacy field, prefer username
   email?: string;
   providerType?: 'stremio' | 'nuvio';
+  /** Which Nuvio profile's addon list this user manages (1 is the primary). */
+  nuvioProfileId?: number;
   /** SlickTrax Addon - per-user Stremio addon toggle + its URL token. */
   traxAddonEnabled?: boolean;
   /** In-player actions in the SlickTrax addon (opt-in per user). */
@@ -3818,6 +3832,15 @@ export interface NuvioProfile {
   avatar_id?: string | null;
   created_at: string;
   updated_at: string;
+  // Added by /users/:id/nuvio-profiles. A profile using the primary's addons
+  // has no list of its own to manage, and one already pointed at by another
+  // user here should not be offered a second time - `canAdd` is those two
+  // conditions together, so the UI does not have to restate them.
+  profileIndex?: number;
+  usesPrimaryAddons?: boolean;
+  managedBy?: { id: string; username: string } | null;
+  isThisUser?: boolean;
+  canAdd?: boolean;
 }
 
 export interface NuvioCatalogSource {

@@ -29,7 +29,37 @@ const { refreshNuvioToken, isTokenExpired } = require('./nuvioAuth')
 const tokenCache = new Map()      // userId -> { accessToken, refreshToken }
 const refreshPromises = new Map() // userId -> Promise<string> (in-flight refresh)
 
-function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onTokenRefresh, resolveServerConfig }) {
+// profileId is Nuvio's own profile_index (1 for the primary profile), NOT the
+// profile row's UUID. A Nuvio account can hold several profiles, and a profile
+// either keeps its own addon list or is marked as using the primary's - see
+// `uses_primary_addons` on what getProfiles() returns. Everything addon-shaped
+// below is scoped to one profile, so a SlickSync user that points at profile 2
+// reads and writes profile 2's list and never touches the primary's.
+function createNuvioProvider({ refreshToken: initialRefreshToken, userId, profileId, resolveProfileId, onTokenRefresh, resolveServerConfig }) {
+  // Resolved the same way the server config is, and for the same reason: the
+  // profile lives on the User row, and the dozens of places that build a
+  // provider select only the columns they happen to need. Requiring every one
+  // of them to remember a new column would mean a caller that forgot it wrote
+  // one profile's addons into another's list. A caller that already has the
+  // value passes it and nothing is read; anyone else gets it looked up once,
+  // on the first addon call, and cached for the life of the provider.
+  let cachedProfileId = Number.isInteger(Number(profileId)) && Number(profileId) > 0 ? Number(profileId) : null
+  async function getAddonProfileId() {
+    if (cachedProfileId !== null) return cachedProfileId
+    if (typeof resolveProfileId === 'function') {
+      try {
+        const resolved = Number(await resolveProfileId())
+        if (Number.isInteger(resolved) && resolved > 0) {
+          cachedProfileId = resolved
+          return cachedProfileId
+        }
+      } catch (e) {
+        console.warn(`[NuvioProvider] Could not resolve the profile for user ${userId}, using the primary:`, e?.message)
+      }
+    }
+    cachedProfileId = 1
+    return cachedProfileId
+  }
   // Which Nuvio backend this account talks to. Resolved lazily rather than
   // at construction because createProvider() is synchronous everywhere it's
   // called, and reading the account's setting needs a DB round-trip. Cached
@@ -89,9 +119,10 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
 
     async getAddons() {
       const accessToken = await ensureAuth()
+      const addonProfileId = await getAddonProfileId()
       const rows = await supabaseGet('addons', {
         user_id: `eq.${userId}`,
-        profile_id: 'eq.1',
+        profile_id: `eq.${addonProfileId}`,
         order: 'sort_order.asc,created_at.asc',
         select: '*'
       }, accessToken, await getServerConfig())
@@ -113,23 +144,24 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
 
     async setAddons(addons) {
       const accessToken = await ensureAuth()
+      const addonProfileId = await getAddonProfileId()
       // Snapshot current addons before delete for rollback on failure
       const snapshot = await supabaseGet('addons', {
         user_id: `eq.${userId}`,
-        profile_id: 'eq.1',
+        profile_id: `eq.${addonProfileId}`,
         select: '*'
       }, accessToken, await getServerConfig())
 
       // Delete all current addons, then insert desired set
       await supabaseDelete('addons', {
         user_id: `eq.${userId}`,
-        profile_id: 'eq.1'
+        profile_id: `eq.${addonProfileId}`
       }, accessToken, await getServerConfig())
 
       if (addons.length > 0) {
         const rows = addons.map((addon, i) => ({
           user_id: userId,
-          profile_id: 1,
+          profile_id: addonProfileId,
           url: addon.transportUrl,
           name: addon.manifest?.name || addon.transportName || addon.name || '',
           enabled: true,
@@ -155,10 +187,11 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
 
     async addAddon(url, manifest) {
       const accessToken = await ensureAuth()
+      const addonProfileId = await getAddonProfileId()
       // Get current max sort_order
       const current = await supabaseGet('addons', {
         user_id: `eq.${userId}`,
-        profile_id: 'eq.1',
+        profile_id: `eq.${addonProfileId}`,
         select: 'sort_order',
         order: 'sort_order.desc',
         limit: '1'
@@ -167,7 +200,7 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
 
       await supabasePost('addons', [{
         user_id: userId,
-        profile_id: 1,
+        profile_id: addonProfileId,
         url,
         name: manifest?.name || '',
         enabled: true,
@@ -177,9 +210,10 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, onToke
 
     async clearAddons() {
       const accessToken = await ensureAuth()
+      const addonProfileId = await getAddonProfileId()
       await supabaseDelete('addons', {
         user_id: `eq.${userId}`,
-        profile_id: 'eq.1'
+        profile_id: `eq.${addonProfileId}`
       }, accessToken, await getServerConfig())
     },
 

@@ -48,6 +48,21 @@ function makeCreateProvider({ prisma, encrypt, getAccountId } = {}) {
         return createNuvioProvider({
           refreshToken: decrypt(user.nuvioRefreshToken, req),
           userId: user.nuvioUserId,
+          // Which of the account's profiles this user's addon list belongs
+          // to. Passed straight through when the caller already selected it;
+          // otherwise the resolver below reads it once, on first use, so a
+          // caller that selected only the columns it needed cannot end up
+          // writing one profile's addons into another's list.
+          profileId: user.nuvioProfileId,
+          resolveProfileId: prisma && user.id
+            ? async () => {
+                const row = await prisma.user.findUnique({
+                  where: { id: user.id },
+                  select: { nuvioProfileId: true, providerType: true }
+                })
+                return row?.providerType === 'nuvio' ? row.nuvioProfileId : 1
+              }
+            : undefined,
           onTokenRefresh,
           // Lets an account point Nuvio at its own self-hosted backend
           // instead of api.nuvio.tv. Passed as a resolver rather than a
