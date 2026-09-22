@@ -38,10 +38,31 @@ function makeCreateProvider({ prisma, encrypt, getAccountId } = {}) {
           ? async (newRefreshToken) => user.__persistNuvioRefreshToken(encrypt(newRefreshToken, req))
           : (prisma && encrypt && user.id)
             ? async (newRefreshToken) => {
-                await prisma.user.update({
-                  where: { id: user.id },
-                  data: { nuvioRefreshToken: encrypt(newRefreshToken, req) }
-                })
+                const encrypted = encrypt(newRefreshToken, req)
+                // Nuvio rotates the refresh token every time it is used, so
+                // the old one stops working. One Nuvio account can now be
+                // held by more than one user here - one per profile - and
+                // they all authenticate with the same credential. Saving the
+                // rotated token against only the user that happened to
+                // trigger the refresh would leave every sibling holding a
+                // token that has already been spent, and they would fail to
+                // connect the next time they were used. So every user on the
+                // same Nuvio account is moved to the new token together.
+                if (user.nuvioUserId) {
+                  await prisma.user.updateMany({
+                    where: {
+                      providerType: 'nuvio',
+                      nuvioUserId: user.nuvioUserId,
+                      ...(user.accountId ? { accountId: user.accountId } : {})
+                    },
+                    data: { nuvioRefreshToken: encrypted }
+                  })
+                } else {
+                  await prisma.user.update({
+                    where: { id: user.id },
+                    data: { nuvioRefreshToken: encrypted }
+                  })
+                }
               }
             : undefined
 
