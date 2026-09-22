@@ -224,6 +224,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           username: user.username,
           email: user.email,
           providerType: user.providerType || 'stremio',
+          nuvioProfileId: user.nuvioProfileId ?? 1,
           secondaryProviderType: secondaryProviderByUserId.get(user.id) || null,
           providerConnectionError: user.providerConnectionError || null,
           groupName: userGroup?.name || null,
@@ -2545,6 +2546,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         email: user.email,
         username: user.username,
         providerType: user.providerType || 'stremio',
+        nuvioProfileId: user.nuvioProfileId ?? 1,
         hasStremioConnection: !!user.stremioAuthKey,
         status: user.isActive ? 'active' : 'inactive',
         addons: orderedAddons,
@@ -3463,7 +3465,9 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           nuvioUserId: user.nuvioUserId,
           nuvioProfileId: profileIndex,
           isActive: true,
-          colorIndex: ((user.colorIndex || 0) + profileIndex) % 8
+          // The picker wraps whatever it is given, so this just nudges each
+          // profile onto a different colour from the one it came from.
+          colorIndex: (user.colorIndex || 0) + profileIndex
         }
       })
 

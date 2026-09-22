@@ -51,6 +51,8 @@ interface UserDisplay {
   name: string;
   email?: string;
   providerType?: 'stremio' | 'nuvio';
+  /** Which Nuvio profile's addons this user manages; 1 is the primary. */
+  nuvioProfileId?: number;
   secondaryProviderType?: 'stremio' | 'nuvio' | null;
   providerConnectionError?: string | null;
   avatarUrl?: string | null;
@@ -195,6 +197,7 @@ export default function UsersPage() {
         name: userName,
         email: user.email,
         providerType: user.providerType || 'stremio',
+        nuvioProfileId: user.nuvioProfileId ?? 1,
         secondaryProviderType: (user as any).secondaryProviderType || null,
         providerConnectionError: (user as any).providerConnectionError || null,
         avatarUrl: (user as any).avatarUrl,
@@ -676,6 +679,11 @@ export default function UsersPage() {
                                       >
                                         {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
                                       </Badge>
+                                      {user.providerType === 'nuvio' && (user.nuvioProfileId ?? 1) !== 1 && (
+                                        <Badge variant="secondary" size="sm">
+                                          Profile {user.nuvioProfileId}
+                                        </Badge>
+                                      )}
                                       {user.secondaryProviderType && (
                                         <Badge
                                           variant={user.secondaryProviderType === 'nuvio' ? 'nuvio' : 'stremio'}
@@ -1097,6 +1105,11 @@ function UserCard({
               >
                 {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
               </Badge>
+              {user.providerType === 'nuvio' && (user.nuvioProfileId ?? 1) !== 1 && (
+                <Badge variant="secondary" size="sm">
+                  Profile {user.nuvioProfileId}
+                </Badge>
+              )}
               {user.secondaryProviderType && (
                 <Badge
                   variant={user.secondaryProviderType === 'nuvio' ? 'nuvio' : 'stremio'}
