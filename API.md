@@ -48,7 +48,7 @@ Get the full dashboard metrics for this account — same data the Metrics page r
 **Response:** Same shape the admin Metrics page consumes.
 
 #### `POST /api/ext/addons/reload`
-Reload addons by Stremio addon ID. This can be used by other addon developers so whenever the addon is updated, a call to SlickSync is made to immediately reload it.
+Reload addons by addon ID, for Nuvio and Stremio accounts alike. This can be used by other addon developers so whenever the addon is updated, a call to SlickSync is made to immediately reload it.
 
 **Authentication:** Required (API key)
 
@@ -81,7 +81,7 @@ Reload addons by Stremio addon ID. This can be used by other addon developers so
 ```
 
 #### `POST /api/ext/addons/sync`
-Reload addons by Stremio addon ID, then sync all groups containing those addons. This can be implemented by other addon developers to enable instant addon configuration update propagation on save to multiple users.
+Reload addons by addon ID, then sync all groups containing those addons. Applies to Nuvio and Stremio accounts alike. This can be implemented by other addon developers to enable instant addon configuration update propagation on save to multiple users.
 
 **Authentication:** Required (API key)
 
@@ -153,6 +153,6 @@ All endpoints may return error responses in the following format:
 - URLs are normalized and validated
 - Manifest URLs are encrypted in the database
 - Sync operations respect account-level sync settings (mode: normal/advanced, safe/unsafe)
-- The `stremioAddonId` parameter refers to the Stremio addon identifier (e.g., `com.stremio.addon.id`)
+- The `stremioAddonId` parameter refers to the addon's own manifest identifier (e.g., `com.stremio.addon.id`). Nuvio and Stremio both use the same addon protocol, so this applies to either; the parameter keeps its original name so existing callers are unaffected
 - When reloading addons, the system will find all addons in your account that match the given `stremioAddonId` and reload their manifests
 - The `diffs` array in reload responses shows what changed in each addon's manifest (new/removed resources and catalogs)

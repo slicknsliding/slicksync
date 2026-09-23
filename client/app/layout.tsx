@@ -8,7 +8,7 @@ import { ServiceWorkerRegistrar } from "@/components/pwa/ServiceWorkerRegistrar"
 
 export const metadata: Metadata = {
   title: "SlickSync - Users, Groups & Addons",
-  description: "SlickSync - Stremio & Nuvio Addon and User Management System",
+  description: "SlickSync - Nuvio & Stremio Addon and User Management System",
   applicationName: "SlickSync",
   manifest: "/site.webmanifest",
   // iOS only exposes the Push API to web apps launched in STANDALONE mode from

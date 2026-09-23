@@ -1,7 +1,7 @@
 {
   "name": "slicksync",
   "version": "1.87.0",
-  "description": "SlickSync - Stremio addon and user management system",
+  "description": "SlickSync - Nuvio and Stremio addon, user and credential management",
   "main": "server/index.js",
   "scripts": {
     "dev": "concurrently \"bun run server:watch\" \"bun run client:dev\"",
@@ -22,6 +22,7 @@
     "studio:public": "cp prisma/schema.postgres.prisma prisma/schema.prisma && bunx prisma generate && DATABASE_URL=\"postgresql://slicksync:slicksync@localhost:5432/slicksync\" bunx prisma studio"
   },
   "keywords": [
+    "nuvio",
     "stremio",
     "addons",
     "management",
