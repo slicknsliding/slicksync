@@ -14,6 +14,18 @@ COPY prisma ./prisma/
 RUN bun install --frozen-lockfile
 RUN cd client && bun install --frozen-lockfile
 
+# Runtime dependencies only. The image used to ship whatever the build needed,
+# so every release carried eslint, nodemon, concurrently and their transitive
+# tree to every self-hoster - none of which runs in the container. Note that
+# prisma itself is a real runtime dependency here, because scripts/start.sh
+# applies the schema on every boot, so it lives under dependencies rather than
+# being dropped by this install.
+FROM base AS prod-deps
+WORKDIR /app
+COPY package*.json ./
+COPY prisma ./prisma/
+RUN bun install --frozen-lockfile --production
+
 # Build stage
 FROM base AS builder
 WORKDIR /app
@@ -82,7 +94,9 @@ ENV APP_VERSION=$APP_VERSION
 
 # Copy built application
 COPY --from=builder --chown=appuser:nodejs /app/package*.json ./
-COPY --from=builder --chown=appuser:nodejs /app/node_modules ./node_modules
+# Runtime tree, not the build tree. The generated Prisma client is layered on
+# from the builder a few lines below, since it is produced during the build.
+COPY --from=prod-deps --chown=appuser:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=appuser:nodejs /app/server ./server
 COPY --from=builder --chown=appuser:nodejs /app/prisma ./prisma
 # Ensure the correct schema.prisma file is available at runtime
