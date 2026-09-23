@@ -16,7 +16,7 @@ test('searchCinemetaPosterByTitle: exact title + matching year returns the poste
     [{ name: 'Simpsley', releaseInfo: '2026', poster: 'https://p/simpsley.jpg', id: 'tt9999999', type: 'movie' }],
     async () => {
       const r = await searchCinemetaPosterByTitle('Simpsley', '2026', 'movie')
-      assert.deepEqual(r, { poster: 'https://p/simpsley.jpg', id: 'tt9999999', type: 'movie' })
+      assert.deepEqual(r, { poster: 'https://p/simpsley.jpg', id: 'tt9999999', type: 'movie', name: 'Simpsley' })
     }
   )
 })

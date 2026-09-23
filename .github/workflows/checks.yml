@@ -1,0 +1,42 @@
+name: Checks
+
+# Runs the test suite and the linter on the way in, so breakage is visible
+# before anything is tagged. The release workflows run the same two commands
+# as a gate of their own, so a tag can never build an image from a red tree.
+on:
+  push:
+    branches:
+      - beta
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The tests exercise server/utils directly and take their prisma client
+      # as an argument, so no client generation is needed here.
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Tests
+        run: npm test
+
+      # Warnings are reported but do not fail the run; errors do.
+      - name: Lint
+        run: npm run lint

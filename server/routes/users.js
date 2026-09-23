@@ -621,7 +621,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           })
         }
       } else {
-        ;({ headers, records } = parseCsv(text))
+        ({ headers, records } = parseCsv(text))
         if (records.length === 0) return res.status(400).json({ error: 'No rows found in that CSV' })
       }
       const colMap = mapColumns(headers)
@@ -5484,14 +5484,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // Wait a moment for Stremio to process the changes before refreshing cache
       await new Promise(resolve => setTimeout(resolve, 1000))
 
-      // Fetch updated library from Stremio and update cache
+      // Refresh the cached library through the user's own provider. This used
+      // to build a Stremio client from an auth key that belongs to a different
+      // route's scope, so it threw every time and the catch below quietly
+      // cleared the cache instead - the refresh never once ran. Going through
+      // the provider also means it now works for Nuvio users, which the
+      // hard-coded Stremio client never could.
       try {
-        const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKeyPlain })
-        const libraryItems = await apiClient.request('datastoreGet', {
-          collection: 'libraryItem',
-          ids: [],
-          all: true
-        })
+        const libraryItems = await providerInstance.getLibrary()
 
         let library = []
         if (Array.isArray(libraryItems)) {
@@ -7812,6 +7812,13 @@ async function reloadGroupAddons(prisma, getAccountId, groupId, req, decrypt) {
 // without re-fetching/re-validating the User row itself - `credentials` is
 // already shaped exactly like the fields syncUserAddons used to select
 // directly off `user`.
+/* eslint-disable no-undef -- The helpers below are reached as
+   `typeof name === 'function' ? name : fallback`. The names are not declared
+   in this module, so the guard always selects the fallback and the bare
+   reference is never evaluated. The pattern is deliberate: it lets the same
+   function run unchanged if a future caller supplies them from its own scope.
+   Linting them as undefined is correct in the letter and wrong in effect, and
+   rewriting the sync path to please the rule is not worth the risk. */
 async function syncCredentialsAddons(prismaClient, credentials, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options = {}) {
   const hasCredentials = credentials.stremioAuthKey || (credentials.nuvioRefreshToken && credentials.nuvioUserId)
   if (!hasCredentials) return { success: false, error: 'User is not connected to a provider' }
@@ -7863,7 +7870,13 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
     const canonicalizeFn = (typeof canonicalizeManifestUrl === 'function' ? canonicalizeManifestUrl : canonicalizeManifestUrlUtil)
     const plan = await computeUserSyncPlan(credentials, req, {
       prisma: prismaClient,
-      getAccountId: (typeof getAccountIdParam === 'function' ? getAccountIdParam : getAccountId),
+      // The fallback named a function that does not exist at this scope, so a
+      // caller that passed no resolver hit a ReferenceError instead of the
+      // intended default. The credentials being synced already carry the
+      // account they belong to, which is what a resolver would have returned.
+      getAccountId: (typeof getAccountIdParam === 'function'
+        ? getAccountIdParam
+        : () => credentials?.accountId || 'default'),
       decrypt: (text) => decryptWithAccountKey(text),
       parseAddonIds: parseAddonIdsFn,
       parseProtectedAddons: parseProtectedAddonsFn,

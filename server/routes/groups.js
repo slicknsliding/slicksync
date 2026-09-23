@@ -927,12 +927,15 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, assignUser
       orderedAddonIds: req.body?.orderedAddonIds,
       orderedManifestUrls: req.body?.orderedManifestUrls
     })
+    // Read before the try, not inside it. The catch at the bottom reports
+    // which group and which order were being applied, and both were declared
+    // in here - so a failed reorder threw a second time inside its own error
+    // handler, losing the real reason in favour of a generic failure.
+    const { id: groupId } = req.params
+    const { orderedManifestUrls, orderedAddonIds } = req.body || {}
+    // Support both orderedManifestUrls (legacy) and orderedAddonIds (new)
+    const orderedIds = orderedAddonIds || orderedManifestUrls
     try {
-      const { id: groupId } = req.params
-      const { orderedManifestUrls, orderedAddonIds } = req.body || {}
-
-      // Support both orderedManifestUrls (legacy) and orderedAddonIds (new)
-      const orderedIds = orderedAddonIds || orderedManifestUrls
       if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
         return res.status(400).json({ message: 'orderedAddonIds or orderedManifestUrls array is required' })
       }

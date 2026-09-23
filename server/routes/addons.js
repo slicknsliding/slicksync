@@ -1511,7 +1511,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
         return res.status(404).json({ message: 'Addon not found' });
       }
 
-      ;
+      
 
       // Find unique name for the clone
       const baseCloneName = `${originalAddon.name} (Copy)`
@@ -1553,7 +1553,7 @@ module.exports = ({ prisma, getAccountId, decrypt, encrypt, getDecryptedManifest
         }
       });
 
-      ;
+      
 
       // Clone group associations
       if (originalAddon.groups && originalAddon.groups.length > 0) {

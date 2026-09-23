@@ -107,7 +107,7 @@ async function notifyAddonStatusChange(prisma, addon, isOnline, errorMessage) {
       // Queued regardless of whether Discord is even configured - the
       // digest poller decides which channels to deliver through. Push +
       // bell are the primary channels; Discord is secondary.
-      await queueDigestEntry(prisma, addon.accountId, 'addon_health', `${title.replace(/^[✅⚠️]\s*/, '')} — ${message}`);
+      await queueDigestEntry(prisma, addon.accountId, 'addon_health', `${title.replace(/^(?:✅|⚠️)\s*/u, '')} — ${message}`);
     } else {
       const { notifyPushForType } = require('./pushNotifications');
       await notifyPushForType(prisma, addon.accountId, 'notifyOnAddonHealth', {

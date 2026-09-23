@@ -175,6 +175,14 @@ async function getNotifyTarget(prisma, accountId) {
 
 const PROVIDER_LABEL = { tmdb: 'TMDb', omdb: 'OMDb', mdblist: 'MDBList', rpdb: 'RPDB' };
 
+// How much of a key's allowance has to be spent before it is worth saying so.
+// The quota check below has always read this value, but it was never actually
+// defined, so the whole warning threw on the first key that reported usage and
+// no one was ever told a key was running low. Deliberately below the 90% the
+// Settings badge turns red at, so the notice arrives while there is still
+// room to do something about it rather than at the point it is nearly gone.
+const QUOTA_WARN_PERCENT = 80;
+
 /**
  * Resolves this account's four provider keys, checks whichever are set,
  * merges the results into its stored keyHealth, and - unless notify:false -
