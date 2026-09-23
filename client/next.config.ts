@@ -112,6 +112,18 @@ const nextConfig: NextConfig = {
         source: '/invite/:inviteCode/user-info',
         destination: 'http://localhost:4000/invite/:inviteCode/user-info',
       },
+      // Nuvio device sign-in for someone joining by invite. Listed here for
+      // the same reason every sibling above is: /invite/:code is a real page
+      // in this app, so anything under it that the backend owns has to be
+      // named explicitly or Next.js answers with its own 404.
+      {
+        source: '/invite/:inviteCode/nuvio/start',
+        destination: 'http://localhost:4000/invite/:inviteCode/nuvio/start',
+      },
+      {
+        source: '/invite/:inviteCode/nuvio/poll',
+        destination: 'http://localhost:4000/invite/:inviteCode/nuvio/poll',
+      },
       // Public user deletion routes
       {
         source: '/invite/generate-oauth',
