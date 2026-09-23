@@ -224,6 +224,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           username: user.username,
           email: user.email,
           providerType: user.providerType || 'stremio',
+          nuvioProfileId: user.nuvioProfileId ?? 1,
           secondaryProviderType: secondaryProviderByUserId.get(user.id) || null,
           providerConnectionError: user.providerConnectionError || null,
           groupName: userGroup?.name || null,
@@ -620,7 +621,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           })
         }
       } else {
-        ;({ headers, records } = parseCsv(text))
+        ({ headers, records } = parseCsv(text))
         if (records.length === 0) return res.status(400).json({ error: 'No rows found in that CSV' })
       }
       const colMap = mapColumns(headers)
@@ -1528,13 +1529,18 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       console.log(`[API] GET /metrics called for account ${accountId}`)
 
       const { period = '30d', nocache } = req.query // '7d', '30d', '90d', '1y', 'all'
+      // The Activity page asks for this once its reader reaches the end of the
+      // capped feed. It is a deliberately heavier build, so it neither reads
+      // from nor writes to the shared cache - the dashboard has to keep being
+      // handed the small, fast payload it was built for.
+      const deepActivity = req.query.deep === '1' || req.query.deep === 'true'
 
       const { getCachedMetrics, setCachedMetrics } = require('../utils/metricsCache')
       const { buildMetricsForAccount } = require('../utils/metricsBuilder')
 
       // Try in-memory metrics cache first (populated by activityMonitor every 5 minutes)
       // Skip cache if nocache query param is set (useful for debugging)
-      const cached = nocache ? null : getCachedMetrics(accountId, period)
+      const cached = (nocache || deepActivity) ? null : getCachedMetrics(accountId, period)
       if (cached) {
         console.log(`[API] Returning cached metrics for ${period}`)
         res.json(cached)
@@ -1548,12 +1554,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         prisma,
         accountId,
         period,
-        decrypt
+        decrypt,
+        deepActivity
       })
 
       console.log(`[API] Metrics built. Sessions: ${metrics.watchSessions?.length}, Episodes: ${metrics.recentEpisodes?.length}`)
 
-      setCachedMetrics(accountId, period, metrics)
+      if (!deepActivity) setCachedMetrics(accountId, period, metrics)
       res.json(metrics)
       warmActivityPosters(metrics)
     } catch (error) {
@@ -2545,6 +2552,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         email: user.email,
         username: user.username,
         providerType: user.providerType || 'stremio',
+        nuvioProfileId: user.nuvioProfileId ?? 1,
         hasStremioConnection: !!user.stremioAuthKey,
         status: user.isActive ? 'active' : 'inactive',
         addons: orderedAddons,
@@ -3362,10 +3370,120 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         return res.status(400).json({ message: 'User is not connected to Nuvio' })
       }
       const profiles = await provider.getProfiles()
-      res.json({ profiles })
+
+      // Say which profiles are actually worth pointing a user at. A profile
+      // set to use the primary's addons has no list of its own, and one that
+      // is already managed by another user here should not be offered twice.
+      const siblings = await prisma.user.findMany({
+        where: { accountId: getAccountId(req), providerType: 'nuvio', email: user.email },
+        select: { id: true, username: true, nuvioProfileId: true }
+      })
+      const byProfile = new Map(siblings.map((u) => [u.nuvioProfileId ?? 1, u]))
+
+      const annotated = (profiles || []).map((p) => {
+        const index = Number(p.profile_index ?? p.profileIndex)
+        const owner = byProfile.get(index) || null
+        return {
+          ...p,
+          profileIndex: index,
+          usesPrimaryAddons: p.uses_primary_addons === true,
+          managedBy: owner ? { id: owner.id, username: owner.username } : null,
+          isThisUser: owner ? owner.id === user.id : false,
+          // Addable when it keeps its own addons and nothing here manages it
+          // yet. The primary is always managed by whoever was imported first.
+          canAdd: p.uses_primary_addons !== true && !owner
+        }
+      })
+
+      res.json({ profiles: annotated })
     } catch (error) {
       console.error('Error fetching Nuvio profiles:', error)
       res.status(500).json({ message: 'Failed to fetch Nuvio profiles', error: error.message })
+    }
+  });
+
+  // Add one of this account's other profiles as its own user, so that
+  // profile's addon list can be managed and synced like anyone else's. The
+  // account is already connected, so this reuses the credential already
+  // stored rather than asking for the password a second time.
+  router.post('/:id/nuvio-profiles/:profileId/add-user', async (req, res) => {
+    try {
+      const { id, profileId } = req.params
+      const accountId = getAccountId(req)
+      const profileIndex = Number(profileId)
+      if (!Number.isInteger(profileIndex) || profileIndex < 1) {
+        return res.status(400).json({ message: 'Invalid profile' })
+      }
+      if (profileIndex === 1) {
+        return res.status(400).json({ message: 'The primary profile is already managed by this user' })
+      }
+
+      const user = await prisma.user.findFirst({ where: { id, accountId } })
+      if (!user) return responseUtils.notFound(res, 'User')
+      if (user.providerType !== 'nuvio') {
+        return res.status(400).json({ message: 'User is not connected to Nuvio' })
+      }
+      if (!user.nuvioRefreshToken || !user.nuvioUserId) {
+        return res.status(400).json({ message: 'This user has no stored Nuvio credential to reuse' })
+      }
+
+      const provider = createProvider(user, { decrypt, req })
+      if (!provider) return res.status(400).json({ message: 'User is not connected to Nuvio' })
+
+      const profiles = await provider.getProfiles()
+      const match = (profiles || []).find((pr) => Number(pr.profile_index ?? pr.profileIndex) === profileIndex)
+      if (!match) return res.status(404).json({ message: 'That profile no longer exists on this Nuvio account' })
+      if (match.uses_primary_addons === true) {
+        return res.status(400).json({
+          message: `"${match.name || `Profile ${profileIndex}`}" is set to use the primary profile's addons, so it has no list of its own to manage.`
+        })
+      }
+
+      const already = await prisma.user.findFirst({
+        where: { accountId, providerType: 'nuvio', email: user.email, nuvioProfileId: profileIndex },
+        select: { id: true, username: true }
+      })
+      if (already) {
+        return res.status(409).json({ message: `That profile is already managed by ${already.username}` })
+      }
+
+      // Same credential, re-encrypted rather than copied, so the new row is
+      // written exactly the way every other credential here is.
+      const plainToken = decrypt(user.nuvioRefreshToken, req)
+      if (!plainToken) return res.status(400).json({ message: 'Could not read the stored Nuvio credential' })
+
+      let username = (match.name || `Profile ${profileIndex}`).trim().slice(0, 40)
+      const base = username
+      let attempt = 0
+      while (await prisma.user.findFirst({ where: { accountId, username } })) {
+        attempt++
+        if (attempt > 100) return res.status(409).json({ message: 'Could not pick a free username for that profile' })
+        username = `${base} ${attempt + 1}`
+      }
+
+      const created = await prisma.user.create({
+        data: {
+          accountId,
+          username,
+          email: user.email,
+          providerType: 'nuvio',
+          nuvioRefreshToken: encrypt(plainToken, req),
+          nuvioUserId: user.nuvioUserId,
+          nuvioProfileId: profileIndex,
+          isActive: true,
+          // The picker wraps whatever it is given, so this just nudges each
+          // profile onto a different colour from the one it came from.
+          colorIndex: (user.colorIndex || 0) + profileIndex
+        }
+      })
+
+      res.status(201).json({
+        user: { id: created.id, username: created.username, nuvioProfileId: profileIndex },
+        message: `${username} now manages that profile's addons`
+      })
+    } catch (error) {
+      console.error('Error adding a Nuvio profile as a user:', error)
+      res.status(500).json({ message: 'Failed to add that profile', error: error.message })
     }
   });
 
@@ -5372,14 +5490,14 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // Wait a moment for Stremio to process the changes before refreshing cache
       await new Promise(resolve => setTimeout(resolve, 1000))
 
-      // Fetch updated library from Stremio and update cache
+      // Refresh the cached library through the user's own provider. This used
+      // to build a Stremio client from an auth key that belongs to a different
+      // route's scope, so it threw every time and the catch below quietly
+      // cleared the cache instead - the refresh never once ran. Going through
+      // the provider also means it now works for Nuvio users, which the
+      // hard-coded Stremio client never could.
       try {
-        const apiClient = new StremioAPIClient({ endpoint: 'https://api.strem.io', authKey: authKeyPlain })
-        const libraryItems = await apiClient.request('datastoreGet', {
-          collection: 'libraryItem',
-          ids: [],
-          all: true
-        })
+        const libraryItems = await providerInstance.getLibrary()
 
         let library = []
         if (Array.isArray(libraryItems)) {
@@ -7700,6 +7818,13 @@ async function reloadGroupAddons(prisma, getAccountId, groupId, req, decrypt) {
 // without re-fetching/re-validating the User row itself - `credentials` is
 // already shaped exactly like the fields syncUserAddons used to select
 // directly off `user`.
+/* eslint-disable no-undef -- The helpers below are reached as
+   `typeof name === 'function' ? name : fallback`. The names are not declared
+   in this module, so the guard always selects the fallback and the bare
+   reference is never evaluated. The pattern is deliberate: it lets the same
+   function run unchanged if a future caller supplies them from its own scope.
+   Linting them as undefined is correct in the letter and wrong in effect, and
+   rewriting the sync path to please the rule is not worth the risk. */
 async function syncCredentialsAddons(prismaClient, credentials, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options = {}) {
   const hasCredentials = credentials.stremioAuthKey || (credentials.nuvioRefreshToken && credentials.nuvioUserId)
   if (!hasCredentials) return { success: false, error: 'User is not connected to a provider' }
@@ -7751,7 +7876,13 @@ async function syncCredentialsAddons(prismaClient, credentials, excludedManifest
     const canonicalizeFn = (typeof canonicalizeManifestUrl === 'function' ? canonicalizeManifestUrl : canonicalizeManifestUrlUtil)
     const plan = await computeUserSyncPlan(credentials, req, {
       prisma: prismaClient,
-      getAccountId: (typeof getAccountIdParam === 'function' ? getAccountIdParam : getAccountId),
+      // The fallback named a function that does not exist at this scope, so a
+      // caller that passed no resolver hit a ReferenceError instead of the
+      // intended default. The credentials being synced already carry the
+      // account they belong to, which is what a resolver would have returned.
+      getAccountId: (typeof getAccountIdParam === 'function'
+        ? getAccountIdParam
+        : () => credentials?.accountId || 'default'),
       decrypt: (text) => decryptWithAccountKey(text),
       parseAddonIds: parseAddonIdsFn,
       parseProtectedAddons: parseProtectedAddonsFn,

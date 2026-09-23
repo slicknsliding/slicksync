@@ -1346,8 +1346,11 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
               embed.footer = { text: `SlickSync v${appVersion}` }
             }
 
-            // For email mismatch, we have the user data, try to get their avatar
-            const avatarUrl = await getUserAvatarUrl(user.username, user.email, user.colorIndex || 0)
+            // The requester's own details are what this notice is about, and
+            // they are what is in scope here. It used to read from a `user`
+            // that is never defined on this path, so every email-mismatch
+            // notice threw instead of being sent.
+            const avatarUrl = await getUserAvatarUrl(request.username, request.email, 0)
 
             await postDiscord(webhookUrl, null, {
               embeds: [embed],

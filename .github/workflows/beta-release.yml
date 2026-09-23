@@ -24,6 +24,30 @@ env:
 # Native arm64 runners remove the emulation rather than working around it,
 # and the two halves now run in parallel instead of back to back.
 jobs:
+  # A tag must not be able to publish an image from a tree that does not pass
+  # its own tests. The build below waits on this, so a red suite stops the
+  # release instead of shipping and being noticed later.
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Tests
+        run: npm test
+      - name: Lint
+        run: npm run lint
+
   build:
     strategy:
       fail-fast: false
@@ -33,6 +57,7 @@ jobs:
             runner: ubuntu-latest
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
+    needs: checks
     runs-on: ${{ matrix.runner }}
     # A wedged build should fail and say so, not quietly burn an hour.
     timeout-minutes: 45

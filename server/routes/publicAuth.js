@@ -164,8 +164,14 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
   // credential is a refresh token and "is it still valid" means "does
   // refreshing it still work".
   async function validateUserNuvioAuth(accountId, email, req) {
+    // One Nuvio account can now be present once per profile, all sharing the
+    // same email. Signing in is about the account rather than any one
+    // profile, so this resolves to the primary - the user that was there
+    // before extra profiles could be added - and only falls back to whatever
+    // else exists if the primary is somehow gone.
     const user = await prisma.user.findFirst({
-      where: { accountId, email, providerType: 'nuvio' }
+      where: { accountId, email, providerType: 'nuvio' },
+      orderBy: { nuvioProfileId: 'asc' }
     })
 
     if (!user) {

@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.87.0",
+    "date": "2026-09-23",
+    "title": "1.87.0 - Every Nuvio profile, and an Activity list that reaches back",
+    "features": [
+      "A Nuvio account can hold several profiles, and each profile either keeps its own addon list or follows the primary profile's. Only the primary was ever visible here, so a profile with its own addons could not be seen, managed or synced. Open the Nuvio user, go to the Addons tab, and the new Nuvio profiles card lists them all.",
+      "Any profile that keeps its own addon list can now be managed as its own user, named after the profile. It does not ask for the password again, since the account is already connected. From then on it behaves like any other user: put it in a group, give it its own excluded and protected addons, and sync it. Syncing one profile never touches another profile's addons.",
+      "Profiles set to follow the primary profile's addons are listed but cannot be added separately, because a second addon list for them would do nothing. The card says so rather than leaving you to work it out. Turn that setting off inside Nuvio if you want such a profile managed on its own.",
+      "The Activity list reaches all the way back. It still opens on your recent history so the page appears quickly, and reaching the end now offers to load the rest of the record rather than simply stopping. On an instance with years behind it, the older history is fetched once instead of being waited for up front.",
+      "The published image is smaller. It was carrying tooling that is only needed to build it and never runs in the container."
+    ],
+    "bugFixes": [
+      "Refreshing the cached library after marking something watched or unwatched never worked. It failed silently on every attempt and cleared the cache instead, so the next page view had to fetch everything again. It now refreshes properly, and works for Nuvio accounts, which it never could before.",
+      "When reordering a group's addons failed, the error said nothing useful. Reporting the failure ran into a second failure of its own, which replaced the real reason with a generic message. The actual cause is now reported.",
+      "The warning that a metadata key is running low on its allowance could never appear, because the level it compares against was missing. It now arrives once usage passes eighty percent, while there is still room to do something about it.",
+      "The notice sent when an invitation's email does not match the connected account was never delivered. It read details that are not available on that path and failed before sending.",
+      "Digest entries about addon health carried a stray invisible character in front of the title, left behind when the warning symbol was trimmed."
+    ]
+  },
+  {
     "version": "1.86.0",
     "date": "2026-09-12",
     "title": "1.86.0 - Safer syncs, faster rows, and updates that finish",

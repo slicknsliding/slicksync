@@ -340,7 +340,18 @@ function generateAlerts(userLifecycle, topContent, engagement, period) {
  * @param {Function} params.decrypt - decrypt(stremioAuthKey, reqLike)
  * @returns {Promise<object>} metrics payload compatible with /users/metrics response
  */
-async function buildMetricsForAccount({ prisma, accountId, period = '30d', decrypt }) {
+// deepActivity lifts the caps on the four reads the Activity feed is built
+// from. They exist because the feed is sent whole to the browser, and on a
+// long history the default read was megabytes before the page could appear.
+// The dashboard and the scheduled pass always want the fast, capped version;
+// only the Activity page asks for everything, and only once its reader has
+// scrolled to the end of what the capped read returned. Still a ceiling
+// rather than no limit, so no account can ask for an unbounded response.
+const ACTIVITY_TAKE = 5000
+const ACTIVITY_TAKE_DEEP = 100000
+
+async function buildMetricsForAccount({ prisma, accountId, period = '30d', decrypt, deepActivity = false }) {
+  const activityTake = deepActivity ? ACTIVITY_TAKE_DEEP : ACTIVITY_TAKE
   if (!accountId) {
     throw new Error('accountId is required to build metrics')
   }
@@ -1003,19 +1014,25 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   }
 
   let recentActivity = []
+  // Whether any read the feed is built from came back full. A read that
+  // returns exactly its cap almost certainly had more behind it, which is
+  // how the Activity page knows there is older history worth asking for
+  // rather than guessing, or re-fetching everything every time.
+  let activityTruncated = false
   try {
     const [episodeHistoryRaw, movieHistoryRaw] = await Promise.all([
       prisma.episodeWatchHistory.findMany({
         where: { accountId: accountIdValue, watchedAt: { gte: startDate } },
         orderBy: { watchedAt: 'desc' },
-        take: 5000 // Activity page needs deep history (UI lazily renders)
+        take: activityTake // Activity page needs deep history (UI lazily renders)
       }),
       prisma.movieWatchHistory.findMany({
         where: { accountId: accountIdValue, watchedAt: { gte: startDate } },
         orderBy: { watchedAt: 'desc' },
-        take: 5000
+        take: activityTake
       })
     ])
+    if (episodeHistoryRaw.length >= activityTake || movieHistoryRaw.length >= activityTake) activityTruncated = true
 
     // Apply the cross-user library-sync dedup BEFORE user lookup / mapping
     // so we never build activity entries for phantom rows in the first
@@ -1169,8 +1186,9 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         // what a cap would ever drop is the oldest end of a feed nobody
         // scrolls to.
         orderBy: { date: 'desc' },
-        take: 5000,
+        take: activityTake,
       })
+        if (activityRaw.length >= activityTake) activityTruncated = true
 
       // Same shared-email dedupe the History path above applies, and for the
       // same reason: one person connected through two providers has a user row
@@ -1286,7 +1304,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       orderBy: {
         startTime: 'desc'
       },
-      take: 5000 // Activity page needs deep history (UI lazily renders)
+      take: activityTake // Activity page needs deep history (UI lazily renders)
     })
 
     // Build user lookup for sessions
@@ -1606,6 +1624,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     nowPlaying,
     startedPlaying,
     recentActivity,
+    activityTruncated,
     recentEpisodes,
     watchSessions,
     period,

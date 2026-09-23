@@ -1,6 +1,6 @@
 {
   "name": "slicksync",
-  "version": "1.86.0",
+  "version": "1.87.0",
   "description": "SlickSync - Stremio addon and user management system",
   "main": "server/index.js",
   "scripts": {
@@ -15,8 +15,8 @@
     "client:dev:public": "cd client && npm run dev",
     "build": "cd client && npm run build",
     "start": "node server/index.js",
-    "test": "node --test test/",
-    "lint": "eslint server/",
+    "test": "node --test",
+    "lint": "eslint server/ scripts/ test/",
     "lint:fix": "eslint server/ --fix",
     "studio": "cp prisma/schema.sqlite.prisma prisma/schema.prisma && bunx prisma generate && DATABASE_URL=\"file:./prisma/sqlite.db\" bunx prisma studio",
     "studio:public": "cp prisma/schema.postgres.prisma prisma/schema.prisma && bunx prisma generate && DATABASE_URL=\"postgresql://slicksync:slicksync@localhost:5432/slicksync\" bunx prisma studio"
@@ -31,10 +31,10 @@
   "license": "MIT",
   "dependencies": {
     "@prisma/client": "^6.19.1",
+    "prisma": "^6.19.1",
     "@simplewebauthn/server": "^14.0.1",
     "@jimp/core": "^1.6.0",
     "@jimp/wasm-webp": "^1.6.0",
-    "axios": "^1.12.2",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "compression": "^1.8.1",
@@ -58,7 +58,6 @@
     "@types/node": "^20.0.0",
     "concurrently": "^8.2.0",
     "eslint": "^8.57.0",
-    "nodemon": "^3.1.10",
-    "prisma": "^6.19.1"
+    "nodemon": "^3.1.10"
   }
 }

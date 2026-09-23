@@ -497,6 +497,23 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Discover',
   },
   {
+    id: 'nuvio-profile-addons',
+    title: 'Managing addons for a second Nuvio profile',
+    category: 'Users & Groups',
+    keywords: ['nuvio profile', 'second profile', 'profile addons', 'multiple profiles', 'kids profile', 'profile sync', 'only main profile addons', 'uses primary addons'],
+    answer: 'A Nuvio account can hold several profiles, and each profile either keeps its own addon list or follows the primary profile\'s. Open the Nuvio user, go to the Addons tab, and the "Nuvio profiles" card lists them all. Any profile with its own list can be managed as its own user, with its own groups and its own sync.',
+    details: [
+      'A profile set to use the primary profile\'s addons has no list of its own - whatever the primary syncs is what that profile shows. Those are listed but cannot be added separately, because a second addon list for them would not do anything. Turn that setting off inside Nuvio first if you want the profile managed on its own.',
+      'Adding a profile does not ask for the password again. The account is already connected, so the stored credential is reused and the new user appears straight away, named after the profile.',
+      'Each profile-user is an ordinary user from then on: put it in a group, give it its own excluded and protected addons, and sync it. Syncing one profile never touches another profile\'s addons.',
+      'The primary profile is the user that was created when the account was first connected. Signing in on a public instance always resolves to that primary user, whatever other profiles have been added.',
+      'This is separate from Nuvio Collections, which organises a profile\'s home-screen folders rather than its addons. Both are per profile, and both are listed per profile.',
+    ],
+    related: ['nuvio-collections-manager', 'sync-mode-basics', 'sync-preview'],
+    href: '/users',
+    linkLabel: 'Open Users',
+  },
+  {
     id: 'nuvio-collections-manager',
     title: 'Building Nuvio Collections (home-screen folders)',
     category: 'Catalogs & Collections',
@@ -798,7 +815,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     tips: [
       "Metrics totals were always correct - this only changed what the Activity list shows you.",
       "Activity is cached for about five minutes, so a watch you just finished may take a moment to appear.",
-      "The list covers your most recent history rather than every day ever recorded. On an instance with years behind it the oldest days fall off the end, which keeps the page from having to load all of it at once. Metrics totals still count every day.",
+      "The list opens on your recent history so the page appears quickly, then reaches all the way back as you scroll. On an instance with years behind it, getting to the end pulls in the rest of the record once rather than making you wait for it up front. Metrics totals count every day either way.",
     ],
     related: ['rewatch-completion', 'account-timezone'],
     href: '/activity',

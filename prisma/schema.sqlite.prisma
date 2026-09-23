@@ -18,6 +18,14 @@ model User {
   providerType       String    @default("stremio") // "stremio" | "nuvio"
   nuvioRefreshToken  String? // Encrypted Supabase refresh token
   nuvioUserId        String? // Nuvio/Supabase user UUID
+  // Which Nuvio profile's addon list this user manages - Nuvio's own
+  // profile_index, where 1 is the primary profile. A Nuvio account can hold
+  // several profiles, and a profile either keeps its own addon list or is
+  // marked as using the primary's. Only the ones that keep their own are
+  // worth pointing a user at; the rest already follow whatever the primary
+  // syncs. Defaults to 1, which is what every existing user is, and is
+  // ignored entirely for Stremio users.
+  nuvioProfileId     Int       @default(1)
   // SIMKL is an optional supplementary link, not a peer of providerType - it
   // has no addon/manifest concept at all (pure watch-tracking service), so it
   // can't be "the" provider a user is created under. Any Stremio/Nuvio user
@@ -101,7 +109,7 @@ model User {
 
   // Relationships
 
-  @@unique([email, providerType])
+  @@unique([email, providerType, nuvioProfileId])
   @@index([expiresAt])
   @@map("users")
 }

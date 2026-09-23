@@ -18,6 +18,14 @@ model User {
   providerType       String    @default("stremio") // "stremio" | "nuvio"
   nuvioRefreshToken  String? // Encrypted Supabase refresh token
   nuvioUserId        String? // Nuvio/Supabase user UUID
+  // Which Nuvio profile's addon list this user manages - Nuvio's own
+  // profile_index, where 1 is the primary profile. A Nuvio account can hold
+  // several profiles, and a profile either keeps its own addon list or is
+  // marked as using the primary's. Only the ones that keep their own are
+  // worth pointing a user at; the rest already follow whatever the primary
+  // syncs. Defaults to 1, which is what every existing user is, and is
+  // ignored entirely for Stremio users.
+  nuvioProfileId     Int       @default(1)
   // SIMKL is an optional supplementary link, not a peer of providerType - see
   // the matching comment in schema.sqlite.prisma for the full reasoning.
   simklAccessToken   String? // Encrypted, 5yr expiry, no refresh flow needed
@@ -84,7 +92,7 @@ model User {
 
   // Relationships
 
-  @@unique([accountId, email, providerType])
+  @@unique([accountId, email, providerType, nuvioProfileId])
   @@unique([accountId, username])
   @@index([expiresAt])
   @@map("users")

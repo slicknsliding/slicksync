@@ -62,7 +62,12 @@ const createRouteHandler = (handler) => {
 /**
  * Entity validation middleware
  */
-const validateEntity = (entityType) => {
+// Takes prisma rather than reaching for one that was never in this file. As
+// written it referenced a free variable, so the first request through it would
+// have thrown - nothing wires it up today, which is the only reason that has
+// not been noticed. Matches validateEntityExists below, which already asks for
+// its client the same way.
+const validateEntity = (prisma, entityType) => {
   return async (req, res, next) => {
     try {
       const { id } = req.params
