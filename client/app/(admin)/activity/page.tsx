@@ -2273,22 +2273,26 @@ function ActivityPageContent() {
             </div>
 
             {/* Infinite scroll sentinel & Load More fallback */}
-            {visibleCount < filteredActivities.length && (
+            {/* Still offered once everything loaded is on screen, as long as the
+                server said it capped the feed - otherwise reaching the end would
+                hide the only way to ask for the rest. */}
+            {(visibleCount < filteredActivities.length || (metricsData?.activityTruncated && !olderLoaded)) && (
               <div ref={loadMoreRef} className="mt-8">
                 <div className="text-center">
-                  {isLoadingMore ? (
+                  {isLoadingMore || loadingOlder ? (
                     <div className="flex items-center justify-center gap-2 text-sm text-muted py-4">
                       <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      <span>Loading more...</span>
+                      <span>{loadingOlder ? 'Loading your older history…' : 'Loading more...'}</span>
                     </div>
                   ) : (() => {
+                    const reachingBack = visibleCount >= filteredActivities.length;
                     const btn = (
                       <Button
                         variant="glass"
                         size="lg"
                         onClick={loadMore}
                       >
-                        Load more activity
+                        {reachingBack ? 'Load older history' : 'Load more activity'}
                       </Button>
                     );
                     return isTV ? <TVFocusable onEnterPress={loadMore}>{btn}</TVFocusable> : btn;
