@@ -15,7 +15,7 @@ scripts. (An `archive/` folder of dead patch scripts was removed for exactly thi
 instance UUID.) Use placeholders like `someuser@example.com` / `example.com` in comments and tests.
 Runtime config comes from env vars — see the compose file, not the repo.
 
-Upstream docs preserved for reference: [README.upstream.md](README.upstream.md), [API.md](API.md), [DOCKER.md](DOCKER.md).
+[DOCKER.md](DOCKER.md) describes the image and what runs in it; [API.md](API.md) documents the external API. [README.upstream.md](README.upstream.md) is kept as upstream credit.
 
 ## Deploy flow
 

@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { InviteLayout } from '@/components/invite/InviteLayout';
 import { StatusCards } from '@/components/invite/StatusCard';
 import { StremioOAuthCard } from '@/components/invite/StremioOAuthCard';
+import { NuvioOAuthCard } from '@/components/invite/NuvioOAuthCard';
 import { inviteApi, InviteApiError } from '@/lib/invite-api';
 import { motion } from 'framer-motion';
 import { UserIcon } from '@heroicons/react/24/outline';
@@ -37,6 +38,9 @@ export default function InviteRequestPage() {
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Which provider the person is joining with. Invites could only ever
+  // create Stremio users before, so that stays the default.
+  const [joinProvider, setJoinProvider] = useState<'stremio' | 'nuvio'>('stremio');
   const [groupName, setGroupName] = useState<string | undefined>();
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -214,6 +218,28 @@ export default function InviteRequestPage() {
   }, [state, email, username, inviteCode, clearStorage]);
 
   // Handle Stremio OAuth completion — submit the invite request
+  // The Nuvio half of handleAuthKey below. What the card hands back is the
+  // device code, not a credential - the server exchanged that already.
+  const handleNuvioApproved = async (nuvioCode: string) => {
+    if (!username.trim()) {
+      setUsernameError('Username is required');
+      return;
+    }
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      const result = await inviteApi.submitNuvioRequest(inviteCode, username.trim(), nuvioCode);
+      const requestEmail = result?.email || '';
+      saveToStorage({ username: username.trim(), email: requestEmail });
+      setEmail(requestEmail);
+      setState('pending');
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Could not complete the request');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleAuthKey = async (authKey: string) => {
     if (!username.trim()) {
       setUsernameError('Username is required');
@@ -471,13 +497,41 @@ export default function InviteRequestPage() {
                       {submitError}
                     </motion.p>
                   )}
-                  <StremioOAuthCard
-                    onAuthKey={handleAuthKey}
-                    onError={(msg) => setSubmitError(msg)}
-                    isCompleting={isSubmitting}
-                    title="Sign in with Stremio"
-                    description="Connect your Stremio account to complete your request."
-                  />
+                  {/* Either provider can join, and the one picked here
+                      decides what kind of user the invite creates. */}
+                  <div className="flex gap-2 mb-4">
+                    {(['stremio', 'nuvio'] as const).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setJoinProvider(p)}
+                        className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
+                          joinProvider === p
+                            ? 'bg-primary/20 text-primary'
+                            : 'bg-white/[0.03] text-muted hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        {p === 'stremio' ? 'Stremio' : 'Nuvio'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {joinProvider === 'stremio' ? (
+                    <StremioOAuthCard
+                      onAuthKey={handleAuthKey}
+                      onError={(msg) => setSubmitError(msg)}
+                      isCompleting={isSubmitting}
+                      title="Sign in with Stremio"
+                      description="Connect your Stremio account to complete your request."
+                    />
+                  ) : (
+                    <NuvioOAuthCard
+                      inviteCode={inviteCode}
+                      onApproved={handleNuvioApproved}
+                      onError={(msg) => setSubmitError(msg)}
+                      isCompleting={isSubmitting}
+                    />
+                  )}
                 </motion.div>
               )}
             </motion.div>

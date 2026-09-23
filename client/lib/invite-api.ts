@@ -124,6 +124,41 @@ export const inviteApi = {
   },
 
   /**
+   * The Nuvio equivalent of submitRequest. The refresh token never reaches
+   * the browser - the poll below exchanges it server-side, so all that is
+   * sent here is the device code it was issued against.
+   */
+  async submitNuvioRequest(
+    inviteCode: string,
+    username: string,
+    nuvioCode: string,
+  ): Promise<{ message: string; email?: string;[key: string]: any }> {
+    return request(`/${inviteCode}/request`, {
+      method: 'POST',
+      body: JSON.stringify({ username, nuvioCode }),
+    });
+  },
+
+  /**
+   * Start a Nuvio device sign-in for this invitation. Mirrors the admin
+   * route, gated on the invite rather than a session, because someone
+   * joining has no account to authenticate with yet.
+   */
+  async startNuvioLogin(inviteCode: string): Promise<{
+    code: string; webUrl: string; expiresAt: string;
+    pollIntervalSeconds: number; anonToken: string; deviceNonce: string;
+  }> {
+    return request(`/${inviteCode}/nuvio/start`, { method: 'POST', body: JSON.stringify({}) });
+  },
+
+  async pollNuvioLogin(
+    inviteCode: string,
+    params: { code: string; deviceNonce: string; anonToken: string },
+  ): Promise<{ status: string; email?: string | null }> {
+    return request(`/${inviteCode}/nuvio/poll`, { method: 'POST', body: JSON.stringify(params) });
+  },
+
+  /**
    * Check the status of an access request
    */
   async checkStatus(

@@ -413,6 +413,12 @@ model InviteRequest {
   oauthLink      String? // Stremio OAuth link when accepted
   oauthExpiresAt DateTime? // When OAuth link expires
   stremioAuthKey String? // Encrypted Stremio auth key from upfront OAuth
+  // Which provider the person signed in with when they asked to join. An
+  // invite could only ever create Stremio users, so every request made
+  // before this defaults to that and behaves exactly as it did.
+  providerType   String    @default("stremio")
+  nuvioRefreshToken String? // Encrypted Nuvio refresh token - the Nuvio half of stremioAuthKey
+  nuvioUserId    String? // Nuvio/Supabase user UUID the token belongs to
   createdAt      DateTime  @default(now())
   respondedAt    DateTime?
   respondedBy    String? // accountId who responded
