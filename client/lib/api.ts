@@ -2341,8 +2341,12 @@ class ApiClient {
   }
 
   // Metrics
-  async getMetrics(period: string = '30d') {
-    return this.fetch<MetricsData>(`/users/metrics?period=${period}`);
+  // `deep` lifts the caps on the reads the Activity feed is built from. It is
+  // a heavier build and is never cached, so it is only worth asking for once
+  // a reader has actually reached the end of the ordinary feed.
+  async getMetrics(period: string = '30d', opts: { deep?: boolean } = {}) {
+    const deep = opts.deep ? '&deep=1' : '';
+    return this.fetch<MetricsData>(`/users/metrics?period=${period}${deep}`);
   }
   async getYearInReview(year?: number) {
     const q = year ? `?year=${year}` : '';
@@ -4340,6 +4344,8 @@ export interface MetricsData {
     item: { id: string; name: string; type: string; year?: number; poster?: string; season?: number; episode?: number };
     startedAt: string;
   }>;
+  /** True when the feed was capped and older history can still be asked for. */
+  activityTruncated?: boolean;
   recentActivity?: Array<{
     user: { id: string; username: string; email?: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean };
     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };

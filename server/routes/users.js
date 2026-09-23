@@ -1529,13 +1529,18 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       console.log(`[API] GET /metrics called for account ${accountId}`)
 
       const { period = '30d', nocache } = req.query // '7d', '30d', '90d', '1y', 'all'
+      // The Activity page asks for this once its reader reaches the end of the
+      // capped feed. It is a deliberately heavier build, so it neither reads
+      // from nor writes to the shared cache - the dashboard has to keep being
+      // handed the small, fast payload it was built for.
+      const deepActivity = req.query.deep === '1' || req.query.deep === 'true'
 
       const { getCachedMetrics, setCachedMetrics } = require('../utils/metricsCache')
       const { buildMetricsForAccount } = require('../utils/metricsBuilder')
 
       // Try in-memory metrics cache first (populated by activityMonitor every 5 minutes)
       // Skip cache if nocache query param is set (useful for debugging)
-      const cached = nocache ? null : getCachedMetrics(accountId, period)
+      const cached = (nocache || deepActivity) ? null : getCachedMetrics(accountId, period)
       if (cached) {
         console.log(`[API] Returning cached metrics for ${period}`)
         res.json(cached)
@@ -1549,12 +1554,13 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         prisma,
         accountId,
         period,
-        decrypt
+        decrypt,
+        deepActivity
       })
 
       console.log(`[API] Metrics built. Sessions: ${metrics.watchSessions?.length}, Episodes: ${metrics.recentEpisodes?.length}`)
 
-      setCachedMetrics(accountId, period, metrics)
+      if (!deepActivity) setCachedMetrics(accountId, period, metrics)
       res.json(metrics)
       warmActivityPosters(metrics)
     } catch (error) {

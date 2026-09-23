@@ -1613,6 +1613,11 @@ function ActivityPageContent() {
 
   // Fetch real data
   const [metricsData, setMetricsData] = useState<MetricsData | null>(null);
+  // The feed arrives capped so the page can appear quickly. When a reader
+  // actually reaches the end of it and the server said it held more back, the
+  // rest of the history is fetched once and the list simply grows.
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderLoaded, setOlderLoaded] = useState(false);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1643,6 +1648,11 @@ function ActivityPageContent() {
 
   // Ref for infinite scroll sentinel
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  // How many rows the list is currently showing from. Kept in a ref because
+  // the filtered list is built further down the component than the scroll
+  // handler is declared, so naming it as a dependency would read it before it
+  // exists.
+  const shownCountRef = useRef(0);
 
   const fetchData = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
@@ -1789,14 +1799,36 @@ function ActivityPageContent() {
 
   // Infinite scroll: load more when sentinel is visible
   const loadMore = useCallback(() => {
-    if (isLoadingMore) return;
+    if (isLoadingMore || loadingOlder) return;
+
+    // Already showing everything that arrived, and the server said it capped
+    // the feed: ask once for the whole history rather than stopping here.
+    const shownEverything = visibleCount >= shownCountRef.current;
+    if (shownEverything && metricsData?.activityTruncated && !olderLoaded) {
+      setLoadingOlder(true);
+      api.getMetrics('all', { deep: true })
+        .then((full) => {
+          setMetricsData(full);
+          setVisibleCount((prev) => prev + 50);
+        })
+        .catch(() => {
+          // Nothing to say here beyond leaving the feed as it is - the list
+          // keeps whatever it already had rather than emptying itself.
+        })
+        .finally(() => {
+          setOlderLoaded(true);
+          setLoadingOlder(false);
+        });
+      return;
+    }
+
     setIsLoadingMore(true);
     // Use setTimeout to give a smooth transition feel
     setTimeout(() => {
       setVisibleCount((prev) => prev + 50);
       setIsLoadingMore(false);
     }, 100);
-  }, [isLoadingMore, setVisibleCount, setIsLoadingMore]);
+  }, [isLoadingMore, loadingOlder, olderLoaded, visibleCount, metricsData?.activityTruncated, setVisibleCount, setIsLoadingMore]);
 
   useEffect(() => {
     const sentinel = loadMoreRef.current;
@@ -1889,6 +1921,7 @@ function ActivityPageContent() {
     return true;
   });
   // Apply lazy-load window
+  shownCountRef.current = filteredActivities.length;
   const visibleActivities = filteredActivities.slice(0, visibleCount);
 
   // Get date keys for today and yesterday (stable for render)
