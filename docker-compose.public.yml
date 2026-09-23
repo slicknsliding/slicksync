@@ -1,27 +1,37 @@
 services:
-
   slicksync:
     image: ghcr.io/slicknsliding/slicksync:public
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: 'postgresql://slicksync:slicksync@db:5432/slicksync'
-      JWT_SECRET: 'dev-secret'
-      ENCRYPTION_KEY: 'dev-encryption-key-32-chars-long'
+      # Both are required in public mode. Generate each with:
+      #   openssl rand -base64 32
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - copy env.example to .env and generate one with "openssl rand -base64 32"}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is not set - generate a second value with "openssl rand -base64 32"}
+      DATABASE_URL: postgresql://slicksync:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set - choose one in .env}@db:5432/slicksync
     depends_on:
       - db
     ports:
       - "3000:3000"
+    volumes:
+      # Postgres holds the records, but the image cache, avatars, Vault
+      # backups and generated files still live here and are worth keeping
+      # across updates.
+      - slicksync_data:/app/data
+    restart: unless-stopped
 
   db:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: slicksync
-      POSTGRES_PASSWORD: slicksync
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set - choose one in .env}
       POSTGRES_DB: slicksync
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # Deliberately not published to the host. Only the app talks to it, over
+    # the compose network. Add a mapping yourself if you need direct access.
+    restart: unless-stopped
 
 volumes:
   pgdata:
-  redis_data:
+  slicksync_data:

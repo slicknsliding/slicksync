@@ -1,5 +1,13 @@
 # Docker Guide - Unified SlickSync
 
+> **This is inherited documentation, kept for reference.** It describes a
+> `docker-compose.yml`, a `docker-compose.dev.yml` and a set of `make`
+> targets that this fork does not have, so the commands below will not run
+> as written. The current, accurate install and update instructions live in
+> the [README](./README.md#-installation); the compose files that actually
+> exist are `docker-compose.private.yml`, `docker-compose.public.yml` and
+> `docker-compose.beta.yml`.
+
 ## 🐳 Single Dockerfile Approach
 
 This project uses a **single Dockerfile** that builds both the frontend (Next.js) and backend (Express.js) into one container. This simplifies deployment while maintaining the benefits of containerization.

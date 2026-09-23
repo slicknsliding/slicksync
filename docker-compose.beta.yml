@@ -1,18 +1,23 @@
+# The beta channel: what is on the beta branch, ahead of the stable release.
+# Use docker-compose.private.yml unless you specifically want to test
+# something that has not shipped yet.
 services:
   slicksync:
     image: ghcr.io/slicknsliding/slicksync:beta
+    env_file:
+      - .env
     environment:
-      JWT_SECRET: 'temp-jwt-secret-key'
-      ENCRYPTION_KEY: 'temp-encryption-key-32-chars-long'
-
-      # To enable private instance authentication, uncomment the following variables
-      # SLICKSYNC_PRIVATE_USERNAME: ''
-      # SLICKSYNC_PRIVATE_PASSWORD: ''
-
-      # Public URL this instance is reachable at, used to build clickable
-      # links (e.g. Vault alert "Fix now" links) in Discord notifications.
-      # Leave unset to skip those links rather than post a broken one.
-      # PUBLIC_APP_URL: 'https://example.com'
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - copy env.example to .env and generate one with "openssl rand -base64 32"}
+      # Left unset on purpose: one generates itself on first boot and is kept
+      # in the data volume below.
     user: "1001:1001"
     ports:
       - "3000:3000"
+    volumes:
+      # Same reasoning as the private compose - the database and the generated
+      # encryption key live here and must outlive the container.
+      - slicksync_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  slicksync_data:
