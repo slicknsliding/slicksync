@@ -1,6 +1,6 @@
 {
   "name": "slicksync",
-  "version": "1.87.0",
+  "version": "1.88.0",
   "description": "SlickSync - Nuvio and Stremio addon, user and credential management",
   "main": "server/index.js",
   "scripts": {
