@@ -1,201 +1,91 @@
-# Docker Guide - Unified SlickSync
+# Docker
 
-## 🐳 Single Dockerfile Approach
+How the image is built and what runs inside it. For installing and updating,
+follow the [README](./README.md#-installation) — this describes the machinery
+behind it.
 
-This project uses a **single Dockerfile** that builds both the frontend (Next.js) and backend (Express.js) into one container. This simplifies deployment while maintaining the benefits of containerization.
+## One image, two processes
 
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────┐
-│              Docker Container           │
-│  ┌─────────────┐    ┌─────────────────┐ │
-│  │   Next.js   │    │   Express.js    │ │
-│  │  Frontend   │    │    Backend      │ │
-│  │   :3000     │    │     :3001       │ │
-│  └─────────────┘    └─────────────────┘ │
-│              Single Process             │
-└─────────────────────────────────────────┘
-│
-├── PostgreSQL Container (Database)
-├── Redis Container (Cache)
-└── Nginx Container (Reverse Proxy)
-```
-
-## 📁 File Structure
+Frontend and backend are built into a single image and started together by
+`scripts/start.sh`, which is PID 1 in the container.
 
 ```
-Dockerfile                 # Single unified Docker image
-docker-compose.yml         # Production setup
-docker-compose.dev.yml     # Development setup
-nginx/nginx.conf          # Reverse proxy configuration
+container
+├── Next.js frontend   :3000   ← the only port you need to expose
+└── Express backend    :4000   ← internal; the frontend proxies /api to it
 ```
 
-## 🚀 Quick Start
+Both ports are declared, but only `3000` is worth publishing. Put a reverse
+proxy in front of it for TLS; SlickSync does not terminate TLS itself.
 
-### Development
-```bash
-# Start development environment
-make dev
-# or
-docker-compose -f docker-compose.dev.yml up -d
+Override with `FRONTEND_PORT` and `BACKEND_PORT` if either collides.
 
-# Run migrations
-make migrate
+## Build stages
 
-# View logs
-make dev-logs
+The Dockerfile is multi-stage, and the last stage deliberately does not
+inherit the build's dependency tree.
+
+| Stage | What it does |
+|---|---|
+| `base` | Bun on Alpine, plus openssl and curl |
+| `deps` | Installs everything, including what is only needed to build |
+| `prod-deps` | Installs runtime dependencies only |
+| `builder` | Generates the Prisma client and builds the frontend |
+| `production` | Copies the runtime tree from `prod-deps`, the built app and the generated Prisma client from `builder` |
+
+That split is why the published image does not carry ESLint, nodemon or the
+rest of the build tooling. Note that `prisma` itself is a runtime dependency,
+not a build one: the start script applies the schema on every boot, so an
+image without it would reach for the network at startup.
+
+## Instance types
+
+`INSTANCE` is a build argument, and the two published images differ by it.
+
+| | `:private` | `:public` |
+|---|---|---|
+| Database | SQLite in `/app/data` | PostgreSQL, separate container |
+| Accounts | one instance, no signup | self-registered, isolated per account |
+| Schema applied by | `prisma db push` on boot | `migrate deploy`, then a guarded push |
+
+`:beta` is the private image built from the beta branch. Use it only to test
+something that has not shipped.
+
+## Compose files
+
+```
+docker-compose.private.yml   # SQLite, single household
+docker-compose.public.yml    # PostgreSQL, multi-tenant
+docker-compose.beta.yml      # private, beta channel
 ```
 
-### Production
-```bash
-# Start production environment
-make prod
-# or
-docker-compose up -d
+Each reads `.env` (copy `env.example`) and refuses to start if a required
+secret is missing, rather than falling back to a value everyone else also has.
 
-# Run migrations
-docker-compose exec app bunx prisma migrate deploy
-```
+## The data volume
 
-## 🔧 How It Works
+Every one of those files mounts a volume at `/app/data`. That directory holds
+the SQLite database on private instances, and on every instance it holds the
+generated encryption key, Vault backups, avatars and the poster cache.
 
-### Build Process
-1. **Dependencies Stage**: Installs all bun dependencies for both frontend and backend
-2. **Build Stage**: Builds the Next.js frontend and generates Prisma client
-3. **Production Stage**: Creates optimized runtime image with both services
+It has to outlive the container. `docker compose pull && docker compose up -d`
+replaces the container, and without the volume it takes the encryption key
+with it — which would leave every stored provider credential unreadable.
 
-### Runtime Process
-The container runs a startup script that:
-1. Runs database migrations
-2. Starts the Express.js backend on port 3001
-3. Starts the Next.js frontend on port 3000
-4. Manages both processes with proper signal handling
-
-### Development vs Production
-
-#### Development
-- Uses the `builder` stage for faster rebuilds
-- Mounts source code as volumes for hot reloading
-- Runs both servers in development mode
-- Direct port access (3000, 3001)
-
-#### Production
-- Uses optimized production stage
-- Runs database migrations automatically
-- Includes process management and graceful shutdown
-- Served through Nginx reverse proxy
-
-## 🎛️ Available Commands
+## Looking inside
 
 ```bash
-# Development
-make dev              # Start development environment
-make dev-logs         # View development logs
-make dev-down         # Stop development environment
-
-# Production
-make prod             # Start production environment
-make prod-logs        # View production logs
-make prod-down        # Stop production environment
-
-# Database
-make migrate          # Run database migrations
-make db-reset         # Reset database (dev only)
-
-# Maintenance
-make build            # Build Docker image
-make clean            # Clean up containers
-make health           # Check service health
-make status           # View container status
+docker compose -f docker-compose.private.yml logs -f
+docker exec -it slicksync sh
+docker exec slicksync sh -c 'echo $APP_VERSION'
 ```
 
-## 🔍 Debugging
+The image declares a healthcheck against the frontend, so `docker ps` reports
+health without you polling anything.
 
-### View Logs
-```bash
-# All services
-docker-compose logs -f
+## Environment
 
-# Specific service
-docker-compose logs -f app
-
-# Development logs
-docker-compose -f docker-compose.dev.yml logs -f app
-```
-
-### Execute Commands
-```bash
-# Access container shell
-docker-compose exec app sh
-
-# Run database commands
-docker-compose exec app bunx prisma studio
-docker-compose exec app bunx prisma migrate status
-
-# Check processes
-docker-compose exec app ps aux
-```
-
-### Health Checks
-```bash
-# Check if services are running
-curl http://localhost:3000/api/health  # Frontend health
-curl http://localhost:3001/health      # Backend health
-
-# Container health status
-docker ps
-```
-
-## 🔧 Customization
-
-### Environment Variables
-All environment variables are configured in your `.env` file and passed to the container:
-
-```env
-NODE_ENV=production
-DATABASE_URL=postgresql://...
-JWT_SECRET=...
-PORT=3001
-CLIENT_URL=http://localhost:3000
-NEXT_PUBLIC_API_URL=http://localhost:3001/api
-```
-
-### Port Configuration
-- Frontend: Port 3000
-- Backend: Port 3001
-- Database: Port 5432
-- Redis: Port 6379
-- Nginx: Port 80/443
-
-### Volume Mounts (Development)
-```yaml
-volumes:
-  - ./server:/app/server              # Backend hot reload
-  - ./prisma:/app/prisma              # Database schema
-  - /app/node_modules                 # Preserve dependencies
-```
-
-## 🚀 Deployment
-
-### Single Command Deployment
-```bash
-# Clone and deploy
-git clone <repo-url>
-cd slicksync
-cp env.example .env
-# Edit .env for your environment
-make prod
-```
-
-### Manual Steps
-```bash
-# 1. Build the image
-docker build -t slicksync .
-
-# 2. Run with docker-compose
-docker-compose up -d
-
-# 3. Run migrations
-docker-compose exec app bunx prisma migrate deploy
-```
+Everything configurable is documented in `env.example`, which is the
+authoritative list. Only `JWT_SECRET` is always required; in public mode
+`ENCRYPTION_KEY` and `POSTGRES_PASSWORD` are as well. On a private instance an
+encryption key generates itself on first boot and is kept in the data volume.

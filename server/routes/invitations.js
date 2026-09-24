@@ -3,6 +3,7 @@ const crypto = require('crypto')
 const { postDiscord } = require('../utils/notify')
 const { notifyPushForType } = require('../utils/pushNotifications')
 const { validateStremioAuthKey } = require('../utils/stremio')
+const { startNuvioTvLogin, pollNuvioTvLogin, exchangeNuvioTvLogin } = require('../providers/nuvioAuth')
 const { formatCodeBlock, formatRelativeTime, parseSyncConfig, getAppVersion } = require('../utils/webhookHelpers')
 const { getUserAvatarUrl } = require('../utils/avatarUtils')
 
@@ -337,7 +338,11 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
       const finalGroupName = groupName || request.groupName || request.invitation.groupName || null
 
       // NEW FLOW: If request has stremioAuthKey, auto-create user on accept
-      if (request.stremioAuthKey) {
+      // A request arrives with whichever credential its provider uses: a
+      // Stremio auth key, or a Nuvio refresh token. Either one means the
+      // person already proved who they are, so the user can be made now.
+      const isNuvioRequest = request.providerType === 'nuvio' && !!request.nuvioRefreshToken
+      if (request.stremioAuthKey || isNuvioRequest) {
         // Ensure email uniqueness across all accounts
         const { ensureEmailUniqueness } = require('../utils/helpers/database')
         await ensureEmailUniqueness(prisma, request.email, request.invitation.accountId)
@@ -350,7 +355,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
           where: {
             accountId: request.invitation.accountId,
             email: request.email,
-            providerType: 'stremio'
+            providerType: isNuvioRequest ? 'nuvio' : 'stremio'
           }
         })
 
@@ -387,7 +392,10 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, encrypt, decrypt, assig
             accountId: request.invitation.accountId,
             email: request.email,
             username: request.username,
-            stremioAuthKey: request.stremioAuthKey,
+            providerType: isNuvioRequest ? 'nuvio' : 'stremio',
+            stremioAuthKey: isNuvioRequest ? null : request.stremioAuthKey,
+            nuvioRefreshToken: isNuvioRequest ? request.nuvioRefreshToken : null,
+            nuvioUserId: isNuvioRequest ? request.nuvioUserId : null,
             isActive: true,
             expiresAt: computedExpiresAt,
             inviteCode: request.invitation.inviteCode
@@ -755,6 +763,108 @@ async function getStremioUserInfo(authKey, username, email) {
 module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decrypt }) => {
   const publicRouter = express.Router()
 
+  // --- Nuvio device login, for someone joining by invite ---
+  //
+  // Signing in with Nuvio is a device-code exchange that has to run through
+  // this server, and the equivalent admin routes sit behind account scoping
+  // that an invitee cannot pass - they have no account yet. These do the same
+  // work, gated on a live invitation instead of a session.
+  //
+  // Capped per address for the same reason the admin route is: every start
+  // creates an anonymous session upstream.
+  const inviteNuvioSessions = new Map()
+  const INVITE_NUVIO_SESSION_CAP = 5
+  // Exchanged tokens wait here between the poll that earned them and the
+  // request that consumes them, keyed by the device code. They never reach
+  // the browser, and they expire on their own so an abandoned sign-in does
+  // not leave a usable credential sitting in memory.
+  const pendingInviteNuvioTokens = new Map()
+  const PENDING_TOKEN_TTL_MS = 10 * 60 * 1000
+
+  function takePendingNuvioToken(code) {
+    const entry = pendingInviteNuvioTokens.get(code)
+    if (!entry) return null
+    pendingInviteNuvioTokens.delete(code)
+    if (Date.now() - entry.at > PENDING_TOKEN_TTL_MS) return null
+    return entry
+  }
+
+  async function liveInvitation(inviteCode) {
+    const invitation = await prisma.invitation.findUnique({ where: { inviteCode } })
+    if (!invitation) return { error: 404, message: 'Invitation not found' }
+    if (!invitation.isActive) return { error: 400, message: 'Invitation is not active' }
+    if (invitation.expiresAt && new Date(invitation.expiresAt) < new Date()) {
+      return { error: 400, message: 'Invitation has expired' }
+    }
+    if (invitation.maxUses != null && invitation.maxUses > 0 && invitation.currentUses >= invitation.maxUses) {
+      return { error: 400, message: 'Invitation has reached maximum uses' }
+    }
+    return { invitation }
+  }
+
+  publicRouter.post('/:inviteCode/nuvio/start', async (req, res) => {
+    try {
+      const { invitation, error, message } = await liveInvitation(req.params.inviteCode)
+      if (error) return res.status(error).json({ error: message })
+
+      const ip = req.ip
+      if ((inviteNuvioSessions.get(ip) || 0) >= INVITE_NUVIO_SESSION_CAP) {
+        return res.status(429).json({ error: 'Too many sign-in attempts. Finish the one in progress, or wait a moment.' })
+      }
+      inviteNuvioSessions.set(ip, (inviteNuvioSessions.get(ip) || 0) + 1)
+      const timer = setTimeout(() => {
+        const n = (inviteNuvioSessions.get(ip) || 1) - 1
+        if (n > 0) inviteNuvioSessions.set(ip, n); else inviteNuvioSessions.delete(ip)
+      }, PENDING_TOKEN_TTL_MS)
+      if (typeof timer.unref === 'function') timer.unref()
+
+      const { resolveServerConfigForAccount } = require('../providers/supabase')
+      const serverConfig = await resolveServerConfigForAccount(prisma, invitation.accountId)
+      const session = await startNuvioTvLogin(serverConfig)
+      res.json(session)
+    } catch (error) {
+      console.error('Invite Nuvio start error:', error?.message)
+      res.status(500).json({ error: 'Could not start the Nuvio sign-in' })
+    }
+  })
+
+  publicRouter.post('/:inviteCode/nuvio/poll', async (req, res) => {
+    try {
+      const { invitation, error, message } = await liveInvitation(req.params.inviteCode)
+      if (error) return res.status(error).json({ error: message })
+
+      const { code, deviceNonce, anonToken } = req.body || {}
+      if (!code || !deviceNonce || !anonToken) {
+        return res.status(400).json({ error: 'code, deviceNonce and anonToken are required' })
+      }
+
+      const { resolveServerConfigForAccount } = require('../providers/supabase')
+      const serverConfig = await resolveServerConfigForAccount(prisma, invitation.accountId)
+      const status = await pollNuvioTvLogin(code, deviceNonce, anonToken, serverConfig)
+      if (status?.status !== 'authorized') return res.json({ status: status?.status || 'pending' })
+
+      // Approved on the device. The exchange happens here rather than in the
+      // browser so the refresh token never leaves the server; the request
+      // route picks it back up by the same code.
+      const tokens = await exchangeNuvioTvLogin(code, deviceNonce, anonToken, serverConfig)
+      const refreshToken = tokens?.refresh_token || tokens?.refreshToken
+      const email = tokens?.user?.email || tokens?.email || null
+      if (!refreshToken || !email) {
+        return res.status(502).json({ error: 'Nuvio approved the sign-in but returned nothing usable' })
+      }
+      pendingInviteNuvioTokens.set(code, {
+        refreshToken,
+        providerUserId: tokens?.user?.id || tokens?.providerUserId || null,
+        email: String(email).trim().toLowerCase(),
+        at: Date.now()
+      })
+      res.json({ status: 'authorized', email })
+    } catch (error) {
+      console.error('Invite Nuvio poll error:', error?.message)
+      res.status(500).json({ error: 'Could not check the Nuvio sign-in' })
+    }
+  })
+
   // Generate OAuth link for account deletion (public endpoint, no invite code needed)
   // MUST be defined BEFORE /:inviteCode routes to avoid route conflicts
   publicRouter.post('/generate-oauth', async (req, res) => {
@@ -943,17 +1053,20 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
   publicRouter.post('/:inviteCode/request', async (req, res) => {
     try {
       const { inviteCode } = req.params
-      const { username, authKey, email: legacyEmail } = req.body
+      const { username, authKey, email: legacyEmail, nuvioCode } = req.body
 
-      // Support both new flow (username + authKey) and legacy flow (email + username)
+      // Three ways in: a Stremio auth key, a Nuvio device-login code that the
+      // poll above already exchanged, or the older email-only request that
+      // waits for the admin to sort out the account.
       const hasAuthKey = authKey && typeof authKey === 'string' && authKey.trim()
+      const hasNuvio = nuvioCode && typeof nuvioCode === 'string' && nuvioCode.trim()
 
       if (!username) {
         return res.status(400).json({ error: 'Username is required' })
       }
 
-      if (!hasAuthKey && !legacyEmail) {
-        return res.status(400).json({ error: 'Either authKey (Stremio login) or email is required' })
+      if (!hasAuthKey && !hasNuvio && !legacyEmail) {
+        return res.status(400).json({ error: 'Sign in with Stremio or Nuvio, or provide an email' })
       }
 
       const invitation = await prisma.invitation.findUnique({
@@ -975,6 +1088,22 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
 
       let email = legacyEmail ? legacyEmail.trim().toLowerCase() : null
       let encryptedAuthKey = null
+      let providerType = 'stremio'
+      let encryptedNuvioToken = null
+      let nuvioUserId = null
+
+      // Nuvio: the token was exchanged during the poll and held server-side,
+      // so all the browser sends back is the code it was issued.
+      if (hasNuvio) {
+        const pending = takePendingNuvioToken(nuvioCode.trim())
+        if (!pending) {
+          return res.status(400).json({ error: 'That Nuvio sign-in has expired - start it again' })
+        }
+        providerType = 'nuvio'
+        email = pending.email
+        nuvioUserId = pending.providerUserId
+        encryptedNuvioToken = encrypt(pending.refreshToken, { appAccountId: invitation.accountId })
+      }
 
       // New flow: validate authKey via Stremio to get email
       if (hasAuthKey) {
@@ -1051,7 +1180,10 @@ module.exports.createPublicRouter = ({ prisma, encrypt, assignUserToGroup, decry
           email,
           username: username.trim(),
           status: 'pending',
-          stremioAuthKey: encryptedAuthKey
+          providerType,
+          stremioAuthKey: encryptedAuthKey,
+          nuvioRefreshToken: encryptedNuvioToken,
+          nuvioUserId
         }
       })
 

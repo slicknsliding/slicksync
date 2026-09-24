@@ -1,5 +1,22 @@
 [
   {
+    "version": "1.88.0",
+    "date": "2026-09-23",
+    "title": "1.88.0 - Join with Nuvio, and compose files that keep your data",
+    "features": [
+      "Invitations work with Nuvio. An invitation could only ever create a Stremio user, so on a Nuvio household there was no way to invite anyone. Whoever opens the link now chooses a provider first, and that choice decides what kind of user the invite creates.",
+      "Signing in with Nuvio from an invite shows a short code to enter in the Nuvio app, the same device sign-in used when connecting an account by hand. The credential is exchanged on the server and never passes through the page, and an abandoned sign-in expires on its own.",
+      "The published compose files now keep a volume for your data and read your .env. See the note below if you run from them.",
+      "SlickSync describes itself as a Nuvio and Stremio tool everywhere it introduces itself, rather than leading with Stremio or naming it alone.",
+      "The Docker guide was rewritten to describe what actually runs: the two processes and their ports, how the image is built, how the two instance types differ, and why the data directory has to outlive the container."
+    ],
+    "bugFixes": [
+      "If you run SlickSync from the published compose files, your database was kept inside the container rather than in a volume, so replacing the container during an update took it with you. The files now declare a volume. Read the upgrade note before switching, because moving an existing instance onto it takes one extra step.",
+      "Those same files also ignored your .env, so the secret the setup guide tells you to generate never reached the container - what did reach it was the placeholder written in the file, identical in every published copy. Both required secrets now come from .env, and an instance refuses to start rather than falling back to something guessable.",
+      "A long Nuvio profile name ran past its column in the profile picker instead of being cut short."
+    ]
+  },
+  {
     "version": "1.87.0",
     "date": "2026-09-23",
     "title": "1.87.0 - Every Nuvio profile, and an Activity list that reaches back",

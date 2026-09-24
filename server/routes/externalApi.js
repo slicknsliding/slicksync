@@ -228,8 +228,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
    * @openapi
    * /addons/reload:
    *   post:
-   *     summary: Reload addons by Stremio addon ID
-   *     description: Re-fetches the manifest for every addon in this account matching `stremioAddonId` and updates it in place. Useful for addon developers so a call to SlickSync on deploy propagates a manifest change immediately, instead of waiting for the next scheduled sync.
+   *     summary: Reload addons by addon ID
+   *     description: Re-fetches the manifest for every addon in this account matching `stremioAddonId` and updates it in place. Applies to Nuvio and Stremio accounts alike - the id is the addon's own manifest id, which both apps use. The parameter keeps its original name so existing callers are unaffected. Useful for addon developers so a call to SlickSync on deploy propagates a manifest change immediately, instead of waiting for the next scheduled sync.
    *     requestBody:
    *       required: true
    *       content:
@@ -307,7 +307,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, reloadDeps, syncGroupUser
    * @openapi
    * /addons/sync:
    *   post:
-   *     summary: Reload addons by Stremio addon ID, then sync affected groups
+   *     summary: Reload addons by addon ID, then sync affected groups
    *     description: Same manifest reload as /addons/reload, then syncs every group that contains one of the matching addons out to its users' own accounts - so an addon update propagates all the way to end users in one call.
    *     parameters:
    *       - in: header

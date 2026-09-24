@@ -2,7 +2,7 @@
   "id": "/",
   "name": "SlickSync",
   "short_name": "SlickSync",
-  "description": "One dashboard for every Stremio and Nuvio account in the house",
+  "description": "One dashboard for every Nuvio and Stremio account in the house",
   "icons": [
     { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png" }

@@ -1339,7 +1339,7 @@ export default function NuvioCollectionsPage() {
                               className="w-5 h-5 rounded-full shrink-0"
                               style={{ backgroundColor: p.avatar_color_hex || 'var(--color-surface-hover)' }}
                             />
-                            <span className="truncate max-w-[120px]">{p.name || `Profile ${p.profile_index}`}</span>
+                            <span className="truncate" style={{ maxWidth: '120px' }}>{p.name || `Profile ${p.profile_index}`}</span>
                           </button>
                         ))}
                       </div>

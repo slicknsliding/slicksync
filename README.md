@@ -313,8 +313,10 @@ openssl rand -base64 32   # run twice - once for JWT_SECRET, once for ENCRYPTION
 ```
 JWT_SECRET=<first generated value>
 ENCRYPTION_KEY=<second generated value>
-DATABASE_URL=postgresql://slicksync:slicksync@db:5432/slicksync
+POSTGRES_PASSWORD=<any password you choose>
 ```
+
+The app and the bundled Postgres container both read `POSTGRES_PASSWORD`, so the connection string builds itself — there's no `DATABASE_URL` to assemble by hand.
 
 ```bash
 docker compose -f docker-compose.public.yml up -d
