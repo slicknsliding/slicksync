@@ -154,6 +154,11 @@ export default function GroupsPage() {
         users: groupUsers,
         addonCount: group.addons || 0, // Use count from API
         userCount: group.users || groupUsers.length, // Use API count, fallback to parsed list length
+        // Carried through explicitly. This object is what the card renders
+        // from, and without it every card read an undefined status - drawn
+        // as active whatever the group really was, and a click always sent
+        // "activate", so no group could be switched off from this page.
+        isActive: group.isActive !== false,
       };
     });
   }, [groups, users]);
@@ -814,7 +819,9 @@ function GroupCard({
             checked={group.isActive !== false}
             onChange={async () => {
               try {
-                const newStatus = !(group as any).isActive;
+                // Derived from exactly what the switch is showing, so the
+                // click always does the opposite of what the user can see.
+                const newStatus = !(group.isActive !== false);
                 await api.toggleGroupStatus(group.id, newStatus);
                 toast.success(`Group ${newStatus ? 'activated' : 'deactivated'}`);
                 onToggleStatus?.(group.id, newStatus);

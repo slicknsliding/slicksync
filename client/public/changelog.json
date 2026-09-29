@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.88.1",
+    "date": "2026-09-29",
+    "title": "1.88.1 - Group switches that show and change their real status",
+    "features": [
+      "The README now warns anyone who installed from an older copy of the compose file, right under the update instructions, with the steps to move their data before updating."
+    ],
+    "bugFixes": [
+      "The on/off switch on each card on the Groups page always showed the group as active, whatever its real status, and clicking it only ever activated the group - so an inactive group looked active, and no group could be switched off from that page. Each switch now shows the group's real status, and clicking it does the opposite of what you can see."
+    ]
+  },
+  {
     "version": "1.88.0",
     "date": "2026-09-23",
     "title": "1.88.0 - Join with Nuvio, and compose files that keep your data",

@@ -293,6 +293,22 @@ Frontend and API are both served through `:3000` — only that port needs a mapp
 
 **Updating**: `docker compose -f docker-compose.private.yml pull && docker compose -f docker-compose.private.yml up -d` — your `/app/data` volume (database, encryption key, Vault backups, avatars) survives updates. No `git pull` or rebuild needed.
 
+> [!WARNING]
+> **Installed before 1.88.0 from this repository's compose file? Move your data before your next update.**
+> Older copies of `docker-compose.private.yml` declared no volume, so your database lives inside the container. Switching to the current file without moving it first starts SlickSync empty. Copy it out while the old setup is running, switch, then copy it back:
+>
+> ```bash
+> docker compose -f docker-compose.private.yml cp slicksync:/app/data ./slicksync-data
+> docker compose -f docker-compose.private.yml down
+> git pull
+> docker compose -f docker-compose.private.yml up -d
+> docker compose -f docker-compose.private.yml cp ./slicksync-data/. slicksync:/app/data
+> docker compose -f docker-compose.private.yml exec -u root slicksync chown -R 1001:1001 /app/data
+> docker compose -f docker-compose.private.yml restart
+> ```
+>
+> Keep `./slicksync-data` until you've checked everything is there. If your compose file already mounts a volume at `/app/data`, none of this applies. Full details in the [1.88.0 release notes](https://github.com/slicknsliding/slicksync/releases/tag/v1.88.0).
+
 <details>
 <summary><strong>Public / multi-tenant mode</strong> — hosting for more than one separate group</summary>
 

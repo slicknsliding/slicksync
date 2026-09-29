@@ -800,7 +800,9 @@ export default function GroupDetailPage() {
   const handleToggleActive = useCallback(async () => {
     try {
       const currentGroup = await api.getGroup(params.id as string);
-      const newStatus = !(currentGroup as any).isActive;
+      // Same reading the switch uses, so a missing value means "active" in
+      // both places instead of active on screen and inactive in the maths.
+      const newStatus = !((currentGroup as any).isActive !== false);
       await api.toggleGroupStatus(params.id as string, newStatus);
       toast.success(`Group ${newStatus ? 'activated' : 'deactivated'}`);
       await refetchData();
