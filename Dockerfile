@@ -127,6 +127,15 @@ RUN chmod +x /app/start.sh
 # into the image.
 COPY --from=builder --chown=appuser:nodejs /app/scripts ./scripts
 
+# Fetch Prisma's schema engine now, while the build can write to
+# node_modules, rather than on every boot. start.sh's schema step needs it,
+# and a container run as another user - a compose `user:` set to match a
+# data volume's owner - cannot write there to fetch it: the schema step then
+# fails and the app starts against an out-of-date database. The folders are
+# left writable for any user in case a later Prisma wants to add to them.
+RUN bunx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > /dev/null 2>&1 || true; \
+    chmod -R a+rwX node_modules/@prisma node_modules/.prisma 2>/dev/null || true
+
 # Switch to non-root user
 USER appuser
 
