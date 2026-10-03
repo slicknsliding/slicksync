@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { guideReturn } from '@/lib/guideReturn';
 import { Modal } from '@/components/ui';
 import { AutomationPanel } from '@/components/automation/AutomationPanel';
 import { BoltIcon } from '@heroicons/react/24/outline';
@@ -31,6 +32,10 @@ export default function GuideTopicPage() {
   const { layoutMode } = useLayoutMode();
   const router = useRouter();
   const [embedOpen, setEmbedOpen] = useState(false);
+  // Opened from somewhere in the app: Back returns there, scroll and all.
+  // Read after mount - it lives in this tab's session storage.
+  const [back, setBack] = useState<ReturnType<typeof guideReturn>>(null);
+  useEffect(() => { setBack(guideReturn()); }, [id]);
 
   const entry = getHelpEntry(id);
 
@@ -69,12 +74,12 @@ export default function GuideTopicPage() {
 
           <PageSection delay={0.05} className="mb-4">
             <button
-              onClick={() => router.push('/guides')}
+              onClick={() => (back ? back.go() : router.push('/guides'))}
               className="inline-flex items-center gap-1.5 text-sm font-medium transition-opacity hover:opacity-80"
               style={{ color: 'var(--color-secondary)' }}
             >
               <ArrowLeftIcon className="w-4 h-4" />
-              All guides
+              {back ? back.label : 'All guides'}
             </button>
           </PageSection>
 

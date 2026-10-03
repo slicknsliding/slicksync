@@ -2,6 +2,7 @@
 
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { trackGuideNavigation } from "@/lib/guideReturn";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { AdminAuthGate } from "@/components/layout/AdminAuthGate";
 import { NebulaTopbar } from "@/components/layout/NebulaTopbar";
@@ -136,6 +137,11 @@ export default function AdminClientLayout({
   // Close mobile menu on route change
   useEffect(() => {
     setIsMobileMenuOpen(false);
+  }, [pathname]);
+
+  // Where a guide's Back should return to - see lib/guideReturn.
+  useEffect(() => {
+    trackGuideNavigation(pathname, window.location.search);
   }, [pathname]);
 
   // Prevent body scroll when mobile menu is open - but only for Original's

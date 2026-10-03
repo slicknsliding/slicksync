@@ -75,25 +75,29 @@ function Pill({ icon: Icon, label, value, options, onChange }: {
   onChange: (value: string) => void;
 }) {
   const active = !!value;
+  const shown = options.find((o) => o.value === value)?.label || options[0]?.label || label;
+  // The real dropdown is stretched invisibly over the whole pill, so a tap
+  // anywhere on it - icon, text or arrow - opens the list.
   return (
-    <label
-      className={`relative inline-flex items-center gap-1.5 rounded-full border pl-3 pr-7 py-1.5 text-sm transition-colors cursor-pointer focus-within:border-primary ${
-        active ? 'border-primary/60 bg-primary/15 text-default' : 'border-default bg-surface text-muted hover:text-default'
+    <div
+      className={`relative inline-flex items-center gap-1.5 rounded-full border pl-3 pr-8 py-1.5 text-sm transition-colors focus-within:ring-2 focus-within:ring-primary/60 ${
+        active ? 'border-primary/60 bg-primary/15 text-default' : 'border-default bg-surface text-muted hover:text-default hover:bg-surface-hover'
       }`}
     >
       <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-primary' : ''}`} />
+      <span className="truncate max-w-[11rem]">{shown}</span>
+      <ChevronDownIcon className="w-3.5 h-3.5 absolute right-3 pointer-events-none" />
       <select
         aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="appearance-none bg-transparent focus:outline-none cursor-pointer max-w-[11rem] truncate"
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value} style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)' }}>{o.label}</option>
         ))}
       </select>
-      <ChevronDownIcon className="w-3.5 h-3.5 absolute right-2.5 pointer-events-none" />
-    </label>
+    </div>
   );
 }
 
