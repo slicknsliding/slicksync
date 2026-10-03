@@ -3842,7 +3842,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
             await np.mergeProfilePerson(prisma, { accountId, survivorId: person.id, donorId: own.id, profileName: profile.name })
             removedUserId = own.id
           } else {
-            await prisma.$transaction(async (tx) => {
+            await require('../utils/userMerge').runLongTransaction(prisma, async (tx) => {
               await tx.nuvioProfileRoute.upsert({
                 where: routeKey,
                 create: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index, skip: false, targetUserId: person.id },
@@ -3893,7 +3893,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       } else {
         const currentOwner = np.ownerOf(index, siblings, routes)
         const created = await createProfilePerson(req, user, index, profile.name)
-        await prisma.$transaction(async (tx) => {
+        await require('../utils/userMerge').runLongTransaction(prisma, async (tx) => {
           await tx.nuvioProfileRoute.deleteMany({ where: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index } })
           if (currentOwner) {
             await np.moveProfileHistory(tx, { accountId, fromUserId: currentOwner, toUserId: created.id, profileLabel: profile.name })

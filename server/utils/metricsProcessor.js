@@ -724,7 +724,13 @@ function hasChanged(previous, current) {
 /**
  * Process a single library item and store snapshot/delta
  */
-async function processLibraryItem(prisma, accountId, userId, item, today, users = []) {
+// `userId` keys the item's progress baselines (snapshots). `recordUserId`,
+// when given, is who the viewing is recorded for - history and watch time.
+// They differ only for a merged person's absorbed login (see
+// activityMonitor.js): its baselines stay apart from the main login's,
+// because Stremio and Nuvio count progress differently, while what it
+// watched lands on the person.
+async function processLibraryItem(prisma, accountId, userId, item, today, users = [], { recordUserId = userId } = {}) {
   try {
     const itemId = item._id || item.id
     if (!itemId || !item.type) return { snapshotCreated: false, activityCreated: false }
@@ -850,7 +856,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
       const mostRecentActivity = await prisma.watchActivity.findFirst({
         where: {
           accountId: accountIdValue,
-          userId,
+          userId: recordUserId,
           itemId,
           date: new Date(todayDate)
         },
@@ -909,7 +915,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         ops.push(prisma.watchActivity.create({
           data: {
             accountId: accountIdValue,
-            userId,
+            userId: recordUserId,
             itemId,
             date: new Date(todayDate),
             watchTimeSeconds: activityDeltaSeconds,
@@ -1004,10 +1010,10 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
     // for movies. This runs regardless of whether snapshot changed, to
     // capture all watched items.
     if (item.type === 'series' && item.state?.video_id) {
-      await recordEpisodeWatch(prisma, accountIdValue, userId, item, users)
+      await recordEpisodeWatch(prisma, accountIdValue, recordUserId, item, users)
     } else if (item.type === 'movie') {
-      await recordMovieWatch(prisma, accountIdValue, userId, item, users)
-      await detectMovieRewatch(prisma, accountIdValue, userId, item)
+      await recordMovieWatch(prisma, accountIdValue, recordUserId, item, users)
+      await detectMovieRewatch(prisma, accountIdValue, recordUserId, item)
     }
 
     return { snapshotCreated, activityCreated }
@@ -1053,7 +1059,7 @@ function itemFingerprint(item, todayDate) {
 /**
  * Process all library items for a user
  */
-async function processUserLibrary(prisma, accountId, userId, library, today = new Date(), users = []) {
+async function processUserLibrary(prisma, accountId, userId, library, today = new Date(), users = [], options = {}) {
   if (!library || !Array.isArray(library) || library.length === 0) {
     console.log(`[MetricsProcessor] No library items for user ${userId}`)
     return { snapshotsCreated: 0, activitiesCreated: 0 }
@@ -1083,7 +1089,7 @@ async function processUserLibrary(prisma, accountId, userId, library, today = ne
       continue
     }
     try {
-      const result = await processLibraryItem(prisma, accountId, userId, item, today, users)
+      const result = await processLibraryItem(prisma, accountId, userId, item, today, users, options)
       processed++
       if (result?.snapshotCreated) snapshotsCreated++
       if (result?.activityCreated) activitiesCreated++
@@ -1120,7 +1126,8 @@ async function processAccountMetrics(prisma, accountId, users, getLibraryForUser
       const library = await getLibraryForUser(user)
       if (library && Array.isArray(library) && library.length > 0) {
         console.log(`[MetricsProcessor] Processing ${library.length} items for user ${user.id}`)
-        const result = await processUserLibrary(prisma, accountIdValue, user.id, library, today, users)
+        // A merged person's absorbed login is recorded for that person.
+        const result = await processUserLibrary(prisma, accountIdValue, user.id, library, today, users, user.__recordAs ? { recordUserId: user.__recordAs } : {})
         totalProcessed += library.length
         if (result) {
           totalSnapshots += result.snapshotsCreated || 0

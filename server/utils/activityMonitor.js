@@ -234,17 +234,70 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
         }
       }
 
+      // A merged person (utils/userMerge.js) holds a second provider's login
+      // that addon sync already uses, but its viewing was never read. Each
+      // one is read here as its own entry: its id is the absorbed user's old
+      // id, so its progress baselines stay apart from the main login's -
+      // Stremio counts progress cumulatively, Nuvio as a position, and one
+      // set of baselines for both would invent watch time - while
+      // everything it watched is recorded for the person (__recordAs).
+      let absorbedLogins = []
+      try {
+        const credentials = await prisma.userProviderCredential.findMany({ where: { userId: { in: users.map((u) => u.id) } } })
+        absorbedLogins = credentials.map((c) => {
+          const owner = users.find((u) => u.id === c.userId)
+          if (!owner) return null
+          return {
+            ...owner,
+            id: c.donorId || `absorbed-${c.id}`,
+            providerType: c.providerType,
+            stremioAuthKey: c.stremioAuthKey,
+            nuvioRefreshToken: c.nuvioRefreshToken,
+            nuvioUserId: c.nuvioUserId,
+            providerConnectionError: null,
+            __recordAs: owner.id,
+            // A refreshed Nuvio token belongs on this login's own row.
+            __persistNuvioRefreshToken: c.providerType === 'nuvio'
+              ? async (encrypted) => { await prisma.userProviderCredential.update({ where: { id: c.id }, data: { nuvioRefreshToken: encrypted } }) }
+              : undefined,
+          }
+        }).filter(Boolean)
+      } catch (e) {
+        console.warn('[ActivityMonitor] Could not read merged logins:', e.message)
+      }
+      const absorbedByPerson = new Map(absorbedLogins.map((a) => [a.__recordAs, a]))
+
+      // Sessions are the person's live state, so they are tracked over both
+      // of a merged person's libraries together: the session step closes any
+      // session it cannot find in the library it is given, and given only
+      // one login's library it would close the other's every minute.
+      const getSessionLibrary = async (user) => {
+        const own = await getLibraryForUser(user)
+        const absorbed = absorbedByPerson.get(user.id)
+        if (!absorbed) return own
+        const theirs = await getLibraryForUser(absorbed)
+        const byId = new Map()
+        const lastWatched = (item) => new Date(item?.state?.lastWatched || item?._mtime || 0).getTime() || 0
+        for (const item of [...(own || []), ...(theirs || [])]) {
+          const id = item?._id || item?.id
+          if (!id) continue
+          const kept = byId.get(id)
+          if (!kept || lastWatched(item) > lastWatched(kept)) byId.set(id, item)
+        }
+        return [...byId.values()]
+      }
+
       // Process metrics for all users
       console.log(`[ActivityMonitor] Starting metrics processing for account ${accountId}, ${users.length} users`)
       heartbeat('processAccountMetrics:before')
-      await processAccountMetrics(prisma, accountId, users, getLibraryForUser, new Date())
+      await processAccountMetrics(prisma, accountId, [...users, ...absorbedLogins], getLibraryForUser, new Date())
       heartbeat('processAccountMetrics:after')
       console.log(`[ActivityMonitor] Completed metrics processing for account ${accountId}`)
 
       // Process watch sessions (track start/end times)
       try {
         heartbeat('processAccountSessions:before')
-        await processAccountSessions(prisma, accountId, users, getLibraryForUser, new Date())
+        await processAccountSessions(prisma, accountId, users, getSessionLibrary, new Date())
         heartbeat('processAccountSessions:after')
       } catch (sessionError) {
         heartbeat('processAccountSessions:error', { message: sessionError.message, stack: sessionError.stack })

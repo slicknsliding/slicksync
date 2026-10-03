@@ -16,7 +16,7 @@
 
 const fs = require('fs')
 const path = require('path')
-const { migrateTable } = require('./userMerge')
+const { migrateTable, runLongTransaction, NATURAL_KEY } = require('./userMerge')
 
 const PERSON_SELECT = {
   id: true, username: true, email: true, nuvioProfileId: true, isActive: true,
@@ -162,15 +162,6 @@ async function moveProfileHistory(tx, { accountId, fromUserId, toUserId, profile
 // ---------------------------------------------------------------------------
 // Merging a profile's own person into another person, and separating them
 
-// What makes two rows "the same title" in each table that has a unique key.
-const NATURAL_KEY = {
-  movieWatchHistory: (r) => ({ accountId: r.accountId, userId: r.userId, itemId: r.itemId }),
-  episodeWatchHistory: (r) => ({ accountId: r.accountId, userId: r.userId, videoId: r.videoId }),
-  watchSnapshot: (r) => ({ accountId: r.accountId, userId: r.userId, itemId: r.itemId, date: r.date }),
-  watchSession: (r) => ({ accountId: r.accountId, userId: r.userId, itemId: r.itemId }),
-  dismissedContinueWatching: (r) => ({ accountId: r.accountId, userId: r.userId, showId: r.showId }),
-}
-
 function archiveDir(dataDir) {
   return path.join(dataDir, 'backup', 'merges')
 }
@@ -216,7 +207,7 @@ async function mergeProfilePerson(prisma, { accountId, survivorId, donorId, prof
   const archiveFilename = `profile-${donorId}-${Date.now()}.json`
   const archive = { donorRows: {}, overwrittenSurvivorRows: {}, donorGroupIds: [], viewerLinks: {}, routeBefore: null }
 
-  await prisma.$transaction(async (tx) => {
+  await runLongTransaction(prisma, async (tx) => {
     const key = { accountId_nuvioUserId_profileIndex: { accountId, nuvioUserId: donorFull.nuvioUserId, profileIndex } }
     archive.routeBefore = await tx.nuvioProfileRoute.findUnique({ where: key })
     await tx.nuvioProfileRoute.upsert({
@@ -289,7 +280,7 @@ async function unmergeProfilePerson(prisma, { accountId, mergeId, dataDir = path
   const survivorId = record.survivorId
 
   let carried = { movies: 0, episodes: 0, activity: 0 }
-  await prisma.$transaction(async (tx) => {
+  await runLongTransaction(prisma, async (tx) => {
     const { id: _id, ...fields } = donor
     await tx.user.create({ data: { id: donorId, ...fields } })
 
@@ -401,7 +392,7 @@ async function findMisplaced(prisma, accountId, siblings, routes, profiles) {
 async function tidyMisplaced(prisma, accountId, misplaced) {
   const total = { movies: 0, episodes: 0 }
   for (const m of misplaced) {
-    await prisma.$transaction(async (tx) => {
+    await runLongTransaction(prisma, async (tx) => {
       // Watch time stays where it is: the older copies on each person were
       // identical, and the household totals already count them once.
       const moved = await moveProfileHistory(tx, { accountId, fromUserId: m.fromUserId, toUserId: m.toUserId, profileLabel: m.profileLabel, moveActivity: false })
