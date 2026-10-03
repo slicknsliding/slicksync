@@ -1598,27 +1598,18 @@ function ActivityPageContent() {
   const periodParam = searchParams.get('period'); // 'today' | 'week'
   
   const [searchQuery, setSearchQuery] = useState(userParam || '');
-  // The feed's filters. A link that names any wins; otherwise whatever was
-  // last used on this device. Kept in the address so a view can be shared.
+  // The feed's filters. Activity opens with all of them clear - movies and
+  // shows, everyone, any time - unless the address names some: a shared
+  // link, the dashboard's period links, or Back to a filtered view. They used
+  // to be restored from this device's last visit too, which reopened the page
+  // on whatever was picked days ago (Movies only, say) with nothing to show
+  // why. Kept in the address so a view can still be shared or bookmarked.
   const router = useRouter();
   const pathname = usePathname();
   const [filters, setFilters] = useState<ActivityFilters>(
     () => filtersFromParams(new URLSearchParams(searchParams.toString())) || EMPTY_FILTERS
   );
-  // Restored after mount, not in the initial state, so the first render
-  // matches the server's.
-  const filtersRestored = useRef(false);
   useEffect(() => {
-    if (filtersRestored.current) return;
-    filtersRestored.current = true;
-    if (filtersFromParams(new URLSearchParams(window.location.search))) return;
-    try {
-      const saved = JSON.parse(localStorage.getItem('slicksync:activity-filters') || 'null');
-      if (saved && typeof saved === 'object') setFilters({ ...EMPTY_FILTERS, ...saved });
-    } catch { /* storage unavailable - start clear */ }
-  }, []);
-  useEffect(() => {
-    try { localStorage.setItem('slicksync:activity-filters', JSON.stringify(filters)); } catch { /* optional */ }
     const next = filtersToParams(filters, new URLSearchParams(window.location.search));
     const query = next.toString();
     if (query !== window.location.search.replace(/^\?/, '')) {

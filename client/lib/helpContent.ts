@@ -928,7 +928,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     answer: 'Activity has a row of filters under the search box: who watched, which app it was watched on (Stremio, Nuvio, AIOStreams, imported or scrobbled), which Nuvio profile, movies or shows, finished or stopped part-way, and when - today, the last 7 or 30 days, this year, or dates you pick.',
     details: [
       'Each filter only offers what your history actually holds, so an app or profile nobody has used never appears.',
-      'Filters are remembered on each device, and they are part of the page address - press Copy link to share exactly what you are looking at, or bookmark it.',
+      'Activity opens with every filter clear - movies and shows, everyone, any time. The filters you pick are part of the page address, so press Copy link to share exactly what you are looking at, or bookmark it to come back to the same view.',
       'Finished means watched to the end; stopped part-way means started but not finished. Older records that never said either way are left out of both, and still show when that filter is off.',
       'Clear puts every filter back at once.',
     ],
