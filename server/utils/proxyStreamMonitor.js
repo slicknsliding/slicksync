@@ -32,6 +32,9 @@ const { searchCinemetaPosterByTitle } = require('./libraryHelpers')
 const { sendSessionStartNotification } = require('./sessionTracker')
 const { notifyPushForType } = require('./pushNotifications')
 
+// A connection counts as playing from its second request - see proxyPlaying.js.
+const { MIN_PLAYING_REQUESTS, isPlayingConnection } = require('./proxyPlaying')
+
 const { proxyDisplayTitle } = require('./proxyTitle')
 const CHECK_INTERVAL_MS = 30 * 1000 // 30s - streams start/stop faster than the 1min library-sync interval
 
@@ -637,12 +640,12 @@ async function pollOnce(prisma, accountId, config) {
 
       const displayName = parseDisplayName(stream.filename)
 
-      // Was this session already known before this poll? A brand-new row
-      // means playback just started - the trigger for an instant "started
-      // watching" notification below.
+      // Was this session already known before this poll, and had it already
+      // shown it was playing? See MIN_PLAYING_REQUESTS for why a new row on
+      // its own is not yet a "started watching".
       const existingRow = await prisma.proxyStreamSession.findUnique({
         where: { accountId_aiostreamsUser_clientIp_url: { accountId, aiostreamsUser, clientIp, url } },
-        select: { id: true, isActive: true },
+        select: { id: true, isActive: true, requestCount: true },
       })
 
       // Debrid resolvers frequently return a deterministic, content-
@@ -692,9 +695,14 @@ async function pollOnce(prisma, accountId, config) {
         await attemptPosterLookup(prisma, row.id, displayName)
       }
 
-      // Instant "started watching" notification for a genuinely new watch
-      // (runs after the poster lookup so the embed can include it).
-      if (notifyActivity && !existingRow) {
+      // "Started watching" the poll a connection first shows it is playing -
+      // its second request (MIN_PLAYING_REQUESTS) - whether that is the poll
+      // that found it or a later one. Runs after the poster lookup so the
+      // embed can include it. A reactivation of a closed row is the same
+      // stream resumed and stays quiet, as before.
+      const playingNow = isPlayingConnection(stream.requests ?? 1)
+      const wasPlaying = !!existingRow && existingRow.isActive && isPlayingConnection(existingRow.requestCount ?? 1)
+      if (notifyActivity && playingNow && !wasPlaying && (!existingRow || existingRow.isActive)) {
         await maybeNotifyStart(prisma, accountId, notifyWebhook, notifyUsers, aiostreamsUser, row.id, displayName)
         // A brand-new live stream: tell connected dashboards to refetch Now
         // Playing immediately rather than on their next 30s tick.

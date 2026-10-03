@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.89.1",
+    "date": "2026-10-03",
+    "title": "1.89.1 - Opening a title no longer counts as watching it",
+    "features": [],
+    "bugFixes": [
+      "Some apps warm up a title's top few sources while you read its page, so the one you press starts sooner - a tiny request to each, through the AIOStreams proxy. SlickSync took every one of those for someone starting to watch: a \"started watching\" notification, the title in Now Playing, and a sync-mismatch warning - three at once for one page opened. A stream now counts as playing from its second request, which every real viewing makes within seconds; a source that is only checked or warmed up never gets one. The Proxy tab still lists every connection."
+    ]
+  },
+  {
     "version": "1.89.0",
     "date": "2026-10-03",
     "title": "1.89.0 - AIOStreams watch history, Nuvio profiles of their own, and Activity filters",
