@@ -34,10 +34,10 @@ async function getMergePreview(prisma, survivorId, donorId) {
   // A Nuvio profile other than the main one shares its login with the main
   // person. Absorbed into another provider's user it would lose which
   // profile it is, and every sync would then write that user's addons into
-  // the main profile's list. Profiles are combined from the Profiles card.
+  // the main profile's list. Profiles are combined from Nuvio profiles on the Users page.
   const donorProfile = await prisma.user.findUnique({ where: { id: donorId }, select: { nuvioProfileId: true } })
   if (donor.providerType === 'nuvio' && Number(donorProfile?.nuvioProfileId || 1) > 1) {
-    throw new Error('This is one profile of a shared Nuvio account. Combine profiles from the Profiles card on the Nuvio person instead')
+    throw new Error('This is one profile of a shared Nuvio account. Combine profiles from Nuvio profiles on the Users page instead')
   }
 
   const [movieCount, episodeCount, sessionCount, snapshotCount, survivorGroup, donorGroup] = await Promise.all([

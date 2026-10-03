@@ -3721,9 +3721,10 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
-  // Who a profile counts for: someone on the same Nuvio account, or nobody.
-  // Moving a profile takes the history it already recorded with it; a
-  // profile that has its own person is merged into the chosen one.
+  // Where a profile's viewing goes: into someone on the same Nuvio account
+  // ('merge into'), nowhere ('skip', not tracked), or back to the default.
+  // Merging takes the history it already recorded with it, and a profile
+  // that has its own person is merged as a whole person.
   router.put('/:id/profiles/:index', async (req, res) => {
     try {
       const ctx = await profileContext(req, req.params.id)
@@ -3738,7 +3739,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const routeKey = { accountId_nuvioUserId_profileIndex: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index } }
       let removedUserId = null
 
-      if (target === 'skip') {
+      if (target === 'default') {
+        // Back to the default: its own person if it has one, otherwise the
+        // main profile's person. Nothing was recorded while it was not
+        // tracked, so there is nothing to move.
+        await prisma.nuvioProfileRoute.deleteMany({ where: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index } })
+      } else if (target === 'skip') {
         if (own) return res.status(400).json({ message: `This profile is ${own.username}. Turn them off or delete them instead.` })
         await prisma.nuvioProfileRoute.upsert({
           where: routeKey,

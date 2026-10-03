@@ -470,6 +470,8 @@ async function maybeNotifyStart(prisma, accountId, webhookUrl, users, aiostreams
       where: { id: rowId },
       select: { posterUrl: true, metadataItemId: true, metadataItemType: true, metadataName: true, startTime: true },
     })
+    // AIOStreams' own apps may already have announced this same viewing.
+    if (fresh?.metadataItemId && !require('./startNotifyDedupe').claimStart(accountId, user.id, fresh.metadataItemId)) return
     // The matched title's own name where there is one - see proxyTitle.js.
     const shownName = proxyDisplayTitle({ ...(fresh || {}), displayName }) || displayName
     // A user's own personal webhook (set in their self-service Settings)

@@ -742,6 +742,14 @@ model WatchStateCursor {
   startPositionMs    Int?
   startAt            DateTime?
   accumulatedSeconds Int       @default(0)
+  // For Now Playing: what is on, and how long it runs, so a viewing whose
+  // stop never arrives can still drop off once its runtime has passed.
+  itemName           String?
+  poster             String?
+  season             Int?
+  episode            Int?
+  durationMs         Int?
+  createdAt          DateTime @default(now())
   updatedAt          DateTime  @updatedAt
 
   @@unique([accountId, userId, videoId])

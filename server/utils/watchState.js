@@ -14,10 +14,10 @@
 // AIOStreams) hands back what this person has watched anywhere, so Continue
 // Watching on their Jellyfin app reflects what they watched in Nuvio.
 //
-// Live Now Playing is deliberately not fed from this. Now Playing reads active
-// WatchSession rows, and the native poller closes any session it cannot find
-// in the person's provider library within a minute - which is every session
-// that started in a Jellyfin app.
+// Live Now Playing comes from the playback cursor below, not from
+// WatchSession: the native poller closes any session it cannot find in the
+// person's provider library within a minute, which is every session that
+// started in a Jellyfin app. liveViewings() is what Now Playing reads.
 
 const crypto = require('crypto')
 const { recordDiscreteWatch, removeDiscreteWatch, describeTitle } = require('./discreteWatch')
@@ -181,6 +181,113 @@ async function closeStretch(prisma, user, cursor, event, timeZone) {
   return seconds
 }
 
+function emitNowPlaying(accountId) {
+  try { require('./liveEvents').emitLive(accountId, 'nowplaying') } catch { /* optional */ }
+}
+
+/**
+ * After a start: name the title on the cursor for Now Playing, refresh open
+ * pages, and for a fresh viewing send the same "started watching" the proxy
+ * sends - Discord, phone push and the watch.started automation trigger.
+ */
+async function announceStart(prisma, user, where, item, fresh) {
+  const accountId = user.accountId || 'default'
+  const { title, episodeName, poster } = await describeTitle(prisma, accountId, item).catch(() => ({}))
+  if (title) {
+    await prisma.watchStateCursor.update({ where, data: { itemName: title, poster: poster || null } }).catch(() => {})
+  }
+  emitNowPlaying(accountId)
+  if (!fresh || !title) return
+
+  let cfg = {}
+  try {
+    const account = await prisma.appAccount.findFirst({ where: { id: accountId }, select: { sync: true } })
+    cfg = typeof account?.sync === 'string' ? JSON.parse(account.sync) : (account?.sync || {})
+  } catch { cfg = {} }
+  if (cfg?.notifyOnActivity !== true) return
+  if (user.notifyOnWatch === false) return
+  // The proxy may already have announced this same viewing.
+  if (!require('./startNotifyDedupe').claimStart(accountId, user.id, item.itemId)) return
+
+  const episodeTag = item.itemType === 'series' && item.season != null && item.episode != null
+    ? ` S${item.season}E${item.episode}${episodeName ? ` - ${episodeName}` : ''}`
+    : ''
+  const webhookUrl = user.discordWebhookUrl || cfg.webhookUrl || null
+  if (webhookUrl) {
+    const { sendSessionStartNotification } = require('./sessionTracker')
+    await sendSessionStartNotification(webhookUrl, {
+      itemName: title,
+      itemType: item.itemType,
+      itemId: item.itemId,
+      videoId: item.itemType === 'series' ? item.videoId : null,
+      season: item.season ?? null,
+      episode: item.episode ?? null,
+      startTime: new Date(),
+      poster: poster || null,
+    }, user).catch(() => {})
+  }
+  try {
+    const { emitAutomationEvent } = require('./automation/engine')
+    await emitAutomationEvent(prisma, accountId, 'watch.started', {
+      username: user.username || '',
+      userId: user.id,
+      itemName: title,
+      itemId: item.itemId,
+      contentType: item.itemType === 'series' ? 'series' : 'movie',
+    })
+  } catch { /* emit never throws; guards the require itself */ }
+  const { notifyPushForType } = require('./pushNotifications')
+  await notifyPushForType(prisma, accountId, 'notifyOnActivity', {
+    title: `${user.username || user.email || 'Someone'} started watching`,
+    body: `${title}${episodeTag}`,
+    icon: poster || '/android-chrome-192x192.png',
+    url: '/activity',
+  }).catch(() => {})
+}
+
+// A viewing whose stop never arrives - the app crashed, the phone died - is
+// treated as over once its runtime has passed, plus this much grace.
+const LIVE_GRACE_MS = 10 * 60 * 1000
+// And when the runtime was never reported, after this long.
+const LIVE_MAX_NO_DURATION_MS = 4 * 60 * 60 * 1000
+// A cursor this old is a viewing that will never finish; it is removed.
+const STALE_CURSOR_MS = 2 * 24 * 60 * 60 * 1000
+
+/**
+ * What is playing in AIOStreams' apps right now, for Now Playing. Only a
+ * viewing between a start and its pause or stop; the position is estimated
+ * from where it started and the time since, because AIOStreams reports no
+ * progress in between.
+ */
+async function liveViewings(prisma, accountId, userIds = null) {
+  const now = Date.now()
+  const rows = await prisma.watchStateCursor.findMany({
+    where: { accountId, startAt: { not: null }, ...(userIds ? { userId: { in: userIds } } : {}) },
+  })
+  const out = []
+  for (const c of rows) {
+    const startedAt = new Date(c.startAt).getTime()
+    const remaining = c.durationMs ? Math.max(0, c.durationMs - (c.startPositionMs || 0)) + LIVE_GRACE_MS : LIVE_MAX_NO_DURATION_MS
+    if (now > startedAt + remaining) continue
+    let position = (c.startPositionMs || 0) + Math.max(0, now - startedAt)
+    if (c.durationMs) position = Math.min(position, c.durationMs)
+    out.push({
+      userId: c.userId,
+      itemId: c.itemId,
+      itemType: c.itemType,
+      videoId: c.itemType === 'series' ? c.videoId : null,
+      itemName: c.itemName || null,
+      poster: c.poster || null,
+      season: c.season ?? null,
+      episode: c.episode ?? null,
+      startedAt: new Date(c.createdAt || c.startAt),
+      positionMs: position,
+      durationMs: c.durationMs || null,
+    })
+  }
+  return out
+}
+
 async function applyPlayback(prisma, user, type, pathId, event) {
   const accountId = user.accountId || 'default'
   const itemType = itemTypeFor(type, event)
@@ -191,10 +298,27 @@ async function applyPlayback(prisma, user, type, pathId, event) {
 
   if (event.event === 'start') {
     // Playing from here. A resume after a pause keeps what was already counted.
+    const before = await prisma.watchStateCursor.findUnique({ where })
+    const live = {
+      itemId,
+      itemType,
+      startPositionMs: Math.round(Number(event.positionMs) || 0),
+      startAt: toDate(event.at),
+      durationMs: Number(event.durationMs) > 0 ? Math.round(Number(event.durationMs)) : before?.durationMs ?? null,
+      season: Number.isInteger(event.season) ? event.season : before?.season ?? null,
+      episode: Number.isInteger(event.episode) ? event.episode : before?.episode ?? null,
+    }
     await prisma.watchStateCursor.upsert({
       where,
-      create: { accountId, userId: user.id, videoId, itemId, itemType, startPositionMs: Math.round(Number(event.positionMs) || 0), startAt: toDate(event.at) },
-      update: { itemId, itemType, startPositionMs: Math.round(Number(event.positionMs) || 0), startAt: toDate(event.at) },
+      create: { accountId, userId: user.id, videoId, ...live },
+      update: live,
+    })
+    // Naming the title can take a metadata lookup; AIOStreams is not kept
+    // waiting for it. A resume after a pause is the same viewing, so only a
+    // fresh one is announced.
+    setImmediate(() => {
+      announceStart(prisma, user, where, { itemId, itemType, videoId, season: live.season, episode: live.episode }, !before)
+        .catch((e) => console.warn('[WatchState] start follow-up failed:', e?.message))
     })
     return
   }
@@ -209,6 +333,7 @@ async function applyPlayback(prisma, user, type, pathId, event) {
         data: { accumulatedSeconds: cursor.accumulatedSeconds + seconds, startAt: null, startPositionMs: null },
       })
     }
+    emitNowPlaying(accountId)
     return
   }
 
@@ -216,6 +341,7 @@ async function applyPlayback(prisma, user, type, pathId, event) {
   const seconds = await closeStretch(prisma, user, cursor, event, timeZone)
   const watchedSeconds = (cursor?.accumulatedSeconds || 0) + seconds
   if (cursor) await prisma.watchStateCursor.delete({ where }).catch(() => {})
+  emitNowPlaying(accountId)
 
   const finished = event.played === true
   if (!finished && !meaningfulProgress(event)) return
@@ -338,6 +464,8 @@ async function applyBulk(prisma, user, type, event) {
 async function handlePush(prisma, user, type, pathId, event) {
   if (!event || typeof event !== 'object' || !event.id || !event.event) return 400
   const accountId = user.accountId || 'default'
+  // A viewing whose stop never came, days ago, is over.
+  prisma.watchStateCursor.deleteMany({ where: { userId: user.id, updatedAt: { lt: new Date(Date.now() - STALE_CURSOR_MS) } } }).catch(() => {})
 
   // Applied already? A retried delivery, or a client reporting one stop twice.
   try {
@@ -529,11 +657,15 @@ async function buildPull(prisma, user, since) {
   prisma.watchStateEvent.deleteMany({
     where: { createdAt: { lt: new Date(Date.now() - EVENT_MEMORY_DAYS * 24 * 60 * 60 * 1000) } },
   }).catch(() => {})
+  prisma.watchStateCursor.deleteMany({
+    where: { updatedAt: { lt: new Date(Date.now() - STALE_CURSOR_MS) } },
+  }).catch(() => {})
 
   return out
 }
 
 module.exports = {
+  liveViewings,
   manifestBlock,
   viewerSlug,
   readViewerMap,

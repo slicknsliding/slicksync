@@ -18,7 +18,6 @@ import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import { WatchStateRow } from '@/components/user/WatchStateRow';
-import { ProfilesCard } from '@/components/user/ProfilesCard';
 import {
   ArrowLeftIcon,
   ArrowPathIcon,
@@ -1370,14 +1369,6 @@ export default function UserDetailPage() {
                     </Button>
                   </div>
                 </Card>
-              </PageSection>
-            )}
-
-            {/* Profiles: whose viewing each profile on this Nuvio account is,
-                and the people made for them. See components/user/ProfilesCard. */}
-            {user.providerType === 'nuvio' && (
-              <PageSection className="mb-6">
-                <ProfilesCard userId={user.id} onPersonRemoved={(nextId) => router.push(`/users/${nextId}`)} />
               </PageSection>
             )}
 

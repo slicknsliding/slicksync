@@ -909,10 +909,55 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     })
   }
 
+  // AIOStreams' own apps (Odin, Infuse, Swiftfin, its desktop app) report
+  // playback through Watch State, which none of the above can see - see
+  // utils/watchState.js liveViewings(). Added before the proxy merge, so a
+  // viewing that also streams through the proxy is shown once.
+  try {
+    const { liveViewings } = require('./watchState')
+    for (const v of await liveViewings(prisma, accountIdValue || 'default')) {
+      const user = userMap.get(v.userId)
+      if (!user) continue
+      if (nowPlaying.some((np) => np.user.id === v.userId && np.item.id === v.itemId)) continue
+      nowPlaying.push({
+        user: {
+          id: user.id,
+          username: user.username || user.email,
+          email: user.email,
+          colorIndex: user.colorIndex || 0,
+          avatarUrl: user.avatarUrl || null,
+          useGravatar: user.useGravatar ?? false
+        },
+        item: {
+          id: v.itemId,
+          name: v.itemName || v.itemId,
+          type: v.itemType,
+          year: null,
+          poster: v.poster,
+          season: v.season,
+          episode: v.episode
+        },
+        videoId: v.videoId,
+        watchedAt: v.startedAt.toISOString(),
+        watchedAtTimestamp: v.startedAt.getTime(),
+        lastPosition: v.positionMs,
+        totalDuration: v.durationMs,
+        source: 'aiostreams',
+        stremioAppUrl: buildStremioLinks(v.itemId, v.itemType === 'series' ? 'series' : 'movie', v.season, v.episode).appUrl,
+        nuvioAppUrl: buildNuvioAppUrl(v.itemType === 'series' ? 'series' : 'movie', v.itemId),
+      })
+    }
+  } catch (error) {
+    console.warn('[MetricsBuilder] Failed to read AIOStreams viewings:', error.message)
+  }
+
   // Reconcile against AIOStreams proxy-detected streams (see above).
   try {
     const { mergeProxyNowPlaying } = require('./proxyNowPlaying')
-    const merged = await mergeProxyNowPlaying(prisma, accountIdValue || 'default', activeUsers, nowPlaying)
+    // Copied before the list is emptied: with no proxy streams to reconcile,
+    // the merge hands back this very array, and clearing it first used to
+    // wipe Now Playing whenever nothing had gone through the proxy lately.
+    const merged = [...await mergeProxyNowPlaying(prisma, accountIdValue || 'default', activeUsers, nowPlaying)]
     nowPlaying.length = 0
     nowPlaying.push(...merged)
   } catch (error) {

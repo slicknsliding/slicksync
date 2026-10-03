@@ -2524,6 +2524,21 @@ module.exports = ({ prisma, DEFAULT_ACCOUNT_ID, encrypt, decrypt, getCachedLibra
         videoId: s.videoId
       }));
 
+      // Playing in AIOStreams' own apps - see utils/watchState.js liveViewings().
+      try {
+        const { liveViewings } = require('../utils/watchState');
+        for (const v of await liveViewings(prisma, user.accountId || DEFAULT_ACCOUNT_ID, [userId])) {
+          if (nowPlaying.some(np => np.item.id === v.itemId)) continue;
+          nowPlaying.push({
+            item: { id: v.itemId, name: v.itemName || v.itemId, type: v.itemType, poster: v.poster, season: v.season, episode: v.episode },
+            startTime: v.startedAt,
+            videoId: v.videoId
+          });
+        }
+      } catch (error) {
+        console.warn('[PublicLibrary] Failed to read AIOStreams viewings:', error.message);
+      }
+
       // Merge in an AIOStreams proxy-detected active stream for this user
       // (faster/more accurate start/stop detection than the WatchSession
       // pipeline above). Wrapped/unwrapped around the shared helper since

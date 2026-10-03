@@ -29,6 +29,11 @@ function emitLive(accountId, type) {
   // A stream starting or stopping is exactly what changes Continue Watching.
   if (type === 'nowplaying') {
     try { require('./continueWatching').invalidateContinueWatching(accountId) } catch { /* optional */ }
+    // Now Playing rides inside the cached metrics, which live for up to five
+    // minutes. Without this the dashboard's refetch on this very event got
+    // the old answer back, and a stream that had just started or stopped
+    // waited out the cache instead of showing at once.
+    try { require('./metricsCache').clearMetricsForAccount(accountId) } catch { /* optional */ }
   }
   // A sync finishing, or a change to what a user should have, is exactly
   // what changes a sync status.

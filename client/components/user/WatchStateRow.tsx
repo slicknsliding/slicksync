@@ -46,7 +46,7 @@ export function WatchStateRow({ userId }: { userId: string }) {
   const link = async (viewer: string, target: string) => {
     try {
       setView(await api.linkWatchStateViewer(userId, viewer, target || null));
-      toast.success(target === 'skip' ? 'Profile left out' : target ? 'Profile linked' : 'Profile unlinked');
+      toast.success(target === 'skip' ? 'Profile no longer tracked' : target ? 'Profile linked' : 'Profile unlinked');
     } catch (err: any) {
       toast.error(err?.message || 'Could not link that profile');
     }
@@ -99,7 +99,7 @@ export function WatchStateRow({ userId }: { userId: string }) {
       {enabled && view && view.viewers.length > 0 && (
         <div className="mt-4 ml-13 flex flex-col gap-2">
           <p className="text-xs text-muted">
-            AIOStreams profiles using this link. A profile is only recorded once it is linked to a person who has this turned on, and never when it is left out.
+            AIOStreams profiles using this link. A profile is only recorded once it is linked to a person who has this turned on, and never when it is set to not be tracked.
           </p>
           {view.viewers.map((v) => (
             <div key={v.viewer} className="flex items-center justify-between gap-3 flex-wrap rounded-lg px-3 py-2" style={{ background: 'var(--color-surface-hover)' }}>
@@ -109,7 +109,7 @@ export function WatchStateRow({ userId }: { userId: string }) {
                   <span className="text-xs text-warning">turned off for that person</span>
                 )}
                 {!v.userId && !v.skipped && <span className="text-xs text-warning">not linked - its viewing is not recorded</span>}
-                {v.skipped && <span className="text-xs text-muted">not counted</span>}
+                {v.skipped && <span className="text-xs text-muted">not tracked</span>}
                 <select
                   className="text-sm rounded-md px-2 py-1 border"
                   style={{ borderColor: 'var(--color-surface-border)', backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text)' }}
@@ -121,7 +121,7 @@ export function WatchStateRow({ userId }: { userId: string }) {
                   {view.people.map((p) => (
                     <option key={p.id} value={p.id} style={{ backgroundColor: 'var(--color-surface)' }}>{p.username}</option>
                   ))}
-                  <option value="skip" style={{ backgroundColor: 'var(--color-surface)' }}>Nobody - don&apos;t count it</option>
+                  <option value="skip" style={{ backgroundColor: 'var(--color-surface)' }}>Don&apos;t track it</option>
                 </select>
               </div>
             </div>

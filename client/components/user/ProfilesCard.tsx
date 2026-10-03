@@ -1,13 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { ChevronDownIcon, UsersIcon, UserPlusIcon, ArrowUturnLeftIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import {
+  ChevronDownIcon, UsersIcon, UserPlusIcon, ArrowUturnLeftIcon, SparklesIcon, EyeSlashIcon, EyeIcon,
+} from '@heroicons/react/24/outline';
 import { api, type ProfilesView } from '@/lib/api';
-import { Button, Card, ConfirmModal } from '@/components/ui';
+import { Button, Card, ConfirmModal, UserAvatar } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 
 type Profile = ProfilesView['profiles'][number];
+type Person = ProfilesView['persons'][number];
 
 interface PendingAction {
   title: string;
@@ -17,9 +20,12 @@ interface PendingAction {
   run: () => Promise<void>;
 }
 
+function count(n: number) {
+  return n === 1 ? '1 title' : `${n.toLocaleString()} titles`;
+}
+
 function titles(t: { movies: number; episodes: number }) {
-  const n = t.movies + t.episodes;
-  return n === 1 ? '1 title' : `${n} titles`;
+  return count(t.movies + t.episodes);
 }
 
 function profileName(p: Profile) {
@@ -27,11 +33,11 @@ function profileName(p: Profile) {
 }
 
 /** A Nuvio profile's own colour, as the app shows it. */
-function ProfileMark({ profile }: { profile: Profile }) {
-  const hex = profile.color && /^#[0-9a-f]{6}$/i.test(profile.color) ? profile.color : null;
+function ProfileMark({ profile, muted }: { profile: Profile; muted?: boolean }) {
+  const hex = !muted && profile.color && /^#[0-9a-f]{6}$/i.test(profile.color) ? profile.color : null;
   return (
     <span
-      className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-sm font-semibold"
+      className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-xs font-semibold"
       style={hex
         ? { background: `${hex}33`, color: hex, boxShadow: `inset 0 0 0 1px ${hex}55` }
         : { background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
@@ -42,13 +48,22 @@ function ProfileMark({ profile }: { profile: Profile }) {
   );
 }
 
+const SELECT_CHEVRON = "bg-no-repeat bg-[length:1rem] bg-[right_0.5rem_center] bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20fill=%22none%22%20viewBox=%220%200%2024%2024%22%20stroke=%22%2394a3b8%22%3E%3Cpath%20stroke-linecap=%22round%22%20stroke-linejoin=%22round%22%20stroke-width=%222%22%20d=%22M19%209l-7%207-7-7%22/%3E%3C/svg%3E')]";
+
 /**
- * Whose viewing each profile on a Nuvio account is. A profile counts for a
- * person on the same account or for nobody; it can have a person of its own,
- * be merged into someone else's history, and be separated again. The rules
- * live in server/utils/nuvioProfiles.js.
+ * The people on one Nuvio login and the profiles each of them is made of.
+ * Every profile is either its own person, part of someone's history, or not
+ * tracked; the actions move it between those, and a merge can be separated
+ * again. The rules live in server/utils/nuvioProfiles.js.
  */
-export function ProfilesCard({ userId, onPersonRemoved }: { userId: string; onPersonRemoved?: (nextUserId: string) => void }) {
+export function ProfilesCard({ userId, loginLabel, onPeopleChanged }: {
+  /** Any person on the Nuvio login - normally its main profile's person. */
+  userId: string;
+  /** Shown when the account has more than one Nuvio login, to tell them apart. */
+  loginLabel?: string | null;
+  /** People were added, merged away or brought back. */
+  onPeopleChanged?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<ProfilesView | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,15 +94,16 @@ export function ProfilesCard({ userId, onPersonRemoved }: { userId: string; onPe
   }, [userId]);
 
   const persons = view?.persons || [];
-  const nameOf = (id: string | null) => persons.find((p) => p.id === id)?.username || 'someone';
+  const personById = (id: string | null): Person | undefined => persons.find((p) => p.id === id);
+  const nameOf = (id: string | null) => personById(id)?.username || 'someone';
 
-  const perform = async (action: () => Promise<ProfilesView>, message: string, after?: (next: ProfilesView) => void) => {
+  const perform = async (action: () => Promise<ProfilesView>, message: string, peopleChange = false) => {
     setBusy(true);
     try {
       const next = await action();
       setView(next);
       toast.success(message);
-      after?.(next);
+      if (peopleChange) onPeopleChanged?.();
     } catch (e: any) {
       toast.error(e?.message || 'Could not change that');
     } finally {
@@ -96,51 +112,50 @@ export function ProfilesCard({ userId, onPersonRemoved }: { userId: string; onPe
     }
   };
 
-  const changeOwner = (profile: Profile, target: string) => {
-    const current = profile.ownerId ?? 'skip';
-    if (target === current) return;
+  const mergeInto = (profile: Profile, target: string) => {
+    if (!target) return;
     const name = profileName(profile);
+    const to = nameOf(target);
 
     if (profile.ownPersonId) {
-      const donor = nameOf(profile.ownPersonId);
-      const survivor = nameOf(target);
+      const donor = personById(profile.ownPersonId);
+      const donorName = donor?.username || name;
       setPending({
-        title: `Merge ${donor} into ${survivor}?`,
-        description: `${donor}'s history (${titles({ movies: persons.find((p) => p.id === profile.ownPersonId)?.movies || 0, episodes: persons.find((p) => p.id === profile.ownPersonId)?.episodes || 0 })}) moves to ${survivor}, and the ${name} profile counts for ${survivor} from now on. ${donor} leaves the Users list - you can separate them again from here at any time.`,
+        title: `Merge ${donorName} into ${to}?`,
+        description: `Use this when they are the same person. ${donorName}'s history (${titles({ movies: donor?.movies || 0, episodes: donor?.episodes || 0 })}) becomes part of ${to}'s, and anything watched on the ${name} profile from now on goes to ${to}. ${donorName} leaves the Users list - you can separate them again here at any time.`,
         confirmText: 'Merge',
         variant: 'warning',
-        run: () => perform(
-          () => api.setProfileOwner(userId, profile.index, target),
-          `${donor} merged into ${survivor}`,
-          (next) => { if (next.removedUserId === userId) onPersonRemoved?.(target); },
-        ),
+        run: () => perform(() => api.setProfileOwner(userId, profile.index, target), `${donorName} merged into ${to}`, true),
       });
       return;
     }
 
-    if (target === 'skip') {
-      setPending({
-        title: `Stop counting ${name}?`,
-        description: `Nothing new from ${name} is recorded for anyone - not in history, watch time or stats. What it has already recorded stays where it is.`,
-        confirmText: 'Stop counting',
-        run: () => perform(() => api.setProfileOwner(userId, profile.index, 'skip'), `${name} is no longer counted`),
-      });
-      return;
-    }
-
-    const to = nameOf(target);
-    const hasHistory = profile.ownerId && profile.titles.movies + profile.titles.episodes > 0;
+    const moving = profile.ownerId && profile.titles.movies + profile.titles.episodes > 0;
     setPending({
-      title: profile.ownerId ? `Move ${name} to ${to}?` : `Count ${name} for ${to}?`,
-      description: hasHistory
-        ? `${name}'s history (${titles(profile.titles)}) moves from ${nameOf(profile.ownerId)} to ${to}, and its viewing counts for ${to} from now on.`
-        : `${name}'s viewing counts for ${to} from now on.`,
-      confirmText: profile.ownerId ? 'Move' : 'Count it',
-      run: () => perform(() => api.setProfileOwner(userId, profile.index, target), `${name} now counts for ${to}`),
+      title: `Merge ${name} into ${to}?`,
+      description: moving
+        ? `The ${titles(profile.titles)} watched on ${name} move from ${nameOf(profile.ownerId)} to ${to}, and anything watched on it from now on goes to ${to}.`
+        : `Anything watched on ${name} from now on goes to ${to}.`,
+      confirmText: 'Merge',
+      run: () => perform(() => api.setProfileOwner(userId, profile.index, target), `${name} merged into ${to}`),
     });
   };
 
-  const giveOwnPerson = (profile: Profile) => {
+  const stopTracking = (profile: Profile) => {
+    const name = profileName(profile);
+    setPending({
+      title: `Stop tracking ${name}?`,
+      description: `Nothing watched on ${name} is recorded from now on - no history, watch time or stats, for anyone. What it has already recorded stays where it is.`,
+      confirmText: 'Stop tracking',
+      run: () => perform(() => api.setProfileOwner(userId, profile.index, 'skip'), `${name} is no longer tracked`),
+    });
+  };
+
+  const trackAgain = (profile: Profile) => {
+    perform(() => api.setProfileOwner(userId, profile.index, 'default'), `${profileName(profile)} is tracked again`);
+  };
+
+  const makeOwnPerson = (profile: Profile) => {
     const name = profileName(profile);
     if (profile.merged) {
       const donor = profile.merged.donorUsername;
@@ -148,31 +163,109 @@ export function ProfilesCard({ userId, onPersonRemoved }: { userId: string; onPe
         title: `Separate ${donor} again?`,
         description: `${donor} comes back with everything they had before the merge, and anything watched on ${name} since then goes with them.`,
         confirmText: 'Separate',
-        run: () => perform(() => api.giveProfileOwnPerson(userId, profile.index), `${donor} is back`),
+        run: () => perform(() => api.giveProfileOwnPerson(userId, profile.index), `${donor} is back`, true),
       });
       return;
     }
     const moving = profile.ownerId && profile.titles.movies + profile.titles.episodes > 0;
     setPending({
-      title: `Give ${name} its own person?`,
-      description: `A new person called ${name} joins the Users list${moving ? `, and ${name}'s history (${titles(profile.titles)}) moves to them from ${nameOf(profile.ownerId)}` : ''}.${profile.usesPrimaryAddons ? '' : ' They also manage that profile\'s own addons.'}`,
-      confirmText: 'Add person',
-      run: () => perform(() => api.giveProfileOwnPerson(userId, profile.index), `${name} has its own person now`),
+      title: `Make ${name} its own person?`,
+      description: `Use this when someone else watches on ${name}. A new person called ${name} joins the Users list${moving ? `, and the ${titles(profile.titles)} watched on it move to them from ${nameOf(profile.ownerId)}` : ''}.${profile.usesPrimaryAddons ? '' : ' They also get that profile\'s own addons to manage.'}`,
+      confirmText: 'Make person',
+      run: () => perform(() => api.giveProfileOwnPerson(userId, profile.index), `${name} is its own person now`, true),
     });
   };
 
   const tidy = () => {
     setPending({
       title: 'Put this history right?',
-      description: `An older version recorded every profile on everyone on this Nuvio account. ${view?.misplaced?.titles || 0} titles go to the person whose profile they were watched on; copies the right person already has are removed.`,
+      description: `An older version recorded every profile on everyone on this Nuvio login. ${view?.misplaced?.titles || 0} titles go to the person whose profile they were watched on; copies that person already has are removed.`,
       confirmText: 'Put it right',
       run: () => perform(() => api.tidyProfiles(userId), 'History put right'),
     });
   };
 
+  // Everything one profile row can do, in the order people reach for them.
+  const actionsFor = (profile: Profile, mainPersonId: string | undefined): ReactNode => {
+    const name = profileName(profile);
+    const own = profile.ownPersonId;
+    const tracked = !!profile.ownerId;
+    if (own && own === mainPersonId) return null;
+    const targets = persons.filter((p) => p.id !== profile.ownerId && p.id !== own);
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        {!own && profile.merged && (
+          <Button variant="secondary" size="sm" leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />} onClick={() => makeOwnPerson(profile)} disabled={busy}>
+            Separate again
+          </Button>
+        )}
+        {!own && !profile.merged && (
+          <Button variant="secondary" size="sm" leftIcon={<UserPlusIcon className="w-4 h-4" />} onClick={() => makeOwnPerson(profile)} disabled={busy}>
+            Make it its own person
+          </Button>
+        )}
+        {targets.length > 0 && (
+          <select
+            className={`text-sm rounded-lg pl-3 pr-8 py-1.5 border appearance-none cursor-pointer focus:outline-none focus:border-primary disabled:opacity-60 ${SELECT_CHEVRON}`}
+            style={{ borderColor: 'var(--color-surface-border)', backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text)' }}
+            value=""
+            disabled={busy}
+            onChange={(e) => mergeInto(profile, e.target.value)}
+            aria-label={`Merge ${name} into someone`}
+          >
+            <option value="" disabled style={{ backgroundColor: 'var(--color-surface)' }}>Merge into…</option>
+            {targets.map((p) => (
+              <option key={p.id} value={p.id} style={{ backgroundColor: 'var(--color-surface)' }}>{p.username}</option>
+            ))}
+          </select>
+        )}
+        {!own && tracked && (
+          <Button variant="ghost" size="sm" leftIcon={<EyeSlashIcon className="w-4 h-4" />} onClick={() => stopTracking(profile)} disabled={busy}>
+            Stop tracking
+          </Button>
+        )}
+        {!own && !tracked && (
+          <Button variant="ghost" size="sm" leftIcon={<EyeIcon className="w-4 h-4" />} onClick={() => trackAgain(profile)} disabled={busy}>
+            Track it again
+          </Button>
+        )}
+      </div>
+    );
+  };
+
+  const profileRow = (profile: Profile, mainPersonId: string | undefined) => {
+    const tracked = !!profile.ownerId;
+    const n = profile.titles.movies + profile.titles.episodes;
+    let tag: string;
+    if (!tracked) tag = 'Nothing watched on it is recorded';
+    else if (profile.ownPersonId) tag = profile.index === 1 ? 'Main profile' : 'Their own profile';
+    else if (profile.merged) tag = `Merged in - was ${profile.merged.donorUsername}`;
+    else tag = 'Part of their history';
+    const addons = profile.index > 1 && profile.ownPersonId
+      ? (profile.usesPrimaryAddons ? " · uses the main profile's addons" : ' · has its own addons')
+      : '';
+    const actions = actionsFor(profile, mainPersonId);
+    return (
+      <div key={profile.index} className="flex items-center justify-between gap-3 flex-wrap py-2.5">
+        <div className="flex items-center gap-3 min-w-0">
+          <ProfileMark profile={profile} muted={!tracked} />
+          <div className="min-w-0">
+            <p className={`text-sm font-medium truncate ${tracked ? 'text-default' : 'text-muted'}`}>{profileName(profile)}</p>
+            <p className="text-xs text-subtle">
+              {tag}{tracked ? ` · ${count(n)} watched on it` : ''}{addons}
+            </p>
+          </div>
+        </div>
+        {actions}
+      </div>
+    );
+  };
+
   const summary = view
     ? `${view.profiles.length} profile${view.profiles.length === 1 ? '' : 's'} · ${persons.length} ${persons.length === 1 ? 'person' : 'people'}`
-    : 'Whose viewing each profile on this Nuvio account is';
+    : 'Which profiles belong to whom';
+  const mainPersonId = persons[0]?.id;
+  const untracked = view ? view.profiles.filter((p) => !p.ownerId) : [];
 
   return (
     <Card padding="lg">
@@ -187,8 +280,10 @@ export function ProfilesCard({ userId, onPersonRemoved }: { userId: string; onPe
             <UsersIcon className="w-5 h-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-default mb-0.5">Profiles</h3>
-            <p className="text-sm text-muted">{open ? 'Whose viewing each profile on this Nuvio account is' : summary}</p>
+            <h3 className="text-lg font-semibold text-default mb-0.5">
+              Nuvio profiles{loginLabel ? <span className="text-muted font-normal"> · {loginLabel}</span> : null}
+            </h3>
+            <p className="text-sm text-muted">{summary}</p>
           </div>
         </div>
         <ChevronDownIcon className="w-5 h-5 text-muted shrink-0 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }} />
@@ -205,6 +300,10 @@ export function ProfilesCard({ userId, onPersonRemoved }: { userId: string; onPe
             </div>
           ) : view ? (
             <>
+              <p className="text-sm text-muted mb-4">
+                Every profile is either its own person, or part of someone&apos;s history. Make a profile its own person when someone else watches on it, merge it into someone when it is really them, or stop tracking it - a Kids or Guest profile.
+              </p>
+
               {view.misplaced && (
                 <div className="mb-4 rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap bg-warning-muted">
                   <div className="flex items-start gap-2 min-w-0">
@@ -217,88 +316,44 @@ export function ProfilesCard({ userId, onPersonRemoved }: { userId: string; onPe
                 </div>
               )}
 
-              <div className="flex flex-col gap-2">
-                {view.profiles.map((profile) => {
-                  const name = profileName(profile);
-                  const value = profile.ownerId ?? 'skip';
-                  const ownName = profile.ownPersonId ? nameOf(profile.ownPersonId) : null;
-                  let detail: string;
-                  if (profile.ownPersonId) {
-                    detail = `Its own person${ownName && ownName !== name ? ` (${ownName})` : ''} · ${titles(profile.titles)}`;
-                    if (profile.index > 1) detail += profile.usesPrimaryAddons ? " · uses the main profile's addons" : ' · has its own addons';
-                  } else if (profile.skipped || !profile.ownerId) {
-                    detail = 'Not counted · nothing new is recorded';
-                  } else if (profile.merged) {
-                    detail = `${profile.merged.donorUsername} was merged into ${nameOf(profile.ownerId)} · ${titles(profile.titles)}`;
-                  } else {
-                    detail = `Counts for ${nameOf(profile.ownerId)} · ${titles(profile.titles)}`;
-                  }
-
+              <div className="flex flex-col gap-3">
+                {persons.map((person) => {
+                  const theirs = view.profiles.filter((p) => p.ownerId === person.id);
                   return (
-                    <div key={profile.index} className="rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3">
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div key={person.id} className="rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3">
+                      <div className="flex items-center justify-between gap-3 flex-wrap pb-2 border-b border-white/5">
                         <div className="flex items-center gap-3 min-w-0">
-                          <ProfileMark profile={profile} />
+                          <UserAvatar userId={person.id} name={person.username} email={person.email || undefined} src={person.avatarUrl || undefined} colorIndex={person.colorIndex} size="sm" />
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-medium text-default truncate">{name}</p>
-                              {profile.index === 1 && (
-                                <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-hover text-muted">Main</span>
-                              )}
-                            </div>
-                            <p className={`text-xs ${profile.skipped || !profile.ownerId ? 'text-warning' : 'text-subtle'}`}>{detail}</p>
+                            <p className="text-sm font-semibold text-default truncate">{person.username}</p>
+                            <p className="text-xs text-muted">
+                              {count(person.movies + person.episodes)} in history{!person.isActive ? ' · turned off' : ''}
+                            </p>
                           </div>
                         </div>
-
-                        <label className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs text-muted">Counts for</span>
-                          <select
-                            className="text-sm rounded-lg pl-3 pr-8 py-1.5 border appearance-none cursor-pointer focus:outline-none focus:border-primary disabled:opacity-60 bg-no-repeat bg-[length:1rem] bg-[right_0.5rem_center] bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20fill=%22none%22%20viewBox=%220%200%2024%2024%22%20stroke=%22%2394a3b8%22%3E%3Cpath%20stroke-linecap=%22round%22%20stroke-linejoin=%22round%22%20stroke-width=%222%22%20d=%22M19%209l-7%207-7-7%22/%3E%3C/svg%3E')]"
-                            style={{ borderColor: 'var(--color-surface-border)', backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text)' }}
-                            value={value}
-                            disabled={busy || (!!profile.ownPersonId && profile.index === 1)}
-                            onChange={(e) => changeOwner(profile, e.target.value)}
-                            aria-label={`Who ${name} counts for`}
-                          >
-                            {persons.map((p) => (
-                              <option key={p.id} value={p.id} style={{ backgroundColor: 'var(--color-surface)' }}>
-                                {p.username}
-                              </option>
-                            ))}
-                            <option value="skip" disabled={!!profile.ownPersonId} style={{ backgroundColor: 'var(--color-surface)' }}>
-                              Nobody - don&apos;t count it
-                            </option>
-                          </select>
-                        </label>
+                        <Link href={`/users/${person.id}`} className="text-xs text-primary hover:underline">Open</Link>
                       </div>
-
-                      {(!profile.ownPersonId || profile.ownPersonId !== userId) && (
-                        <div className="mt-2 pl-12 flex items-center gap-3 flex-wrap">
-                          {!profile.ownPersonId && profile.merged && (
-                            <Button variant="ghost" size="sm" leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />} onClick={() => giveOwnPerson(profile)} disabled={busy}>
-                              Separate {profile.merged.donorUsername} again
-                            </Button>
-                          )}
-                          {!profile.ownPersonId && !profile.merged && (
-                            <Button variant="ghost" size="sm" leftIcon={<UserPlusIcon className="w-4 h-4" />} onClick={() => giveOwnPerson(profile)} disabled={busy}>
-                              Give it its own person
-                            </Button>
-                          )}
-                          {profile.ownPersonId && profile.ownPersonId !== userId && (
-                            <Link href={`/users/${profile.ownPersonId}`} className="text-xs text-primary hover:underline">
-                              Open {ownName}
-                            </Link>
-                          )}
-                        </div>
-                      )}
+                      <div className="divide-y divide-white/5">
+                        {theirs.length ? theirs.map((p) => profileRow(p, mainPersonId)) : (
+                          <p className="text-xs text-subtle py-2.5">No profile records for them right now.</p>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
-              </div>
 
-              <p className="mt-4 text-xs text-muted">
-                Moving a profile takes the history it already recorded with it. A profile with its own person is merged into whoever you pick, and can be separated again here.
-              </p>
+                {untracked.length > 0 && (
+                  <div className="rounded-xl border border-dashed border-white/10 px-4 py-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-white/5">
+                      <EyeSlashIcon className="w-4 h-4 text-muted" />
+                      <p className="text-sm font-semibold text-muted">Not tracked</p>
+                    </div>
+                    <div className="divide-y divide-white/5">
+                      {untracked.map((p) => profileRow(p, mainPersonId))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </>
           ) : null}
         </div>
