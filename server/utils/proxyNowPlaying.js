@@ -30,6 +30,9 @@
 // Kept at the same ~5min margin above that window as before (was 20 vs 15).
 const RECENTLY_CLOSED_MS = 23 * 60 * 1000
 const { proxyDisplayTitle } = require('./proxyTitle')
+// Only connections that have shown they are playing - a source warmed up or
+// checked by an app is one request and then nothing (proxyPlaying.js).
+const { MIN_PLAYING_REQUESTS } = require('./proxyPlaying')
 
 // AIOStreams only bumps a connection's `lastSeen` when a new byte-range
 // request actually comes in - it does NOT expire/close the connection just
@@ -58,7 +61,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
   let recentlyClosedSessions
   try {
     proxySessions = await prisma.proxyStreamSession.findMany({
-      where: { accountId, isActive: true },
+      where: { accountId, isActive: true, requestCount: { gte: MIN_PLAYING_REQUESTS } },
       orderBy: { startTime: 'desc' },
     })
     // Also load streams the proxy recently finished. The proxy is
@@ -74,6 +77,7 @@ async function mergeProxyNowPlaying(prisma, accountId, users, watchSessionNowPla
       where: {
         accountId,
         isActive: false,
+        requestCount: { gte: MIN_PLAYING_REQUESTS },
         endTime: { gte: new Date(Date.now() - RECENTLY_CLOSED_MS) },
       },
       orderBy: { endTime: 'desc' },

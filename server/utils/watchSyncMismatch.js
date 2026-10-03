@@ -57,6 +57,8 @@ function normalizeTitle(name) {
     .trim()
 }
 
+const { MIN_PLAYING_REQUESTS } = require('./proxyPlaying')
+
 async function checkWatchSyncMismatch(prisma, accountId, users) {
   try {
     const now = Date.now()
@@ -64,8 +66,10 @@ async function checkWatchSyncMismatch(prisma, accountId, users) {
 
     // Distinct proxy titles in the window, with the most recent activity per
     // title (to apply the stabilize guard) and a display name for the message.
+    // Only connections that played: a source an app warmed up or checked is
+    // one request and was never watched, so it has nothing to mismatch.
     const proxyRows = await prisma.proxyStreamSession.findMany({
-      where: { accountId, startTime: { gte: windowStart } },
+      where: { accountId, startTime: { gte: windowStart }, requestCount: { gte: MIN_PLAYING_REQUESTS } },
       select: { displayName: true, startTime: true, lastSeenAt: true },
     })
     if (proxyRows.length === 0) return
