@@ -105,7 +105,8 @@ async function resolveViewer(prisma, owner, viewer) {
     map[id] = userId
     await prisma.user.update({ where: { id: owner.id }, data: { watchStateViewers: JSON.stringify(map) } })
   }
-  if (!userId) return null
+  // 'skip' is a profile someone chose not to count.
+  if (!userId || userId === 'skip') return null
 
   const user = await prisma.user.findFirst({ where: { id: userId, accountId: owner.accountId } })
   // Each person's own switch is their consent, not just the link owner's.
@@ -174,6 +175,7 @@ async function closeStretch(prisma, user, cursor, event, timeZone) {
       watchTimeSeconds: seconds,
       itemType: cursor.itemType,
       videoId: cursor.itemType === 'series' ? cursor.videoId : null,
+      profileLabel: PROFILE_LABEL,
     },
   })
   return seconds

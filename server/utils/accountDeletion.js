@@ -28,6 +28,8 @@ async function deleteAccountCascade(prisma, accountId) {
     prisma.manualWatchOverride.deleteMany({ where }),
     prisma.movieWatchHistory.deleteMany({ where }),
     prisma.notInterestedItem.deleteMany({ where }),
+    prisma.nuvioProfileRoute.deleteMany({ where }),
+    prisma.profileMerge.deleteMany({ where }),
     prisma.proxyStreamSession.deleteMany({ where }),
     prisma.pushSubscription.deleteMany({ where }),
     prisma.showEpisodeAlertState.deleteMany({ where }),

@@ -912,7 +912,10 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
             // computed against a baseline scoped to this same videoId (see
             // maxSeenBig above), so recording it keeps the row as specific as
             // the number already was. null for movies.
-            videoId: current.videoId || null
+            videoId: current.videoId || null,
+            // The Nuvio profile it was watched under, so the time can follow
+            // the profile if it is ever given to someone else.
+            profileLabel: item.state?.nuvioProfile || null
           }
         }))
       }

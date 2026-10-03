@@ -405,7 +405,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       inviteCode: true,
       colorIndex: true,
       avatarUrl: true,
-      useGravatar: true
+      useGravatar: true,
+      nuvioProfileId: true
     },
     orderBy: { createdAt: 'asc' }
   })
@@ -516,7 +517,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         date: true,
         createdAt: true,
         watchTimeSeconds: true,
-        itemType: true
+        itemType: true,
+        profileLabel: true
       },
       orderBy: { date: 'asc' }
     })
@@ -1046,12 +1048,12 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     const episodeHistory = dedupWatchActivityBySharedEmail(
       dedupCrossUserSameSecond(episodeHistoryRaw, 'episode'),
       sharedEmailUserIds,
-      { itemKey: (r) => `${r.showId}::${r.videoId || ''}`, dateField: 'watchedAt', durationField: 'durationSeconds' }
+      { itemKey: (r) => `${r.showId}::${r.videoId || ''}`, dateField: 'watchedAt', durationField: 'durationSeconds', independentProfiles: false }
     )
     const movieHistory = dedupWatchActivityBySharedEmail(
       dedupCrossUserSameSecond(movieHistoryRaw, 'movie'),
       sharedEmailUserIds,
-      { itemKey: (r) => r.itemId, dateField: 'watchedAt', durationField: 'durationSeconds' }
+      { itemKey: (r) => r.itemId, dateField: 'watchedAt', durationField: 'durationSeconds', independentProfiles: false }
     )
 
     // Build user lookup and skip entries for users that no longer exist
@@ -1177,7 +1179,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     try {
       const activityRaw = await prisma.watchActivity.findMany({
         where: { accountId: accountIdValue, date: { gte: startDate } },
-        select: { userId: true, itemId: true, videoId: true, date: true, watchTimeSeconds: true },
+        select: { userId: true, itemId: true, videoId: true, date: true, watchTimeSeconds: true, profileLabel: true },
         // Bounded like the two history reads above it, which this one was
         // not: on all-time it read every row ever recorded, and the feed it
         // builds is sent whole to the browser. Measured on two years of

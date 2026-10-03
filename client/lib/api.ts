@@ -4,12 +4,33 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 // One entry in a cast member's filmography, as /api/discover/person returns it.
+/** Whose viewing each profile on one Nuvio account is - see server/utils/nuvioProfiles.js. */
+export interface ProfilesView {
+  persons: Array<{
+    id: string; username: string; profileIndex: number; isActive: boolean; colorIndex: number;
+    avatarUrl: string | null; useGravatar: boolean; email: string | null; movies: number; episodes: number;
+  }>;
+  profiles: Array<{
+    index: number; name: string | null; color: string | null; usesPrimaryAddons: boolean;
+    /** Who it counts for; null when it is not counted. */
+    ownerId: string | null;
+    ownPersonId: string | null;
+    skipped: boolean;
+    titles: { movies: number; episodes: number };
+    merged: { id: string; donorUsername: string; createdAt: string } | null;
+  }>;
+  misplaced: { titles: number } | null;
+  removedUserId?: string | null;
+  person?: { id: string; username: string };
+  moved?: { movies: number; episodes: number };
+}
+
 /** A person's Watch State link with AIOStreams, and the household profiles it has seen. */
 export interface WatchStateView {
   enabled: boolean;
   manifestUrl: string | null;
   baseKnown: boolean;
-  viewers: Array<{ viewer: string; userId: string | null; username: string | null; userEnabled: boolean | null }>;
+  viewers: Array<{ viewer: string; userId: string | null; skipped?: boolean; username: string | null; userEnabled: boolean | null }>;
   people: Array<{ id: string; username: string; enabled: boolean }>;
 }
 
@@ -531,6 +552,23 @@ class ApiClient {
 
   async disconnectSimkl(id: string) {
     return this.fetch(`/users/${id}/simkl/disconnect`, { method: 'POST' });
+  }
+
+  // Profiles on a Nuvio account - see server/utils/nuvioProfiles.js.
+  async getProfiles(id: string) {
+    return this.fetch<ProfilesView>(`/users/${encodeURIComponent(id)}/profiles`);
+  }
+
+  async setProfileOwner(id: string, profileIndex: number, target: string) {
+    return this.fetch<ProfilesView>(`/users/${encodeURIComponent(id)}/profiles/${profileIndex}`, { method: 'PUT', body: JSON.stringify({ target }) });
+  }
+
+  async giveProfileOwnPerson(id: string, profileIndex: number) {
+    return this.fetch<ProfilesView>(`/users/${encodeURIComponent(id)}/profiles/${profileIndex}/own-person`, { method: 'POST' });
+  }
+
+  async tidyProfiles(id: string) {
+    return this.fetch<ProfilesView>(`/users/${encodeURIComponent(id)}/profiles/tidy`, { method: 'POST' });
   }
 
   // Watch State with AIOStreams - see server/utils/watchState.js.

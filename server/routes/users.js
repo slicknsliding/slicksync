@@ -201,11 +201,11 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           const [activities, siblings] = await Promise.all([
             prisma.watchActivity.findMany({
               where: { accountId: accountIdForScope },
-              select: { userId: true, itemId: true, date: true, watchTimeSeconds: true }
+              select: { userId: true, itemId: true, date: true, watchTimeSeconds: true, profileLabel: true }
             }),
             prisma.user.findMany({
               where: { accountId: accountIdForScope },
-              select: { id: true, email: true }
+              select: { id: true, email: true, nuvioProfileId: true }
             })
           ])
           const { findSharedEmailUserIds, dedupWatchActivityBySharedEmail } = require('../utils/watchDedup')
@@ -845,13 +845,18 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       manifestUrl: user.watchStateEnabled && user.traxToken && base ? `${base}/trax/${user.traxToken}/aio/manifest.json` : null,
       baseKnown: !!base,
       // Every AIOStreams profile seen so far, and who it is linked to. An
-      // unlinked one is refused until someone picks who it is.
-      viewers: Object.entries(map).map(([viewer, userId]) => ({
-        viewer,
-        userId: userId || null,
-        username: userId ? byId.get(userId)?.username || null : null,
-        userEnabled: userId ? !!byId.get(userId)?.watchStateEnabled : null,
-      })),
+      // unlinked one is refused until someone picks who it is; a skipped one
+      // was deliberately left out.
+      viewers: Object.entries(map).map(([viewer, raw]) => {
+        const userId = raw && raw !== 'skip' ? raw : null
+        return {
+          viewer,
+          userId,
+          skipped: raw === 'skip',
+          username: userId ? byId.get(userId)?.username || null : null,
+          userEnabled: userId ? !!byId.get(userId)?.watchStateEnabled : null,
+        }
+      }),
       people: people.map((p) => ({ id: p.id, username: p.username, enabled: !!p.watchStateEnabled })),
     }
   }
@@ -898,7 +903,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const viewer = viewerSlug(req.body?.viewer)
       if (!viewer) return res.status(400).json({ error: 'viewer is required' })
       const target = req.body?.userId || null
-      if (target) {
+      if (target && target !== 'skip') {
         const exists = await prisma.user.findFirst({ where: { id: target, accountId }, select: { id: true } })
         if (!exists) return res.status(400).json({ error: 'That user is not in this account' })
       }
@@ -1963,12 +1968,12 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const [allWindowActivities, siblings] = await Promise.all([
         prisma.watchActivity.findMany({
           where: { accountId: accountIdValue, date: { gte: start, lte: end }, ...(itemId ? { itemId } : {}), ...(itemType ? { itemType } : {}) },
-          select: { userId: true, date: true, watchTimeSeconds: true, itemId: true, itemType: true },
+          select: { userId: true, date: true, watchTimeSeconds: true, itemId: true, itemType: true, profileLabel: true },
           orderBy: { date: 'asc' }
         }),
         prisma.user.findMany({
           where: { accountId: accountIdValue },
-          select: { id: true, email: true }
+          select: { id: true, email: true, nuvioProfileId: true }
         })
       ])
       const { findSharedEmailUserIds, dedupWatchActivityBySharedEmail } = require('../utils/watchDedup')
@@ -3589,6 +3594,254 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       res.status(500).json({ message: 'Failed to add that profile', error: error.message })
     }
   });
+
+  // --- Profiles: whose viewing each of a Nuvio account's profiles is ------
+  // The rules live in utils/nuvioProfiles.js; these routes are the Profiles
+  // card on a Nuvio person's page.
+
+  // Everything about one Nuvio account the card needs, read once.
+  async function profileContext(req, id) {
+    const accountId = getAccountId(req)
+    const user = await prisma.user.findFirst({ where: { id, accountId } })
+    if (!user) return { status: 404, message: 'User not found' }
+    if (user.providerType !== 'nuvio' || !user.nuvioUserId) return { status: 400, message: 'User is not connected to Nuvio' }
+    const provider = createProvider(user, { decrypt, req })
+    if (!provider) return { status: 400, message: 'User is not connected to Nuvio' }
+    let raw = []
+    try {
+      raw = await provider.getProfiles()
+    } catch {
+      return { status: 502, message: "Could not read this account's profiles from Nuvio just now" }
+    }
+    const profiles = (raw || [])
+      .map((p) => ({
+        index: Number(p.profile_index ?? p.profileIndex),
+        name: p.name || null,
+        color: p.avatar_color_hex || null,
+        usesPrimaryAddons: p.uses_primary_addons === true,
+      }))
+      .filter((p) => Number.isInteger(p.index) && p.index > 0)
+      .sort((a, b) => a.index - b.index)
+    if (!profiles.length) profiles.push({ index: 1, name: null, color: null, usesPrimaryAddons: false })
+    const np = require('../utils/nuvioProfiles')
+    const [siblings, routes] = await Promise.all([
+      np.loadSiblings(prisma, accountId, user.nuvioUserId),
+      np.loadRoutes(prisma, accountId, user.nuvioUserId),
+    ])
+    return { accountId, user, profiles, siblings, routes, np }
+  }
+
+  async function profilesView(ctx) {
+    const { accountId, user, profiles, siblings, routes, np } = ctx
+    const merges = await prisma.profileMerge.findMany({
+      where: { accountId, nuvioUserId: user.nuvioUserId, undoneAt: null },
+      orderBy: { createdAt: 'desc' },
+    })
+    const historyCount = async (where) => {
+      const [movies, episodes] = await Promise.all([
+        prisma.movieWatchHistory.count({ where: { accountId, ...where } }),
+        prisma.episodeWatchHistory.count({ where: { accountId, ...where } }),
+      ])
+      return { movies, episodes }
+    }
+    const persons = await Promise.all(siblings.map(async (s) => ({
+      id: s.id,
+      username: s.username,
+      profileIndex: np.profileOf(s),
+      isActive: s.isActive !== false,
+      colorIndex: s.colorIndex ?? 0,
+      avatarUrl: s.avatarUrl || null,
+      useGravatar: !!s.useGravatar,
+      email: s.email || null,
+      ...(await historyCount({ userId: s.id })),
+    })))
+    const rows = await Promise.all(profiles.map(async (p) => {
+      const ownerId = np.ownerOf(p.index, siblings, routes)
+      const own = siblings.find((s) => np.profileOf(s) === p.index) || null
+      const merge = !own ? merges.find((m) => m.profileIndex === p.index) || null : null
+      return {
+        ...p,
+        ownerId,
+        ownPersonId: own?.id || null,
+        skipped: !own && !!routes.get(p.index)?.skip,
+        titles: ownerId && p.name ? await historyCount({ userId: ownerId, profileLabel: p.name }) : { movies: 0, episodes: 0 },
+        merged: merge ? { id: merge.id, donorUsername: merge.donorUsername, createdAt: merge.createdAt } : null,
+      }
+    }))
+    const misplaced = await np.findMisplaced(prisma, accountId, siblings, routes, profiles.map((p) => ({ profile_index: p.index, name: p.name })))
+    const misplacedTitles = misplaced.reduce((n, m) => n + m.movies + m.episodes, 0)
+    return { persons, profiles: rows, misplaced: misplacedTitles ? { titles: misplacedTitles } : null }
+  }
+
+  function afterProfileChange(accountId) {
+    try { require('../utils/continueWatching').invalidateContinueWatching(accountId) } catch { /* optional */ }
+    try { require('../utils/metricsCache').clearMetricsForAccount(accountId) } catch { /* optional */ }
+    try { require('../utils/liveEvents').emitLive(accountId, 'sync') } catch { /* optional */ }
+  }
+
+  // A person for one profile of a Nuvio account someone here is already
+  // connected to. The login is reused - every person on the account shares it.
+  async function createProfilePerson(req, baseUser, profileIndex, profileName) {
+    const accountId = getAccountId(req)
+    const plainToken = decrypt(baseUser.nuvioRefreshToken, req)
+    if (!plainToken) throw Object.assign(new Error('Could not read the stored Nuvio credential'), { status: 400 })
+    let username = (profileName || `Profile ${profileIndex}`).trim().slice(0, 40)
+    const base = username
+    let attempt = 0
+    while (await prisma.user.findFirst({ where: { accountId, username } })) {
+      attempt++
+      if (attempt > 100) throw Object.assign(new Error('Could not pick a free username for that profile'), { status: 409 })
+      username = `${base} ${attempt + 1}`
+    }
+    return prisma.user.create({
+      data: {
+        accountId,
+        username,
+        email: baseUser.email,
+        providerType: 'nuvio',
+        nuvioRefreshToken: encrypt(plainToken, req),
+        nuvioUserId: baseUser.nuvioUserId,
+        nuvioProfileId: profileIndex,
+        isActive: true,
+        // The picker wraps whatever it is given, so this just nudges each
+        // profile onto a different colour from the one it came from.
+        colorIndex: (baseUser.colorIndex || 0) + profileIndex,
+      },
+    })
+  }
+
+  router.get('/:id/profiles', async (req, res) => {
+    try {
+      const ctx = await profileContext(req, req.params.id)
+      if (ctx.status) return res.status(ctx.status).json({ message: ctx.message })
+      res.json(await profilesView(ctx))
+    } catch (error) {
+      console.error('Error reading profiles:', error)
+      res.status(500).json({ message: 'Failed to read profiles', error: error.message })
+    }
+  })
+
+  // Who a profile counts for: someone on the same Nuvio account, or nobody.
+  // Moving a profile takes the history it already recorded with it; a
+  // profile that has its own person is merged into the chosen one.
+  router.put('/:id/profiles/:index', async (req, res) => {
+    try {
+      const ctx = await profileContext(req, req.params.id)
+      if (ctx.status) return res.status(ctx.status).json({ message: ctx.message })
+      const { accountId, user, profiles, siblings, routes, np } = ctx
+      const index = Number(req.params.index)
+      const profile = profiles.find((p) => p.index === index)
+      if (!profile) return res.status(404).json({ message: 'That profile is not on this Nuvio account' })
+      const target = req.body?.target
+      const own = siblings.find((s) => np.profileOf(s) === index) || null
+      const currentOwner = np.ownerOf(index, siblings, routes)
+      const routeKey = { accountId_nuvioUserId_profileIndex: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index } }
+      let removedUserId = null
+
+      if (target === 'skip') {
+        if (own) return res.status(400).json({ message: `This profile is ${own.username}. Turn them off or delete them instead.` })
+        await prisma.nuvioProfileRoute.upsert({
+          where: routeKey,
+          create: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index, skip: true, targetUserId: null },
+          update: { skip: true, targetUserId: null },
+        })
+      } else {
+        const person = siblings.find((s) => s.id === target)
+        if (!person) return res.status(400).json({ message: 'Choose someone on this Nuvio account' })
+        if (person.id !== currentOwner) {
+          if (own) {
+            if (own.id === siblings[0]?.id) {
+              return res.status(400).json({ message: "The main profile's person stays. Merge the other profiles into them instead." })
+            }
+            await np.mergeProfilePerson(prisma, { accountId, survivorId: person.id, donorId: own.id, profileName: profile.name })
+            removedUserId = own.id
+          } else {
+            await prisma.$transaction(async (tx) => {
+              await tx.nuvioProfileRoute.upsert({
+                where: routeKey,
+                create: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index, skip: false, targetUserId: person.id },
+                update: { skip: false, targetUserId: person.id },
+              })
+              if (currentOwner) {
+                await np.moveProfileHistory(tx, { accountId, fromUserId: currentOwner, toUserId: person.id, profileLabel: profile.name })
+              }
+            })
+          }
+        }
+      }
+
+      afterProfileChange(accountId)
+      // The page's own person may just have been merged away.
+      const anchorId = removedUserId === user.id ? target : user.id
+      const next = await profileContext(req, anchorId)
+      if (next.status) return res.status(next.status).json({ message: next.message })
+      res.json({ ...(await profilesView(next)), removedUserId })
+    } catch (error) {
+      console.error('Error changing a profile:', error)
+      res.status(error.status || 500).json({ message: error.message || 'Failed to change that profile' })
+    }
+  })
+
+  // Give a profile its own person. One that used to have one gets the very
+  // same person back, history and all; otherwise a new one is made and the
+  // profile's history moves over to them.
+  router.post('/:id/profiles/:index/own-person', async (req, res) => {
+    try {
+      const ctx = await profileContext(req, req.params.id)
+      if (ctx.status) return res.status(ctx.status).json({ message: ctx.message })
+      const { accountId, user, profiles, siblings, routes, np } = ctx
+      const index = Number(req.params.index)
+      const profile = profiles.find((p) => p.index === index)
+      if (!profile) return res.status(404).json({ message: 'That profile is not on this Nuvio account' })
+      const own = siblings.find((s) => np.profileOf(s) === index)
+      if (own) return res.status(409).json({ message: `That profile already is ${own.username}` })
+
+      const merge = await prisma.profileMerge.findFirst({
+        where: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index, undoneAt: null },
+        orderBy: { createdAt: 'desc' },
+      })
+      let person
+      if (merge) {
+        const result = await np.unmergeProfilePerson(prisma, { accountId, mergeId: merge.id })
+        person = { id: result.donorId, username: result.donorUsername }
+      } else {
+        const currentOwner = np.ownerOf(index, siblings, routes)
+        const created = await createProfilePerson(req, user, index, profile.name)
+        await prisma.$transaction(async (tx) => {
+          await tx.nuvioProfileRoute.deleteMany({ where: { accountId, nuvioUserId: user.nuvioUserId, profileIndex: index } })
+          if (currentOwner) {
+            await np.moveProfileHistory(tx, { accountId, fromUserId: currentOwner, toUserId: created.id, profileLabel: profile.name })
+          }
+        })
+        person = { id: created.id, username: created.username }
+      }
+
+      afterProfileChange(accountId)
+      const next = await profileContext(req, user.id)
+      if (next.status) return res.status(next.status).json({ message: next.message })
+      res.status(201).json({ ...(await profilesView(next)), person })
+    } catch (error) {
+      console.error('Error giving a profile its own person:', error)
+      res.status(error.status || 500).json({ message: error.message || 'Failed to give that profile its own person' })
+    }
+  })
+
+  // History an older version recorded on the wrong person: every person on a
+  // Nuvio account used to record every profile.
+  router.post('/:id/profiles/tidy', async (req, res) => {
+    try {
+      const ctx = await profileContext(req, req.params.id)
+      if (ctx.status) return res.status(ctx.status).json({ message: ctx.message })
+      const { accountId, profiles, siblings, routes, np } = ctx
+      const misplaced = await np.findMisplaced(prisma, accountId, siblings, routes, profiles.map((p) => ({ profile_index: p.index, name: p.name })))
+      const moved = await np.tidyMisplaced(prisma, accountId, misplaced)
+      afterProfileChange(accountId)
+      res.json({ ...(await profilesView(ctx)), moved })
+    } catch (error) {
+      console.error('Error tidying profile history:', error)
+      res.status(500).json({ message: 'Failed to tidy that history', error: error.message })
+    }
+  })
 
   // Get a profile's Collections.
   router.get('/:id/nuvio-collections/:profileId', async (req, res) => {

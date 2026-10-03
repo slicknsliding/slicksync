@@ -35,7 +35,7 @@ const refreshPromises = new Map() // userId -> Promise<string> (in-flight refres
 // `uses_primary_addons` on what getProfiles() returns. Everything addon-shaped
 // below is scoped to one profile, so a SlickSync user that points at profile 2
 // reads and writes profile 2's list and never touches the primary's.
-function createNuvioProvider({ refreshToken: initialRefreshToken, userId, profileId, resolveProfileId, onTokenRefresh, resolveServerConfig }) {
+function createNuvioProvider({ refreshToken: initialRefreshToken, userId, profileId, resolveProfileId, resolveLibraryProfiles, onTokenRefresh, resolveServerConfig }) {
   // Resolved the same way the server config is, and for the same reason: the
   // profile lives on the User row, and the dozens of places that build a
   // provider select only the columns they happen to need. Requiring every one
@@ -245,6 +245,20 @@ function createNuvioProvider({ refreshToken: initialRefreshToken, userId, profil
         }
       } catch (e) {
         console.warn('[NuvioProvider] Failed to list profiles, falling back to profile 1 only:', e?.message)
+      }
+
+      // Only the profiles this person's viewing is made of. Several people
+      // here can share one Nuvio login, one per profile, and reading every
+      // profile for each of them put everyone's viewing on everyone. Which
+      // profile counts for whom lives in utils/nuvioProfiles.js.
+      if (typeof resolveLibraryProfiles === 'function') {
+        try {
+          const owned = await resolveLibraryProfiles(profileIds)
+          if (Array.isArray(owned)) profileIds = owned
+        } catch (e) {
+          console.warn('[NuvioProvider] Could not work out which profiles count, reading all of them:', e?.message)
+        }
+        if (profileIds.length === 0) return []
       }
 
       // Combine library + watch progress to build libraryItem shape, per profile
