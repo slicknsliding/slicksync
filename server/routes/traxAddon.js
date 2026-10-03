@@ -69,13 +69,25 @@ function requestBase(req) {
   return host ? `${String(proto).split(',')[0]}://${host}` : null
 }
 
-/**
- * The manifest object, exported separately because sync injects the SAME
- * object inline into the account's addon collection - built in one place so
- * the served manifest and the synced copy can never drift apart.
- */
-function buildTraxManifest(user, lists) {
-  const catalogs = [
+// --- Each person's rows ---------------------------------------------------
+//
+// A person can be given only some of the rows, in an order of their own:
+// the kids get Continue Watching and "Kids picks", not "Horror Night". Rows
+// are named by key - 'continue', 'watchlist', 'list:<catalog id>' - and
+// User.traxRowsJson holds { order: [key], hidden: [key] }. A row nobody has
+// placed yet (a catalog made later) appears after the placed ones, shown.
+
+function parseTraxRows(json) {
+  let raw = null
+  try { raw = json ? JSON.parse(json) : null } catch { raw = null }
+  const order = Array.isArray(raw?.order) ? raw.order.filter((k) => typeof k === 'string') : []
+  const hidden = Array.isArray(raw?.hidden) ? raw.hidden.filter((k) => typeof k === 'string') : []
+  return { order, hidden }
+}
+
+/** Every row this account can offer, in the default order, with its catalog entries. */
+function traxRowCatalog(lists) {
+  const rows = [
     // Continue Watching first - it's the row people open the app for. ONE
     // declared entry, not one per type: the row mixes movies and series
     // (each meta carries its own real type, which is what Stremio uses for
@@ -90,17 +102,65 @@ function buildTraxManifest(user, lists) {
     // onto the header will show "Continue Watching Series"; clients that
     // honor the synced home-catalog preference (nuvioHomePlacement.js) show
     // the exact title and position instead.
-    { type: 'series', id: 'slicktrax-continue', name: 'Continue Watching' },
-    { type: 'movie', id: 'slicktrax-watchlist', name: 'Watchlist' },
-    { type: 'series', id: 'slicktrax-watchlist', name: 'Watchlist' },
+    { key: 'continue', name: 'Continue Watching', entries: [{ type: 'series', id: 'slicktrax-continue', name: 'Continue Watching' }] },
+    {
+      key: 'watchlist',
+      name: 'Watchlist',
+      entries: [
+        { type: 'movie', id: 'slicktrax-watchlist', name: 'Watchlist' },
+        { type: 'series', id: 'slicktrax-watchlist', name: 'Watchlist' },
+      ],
+    },
   ]
   for (const list of lists || []) {
     // Registered under both types and filtered at serve time - a catalog
     // freely mixes movies and series, and Stremio's protocol wants a type
     // per catalog entry. An empty half is legal and renders as nothing.
-    catalogs.push({ type: 'movie', id: `slicktrax-list-${list.id}`, name: list.name })
-    catalogs.push({ type: 'series', id: `slicktrax-list-${list.id}`, name: list.name })
+    rows.push({
+      key: `list:${list.id}`,
+      name: list.name,
+      entries: [
+        { type: 'movie', id: `slicktrax-list-${list.id}`, name: list.name },
+        { type: 'series', id: `slicktrax-list-${list.id}`, name: list.name },
+      ],
+    })
   }
+  return rows
+}
+
+/** The account's rows as this person sees them: placed ones in their order, the rest after. */
+function orderedTraxRows(lists, rowsJson) {
+  const { order, hidden } = parseTraxRows(rowsJson)
+  const all = traxRowCatalog(lists)
+  const byKey = new Map(all.map((r) => [r.key, r]))
+  const placed = order.map((k) => byKey.get(k)).filter(Boolean)
+  const rest = all.filter((r) => !order.includes(r.key))
+  const hiddenSet = new Set(hidden)
+  return [...placed, ...rest].map((r) => ({ ...r, hidden: hiddenSet.has(r.key) }))
+}
+
+/**
+ * The version segment of this person's SlickTrax address. Devices cache a
+ * manifest by its address, so a change to someone's rows has to change the
+ * address too or their phone keeps the old rows: the segment carries a short
+ * fingerprint of their choice. The path shim strips it like any version.
+ */
+function traxPathVersion(user) {
+  const { order, hidden } = parseTraxRows(user?.traxRowsJson)
+  if (!order.length && !hidden.length) return TRAX_MANIFEST_VERSION
+  const rev = require('crypto').createHash('sha1').update(JSON.stringify({ order, hidden })).digest('hex').slice(0, 6)
+  return `${TRAX_MANIFEST_VERSION}r${rev}`
+}
+
+/**
+ * The manifest object, exported separately because sync injects the SAME
+ * object inline into the account's addon collection - built in one place so
+ * the served manifest and the synced copy can never drift apart.
+ */
+function buildTraxManifest(user, lists) {
+  const catalogs = orderedTraxRows(lists, user?.traxRowsJson)
+    .filter((r) => !r.hidden)
+    .flatMap((r) => r.entries)
   return {
     id: `vip.slicksync.trax.${user.id}`,
     version: TRAX_MANIFEST_VERSION,
@@ -191,6 +251,88 @@ module.exports = ({ prisma }) => {
     }
   })
 
+  // --- Watch State, for AIOStreams (utils/watchState.js) -------------------
+  //
+  // A separate link from the one sync installs into Stremio and Nuvio: this
+  // one declares only the `watch_state` resource and no catalogs, and it is
+  // added by hand to an AIOStreams configuration. Keeping it apart means
+  // Stremio and Nuvio never see a resource they do not understand, and an
+  // AIOStreams household does not get SlickTrax's rows twice over.
+  //
+  // It answers only while the link owner's own Watch State switch is on;
+  // the token is the same credential the main link uses.
+  async function resolveWatchStateOwner(token) {
+    if (!token || typeof token !== 'string' || token.length < 16) return null
+    return prisma.user.findFirst({ where: { traxToken: token, watchStateEnabled: true } })
+  }
+
+  // Never cached: these answers change with every viewing, and a shared cache
+  // in front would hand one household's history to whoever asked next.
+  function noStore(res) {
+    res.setHeader('Cache-Control', 'no-store')
+  }
+
+  router.get('/:token/aio/manifest.json', async (req, res) => {
+    noStore(res)
+    try {
+      const owner = await resolveWatchStateOwner(req.params.token)
+      if (!owner) return res.status(404).json({ error: 'Not found' })
+      const { manifestBlock } = require('../utils/watchState')
+      res.json({
+        id: `vip.slicksync.trax.watchstate.${owner.id}`,
+        version: TRAX_MANIFEST_VERSION,
+        name: 'SlickTrax watch history',
+        description: `Keeps ${owner.username || 'this household'}'s watch history in SlickSync in step with AIOStreams - what you watch here is recorded there, and what you watched anywhere else shows up here.`,
+        logo: 'https://slicksync.vip/android-chrome-192x192.png',
+        types: ['movie', 'series'],
+        idPrefixes: ['tt'],
+        catalogs: [],
+        resources: [{ name: 'watch_state', types: ['movie', 'series'], idPrefixes: ['tt'] }],
+        watchState: manifestBlock(),
+        behaviorHints: { configurable: false, configurationRequired: false },
+      })
+    } catch (e) {
+      console.error('[TraxAddon] watch-state manifest failed:', e?.message)
+      res.status(500).json({ error: 'Internal error' })
+    }
+  })
+
+  router.post('/:token/aio/watch_state/push/:type/:id.json', async (req, res) => {
+    noStore(res)
+    try {
+      const owner = await resolveWatchStateOwner(req.params.token)
+      // Off means nothing is recorded. A 401/403 would make AIOStreams hold
+      // the backlog and deliver it once this is turned back on; any other 4xx
+      // has it drop the event, which is what off promises.
+      if (!owner) return res.status(410).json({ error: 'Watch State is off for this link' })
+      const { resolveViewer, handlePush } = require('../utils/watchState')
+      const user = await resolveViewer(prisma, owner, req.query.viewer)
+      // An unknown profile is answered 404, which drops that event without a
+      // retry - the protocol's prescribed answer, and never a wrong attribution.
+      if (!user) return res.status(404).json({ error: 'Unknown viewer' })
+      const status = await handlePush(prisma, user, req.params.type, req.params.id, req.body)
+      res.status(status).json({ ok: status < 300 })
+    } catch (e) {
+      console.error('[TraxAddon] watch-state push failed:', e?.message)
+      res.status(503).json({ error: 'Try again later' })
+    }
+  })
+
+  router.get('/:token/aio/watch_state/pull.json', async (req, res) => {
+    noStore(res)
+    try {
+      const owner = await resolveWatchStateOwner(req.params.token)
+      if (!owner) return res.status(410).json({ error: 'Watch State is off for this link' })
+      const { resolveViewer, buildPull } = require('../utils/watchState')
+      const user = await resolveViewer(prisma, owner, req.query.viewer)
+      if (!user) return res.status(404).json({ error: 'Unknown viewer' })
+      res.json(await buildPull(prisma, user, typeof req.query.since === 'string' ? req.query.since : null))
+    } catch (e) {
+      console.error('[TraxAddon] watch-state pull failed:', e?.message)
+      res.status(503).json({ error: 'Try again later' })
+    }
+  })
+
   router.get('/:token/catalog/:type/:id.json', async (req, res) => {
     try {
       const user = await resolveUser(req.params.token)
@@ -258,3 +400,6 @@ module.exports = ({ prisma }) => {
 module.exports.buildTraxManifest = buildTraxManifest
 module.exports.getListsForAccount = getListsForAccount
 module.exports.TRAX_MANIFEST_VERSION = TRAX_MANIFEST_VERSION
+module.exports.traxPathVersion = traxPathVersion
+module.exports.orderedTraxRows = orderedTraxRows
+module.exports.parseTraxRows = parseTraxRows

@@ -405,7 +405,10 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       inviteCode: true,
       colorIndex: true,
       avatarUrl: true,
-      useGravatar: true
+      useGravatar: true,
+      nuvioProfileId: true,
+      providerType: true,
+      excludeFromHouseholdStats: true
     },
     orderBy: { createdAt: 'asc' }
   })
@@ -516,7 +519,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
         date: true,
         createdAt: true,
         watchTimeSeconds: true,
-        itemType: true
+        itemType: true,
+        profileLabel: true
       },
       orderBy: { date: 'asc' }
     })
@@ -530,6 +534,10 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     // watch was double-counted here specifically.
     const { findSharedEmailUserIds, dedupWatchActivityBySharedEmail } = require('./watchDedup')
     watchActivities = dedupWatchActivityBySharedEmail(watchActivities, findSharedEmailUserIds(allUsers))
+    // People left out of household numbers (a test or guest) count toward
+    // nothing built from here: totals, the charts and Top Viewers.
+    const leftOut = new Set(allUsers.filter((u) => u.excludeFromHouseholdStats).map((u) => u.id))
+    if (leftOut.size) watchActivities = watchActivities.filter((a) => !leftOut.has(a.userId))
 
     hasWatchActivityData = watchActivities.length > 0
     if (hasWatchActivityData) {
@@ -907,10 +915,55 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     })
   }
 
+  // AIOStreams' own apps (Odin, Infuse, Swiftfin, its desktop app) report
+  // playback through Watch State, which none of the above can see - see
+  // utils/watchState.js liveViewings(). Added before the proxy merge, so a
+  // viewing that also streams through the proxy is shown once.
+  try {
+    const { liveViewings } = require('./watchState')
+    for (const v of await liveViewings(prisma, accountIdValue || 'default')) {
+      const user = userMap.get(v.userId)
+      if (!user) continue
+      if (nowPlaying.some((np) => np.user.id === v.userId && np.item.id === v.itemId)) continue
+      nowPlaying.push({
+        user: {
+          id: user.id,
+          username: user.username || user.email,
+          email: user.email,
+          colorIndex: user.colorIndex || 0,
+          avatarUrl: user.avatarUrl || null,
+          useGravatar: user.useGravatar ?? false
+        },
+        item: {
+          id: v.itemId,
+          name: v.itemName || v.itemId,
+          type: v.itemType,
+          year: null,
+          poster: v.poster,
+          season: v.season,
+          episode: v.episode
+        },
+        videoId: v.videoId,
+        watchedAt: v.startedAt.toISOString(),
+        watchedAtTimestamp: v.startedAt.getTime(),
+        lastPosition: v.positionMs,
+        totalDuration: v.durationMs,
+        source: 'aiostreams',
+        stremioAppUrl: buildStremioLinks(v.itemId, v.itemType === 'series' ? 'series' : 'movie', v.season, v.episode).appUrl,
+        nuvioAppUrl: buildNuvioAppUrl(v.itemType === 'series' ? 'series' : 'movie', v.itemId),
+      })
+    }
+  } catch (error) {
+    console.warn('[MetricsBuilder] Failed to read AIOStreams viewings:', error.message)
+  }
+
   // Reconcile against AIOStreams proxy-detected streams (see above).
   try {
     const { mergeProxyNowPlaying } = require('./proxyNowPlaying')
-    const merged = await mergeProxyNowPlaying(prisma, accountIdValue || 'default', activeUsers, nowPlaying)
+    // Copied before the list is emptied: with no proxy streams to reconcile,
+    // the merge hands back this very array, and clearing it first used to
+    // wipe Now Playing whenever nothing had gone through the proxy lately.
+    const merged = [...await mergeProxyNowPlaying(prisma, accountIdValue || 'default', activeUsers, nowPlaying)]
     nowPlaying.length = 0
     nowPlaying.push(...merged)
   } catch (error) {
@@ -1046,12 +1099,12 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     const episodeHistory = dedupWatchActivityBySharedEmail(
       dedupCrossUserSameSecond(episodeHistoryRaw, 'episode'),
       sharedEmailUserIds,
-      { itemKey: (r) => `${r.showId}::${r.videoId || ''}`, dateField: 'watchedAt', durationField: 'durationSeconds' }
+      { itemKey: (r) => `${r.showId}::${r.videoId || ''}`, dateField: 'watchedAt', durationField: 'durationSeconds', independentProfiles: false }
     )
     const movieHistory = dedupWatchActivityBySharedEmail(
       dedupCrossUserSameSecond(movieHistoryRaw, 'movie'),
       sharedEmailUserIds,
-      { itemKey: (r) => r.itemId, dateField: 'watchedAt', durationField: 'durationSeconds' }
+      { itemKey: (r) => r.itemId, dateField: 'watchedAt', durationField: 'durationSeconds', independentProfiles: false }
     )
 
     // Build user lookup and skip entries for users that no longer exist
@@ -1070,7 +1123,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
             email: user.email,
             colorIndex: user.colorIndex || 0,
             avatarUrl: user.avatarUrl || null,
-            useGravatar: user.useGravatar ?? false
+            useGravatar: user.useGravatar ?? false,
+            providerType: user.providerType || 'stremio'
           },
           item: {
             id: ep.showId,
@@ -1114,7 +1168,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
             email: user.email,
             colorIndex: user.colorIndex || 0,
             avatarUrl: user.avatarUrl || null,
-            useGravatar: user.useGravatar ?? false
+            useGravatar: user.useGravatar ?? false,
+            providerType: user.providerType || 'stremio'
           },
           item: {
             id: m.itemId,
@@ -1177,7 +1232,7 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     try {
       const activityRaw = await prisma.watchActivity.findMany({
         where: { accountId: accountIdValue, date: { gte: startDate } },
-        select: { userId: true, itemId: true, videoId: true, date: true, watchTimeSeconds: true },
+        select: { userId: true, itemId: true, videoId: true, date: true, watchTimeSeconds: true, profileLabel: true },
         // Bounded like the two history reads above it, which this one was
         // not: on all-time it read every row ever recorded, and the feed it
         // builds is sent whole to the browser. Measured on two years of

@@ -3,7 +3,7 @@
 import { useState, memo, useEffect, useMemo, useRef, useCallback, Suspense, Fragment } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { toast } from '@/components/ui/Toast';
 import { useTheme } from '@/lib/theme';
@@ -13,6 +13,7 @@ import { TVFocusable } from '@/components/tv/TVFocusable';
 import { TVLink } from '@/components/tv/TVLink';
 import { Button, Card, Badge, Avatar, UserAvatar, StatCard, SearchInput, PageToolbar, MediaDetailModal } from '@/components/ui';
 import { DroppedShowsPanel } from '@/components/activity/DroppedShowsPanel';
+import { ActivityFilterBar, EMPTY_FILTERS, SOURCE_LABELS, sourceOf, filtersFromParams, filtersToParams, type ActivityFilters } from '@/components/activity/ActivityFilterBar';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { NebulaPageHeading, NebulaStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
@@ -83,6 +84,7 @@ interface ActivityItem {
   isSynthetic?: boolean;
   poster?: string;
   profileLabel?: string; // Nuvio profile name this was watched under, if known
+  userProvider?: string; // the person's own provider, for the "Watched on" filter
   userAvatarUrl?: string | null;
   debridService?: string; // e.g. "torbox" - only set when confidently detected via the AIOStreams proxy (see server/utils/debridDetection.js). Absent doesn't mean "not debrid".
   completed?: boolean | null; // real completion: true = finished, false = started/dropped, null/undefined = unknown
@@ -209,10 +211,21 @@ function transformMetricsToActivity(metrics: MetricsData | null): ActivityItem[]
         isSynthetic: false,
         poster: entry.item.poster,
         profileLabel: entry.profileLabel ?? undefined,
+        userProvider: entry.user.providerType,
         userAvatarUrl: entry.user.useGravatar ? null : (entry.user.avatarUrl ?? null),
         debridService: entry.debridService,
       });
     });
+  }
+
+  // Every card gets its person's provider, whichever pipeline it came from,
+  // for the "Watched on" filter. History entries carry it.
+  const providerByUser = new Map<string, string>();
+  for (const entry of metrics.recentActivity || []) {
+    if (entry.user?.providerType) providerByUser.set(entry.user.id, entry.user.providerType);
+  }
+  for (const a of activities) {
+    if (!a.userProvider) a.userProvider = providerByUser.get(a.userId);
   }
 
   // Sort by timestamp, most recent first
@@ -1585,7 +1598,33 @@ function ActivityPageContent() {
   const periodParam = searchParams.get('period'); // 'today' | 'week'
   
   const [searchQuery, setSearchQuery] = useState(userParam || '');
-  const [timePeriod, setTimePeriod] = useState<string | null>(periodParam);
+  // The feed's filters. A link that names any wins; otherwise whatever was
+  // last used on this device. Kept in the address so a view can be shared.
+  const router = useRouter();
+  const pathname = usePathname();
+  const [filters, setFilters] = useState<ActivityFilters>(
+    () => filtersFromParams(new URLSearchParams(searchParams.toString())) || EMPTY_FILTERS
+  );
+  // Restored after mount, not in the initial state, so the first render
+  // matches the server's.
+  const filtersRestored = useRef(false);
+  useEffect(() => {
+    if (filtersRestored.current) return;
+    filtersRestored.current = true;
+    if (filtersFromParams(new URLSearchParams(window.location.search))) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem('slicksync:activity-filters') || 'null');
+      if (saved && typeof saved === 'object') setFilters({ ...EMPTY_FILTERS, ...saved });
+    } catch { /* storage unavailable - start clear */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem('slicksync:activity-filters', JSON.stringify(filters)); } catch { /* optional */ }
+    const next = filtersToParams(filters, new URLSearchParams(window.location.search));
+    const query = next.toString();
+    if (query !== window.location.search.replace(/^\?/, '')) {
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    }
+  }, [filters, pathname, router]);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [episodeFilter, setEpisodeFilter] = useState<{
     name: string;
@@ -1877,14 +1916,57 @@ function ActivityPageContent() {
     return map;
   }, [groups]);
 
+  // Bounds for the "When" filter. A picked date range runs from the start of
+  // its first day to the end of its last, in this device's own time.
+  const yearStart = new Date(now.getFullYear(), 0, 1);
+  const dayStart = (ymd: string) => {
+    const [y, m, d] = ymd.split('-').map(Number);
+    return y && m && d ? new Date(y, m - 1, d) : null;
+  };
+  const customFrom = filters.from ? dayStart(filters.from) : null;
+  const customToStart = filters.to ? dayStart(filters.to) : null;
+  const customTo = customToStart ? new Date(customToStart.getFullYear(), customToStart.getMonth(), customToStart.getDate() + 1) : null;
+
+  // What the filters can offer: only what the feed actually holds.
+  const filterOptions = useMemo(() => {
+    const people = new Map<string, string>();
+    const sources = new Set<string>();
+    const profiles = new Set<string>();
+    for (const a of activityData) {
+      people.set(a.userId, a.userName);
+      sources.add(sourceOf(a.profileLabel, a.userProvider));
+      if (a.profileLabel && !SOURCE_LABELS[a.profileLabel]) profiles.add(a.profileLabel);
+    }
+    return {
+      people: [...people.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label)),
+      sources: ['stremio', 'nuvio', 'aiostreams', 'imported', 'scrobbled'].filter((s) => sources.has(s)),
+      profiles: [...profiles].sort((a, b) => a.localeCompare(b)),
+    };
+  }, [activityData]);
+
   // Filter activities by search, time period, group, and optional episode filter
   const filteredActivities = activityData.filter((activity) => {
-    // 1. Time Period Filter
-    if (timePeriod === 'today') {
+    // 1. When
+    if (filters.when === 'today') {
       if (activity.timestamp < todayStart) return false;
-    } else if (timePeriod === 'week') {
+    } else if (filters.when === 'week') {
       if (activity.timestamp < oneWeekAgoStart) return false;
+    } else if (filters.when === 'month') {
+      if (activity.timestamp < oneMonthAgoStart) return false;
+    } else if (filters.when === 'year') {
+      if (activity.timestamp < yearStart) return false;
+    } else if (filters.when === 'custom') {
+      if (customFrom && activity.timestamp < customFrom) return false;
+      if (customTo && activity.timestamp >= customTo) return false;
     }
+
+    // Who, where, which profile, what kind, finished or not.
+    if (filters.person && activity.userId !== filters.person) return false;
+    if (filters.source && sourceOf(activity.profileLabel, activity.userProvider) !== filters.source) return false;
+    if (filters.profile && activity.profileLabel !== filters.profile) return false;
+    if (filters.kind && activity.contentType !== filters.kind) return false;
+    if (filters.status === 'finished' && activity.completed !== true) return false;
+    if (filters.status === 'partial' && activity.completed !== false) return false;
 
     // 2. Group Filter
     if (selectedGroup) {
@@ -2160,18 +2242,16 @@ function ActivityPageContent() {
                     </Badge>
                   )}
 
-                  {timePeriod && (
-                    <Badge variant="secondary" className="pl-3 pr-1 py-1 flex items-center gap-2">
-                      <span className="capitalize">{timePeriod}</span>
-                      <button
-                        onClick={() => setTimePeriod(null)}
-                        className="p-0.5 rounded-md hover:bg-white/20 transition-colors"
-                      >
-                        <XMarkIcon className="w-3.5 h-3.5" />
-                      </button>
-                    </Badge>
-                  )}
                 </div>
+              </div>
+              <div className="mt-3">
+                <ActivityFilterBar
+                  value={filters}
+                  onChange={setFilters}
+                  people={filterOptions.people}
+                  sources={filterOptions.sources}
+                  profiles={filterOptions.profiles}
+                />
               </div>
             </PageSection>
 
@@ -2261,7 +2341,7 @@ function ActivityPageContent() {
                       className="mt-6"
                       onClick={() => {
                         setSearchQuery('');
-                        setTimePeriod(null);
+                        setFilters(EMPTY_FILTERS);
                         setEpisodeFilter(null);
                       }}
                     >

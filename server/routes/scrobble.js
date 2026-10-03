@@ -14,8 +14,8 @@ const express = require('express')
 // don't write history, just acknowledge (a player may call them many times
 // per session as progress updates). Only /stop, when progress crosses the
 // same 80% "counts as watched" threshold Trakt itself uses, actually writes
-// a MovieWatchHistory/EpisodeWatchHistory row. This is a deliberately
-// separate, simpler writer from metricsProcessor.js's recordMovieWatch/
+// a MovieWatchHistory/EpisodeWatchHistory row, through utils/discreteWatch.js.
+// That is a deliberately separate, simpler writer from metricsProcessor.js's recordMovieWatch/
 // recordEpisodeWatch - those are tuned for continuous LIBRARY POLLING
 // (inferring whether something is "actually watched" from partial,
 // possibly-stale position data across many polls), which doesn't apply
@@ -88,42 +88,24 @@ module.exports = ({ prisma }) => {
         return res.json({ action: 'stop', progress: Number.isFinite(progress) ? progress : 0, [target.itemType]: target.itemType === 'movie' ? req.body.movie : req.body.show })
       }
 
-      const { fetchMetadata } = require('../utils/notify')
-      const { resolveSinglePoster } = require('../utils/libraryHelpers')
-      const { resolveOmdbKeyForAccount } = require('../utils/listImport')
-      const omdbApiKey = await resolveOmdbKeyForAccount(prisma, accountId).catch(() => null)
-
-      let title = target.title
-      let poster = null
-      let episodeName = null
-      if (target.itemType === 'movie') {
-        if (!title) {
-          const meta = await fetchMetadata(target.itemId, 'movie', null, omdbApiKey).catch(() => null)
-          title = meta?.title || null
-        }
-        if (!title) return res.status(422).json({ error: 'unprocessable', error_description: 'Could not resolve a title for this IMDb id' })
-        poster = await resolveSinglePoster(target.itemId, 'movie', null)
-
-        await prisma.movieWatchHistory.upsert({
-          where: { accountId_userId_itemId: { accountId, userId, itemId: target.itemId } },
-          create: { accountId, userId, itemId: target.itemId, itemName: title, poster, profileLabel: 'Scrobbled', completed: true, watchedAt: new Date() },
-          update: { itemName: title, poster: poster || undefined, completed: true, watchedAt: new Date() },
-        })
-      } else {
-        const videoId = `${target.itemId}:${target.season}:${target.episode}`
-        if (!title) {
-          const meta = await fetchMetadata(target.itemId, 'series', videoId, omdbApiKey).catch(() => null)
-          title = meta?.title || null
-          episodeName = meta?.episode?.title || null
-        }
-        if (!title) return res.status(422).json({ error: 'unprocessable', error_description: 'Could not resolve a title for this IMDb id' })
-        poster = await resolveSinglePoster(target.itemId, 'series', null)
-
-        await prisma.episodeWatchHistory.upsert({
-          where: { accountId_userId_videoId: { accountId, userId, videoId } },
-          create: { accountId, userId, showId: target.itemId, showName: title, videoId, season: target.season, episode: target.episode, episodeName, poster, profileLabel: 'Scrobbled', completed: true, watchedAt: new Date() },
-          update: { showName: title, episodeName: episodeName || undefined, poster: poster || undefined, completed: true, watchedAt: new Date() },
-        })
+      // Shared with the Watch State exchange (utils/watchState.js), so the two
+      // ways an outside player reports a finished title record it the same way.
+      const { recordDiscreteWatch } = require('../utils/discreteWatch')
+      const result = await recordDiscreteWatch(prisma, {
+        accountId,
+        userId,
+        itemId: target.itemId,
+        itemType: target.itemType,
+        season: target.season,
+        episode: target.episode,
+        title: target.title,
+        completed: true,
+        watchedAt: new Date(),
+        moveForward: true,
+        profileLabel: 'Scrobbled',
+      })
+      if (!result.ok) {
+        return res.status(422).json({ error: 'unprocessable', error_description: 'Could not resolve a title for this IMDb id' })
       }
 
       res.status(201).json({

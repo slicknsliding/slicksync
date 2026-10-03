@@ -49,14 +49,20 @@ const MEANINGFUL_PROGRESS_SECONDS = 60
 // (real position but well short), or null (no position/runtime data to judge).
 // Unlike duration-crediting, this is safe to read at any single point - a
 // position near the end IS "finished" regardless of when it got there, so no
-// first-observation caveat applies here. 90% threshold accounts for end
-// credits / a few unwatched trailing seconds.
+// first-observation caveat applies here. 90% by default accounts for end
+// credits / a few unwatched trailing seconds; each account can move it
+// (Settings, see utils/watchSettings.js) for shows with long credits.
 const COMPLETE_RATIO = 0.9
-function computeCompleted(state) {
+function computeCompleted(state, ratio = COMPLETE_RATIO) {
   const pos = Number(state?.timeOffset ?? NaN)
   const dur = Number(state?.duration ?? NaN)
   if (Number.isNaN(pos) || Number.isNaN(dur) || dur <= 0 || pos <= 0) return null
-  return pos / dur >= COMPLETE_RATIO
+  return pos / dur >= ratio
+}
+
+async function finishedRatioFor(prisma, accountId) {
+  const { getWatchSettings } = require('./watchSettings')
+  return (await getWatchSettings(prisma, accountId)).finishedPercent / 100
 }
 
 /**
@@ -305,7 +311,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     }
 
     // Real completion - once true, stays true (same as recordMovieWatch).
-    const computedCompleted = computeCompleted(item.state)
+    const computedCompleted = computeCompleted(item.state, await finishedRatioFor(prisma, accountId))
     const completed = existing?.completed === true ? true : computedCompleted
 
     // Watch-ahead protection: fires on the FIRST record of this episode for
@@ -479,7 +485,7 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
 
     // Real completion - once true, stays true (finishing can't un-finish; a
     // later partial re-watch of the same title mustn't flip it back).
-    const computedCompleted = computeCompleted(item.state)
+    const computedCompleted = computeCompleted(item.state, await finishedRatioFor(prisma, accountId))
     const completed = existing?.completed === true ? true : computedCompleted
 
     // See recordEpisodeWatch's matching comment - only look up if not
@@ -605,7 +611,7 @@ async function detectMovieRewatch(prisma, accountId, userId, item) {
         where: { accountId_userId_itemId: { accountId: accountId || 'default', userId, itemId } },
         data: { rewatchArmed: true }
       })
-    } else if (row.rewatchArmed && ratio >= COMPLETE_RATIO) {
+    } else if (row.rewatchArmed && ratio >= await finishedRatioFor(prisma, accountId)) {
       await prisma.movieWatchHistory.update({
         where: { accountId_userId_itemId: { accountId: accountId || 'default', userId, itemId } },
         data: { rewatchArmed: false, rewatchCount: { increment: 1 } }
@@ -718,7 +724,13 @@ function hasChanged(previous, current) {
 /**
  * Process a single library item and store snapshot/delta
  */
-async function processLibraryItem(prisma, accountId, userId, item, today, users = []) {
+// `userId` keys the item's progress baselines (snapshots). `recordUserId`,
+// when given, is who the viewing is recorded for - history and watch time.
+// They differ only for a merged person's absorbed login (see
+// activityMonitor.js): its baselines stay apart from the main login's,
+// because Stremio and Nuvio count progress differently, while what it
+// watched lands on the person.
+async function processLibraryItem(prisma, accountId, userId, item, today, users = [], { recordUserId = userId } = {}) {
   try {
     const itemId = item._id || item.id
     if (!itemId || !item.type) return { snapshotCreated: false, activityCreated: false }
@@ -844,7 +856,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
       const mostRecentActivity = await prisma.watchActivity.findFirst({
         where: {
           accountId: accountIdValue,
-          userId,
+          userId: recordUserId,
           itemId,
           date: new Date(todayDate)
         },
@@ -903,7 +915,7 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
         ops.push(prisma.watchActivity.create({
           data: {
             accountId: accountIdValue,
-            userId,
+            userId: recordUserId,
             itemId,
             date: new Date(todayDate),
             watchTimeSeconds: activityDeltaSeconds,
@@ -912,7 +924,10 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
             // computed against a baseline scoped to this same videoId (see
             // maxSeenBig above), so recording it keeps the row as specific as
             // the number already was. null for movies.
-            videoId: current.videoId || null
+            videoId: current.videoId || null,
+            // The Nuvio profile it was watched under, so the time can follow
+            // the profile if it is ever given to someone else.
+            profileLabel: item.state?.nuvioProfile || null
           }
         }))
       }
@@ -995,10 +1010,10 @@ async function processLibraryItem(prisma, accountId, userId, item, today, users 
     // for movies. This runs regardless of whether snapshot changed, to
     // capture all watched items.
     if (item.type === 'series' && item.state?.video_id) {
-      await recordEpisodeWatch(prisma, accountIdValue, userId, item, users)
+      await recordEpisodeWatch(prisma, accountIdValue, recordUserId, item, users)
     } else if (item.type === 'movie') {
-      await recordMovieWatch(prisma, accountIdValue, userId, item, users)
-      await detectMovieRewatch(prisma, accountIdValue, userId, item)
+      await recordMovieWatch(prisma, accountIdValue, recordUserId, item, users)
+      await detectMovieRewatch(prisma, accountIdValue, recordUserId, item)
     }
 
     return { snapshotCreated, activityCreated }
@@ -1044,7 +1059,7 @@ function itemFingerprint(item, todayDate) {
 /**
  * Process all library items for a user
  */
-async function processUserLibrary(prisma, accountId, userId, library, today = new Date(), users = []) {
+async function processUserLibrary(prisma, accountId, userId, library, today = new Date(), users = [], options = {}) {
   if (!library || !Array.isArray(library) || library.length === 0) {
     console.log(`[MetricsProcessor] No library items for user ${userId}`)
     return { snapshotsCreated: 0, activitiesCreated: 0 }
@@ -1074,7 +1089,7 @@ async function processUserLibrary(prisma, accountId, userId, library, today = ne
       continue
     }
     try {
-      const result = await processLibraryItem(prisma, accountId, userId, item, today, users)
+      const result = await processLibraryItem(prisma, accountId, userId, item, today, users, options)
       processed++
       if (result?.snapshotCreated) snapshotsCreated++
       if (result?.activityCreated) activitiesCreated++
@@ -1111,7 +1126,8 @@ async function processAccountMetrics(prisma, accountId, users, getLibraryForUser
       const library = await getLibraryForUser(user)
       if (library && Array.isArray(library) && library.length > 0) {
         console.log(`[MetricsProcessor] Processing ${library.length} items for user ${user.id}`)
-        const result = await processUserLibrary(prisma, accountIdValue, user.id, library, today, users)
+        // A merged person's absorbed login is recorded for that person.
+        const result = await processUserLibrary(prisma, accountIdValue, user.id, library, today, users, user.__recordAs ? { recordUserId: user.__recordAs } : {})
         totalProcessed += library.length
         if (result) {
           totalSnapshots += result.snapshotsCreated || 0

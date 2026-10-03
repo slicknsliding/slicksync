@@ -4,6 +4,47 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 // One entry in a cast member's filmography, as /api/discover/person returns it.
+/** One of a person's SlickTrax rows - see server/routes/traxAddon.js orderedTraxRows. */
+export interface TraxRow { key: string; name: string; hidden: boolean }
+
+/** Where "finished" starts and when a started show counts as unfinished. */
+export interface WatchTrackingSettings {
+  finishedPercent: number;
+  unfinishedAfterDays: number;
+  defaults: { finishedPercent: number; unfinishedAfterDays: number };
+  limits: { finishedPercent: [number, number]; unfinishedAfterDays: [number, number] };
+}
+
+/** Whose viewing each profile on one Nuvio account is - see server/utils/nuvioProfiles.js. */
+export interface ProfilesView {
+  persons: Array<{
+    id: string; username: string; profileIndex: number; isActive: boolean; colorIndex: number;
+    avatarUrl: string | null; useGravatar: boolean; email: string | null; movies: number; episodes: number;
+  }>;
+  profiles: Array<{
+    index: number; name: string | null; color: string | null; usesPrimaryAddons: boolean;
+    /** Who it counts for; null when it is not counted. */
+    ownerId: string | null;
+    ownPersonId: string | null;
+    skipped: boolean;
+    titles: { movies: number; episodes: number };
+    merged: { id: string; donorUsername: string; createdAt: string } | null;
+  }>;
+  misplaced: { titles: number } | null;
+  removedUserId?: string | null;
+  person?: { id: string; username: string };
+  moved?: { movies: number; episodes: number };
+}
+
+/** A person's Watch State link with AIOStreams, and the household profiles it has seen. */
+export interface WatchStateView {
+  enabled: boolean;
+  manifestUrl: string | null;
+  baseKnown: boolean;
+  viewers: Array<{ viewer: string; userId: string | null; skipped?: boolean; username: string | null; userEnabled: boolean | null }>;
+  people: Array<{ id: string; username: string; enabled: boolean }>;
+}
+
 export interface PersonCredit {
   tmdbId: number;
   mediaType: 'movie' | 'tv';
@@ -522,6 +563,63 @@ class ApiClient {
 
   async disconnectSimkl(id: string) {
     return this.fetch(`/users/${id}/simkl/disconnect`, { method: 'POST' });
+  }
+
+  async setHouseholdStats(id: string, excluded: boolean) {
+    return this.fetch<{ excludeFromHouseholdStats: boolean }>(`/users/${encodeURIComponent(id)}/household-stats`, { method: 'PUT', body: JSON.stringify({ excluded }) });
+  }
+
+  async getTraxRows(id: string) {
+    return this.fetch<{ enabled: boolean; rows: TraxRow[] }>(`/users/${encodeURIComponent(id)}/trax-rows`);
+  }
+
+  async saveTraxRows(id: string, order: string[], hidden: string[]) {
+    return this.fetch<{ enabled: boolean; rows: TraxRow[] }>(`/users/${encodeURIComponent(id)}/trax-rows`, { method: 'PUT', body: JSON.stringify({ order, hidden }) });
+  }
+
+  // How viewing is judged - see server/utils/watchSettings.js.
+  async getWatchTrackingSettings() {
+    return this.fetch<WatchTrackingSettings>('/settings/watch-tracking');
+  }
+
+  async saveWatchTrackingSettings(patch: Partial<Pick<WatchTrackingSettings, 'finishedPercent' | 'unfinishedAfterDays'>>) {
+    return this.fetch<WatchTrackingSettings>('/settings/watch-tracking', { method: 'PUT', body: JSON.stringify(patch) });
+  }
+
+  // Profiles on a Nuvio account - see server/utils/nuvioProfiles.js.
+  async getProfiles(id: string) {
+    return this.fetch<ProfilesView>(`/users/${encodeURIComponent(id)}/profiles`);
+  }
+
+  async setProfileOwner(id: string, profileIndex: number, target: string) {
+    return this.fetch<ProfilesView>(`/users/${encodeURIComponent(id)}/profiles/${profileIndex}`, { method: 'PUT', body: JSON.stringify({ target }) });
+  }
+
+  async giveProfileOwnPerson(id: string, profileIndex: number) {
+    return this.fetch<ProfilesView>(`/users/${encodeURIComponent(id)}/profiles/${profileIndex}/own-person`, { method: 'POST' });
+  }
+
+  async tidyProfiles(id: string) {
+    return this.fetch<ProfilesView>(`/users/${encodeURIComponent(id)}/profiles/tidy`, { method: 'POST' });
+  }
+
+  // Watch State with AIOStreams - see server/utils/watchState.js.
+  async getWatchState(id: string) {
+    return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state`);
+  }
+
+  async setWatchState(id: string, enabled: boolean) {
+    return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state`, {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
+  async linkWatchStateViewer(id: string, viewer: string, userId: string | null) {
+    return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state/viewers`, {
+      method: 'PUT',
+      body: JSON.stringify({ viewer, userId }),
+    });
   }
 
   async getUserWatchTime(id: string, period: 'day' | 'week' | 'month' | 'year' = 'week') {
@@ -3064,6 +3162,8 @@ export interface User {
   providerType?: 'stremio' | 'nuvio';
   /** Which Nuvio profile's addon list this user manages (1 is the primary). */
   nuvioProfileId?: number;
+  /** Left out of household numbers - totals, Top Viewers, Wrapped. */
+  excludeFromHouseholdStats?: boolean;
   /** SlickTrax Addon - per-user Stremio addon toggle + its URL token. */
   traxAddonEnabled?: boolean;
   /** In-player actions in the SlickTrax addon (opt-in per user). */
@@ -4347,7 +4447,7 @@ export interface MetricsData {
   /** True when the feed was capped and older history can still be asked for. */
   activityTruncated?: boolean;
   recentActivity?: Array<{
-    user: { id: string; username: string; email?: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean };
+    user: { id: string; username: string; email?: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean; providerType?: 'stremio' | 'nuvio' };
     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };
     videoId: string | null;
     profileLabel?: string | null;

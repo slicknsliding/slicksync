@@ -1,5 +1,27 @@
 [
   {
+    "version": "1.89.0",
+    "date": "2026-10-03",
+    "title": "1.89.0 - AIOStreams watch history, Nuvio profiles of their own, and Activity filters",
+    "features": [
+      "Watching in AIOStreams' own apps now counts. Turn on AIOStreams watch history from a person's page, under Watch-tracking integrations, and what they play there - plus watched marks, their watchlist and ratings - lands in their history and shows in Now Playing from the moment it starts. Each AIOStreams profile is matched to a person by name, linked by hand, or left untracked.",
+      "Each Nuvio profile can be its own person. Every profile counts toward its account's person to begin with. Open Nuvio profiles on the Users page and pick one to separate it into its own person with its own history, merge it back later, or stop tracking it - handy for a Kids or Guest profile.",
+      "Activity has filters: person, the app something was watched on, Nuvio profile, movies or shows, finished or not, and when. They are remembered on each device, and Copy link shares the exact view.",
+      "You decide when something counts as finished, from 75% to 98% watched (90% by default), and how long a started show sits untouched before the Graveyard offers it, from 14 to 180 days (45 by default). Both are under Settings > General, next to the time zone.",
+      "Leave out of household numbers, on a person's page: they keep their own page and history, but stop counting toward household totals, the charts, Top Viewers and the year in review. Switch it back and everything counts again.",
+      "Each person can choose their own SlickTrax rows - hide any of them or change their order - from their page, under SlickTrax Addon > Choose rows.",
+      "Back on a guide returns you to the page you opened it from."
+    ],
+    "bugFixes": [
+      "Now Playing went blank whenever nothing had streamed through the AIOStreams proxy for a while, which hid Stremio and Nuvio viewing too. It now shows everything that is playing.",
+      "Every person on a Nuvio account read every profile's history, so a household that gave each profile its own person saw everyone's viewing on everyone. Each person now records only their own profiles.",
+      "After merging a Stremio login and a Nuvio login into one person, anything watched on the merged-in login was never recorded. It now counts for the merged person.",
+      "Merging people who already had watch history stopped partway and was undone, and so did undoing a merge. Both now finish.",
+      "Merging a person made from a secondary Nuvio profile into a Stremio person is now refused, because syncs would otherwise have written into the main profile's addons.",
+      "When the container runs as a different user from the image's own - a common way to match a data folder's owner - the database update at startup failed and the app started with columns missing. The image now carries everything that step needs."
+    ]
+  },
+  {
     "version": "1.88.1",
     "date": "2026-09-29",
     "title": "1.88.1 - Group switches that show and change their real status",

@@ -84,6 +84,10 @@ function makeCreateProvider({ prisma, encrypt, getAccountId } = {}) {
                 return row?.providerType === 'nuvio' ? row.nuvioProfileId : 1
               }
             : undefined,
+          // Which of the account's profiles count as this person's viewing.
+          resolveLibraryProfiles: prisma && user.id
+            ? (allIndexes) => require('../utils/nuvioProfiles').ownedProfileIndexes(prisma, user.id, allIndexes)
+            : undefined,
           onTokenRefresh,
           // Lets an account point Nuvio at its own self-hosted backend
           // instead of api.nuvio.tv. Passed as a resolver rather than a

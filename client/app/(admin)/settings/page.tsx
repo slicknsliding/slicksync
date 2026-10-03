@@ -12,6 +12,7 @@ import { useLayoutMode } from '@/lib/layout-mode';
 import { api, SyncSettings, AccountStats, PushDevice, PasskeyRow } from '@/lib/api';
 import { toast, showToast } from '@/components/ui/Toast';
 import { ShortcutRecipes } from '@/components/settings/ShortcutRecipes';
+import { WatchTrackingSettings } from '@/components/settings/WatchTrackingSettings';
 import { isBeginnerMode, setBeginnerMode as setBeginnerModePref } from '@/lib/beginnerMode';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { PushNotificationToggle } from '@/components/ui/PushNotificationToggle';
@@ -1511,6 +1512,9 @@ export default function SettingsPage() {
                   have no browser to re-check it against later, so change it here if you ever travel or move.
                 </p>
               </div>
+
+              {/* What counts as finished, and when a show is unfinished. */}
+              <WatchTrackingSettings />
             </div>
           </Card>
         </PageSection>

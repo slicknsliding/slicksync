@@ -38,7 +38,18 @@ function findSharedEmailUserIds(users) {
   for (const ids of byEmail.values()) {
     if (ids.length > 1) for (const id of ids) shared.add(id)
   }
+  // People on a Nuvio profile other than the main one share the main
+  // person's email but are somebody else. Their rows that say which profile
+  // they were watched under are their own viewing, never a copy - see
+  // isIndependentRow below. Older rows without a profile are still treated
+  // as possible copies, because before profiles were scoped every person on
+  // the account recorded every profile.
+  shared.profilePeople = new Set(users.filter((u) => Number(u.nuvioProfileId) > 1).map((u) => u.id))
   return shared
+}
+
+function isIndependentRow(row, sharedEmailUserIds) {
+  return !!(row.profileLabel && sharedEmailUserIds.profilePeople && sharedEmailUserIds.profilePeople.has(row.userId))
 }
 
 /**
@@ -74,6 +85,10 @@ function dedupWatchActivityBySharedEmail(rows, sharedEmailUserIds, opts = {}) {
   const itemKey = opts.itemKey || ((r) => r.itemId)
   const dateField = opts.dateField || 'date'
   const durationField = opts.durationField || 'watchTimeSeconds'
+  // Watch time is only labelled with its profile from the version that
+  // scoped profiles, so a labelled row is never an old copy. History rows
+  // were always labelled, copies included, so they opt out.
+  const independent = opts.independentProfiles === false ? () => false : (r) => isIndependentRow(r, sharedEmailUserIds)
 
   // Group by (item, day-bucket) and separate shared-email rows from the
   // rest. Only the shared-email group needs a decision; unshared users
@@ -92,8 +107,8 @@ function dedupWatchActivityBySharedEmail(rows, sharedEmailUserIds, opts = {}) {
   const kept = []
   for (const group of groups.values()) {
     // Split into shared-email rows vs the rest.
-    const shared = group.filter((r) => sharedEmailUserIds.has(r.userId))
-    const rest = group.filter((r) => !sharedEmailUserIds.has(r.userId))
+    const shared = group.filter((r) => sharedEmailUserIds.has(r.userId) && !independent(r))
+    const rest = group.filter((r) => !sharedEmailUserIds.has(r.userId) || independent(r))
     kept.push(...rest)
 
     if (shared.length === 0) continue

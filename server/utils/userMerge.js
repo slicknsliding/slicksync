@@ -17,6 +17,15 @@
 const fs = require('fs')
 const path = require('path')
 
+// Merging moves a person's whole history row by row, and Prisma closes an
+// interactive transaction after five seconds by default - a person with a
+// year of history ran out of time, the transaction rolled back and the merge
+// failed every time. These get the room they need.
+const LONG_TRANSACTION = { timeout: 10 * 60 * 1000, maxWait: 30 * 1000 }
+function runLongTransaction(prisma, fn) {
+  return prisma.$transaction(fn, LONG_TRANSACTION)
+}
+
 /**
  * Counts + warnings for the merge confirmation modal, before anything is
  * actually touched.
@@ -30,6 +39,14 @@ async function getMergePreview(prisma, survivorId, donorId) {
   if (!donor) throw new Error('Donor user not found')
   if (survivor.providerType === donor.providerType) {
     throw new Error('Both accounts use the same provider - merge is for pairing two different providers')
+  }
+  // A Nuvio profile other than the main one shares its login with the main
+  // person. Absorbed into another provider's user it would lose which
+  // profile it is, and every sync would then write that user's addons into
+  // the main profile's list. Profiles are combined from Nuvio profiles on the Users page.
+  const donorProfile = await prisma.user.findUnique({ where: { id: donorId }, select: { nuvioProfileId: true } })
+  if (donor.providerType === 'nuvio' && Number(donorProfile?.nuvioProfileId || 1) > 1) {
+    throw new Error('This is one profile of a shared Nuvio account. Combine profiles from Nuvio profiles on the Users page instead')
   }
 
   const [movieCount, episodeCount, sessionCount, snapshotCount, survivorGroup, donorGroup] = await Promise.all([
@@ -85,6 +102,15 @@ async function getUndoInfo(prisma, survivorId, { dataDir = path.join(process.cwd
     donorColorIndex: donor?.colorIndex ?? null,
     undoable: !!(credential.donorId && archiveFullPath && fs.existsSync(archiveFullPath)),
   }
+}
+
+// What makes two rows "the same title" in each table that has a unique key.
+const NATURAL_KEY = {
+  movieWatchHistory: (r) => ({ accountId: r.accountId, userId: r.userId, itemId: r.itemId }),
+  episodeWatchHistory: (r) => ({ accountId: r.accountId, userId: r.userId, videoId: r.videoId }),
+  watchSnapshot: (r) => ({ accountId: r.accountId, userId: r.userId, itemId: r.itemId, date: r.date }),
+  watchSession: (r) => ({ accountId: r.accountId, userId: r.userId, itemId: r.itemId }),
+  dismissedContinueWatching: (r) => ({ accountId: r.accountId, userId: r.userId, showId: r.showId }),
 }
 
 // One consistent tie-break across every collision-prone table: keep
@@ -160,7 +186,7 @@ async function mergeUsers(prisma, survivorId, donorId, { dataDir = path.join(pro
   // this IS the recovery data undoMerge() reads back, not just a debug log.
   const archive = { donorRows: {}, overwrittenSurvivorRows: {}, donorGroupIds: [] }
 
-  await prisma.$transaction(async (tx) => {
+  await runLongTransaction(prisma, async (tx) => {
     // 1. Absorb the donor's credentials as a secondary provider on the survivor.
     await tx.userProviderCredential.create({
       data: {
@@ -274,7 +300,7 @@ async function undoMerge(prisma, survivorId, { dataDir = path.join(process.cwd()
     throw new Error('A user with the original donor id already exists - cannot undo safely')
   }
 
-  await prisma.$transaction(async (tx) => {
+  await runLongTransaction(prisma, async (tx) => {
     // 1. Recreate the donor's own User row exactly as it was.
     const { id: _donorId, ...donorFields } = donor
     await tx.user.create({ data: { id: donorId, ...donorFields } })
@@ -283,12 +309,21 @@ async function undoMerge(prisma, survivorId, { dataDir = path.join(process.cwd()
     // still live under the survivor (it won its collision, or had none) ->
     // point it back; hard-deleted (it lost a collision) -> recreate it.
     const donorOwnedTables = ['movieWatchHistory', 'episodeWatchHistory', 'watchSnapshot', 'watchSession', 'dismissedContinueWatching']
+    //
+    // The donor's old id may already hold a row for the same title: while
+    // merged, the absorbed login is read under that id and keeps its own
+    // progress baselines there (activityMonitor.js). That row is the newer
+    // reading of the same login, so it stays and the archived copy goes.
+    // Checked first rather than caught: on Postgres a failed write inside a
+    // transaction aborts the whole transaction, caught or not.
     for (const modelName of donorOwnedTables) {
       for (const row of donorRows[modelName] || []) {
-        const stillLive = await tx[modelName].findUnique({ where: { id: row.id } }).catch(() => null)
+        const stillLive = await tx[modelName].findUnique({ where: { id: row.id } })
+        const clash = await tx[modelName].findFirst({ where: { ...NATURAL_KEY[modelName]({ ...row, userId: donorId }), NOT: { id: row.id } } })
         if (stillLive) {
-          await tx[modelName].update({ where: { id: row.id }, data: { userId: donorId } })
-        } else {
+          if (clash) await tx[modelName].delete({ where: { id: row.id } })
+          else await tx[modelName].update({ where: { id: row.id }, data: { userId: donorId } })
+        } else if (!clash) {
           const { id: rowId, ...rowFields } = row
           await tx[modelName].create({ data: { id: rowId, ...rowFields, userId: donorId } })
         }
@@ -297,13 +332,14 @@ async function undoMerge(prisma, survivorId, { dataDir = path.join(process.cwd()
 
     // 3. Recreate any survivor row that was deleted as the losing side of a
     // collision during the merge - it's fully gone from the live tables, so
-    // this is always a create, never an update.
+    // this is always a create, never an update - unless the survivor has
+    // since recorded the same title again, which then stays.
     for (const modelName of Object.keys(overwrittenSurvivorRows)) {
       for (const row of overwrittenSurvivorRows[modelName]) {
-        const stillLive = await tx[modelName].findUnique({ where: { id: row.id } }).catch(() => null)
-        if (!stillLive) {
-          await tx[modelName].create({ data: row })
-        }
+        const stillLive = await tx[modelName].findUnique({ where: { id: row.id } })
+        if (stillLive) continue
+        if (NATURAL_KEY[modelName] && await tx[modelName].findFirst({ where: NATURAL_KEY[modelName](row) })) continue
+        await tx[modelName].create({ data: row })
       }
     }
 
@@ -337,4 +373,6 @@ async function undoMerge(prisma, survivorId, { dataDir = path.join(process.cwd()
 
 module.exports = {
   getMergePreview, getUndoInfo, mergeUsers, undoMerge,
+  // Shared with nuvioProfiles.js, which merges profile people the same way.
+  pickSurvivorRow, migrateTable, runLongTransaction, NATURAL_KEY,
 }

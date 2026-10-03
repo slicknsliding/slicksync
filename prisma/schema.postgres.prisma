@@ -58,6 +58,19 @@ model User {
   // it puts non-playable rows in a list people open expecting streams, which
   // is a trade not everyone wants.
   traxToken          String?  @unique
+  // Watch State exchange with AIOStreams (routes/traxAddon.js, /aio). Off by
+  // default: turning it on is this person's consent for their watch history
+  // to be read by, and written from, an AIOStreams configuration holding the
+  // link. The link reuses traxToken as its credential.
+  // Left out of household numbers (totals, Top Viewers, Wrapped) - a test or guest person.
+  excludeFromHouseholdStats Boolean @default(false)
+  // Which SlickTrax rows this person gets, and in what order: JSON { order: [key], hidden: [key] }.
+  traxRowsJson       String?
+  watchStateEnabled  Boolean  @default(false)
+  // JSON { viewerId: userId | null }. AIOStreams names each household profile
+  // on every request; this records which SlickSync user each one is. null
+  // means seen but not linked to anyone, so it is refused, never guessed.
+  watchStateViewers  String?
   // Account Guard: JSON state for external-writer detection - per-provider
   // fingerprints of what SlickSync last wrote to this user's addon
   // collection, plus any standing "changed outside SlickSync" alarm with its
@@ -465,6 +478,9 @@ model WatchActivity {
   // unique per (item, DAY), so it only ever knows the LAST episode seen that
   // day and cannot describe a day when several were watched.
   videoId          String?
+  // Which Nuvio profile (or AIOStreams profile) the time was watched under,
+  // so moving a profile between people can take its watch time with it.
+  profileLabel     String?
   createdAt        DateTime @default(now())
 
   @@index([accountId, userId, date, itemType])
@@ -698,6 +714,88 @@ model WatchTogetherShow {
 
   @@unique([accountId, showId])
   @@map("watch_together_shows")
+}
+
+// One row per Watch State event already applied, so a delivery AIOStreams
+// retries (or a client that reports the same stop twice) changes nothing the
+// second time. Pruned after the window AIOStreams keeps retrying for.
+model WatchStateEvent {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  userId    String
+  eventId   String
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, userId, eventId])
+  @@index([createdAt])
+  @@map("watch_state_events")
+}
+
+// The playback in progress for one person and one video, between the start
+// AIOStreams reports and the pause or stop that ends a stretch of watching.
+// Watch time is the distance the position moved across each stretch, capped
+// by the clock time between the two reports, so a seek forward never counts
+// as time spent watching.
+model WatchStateCursor {
+  id                 String    @id @default(cuid())
+  accountId          String    @default("default")
+  userId             String
+  videoId            String
+  itemId             String
+  itemType           String
+  startPositionMs    Int?
+  startAt            DateTime?
+  accumulatedSeconds Int       @default(0)
+  // For Now Playing: what is on, and how long it runs, so a viewing whose
+  // stop never arrives can still drop off once its runtime has passed.
+  itemName           String?
+  poster             String?
+  season             Int?
+  episode            Int?
+  durationMs         Int?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([accountId, userId, videoId])
+  @@map("watch_state_cursors")
+}
+
+/// Who a Nuvio profile's viewing counts for, when that is not the default.
+/// The default: a profile with its own person here counts for them, any other
+/// profile counts for the account's main person. A row exists only to say
+/// otherwise - another person on the same Nuvio account, or nobody (skip).
+model NuvioProfileRoute {
+  id           String   @id @default(cuid())
+  accountId    String   @default("default")
+  nuvioUserId  String
+  profileIndex Int
+  targetUserId String?
+  skip         Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([accountId, nuvioUserId, profileIndex])
+  @@map("nuvio_profile_routes")
+}
+
+/// A profile's own person merged into another person on the same Nuvio
+/// account. The archive file holds everything needed to separate them again.
+model ProfileMerge {
+  id            String    @id @default(cuid())
+  accountId     String    @default("default")
+  nuvioUserId   String
+  profileIndex  Int
+  profileName   String?
+  survivorId    String
+  donorId       String
+  donorUsername String
+  archivePath   String
+  createdAt     DateTime  @default(now())
+  undoneAt      DateTime?
+
+  @@index([accountId, survivorId])
+  @@index([accountId, nuvioUserId, profileIndex])
+  @@map("profile_merges")
 }
 
 model DismissedContinueWatching {

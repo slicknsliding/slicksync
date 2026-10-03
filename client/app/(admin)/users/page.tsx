@@ -8,6 +8,7 @@ import { Header } from '@/components/layout/Header';
 import { Button, Card, Avatar, Badge, StatusBadge, SearchInput, ConfirmModal, SyncBadge, ToggleSwitch, Modal, Input, UserAvatar, ContextMenu, useContextMenu, SelectAllCheckbox, SelectionCheckbox, PageToolbar } from '@/components/ui';
 import { Dialog, DialogPanel } from '@headlessui/react';
 import { StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
+import { ProfilesCard } from '@/components/user/ProfilesCard';
 import { NebulaPageHeading, NebulaCompactStatCard, NEBULA_GLASS_CLASS, nebulaGlassStyle, NebulaGlassStripe } from '@/components/layout/NebulaTopbar';
 import { useLayoutMode } from '@/lib/layout-mode';
 import { toast } from '@/components/ui/Toast';
@@ -280,6 +281,22 @@ export default function UsersPage() {
   const refreshUsersQuietly = useCallback(async () => {
     try { setUsers(await api.getUsers()); } catch { /* keep last known list */ }
   }, []);
+
+  // One entry per Nuvio login: everyone on it shares its email, and the
+  // person on its lowest profile - normally the main one - stands for it.
+  const nuvioLogins = useMemo(() => {
+    const byLogin = new Map<string, User[]>();
+    for (const u of users) {
+      if (u.providerType !== 'nuvio') continue;
+      const key = (u.email || u.id).toLowerCase();
+      if (!byLogin.has(key)) byLogin.set(key, []);
+      byLogin.get(key)!.push(u);
+    }
+    return [...byLogin.values()].map((people) => {
+      const anchor = [...people].sort((a, b) => (a.nuvioProfileId ?? 1) - (b.nuvioProfileId ?? 1))[0];
+      return { anchorId: anchor.id, label: `${anchor.username}'s login` };
+    });
+  }, [users]);
 
   const handleGuardReassert = useCallback(async (id: string, name: string) => {
     setGuardBusyId(id);
@@ -779,6 +796,22 @@ export default function UsersPage() {
           </>
         )}
       </div>
+
+      {/* Nuvio profiles: which profiles of each Nuvio login belong to whom.
+          Lives here rather than on a person's page because it decides which
+          people exist at all - see components/user/ProfilesCard. */}
+      {!isLoading && nuvioLogins.length > 0 && (
+        <div className="mt-6 flex flex-col gap-4">
+          {nuvioLogins.map((login) => (
+            <ProfilesCard
+              key={login.anchorId}
+              userId={login.anchorId}
+              loginLabel={nuvioLogins.length > 1 ? login.label : null}
+              onPeopleChanged={refreshUsersQuietly}
+            />
+          ))}
+        </div>
+      )}
       </div>
       </div>
 

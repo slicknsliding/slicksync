@@ -3,7 +3,7 @@
 import { useState, useCallback, memo, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useRouter } from 'next/navigation';
-import { api, Addon, StremioAddon, MergeCandidate, MergePreview, MergeInfo, User, NuvioProfile } from '@/lib/api';
+import { api, Addon, StremioAddon, MergeCandidate, MergePreview, MergeInfo, User } from '@/lib/api';
 import { startAdaptivePoll } from '@/lib/adaptivePoll';
 import { copyToClipboard } from '@/lib/clipboard';
 import { useTheme } from '@/lib/theme';
@@ -17,6 +17,8 @@ import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
+import { WatchStateRow } from '@/components/user/WatchStateRow';
+import { TraxRowsEditor } from '@/components/user/TraxRowsEditor';
 import {
   ArrowLeftIcon,
   ArrowPathIcon,
@@ -565,49 +567,6 @@ export default function UserDetailPage() {
   const [protectedAddonNames, setProtectedAddonNames] = useState<Set<string>>(new Set());
   const [isRefreshingAddons, setIsRefreshingAddons] = useState(false);
   const [showSyncDebug, setShowSyncDebug] = useState(false);
-  // The account's Nuvio profiles, for the card on the Addons tab. Each one
-  // that keeps its own addon list can be managed here as its own user; the
-  // ones set to follow the primary have no list to manage.
-  const [nuvioProfiles, setNuvioProfiles] = useState<NuvioProfile[] | null>(null);
-  const [nuvioProfilesLoading, setNuvioProfilesLoading] = useState(false);
-  const [addingProfile, setAddingProfile] = useState<number | null>(null);
-
-  const loadNuvioProfiles = useCallback(async (userId: string) => {
-    setNuvioProfilesLoading(true);
-    try {
-      const res = await api.getNuvioProfiles(userId);
-      setNuvioProfiles(res?.profiles || []);
-    } catch {
-      // A profile list that cannot be read is not worth an error banner on a
-      // page that is mostly about something else - the card says so instead.
-      setNuvioProfiles([]);
-    } finally {
-      setNuvioProfilesLoading(false);
-    }
-  }, []);
-
-  const handleAddNuvioProfile = useCallback(async (profileIndex: number, profileName: string) => {
-    if (!user?.id) return;
-    setAddingProfile(profileIndex);
-    try {
-      const res = await api.addNuvioProfileAsUser(user.id, profileIndex);
-      toast.success(res?.message || `${profileName} added`);
-      await loadNuvioProfiles(user.id);
-    } catch (err: any) {
-      toast.error(err?.message || `Could not add ${profileName}`);
-    } finally {
-      setAddingProfile(null);
-    }
-  }, [user?.id, loadNuvioProfiles]);
-
-  // Only fetched when the Addons tab is actually open - it is a live call out
-  // to Nuvio, and the tab most people stay on never shows it.
-  useEffect(() => {
-    if (activeTab !== 'addons') return;
-    if (user?.providerType !== 'nuvio' || !user?.id) return;
-    if (nuvioProfiles !== null || nuvioProfilesLoading) return;
-    loadNuvioProfiles(user.id);
-  }, [activeTab, user?.id, user?.providerType, nuvioProfiles, nuvioProfilesLoading, loadNuvioProfiles]);
   const [syncPlanLoading, setSyncPlanLoading] = useState(false);
   const [syncPlanError, setSyncPlanError] = useState<string | null>(null);
   const [syncPlan, setSyncPlan] = useState<{
@@ -1414,6 +1373,35 @@ export default function UserDetailPage() {
               </PageSection>
             )}
 
+            {/* Household numbers: a test or guest person can be left out of
+                totals, Top Viewers and Wrapped without losing their own page. */}
+            <PageSection className="mb-6">
+              <Card padding="lg">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold text-default">Leave out of household numbers</h3>
+                    <p className="text-sm text-muted">
+                      For a test or guest person: their viewing stays on this page, but stops counting in household totals, Top Viewers and Wrapped.
+                    </p>
+                  </div>
+                  <ToggleSwitch
+                    checked={!!user.excludeFromHouseholdStats}
+                    title="Leave out of household numbers"
+                    onChange={async () => {
+                      const v = !user.excludeFromHouseholdStats;
+                      try {
+                        await api.setHouseholdStats(user.id, v);
+                        setUser((prev: typeof user) => (prev ? { ...prev, excludeFromHouseholdStats: v } : prev));
+                        toast.success(v ? `${user.username} is left out of household numbers` : `${user.username} counts in household numbers again`);
+                      } catch (err: any) {
+                        toast.error(err?.message || 'Could not change that');
+                      }
+                    }}
+                  />
+                </div>
+              </Card>
+            </PageSection>
+
             {/* Watch-tracking integrations. Trakt used to sit here as a
                 second row doing a one-time OAuth pull; Trakt now gates
                 creating an API application behind VIP, so that route needed
@@ -1533,7 +1521,18 @@ export default function UserDetailPage() {
                     </Button>
                   </div>
 
+                  {user.traxAddonEnabled && (
+                    <div className="pl-13">
+                      <TraxRowsEditor userId={user.id} />
+                    </div>
+                  )}
                 </div>
+
+                <div className="border-t" style={{ borderColor: 'var(--color-surface-border)' }} />
+
+                {/* AIOStreams watch history - the Watch State exchange.
+                    See server/utils/watchState.js. */}
+                <WatchStateRow userId={user.id} />
                 </div>)}
 
               </Card>
@@ -1988,81 +1987,6 @@ export default function UserDetailPage() {
             {/* Addons Tab Content */}
             {activeTab === 'addons' && (
               <>
-                {/* Nuvio profiles. A Nuvio account can hold several profiles,
-                    and each one either keeps its own addon list or follows the
-                    primary's. Only the ones with their own list are worth
-                    managing separately, so each of those can become its own
-                    user here and sync like anyone else. */}
-                {user?.providerType === 'nuvio' && (
-                  <PageSection delay={0.05} className="mb-8">
-                    <Card padding="lg">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/20">
-                          <UsersIcon className="w-5 h-5 text-primary" />
-                        </div>
-                        <div>
-                          <h2 className="text-lg font-bold font-display">Nuvio profiles</h2>
-                          <p className="text-sm text-muted">
-                            This account&apos;s profiles. Each profile that keeps its own addons can be managed as its own user.
-                          </p>
-                        </div>
-                      </div>
-
-                      {nuvioProfilesLoading && nuvioProfiles === null ? (
-                        <p className="text-sm text-muted py-4">Loading profiles…</p>
-                      ) : !nuvioProfiles || nuvioProfiles.length === 0 ? (
-                        <p className="text-sm text-muted py-4">Could not read this account&apos;s profiles just now.</p>
-                      ) : (
-                        <div className="flex flex-col gap-2 mt-4">
-                          {nuvioProfiles.map((p) => {
-                            const index = p.profileIndex ?? p.profile_index;
-                            return (
-                              <div
-                                key={p.id || index}
-                                className="flex items-center justify-between gap-3 flex-wrap rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3"
-                              >
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <span
-                                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                                    style={{ backgroundColor: p.avatar_color_hex || 'var(--color-primary)' }}
-                                  />
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-medium truncate">{p.name || `Profile ${index}`}</p>
-                                    <p className="text-xs text-subtle">
-                                      {index === 1 ? 'Primary profile' : `Profile ${index}`}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-2 shrink-0">
-                                  {p.isThisUser ? (
-                                    <Badge variant="nuvio" size="sm">Managed here</Badge>
-                                  ) : p.managedBy ? (
-                                    <Link href={`/users/${p.managedBy.id}`} className="text-xs text-primary hover:underline">
-                                      Managed by {p.managedBy.username}
-                                    </Link>
-                                  ) : p.usesPrimaryAddons ? (
-                                    <span className="text-xs text-subtle">Follows the primary profile&apos;s addons</span>
-                                  ) : p.canAdd ? (
-                                    <Button
-                                      variant="secondary"
-                                      size="sm"
-                                      isLoading={addingProfile === index}
-                                      onClick={() => handleAddNuvioProfile(index as number, p.name || `Profile ${index}`)}
-                                    >
-                                      Manage as its own user
-                                    </Button>
-                                  ) : null}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </Card>
-                  </PageSection>
-                )}
-
                 {/* Group Addons */}
                 <PageSection delay={0.1} className="mb-8">
                   <Card padding="lg">

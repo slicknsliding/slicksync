@@ -57,6 +57,12 @@ export function DroppedShowsPanel() {
 
   useEffect(() => { load(); }, [load]);
 
+  // The account's own Unfinished cutoff, set in Settings.
+  const [unfinishedDays, setUnfinishedDays] = useState(45);
+  useEffect(() => {
+    api.getWatchTrackingSettings().then((s) => setUnfinishedDays(s.unfinishedAfterDays)).catch(() => {});
+  }, []);
+
   const toggleSel = (set: React.Dispatch<React.SetStateAction<Set<string>>>, key: string) => {
     set((prev) => {
       const next = new Set(prev);
@@ -233,7 +239,7 @@ export function DroppedShowsPanel() {
           <div>
             <h3 className="text-lg font-semibold text-default">Unfinished</h3>
             <p className="text-sm text-muted mt-0.5">
-              Started, then not touched in over 45 days. Pick one back up, or bury it.
+              Started, then not touched in over {unfinishedDays} days. Pick one back up, or bury it.
             </p>
           </div>
           {items.length > 1 && (
