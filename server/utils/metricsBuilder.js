@@ -406,7 +406,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       colorIndex: true,
       avatarUrl: true,
       useGravatar: true,
-      nuvioProfileId: true
+      nuvioProfileId: true,
+      providerType: true
     },
     orderBy: { createdAt: 'asc' }
   })
@@ -1117,7 +1118,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
             email: user.email,
             colorIndex: user.colorIndex || 0,
             avatarUrl: user.avatarUrl || null,
-            useGravatar: user.useGravatar ?? false
+            useGravatar: user.useGravatar ?? false,
+            providerType: user.providerType || 'stremio'
           },
           item: {
             id: ep.showId,
@@ -1161,7 +1163,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
             email: user.email,
             colorIndex: user.colorIndex || 0,
             avatarUrl: user.avatarUrl || null,
-            useGravatar: user.useGravatar ?? false
+            useGravatar: user.useGravatar ?? false,
+            providerType: user.providerType || 'stremio'
           },
           item: {
             id: m.itemId,

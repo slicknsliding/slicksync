@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  ChevronDownIcon, UsersIcon, UserPlusIcon, ArrowUturnLeftIcon, SparklesIcon, EyeSlashIcon, EyeIcon,
+  UserPlusIcon, ArrowUturnLeftIcon, SparklesIcon, EyeSlashIcon, EyeIcon, ArrowsPointingInIcon,
+  QuestionMarkCircleIcon, ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 import { api, type ProfilesView } from '@/lib/api';
-import { Button, Card, ConfirmModal, UserAvatar } from '@/components/ui';
+import { Button, Card, ConfirmModal, UserAvatar, ContextMenu, useContextMenu } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 
 type Profile = ProfilesView['profiles'][number];
@@ -32,29 +33,17 @@ function profileName(p: Profile) {
   return p.name || `Profile ${p.index}`;
 }
 
-/** A Nuvio profile's own colour, as the app shows it. */
-function ProfileMark({ profile, muted }: { profile: Profile; muted?: boolean }) {
-  const hex = !muted && profile.color && /^#[0-9a-f]{6}$/i.test(profile.color) ? profile.color : null;
-  return (
-    <span
-      className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-xs font-semibold"
-      style={hex
-        ? { background: `${hex}33`, color: hex, boxShadow: `inset 0 0 0 1px ${hex}55` }
-        : { background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
-      aria-hidden
-    >
-      {profileName(profile).trim().charAt(0).toUpperCase()}
-    </span>
-  );
+function hexOf(p: Profile) {
+  return p.color && /^#[0-9a-f]{6}$/i.test(p.color) ? p.color : null;
 }
 
-const SELECT_CHEVRON = "bg-no-repeat bg-[length:1rem] bg-[right_0.5rem_center] bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20fill=%22none%22%20viewBox=%220%200%2024%2024%22%20stroke=%22%2394a3b8%22%3E%3Cpath%20stroke-linecap=%22round%22%20stroke-linejoin=%22round%22%20stroke-width=%222%22%20d=%22M19%209l-7%207-7-7%22/%3E%3C/svg%3E')]";
+const MENU_ITEM = 'w-full flex items-center gap-2 px-3 py-2 text-sm text-default hover:bg-surface-hover transition-colors text-left';
 
 /**
- * The people on one Nuvio login and the profiles each of them is made of.
- * Every profile is either its own person, part of someone's history, or not
- * tracked; the actions move it between those, and a merge can be separated
- * again. The rules live in server/utils/nuvioProfiles.js.
+ * The profiles on one Nuvio login, shown the way the app's own profile picker
+ * shows them. Each tile says who that profile's viewing belongs to; tapping
+ * it offers what can be done with it. Only shown for a login with more than
+ * one profile. The rules live in server/utils/nuvioProfiles.js.
  */
 export function ProfilesCard({ userId, loginLabel, onPeopleChanged }: {
   /** Any person on the Nuvio login - normally its main profile's person. */
@@ -64,34 +53,22 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged }: {
   /** People were added, merged away or brought back. */
   onPeopleChanged?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [view, setView] = useState<ProfilesView | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [menuFor, setMenuFor] = useState<Profile | null>(null);
+  const menu = useContextMenu();
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       setView(await api.getProfiles(userId));
-    } catch (e: any) {
-      setError(e?.message || "Could not read this account's profiles just now");
-    } finally {
-      setLoading(false);
+    } catch {
+      // A profile list Nuvio cannot give right now just leaves this out.
+      setView(null);
     }
   }, [userId]);
 
-  // A live call to Nuvio, so only made once the card is opened.
-  useEffect(() => {
-    if (open && !view && !loading && !error) load();
-  }, [open, view, loading, error, load]);
-
-  useEffect(() => {
-    setView(null);
-    setError(null);
-  }, [userId]);
+  useEffect(() => { load(); }, [load]);
 
   const persons = view?.persons || [];
   const personById = (id: string | null): Person | undefined => persons.find((p) => p.id === id);
@@ -113,23 +90,20 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged }: {
   };
 
   const mergeInto = (profile: Profile, target: string) => {
-    if (!target) return;
     const name = profileName(profile);
     const to = nameOf(target);
-
     if (profile.ownPersonId) {
       const donor = personById(profile.ownPersonId);
       const donorName = donor?.username || name;
       setPending({
         title: `Merge ${donorName} into ${to}?`,
-        description: `Use this when they are the same person. ${donorName}'s history (${titles({ movies: donor?.movies || 0, episodes: donor?.episodes || 0 })}) becomes part of ${to}'s, and anything watched on the ${name} profile from now on goes to ${to}. ${donorName} leaves the Users list - you can separate them again here at any time.`,
+        description: `Use this when they are the same person. ${donorName}'s history (${titles({ movies: donor?.movies || 0, episodes: donor?.episodes || 0 })}) becomes part of ${to}'s, and anything watched on the ${name} profile from now on goes to ${to}. ${donorName} leaves the Users list - you can separate them again at any time.`,
         confirmText: 'Merge',
         variant: 'warning',
         run: () => perform(() => api.setProfileOwner(userId, profile.index, target), `${donorName} merged into ${to}`, true),
       });
       return;
     }
-
     const moving = profile.ownerId && profile.titles.movies + profile.titles.episodes > 0;
     setPending({
       title: `Merge ${name} into ${to}?`,
@@ -149,10 +123,6 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged }: {
       confirmText: 'Stop tracking',
       run: () => perform(() => api.setProfileOwner(userId, profile.index, 'skip'), `${name} is no longer tracked`),
     });
-  };
-
-  const trackAgain = (profile: Profile) => {
-    perform(() => api.setProfileOwner(userId, profile.index, 'default'), `${profileName(profile)} is tracked again`);
   };
 
   const makeOwnPerson = (profile: Profile) => {
@@ -185,179 +155,145 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged }: {
     });
   };
 
-  // Everything one profile row can do, in the order people reach for them.
-  const actionsFor = (profile: Profile, mainPersonId: string | undefined): ReactNode => {
-    const name = profileName(profile);
-    const own = profile.ownPersonId;
-    const tracked = !!profile.ownerId;
-    if (own && own === mainPersonId) return null;
-    const targets = persons.filter((p) => p.id !== profile.ownerId && p.id !== own);
-    return (
-      <div className="flex items-center gap-2 flex-wrap">
-        {!own && profile.merged && (
-          <Button variant="secondary" size="sm" leftIcon={<ArrowUturnLeftIcon className="w-4 h-4" />} onClick={() => makeOwnPerson(profile)} disabled={busy}>
-            Separate again
-          </Button>
-        )}
-        {!own && !profile.merged && (
-          <Button variant="secondary" size="sm" leftIcon={<UserPlusIcon className="w-4 h-4" />} onClick={() => makeOwnPerson(profile)} disabled={busy}>
-            Make it its own person
-          </Button>
-        )}
-        {targets.length > 0 && (
-          <select
-            className={`text-sm rounded-lg pl-3 pr-8 py-1.5 border appearance-none cursor-pointer focus:outline-none focus:border-primary disabled:opacity-60 ${SELECT_CHEVRON}`}
-            style={{ borderColor: 'var(--color-surface-border)', backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text)' }}
-            value=""
-            disabled={busy}
-            onChange={(e) => mergeInto(profile, e.target.value)}
-            aria-label={`Merge ${name} into someone`}
-          >
-            <option value="" disabled style={{ backgroundColor: 'var(--color-surface)' }}>Merge into…</option>
-            {targets.map((p) => (
-              <option key={p.id} value={p.id} style={{ backgroundColor: 'var(--color-surface)' }}>{p.username}</option>
-            ))}
-          </select>
-        )}
-        {!own && tracked && (
-          <Button variant="ghost" size="sm" leftIcon={<EyeSlashIcon className="w-4 h-4" />} onClick={() => stopTracking(profile)} disabled={busy}>
-            Stop tracking
-          </Button>
-        )}
-        {!own && !tracked && (
-          <Button variant="ghost" size="sm" leftIcon={<EyeIcon className="w-4 h-4" />} onClick={() => trackAgain(profile)} disabled={busy}>
-            Track it again
-          </Button>
-        )}
-      </div>
-    );
+  const openMenu = (profile: Profile, e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenuFor(profile);
+    // Under the tile, or above it when the tile sits near the bottom.
+    const roomBelow = window.innerHeight - rect.bottom;
+    const y = roomBelow > 240 ? rect.bottom + 6 : Math.max(8, rect.top - 230);
+    menu.handleContextMenu(e, rect.left + rect.width / 2 - 100, y);
   };
 
-  const profileRow = (profile: Profile, mainPersonId: string | undefined) => {
-    const tracked = !!profile.ownerId;
-    const n = profile.titles.movies + profile.titles.episodes;
-    let tag: string;
-    if (!tracked) tag = 'Nothing watched on it is recorded';
-    else if (profile.ownPersonId) tag = profile.index === 1 ? 'Main profile' : 'Their own profile';
-    else if (profile.merged) tag = `Merged in - was ${profile.merged.donorUsername}`;
-    else tag = 'Part of their history';
-    const addons = profile.index > 1 && profile.ownPersonId
-      ? (profile.usesPrimaryAddons ? " · uses the main profile's addons" : ' · has its own addons')
-      : '';
-    const actions = actionsFor(profile, mainPersonId);
-    return (
-      <div key={profile.index} className="flex items-center justify-between gap-3 flex-wrap py-2.5">
-        <div className="flex items-center gap-3 min-w-0">
-          <ProfileMark profile={profile} muted={!tracked} />
-          <div className="min-w-0">
-            <p className={`text-sm font-medium truncate ${tracked ? 'text-default' : 'text-muted'}`}>{profileName(profile)}</p>
-            <p className="text-xs text-subtle">
-              {tag}{tracked ? ` · ${count(n)} watched on it` : ''}{addons}
-            </p>
-          </div>
-        </div>
-        {actions}
-      </div>
-    );
-  };
+  const closeMenu = () => { menu.close(); setMenuFor(null); };
+  const act = (fn: () => void) => { closeMenu(); fn(); };
 
-  const summary = view
-    ? `${view.profiles.length} profile${view.profiles.length === 1 ? '' : 's'} · ${persons.length} ${persons.length === 1 ? 'person' : 'people'}`
-    : 'Which profiles belong to whom';
+  // Nothing to choose between on a login with a single profile.
+  if (!view || view.profiles.length < 2) return null;
+
   const mainPersonId = persons[0]?.id;
-  const untracked = view ? view.profiles.filter((p) => !p.ownerId) : [];
+  const m = menuFor;
+  const mOwn = m?.ownPersonId ? personById(m.ownPersonId) : undefined;
+  const mIsMain = !!mOwn && mOwn.id === mainPersonId;
+  const mTargets = m ? persons.filter((p) => p.id !== m.ownerId && p.id !== m.ownPersonId) : [];
 
   return (
     <Card padding="lg">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between gap-3 text-left"
-        aria-expanded={open}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/20 shrink-0">
-            <UsersIcon className="w-5 h-5 text-primary" />
-          </div>
-          <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-default mb-0.5">
-              Nuvio profiles{loginLabel ? <span className="text-muted font-normal"> · {loginLabel}</span> : null}
-            </h3>
-            <p className="text-sm text-muted">{summary}</p>
-          </div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold text-default">
+            Nuvio profiles{loginLabel ? <span className="text-muted font-normal"> · {loginLabel}</span> : null}
+          </h3>
+          <p className="text-xs text-muted mt-0.5">Tap a profile to choose who it belongs to</p>
         </div>
-        <ChevronDownIcon className="w-5 h-5 text-muted shrink-0 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }} />
-      </button>
+        <Link href="/guides/nuvio-profile-addons" className="text-muted hover:text-default transition-colors" title="How profiles work" aria-label="How profiles work">
+          <QuestionMarkCircleIcon className="w-5 h-5" />
+        </Link>
+      </div>
 
-      {open && (
-        <div className="mt-5">
-          {loading && !view ? (
-            <p className="text-sm text-muted py-2">Reading profiles from Nuvio…</p>
-          ) : error && !view ? (
-            <div className="flex items-center justify-between gap-3 flex-wrap py-2">
-              <p className="text-sm text-muted">{error}</p>
-              <Button variant="ghost" size="sm" onClick={load}>Try again</Button>
-            </div>
-          ) : view ? (
-            <>
-              <p className="text-sm text-muted mb-4">
-                Every profile is either its own person, or part of someone&apos;s history. Make a profile its own person when someone else watches on it, merge it into someone when it is really them, or stop tracking it - a Kids or Guest profile.
-              </p>
-
-              {view.misplaced && (
-                <div className="mb-4 rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap bg-warning-muted">
-                  <div className="flex items-start gap-2 min-w-0">
-                    <SparklesIcon className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-                    <p className="text-sm text-default">
-                      {view.misplaced.titles} title{view.misplaced.titles === 1 ? ' was' : 's were'} recorded on the wrong person by an older version.
-                    </p>
-                  </div>
-                  <Button variant="secondary" size="sm" onClick={tidy} disabled={busy}>Put it right</Button>
-                </div>
-              )}
-
-              <div className="flex flex-col gap-3">
-                {persons.map((person) => {
-                  const theirs = view.profiles.filter((p) => p.ownerId === person.id);
-                  return (
-                    <div key={person.id} className="rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3">
-                      <div className="flex items-center justify-between gap-3 flex-wrap pb-2 border-b border-white/5">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <UserAvatar userId={person.id} name={person.username} email={person.email || undefined} src={person.avatarUrl || undefined} colorIndex={person.colorIndex} size="sm" />
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-default truncate">{person.username}</p>
-                            <p className="text-xs text-muted">
-                              {count(person.movies + person.episodes)} in history{!person.isActive ? ' · turned off' : ''}
-                            </p>
-                          </div>
-                        </div>
-                        <Link href={`/users/${person.id}`} className="text-xs text-primary hover:underline">Open</Link>
-                      </div>
-                      <div className="divide-y divide-white/5">
-                        {theirs.length ? theirs.map((p) => profileRow(p, mainPersonId)) : (
-                          <p className="text-xs text-subtle py-2.5">No profile records for them right now.</p>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {untracked.length > 0 && (
-                  <div className="rounded-xl border border-dashed border-white/10 px-4 py-3">
-                    <div className="flex items-center gap-2 pb-2 border-b border-white/5">
-                      <EyeSlashIcon className="w-4 h-4 text-muted" />
-                      <p className="text-sm font-semibold text-muted">Not tracked</p>
-                    </div>
-                    <div className="divide-y divide-white/5">
-                      {untracked.map((p) => profileRow(p, mainPersonId))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
-          ) : null}
+      {view.misplaced && (
+        <div className="mt-4 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap bg-warning-muted">
+          <div className="flex items-center gap-2 min-w-0">
+            <SparklesIcon className="w-4 h-4 text-warning shrink-0" />
+            <p className="text-sm text-default">
+              {view.misplaced.titles} title{view.misplaced.titles === 1 ? ' is' : 's are'} on the wrong person from an older version.
+            </p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={tidy} disabled={busy}>Put it right</Button>
         </div>
       )}
+
+      <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+        {view.profiles.map((profile) => {
+          const hex = hexOf(profile);
+          const tracked = !!profile.ownerId;
+          const owner = personById(profile.ownerId);
+          const n = profile.titles.movies + profile.titles.episodes;
+          let caption = count(n);
+          if (profile.merged) caption = `Merged · ${caption}`;
+          else if (profile.ownPersonId && profile.index !== 1) caption = `Own person · ${caption}`;
+          return (
+            <button
+              key={profile.index}
+              type="button"
+              onClick={(e) => openMenu(profile, e)}
+              disabled={busy}
+              className="group flex flex-col items-center gap-2 rounded-2xl px-2 py-4 transition-colors hover:bg-surface-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
+            >
+              <span className="relative">
+                <span
+                  className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-semibold transition-transform group-hover:scale-105 ${tracked ? '' : 'opacity-40 grayscale'}`}
+                  style={hex
+                    ? { background: `${hex}2e`, color: hex, boxShadow: `inset 0 0 0 2px ${hex}66` }
+                    : { background: 'var(--color-surface-hover)', color: 'var(--color-text-muted)' }}
+                >
+                  {profileName(profile).trim().charAt(0).toUpperCase()}
+                </span>
+                {profile.index === 1 && (
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary text-white">
+                    Main
+                  </span>
+                )}
+                {!tracked && (
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    <EyeSlashIcon className="w-6 h-6 text-muted" />
+                  </span>
+                )}
+              </span>
+              <span className={`text-sm font-medium max-w-full truncate ${tracked ? 'text-default' : 'text-muted'}`}>{profileName(profile)}</span>
+              {tracked && owner ? (
+                <span className="inline-flex items-center gap-1.5 max-w-full rounded-full pl-0.5 pr-2 py-0.5 bg-surface-hover">
+                  <UserAvatar userId={owner.id} name={owner.username} email={owner.email || undefined} src={owner.avatarUrl || undefined} colorIndex={owner.colorIndex} size="xs" />
+                  <span className="text-[11px] text-default truncate">{owner.username}</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-surface-hover text-[11px] text-muted">Not tracked</span>
+              )}
+              {tracked && <span className="text-[11px] text-subtle">{caption}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <ContextMenu isOpen={menu.isOpen && !!m} position={menu.position} onClose={closeMenu}>
+        {m && (
+          <div className="w-[200px]">
+            <p className="px-3 pt-1 pb-2 text-xs text-muted truncate">{profileName(m)}</p>
+            {mIsMain && (
+              <p className="px-3 pb-2 text-xs text-subtle">The main profile always stays its own person.</p>
+            )}
+            {!mOwn && m.merged && (
+              <button className={MENU_ITEM} onClick={() => act(() => makeOwnPerson(m))}>
+                <ArrowUturnLeftIcon className="w-4 h-4" /> Separate {m.merged.donorUsername} again
+              </button>
+            )}
+            {!mOwn && !m.merged && (
+              <button className={MENU_ITEM} onClick={() => act(() => makeOwnPerson(m))}>
+                <UserPlusIcon className="w-4 h-4" /> Make it its own person
+              </button>
+            )}
+            {!mIsMain && mTargets.map((p) => (
+              <button key={p.id} className={MENU_ITEM} onClick={() => act(() => mergeInto(m, p.id))}>
+                <ArrowsPointingInIcon className="w-4 h-4" /> <span className="truncate">Merge into {p.username}</span>
+              </button>
+            ))}
+            {!mOwn && m.ownerId && (
+              <button className={MENU_ITEM} onClick={() => act(() => stopTracking(m))}>
+                <EyeSlashIcon className="w-4 h-4" /> Stop tracking
+              </button>
+            )}
+            {!mOwn && !m.ownerId && (
+              <button className={MENU_ITEM} onClick={() => act(() => perform(() => api.setProfileOwner(userId, m.index, 'default'), `${profileName(m)} is tracked again`))}>
+                <EyeIcon className="w-4 h-4" /> Track it again
+              </button>
+            )}
+            {(mOwn || m.ownerId) && (
+              <Link href={`/users/${mOwn?.id || m.ownerId}`} className={MENU_ITEM} onClick={closeMenu}>
+                <ArrowTopRightOnSquareIcon className="w-4 h-4" /> Open {mOwn?.username || nameOf(m.ownerId)}
+              </Link>
+            )}
+          </div>
+        )}
+      </ContextMenu>
 
       <ConfirmModal
         isOpen={!!pending}

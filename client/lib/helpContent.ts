@@ -902,6 +902,22 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Metrics',
   },
   {
+    id: 'activity-filters',
+    title: 'Filtering Activity - by person, app, profile, finished or not, and dates',
+    category: 'Watching & Discover',
+    keywords: ['activity filter', 'filter history', 'filter by person', 'filter by profile', 'only movies', 'only shows', 'date range', 'unfinished', 'stopped part-way', 'share activity link', 'watched on'],
+    answer: 'Activity has a row of filters under the search box: who watched, which app it was watched on (Stremio, Nuvio, AIOStreams, imported or scrobbled), which Nuvio profile, movies or shows, finished or stopped part-way, and when - today, the last 7 or 30 days, this year, or dates you pick.',
+    details: [
+      'Each filter only offers what your history actually holds, so an app or profile nobody has used never appears.',
+      'Filters are remembered on each device, and they are part of the page address - press Copy link to share exactly what you are looking at, or bookmark it.',
+      'Finished means watched to the end; stopped part-way means started but not finished. Older records that never said either way are left out of both, and still show when that filter is off.',
+      'Clear puts every filter back at once.',
+    ],
+    related: ['watch-history-days', 'nuvio-profile-addons', 'aiostreams-watch-history'],
+    href: '/activity',
+    linkLabel: 'Open Activity',
+  },
+  {
     id: 'not-interested-feedback',
     title: '"Not interested" feedback on a title',
     category: 'Watching & Discover',

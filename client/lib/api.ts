@@ -4413,7 +4413,7 @@ export interface MetricsData {
   /** True when the feed was capped and older history can still be asked for. */
   activityTruncated?: boolean;
   recentActivity?: Array<{
-    user: { id: string; username: string; email?: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean };
+    user: { id: string; username: string; email?: string; colorIndex: number; avatarUrl?: string | null; useGravatar?: boolean; providerType?: 'stremio' | 'nuvio' };
     item: { id: string; name: string; type: string; poster?: string; season?: number | null; episode?: number | null };
     videoId: string | null;
     profileLabel?: string | null;
