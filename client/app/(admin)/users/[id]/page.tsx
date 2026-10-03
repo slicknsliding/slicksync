@@ -17,6 +17,7 @@ import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
+import { WatchStateRow } from '@/components/user/WatchStateRow';
 import {
   ArrowLeftIcon,
   ArrowPathIcon,
@@ -1534,6 +1535,12 @@ export default function UserDetailPage() {
                   </div>
 
                 </div>
+
+                <div className="border-t" style={{ borderColor: 'var(--color-surface-border)' }} />
+
+                {/* AIOStreams watch history - the Watch State exchange.
+                    See server/utils/watchState.js. */}
+                <WatchStateRow userId={user.id} />
                 </div>)}
 
               </Card>

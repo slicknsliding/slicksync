@@ -809,6 +809,109 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // --- Watch State with AIOStreams (utils/watchState.js) -------------------
+  //
+  // One switch per person: their consent for their watch history to be read
+  // by, and written from, an AIOStreams configuration. The link it produces
+  // goes into AIOStreams by hand (Addons -> add by URL). AIOStreams then names
+  // each of its household profiles on every request, and each profile is
+  // linked here to the SlickSync user it really is.
+
+  async function watchStateBase(req, accountId) {
+    let base = (process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '')
+    if (!base) {
+      try {
+        const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+        let cfg = acct?.sync
+        if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+        base = ((cfg && (cfg.publicBaseUrl || cfg.observedBaseUrl)) || '').trim().replace(/\/+$/, '')
+      } catch { /* falls back to the request below */ }
+    }
+    if (!base) {
+      const reqBase = `${req.protocol}://${req.get('host')}`
+      if (!/^https?:\/\/(localhost|127\.|\[?::1)/i.test(reqBase)) base = reqBase
+    }
+    return base
+  }
+
+  async function watchStateView(req, accountId, user) {
+    const { readViewerMap } = require('../utils/watchState')
+    const base = await watchStateBase(req, accountId)
+    const map = readViewerMap(user)
+    const people = await prisma.user.findMany({ where: { accountId, isActive: true }, select: { id: true, username: true, watchStateEnabled: true } })
+    const byId = new Map(people.map((p) => [p.id, p]))
+    return {
+      enabled: !!user.watchStateEnabled,
+      manifestUrl: user.watchStateEnabled && user.traxToken && base ? `${base}/trax/${user.traxToken}/aio/manifest.json` : null,
+      baseKnown: !!base,
+      // Every AIOStreams profile seen so far, and who it is linked to. An
+      // unlinked one is refused until someone picks who it is.
+      viewers: Object.entries(map).map(([viewer, userId]) => ({
+        viewer,
+        userId: userId || null,
+        username: userId ? byId.get(userId)?.username || null : null,
+        userEnabled: userId ? !!byId.get(userId)?.watchStateEnabled : null,
+      })),
+      people: people.map((p) => ({ id: p.id, username: p.username, enabled: !!p.watchStateEnabled })),
+    }
+  }
+
+  router.get('/:id/watch-state', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      res.json(await watchStateView(req, accountId, user))
+    } catch (error) {
+      console.error('Error reading Watch State:', error)
+      res.status(500).json({ error: 'Failed to read Watch State' })
+    }
+  })
+
+  router.post('/:id/watch-state', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      const enabled = !!req.body?.enabled
+      // Reuses the SlickTrax token as the credential, made on first need and
+      // then kept stable so a link already pasted into AIOStreams keeps working.
+      const traxToken = user.traxToken || (enabled ? require('crypto').randomBytes(24).toString('hex') : null)
+      const updated = await prisma.user.update({ where: { id: user.id }, data: { watchStateEnabled: enabled, traxToken } })
+      res.json(await watchStateView(req, accountId, updated))
+    } catch (error) {
+      console.error('Error toggling Watch State:', error)
+      res.status(500).json({ error: 'Failed to update Watch State' })
+    }
+  })
+
+  // Link one AIOStreams profile to a SlickSync user, or unlink it (null).
+  router.put('/:id/watch-state/viewers', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      if (!accountId) return res.status(401).json({ error: 'Unauthorized' })
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      const { readViewerMap, viewerSlug } = require('../utils/watchState')
+      const viewer = viewerSlug(req.body?.viewer)
+      if (!viewer) return res.status(400).json({ error: 'viewer is required' })
+      const target = req.body?.userId || null
+      if (target) {
+        const exists = await prisma.user.findFirst({ where: { id: target, accountId }, select: { id: true } })
+        if (!exists) return res.status(400).json({ error: 'That user is not in this account' })
+      }
+      const map = readViewerMap(user)
+      map[viewer] = target
+      const updated = await prisma.user.update({ where: { id: user.id }, data: { watchStateViewers: JSON.stringify(map) } })
+      res.json(await watchStateView(req, accountId, updated))
+    } catch (error) {
+      console.error('Error linking a Watch State viewer:', error)
+      res.status(500).json({ error: 'Failed to link that profile' })
+    }
+  })
+
   // GET /users/:id/export-history.csv - Letterboxd-import-compatible CSV
   // (Title,Year,imdbID,WatchedDate,Rating10 - the exact column names
   // Letterboxd's own importer accepts, confirmed against
@@ -5172,6 +5275,8 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const deletedEpisodes = await prisma.episodeWatchHistory.deleteMany({ where: whereClause })
       const deletedActivity = await prisma.watchActivity.deleteMany({ where: whereClause })
       const deletedSnapshots = await prisma.watchSnapshot.deleteMany({ where: whereClause })
+      // An AIOStreams viewing still in progress would otherwise land in the wiped history.
+      await prisma.watchStateCursor.deleteMany({ where: whereClause })
 
       res.json({
         message: 'History cleared successfully',

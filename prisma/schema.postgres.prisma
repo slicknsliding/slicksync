@@ -58,6 +58,15 @@ model User {
   // it puts non-playable rows in a list people open expecting streams, which
   // is a trade not everyone wants.
   traxToken          String?  @unique
+  // Watch State exchange with AIOStreams (routes/traxAddon.js, /aio). Off by
+  // default: turning it on is this person's consent for their watch history
+  // to be read by, and written from, an AIOStreams configuration holding the
+  // link. The link reuses traxToken as its credential.
+  watchStateEnabled  Boolean  @default(false)
+  // JSON { viewerId: userId | null }. AIOStreams names each household profile
+  // on every request; this records which SlickSync user each one is. null
+  // means seen but not linked to anyone, so it is refused, never guessed.
+  watchStateViewers  String?
   // Account Guard: JSON state for external-writer detection - per-provider
   // fingerprints of what SlickSync last wrote to this user's addon
   // collection, plus any standing "changed outside SlickSync" alarm with its
@@ -698,6 +707,42 @@ model WatchTogetherShow {
 
   @@unique([accountId, showId])
   @@map("watch_together_shows")
+}
+
+// One row per Watch State event already applied, so a delivery AIOStreams
+// retries (or a client that reports the same stop twice) changes nothing the
+// second time. Pruned after the window AIOStreams keeps retrying for.
+model WatchStateEvent {
+  id        String   @id @default(cuid())
+  accountId String   @default("default")
+  userId    String
+  eventId   String
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, userId, eventId])
+  @@index([createdAt])
+  @@map("watch_state_events")
+}
+
+// The playback in progress for one person and one video, between the start
+// AIOStreams reports and the pause or stop that ends a stretch of watching.
+// Watch time is the distance the position moved across each stretch, capped
+// by the clock time between the two reports, so a seek forward never counts
+// as time spent watching.
+model WatchStateCursor {
+  id                 String    @id @default(cuid())
+  accountId          String    @default("default")
+  userId             String
+  videoId            String
+  itemId             String
+  itemType           String
+  startPositionMs    Int?
+  startAt            DateTime?
+  accumulatedSeconds Int       @default(0)
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([accountId, userId, videoId])
+  @@map("watch_state_cursors")
 }
 
 model DismissedContinueWatching {

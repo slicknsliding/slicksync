@@ -191,6 +191,88 @@ module.exports = ({ prisma }) => {
     }
   })
 
+  // --- Watch State, for AIOStreams (utils/watchState.js) -------------------
+  //
+  // A separate link from the one sync installs into Stremio and Nuvio: this
+  // one declares only the `watch_state` resource and no catalogs, and it is
+  // added by hand to an AIOStreams configuration. Keeping it apart means
+  // Stremio and Nuvio never see a resource they do not understand, and an
+  // AIOStreams household does not get SlickTrax's rows twice over.
+  //
+  // It answers only while the link owner's own Watch State switch is on;
+  // the token is the same credential the main link uses.
+  async function resolveWatchStateOwner(token) {
+    if (!token || typeof token !== 'string' || token.length < 16) return null
+    return prisma.user.findFirst({ where: { traxToken: token, watchStateEnabled: true } })
+  }
+
+  // Never cached: these answers change with every viewing, and a shared cache
+  // in front would hand one household's history to whoever asked next.
+  function noStore(res) {
+    res.setHeader('Cache-Control', 'no-store')
+  }
+
+  router.get('/:token/aio/manifest.json', async (req, res) => {
+    noStore(res)
+    try {
+      const owner = await resolveWatchStateOwner(req.params.token)
+      if (!owner) return res.status(404).json({ error: 'Not found' })
+      const { manifestBlock } = require('../utils/watchState')
+      res.json({
+        id: `vip.slicksync.trax.watchstate.${owner.id}`,
+        version: TRAX_MANIFEST_VERSION,
+        name: 'SlickTrax watch history',
+        description: `Keeps ${owner.username || 'this household'}'s watch history in SlickSync in step with AIOStreams - what you watch here is recorded there, and what you watched anywhere else shows up here.`,
+        logo: 'https://slicksync.vip/android-chrome-192x192.png',
+        types: ['movie', 'series'],
+        idPrefixes: ['tt'],
+        catalogs: [],
+        resources: [{ name: 'watch_state', types: ['movie', 'series'], idPrefixes: ['tt'] }],
+        watchState: manifestBlock(),
+        behaviorHints: { configurable: false, configurationRequired: false },
+      })
+    } catch (e) {
+      console.error('[TraxAddon] watch-state manifest failed:', e?.message)
+      res.status(500).json({ error: 'Internal error' })
+    }
+  })
+
+  router.post('/:token/aio/watch_state/push/:type/:id.json', async (req, res) => {
+    noStore(res)
+    try {
+      const owner = await resolveWatchStateOwner(req.params.token)
+      // Off means nothing is recorded. A 401/403 would make AIOStreams hold
+      // the backlog and deliver it once this is turned back on; any other 4xx
+      // has it drop the event, which is what off promises.
+      if (!owner) return res.status(410).json({ error: 'Watch State is off for this link' })
+      const { resolveViewer, handlePush } = require('../utils/watchState')
+      const user = await resolveViewer(prisma, owner, req.query.viewer)
+      // An unknown profile is answered 404, which drops that event without a
+      // retry - the protocol's prescribed answer, and never a wrong attribution.
+      if (!user) return res.status(404).json({ error: 'Unknown viewer' })
+      const status = await handlePush(prisma, user, req.params.type, req.params.id, req.body)
+      res.status(status).json({ ok: status < 300 })
+    } catch (e) {
+      console.error('[TraxAddon] watch-state push failed:', e?.message)
+      res.status(503).json({ error: 'Try again later' })
+    }
+  })
+
+  router.get('/:token/aio/watch_state/pull.json', async (req, res) => {
+    noStore(res)
+    try {
+      const owner = await resolveWatchStateOwner(req.params.token)
+      if (!owner) return res.status(410).json({ error: 'Watch State is off for this link' })
+      const { resolveViewer, buildPull } = require('../utils/watchState')
+      const user = await resolveViewer(prisma, owner, req.query.viewer)
+      if (!user) return res.status(404).json({ error: 'Unknown viewer' })
+      res.json(await buildPull(prisma, user, typeof req.query.since === 'string' ? req.query.since : null))
+    } catch (e) {
+      console.error('[TraxAddon] watch-state pull failed:', e?.message)
+      res.status(503).json({ error: 'Try again later' })
+    }
+  })
+
   router.get('/:token/catalog/:type/:id.json', async (req, res) => {
     try {
       const user = await resolveUser(req.params.token)

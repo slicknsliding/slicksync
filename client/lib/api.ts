@@ -4,6 +4,15 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 // One entry in a cast member's filmography, as /api/discover/person returns it.
+/** A person's Watch State link with AIOStreams, and the household profiles it has seen. */
+export interface WatchStateView {
+  enabled: boolean;
+  manifestUrl: string | null;
+  baseKnown: boolean;
+  viewers: Array<{ viewer: string; userId: string | null; username: string | null; userEnabled: boolean | null }>;
+  people: Array<{ id: string; username: string; enabled: boolean }>;
+}
+
 export interface PersonCredit {
   tmdbId: number;
   mediaType: 'movie' | 'tv';
@@ -522,6 +531,25 @@ class ApiClient {
 
   async disconnectSimkl(id: string) {
     return this.fetch(`/users/${id}/simkl/disconnect`, { method: 'POST' });
+  }
+
+  // Watch State with AIOStreams - see server/utils/watchState.js.
+  async getWatchState(id: string) {
+    return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state`);
+  }
+
+  async setWatchState(id: string, enabled: boolean) {
+    return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state`, {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
+  async linkWatchStateViewer(id: string, viewer: string, userId: string | null) {
+    return this.fetch<WatchStateView>(`/users/${encodeURIComponent(id)}/watch-state/viewers`, {
+      method: 'PUT',
+      body: JSON.stringify({ viewer, userId }),
+    });
   }
 
   async getUserWatchTime(id: string, period: 'day' | 'week' | 'month' | 'year' = 'week') {

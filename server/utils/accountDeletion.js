@@ -36,6 +36,8 @@ async function deleteAccountCascade(prisma, accountId) {
     prisma.watchActivity.deleteMany({ where }),
     prisma.watchSession.deleteMany({ where }),
     prisma.watchSnapshot.deleteMany({ where }),
+    prisma.watchStateCursor.deleteMany({ where }),
+    prisma.watchStateEvent.deleteMany({ where }),
     prisma.watchlistItem.deleteMany({ where }),
     // Invitation already cascades from AppAccount, but clearing it
     // explicitly here too keeps this list self-contained/order-independent.
@@ -100,6 +102,8 @@ async function deleteUserCascade(prisma, userId) {
     prisma.userSyncGuardState.deleteMany({ where }),
     prisma.watchSession.deleteMany({ where }),
     prisma.dismissedContinueWatching.deleteMany({ where }),
+    prisma.watchStateCursor.deleteMany({ where }),
+    prisma.watchStateEvent.deleteMany({ where }),
     prisma.proxyUserIpAffinity.deleteMany({ where }),
     prisma.userProviderCredential.deleteMany({ where }),
     prisma.user.delete({ where: { id: userId } }),
