@@ -49,14 +49,20 @@ const MEANINGFUL_PROGRESS_SECONDS = 60
 // (real position but well short), or null (no position/runtime data to judge).
 // Unlike duration-crediting, this is safe to read at any single point - a
 // position near the end IS "finished" regardless of when it got there, so no
-// first-observation caveat applies here. 90% threshold accounts for end
-// credits / a few unwatched trailing seconds.
+// first-observation caveat applies here. 90% by default accounts for end
+// credits / a few unwatched trailing seconds; each account can move it
+// (Settings, see utils/watchSettings.js) for shows with long credits.
 const COMPLETE_RATIO = 0.9
-function computeCompleted(state) {
+function computeCompleted(state, ratio = COMPLETE_RATIO) {
   const pos = Number(state?.timeOffset ?? NaN)
   const dur = Number(state?.duration ?? NaN)
   if (Number.isNaN(pos) || Number.isNaN(dur) || dur <= 0 || pos <= 0) return null
-  return pos / dur >= COMPLETE_RATIO
+  return pos / dur >= ratio
+}
+
+async function finishedRatioFor(prisma, accountId) {
+  const { getWatchSettings } = require('./watchSettings')
+  return (await getWatchSettings(prisma, accountId)).finishedPercent / 100
 }
 
 /**
@@ -305,7 +311,7 @@ async function recordEpisodeWatch(prisma, accountId, userId, item, users = []) {
     }
 
     // Real completion - once true, stays true (same as recordMovieWatch).
-    const computedCompleted = computeCompleted(item.state)
+    const computedCompleted = computeCompleted(item.state, await finishedRatioFor(prisma, accountId))
     const completed = existing?.completed === true ? true : computedCompleted
 
     // Watch-ahead protection: fires on the FIRST record of this episode for
@@ -479,7 +485,7 @@ async function recordMovieWatch(prisma, accountId, userId, item, users = []) {
 
     // Real completion - once true, stays true (finishing can't un-finish; a
     // later partial re-watch of the same title mustn't flip it back).
-    const computedCompleted = computeCompleted(item.state)
+    const computedCompleted = computeCompleted(item.state, await finishedRatioFor(prisma, accountId))
     const completed = existing?.completed === true ? true : computedCompleted
 
     // See recordEpisodeWatch's matching comment - only look up if not
@@ -605,7 +611,7 @@ async function detectMovieRewatch(prisma, accountId, userId, item) {
         where: { accountId_userId_itemId: { accountId: accountId || 'default', userId, itemId } },
         data: { rewatchArmed: true }
       })
-    } else if (row.rewatchArmed && ratio >= COMPLETE_RATIO) {
+    } else if (row.rewatchArmed && ratio >= await finishedRatioFor(prisma, accountId)) {
       await prisma.movieWatchHistory.update({
         where: { accountId_userId_itemId: { accountId: accountId || 'default', userId, itemId } },
         data: { rewatchArmed: false, rewatchCount: { increment: 1 } }

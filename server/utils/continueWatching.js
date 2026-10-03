@@ -426,11 +426,13 @@ async function dismissContinueWatching(prisma, accountId, userId, showId) {
 // dismissal table - "I am done with this show" is the same statement in
 // both places, and a show buried here should equally never resurface in
 // Continue Watching if it somehow became recent again.
+// The default; each account sets its own in Settings (utils/watchSettings.js).
 const ABANDONED_AFTER_DAYS = 45
 
 async function getAbandonedShows(prisma, accountId, limit = 20) {
   const accountIdValue = accountId || 'default'
-  const cutoff = new Date(Date.now() - ABANDONED_AFTER_DAYS * 24 * 60 * 60 * 1000)
+  const { unfinishedAfterDays } = await require('./watchSettings').getWatchSettings(prisma, accountIdValue)
+  const cutoff = new Date(Date.now() - unfinishedAfterDays * 24 * 60 * 60 * 1000)
 
   // Every episode row for this account, newest first, so the first row seen
   // per (user, show) is that pairing's most recent watch - same reduce-in-JS

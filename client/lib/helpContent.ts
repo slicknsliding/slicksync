@@ -896,8 +896,12 @@ export const HELP_ENTRIES: HelpEntry[] = [
     id: 'rewatch-completion',
     title: 'Rewatch and completion tracking',
     category: 'Watching & Discover',
-    keywords: ['rewatch', 'completion tracking', 'finished watching', 'started and dropped'],
+    keywords: ['rewatch', 'completion tracking', 'finished watching', 'started and dropped', 'finished percent', 'end credits', 'counts as watched', 'unfinished shelf'],
     answer: 'SlickTrax distinguishes a true completion (finished) from something started-and-dropped, and separately tracks rewatches - both feed into Metrics and Year in Review automatically; there\'s nothing to turn on.',
+    details: [
+      'Something counts as finished once 90% of it has played. If the shows you watch have long end credits, lower that under Settings -> General -> Counts as finished at.',
+      'A show started and then left untouched for 45 days is offered on the Unfinished shelf in Activity -> Graveyard. Settings -> General -> Unfinished shelf after changes how long that is.',
+    ],
     href: '/metrics',
     linkLabel: 'Open Metrics',
   },
@@ -1654,7 +1658,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     title: 'The Graveyard - shows started, never finished, and buried',
     category: 'Watching & Discover',
     keywords: ['dropped shows', 'abandoned', 'unfinished', 'never finished', 'gave up on', 'stopped watching', 'graveyard', 'bury show', 'wipe show', 'delete watch history', 'erase history'],
-    answer: 'Activity -> Graveyard. Shows started and then left alone for over 45 days sit on the Unfinished shelf, with how far you got. Bury one and it moves to the graveyard below - where every buried show is listed, can be dug back up, or wiped permanently.',
+    answer: 'Activity -> Graveyard. Shows started and then left alone for over 45 days (change it under Settings -> General -> Unfinished shelf after) sit on the Unfinished shelf, with how far you got. Bury one and it moves to the graveyard below - where every buried show is listed, can be dug back up, or wiped permanently.',
     steps: [
       'Activity -> Graveyard.',
       'Pick a show back up, or press Bury to lay it to rest.',

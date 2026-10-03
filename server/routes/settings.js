@@ -1360,6 +1360,40 @@ module.exports = ({ prisma, INSTANCE_TYPE, getAccountDek, getDecryptedManifestUr
   // AppAccount.sync.themePref — no schema migration needed. The shape is
   // deliberately loose (just JSON) so client-side additions (new fonts, extra
   // color overrides) don't require a server update.
+  // How viewing is judged on this account - see utils/watchSettings.js.
+  router.get('/watch-tracking', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ message: 'Unauthorized' })
+      const { getWatchSettings, DEFAULTS, LIMITS } = require('../utils/watchSettings')
+      return res.json({ ...(await getWatchSettings(prisma, accountId)), defaults: DEFAULTS, limits: LIMITS })
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to read watch tracking settings' })
+    }
+  })
+
+  router.put('/watch-tracking', async (req, res) => {
+    try {
+      const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID
+      if (!accountId) return res.status(401).json({ message: 'Unauthorized' })
+      if (INSTANCE_TYPE !== 'public') await ensureDefaultAccount()
+      const { normalize, clearWatchSettings, getWatchSettings, DEFAULTS, LIMITS } = require('../utils/watchSettings')
+      const acc = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+      let syncCfg = acc?.sync
+      if (typeof syncCfg === 'string') { try { syncCfg = JSON.parse(syncCfg) } catch { syncCfg = null } }
+      if (!syncCfg || typeof syncCfg !== 'object') syncCfg = {}
+      const watchTracking = normalize({ ...(syncCfg.watchTracking || {}), ...(req.body || {}) })
+      const nextCfg = { ...syncCfg, watchTracking }
+      try { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: nextCfg } }) }
+      catch { await prisma.appAccount.update({ where: { id: accountId }, data: { sync: JSON.stringify(nextCfg) } }) }
+      clearWatchSettings(accountId)
+      try { require('../utils/continueWatching').invalidateContinueWatching(accountId) } catch { /* optional */ }
+      return res.json({ ...(await getWatchSettings(prisma, accountId)), defaults: DEFAULTS, limits: LIMITS })
+    } catch (e) {
+      return res.status(500).json({ message: 'Failed to save watch tracking settings' })
+    }
+  })
+
   router.get('/theme-pref', async (req, res) => {
     try {
       const accountId = INSTANCE_TYPE === 'public' ? req.appAccountId : DEFAULT_ACCOUNT_ID

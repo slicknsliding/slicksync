@@ -4,6 +4,14 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 // One entry in a cast member's filmography, as /api/discover/person returns it.
+/** Where "finished" starts and when a started show counts as unfinished. */
+export interface WatchTrackingSettings {
+  finishedPercent: number;
+  unfinishedAfterDays: number;
+  defaults: { finishedPercent: number; unfinishedAfterDays: number };
+  limits: { finishedPercent: [number, number]; unfinishedAfterDays: [number, number] };
+}
+
 /** Whose viewing each profile on one Nuvio account is - see server/utils/nuvioProfiles.js. */
 export interface ProfilesView {
   persons: Array<{
@@ -552,6 +560,15 @@ class ApiClient {
 
   async disconnectSimkl(id: string) {
     return this.fetch(`/users/${id}/simkl/disconnect`, { method: 'POST' });
+  }
+
+  // How viewing is judged - see server/utils/watchSettings.js.
+  async getWatchTrackingSettings() {
+    return this.fetch<WatchTrackingSettings>('/settings/watch-tracking');
+  }
+
+  async saveWatchTrackingSettings(patch: Partial<Pick<WatchTrackingSettings, 'finishedPercent' | 'unfinishedAfterDays'>>) {
+    return this.fetch<WatchTrackingSettings>('/settings/watch-tracking', { method: 'PUT', body: JSON.stringify(patch) });
   }
 
   // Profiles on a Nuvio account - see server/utils/nuvioProfiles.js.

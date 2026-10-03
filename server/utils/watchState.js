@@ -554,7 +554,9 @@ async function buildPull(prisma, user, since) {
   const out = { version: null, items: [] }
 
   // In progress: positions SlickSync already knows from the person's other
-  // apps. Bounded and newest first, as the protocol asks.
+  // apps. Bounded and newest first, as the protocol asks. Past the account's
+  // finished line it is watched, not in progress.
+  const finishedRatio = (await require('./watchSettings').getWatchSettings(prisma, accountId)).finishedPercent / 100
   try {
     const sessions = await prisma.watchSession.findMany({
       where: { accountId, userId: user.id, lastPosition: { gt: 0 }, totalDuration: { gt: 0 } },
@@ -563,7 +565,7 @@ async function buildPull(prisma, user, since) {
     })
     for (const s of sessions) {
       const ratio = s.lastPosition / s.totalDuration
-      if (!(ratio > MIN_PROGRESS_RATIO && ratio < 0.9)) continue
+      if (!(ratio > MIN_PROGRESS_RATIO && ratio < finishedRatio)) continue
       const isSeries = s.itemType === 'series'
       if (isSeries && !s.videoId) continue
       if (!isPublicId(s.itemId)) continue
