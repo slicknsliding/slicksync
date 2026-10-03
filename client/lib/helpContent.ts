@@ -906,6 +906,21 @@ export const HELP_ENTRIES: HelpEntry[] = [
     linkLabel: 'Open Metrics',
   },
   {
+    id: 'household-numbers',
+    title: 'Leaving a test or guest person out of household numbers',
+    category: 'Users & Groups',
+    keywords: ['exclude from stats', 'leave out', 'test user', 'guest user', 'top viewers', 'household totals', 'wrapped', 'leaderboard'],
+    answer: 'Open the person and switch on "Leave out of household numbers". Their viewing stays on their own page, but it stops counting in household totals, the charts, Top Viewers and Wrapped.',
+    details: [
+      'It is off for everyone unless you turn it on.',
+      'Nothing is deleted - switch it off again and they count in everything once more, including what they watched in the meantime.',
+      'Their viewing still appears in Activity, which is a record of what was watched rather than a total.',
+    ],
+    related: ['nuvio-profile-addons', 'activity-filters'],
+    href: '/users',
+    linkLabel: 'Open Users',
+  },
+  {
     id: 'activity-filters',
     title: 'Filtering Activity - by person, app, profile, finished or not, and dates',
     category: 'Watching & Discover',

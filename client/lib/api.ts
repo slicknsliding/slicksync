@@ -562,6 +562,10 @@ class ApiClient {
     return this.fetch(`/users/${id}/simkl/disconnect`, { method: 'POST' });
   }
 
+  async setHouseholdStats(id: string, excluded: boolean) {
+    return this.fetch<{ excludeFromHouseholdStats: boolean }>(`/users/${encodeURIComponent(id)}/household-stats`, { method: 'PUT', body: JSON.stringify({ excluded }) });
+  }
+
   // How viewing is judged - see server/utils/watchSettings.js.
   async getWatchTrackingSettings() {
     return this.fetch<WatchTrackingSettings>('/settings/watch-tracking');
@@ -3147,6 +3151,8 @@ export interface User {
   providerType?: 'stremio' | 'nuvio';
   /** Which Nuvio profile's addon list this user manages (1 is the primary). */
   nuvioProfileId?: number;
+  /** Left out of household numbers - totals, Top Viewers, Wrapped. */
+  excludeFromHouseholdStats?: boolean;
   /** SlickTrax Addon - per-user Stremio addon toggle + its URL token. */
   traxAddonEnabled?: boolean;
   /** In-player actions in the SlickTrax addon (opt-in per user). */

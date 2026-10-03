@@ -69,6 +69,8 @@ model User {
   // default: turning it on is this person's consent for their watch history
   // to be read by, and written from, an AIOStreams configuration holding the
   // link. The link reuses traxToken as its credential.
+  // Left out of household numbers (totals, Top Viewers, Wrapped) - a test or guest person.
+  excludeFromHouseholdStats Boolean @default(false)
   watchStateEnabled  Boolean  @default(false)
   // JSON { viewerId: userId | null }. AIOStreams names each household profile
   // on every request; this records which SlickSync user each one is. null

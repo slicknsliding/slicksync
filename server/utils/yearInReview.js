@@ -49,6 +49,15 @@ async function buildYearInReview(prisma, accountId, year, users = []) {
     }),
   ])
 
+  // People left out of household numbers (a test or guest) are not part of
+  // the household's year.
+  const leftOutRows = await prisma.user.findMany({ where: { accountId: accountIdValue, excludeFromHouseholdStats: true }, select: { id: true } }).catch(() => [])
+  const leftOut = new Set(leftOutRows.map((u) => u.id))
+  const keep = (r) => !leftOut.has(r.userId)
+  activity.splice(0, activity.length, ...activity.filter(keep))
+  movies.splice(0, movies.length, ...movies.filter(keep))
+  episodes.splice(0, episodes.length, ...episodes.filter(keep))
+
   const userMap = new Map(users.map((u) => [u.id, u]))
   const displayName = (id) => { const u = userMap.get(id); return u ? (u.username || u.email || id) : id }
 

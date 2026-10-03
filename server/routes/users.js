@@ -809,6 +809,23 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     }
   })
 
+  // Leave a person out of household numbers - a test or guest person. Their
+  // own page keeps everything; totals, Top Viewers and Wrapped skip them.
+  router.put('/:id/household-stats', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId }, select: { id: true } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      const excluded = req.body?.excluded === true
+      await prisma.user.update({ where: { id: user.id }, data: { excludeFromHouseholdStats: excluded } })
+      try { require('../utils/metricsCache').clearMetricsForAccount(accountId) } catch { /* optional */ }
+      res.json({ excludeFromHouseholdStats: excluded })
+    } catch (error) {
+      console.error('Error changing household stats:', error)
+      res.status(500).json({ error: 'Failed to change that' })
+    }
+  })
+
   // --- Watch State with AIOStreams (utils/watchState.js) -------------------
   //
   // One switch per person: their consent for their watch history to be read
@@ -2689,6 +2706,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         // from the manifest URL the toggle returns - it is needed here so a
         // page reload can still display/copy that URL.
         traxAddonEnabled: !!user.traxAddonEnabled,
+        excludeFromHouseholdStats: !!user.excludeFromHouseholdStats,
         traxToken: user.traxToken || null,
         // Whether SYNC can actually install it, and the url it would use.
         // The page used to build this url from the browser's own address,

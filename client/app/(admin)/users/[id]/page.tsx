@@ -1372,6 +1372,35 @@ export default function UserDetailPage() {
               </PageSection>
             )}
 
+            {/* Household numbers: a test or guest person can be left out of
+                totals, Top Viewers and Wrapped without losing their own page. */}
+            <PageSection className="mb-6">
+              <Card padding="lg">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold text-default">Leave out of household numbers</h3>
+                    <p className="text-sm text-muted">
+                      For a test or guest person: their viewing stays on this page, but stops counting in household totals, Top Viewers and Wrapped.
+                    </p>
+                  </div>
+                  <ToggleSwitch
+                    checked={!!user.excludeFromHouseholdStats}
+                    title="Leave out of household numbers"
+                    onChange={async () => {
+                      const v = !user.excludeFromHouseholdStats;
+                      try {
+                        await api.setHouseholdStats(user.id, v);
+                        setUser((prev: typeof user) => (prev ? { ...prev, excludeFromHouseholdStats: v } : prev));
+                        toast.success(v ? `${user.username} is left out of household numbers` : `${user.username} counts in household numbers again`);
+                      } catch (err: any) {
+                        toast.error(err?.message || 'Could not change that');
+                      }
+                    }}
+                  />
+                </div>
+              </Card>
+            </PageSection>
+
             {/* Watch-tracking integrations. Trakt used to sit here as a
                 second row doing a one-time OAuth pull; Trakt now gates
                 creating an API application behind VIP, so that route needed

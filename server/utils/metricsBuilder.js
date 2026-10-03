@@ -407,7 +407,8 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
       avatarUrl: true,
       useGravatar: true,
       nuvioProfileId: true,
-      providerType: true
+      providerType: true,
+      excludeFromHouseholdStats: true
     },
     orderBy: { createdAt: 'asc' }
   })
@@ -533,6 +534,10 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
     // watch was double-counted here specifically.
     const { findSharedEmailUserIds, dedupWatchActivityBySharedEmail } = require('./watchDedup')
     watchActivities = dedupWatchActivityBySharedEmail(watchActivities, findSharedEmailUserIds(allUsers))
+    // People left out of household numbers (a test or guest) count toward
+    // nothing built from here: totals, the charts and Top Viewers.
+    const leftOut = new Set(allUsers.filter((u) => u.excludeFromHouseholdStats).map((u) => u.id))
+    if (leftOut.size) watchActivities = watchActivities.filter((a) => !leftOut.has(a.userId))
 
     hasWatchActivityData = watchActivities.length > 0
     if (hasWatchActivityData) {
