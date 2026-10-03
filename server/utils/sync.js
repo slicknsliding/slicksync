@@ -161,12 +161,18 @@ async function appendTraxAddon(user, addons, prisma) {
       console.warn(`[SlickTrax] ${user.username || user.id}: enabled, but this instance has no public address configured, so it cannot be installed. Set it in Settings -> Sync (or the PUBLIC_APP_URL env var).`)
       return addons
     }
-    const { buildTraxManifest, getListsForAccount } = require('../routes/traxAddon')
+    const { buildTraxManifest, getListsForAccount, traxPathVersion } = require('../routes/traxAddon')
     const lists = await getListsForAccount(prisma, user.accountId)
-    const manifest = buildTraxManifest(user, lists)
+    // The person's own rows. Read here rather than trusted from `user`, which
+    // arrives from many different selects and may not carry the column.
+    const rowsUser = user.traxRowsJson !== undefined
+      ? user
+      : { ...user, traxRowsJson: (await prisma.user.findUnique({ where: { id: user.id }, select: { traxRowsJson: true } }))?.traxRowsJson ?? null }
+    const manifest = buildTraxManifest(rowsUser, lists)
     // Version segment in the path = cache bust: Nuvio never refetches a
-    // manifest while the URL is unchanged (see TRAX_MANIFEST_VERSION).
-    const transportUrl = `${base}/trax/${user.traxToken}/v${manifest.version}/manifest.json`
+    // manifest while the URL is unchanged (see TRAX_MANIFEST_VERSION), and a
+    // change to the person's rows changes it too (traxPathVersion).
+    const transportUrl = `${base}/trax/${user.traxToken}/v${traxPathVersion(rowsUser)}/manifest.json`
 
     // Every OTHER url carrying this user's trax token is a previous version
     // of this same addon and has to go. The version segment is part of the

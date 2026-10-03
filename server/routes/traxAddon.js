@@ -69,13 +69,25 @@ function requestBase(req) {
   return host ? `${String(proto).split(',')[0]}://${host}` : null
 }
 
-/**
- * The manifest object, exported separately because sync injects the SAME
- * object inline into the account's addon collection - built in one place so
- * the served manifest and the synced copy can never drift apart.
- */
-function buildTraxManifest(user, lists) {
-  const catalogs = [
+// --- Each person's rows ---------------------------------------------------
+//
+// A person can be given only some of the rows, in an order of their own:
+// the kids get Continue Watching and "Kids picks", not "Horror Night". Rows
+// are named by key - 'continue', 'watchlist', 'list:<catalog id>' - and
+// User.traxRowsJson holds { order: [key], hidden: [key] }. A row nobody has
+// placed yet (a catalog made later) appears after the placed ones, shown.
+
+function parseTraxRows(json) {
+  let raw = null
+  try { raw = json ? JSON.parse(json) : null } catch { raw = null }
+  const order = Array.isArray(raw?.order) ? raw.order.filter((k) => typeof k === 'string') : []
+  const hidden = Array.isArray(raw?.hidden) ? raw.hidden.filter((k) => typeof k === 'string') : []
+  return { order, hidden }
+}
+
+/** Every row this account can offer, in the default order, with its catalog entries. */
+function traxRowCatalog(lists) {
+  const rows = [
     // Continue Watching first - it's the row people open the app for. ONE
     // declared entry, not one per type: the row mixes movies and series
     // (each meta carries its own real type, which is what Stremio uses for
@@ -90,17 +102,65 @@ function buildTraxManifest(user, lists) {
     // onto the header will show "Continue Watching Series"; clients that
     // honor the synced home-catalog preference (nuvioHomePlacement.js) show
     // the exact title and position instead.
-    { type: 'series', id: 'slicktrax-continue', name: 'Continue Watching' },
-    { type: 'movie', id: 'slicktrax-watchlist', name: 'Watchlist' },
-    { type: 'series', id: 'slicktrax-watchlist', name: 'Watchlist' },
+    { key: 'continue', name: 'Continue Watching', entries: [{ type: 'series', id: 'slicktrax-continue', name: 'Continue Watching' }] },
+    {
+      key: 'watchlist',
+      name: 'Watchlist',
+      entries: [
+        { type: 'movie', id: 'slicktrax-watchlist', name: 'Watchlist' },
+        { type: 'series', id: 'slicktrax-watchlist', name: 'Watchlist' },
+      ],
+    },
   ]
   for (const list of lists || []) {
     // Registered under both types and filtered at serve time - a catalog
     // freely mixes movies and series, and Stremio's protocol wants a type
     // per catalog entry. An empty half is legal and renders as nothing.
-    catalogs.push({ type: 'movie', id: `slicktrax-list-${list.id}`, name: list.name })
-    catalogs.push({ type: 'series', id: `slicktrax-list-${list.id}`, name: list.name })
+    rows.push({
+      key: `list:${list.id}`,
+      name: list.name,
+      entries: [
+        { type: 'movie', id: `slicktrax-list-${list.id}`, name: list.name },
+        { type: 'series', id: `slicktrax-list-${list.id}`, name: list.name },
+      ],
+    })
   }
+  return rows
+}
+
+/** The account's rows as this person sees them: placed ones in their order, the rest after. */
+function orderedTraxRows(lists, rowsJson) {
+  const { order, hidden } = parseTraxRows(rowsJson)
+  const all = traxRowCatalog(lists)
+  const byKey = new Map(all.map((r) => [r.key, r]))
+  const placed = order.map((k) => byKey.get(k)).filter(Boolean)
+  const rest = all.filter((r) => !order.includes(r.key))
+  const hiddenSet = new Set(hidden)
+  return [...placed, ...rest].map((r) => ({ ...r, hidden: hiddenSet.has(r.key) }))
+}
+
+/**
+ * The version segment of this person's SlickTrax address. Devices cache a
+ * manifest by its address, so a change to someone's rows has to change the
+ * address too or their phone keeps the old rows: the segment carries a short
+ * fingerprint of their choice. The path shim strips it like any version.
+ */
+function traxPathVersion(user) {
+  const { order, hidden } = parseTraxRows(user?.traxRowsJson)
+  if (!order.length && !hidden.length) return TRAX_MANIFEST_VERSION
+  const rev = require('crypto').createHash('sha1').update(JSON.stringify({ order, hidden })).digest('hex').slice(0, 6)
+  return `${TRAX_MANIFEST_VERSION}r${rev}`
+}
+
+/**
+ * The manifest object, exported separately because sync injects the SAME
+ * object inline into the account's addon collection - built in one place so
+ * the served manifest and the synced copy can never drift apart.
+ */
+function buildTraxManifest(user, lists) {
+  const catalogs = orderedTraxRows(lists, user?.traxRowsJson)
+    .filter((r) => !r.hidden)
+    .flatMap((r) => r.entries)
   return {
     id: `vip.slicksync.trax.${user.id}`,
     version: TRAX_MANIFEST_VERSION,
@@ -340,3 +400,6 @@ module.exports = ({ prisma }) => {
 module.exports.buildTraxManifest = buildTraxManifest
 module.exports.getListsForAccount = getListsForAccount
 module.exports.TRAX_MANIFEST_VERSION = TRAX_MANIFEST_VERSION
+module.exports.traxPathVersion = traxPathVersion
+module.exports.orderedTraxRows = orderedTraxRows
+module.exports.parseTraxRows = parseTraxRows

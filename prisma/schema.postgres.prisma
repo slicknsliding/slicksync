@@ -64,6 +64,8 @@ model User {
   // link. The link reuses traxToken as its credential.
   // Left out of household numbers (totals, Top Viewers, Wrapped) - a test or guest person.
   excludeFromHouseholdStats Boolean @default(false)
+  // Which SlickTrax rows this person gets, and in what order: JSON { order: [key], hidden: [key] }.
+  traxRowsJson       String?
   watchStateEnabled  Boolean  @default(false)
   // JSON { viewerId: userId | null }. AIOStreams names each household profile
   // on every request; this records which SlickSync user each one is. null

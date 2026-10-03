@@ -4,6 +4,9 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 // One entry in a cast member's filmography, as /api/discover/person returns it.
+/** One of a person's SlickTrax rows - see server/routes/traxAddon.js orderedTraxRows. */
+export interface TraxRow { key: string; name: string; hidden: boolean }
+
 /** Where "finished" starts and when a started show counts as unfinished. */
 export interface WatchTrackingSettings {
   finishedPercent: number;
@@ -564,6 +567,14 @@ class ApiClient {
 
   async setHouseholdStats(id: string, excluded: boolean) {
     return this.fetch<{ excludeFromHouseholdStats: boolean }>(`/users/${encodeURIComponent(id)}/household-stats`, { method: 'PUT', body: JSON.stringify({ excluded }) });
+  }
+
+  async getTraxRows(id: string) {
+    return this.fetch<{ enabled: boolean; rows: TraxRow[] }>(`/users/${encodeURIComponent(id)}/trax-rows`);
+  }
+
+  async saveTraxRows(id: string, order: string[], hidden: string[]) {
+    return this.fetch<{ enabled: boolean; rows: TraxRow[] }>(`/users/${encodeURIComponent(id)}/trax-rows`, { method: 'PUT', body: JSON.stringify({ order, hidden }) });
   }
 
   // How viewing is judged - see server/utils/watchSettings.js.

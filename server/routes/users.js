@@ -798,7 +798,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       const effectiveBase = base || (reqBaseUsable ? reqBase : '')
       res.json({
         enabled,
-        manifestUrl: effectiveBase ? `${effectiveBase}/trax/${traxToken}/v${require('./traxAddon').TRAX_MANIFEST_VERSION}/manifest.json` : null,
+        manifestUrl: effectiveBase ? `${effectiveBase}/trax/${traxToken}/v${require('./traxAddon').traxPathVersion(user)}/manifest.json` : null,
         autoInstall: !!base,
         baseKnown: !!base,
         baseSource: baseSource || (base ? 'observed' : null),
@@ -823,6 +823,68 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
     } catch (error) {
       console.error('Error changing household stats:', error)
       res.status(500).json({ error: 'Failed to change that' })
+    }
+  })
+
+  // --- Each person's SlickTrax rows (routes/traxAddon.js orderedTraxRows) ---
+
+  async function traxRowsView(user) {
+    const { orderedTraxRows, getListsForAccount } = require('./traxAddon')
+    const lists = await getListsForAccount(prisma, user.accountId || 'default')
+    return {
+      enabled: !!user.traxAddonEnabled,
+      rows: orderedTraxRows(lists, user.traxRowsJson).map((r) => ({ key: r.key, name: r.name, hidden: r.hidden })),
+    }
+  }
+
+  router.get('/:id/trax-rows', async (req, res) => {
+    try {
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId: getAccountId(req) } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      res.json(await traxRowsView(user))
+    } catch (error) {
+      console.error('Error reading SlickTrax rows:', error)
+      res.status(500).json({ error: 'Failed to read SlickTrax rows' })
+    }
+  })
+
+  // Saving changes the person's SlickTrax address (traxPathVersion), so their
+  // apps fetch the new rows; a sync for them is started straight away so the
+  // new address reaches their account without waiting for the schedule.
+  router.put('/:id/trax-rows', async (req, res) => {
+    try {
+      const accountId = getAccountId(req)
+      const user = await prisma.user.findFirst({ where: { id: req.params.id, accountId } })
+      if (!user) return res.status(404).json({ error: 'User not found' })
+      const clean = (v) => (Array.isArray(v) ? v.filter((k) => typeof k === 'string' && k.length < 200).slice(0, 500) : [])
+      const order = clean(req.body?.order)
+      const hidden = clean(req.body?.hidden)
+      const traxRowsJson = order.length || hidden.length ? JSON.stringify({ order, hidden }) : null
+      const updated = await prisma.user.update({ where: { id: user.id }, data: { traxRowsJson } })
+
+      if (updated.traxAddonEnabled && updated.isActive) {
+        setImmediate(async () => {
+          try {
+            let unsafeMode = false
+            let useCustomFields = true
+            const acct = await prisma.appAccount.findFirst({ where: { id: accountId }, select: { sync: true } })
+            let cfg = acct?.sync
+            if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+            if (cfg && typeof cfg === 'object') {
+              if (typeof cfg.safe === 'boolean') unsafeMode = !cfg.safe
+              if (typeof cfg.useCustomFields === 'boolean') useCustomFields = cfg.useCustomFields
+              else if (typeof cfg.useCustomNames === 'boolean') useCustomFields = cfg.useCustomNames
+            }
+            await syncUserAddons(prisma, updated.id, [], unsafeMode, req, decrypt, getAccountId, useCustomFields)
+          } catch (e) {
+            console.warn('[SlickTrax] sync after a rows change failed:', e?.message)
+          }
+        })
+      }
+      res.json(await traxRowsView(updated))
+    } catch (error) {
+      console.error('Error saving SlickTrax rows:', error)
+      res.status(500).json({ error: 'Failed to save SlickTrax rows' })
     }
   })
 
@@ -2715,7 +2777,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         // shows a link. Answering from the server is the only honest way.
         traxBaseKnown: !!traxBase,
         traxManifestUrl: (traxBase && user.traxToken)
-          ? traxBase + '/trax/' + user.traxToken + '/v' + require('./traxAddon').TRAX_MANIFEST_VERSION + '/manifest.json'
+          ? traxBase + '/trax/' + user.traxToken + '/v' + require('./traxAddon').traxPathVersion(user) + '/manifest.json'
           : null,
       }
 

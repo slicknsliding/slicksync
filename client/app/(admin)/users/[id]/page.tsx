@@ -18,6 +18,7 @@ import { CreateUserModal } from '@/components/modals/CreateUserModal';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import { WatchStateRow } from '@/components/user/WatchStateRow';
+import { TraxRowsEditor } from '@/components/user/TraxRowsEditor';
 import {
   ArrowLeftIcon,
   ArrowPathIcon,
@@ -1520,6 +1521,11 @@ export default function UserDetailPage() {
                     </Button>
                   </div>
 
+                  {user.traxAddonEnabled && (
+                    <div className="pl-13">
+                      <TraxRowsEditor userId={user.id} />
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t" style={{ borderColor: 'var(--color-surface-border)' }} />
