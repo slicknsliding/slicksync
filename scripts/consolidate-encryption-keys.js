@@ -97,8 +97,12 @@ async function run() {
   console.log(`\n=== Encryption key consolidation (${APPLY ? 'APPLY' : 'DRY-RUN'}) ===`)
   console.log(`Fallback keys available: ${(require('../server/utils/config').ENCRYPTION_KEY_FALLBACKS || []).length}\n`)
 
-  await consolidateTable('User', prisma.user, 'id', ['stremioAuthKey', 'nuvioRefreshToken'])
-  await consolidateTable('UserProviderCredential', prisma.userProviderCredential, 'id', ['stremioAuthKey', 'nuvioRefreshToken'])
+  await consolidateTable('User', prisma.user, 'id', ['stremioAuthKey', 'nuvioRefreshToken', 'jellyfinToken', 'aioConfigPassword', 'simklAccessToken'])
+  await consolidateTable('UserProviderCredential', prisma.userProviderCredential, 'id', ['stremioAuthKey', 'nuvioRefreshToken', 'jellyfinToken'])
+  // A household profile's own sign-in (AIOStreams / AIOMetadata users).
+  await consolidateTable('JellyfinProfile', prisma.jellyfinProfile, 'id', ['token'])
+  // A pending invite request carries the sign-in until it is accepted.
+  await consolidateTable('InviteRequest', prisma.inviteRequest, 'id', ['stremioAuthKey', 'nuvioRefreshToken', 'jellyfinToken'])
   await consolidateTable('Addon', prisma.addon, 'id', ['manifestUrl', 'manifest', 'originalManifest'])
   await consolidateTable('VaultEntry', prisma.vaultEntry, 'id', ['encryptedSecret'])
   await consolidateSnapshots()

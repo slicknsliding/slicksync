@@ -16,7 +16,7 @@ interface SyncBadgeProps {
   className?: string;
 }
 
-type SyncStatus = 'synced' | 'unsynced' | 'stale' | 'connect' | 'syncing' | 'checking' | 'error';
+type SyncStatus = 'synced' | 'unsynced' | 'stale' | 'connect' | 'syncing' | 'checking' | 'error' | 'unsupported';
 
 export function SyncBadge({
   userId,
@@ -35,7 +35,10 @@ export function SyncBadge({
   // The cached value is only a starting point: a fresh check always runs and
   // silently corrects it.
   const cacheKey = userId ? `ss-syncbadge:u:${userId}` : (groupId ? `ss-syncbadge:g:${groupId}` : '');
-  const CACHE_TTL_MS = 15 * 60 * 1000;
+  // Long on purpose: the remembered verdict is only what shows first, and the
+  // fresh check right behind it corrects it. A short window meant every visit
+  // after a break opened on a row of "Checking" badges.
+  const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   const readCached = (): SyncStatus | null => {
     if (!cacheKey || typeof window === 'undefined') return null;
     try {
@@ -276,6 +279,9 @@ export function SyncBadge({
         };
     }
   };
+
+  // A Jellyfin server has no addon list, so there is no sync state to show.
+  if (finalStatus === 'unsupported') return null;
 
   const config = getStatusConfig();
   const isSpinning = finalStatus === 'syncing' || finalStatus === 'checking';

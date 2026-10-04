@@ -46,6 +46,7 @@ import {
   EyeIcon,
   EyeSlashIcon,
 } from '@heroicons/react/24/outline';
+import { providerTypeLabel, providerBadgeVariant } from '@/lib/providers';
 
 // Task action card component
 function TaskCard({
@@ -1351,7 +1352,7 @@ export default function TasksPage() {
                   <option value="">Select a user...</option>
                   {users.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.name || user.email || user.id} ({user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'})
+                      {user.name || user.email || user.id} ({providerTypeLabel(user.providerType)})
                     </option>
                   ))}
                 </select>
@@ -1393,8 +1394,8 @@ export default function TasksPage() {
                         <p className="text-xs text-muted truncate">{user.email}</p>
                       )}
                     </div>
-                    <Badge variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
-                      {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                    <Badge variant={providerBadgeVariant(user)} size="sm">
+                      {providerTypeLabel(user.providerType)}
                     </Badge>
                   </div>
                 </div>
@@ -1425,7 +1426,7 @@ export default function TasksPage() {
                   <option value="all">All Users</option>
                   {users.map((user) => (
                     <option key={user.id} value={user.id}>
-                      {user.name || user.email || user.id} ({user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'})
+                      {user.name || user.email || user.id} ({providerTypeLabel(user.providerType)})
                     </option>
                   ))}
                 </select>
@@ -1475,8 +1476,8 @@ export default function TasksPage() {
                         <p className="text-xs text-muted truncate">{user.email}</p>
                       )}
                     </div>
-                    <Badge variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
-                      {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                    <Badge variant={providerBadgeVariant(user)} size="sm">
+                      {providerTypeLabel(user.providerType)}
                     </Badge>
                   </div>
                 </div>
@@ -2342,7 +2343,7 @@ export default function TasksPage() {
               <option value="">Select a user...</option>
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
-                  {user.name || user.email || user.id} ({user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'})
+                  {user.name || user.email || user.id} ({providerTypeLabel(user.providerType)})
                 </option>
               ))}
             </select>

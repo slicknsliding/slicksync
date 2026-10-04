@@ -547,6 +547,7 @@ export default function SettingsPage() {
     notifyOnNewDevice: false,
     notifyOnBackup: false,
     notifyOnProxyHealth: false,
+    notifyOnConnectionHealth: true,
     notifyOnUpdateAvailable: false,
     notifyOnRecoveryKitStale: false,
     notifyOnMosaic: false,
@@ -861,6 +862,7 @@ export default function SettingsPage() {
           notifyOnNewDevice: settings.notifyOnNewDevice || false,
           notifyOnBackup: settings.notifyOnBackup || false,
           notifyOnProxyHealth: settings.notifyOnProxyHealth || false,
+          notifyOnConnectionHealth: settings.notifyOnConnectionHealth !== false,
           notifyOnUpdateAvailable: settings.notifyOnUpdateAvailable || false,
           notifyOnRecoveryKitStale: settings.notifyOnRecoveryKitStale || false,
           notifyOnMosaic: settings.notifyOnMosaic || false,
@@ -1208,6 +1210,7 @@ export default function SettingsPage() {
       notifyOnNewDevice: false,
       notifyOnBackup: false,
       notifyOnProxyHealth: false,
+      notifyOnConnectionHealth: true,
       notifyOnUpdateAvailable: false,
       notifyOnRecoveryKitStale: false,
       notifyOnMosaic: false,
@@ -1228,6 +1231,7 @@ export default function SettingsPage() {
         notifyOnNewDevice: false,
         notifyOnBackup: false,
         notifyOnProxyHealth: false,
+        notifyOnConnectionHealth: true,
         notifyOnUpdateAvailable: false,
         notifyOnRecoveryKitStale: false,
         notifyOnMosaic: false,
@@ -1671,6 +1675,17 @@ export default function SettingsPage() {
                     enabled={syncSettings.notifyOnAddonHealth || false}
                     onChange={(v) => handleSaveSetting('notifyOnAddonHealth', v)}
                     label="Toggle addon health notifications"
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  label="Connection problem notifications"
+                  description="Notify when someone's Stremio, Nuvio or Jellyfin sign-in stops working (and again when it's back), so their watching doesn't go untracked unnoticed"
+                >
+                  <ToggleSwitch
+                    enabled={syncSettings.notifyOnConnectionHealth !== false}
+                    onChange={(v) => handleSaveSetting('notifyOnConnectionHealth', v)}
+                    label="Toggle connection problem notifications"
                   />
                 </SettingRow>
 

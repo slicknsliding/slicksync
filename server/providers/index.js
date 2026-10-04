@@ -1,5 +1,6 @@
 /**
- * Provider factory — creates the correct provider for a user based on providerType.
+ * Provider factory — creates the correct provider for a user based on providerType
+ * (stremio, nuvio, or jellyfin for any Jellyfin-compatible server).
  *
  * Usage:
  *   const { makeCreateProvider } = require('./providers')
@@ -11,6 +12,7 @@
 
 const { createStremioProvider } = require('./stremio')
 const { createNuvioProvider } = require('./nuvio')
+const { createJellyfinProvider } = require('./jellyfin')
 const { resolveServerConfigForAccount } = require('./supabase')
 
 function makeCreateProvider({ prisma, encrypt, getAccountId } = {}) {
@@ -107,6 +109,43 @@ function makeCreateProvider({ prisma, encrypt, getAccountId } = {}) {
         })
       }
 
+      if (type === 'jellyfin') {
+        const build = (row) => createJellyfinProvider({
+          serverUrl: row.jellyfinServerUrl,
+          token: decrypt(row.jellyfinToken, req),
+          userId: row.jellyfinUserId,
+          serverKind: row.jellyfinServerKind || 'jellyfin',
+          serverId: row.jellyfinServerId,
+          // Whose viewing it is: a merged person's absorbed login reads its
+          // own server but its viewing belongs to the person.
+          slicksyncUserId: user.__recordAs || user.id,
+          // The household profiles this person tracks on an AIOStreams or
+          // AIOMetadata configuration (utils/jellyfinProfiles.js). An absorbed
+          // login is only its own sign-in.
+          resolveProfiles: prisma && user.id && !user.__recordAs
+            ? () => require('../utils/jellyfinProfiles').trackedProfiles(prisma, (text) => decrypt(text, req), user.id)
+            : undefined,
+          onProfileUnauthorized: prisma
+            ? (profile) => require('../utils/jellyfinProfiles').forgetProfileSignIn(prisma, profile.id)
+            : undefined,
+        })
+        if (user.jellyfinToken && user.jellyfinServerUrl && user.jellyfinUserId) return build(user)
+        // Most callers select only the columns they need, and none of them
+        // knew these columns before this provider existed - so the sign-in
+        // is read on first use, the same way Nuvio resolves its profile.
+        if (!prisma || !user.id) return null
+        return lazyJellyfinProvider(async () => {
+          const row = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { jellyfinServerUrl: true, jellyfinToken: true, jellyfinUserId: true, jellyfinServerKind: true, jellyfinServerId: true }
+          })
+          if (!row?.jellyfinToken || !row.jellyfinServerUrl || !row.jellyfinUserId) {
+            throw new Error('Unauthorized: not signed in to the Jellyfin server')
+          }
+          return build(row)
+        })
+      }
+
       // Default: stremio
       if (!user.stremioAuthKey) return null
       return createStremioProvider({
@@ -117,6 +156,22 @@ function makeCreateProvider({ prisma, encrypt, getAccountId } = {}) {
       return null
     }
   }
+}
+
+// A Jellyfin provider whose sign-in is read on the first call. Same surface
+// as createJellyfinProvider's; every method waits for the real one.
+function lazyJellyfinProvider(load) {
+  let pending = null
+  const real = () => (pending = pending || load())
+  const forward = (name) => async (...args) => {
+    const provider = await real()
+    return provider[name](...args)
+  }
+  const lazy = { type: 'jellyfin', supportsAddons: false, supportsLibraryWrite: true }
+  for (const name of ['getAddons', 'setAddons', 'addAddon', 'clearAddons', 'getLibrary', 'getNowPlaying', 'findItem', 'setPlayed', 'setFavorite', 'clearResume', 'addLibraryItem', 'removeLibraryItem', 'getLikeStatus', 'setLikeStatus']) {
+    lazy[name] = forward(name)
+  }
+  return lazy
 }
 
 // Backward compat: unconfigured version (no token persistence on refresh).

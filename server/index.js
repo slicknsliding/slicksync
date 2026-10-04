@@ -35,6 +35,7 @@ const publicLibraryRouter = require('./routes/publicLibrary');
 const proxyRouter = require('./routes/proxy');
 const streamProxyRouter = require('./routes/streamProxy');
 const nuvioRouter = require('./routes/nuvio');
+const jellyfinRouter = require('./routes/jellyfin');
 const snapshotsRouter = require('./routes/snapshots');
 const pushRouter = require('./routes/push');
 const watchlistRouter = require('./routes/watchlist');
@@ -224,6 +225,18 @@ app.use('/api/nuvio/connect', authLimiter);
 app.use('/api/nuvio/start-oauth', authLimiter);
 app.use('/api/nuvio/exchange-oauth', authLimiter);
 app.use('/api/nuvio/connect-authkey', authLimiter);
+// Jellyfin-compatible servers (routes/jellyfin.js admin side, plus the
+// pre-auth sign-in steps the user portal and the public admin sign-in
+// mount). Signing in is a credential check like the ones above; asking
+// whether a Quick Connect code was approved is polling.
+for (const base of ['/api/jellyfin', '/api/auth/jellyfin-', '/api/public-auth/jellyfin-', '/api/public-library/jellyfin-']) {
+  const sep = base.endsWith('-') ? '' : '/'
+  app.use(`${base}${sep}connect`, authLimiter);
+  app.use(`${base}${sep}login`, authLimiter);
+  app.use(`${base}${sep}quick-connect`, authLimiter);
+  app.use(`${base}${sep}probe`, authLimiter);
+}
+app.use('/api/public-library/authenticate-jellyfin', authLimiter);
 // Nuvio admin login (publicAuth.js) - same shape as the /api/nuvio ones
 // above, but reachable pre-auth, so it needs its own limiter mounts on both
 // aliases the router is mounted under.
@@ -257,6 +270,9 @@ const pollLimiter = rateLimit({
   legacyHeaders: false,
 });
 app.use('/api/nuvio/poll-oauth', pollLimiter);
+for (const path of ['/api/jellyfin/quick-connect-status', '/api/auth/jellyfin-quick-connect-status', '/api/public-auth/jellyfin-quick-connect-status', '/api/public-library/jellyfin-quick-connect-status']) {
+  app.use(path, pollLimiter);
+}
 app.use('/api/auth/nuvio-poll-oauth', pollLimiter);
 app.use('/api/public-auth/nuvio-poll-oauth', pollLimiter);
 // User-panel Nuvio login (publicLibrary.js) - same shape as the admin/
@@ -357,6 +373,7 @@ app.use('/api/users', accountScopingMiddleware);
 app.use('/api/addons', accountScopingMiddleware);
 app.use('/api/stremio', accountScopingMiddleware);
 app.use('/api/nuvio', accountScopingMiddleware);
+app.use('/api/jellyfin', accountScopingMiddleware);
 app.use('/api/snapshots', accountScopingMiddleware);
 app.use('/api/vault', accountScopingMiddleware);
 app.use('/api/automation', accountScopingMiddleware);
@@ -372,6 +389,7 @@ app.use('/api/users', usersRouter({ prisma, getAccountId, scopedWhere, INSTANCE_
 app.use('/api/scrobble', require('./routes/scrobble')({ prisma }));
 app.use('/api/stremio', stremioRouter({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup, INSTANCE_TYPE }));
 app.use('/api/nuvio', nuvioRouter({ prisma, getAccountId, encrypt, decrypt }));
+app.use('/api/jellyfin', jellyfinRouter({ prisma, getAccountId, encrypt, decrypt, assignUserToGroup }));
 app.use('/api/snapshots', snapshotsRouter({ prisma, getAccountId, encrypt, decrypt, createProvider }));
 app.use('/api/avatars', avatarsRouter({ imageUpload }));
 app.use('/api/vault', vaultRouter({ prisma, getAccountId, encrypt, decrypt }));
@@ -878,6 +896,22 @@ async function bootstrap() {
       }, schedulerReq.appAccountId)
     } catch (err) {
       console.error('⚠️ Failed to initialize Sync Guardian:', err)
+    }
+
+    // Watch AIOStreams configurations for outside changes - see
+    // utils/aiostreamsConfig.js.
+    try {
+      require('./utils/aiostreamsConfig').scheduleConfigGuard(prisma, decrypt)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize the AIOStreams configuration guard:', err)
+    }
+
+    // Keep catalogs switched on for a Jellyfin server in step with its
+    // collections - see utils/jellyfinServerCollections.js.
+    try {
+      require('./utils/jellyfinServerCollections').scheduleServerCollections(prisma, decrypt)
+    } catch (err) {
+      console.error('⚠️ Failed to initialize Jellyfin collections sync:', err)
     }
 
     // Schedule DB size sampling for the Tasks page's storage chart

@@ -451,6 +451,8 @@ export default function UserLibraryPage() {
     const itemId = item._id;
     if (!itemId) return null;
     const type = item.type === 'series' ? 'series' : 'movie';
+    // Jellyfin apps share no link scheme to open a title with.
+    if (provider === 'jellyfin') return null;
     return provider === 'nuvio' ? buildNuvioAppUrl(itemId, type) : buildStremioAppUrl(itemId, type);
   };
 

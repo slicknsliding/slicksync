@@ -225,6 +225,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           email: user.email,
           providerType: user.providerType || 'stremio',
           nuvioProfileId: user.nuvioProfileId ?? 1,
+          ...jellyfinSummary(user),
           secondaryProviderType: secondaryProviderByUserId.get(user.id) || null,
           providerConnectionError: user.providerConnectionError || null,
           groupName: userGroup?.name || null,
@@ -2740,6 +2741,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
         username: user.username,
         providerType: user.providerType || 'stremio',
         nuvioProfileId: user.nuvioProfileId ?? 1,
+        ...jellyfinSummary(user),
         hasStremioConnection: !!user.stremioAuthKey,
         status: user.isActive ? 'active' : 'inactive',
         addons: orderedAddons,
@@ -3156,6 +3158,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
           }
         })
       ])
+      await require('../utils/jellyfinProfiles').forgetPersonHousehold(prisma, id)
 
       res.json({ message: 'User deleted successfully' });
     } catch (error) {
@@ -6120,7 +6123,7 @@ module.exports = ({ prisma, getAccountId, scopedWhere, INSTANCE_TYPE, decrypt, e
       // Generate filename: {Provider}-Library-{email/username}-{timestamp}.json
       const userIdentifier = user.email || user.username || 'user'
       const timestamp = lastModified || Date.now()
-      const providerLabel = (user.providerType || 'stremio') !== 'stremio' ? 'Nuvio' : 'Stremio'
+      const providerLabel = require('../utils/providerInfo').providerLabel(user)
       const filename = `${providerLabel}-Library-${userIdentifier}-${timestamp}.json`
 
       // Set headers for file download
@@ -8136,6 +8139,21 @@ module.exports.reloadGroupAddons = reloadGroupAddons;
 module.exports.syncUserAddons = syncUserAddons;
 
 // Helper function to get sync mode from request headers
+// What the Users pages show about a Jellyfin-compatible server login: which
+// kind of server, where, and as whom. Never the token, and never an
+// AIOStreams picker address's encrypted password (displayServer drops it).
+function jellyfinSummary(user) {
+  if (user?.providerType !== 'jellyfin') return {}
+  const { displayServer, serverKindLabel } = require('../providers/jellyfinAuth')
+  return {
+    jellyfinServerKind: user.jellyfinServerKind || 'jellyfin',
+    jellyfinServerLabel: serverKindLabel(user.jellyfinServerKind),
+    jellyfinServer: user.jellyfinServerUrl ? displayServer(user.jellyfinServerUrl) : null,
+    jellyfinUserName: user.jellyfinUserName || null,
+    aioConfigWatched: !!user.aioConfigPassword,
+  }
+}
+
 function getSyncMode(req) {
   const syncMode = req?.headers?.['x-sync-mode'] || 'normal'
   return syncMode === 'advanced' ? 'advanced' : 'normal'
@@ -8451,7 +8469,12 @@ async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [
     if (!user) return { success: false, error: 'User not found' }
     if (!user.isActive) return { success: false, error: 'User is disabled' }
 
-    const result = await syncCredentialsAddons(prismaClient, user, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options)
+    // A Jellyfin-compatible server has no addon list, so the person's own
+    // login has nothing to sync - but a Stremio or Nuvio login merged into
+    // them below still does.
+    const result = user.providerType === 'jellyfin'
+      ? { success: true, unsupported: true, total: 0 }
+      : await syncCredentialsAddons(prismaClient, user, excludedManifestUrls, unsafeMode, req, decrypt, getAccountIdParam, useCustomFields, options)
 
     // Merged users (see server/utils/userMerge.js) absorb a second provider's
     // credentials into a UserProviderCredential row rather than a second
@@ -8463,10 +8486,12 @@ async function syncUserAddonsCore(prismaClient, userId, excludedManifestUrls = [
     // so a secondary-only failure can't make an otherwise-successful primary
     // sync look like it failed.
     try {
-      const secondaryCredential = await prismaClient.userProviderCredential.findUnique({
-        where: { userId_providerType: { userId: user.id, providerType: user.providerType === 'nuvio' ? 'stremio' : 'nuvio' } }
-      }).catch(() => null)
-      if (secondaryCredential) {
+      // Every merged-in login with an addon list: Stremio and Nuvio, never
+      // the person's own provider. A Jellyfin person can hold both.
+      const secondaryCredentials = await prismaClient.userProviderCredential.findMany({
+        where: { userId: user.id, providerType: { in: ['stremio', 'nuvio'].filter((t) => t !== user.providerType) } }
+      }).catch(() => [])
+      for (const secondaryCredential of secondaryCredentials) {
         // id MUST be the real survivor id, not a synthetic one - getDesiredAddons
         // (server/utils/sync.js) resolves group membership via a string-contains
         // match against this exact id, so a fake id here would silently resolve

@@ -373,6 +373,92 @@ export const userAuth = {
   },
 
   /**
+   * Sign in through a Jellyfin-compatible server (a real Jellyfin, or the
+   * media server AIOStreams or AIOMetadata runs). The server signs in with
+   * what the person typed - or an approved Quick Connect secret - and hands
+   * back a SlickSync session token, the role Stremio's authKey plays.
+   */
+  async authenticateJellyfin(credentials: Record<string, string>): Promise<{
+    success: boolean;
+    userId: string;
+    userInfo: UserInfo;
+    sessionToken: string;
+    error?: string;
+    errorCode?: string;
+  }> {
+    const response = await request<{
+      success: boolean;
+      sessionToken?: string;
+      user?: { id: string; username: string; email: string; colorIndex?: number; createdAt?: string; expiresAt?: string };
+      error?: string;
+      message?: string;
+    }>('/public-library/authenticate-jellyfin', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    });
+    if (response.success && response.user && response.sessionToken) {
+      return {
+        success: true,
+        userId: response.user.id,
+        sessionToken: response.sessionToken,
+        userInfo: {
+          id: response.user.id,
+          username: response.user.username,
+          email: response.user.email,
+          colorIndex: response.user.colorIndex,
+          activityVisibility: 'private',
+          createdAt: response.user.createdAt || new Date().toISOString(),
+          expiresAt: response.user.expiresAt,
+        },
+      };
+    }
+    return {
+      success: false,
+      userId: '',
+      userInfo: {} as UserInfo,
+      sessionToken: '',
+      error: response.message || response.error || 'Authentication failed',
+      errorCode: response.error,
+    };
+  },
+
+  /** Re-validate a stored Jellyfin session (mirrors validateNuvio). */
+  async validateJellyfin(userId: string, sessionToken?: string): Promise<{
+    valid: boolean;
+    userId?: string;
+    sessionToken?: string;
+    error?: string;
+    errorCode?: string;
+  }> {
+    const response = await request<{
+      valid?: boolean;
+      success?: boolean;
+      sessionToken?: string;
+      user?: { id: string };
+      error?: string;
+      message?: string;
+    }>('/public-library/validate-jellyfin', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+      authKey: sessionToken,
+    });
+    return {
+      valid: response.valid ?? response.success ?? false,
+      userId: response.user?.id,
+      sessionToken: response.sessionToken,
+      error: response.message || response.error,
+      errorCode: response.error,
+    };
+  },
+
+  /** The steps before a Jellyfin sign-in: checking the address and Quick Connect. */
+  jellyfinSignIn: {
+    probe: (serverUrl: string) => request<any>('/public-library/jellyfin-probe', { method: 'POST', body: JSON.stringify({ serverUrl }) }),
+    startQuickConnect: (serverUrl: string) => request<any>('/public-library/jellyfin-quick-connect', { method: 'POST', body: JSON.stringify({ serverUrl }) }),
+    quickConnectStatus: (params: { serverUrl: string; secret: string; device: string }) => request<any>('/public-library/jellyfin-quick-connect-status', { method: 'POST', body: JSON.stringify(params) }),
+  },
+
+  /**
    * Self-service "delete my account" - permanently removes this user and
    * their own data (watch history, watchlist state, group membership).
    * Does NOT touch account-wide resources (Vault, Catalogs, other users) -
@@ -381,7 +467,7 @@ export const userAuth = {
    * authKey; Nuvio users are re-validated by userId alone (mirrors validate/
    * validateNuvio above).
    */
-  async deleteAccount(userId: string, provider: 'stremio' | 'nuvio', authKey?: string): Promise<{ deleted: boolean }> {
+  async deleteAccount(userId: string, provider: 'stremio' | 'nuvio' | 'jellyfin', authKey?: string): Promise<{ deleted: boolean }> {
     return request('/public-library/delete-account', {
       method: 'POST',
       body: JSON.stringify({ userId, provider }),

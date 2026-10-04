@@ -110,6 +110,7 @@ async function deleteUserCascade(prisma, userId) {
     prisma.userProviderCredential.deleteMany({ where }),
     prisma.user.delete({ where: { id: userId } }),
   ])
+  await require('./jellyfinProfiles').forgetPersonHousehold(prisma, userId)
   return existing
 }
 

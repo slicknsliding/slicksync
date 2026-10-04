@@ -5,7 +5,7 @@ import { userAuth, UserInfo, UserApiError } from '@/lib/user-api';
 
 const STORAGE_KEY = 'slicksync-user-auth';
 
-type Provider = 'stremio' | 'nuvio';
+type Provider = 'stremio' | 'nuvio' | 'jellyfin';
 
 // authKey holds the caller's own bearer credential for whichever provider:
 // for Stremio, the real Stremio authKey; for Nuvio, a SlickSync-issued
@@ -34,6 +34,7 @@ interface UserAuthContextType {
   errorCode: string | null;
   login: (authKey: string) => Promise<{ success: boolean; error?: string }>;
   loginNuvio: (code: string, deviceNonce: string, anonToken: string) => Promise<{ success: boolean; error?: string }>;
+  loginJellyfin: (credentials: Record<string, string>) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   refreshUserInfo: () => Promise<void>;
   deleteAccount: () => Promise<{ success: boolean; error?: string }>;
@@ -86,13 +87,15 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
         // Validate the stored session
         const result = dataProvider === 'nuvio'
           ? await userAuth.validateNuvio(data.userId, data.authKey)
+          : dataProvider === 'jellyfin'
+          ? await userAuth.validateJellyfin(data.userId, data.authKey)
           : await userAuth.validate(data.authKey, data.userId);
 
         if (result.valid) {
           // Nuvio reissues a fresh session token on every successful
           // validate (sliding expiry) - use that going forward, not the
           // one that was just spent.
-          const currentAuthKey = (dataProvider === 'nuvio' && result.sessionToken) ? result.sessionToken : data.authKey;
+          const currentAuthKey = (dataProvider !== 'stremio' && 'sessionToken' in result && result.sessionToken) ? result.sessionToken : data.authKey;
           setUserId(data.userId);
           setProvider(dataProvider);
           setAuthKey(currentAuthKey || null);
@@ -223,6 +226,36 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
     }
   }, []);
 
+  // Login through a Jellyfin-compatible server. Same session model as
+  // Nuvio: the server signs in, and the browser keeps only the SlickSync
+  // session token it issues.
+  const loginJellyfin = useCallback(async (credentials: Record<string, string>): Promise<{ success: boolean; error?: string }> => {
+    setError(null);
+    setErrorCode(null);
+    try {
+      const result = await userAuth.authenticateJellyfin(credentials);
+      if (result.success && result.userId && result.userInfo && result.sessionToken) {
+        setUserId(result.userId);
+        setProvider('jellyfin');
+        setAuthKey(result.sessionToken);
+        setUserInfo(result.userInfo);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          userId: result.userId,
+          provider: 'jellyfin',
+          authKey: result.sessionToken,
+          userInfo: result.userInfo,
+        }));
+        return { success: true };
+      }
+      const errorMsg = result.error || 'Authentication failed';
+      setErrorCode(result.errorCode || null);
+      return { success: false, error: errorMsg };
+    } catch (err) {
+      const errorMsg = err instanceof UserApiError ? err.message : 'Authentication failed';
+      return { success: false, error: errorMsg };
+    }
+  }, []);
+
   // Logout
   const logout = useCallback(() => {
     setUserId(null);
@@ -282,6 +315,7 @@ export function UserAuthProvider({ children }: UserAuthProviderProps) {
     errorCode,
     login,
     loginNuvio,
+    loginJellyfin,
     logout,
     refreshUserInfo,
     deleteAccount,

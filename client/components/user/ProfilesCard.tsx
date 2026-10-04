@@ -61,14 +61,14 @@ function ProfileMark({ profile, size, ring }: { profile: Profile; size: number; 
   );
 }
 
-const MENU_ITEM = 'w-full flex items-center gap-2.5 px-3 py-2 text-sm text-default rounded-lg hover:bg-surface-hover focus:bg-surface-hover focus:outline-none transition-colors text-left';
+export const MENU_ITEM = 'w-full flex items-center gap-2.5 px-3 py-2 text-sm text-default rounded-lg hover:bg-surface-hover focus:bg-surface-hover focus:outline-none transition-colors text-left';
 
-const POPOVER_WIDTH = 232;
+export const POPOVER_WIDTH = 232;
 
 /** Where a profile's menu goes: just under its circle, or just above when there is no room below. */
-interface Placement { left: number; arrowX: number; top?: number; bottom?: number; above: boolean }
+export interface Placement { left: number; arrowX: number; top?: number; bottom?: number; above: boolean }
 
-function placeUnder(circle: DOMRect, menuHeight: number): Placement {
+export function placeUnder(circle: DOMRect, menuHeight: number): Placement {
   const centre = circle.left + circle.width / 2;
   const left = Math.min(Math.max(8, centre - POPOVER_WIDTH / 2), window.innerWidth - POPOVER_WIDTH - 8);
   const arrowX = Math.min(Math.max(16, centre - left), POPOVER_WIDTH - 16);
@@ -92,7 +92,9 @@ export function ProfilesCard({ userId, loginLabel, onPeopleChanged }: {
   /** People were added, merged away or brought back. */
   onPeopleChanged?: () => void;
 }) {
-  const [view, setView] = useState<ProfilesView | null>(null);
+  // What this browser last saw, so the card is there with the page instead of
+  // popping in after it; the load below refreshes it in place.
+  const [view, setView] = useState<ProfilesView | null>(() => api.peekGet<ProfilesView>(`/users/${encodeURIComponent(userId)}/profiles`) ?? null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [selected, setSelected] = useState<number | null>(null);

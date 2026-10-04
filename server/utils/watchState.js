@@ -199,50 +199,7 @@ async function announceStart(prisma, user, where, item, fresh) {
   emitNowPlaying(accountId)
   if (!fresh || !title) return
 
-  let cfg = {}
-  try {
-    const account = await prisma.appAccount.findFirst({ where: { id: accountId }, select: { sync: true } })
-    cfg = typeof account?.sync === 'string' ? JSON.parse(account.sync) : (account?.sync || {})
-  } catch { cfg = {} }
-  if (cfg?.notifyOnActivity !== true) return
-  if (user.notifyOnWatch === false) return
-  // The proxy may already have announced this same viewing.
-  if (!require('./startNotifyDedupe').claimStart(accountId, user.id, item.itemId)) return
-
-  const episodeTag = item.itemType === 'series' && item.season != null && item.episode != null
-    ? ` S${item.season}E${item.episode}${episodeName ? ` - ${episodeName}` : ''}`
-    : ''
-  const webhookUrl = user.discordWebhookUrl || cfg.webhookUrl || null
-  if (webhookUrl) {
-    const { sendSessionStartNotification } = require('./sessionTracker')
-    await sendSessionStartNotification(webhookUrl, {
-      itemName: title,
-      itemType: item.itemType,
-      itemId: item.itemId,
-      videoId: item.itemType === 'series' ? item.videoId : null,
-      season: item.season ?? null,
-      episode: item.episode ?? null,
-      startTime: new Date(),
-      poster: poster || null,
-    }, user).catch(() => {})
-  }
-  try {
-    const { emitAutomationEvent } = require('./automation/engine')
-    await emitAutomationEvent(prisma, accountId, 'watch.started', {
-      username: user.username || '',
-      userId: user.id,
-      itemName: title,
-      itemId: item.itemId,
-      contentType: item.itemType === 'series' ? 'series' : 'movie',
-    })
-  } catch { /* emit never throws; guards the require itself */ }
-  const { notifyPushForType } = require('./pushNotifications')
-  await notifyPushForType(prisma, accountId, 'notifyOnActivity', {
-    title: `${user.username || user.email || 'Someone'} started watching`,
-    body: `${title}${episodeTag}`,
-    icon: poster || '/android-chrome-192x192.png',
-    url: '/activity',
-  }).catch(() => {})
+  await require('./startNotifyDedupe').announceViewingStart(prisma, user, { ...item, title, episodeName, poster })
 }
 
 // A viewing whose stop never arrives - the app crashed, the phone died - is
@@ -461,8 +418,19 @@ async function applyBulk(prisma, user, type, event) {
  * Apply one pushed event. Returns an HTTP status for AIOStreams: 2xx delivered,
  * 503 retry later, other 4xx drop it.
  */
+// Someone whose own login IS an AIOStreams media server is read straight
+// from that server every minute (providers/jellyfin.js): its resume points
+// and played marks are already their record. Recording the same viewing from
+// Watch State too would count it twice, so playback and played marks are
+// accepted and left to the library read. Watchlist, ratings and drops have
+// no other way in and are still applied.
+function playbackComesFromServer(user) {
+  return user?.providerType === 'jellyfin' && user?.jellyfinServerKind === 'aiostreams'
+}
+
 async function handlePush(prisma, user, type, pathId, event) {
   if (!event || typeof event !== 'object' || !event.id || !event.event) return 400
+  if (playbackComesFromServer(user) && ['start', 'pause', 'stop', 'played', 'unplayed'].includes(event.event)) return 200
   const accountId = user.accountId || 'default'
   // A viewing whose stop never came, days ago, is over.
   prisma.watchStateCursor.deleteMany({ where: { userId: user.id, updatedAt: { lt: new Date(Date.now() - STALE_CURSOR_MS) } } }).catch(() => {})

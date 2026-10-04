@@ -15,6 +15,8 @@ import { Button, Card, StatCard, Avatar, Badge, StatusBadge, Modal, ConfirmModal
 import { SyncPreviewDialog } from '@/components/ui/SyncPreviewDialog';
 import { AvatarPickerModal } from '@/components/modals/AvatarPickerModal';
 import { CreateUserModal } from '@/components/modals/CreateUserModal';
+import { providerLabel, providerBadgeVariant, hasAddonList } from '@/lib/providers';
+import { SignInTvButton } from '@/components/jellyfin/SignInTvButton';
 import { PageSection, StaggerContainer, StaggerItem } from '@/components/layout/PageContainer';
 import { toast } from '@/components/ui/Toast';
 import { WatchStateRow } from '@/components/user/WatchStateRow';
@@ -422,7 +424,7 @@ export default function UserDetailPage() {
     const candidate: MergeCandidate = {
       id: picked.id,
       username: picked.username || picked.name || picked.email || 'Unnamed user',
-      providerType: picked.providerType === 'nuvio' ? 'nuvio' : 'stremio',
+      providerType: (picked.providerType || 'stremio') as 'stremio' | 'nuvio' | 'jellyfin',
       avatarUrl: picked.avatarUrl,
       colorIndex: picked.colorIndex,
       email: picked.email,
@@ -1234,11 +1236,21 @@ export default function UserDetailPage() {
                           className="text-xl md:text-2xl font-bold font-display"
                         />
                         <Badge
-                          variant={user.providerType === 'nuvio' ? 'nuvio' : 'stremio'}
+                          variant={providerBadgeVariant(user)}
                           size="sm"
                         >
-                          {user.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                          {providerLabel(user)}
                         </Badge>
+                        {/* Which server, and who they sign in as there. */}
+                        {user.providerType === 'jellyfin' && (user.jellyfinServer || user.jellyfinUserName) && (
+                          <span className="text-xs text-muted truncate max-w-[16rem]" title={user.jellyfinServer || undefined}>
+                            {user.jellyfinUserName ? `${user.jellyfinUserName} on ` : ''}{user.jellyfinServer}
+                            {user.aioConfigWatched ? ' · watched for changes' : ''}
+                          </span>
+                        )}
+                        {user.providerType === 'jellyfin' && (
+                          <SignInTvButton userId={user.id} name={user.username || user.name || 'them'} />
+                        )}
                         {/* Only worth saying when it is not the primary - a
                             Nuvio user that manages profile 1 is the ordinary
                             case and does not need labelling. */}
@@ -1349,6 +1361,74 @@ export default function UserDetailPage() {
                 </div>
               </Card>
             </PageSection>
+
+            {/* Sync Debug Section */}
+            {showSyncDebug && (
+              <PageSection className="mb-6">
+                <div className="p-4 rounded-xl bg-surface border border-yellow-500/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-yellow-400">Sync Debug Info</h3>
+                    {syncPlan && (
+                      <Badge variant={syncPlan.alreadySynced ? 'success' : 'error'} size="sm">
+                        {syncPlan.alreadySynced ? 'Synced' : 'Unsynced'}
+                      </Badge>
+                    )}
+                  </div>
+                  {syncPlanLoading && <div className="text-sm text-muted">Loading...</div>}
+                  {syncPlanError && <div className="text-sm text-red-400">Error: {syncPlanError}</div>}
+                  {syncPlan && (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <h4 className="text-sm font-medium text-muted mb-2">Current Addons ({syncPlan.currentCount})</h4>
+                          <div className="max-h-48 overflow-y-auto space-y-1">
+                            {syncPlan.current.map((addon, idx) => (
+                              <div key={idx} className="text-xs font-mono bg-surface-hover p-2 rounded break-all">
+                                <span className="text-primary">{addon.name}</span>
+                                <div className="text-muted truncate">{addon.transportUrl}</div>
+                                <div className="text-xs text-gray-500 truncate" title={addon.fingerprint}>
+                                  FP: {addon.fingerprint.substring(0, 50)}...
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-medium text-muted mb-2">Desired Addons ({syncPlan.desiredCount})</h4>
+                          <div className="max-h-48 overflow-y-auto space-y-1">
+                            {syncPlan.desired.map((addon, idx) => (
+                              <div key={idx} className="text-xs font-mono bg-surface-hover p-2 rounded break-all">
+                                <span className="text-green-400">{addon.name}</span>
+                                <div className="text-muted truncate">{addon.transportUrl}</div>
+                                <div className="text-xs text-gray-500 truncate" title={addon.fingerprint}>
+                                  FP: {addon.fingerprint.substring(0, 50)}...
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={refreshSyncPlan}
+                        className="mt-3 mr-2 px-3 py-1 text-xs bg-surface-hover hover:bg-primary hover:text-white rounded transition-colors"
+                      >
+                        Refresh
+                      </button>
+                      <button
+                        onClick={() => {
+                          const text = JSON.stringify({ current: syncPlan.current, desired: syncPlan.desired }, null, 2);
+                          copyToClipboard(text);
+                          toast.success('Copied to clipboard');
+                        }}
+                        className="mt-3 px-3 py-1 text-xs bg-surface-hover hover:bg-primary hover:text-white rounded transition-colors"
+                      >
+                        Copy
+                      </button>
+                    </>
+                  )}
+                </div>
+              </PageSection>
+            )}
 
             {/* Manual merge - shown when this account hasn't already
                 absorbed a second provider's account. */}
@@ -1560,8 +1640,8 @@ export default function UserDetailPage() {
                           Merged with {mergeInfo.donorUsername || 'a second account'}
                         </h3>
                         <div className="flex items-center gap-2 mt-1">
-                          <Badge variant={mergeInfo.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
-                            {mergeInfo.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                          <Badge variant={providerBadgeVariant({ providerType: mergeInfo.providerType })} size="sm">
+                            {providerLabel({ providerType: mergeInfo.providerType })}
                           </Badge>
                           <p className="text-sm text-muted">{mergeInfo.donorEmail || 'Its watch history now lives on this account'}</p>
                         </div>
@@ -1681,74 +1761,6 @@ export default function UserDetailPage() {
               </Card>
             </PageSection>
 
-            {/* Sync Debug Section */}
-            {showSyncDebug && (
-              <PageSection className="mb-6">
-                <div className="p-4 rounded-xl bg-surface border border-yellow-500/30">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-yellow-400">Sync Debug Info</h3>
-                    {syncPlan && (
-                      <Badge variant={syncPlan.alreadySynced ? 'success' : 'error'} size="sm">
-                        {syncPlan.alreadySynced ? 'Synced' : 'Unsynced'}
-                      </Badge>
-                    )}
-                  </div>
-                  {syncPlanLoading && <div className="text-sm text-muted">Loading...</div>}
-                  {syncPlanError && <div className="text-sm text-red-400">Error: {syncPlanError}</div>}
-                  {syncPlan && (
-                    <>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <h4 className="text-sm font-medium text-muted mb-2">Current Addons ({syncPlan.currentCount})</h4>
-                          <div className="max-h-48 overflow-y-auto space-y-1">
-                            {syncPlan.current.map((addon, idx) => (
-                              <div key={idx} className="text-xs font-mono bg-surface-hover p-2 rounded break-all">
-                                <span className="text-primary">{addon.name}</span>
-                                <div className="text-muted truncate">{addon.transportUrl}</div>
-                                <div className="text-xs text-gray-500 truncate" title={addon.fingerprint}>
-                                  FP: {addon.fingerprint.substring(0, 50)}...
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-muted mb-2">Desired Addons ({syncPlan.desiredCount})</h4>
-                          <div className="max-h-48 overflow-y-auto space-y-1">
-                            {syncPlan.desired.map((addon, idx) => (
-                              <div key={idx} className="text-xs font-mono bg-surface-hover p-2 rounded break-all">
-                                <span className="text-green-400">{addon.name}</span>
-                                <div className="text-muted truncate">{addon.transportUrl}</div>
-                                <div className="text-xs text-gray-500 truncate" title={addon.fingerprint}>
-                                  FP: {addon.fingerprint.substring(0, 50)}...
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={refreshSyncPlan}
-                        className="mt-3 mr-2 px-3 py-1 text-xs bg-surface-hover hover:bg-primary hover:text-white rounded transition-colors"
-                      >
-                        Refresh
-                      </button>
-                      <button
-                        onClick={() => {
-                          const text = JSON.stringify({ current: syncPlan.current, desired: syncPlan.desired }, null, 2);
-                          copyToClipboard(text);
-                          toast.success('Copied to clipboard');
-                        }}
-                        className="mt-3 px-3 py-1 text-xs bg-surface-hover hover:bg-primary hover:text-white rounded transition-colors"
-                      >
-                        Copy
-                      </button>
-                    </>
-                  )}
-                </div>
-              </PageSection>
-            )}
-
             {/* Tab Navigation */}
             <PageSection className="mb-6 md:mb-8">
               <div className="flex items-center gap-2 p-1 rounded-xl bg-surface w-fit overflow-x-auto">
@@ -1762,6 +1774,7 @@ export default function UserDetailPage() {
                 >
                   Overview
                 </button>
+                {hasAddonList(user) && (
                 <button
                   onClick={() => setActiveTab('addons')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
@@ -1778,6 +1791,7 @@ export default function UserDetailPage() {
                     </span>
                   )}
                 </button>
+                )}
               </div>
             </PageSection>
 
@@ -1985,7 +1999,7 @@ export default function UserDetailPage() {
             )}
 
             {/* Addons Tab Content */}
-            {activeTab === 'addons' && (
+            {activeTab === 'addons' && hasAddonList(user) && (
               <>
                 {/* Group Addons */}
                 <PageSection delay={0.1} className="mb-8">
@@ -2324,7 +2338,7 @@ export default function UserDetailPage() {
                 return (u.username || '').toLowerCase().includes(query) || (u.email || '').toLowerCase().includes(query);
               });
               if (candidates.length === 0) {
-                return <p className="text-sm text-muted py-4 text-center">No matching {user?.providerType === 'nuvio' ? 'Stremio' : 'Nuvio'} users found.</p>;
+                return <p className="text-sm text-muted py-4 text-center">No matching users on another app found.</p>;
               }
               return candidates.map((u) => (
                 <button
@@ -2343,8 +2357,8 @@ export default function UserDetailPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-default truncate">{u.username || u.name}</span>
-                      <Badge variant={u.providerType === 'nuvio' ? 'nuvio' : 'stremio'} size="sm">
-                        {u.providerType === 'nuvio' ? 'Nuvio' : 'Stremio'}
+                      <Badge variant={providerBadgeVariant(u)} size="sm">
+                        {providerLabel(u)}
                       </Badge>
                     </div>
                     {u.email && <p className="text-xs text-muted truncate">{u.email}</p>}
@@ -2465,6 +2479,7 @@ export default function UserDetailPage() {
         mode="reconnect"
         userId={params.id as string}
         userName={user?.username || user?.name || 'User'}
+        providerType={user?.providerType}
         onReconnectSuccess={() => {
           setIsReconnectModalOpen(false);
           window.location.reload();

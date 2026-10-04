@@ -89,7 +89,11 @@ if [ "$INSTANCE" = "public" ]; then
   # outage - see scripts/safe-db-push.js for the full writeup.
   node scripts/safe-db-push.js || true
 else
-  bunx prisma db push --schema "$PRISMA_SCHEMA_PATH" --accept-data-loss || true
+  # --skip-generate: the client is generated when the image is built. A
+  # container run as a different user than the image's (common, to match a
+  # data folder's owner) cannot write node_modules, so generating here only
+  # printed a "Can't write to node_modules/prisma" error on every boot.
+  bunx prisma db push --schema "$PRISMA_SCHEMA_PATH" --accept-data-loss --skip-generate || true
 fi
 
 export NODE_OPTIONS="--dns-result-order=ipv4first"

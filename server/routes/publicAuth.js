@@ -15,22 +15,9 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
   const router = express.Router();
 
   // Shared function to reset account data
-  const resetAccountData = async (accountId) => {
-    console.log('Resetting account data for:', accountId);
-    await prisma.groupAddon.deleteMany({
-      where: { group: { accountId } }
-    });
-    await prisma.group.deleteMany({
-      where: { accountId }
-    });
-    await prisma.addon.deleteMany({
-      where: { accountId }
-    });
-    await prisma.user.deleteMany({
-      where: { accountId }
-    });
-    console.log('Account data reset completed');
-  };
+  // One reset for import and Reset alike - this used to be its own copy and
+  // drifted (it never cleared household profiles).
+  const resetAccountData = (accountId) => require('../utils/helpers/accountReset').resetAccountData(prisma, accountId);
 
   // Configure multer for file uploads
   const upload = multer({
@@ -1194,6 +1181,101 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
     }
   })
 
+  // --- Sign in with a Jellyfin-compatible server (public instances) ---
+  //
+  // The same shape as the Nuvio sign-in above. A server user has no email, so
+  // the account is keyed by the identity SlickSync stores for that user
+  // (their id on the server plus the server's host - see
+  // providers/jellyfinAuth.js identityEmail). On a public instance the
+  // address must be a public one; jellyfinAuth refuses private networks.
+
+  // POST /jellyfin-probe, /jellyfin-quick-connect, /jellyfin-quick-connect-status
+  require('../utils/jellyfinConnect').mountSignInSteps(router, 'jellyfin-')
+
+  router.post('/jellyfin-login', async (req, res) => {
+    try {
+      if (INSTANCE_TYPE !== 'public') {
+        return res.status(400).json({ message: 'Server sign-in is only available in public auth mode' })
+      }
+      const { signInFromBody, jellyfinFields } = require('../utils/jellyfinConnect')
+      const { identityEmail } = require('../providers/jellyfinAuth')
+      let signedIn
+      try {
+        signedIn = await signInFromBody(req.body)
+      } catch (err) {
+        const status = err?.status === 401 ? 401 : 400
+        return res.status(status).json({ message: err?.message || 'Could not sign in to the server', ...(err?.pinNeeded ? { pinNeeded: true } : {}) })
+      }
+      const { probe, login } = signedIn
+      await require('../utils/jellyfinConnect').rememberSignIn(prisma, encrypt, probe, login)
+      const email = identityEmail(probe.serverUrl, login.userId)
+
+      // Signed in already: link this server login to the current account,
+      // which must already have a person with this login.
+      let currentAccountId = req.appAccountId
+      if (!currentAccountId && parseCookies && JWT_SECRET) {
+        try {
+          const cookies = parseCookies(req)
+          const token = cookies[cookieName('sfm_at')] || cookies['sfm_at'] || cookies[cookieName('sfm_rt')] || cookies['sfm_rt']
+          if (token) {
+            const decoded = jwt.verify(token, JWT_SECRET)
+            if (decoded?.accId && await prisma.appAccount.findUnique({ where: { id: decoded.accId } })) currentAccountId = decoded.accId
+          }
+        } catch { /* not signed in */ }
+      }
+
+      let account = await prisma.appAccount.findUnique({ where: { email } })
+      let isNewAccount = false
+      if (currentAccountId) {
+        if (account && account.id !== currentAccountId) {
+          return res.status(409).json({ message: 'This server login is already linked to another SlickSync account', error: 'EMAIL_ALREADY_LINKED' })
+        }
+        const current = await prisma.appAccount.findUnique({ where: { id: currentAccountId } })
+        if (current.email && current.email !== email) {
+          return res.status(409).json({ message: 'Your account is already linked to a different login', error: 'ACCOUNT_ALREADY_LINKED' })
+        }
+        const person = await prisma.user.findFirst({ where: { accountId: current.id, providerType: 'jellyfin', jellyfinUserId: login.userId } })
+        if (!person) {
+          return res.status(400).json({ message: 'Add this server user as a person first, then link the login.', error: 'NO_USER_WITH_EMAIL' })
+        }
+        account = current.email ? current : await prisma.appAccount.update({ where: { id: current.id }, data: { email, linkedProvider: 'jellyfin' } })
+      } else if (!account) {
+        account = await prisma.appAccount.create({ data: { uuid: null, email, passwordHash: null, linkedProvider: 'jellyfin' } })
+        isNewAccount = true
+      }
+      req.appAccountId = account.id
+
+      const fields = jellyfinFields(probe, login, encrypt, req)
+      let user = null
+      const existing = await prisma.user.findFirst({ where: { accountId: account.id, providerType: 'jellyfin', jellyfinUserId: login.userId } })
+      if (existing) {
+        await prisma.user.update({ where: { id: existing.id }, data: { ...fields, isActive: true } })
+      } else if (isNewAccount) {
+        const username = await ensureUniqueUsername(login.userName || 'jellyfin-user', account.id)
+        const created = await prisma.user.create({
+          data: { accountId: account.id, email, username, isActive: true, ...fields }
+        })
+        user = { id: created.id, email: created.email, username: created.username }
+      }
+
+      const at = issueAccessToken(account.id)
+      const rt = issueRefreshToken(account.id)
+      const csrf = randomCsrfToken()
+      res.cookie(cookieName('sfm_at'), at, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
+      res.cookie(cookieName('sfm_rt'), rt, { httpOnly: true, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 365 * 24 * 60 * 60 * 1000 })
+      res.cookie(cookieName('sfm_csrf'), csrf, { httpOnly: false, secure: isProdEnv(), sameSite: isProdEnv() ? 'strict' : 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 * 1000 })
+      return res.json({
+        message: 'Login successful',
+        token: at,
+        account: { id: account.id, uuid: account.uuid, email: account.email || null },
+        ...(user ? { user } : {})
+      })
+    } catch (error) {
+      console.error('Jellyfin login error:', error?.message)
+      return responseUtils.internalError(res, 'Could not sign in')
+    }
+  })
+
   // Unlink Stremio account from current account (keep UUID only)
   router.post('/unlink-stremio', async (req, res) => {
     try {
@@ -1434,6 +1516,33 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       // Build addon id -> name map for user excludedAddons name resolution
       const addonIdToName = new Map(addons.map(a => [a.id, a.name]))
 
+      // AIOStreams / AIOMetadata household profiles, per person. They hang off
+      // a person's id, which an import replaces, so each person also carries
+      // an opaque reference (`jellyfinHousehold.ref`) the import maps to the
+      // new id - which is also what re-keys per-person and per-profile
+      // collections in the account settings (sync.aioCollections).
+      const profileRows = await prisma.jellyfinProfile.findMany({ where: whereScope }).catch(() => [])
+      const usernameById = new Map(users.map(u => [u.id, u.username]))
+      const householdOf = (user) => {
+        const profiles = profileRows.filter(p => p.ownerUserId === user.id).map(p => {
+          let token = null
+          if (p.token) {
+            try { token = decrypt(p.token, req) } catch (e) { console.warn(`Failed to decrypt a household sign-in for ${user.id}:`, e.message) }
+          }
+          return {
+            ref: p.id,
+            jellyfinUserId: p.jellyfinUserId,
+            name: p.name,
+            loginName: p.loginName,
+            token,
+            needsPin: p.needsPin,
+            skip: p.skip,
+            ownUsername: p.ownUserId ? (usernameById.get(p.ownUserId) || null) : null,
+          }
+        })
+        return { ref: user.id, profiles }
+      }
+
       // Decrypt stremioAuthKey AND nuvioRefreshToken for each user before
       // exporting. nuvioRefreshToken previously rode along un-decrypted via
       // the {...user} spread below - export never decrypted it, and
@@ -1461,6 +1570,33 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
             decryptedUser.nuvioRefreshToken = null
           }
         }
+        if (user.aioConfigPassword) {
+          try {
+            decryptedUser.aioConfigPassword = decrypt(user.aioConfigPassword, req)
+          } catch (e) {
+            decryptedUser.aioConfigPassword = null
+          }
+        }
+        // A Jellyfin server sign-in, for the same reason as the two above.
+        if (user.jellyfinToken) {
+          try {
+            decryptedUser.jellyfinToken = decrypt(user.jellyfinToken, req)
+          } catch (e) {
+            console.warn(`Failed to decrypt Jellyfin token for user ${user.id}:`, e.message)
+            decryptedUser.jellyfinToken = null
+          }
+        }
+        // Simkl's sign-in too: it used to ride along still encrypted, which
+        // only worked when the import landed under the same key.
+        if (user.simklAccessToken) {
+          try {
+            decryptedUser.simklAccessToken = decrypt(user.simklAccessToken, req)
+          } catch (e) {
+            console.warn(`Failed to decrypt Simkl token for user ${user.id}:`, e.message)
+            decryptedUser.simklAccessToken = null
+          }
+        }
+        if (user.providerType === 'jellyfin') decryptedUser.jellyfinHousehold = householdOf(user)
         // Normalize excludedAddons to addon NAMES for export (keep JSON string format for compatibility)
         try {
           const parsedExcluded = user.excludedAddons ? JSON.parse(user.excludedAddons) : []
@@ -1479,7 +1615,10 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
             decryptedUser.protectedAddons = JSON.stringify([])
           }
         } catch { }
-        // Omit internal fields
+        // Omit internal fields. `ref` is the person's id, kept so an import
+        // back into this instance can give them the same id again - their
+        // watch history, sessions and stats are all filed under it.
+        decryptedUser.ref = user.id
         delete decryptedUser.id
         delete decryptedUser.accountId
         // Omit stremioAddons from export (not needed in exported config)
@@ -1831,6 +1970,13 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
       const { users, groups, addons, sync: importedSync } = configData;
       const accountId = req.appAccountId || 'default';
 
+      // Who is here right now, by name - so a file exported before people
+      // carried a `ref` can still hand each one back their own id below.
+      const idByUsernameBeforeImport = new Map(
+        (await prisma.user.findMany({ where: { accountId }, select: { id: true, username: true } }).catch(() => []))
+          .filter((u) => u.username).map((u) => [u.username, u.id])
+      );
+
       // Reset existing data for this account using shared function
       await resetAccountData(accountId);
 
@@ -2117,9 +2263,31 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         }
       }
 
-      // 3. Import users (always new IDs) and build export->new map
+      // 3. Import users and build export->new map.
+      //
+      // Watch history, sessions, stats and the rest are filed under a
+      // person's id with no link back to the person row, so a reset + new
+      // ids left every one of them orphaned: Activity went empty and
+      // everyone showed 0m. A person now gets their original id back
+      // whenever it is free - from the export's `ref`, or, for an older
+      // file, from whoever had that username here before the import - and
+      // everything filed under it reattaches as is. Never an id whose
+      // history belongs to another account.
+      const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+      const reusableUserId = async (candidate) => {
+        if (typeof candidate !== 'string' || !SAFE_ID.test(candidate)) return null;
+        const taken = await prisma.user.findUnique({ where: { id: candidate }, select: { id: true } }).catch(() => true);
+        if (taken) return null;
+        for (const model of ['watchActivity', 'movieWatchHistory', 'episodeWatchHistory', 'watchSession']) {
+          const elsewhere = await prisma[model]?.findFirst({ where: { userId: candidate, NOT: { accountId } }, select: { userId: true } }).catch(() => null);
+          if (elsewhere) return null;
+        }
+        return candidate;
+      };
       const importedUsers = [];
+      const importedHouseholds = [];
       const exportUserIdToNewId = new Map();
+      let keptIds = 0;
       if (users && Array.isArray(users)) {
         // Build addon lookup maps for normalization
         const nameToAddonId = new Map();
@@ -2130,7 +2298,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         }
 
         for (const userData of users) {
-          const { id: _exportUserId, stremioAuthKey, nuvioRefreshToken, protectedAddons, excludedAddons, ...userFields } = userData;
+          const { id: _exportUserId, ref: exportRef, stremioAuthKey, nuvioRefreshToken, jellyfinToken, aioConfigPassword, simklAccessToken, jellyfinHousehold, protectedAddons, excludedAddons, ...userFields } = userData;
 
           // Parse protectedAddons and excludedAddons if they're JSON strings
           const parsedProtectedAddons = (() => {
@@ -2189,18 +2357,81 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
             if (resolvedId) normalizedExcludedIds.push(resolvedId)
           }
 
+          const keepId = await reusableUserId(exportRef || jellyfinHousehold?.ref || _exportUserId)
+            || await reusableUserId(userFields.username ? idByUsernameBeforeImport.get(userFields.username) : null);
+          if (keepId) keptIds++;
           const user = await prisma.user.create({
             data: {
               ...userFields,
+              ...(keepId ? { id: keepId } : {}),
               accountId,
               stremioAuthKey: stremioAuthKey ? encrypt(stremioAuthKey, req) : null,
               nuvioRefreshToken: nuvioRefreshToken ? encrypt(nuvioRefreshToken, req) : null,
+              jellyfinToken: jellyfinToken ? encrypt(jellyfinToken, req) : null,
+              aioConfigPassword: aioConfigPassword ? encrypt(aioConfigPassword, req) : null,
+              simklAccessToken: simklAccessToken ? encrypt(simklAccessToken, req) : null,
               protectedAddons: normalizedProtectedNames.length > 0 ? JSON.stringify(normalizedProtectedNames) : null,
               excludedAddons: normalizedExcludedIds.length > 0 ? JSON.stringify(normalizedExcludedIds) : null
             }
           });
           importedUsers.push(user);
           if (_exportUserId) exportUserIdToNewId.set(_exportUserId, user.id)
+          if (exportRef) exportUserIdToNewId.set(exportRef, user.id)
+          if (jellyfinHousehold && jellyfinHousehold.ref) {
+            exportUserIdToNewId.set(jellyfinHousehold.ref, user.id)
+            importedHouseholds.push({ owner: user, household: jellyfinHousehold })
+          }
+        }
+      }
+
+      // 3a. Household profiles (AIOStreams / AIOMetadata), now that every
+      // person - including any a profile was separated into - has its new id.
+      // Then re-key the collections arranged per person and per profile.
+      {
+        const byUsername = new Map(importedUsers.filter(u => u.username).map(u => [u.username, u.id]))
+        const profileRefToNewId = new Map()
+        for (const { owner, household } of importedHouseholds) {
+          for (const p of Array.isArray(household.profiles) ? household.profiles : []) {
+            if (!p || !p.jellyfinUserId || !p.name) continue
+            try {
+              // Its id is in the profile's SlickTrax link and its AIOStreams
+              // variant, so it keeps that too when free.
+              const keepProfileId = typeof p.ref === 'string' && SAFE_ID.test(p.ref)
+                && !(await prisma.jellyfinProfile.findUnique({ where: { id: p.ref }, select: { id: true } }).catch(() => true))
+              const row = await prisma.jellyfinProfile.create({
+                data: {
+                  ...(keepProfileId ? { id: p.ref } : {}),
+                  accountId,
+                  ownerUserId: owner.id,
+                  jellyfinUserId: String(p.jellyfinUserId),
+                  name: String(p.name),
+                  loginName: p.loginName || null,
+                  token: p.token ? encrypt(String(p.token), req) : null,
+                  needsPin: p.needsPin === true,
+                  skip: p.skip === true,
+                  ownUserId: p.ownUsername ? (byUsername.get(p.ownUsername) || null) : null,
+                },
+              })
+              if (p.ref) profileRefToNewId.set(p.ref, row.id)
+            } catch (e) {
+              console.warn(`Could not import household profile ${p.name}:`, e?.message)
+            }
+          }
+        }
+        try {
+          const acct = await prisma.appAccount.findUnique({ where: { id: accountId }, select: { sync: true } })
+          let cfg = acct?.sync
+          const asString = typeof cfg === 'string'
+          if (asString) { try { cfg = JSON.parse(cfg) } catch { cfg = null } }
+          const col = cfg && typeof cfg === 'object' ? cfg.aioCollections : null
+          if (col && typeof col === 'object' && (col.byUser || col.byProfile)) {
+            const rekey = (map, ids) => Object.fromEntries(Object.entries(map && typeof map === 'object' ? map : {})
+              .filter(([k]) => ids.has(k)).map(([k, v]) => [ids.get(k), v]))
+            const next = { ...cfg, aioCollections: { ...col, byUser: rekey(col.byUser, exportUserIdToNewId), byProfile: rekey(col.byProfile, profileRefToNewId) } }
+            await prisma.appAccount.update({ where: { id: accountId }, data: { sync: asString ? JSON.stringify(next) : next } })
+          }
+        } catch (e) {
+          console.warn('Could not re-key imported collections:', e?.message)
         }
       }
 
@@ -2298,7 +2529,7 @@ module.exports = ({ prisma, getAccountId, INSTANCE_TYPE, PRIVATE_AUTH_ENABLED, P
         },
         // Backward-compatible aliases expected by older clients
         addons: { created: importedAddons.length, reused: 0 },
-        users: { created: importedUsers.length },
+        users: { created: importedUsers.length, keptHistory: keptIds },
         groups: { created: importedGroups.length }
       });
     } catch (error) {

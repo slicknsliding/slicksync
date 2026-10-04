@@ -109,6 +109,12 @@ Rules that keep falling out of this, each fixing a real reported bug:
   that resets progress to near-zero and climbs back up is also suppressed under this rule, an accepted tradeoff
   consistent with the "one History row per title" design. `scripts/reconcile-stale-snapshot-spikes.js` flags
   already-written oversized rows from before this fix, for review.
+- **A checkpoint at the end of the runtime is the one that means "stopped".** The freshness window exists
+  because a checkpoint cannot tell a pause from a stop, but a position in the last 2% of `state.duration`
+  (`hasReachedEnd()` in `sessionTracker.js`) is playback that ended. Such a session is still created or updated
+  (duration, History), then closed on that poll instead of lingering in Now Playing for the whole window - and it
+  is not reactivated while the provider keeps reporting that same final position. `metricsBuilder.js` leaves such
+  a session out of Now Playing in the meantime. Pinned by `test/sessionTracker.test.js`.
 - **Day bucketing goes through `dateUtils.js`**, never `toISOString()` (which is always UTC). See Timezone below.
 
 ## Timezone

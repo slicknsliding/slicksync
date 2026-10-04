@@ -16,6 +16,7 @@ import { api } from '@/lib/api';
 import { copyToClipboard } from '@/lib/clipboard';
 import { toast } from '@/components/ui/Toast';
 import { PasswordToggleButton } from '@/components/ui/Input';
+import { providerTypeLabel, providerBadgeVariant } from '@/lib/providers';
 
 interface AccountModalProps {
     isOpen: boolean;
@@ -66,7 +67,7 @@ export function AccountModal({ isOpen, onClose, accountInfo, onAccountUpdated }:
     // means "some provider is linked". linkedProvider says which one.
     // Fallback to 'stremio' for accounts linked before this field existed.
     const linkedProvider: 'stremio' | 'nuvio' = accountInfo.linkedProvider === 'nuvio' ? 'nuvio' : 'stremio';
-    const providerLabel = linkedProvider === 'nuvio' ? 'Nuvio' : 'Stremio';
+    const providerLabel = providerTypeLabel(linkedProvider);
 
     const resetState = () => {
         setView('main');

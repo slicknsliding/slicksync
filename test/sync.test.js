@@ -42,10 +42,24 @@ test('createManifestFingerprint (Stremio): different addon UUIDs still differ', 
   assert.notEqual(fp(a), fp(b))
 })
 
-test('createManifestFingerprint (Stremio): falls back to the last path segment when no UUID is present', () => {
+test('createManifestFingerprint (Stremio): without a UUID the whole address is the identity', () => {
+  const { canonicalizeManifestUrl } = require('../server/utils/validation')
+  const fp = createManifestFingerprint(canonicalizeManifestUrl, { urlOnly: false })
+  const cinemeta = { transportUrl: 'https://v3-cinemeta.strem.io/manifest.json' }
+  const torrentio = { transportUrl: 'https://torrentio.strem.fun/providers=yts/manifest.json' }
+  const subs = { transportUrl: 'https://opensubtitles-v3.strem.io/manifest.json' }
+  // Different addons are different - they all used to be "manifest.json".
+  assert.equal(new Set([cinemeta, torrentio, subs].map(fp)).size, 3)
+  // The same addon written slightly differently is still the same.
+  assert.equal(fp(cinemeta), fp({ transportUrl: 'http://V3-Cinemeta.strem.io/manifest.json?x=1' }))
+  // An account with Cinemeta + Torrentio is not "in sync" with Cinemeta + OpenSubtitles.
+  assert.notDeepEqual([cinemeta, torrentio].map(fp).sort(), [cinemeta, subs].map(fp).sort())
+})
+
+test('createManifestFingerprint (Stremio): a UUID address stays the same addon when its encrypted part changes', () => {
   const fp = createManifestFingerprint(null, { urlOnly: false })
-  const addon = { transportUrl: 'https://host/some-custom-addon/manifest.json' }
-  assert.equal(fp(addon), 'manifest.json')
+  const uuid = '00000000-0000-4000-8000-000000000000'
+  assert.equal(fp({ transportUrl: `https://host/stremio/${uuid}/encA/manifest.json` }), fp({ transportUrl: `https://host/stremio/${uuid}/encB/manifest.json` }))
 })
 
 test('createManifestFingerprint (Stremio): handles an unparseable URL without throwing', () => {

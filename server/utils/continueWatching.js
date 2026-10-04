@@ -304,8 +304,11 @@ async function computeContinueWatching(prisma, accountId, limit = 8) {
         const links = buildStremioLinks(metadata.imdb_id, 'series', target.season, target.episode)
         entry.appUrl = links.appUrl
         entry.webUrl = links.webUrl
-      } else {
+      } else if (user.providerType === 'nuvio') {
         entry.appUrl = buildNuvioAppUrl('series', metadata.imdb_id)
+        entry.webUrl = `https://www.imdb.com/title/${metadata.imdb_id}`
+      } else {
+        // Jellyfin apps have no shared link scheme to open a title with.
         entry.webUrl = `https://www.imdb.com/title/${metadata.imdb_id}`
       }
     }
@@ -380,8 +383,10 @@ async function computeContinueWatching(prisma, accountId, limit = 8) {
         const links = buildStremioLinks(imdbId, 'movie')
         entry.appUrl = links.appUrl
         entry.webUrl = links.webUrl
-      } else {
+      } else if (user.providerType === 'nuvio') {
         entry.appUrl = buildNuvioAppUrl('movie', imdbId)
+        entry.webUrl = `https://www.imdb.com/title/${imdbId}`
+      } else {
         entry.webUrl = `https://www.imdb.com/title/${imdbId}`
       }
     }

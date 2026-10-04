@@ -124,12 +124,18 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
         providerType: true,
         nuvioRefreshToken: true,
         nuvioUserId: true,
+        jellyfinServerUrl: true,
+        jellyfinServerId: true,
+        jellyfinServerKind: true,
+        jellyfinUserId: true,
+        jellyfinToken: true,
         colorIndex: true,
         notifyOnWatch: true,
         discordWebhookUrl: true,
         // Needed so getLibraryForUser can clear the flag on a successful fetch
         // (the self-healing half of the "Reconnect needed" warning).
-        providerConnectionError: true
+        providerConnectionError: true,
+        providerConnectionErrorAt: true
       }
     })
 
@@ -156,14 +162,21 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       function isAuthFailure(message) {
         const m = (message || '').toLowerCase()
         return m.includes('session does not exist') || m.includes('unauthorized') || m.includes('invalid auth') || m.includes(' 401')
+          || m.includes('authentication expired') // Nuvio's refresh token was rejected
       }
-      async function recordConnectionError(userId, message) {
+      // providerConnectionErrorAt is when the outage STARTED: kept while it
+      // keeps failing, so connectionAlerts can tell a blip from an outage
+      // and announce each outage once. Returns that start, or null if the
+      // write failed.
+      async function recordConnectionError(user, message) {
+        const since = (user.providerConnectionError && user.providerConnectionErrorAt) ? new Date(user.providerConnectionErrorAt) : new Date()
         try {
           await prisma.user.update({
-            where: { id: userId },
-            data: { providerConnectionError: message.slice(0, 500), providerConnectionErrorAt: new Date() },
+            where: { id: user.id },
+            data: { providerConnectionError: message.slice(0, 500), providerConnectionErrorAt: since },
           })
-        } catch {}
+          return since
+        } catch { return null }
       }
       async function clearConnectionError(userId) {
         try {
@@ -188,7 +201,7 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       const canUseLegacyCache = (user) => !!user?.email && emailCounts.get(user.email) === 1
 
       // Helper function to get library for a user via their provider
-      // (Stremio or Nuvio); falls back to cache if no credentials or on error.
+      // (Stremio, Nuvio or Jellyfin); falls back to cache if no credentials or on error.
       // Fetched ONCE per pass: the metrics step and the sessions step both
       // ask for it within the same second, and each used to fetch, parse and
       // re-cache the whole library on its own - twice the network and twice
@@ -221,13 +234,17 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
             itemCount: Array.isArray(library) ? library.length : 0
           })
 
-          if (user.providerConnectionError) await clearConnectionError(user.id)
+          if (user.providerConnectionError) {
+            await clearConnectionError(user.id)
+            await require('./connectionAlerts').onConnectionRecovered(prisma, accountId, user)
+          }
           return library || []
         } catch (error) {
           heartbeat('getLibraryForUser:live_fetch_failed', { userId: user.id, message: error.message })
           console.warn(`[ActivityMonitor] Failed to fetch library for user ${user.id}:`, error.message)
           const prefix = isAuthFailure(error.message) ? 'Reconnect needed: ' : 'Connection issue: '
-          await recordConnectionError(user.id, prefix + error.message)
+          const since = await recordConnectionError(user, prefix + error.message)
+          if (since) await require('./connectionAlerts').onConnectionFailed(prisma, accountId, user, prefix + error.message, since)
           // Fallback to cache if API call fails
           const cachedLibrary = getCachedLibrary(accountId, user, { allowLegacyEmailFile: canUseLegacyCache(user) })
           return cachedLibrary || []
@@ -254,6 +271,11 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
             stremioAuthKey: c.stremioAuthKey,
             nuvioRefreshToken: c.nuvioRefreshToken,
             nuvioUserId: c.nuvioUserId,
+            jellyfinServerUrl: c.jellyfinServerUrl,
+            jellyfinServerId: c.jellyfinServerId,
+            jellyfinServerKind: c.jellyfinServerKind,
+            jellyfinUserId: c.jellyfinUserId,
+            jellyfinToken: c.jellyfinToken,
             providerConnectionError: null,
             __recordAs: owner.id,
             // A refreshed Nuvio token belongs on this login's own row.
@@ -302,6 +324,14 @@ async function checkActivityForAccount(prisma, accountId, decrypt, getAccountId)
       } catch (sessionError) {
         heartbeat('processAccountSessions:error', { message: sessionError.message, stack: sessionError.stack })
         console.warn(`[ActivityMonitor] Error processing sessions:`, sessionError.message)
+      }
+
+      // Viewings a Jellyfin server's sessions list showed starting during the
+      // library reads above - see utils/jellyfinLive.js.
+      try {
+        await require('./jellyfinLive').announceStarts(prisma, accountId, users)
+      } catch (liveError) {
+        console.warn(`[ActivityMonitor] Error announcing Jellyfin viewings:`, liveError.message)
       }
 
       // Detect silent account mismatches (proxy sees this user watching, but

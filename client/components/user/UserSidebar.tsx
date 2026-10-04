@@ -89,7 +89,7 @@ function NavItem({ name, href, icon: Icon, isActive, index, onNavigate }: NavIte
 
 export function UserSidebar({ isOpen = false, onClose }: UserSidebarProps) {
   const pathname = usePathname();
-  const { userInfo, logout } = useUserAuth();
+  const { userInfo, logout, provider } = useUserAuth();
 
   const isItemActive = (href: string) => {
     if (href === '/user') {
@@ -176,7 +176,7 @@ export function UserSidebar({ isOpen = false, onClose }: UserSidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto custom-scrollbar">
-          {navigationItems.map((item, index) => (
+          {navigationItems.filter((item) => provider !== 'jellyfin' || item.href !== '/user/addons').map((item, index) => (
             <NavItem
               key={item.href}
               name={item.name}

@@ -15,12 +15,13 @@ import {
 import { useUserAuthHeaders } from '@/lib/hooks/useUserAuth';
 import { userAddons, GroupAddon, StremioAddon } from '@/lib/user-api';
 import { UserPageHeader } from '@/components/user/UserPageContainer';
+import { providerTypeLabel } from '@/lib/providers';
 
 type TabType = 'group' | 'stremio';
 
 export default function UserAddonsPage() {
   const { userId, authKey, provider, isReady } = useUserAuthHeaders();
-  const providerLabel = provider === 'nuvio' ? 'Nuvio' : 'Stremio';
+  const providerLabel = providerTypeLabel(provider);
   const [groupAddons, setGroupAddons] = useState<GroupAddon[]>([]);
   const [stremioAddons, setStremioAddons] = useState<StremioAddon[]>([]);
   const [excludedIds, setExcludedIds] = useState<string[]>([]);
@@ -32,7 +33,7 @@ export default function UserAddonsPage() {
 
   // Fetch addons
   useEffect(() => {
-    if (!isReady || !userId) return;
+    if (!isReady || !userId || provider === 'jellyfin') return;
 
     const fetchAddons = async () => {
       setLoading(true);
@@ -51,7 +52,7 @@ export default function UserAddonsPage() {
     };
 
     fetchAddons();
-  }, [userId, authKey, isReady]);
+  }, [userId, authKey, isReady, provider]);
 
   // Toggle exclude addon
   const handleToggleExclude = async (addonId: string, isExcluded: boolean) => {
@@ -108,6 +109,18 @@ export default function UserAddonsPage() {
       setActionLoading(null);
     }
   };
+
+  // A Jellyfin-compatible server keeps no addon list SlickSync can manage.
+  if (provider === 'jellyfin') {
+    return (
+      <div className="p-8">
+        <UserPageHeader title="Addons" subtitle="Your server has no addon list for SlickSync to manage" />
+        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          What you watch on your server still shows up in your activity, library and stats.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8">

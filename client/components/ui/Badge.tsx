@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 
-export type BadgeVariant = 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'aurora' | 'cyan' | 'neutral' | 'outline' | 'muted' | 'stremio' | 'nuvio';
+export type BadgeVariant = 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'aurora' | 'cyan' | 'neutral' | 'outline' | 'muted' | 'stremio' | 'nuvio' | 'jellyfin' | 'aiostreams' | 'aiometadata';
 type BadgeSize = 'sm' | 'md';
 
 interface BadgeProps {
@@ -89,6 +89,30 @@ function getBadgeStyles(variant: BadgeVariant) {
         background: 'linear-gradient(115deg, rgba(56, 89, 158, 0.22) 0%, rgba(56, 89, 158, 0.22) 50%, rgba(255, 152, 0, 0.10) 50%, rgba(255, 152, 0, 0.10) 100%)',
         color: 'rgb(186, 208, 240)',
         borderColor: 'rgba(255, 152, 0, 0.18)',
+      };
+    case 'jellyfin':
+      // A real Jellyfin server: teal.
+      return {
+        background: 'linear-gradient(115deg, rgba(20, 184, 166, 0.20) 0%, rgba(34, 211, 238, 0.14) 100%)',
+        color: 'rgb(153, 246, 228)',
+        borderColor: 'rgba(45, 212, 191, 0.28)',
+      };
+    case 'aiostreams':
+      // AIOStreams' media server: half black, half white, split by the same
+      // diagonal as Nuvio's two tones. The text takes a dark outline so it
+      // reads on both halves.
+      return {
+        background: 'linear-gradient(115deg, rgb(12, 12, 14) 0%, rgb(12, 12, 14) 50%, rgb(244, 244, 245) 50%, rgb(244, 244, 245) 100%)',
+        color: 'rgb(255, 255, 255)',
+        borderColor: 'rgba(255, 255, 255, 0.35)',
+        textShadow: '0 0 2px rgb(0, 0, 0), 0 0 2px rgb(0, 0, 0), 0 0 1px rgb(0, 0, 0)',
+      };
+    case 'aiometadata':
+      // AIOMetadata's media server: rose.
+      return {
+        background: 'linear-gradient(115deg, rgba(244, 63, 94, 0.18) 0%, rgba(236, 72, 153, 0.14) 100%)',
+        color: 'rgb(254, 205, 211)',
+        borderColor: 'rgba(251, 113, 133, 0.28)',
       };
     case 'default':
     case 'neutral':
