@@ -310,7 +310,7 @@ module.exports = ({ prisma, getAccountId, encrypt, decrypt }) => {
               await createNotification(prisma, accountId, {
                 type: 'task',
                 title: `Key rotation: "${existing.name}" propagated`,
-                body: `${parts.join('; ')}${(rotation.aioConfigFailures || []).length ? `; ${rotation.aioConfigFailures.length} AIOStreams setup(s) couldn't be reached` : ''}.`,
+                body: `${(() => { const t = parts.join('; '); return t.charAt(0).toUpperCase() + t.slice(1); })()}${(rotation.aioConfigFailures || []).length ? `; ${rotation.aioConfigFailures.length} AIOStreams setup(s) couldn't be reached` : ''}.`,
               }).catch(() => {});
             }
           }

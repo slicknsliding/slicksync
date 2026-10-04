@@ -1,5 +1,26 @@
 [
   {
+    "version": "1.91.0",
+    "date": "2026-10-04",
+    "title": "1.91.0 - Jellyfin households, invites that make accounts, and collections you can share",
+    "features": [
+      "Copy, export and share AIOStreams collections: Transfer on the AIOStreams Collections page copies an account's or profile's collections to another, saves them to a file, or makes a share code. Importing a file or code reuses the catalogs you already have and makes the rest, so a code works in someone else's SlickSync too.",
+      "Now Playing names the device and app on a Jellyfin server (\"Living room · Infuse\"), and New device notifications cover someone starting to watch on a device they haven't used before.",
+      "Devices, on a Jellyfin person's page: everything signed in as them on the server, with Sign out next to each.",
+      "Keep Jellyfin in step: what someone finishes in Stremio, Nuvio or AIOStreams is marked played on their Jellyfin server, and what they stop part-way picks up at the same spot there. On by default, per person.",
+      "Invitations can make the Jellyfin account: whoever joins picks a password, and the account stays off until you accept them. Afterwards it switches off if they expire, are deactivated or are removed, and back on if you reactivate them.",
+      "Age limit, on a Jellyfin person's page: the highest age rating their account can play, from the server's own list, with an option to hide unrated titles too.",
+      "Vault key changes can reach AIOStreams: switch on Update debrid keys in AIOStreams for a person, and a rotated or failed-over debrid key is swapped inside their AIOStreams setup too. Off by default.",
+      "A SlickSync tab left open across an update loads the new version on its next page change, instead of running the old one until a manual refresh."
+    ],
+    "bugFixes": [
+      "The notification bell's count no longer jumps around (18, then 1, then 18) when you move between pages.",
+      "Add New User: only the provider picked stays highlighted, also in browsers with a page-recolouring extension.",
+      "A Nuvio person whose sign-in has expired is told to reconnect on their profiles card, instead of a vague \"could not read just now\".",
+      "The database password no longer appears in the container's startup log."
+    ]
+  },
+  {
     "version": "1.90.0",
     "date": "2026-10-04",
     "title": "1.90.0 - Jellyfin, AIOStreams and AIOMetadata as a third provider",

@@ -123,12 +123,17 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 - Watch history comes in, and what's playing shows in **Now Playing** with real watch time, straight from the server's sessions.
 - Watched marks, favourites and resume points are **written back** to the server.
 - **AIOStreams watch history** — turn it on per person and viewing in AIOStreams' own apps (Odin, Infuse, Swiftfin, the desktop app) becomes history and Now Playing; watched marks, the watchlist, drops and ratings flow back the other way. One link serves the whole household.
+- **Keep Jellyfin in step** — what someone finishes in Stremio, Nuvio or AIOStreams is marked played on their Jellyfin server, and what they stop part-way picks up at the same spot there.
+- On a Jellyfin server, Now Playing names the **device and app**, and a device someone hasn't used before can raise a notification.
 
 ### Households
 
 - AIOStreams and AIOMetadata **household users become profiles** of the person who signed in, all on one card on the Users page.
 - **Separate** a profile into its own person, **Merge it back**, or **Stop tracking** it. PIN users sign in with their PIN.
 - **Sign in a new device with its code** — pick who it's for, type the Quick Connect code the device shows, and the server signs it in as them.
+- **Devices** — everything signed in as someone on a Jellyfin server, with Sign out next to each.
+- **Age limit** — the highest age rating someone's Jellyfin account can play, from the server's own list, enforced in every Jellyfin app.
+- **Invites that make the account** — an invitation can create the person's Jellyfin account with a password they choose; it stays off until you accept them, and switches off again if they expire or are removed.
 
 ### Collections
 
@@ -136,11 +141,12 @@ A third kind of account, next to Nuvio and Stremio. Sign in to a **Jellyfin**, *
 
 - **AIOStreams Collections** — each collection opens as its own page with its titles: search to add, add from Discover, drag to reorder; everything saves as you go.
 - **Per profile**, like Nuvio Collections — give a household profile collections of its own and SlickSync sets that profile up in AIOStreams so its apps load them.
+- **Copy, export and share** — copy one profile's collections to another, save them to a file, or hand them over as a share code; catalogs a code needs are made on import.
 - **Catalogs as Jellyfin collections** — switch a catalog on and it becomes a real collection on your own Jellyfin server, holding the titles the server has. Kept in step every 30 minutes, named after its catalog and given its cover.
 
 ### Guarded
 
-- A change made to an AIOStreams configuration outside SlickSync raises a bell and push notification. The only thing SlickSync ever writes there is a profile's own collections setup.
+- A change made to an AIOStreams configuration outside SlickSync raises a bell and push notification. SlickSync writes there only for a profile's own collections setup, and — if you switch it on for a person — to swap a debrid key the Vault rotated or failed over.
 - Exports and Disaster Recovery Kits carry households, their sign-ins and their collections.
 
 ---
