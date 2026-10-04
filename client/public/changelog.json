@@ -1,5 +1,29 @@
 [
   {
+    "version": "1.90.0",
+    "date": "2026-10-04",
+    "title": "1.90.0 - Jellyfin, AIOStreams and AIOMetadata as a third provider",
+    "features": [
+      "Jellyfin, AIOStreams and AIOMetadata join Stremio and Nuvio. Add someone by signing in to their server - with a password, a PIN or a Quick Connect code - from Add User, the login page or an invite, and SlickSync works out which kind of server it is. Their history comes in, what they are playing shows in Now Playing, and watched marks, favourites and resume points are written back to the server.",
+      "AIOStreams and AIOMetadata household users become profiles of the person who signed in. Separate any of them into their own person, merge them back, or stop tracking them, from the AIOStreams & AIOMetadata profiles card on the Users page.",
+      "AIOStreams Collections, under Catalogs > Jellyfin | AIOStreams: each collection opens as its own page with its titles. Search to add, add from Discover, drag to reorder - everything saves as you go. Pick a household profile to give it collections of its own; SlickSync sets that profile up in AIOStreams so its apps load them.",
+      "Catalogs as collections on your own Jellyfin server: pick the server on the same page and switch catalogs on. Each becomes a real Jellyfin collection holding the titles the server has, kept in step every 30 minutes, named after its catalog and given its cover.",
+      "Sign in a new device with its code: on a Jellyfin or AIOStreams person's page, pick who it is for, type the Quick Connect code the device shows, and it is signed in as them.",
+      "Connection problem notifications: the bell and push tell you when someone's Stremio, Nuvio or Jellyfin sign-in stops working - straight away when it needs reconnecting, after 15 minutes when the server is just unreachable - and again when it is back. On by default, under Settings > Notifications.",
+      "A change made to an AIOStreams configuration outside SlickSync raises a bell and push notification.",
+      "Exports and Disaster Recovery Kits carry AIOStreams and AIOMetadata households, their collections and Simkl sign-ins."
+    ],
+    "bugFixes": [
+      "Importing a configuration back into the same SlickSync emptied Activity and put everyone at 0m. People now keep their watch history, stats and Activity through an import, older export files included.",
+      "A Stremio account with the wrong addons could read as Synced, because most addons were told apart only by the end of their address. Each addon is now identified by its whole address, so sync spots the difference and corrects it.",
+      "A finished episode no longer sits in Now Playing as paused at 100% for 18 minutes after it ends.",
+      "Activity opens with every filter clear, instead of on whatever was picked last visit. Copy link and bookmarks still open the exact view.",
+      "The Watched-by popup on Activity is no longer cut off, and closes when you tap outside it.",
+      "Sync Debug Info opens right under the Debug button again.",
+      "The header buttons each get their own round pill when they float over the page."
+    ]
+  },
+  {
     "version": "1.89.1",
     "date": "2026-10-03",
     "title": "1.89.1 - Opening a title no longer counts as watching it",
