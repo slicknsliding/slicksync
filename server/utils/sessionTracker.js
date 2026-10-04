@@ -298,6 +298,25 @@ function isActivelyWatching(item, userId, now) {
   return (now - watchDate.getTime()) < (CHECK_INTERVAL_MS * 3.6)
 }
 
+// The one checkpoint that does say "stopped": a position at the end of the
+// runtime. The freshness window above exists because a checkpoint cannot
+// tell a pause from a stop - but nothing plays past the end of the file, so
+// a position there is playback that has ended, however recent the
+// checkpoint is. Confirmed real case (2026-10-04): an episode that finished
+// (26:12 of 26:12, Nuvio's final checkpoint) stayed in Now Playing, labelled
+// "Paused at 26:12 of 26:12 (100%)", for the whole 18 minutes after.
+// 98%, not 100%: players stop a little short of the end (credits, the
+// autoplay countdown), and a position inside the last 2% is still a watch
+// that is over, not one that is paused.
+const END_OF_PLAYBACK_RATIO = 0.98
+
+function hasReachedEnd(position, duration) {
+  const pos = Number(position)
+  const dur = Number(duration)
+  if (!Number.isFinite(pos) || !Number.isFinite(dur) || dur <= 0) return false
+  return pos >= dur * END_OF_PLAYBACK_RATIO
+}
+
 /**
  * Process watch sessions for a user's library
  * Called during each 5-minute sync
@@ -443,6 +462,13 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     }
 
     const isActive = isActivelyWatching(item, userId, nowMs)
+    // Playback that ran to the end still gets its session created or
+    // updated below, so the duration and the History row are recorded as
+    // for any other checkpoint - it just is not kept open afterwards: it
+    // is left out of currentlyActiveItems, so the close loop at the bottom
+    // closes it on this same poll (an existing session) or the next one (a
+    // session this poll creates), with endTime at the checkpoint itself.
+    const reachedEnd = hasReachedEnd(state.timeOffset, state.duration)
     const videoId = item.type === 'series' ? state.video_id : null
     const { season, episode } = await extractSeasonEpisode(videoId)
 
@@ -456,7 +482,7 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
     if (isActive) {
       // Track active items by composite key (not just itemId) to prevent closing wrong sessions
       const sessionKey = `${userId}:${itemId}:${videoId || 'null'}`
-      currentlyActiveItems.add(sessionKey)
+      if (!reachedEnd) currentlyActiveItems.add(sessionKey)
 
       // Use composite key: userId + itemId + videoId for proper session matching
       const existingSession = activeSessionMap.get(sessionKey)
@@ -603,6 +629,19 @@ async function processUserSessions(prisma, accountId, userId, library, now = new
             })
             if (priorRow && (!priorRow.videoId || priorRow.videoId === videoId)) {
               priorLastPosition = priorRow.lastPosition ?? null
+            }
+            // The finish was already recorded: this row closed (see
+            // reachedEnd above) at the very position the provider still
+            // reports, and the provider keeps reporting it for the rest of
+            // the freshness window. Reactivating it here would reopen the
+            // finished watch every poll, only for the close loop to shut it
+            // again - a session flickering in and out of Now Playing for
+            // 18 minutes. A rewatch starts from a lower position, so it is
+            // not caught by this.
+            if (reachedEnd && priorLastPosition != null && !Number.isNaN(currentPositionForItem)
+              && currentPositionForItem <= priorLastPosition) {
+              heartbeat('sessionTracker:finished_already_recorded', { itemId, userId, videoId })
+              continue
             }
             if (priorRow?.endTime && (nowMs - priorRow.endTime.getTime()) <= CHECK_INTERVAL_MS) {
               if (priorRow.videoId && priorRow.videoId !== videoId) {
@@ -872,5 +911,6 @@ module.exports = {
   getActiveSessions,
   extractSeasonEpisode,
   sendSessionStartNotification,
-  sendSessionStopNotification
+  sendSessionStopNotification,
+  hasReachedEnd
 }

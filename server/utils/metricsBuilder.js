@@ -10,6 +10,7 @@ const { getAccountDateString, resolveAccountTimezone } = require('./dateUtils')
 const { calculateAddonAnalytics, calculateServerHealth, generateOperationalAlerts } = require('./adminAnalytics')
 const { calculateTopItemsWithUsers, calculateWatchVelocity, calculateInterestingMetrics } = require('./enhancedMetrics')
 const { buildStremioLinks, buildNuvioAppUrl } = require('./appLinks')
+const { hasReachedEnd } = require('./sessionTracker')
 
 // Helper function to extract base item ID (for series, strip season/episode info)
 function getBaseItemId(itemId, itemType) {
@@ -877,6 +878,12 @@ async function buildMetricsForAccount({ prisma, accountId, period = '30d', decry
   for (const session of activeSessionsFromDb) {
     const user = userMap.get(session.userId)
     if (!user) continue
+    // A session whose last checkpoint sits at the end of the runtime is a
+    // watch that ended, not one that is playing. sessionTracker closes such
+    // a session on its next poll; a session it creates from that final
+    // checkpoint stays active until the poll after that, and this keeps it
+    // out of the panel in between.
+    if (hasReachedEnd(session.lastPosition, session.totalDuration)) continue
     // Someone on a Jellyfin-compatible server has a real live signal - the
     // server's own sessions list, added below - so a session only kept open
     // by the library read's ~15-minute freshness window would leave a
